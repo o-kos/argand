@@ -6,6 +6,8 @@ Resolves #1.
 
 Define a repository-wide development process that connects GitHub Issues, focused branches, versioned implementation plans, atomic commits, Pull Requests, review, and completed-plan archival.
 
+This bootstrap branch was created before Issue #1 and therefore retains the earlier name `docs/project-workflow`. New branches follow the issue-numbered convention defined by this change.
+
 ## Decisions
 
 - Every implementation starts from a GitHub Issue.
@@ -21,15 +23,17 @@ Define a repository-wide development process that connects GitHub Issues, focuse
 - [x] Document the issue-driven workflow and contribution requirements.
 - [x] Add reusable active-plan guidance and a plan template.
 - [x] Add GitHub Issue and Pull Request templates.
-- [ ] Validate links, templates, and repository instructions for consistency.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Validate links, templates, and repository instructions for consistency.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- Review all workflow documents for consistent terminology and paths.
-- Verify that `CLAUDE.md` resolves to `AGENTS.md`.
-- Verify GitHub template YAML syntax.
-- Run repository formatting, linting, and tests because agent instructions are part of this change.
+- Documentation terminology, paths, and relative links reviewed for consistency.
+- `CLAUDE.md` verified as a symbolic link to `AGENTS.md`.
+- GitHub Issue template YAML parsed successfully.
+- `cargo fmt --all -- --check` passed.
+- `cargo clippy --all-targets --locked -- -D warnings` passed.
+- `cargo test --locked` passed: 165 tests and 3 doc-test suites.
 
 ## Post-completion
 
