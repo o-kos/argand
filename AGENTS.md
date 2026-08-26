@@ -79,11 +79,12 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
 ## Git workflow
 
-- `main` is protected. Never commit or push directly to it.
-- Start every change from an up-to-date `main` in a focused branch such as `feature/<name>`, `fix/<name>`, `docs/<name>`, or `chore/<name>`.
-- Run the relevant formatting, linting, and tests before committing.
-- Use English commit messages and push the branch to GitHub.
-- Merge changes into `main` only through a Pull Request. Resolve all review conversations before merging and use squash or rebase merge to preserve linear history.
+- Follow the complete process in `CONTRIBUTING.md`.
+- Every implementation must have a GitHub Issue, a focused branch, and a versioned plan in `docs/plans/`.
+- Open a Draft Pull Request early and link it to the Issue with a closing keyword.
+- Update plan checkboxes in the commits that complete the corresponding work. Do not record commit hashes in plans.
+- Move a finished plan to `docs/plans/completed/` before final review.
+- `main` is protected. Merge only through a Pull Request using squash merge after all checks pass and all review conversations are resolved.
 
 ## Current status
 

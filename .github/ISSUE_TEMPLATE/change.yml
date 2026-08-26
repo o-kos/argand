@@ -1,0 +1,36 @@
+name: Feature or maintenance change
+description: Propose a feature, refactor, documentation update, test, or maintenance task
+title: "change: "
+body:
+  - type: markdown
+    attributes:
+      value: Open-ended ideas may begin in a Discussion. Use this form for a concrete implementation Issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What concrete problem or need should this change address?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the intended outcome and implementation direction.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List verifiable conditions that would make this Issue complete.
+      placeholder: |
+        - [ ] First verifiable outcome
+        - [ ] Second verifiable outcome
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add constraints, alternatives, references, or screenshots when relevant.

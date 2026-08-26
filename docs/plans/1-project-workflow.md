@@ -18,9 +18,9 @@ Define a repository-wide development process that connects GitHub Issues, focuse
 ## Implementation steps
 
 - [x] Translate the shared agent instructions to English and expose them to Claude Code through `CLAUDE.md`.
-- [ ] Document the issue-driven workflow and contribution requirements.
-- [ ] Add reusable active-plan guidance and a plan template.
-- [ ] Add GitHub Issue and Pull Request templates.
+- [x] Document the issue-driven workflow and contribution requirements.
+- [x] Add reusable active-plan guidance and a plan template.
+- [x] Add GitHub Issue and Pull Request templates.
 - [ ] Validate links, templates, and repository instructions for consistency.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a reproducible problem in Argand
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: Thank you for helping improve Argand. Describe one problem per Issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and why is it a problem?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the Argand version or commit, operating system, input format, and other relevant details.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Optional implementation direction or known workaround.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List verifiable conditions that would make this Issue complete.
+    validations:
+      required: true
