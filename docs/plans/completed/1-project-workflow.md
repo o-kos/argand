@@ -25,6 +25,7 @@ This bootstrap branch was created before Issue #1 and therefore retains the earl
 - [x] Add GitHub Issue and Pull Request templates.
 - [x] Validate links, templates, and repository instructions for consistency.
 - [x] Move this plan to `docs/plans/completed/` before final review.
+- [x] ➕ Move the long-term implementation roadmap into `docs/plans/`, translate it to English, and update its references after review.
 
 ## Validation
 
@@ -34,6 +35,7 @@ This bootstrap branch was created before Issue #1 and therefore retains the earl
 - `cargo fmt --all -- --check` passed.
 - `cargo clippy --all-targets --locked -- -D warnings` passed.
 - `cargo test --locked` passed: 165 tests and 3 doc-test suites.
+- Follow-up roadmap paths and references verified; `cargo fmt --all -- --check` and `git diff --check` passed after the move.
 
 ## Post-completion
 

@@ -24,7 +24,7 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 3. Keep cold startup and the first waveform or spectrogram frame fast.
 4. Provide the core display and editing operations available in ocenaudio.
 5. Provide a separate detailed spectrum window.
-6. A plugin system for formats and processing, with or without visualization, is planned around a separate worker process. It is currently deferred; see the end of `IMPLEMENTATION_PLAN.md`.
+6. A plugin system for formats and processing, with or without visualization, is planned around a separate worker process. It is currently deferred; see the end of `docs/plans/IMPLEMENTATION_PLAN.md`.
 
 ## Domain-specific rules
 
@@ -89,5 +89,5 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 ## Current status
 
 - The name and icon assets are currently in `icons/`; move them to the appropriate asset directory when the application scaffold is added. The set includes `argand.svg`, `argand.ico`, `argand.icns`, PNG sizes, and a monochrome glyph.
-- The current implementation focus is display, editing, and spectrum analysis: phases 0 through 6 in `IMPLEMENTATION_PLAN.md`.
-- The plugin and worker design is deferred to the final section of `IMPLEMENTATION_PLAN.md`.
+- The current implementation focus is display, editing, and spectrum analysis: phases 0 through 6 in `docs/plans/IMPLEMENTATION_PLAN.md`.
+- The plugin and worker design is deferred to the final section of `docs/plans/IMPLEMENTATION_PLAN.md`.

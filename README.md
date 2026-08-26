@@ -3,7 +3,7 @@
 Cross-platform editor and analyser for recorded signals, with I/Q (complex)
 captures as first-class citizens rather than an afterthought. See
 [AGENTS.md](AGENTS.md) for the architecture and
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the roadmap. See
+[implementation roadmap](docs/plans/IMPLEMENTATION_PLAN.md). See
 [CONTRIBUTING.md](CONTRIBUTING.md) before starting a change.
 
 The GUI is not built yet. What exists today is `aspec`, a command line tool

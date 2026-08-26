@@ -7,6 +7,7 @@ Every implementation Issue has a versioned plan. Plans make scope, progress, dec
 - `docs/plans/<issue>-<short-description>.md`: active plans.
 - `docs/plans/completed/`: plans completed and accepted through a Pull Request.
 - `docs/plans/TEMPLATE.md`: starting point for a new plan; it is not an active plan.
+- `docs/plans/IMPLEMENTATION_PLAN.md`: long-term project roadmap; it is not an active Issue plan.
 
 Use the GitHub Issue number as the filename prefix, for example `42-iq-frequency-axis.md`.
 
