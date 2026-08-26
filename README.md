@@ -1,15 +1,31 @@
-# argand
+<p align="center">
+  <img src="icons/argand.svg" width="160" height="160" alt="Argand logo">
+</p>
+
+# Argand
 
 Cross-platform editor and analyser for recorded signals, with I/Q (complex)
 captures as first-class citizens rather than an afterthought. See
 [AGENTS.md](AGENTS.md) for the architecture and
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the roadmap.
+[implementation roadmap](docs/plans/IMPLEMENTATION_PLAN.md). See
+[CONTRIBUTING.md](CONTRIBUTING.md) before starting a change.
 
 The GUI is not built yet. What exists today is `aspec`, a command line tool
 that renders a signal file's spectrogram and averaged spectrum to a PNG. It is
 not a throwaway: the domain model, the readers and the transforms live in
 `argand-core`, `argand-io` and `argand-dsp`, which the GPUI front end will use
 unchanged. `aspec` only turns their output into an image.
+
+## Why Argand?
+
+The name comes from the
+[Argand diagram](https://mathshistory.st-andrews.ac.uk/Biographies/Argand/),
+also known as the complex plane. It represents a complex number with its real
+component on the horizontal axis and its imaginary component on the vertical
+axis. Each I/Q sample is naturally the complex value `I + jQ`, so the name
+reflects the project's defining idea: complex signals are first-class data
+rather than a pair of unrelated audio channels. The logo combines the plane's
+axes with a colored spectrum trace.
 
 ## Build
 
@@ -27,12 +43,6 @@ then build without network access:
 cargo fetch --locked
 cargo build --frozen
 ```
-
-For a project-local offline source tree, run `./vendor-update.sh sync`. The
-generated `vendor/` directory and `.cargo/vendor.toml` are local artifacts and
-are not committed. Use `./vendor-update.sh add <crate>` or
-`./vendor-update.sh update` when changing dependencies and refreshing that
-local tree in one step.
 
 ## aspec
 
