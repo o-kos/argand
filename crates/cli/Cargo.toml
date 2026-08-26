@@ -1,0 +1,29 @@
+[package]
+name = "argand-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "aspec - render a signal file spectrum to PNG"
+
+[[bin]]
+name = "aspec"
+path = "src/main.rs"
+
+[dependencies]
+argand-core.workspace = true
+argand-dsp.workspace = true
+argand-io.workspace = true
+ab_glyph.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+image.workspace = true
+indicatif.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+argand-io = { workspace = true, features = ["testutil"] }

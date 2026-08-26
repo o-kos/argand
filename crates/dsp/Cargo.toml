@@ -1,0 +1,15 @@
+[package]
+name = "argand-dsp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "STFT, PSD and window functions for argand"
+
+[dependencies]
+argand-core.workspace = true
+rayon.workspace = true
+realfft.workspace = true
+rustfft.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

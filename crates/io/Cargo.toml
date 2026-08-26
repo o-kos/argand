@@ -1,0 +1,20 @@
+[package]
+name = "argand-io"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Signal file readers for argand"
+
+[features]
+# Fixture helpers, shared with the dsp and cli test suites.
+testutil = []
+
+[dependencies]
+argand-core.workspace = true
+bytemuck.workspace = true
+memmap2.workspace = true
+rayon.workspace = true
+symphonia.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "argand-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Domain types and render view-models for argand"
+
+[dependencies]
+hsl.workspace = true
+serde.workspace = true
+thiserror.workspace = true
