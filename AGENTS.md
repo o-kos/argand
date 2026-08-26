@@ -63,7 +63,7 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
 - After the GUI scaffold exists, run it with `cargo run -p argand --locked`; build releases with `cargo build --release --locked`.
 - Pin GPUI and gpui-component to fixed Git revisions in `Cargo.toml`.
-- Commit the complete dependency graph in `Cargo.lock`; do not commit `vendor/`. Run `cargo fetch --locked` before an offline build, then use `cargo build --frozen`. Generate an optional local `vendor/` tree with `./vendor-update.sh sync`.
+- Commit the complete dependency graph in `Cargo.lock`; do not commit `vendor/`. Run `cargo fetch --locked` before an offline build, then use `cargo build --frozen`.
 - Run rustfmt and Clippy for every change: `cargo fmt --all -- --check` and `cargo clippy --all-targets --locked -- -D warnings`.
 - A real GPU is required. Software rendering and some virtual machines may degrade performance.
 

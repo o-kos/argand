@@ -18,7 +18,7 @@ The following work is complete:
 
 The GUI still needs the waveform and min/max pyramid from Phase 2, editing from Phase 5, the detailed spectrum window from Phase 6, and the application shell and configuration from Phase 0. The `argand-edit` and `argand-app` crates do not exist yet, and GPUI is not part of the dependency tree.
 
-Dependencies are pinned in `Cargo.lock`. The repository does not track `vendor/`. For local offline builds, fetch dependencies in advance with `cargo fetch --locked` or generate `vendor/` with `./vendor-update.sh sync` from the repository root.
+Dependencies are pinned in `Cargo.lock`. The repository does not track `vendor/`. For local offline builds, fetch dependencies in advance with `cargo fetch --locked`, then build with `cargo build --frozen`.
 
 ## Phase overview
 

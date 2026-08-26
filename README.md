@@ -29,12 +29,6 @@ cargo fetch --locked
 cargo build --frozen
 ```
 
-For a project-local offline source tree, run `./vendor-update.sh sync`. The
-generated `vendor/` directory and `.cargo/vendor.toml` are local artifacts and
-are not committed. Use `./vendor-update.sh add <crate>` or
-`./vendor-update.sh update` when changing dependencies and refreshing that
-local tree in one step.
-
 ## aspec
 
 ```sh
