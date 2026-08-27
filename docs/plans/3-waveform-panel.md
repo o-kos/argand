@@ -81,11 +81,11 @@ spectrogram to explain. The remaining criteria are unchanged.
 
 ## Implementation steps
 
-- [ ] Add `WaveformEnvelope` to `argand-core` with column accessors and neighbour fill
+- [x] Add `WaveformEnvelope` to `argand-core` with column accessors and neighbour fill
       for columns no sample landed in.
-- [ ] Add an incremental envelope builder to `argand-dsp` and fold it into the `analyze`
+- [x] Add an incremental envelope builder to `argand-dsp` and fold it into the `analyze`
       pass, including the sub-hop tail the frame loop leaves unread.
-- [ ] Replace `analyze`'s positional parameters with `AnalysisRequest` and return the
+- [x] Replace `analyze`'s positional parameters with `AnalysisRequest` and return the
       envelope on `Analysis`.
 - [ ] Replace `Mode` with `Panels` (`waveform`, `psd`, `db`, `none`) and wire
       `--panels` into the CLI with clear errors for unknown, empty and mixed `none`

@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use argand_core::{SampleRange, SignalMeta};
-use argand_dsp::{StftConfig, analyze};
+use argand_dsp::{AnalysisRequest, StftConfig, analyze};
 use argand_io::{Normalize, OpenHints};
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -71,14 +71,17 @@ fn run(args: &Args) -> Result<()> {
     let progress = make_progress(args);
     let analysis = analyze(
         source.as_mut(),
-        &cfg,
-        range,
-        transform_w,
-        transform_h,
-        args.reduce,
-        args.color_scheme,
-        args.dynamic_range,
-        args.reference,
+        &AnalysisRequest {
+            cfg,
+            range,
+            width: transform_w,
+            height: transform_h,
+            reduce: args.reduce,
+            colormap: args.color_scheme,
+            dynamic_range_db: args.dynamic_range,
+            reference: args.reference,
+            waveform_columns: None,
+        },
         &mut |done, total| {
             progress.set_length(total);
             progress.set_position(done);
