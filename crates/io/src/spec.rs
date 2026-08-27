@@ -17,9 +17,9 @@ pub struct RawSpec {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ParseRawSpecError {
-    #[error("{0}")]
+    #[error(transparent)]
     SampleType(#[from] ParseSampleTypeError),
-    #[error("{0}")]
+    #[error(transparent)]
     Rate(#[from] ParseHzError),
     #[error("empty raw specification, expected <sample type>[@<rate>], e.g. iq_i16@24k")]
     Empty,

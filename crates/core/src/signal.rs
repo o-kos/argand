@@ -89,7 +89,7 @@ impl SampleRange {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SourceError {
-    #[error("io error: {0}")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("seek past end of signal: sample {requested} of {total}")]
     SeekOutOfRange { requested: u64, total: u64 },

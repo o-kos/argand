@@ -577,3 +577,258 @@ fn the_half_hour_capture_renders_end_to_end() {
     );
     assert_png(&output);
 }
+
+/// A directory of small captures, named so that creation order is not sort
+/// order: a batch that forgets to sort would pass by luck otherwise.
+fn batch_fixture(label: &str, names: &[&str]) -> TempDir {
+    let dir = TempDir::new(label);
+    let sample_type = "rl_i16".parse().unwrap();
+    let values = real_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
+    for name in names {
+        write_wav(&dir.join(name), sample_type, RATE, &values, 1.0);
+    }
+    dir
+}
+
+fn mask(dir: &TempDir, pattern: &str) -> String {
+    dir.join(pattern).to_string_lossy().into_owned()
+}
+
+#[test]
+fn a_mask_renders_every_file_it_matches_in_sorted_order() {
+    let dir = batch_fixture("e2e-batch", &["c.wav", "a.wav", "b.wav"]);
+    // A file the mask must leave alone.
+    std::fs::write(dir.join("notes.txt"), b"not a capture").unwrap();
+
+    let out = run(&[&mask(&dir, "*.wav"), "-f", "256", "-i", "400x200"]);
+    assert!(out.status.success());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let paths: Vec<&str> = stdout.lines().collect();
+    assert_eq!(paths.len(), 3, "one output path per file:\n{stdout}");
+    for (i, name) in ["a", "b", "c"].iter().enumerate() {
+        assert!(
+            paths[i].ends_with(&format!("{name}.wav.png")),
+            "matches are sorted by filename: {paths:?}"
+        );
+        assert_png(&dir.join(&format!("{name}.wav.png")));
+    }
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    for line in ["[1/3] a.wav", "[2/3] b.wav", "[3/3] c.wav"] {
+        assert!(stderr.contains(line), "missing {line}:\n{stderr}");
+    }
+    assert_eq!(
+        stderr.matches("→  *.png").count(),
+        3,
+        "the render is named by what it adds to the input:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains(&dir.join("a.wav.png").display().to_string()),
+        "the line should not spell the whole path out again:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("processed 3 · 3 succeeded · 0 failed"),
+        "no summary:\n{stderr}"
+    );
+    // The block belongs to -v now, not to the default batch output.
+    assert!(!stderr.contains("peak spl"), "{stderr}");
+    assert_eq!(
+        stderr.lines().count(),
+        4,
+        "three files, one line each, and the summary:\n{stderr}"
+    );
+}
+
+#[test]
+fn exact_paths_and_masks_mix_and_the_same_file_is_processed_once() {
+    let dir = batch_fixture("e2e-batch-mix", &["a.wav", "b.wav"]);
+
+    let a = dir.join("a.wav");
+    let out = run(&[
+        a.to_str().unwrap(),
+        &mask(&dir, "*.wav"),
+        a.to_str().unwrap(),
+        "-f",
+        "256",
+        "-i",
+        "400x200",
+        "-q",
+    ]);
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty() && out.stderr.is_empty(), "--quiet");
+    assert_png(&dir.join("a.wav.png"));
+    assert_png(&dir.join("b.wav.png"));
+
+    // Two spellings of `a.wav` and the mask that also finds it: two files.
+    let loud = run(&[
+        a.to_str().unwrap(),
+        &mask(&dir, "*.wav"),
+        a.to_str().unwrap(),
+        "-f",
+        "256",
+        "-i",
+        "400x200",
+    ]);
+    let stderr = String::from_utf8_lossy(&loud.stderr);
+    assert!(
+        stderr.contains("processed 2 · 2 succeeded"),
+        "duplicates should collapse:\n{stderr}"
+    );
+}
+
+#[test]
+fn a_batch_carries_on_past_a_failure_and_then_exits_non_zero() {
+    let dir = batch_fixture("e2e-batch-fail", &["a.wav", "c.wav"]);
+    std::fs::write(dir.join("b.wav"), [7u8; 4096]).unwrap();
+
+    let out = run(&[&mask(&dir, "*.wav"), "-f", "256", "-i", "400x200"]);
+    assert!(!out.status.success(), "a failed file must fail the batch");
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("[2/3] b.wav  error:"), "{stderr}");
+    assert!(
+        stderr.contains("--raw"),
+        "the error points at the fix:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("processed 3 · 2 succeeded · 1 failed"),
+        "{stderr}"
+    );
+    // The files on either side of the failure were still rendered.
+    assert_png(&dir.join("a.wav.png"));
+    assert_png(&dir.join("c.wav.png"));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).lines().count(),
+        2,
+        "only successes reach stdout"
+    );
+}
+
+#[test]
+fn a_failure_is_reported_even_when_quiet() {
+    let dir = batch_fixture("e2e-batch-quiet-fail", &["a.wav"]);
+    std::fs::write(dir.join("b.wav"), [7u8; 4096]).unwrap();
+
+    let out = run(&[&mask(&dir, "*.wav"), "-f", "256", "-i", "400x200", "-q"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("b.wav  error:"), "{stderr}");
+    assert!(
+        !stderr.contains("processed"),
+        "no summary under -q:\n{stderr}"
+    );
+}
+
+#[test]
+fn a_batch_prints_the_full_report_per_file_under_verbose() {
+    let dir = batch_fixture("e2e-batch-verbose", &["a.wav", "b.wav"]);
+
+    let out = run(&[&mask(&dir, "*.wav"), "-f", "256", "-i", "400x200", "-v"]);
+    assert!(out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(stderr.matches("peak spl").count(), 2, "{stderr}");
+    assert!(stderr.contains("  file      a.wav"), "{stderr}");
+    assert!(stderr.contains("  file      b.wav"), "{stderr}");
+    assert!(stderr.contains("processed 2 · 2 succeeded"), "{stderr}");
+}
+
+#[test]
+fn a_batch_prints_one_json_object_per_file_and_nothing_else_on_stdout() {
+    let dir = batch_fixture("e2e-batch-json", &["a.wav", "b.wav"]);
+
+    let out = run(&[&mask(&dir, "*.wav"), "-f", "256", "-i", "400x200", "--json"]);
+    assert!(out.status.success());
+
+    let reports: Vec<Value> = serde_json::Deserializer::from_slice(&out.stdout)
+        .into_iter::<Value>()
+        .collect::<Result<_, _>>()
+        .unwrap_or_else(|e| {
+            panic!(
+                "the object stream should parse: {e}\n{}",
+                String::from_utf8_lossy(&out.stdout)
+            )
+        });
+    assert_eq!(reports.len(), 2);
+    assert!(reports[0]["file"].as_str().unwrap().ends_with("a.wav"));
+    assert!(reports[1]["file"].as_str().unwrap().ends_with("b.wav"));
+
+    // The summary must not land in the object stream.
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("processed 2 · 2 succeeded"), "{stderr}");
+}
+
+#[test]
+fn output_is_refused_once_more_than_one_file_resolves() {
+    let dir = batch_fixture("e2e-batch-output", &["a.wav", "b.wav"]);
+    let target = png(&dir, "one.png");
+
+    let out = run(&[
+        &mask(&dir, "*.wav"),
+        "-o",
+        target.to_str().unwrap(),
+        "-f",
+        "256",
+    ]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("--output names one PNG"), "{stderr}");
+    assert!(!target.exists(), "nothing should have been written");
+
+    // One file still accepts it.
+    let single = run(&[
+        dir.join("a.wav").to_str().unwrap(),
+        "-o",
+        target.to_str().unwrap(),
+        "-f",
+        "256",
+        "-i",
+        "400x200",
+        "-q",
+    ]);
+    assert!(single.status.success());
+    assert_png(&target);
+}
+
+#[test]
+fn unusable_masks_are_refused_before_any_file_is_opened() {
+    let dir = batch_fixture("e2e-batch-badmask", &["a.wav"]);
+
+    for (pattern, expected) in [
+        ("*.iqw", "matched no files"),
+        ("**/*.wav", "recursive"),
+        ("a[0-9.wav", "unclosed"),
+    ] {
+        let out = run(&[&mask(&dir, pattern), "-f", "256"]);
+        assert!(!out.status.success(), "{pattern} was accepted");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains(expected), "{pattern} said: {stderr}");
+    }
+
+    let out = run(&[&mask(&dir, "*/a.wav"), "-f", "256"]);
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("not directory names"),
+        "a mask in a directory component must be refused"
+    );
+}
+
+#[test]
+fn an_error_states_its_cause_once() {
+    let dir = TempDir::new("e2e-once");
+    let missing = dir.join("nope.wav");
+
+    let out = run(&[missing.to_str().unwrap()]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        stderr.matches("No such file or directory").count(),
+        1,
+        "the cause belongs to the chain, not to the message as well:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches(&missing.display().to_string()).count(),
+        1,
+        "the path is named once:\n{stderr}"
+    );
+}

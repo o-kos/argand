@@ -52,7 +52,7 @@ pub struct OpenHints {
 
 #[derive(Debug, thiserror::Error)]
 pub enum IoError {
-    #[error("cannot open {path}: {source}")]
+    #[error("cannot open {path}")]
     Open {
         path: PathBuf,
         #[source]
@@ -60,7 +60,7 @@ pub enum IoError {
     },
     #[error("{path} is empty")]
     Empty { path: PathBuf },
-    #[error("cannot read {path} as wav: {source}")]
+    #[error("cannot read {path} as wav")]
     Wav {
         path: PathBuf,
         #[source]
@@ -72,7 +72,7 @@ pub enum IoError {
     UnknownContainer { path: PathBuf },
     #[error("no sample rate for {path}: give it as --raw <type>@<rate> or --rate <hz>")]
     MissingRate { path: PathBuf },
-    #[error("{path}: {source}")]
+    #[error("cannot read {path}")]
     Source {
         path: PathBuf,
         #[source]

@@ -53,10 +53,35 @@ aspec dump.bin --raw iq_i16@24k --center 12.579M
 aspec quiet.wav --normalize auto --ref peak -d 40
 aspec long.iqw --start 5m --duration 30s --orientation v
 aspec capture.iqw --panels waveform,psd,db
+aspec '*.iqw' --center 12.579M
+aspec /data/'[0-9]*.wav' --raw iq_i16@24k -q
 ```
 
 The container is detected from the file's content, not its extension, so
 `.wav`, `.iqw` and `.wavs` all work. A file with no header needs `--raw`.
+
+### Inputs
+
+An input is an exact path or a mask over the filenames of one directory:
+`*` for any run of characters, `?` for exactly one, `[0-9]` and `[!0-9]` for
+a set. Quote the mask so the shell hands it over intact -- that is what makes
+the same command line work in `bash`, `zsh`, `fish` and PowerShell alike.
+Paths the shell has already expanded are accepted just as well.
+
+Masks are deliberately not recursive. `**` and a mask in a directory
+component are refused, and a mask that matches nothing is an error rather
+than a silent no-op. Matches are sorted by filename and de-duplicated, so the
+same capture named twice is still rendered once.
+
+```sh
+aspec '*.iqw' --raw iq_i16@24k --center 12.579M   # every capture, same settings
+aspec a.iqw '/data/2026-0[1-6]*.wav' b.iqw        # exact paths and masks mixed
+```
+
+Every option applies to every file. With more than one file, `-o` is refused
+and each PNG is written beside its input as `<input>.png`. A file that fails
+does not stop the rest, and the run exits non-zero once it has finished if
+any file failed.
 
 ### Formats
 
@@ -94,7 +119,7 @@ Short flags match the sgvr CLI (`-f -w -c -i -d`) on purpose.
   -i, --image-size <WxH>    [2048x512]
       --panels <P>          waveform, psd, db, none [waveform]
       --orientation <D>     horizontal (time across) or vertical (waterfall)
-  -o, --output <PNG>        [<input>.png]
+  -o, --output <PNG>        one input only [<input>.png]
       --json                machine-readable report on stdout
 
   -t, --sample-type <TYPE>  override the detected type
@@ -109,6 +134,22 @@ Short flags match the sgvr CLI (`-f -w -c -i -d`) on purpose.
 The report goes to stderr, the output path to stdout, so `aspec x.iqw` can be
 piped. `--json` replaces the path with the full report, which is what the
 tests assert against.
+
+A batch shrinks the report to one line per file, with a
+processed/succeeded/failed/elapsed summary after it:
+
+```
+[1/3] 12.579000_25_08_26_06_09_10.iqw  iq_i16 · 24 kHz · 30m · peak -99.8 dBFS  →  *.png  212.8 KiB  463ms
+```
+
+`*.png` is the render, named by what it adds to the input rather than by
+spelling the whole path out a second time. On a terminal that line is all a
+finished file prints; the paths reappear on stdout the moment stdout is a
+pipe or a file, one per line, so `aspec '*.iqw' | xargs feh` still works.
+`-v` brings the full block back for every file, `-q` says nothing but still
+names any file that failed, and `--json` prints one report object per file --
+a stream that `jq` and `serde_json::StreamDeserializer` both read as it
+arrives.
 
 ### Panels
 
