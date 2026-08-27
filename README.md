@@ -2,6 +2,13 @@
   <img src="icons/argand.svg" width="160" height="160" alt="Argand logo">
 </p>
 
+<p align="center">
+  <a href="https://github.com/o-kos/argand/actions/workflows/ci.yml"><img src="https://github.com/o-kos/argand/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/o-kos/argand/releases/latest"><img src="https://img.shields.io/github/v/release/o-kos/argand?sort=semver" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/o-kos/argand" alt="MIT licence"></a>
+  <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-1.88%2B-dea584" alt="Rust 1.88+"></a>
+</p>
+
 # Argand
 
 Cross-platform editor and analyser for recorded signals, with I/Q (complex)
@@ -28,13 +35,31 @@ reflects the project's defining idea: complex signals are first-class data
 rather than a pair of unrelated audio channels. The logo combines the plane's
 axes with a colored spectrum trace.
 
+## Install
+
+Every `vX.Y.Z` tag publishes archives for `x86_64-unknown-linux-gnu` and
+`x86_64-pc-windows-msvc` on the
+[releases page](https://github.com/o-kos/argand/releases/latest), each holding
+`aspec`, this README, the licence and the changelog, alongside a `SHA256SUMS`
+file covering both:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
 ## Build
 
 ```sh
-cargo build --release --locked        # target/release/aspec
-cargo test --locked
+cargo fmt --all -- --check
 cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
+cargo build --release --locked        # target/release/aspec
 ```
+
+Those four commands, in that order, are what CI runs on Linux; Windows runs
+the test and the release build. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+the full validation and release procedure, and [CHANGELOG.md](CHANGELOG.md)
+for what changed when.
 
 `Cargo.lock` pins the complete dependency graph. Cargo downloads missing
 sources into its local cache during a normal build. To prepare that cache and

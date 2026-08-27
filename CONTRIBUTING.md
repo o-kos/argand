@@ -61,6 +61,14 @@ earlier code.
 
 Document any additional validation or explain why a standard check does not apply.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every Pull Request and on every push to `main`. Its `linux` job runs the four commands above, in that order; its `windows` job runs the test suite and the release build. Both are required checks on protected `main`.
+
+The commands are not restated in the workflow with different flags. Formatting and lint configuration lives in the repository, where `cargo` finds it on its own, so what runs locally and what blocks the merge cannot drift apart. Tighten a rule by changing that configuration, not the workflow.
+
+The toolchain comes from `rust-toolchain.toml`, which is the only place the Rust version is written down. Tests that need real captures skip when `tests/signals/` is absent, so a clean CI checkout runs the rest of the suite.
+
 ## Completing the plan
 
 Before marking the Pull Request ready for final review:
@@ -74,3 +82,43 @@ Before marking the Pull Request ready for final review:
 After all checks pass and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the branch after merge. The linked Issue closes through the Pull Request keyword.
 
 Actions that can only happen after merge belong in the plan's `Post-completion` section and are not represented as unfinished implementation checkboxes.
+
+## Changelog
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+Every user-visible change adds a bullet to the `## [Unreleased]` section under `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` or `Security`. Write for someone deciding whether to upgrade, not for someone reading the diff. Internal refactoring, test work and workflow plumbing that nobody outside the repository can observe do not need an entry.
+
+A feature or fix Pull Request never writes a release date and never creates a version heading. The release event owns both.
+
+## Releasing
+
+A release is its own Pull Request on a `chore/release-vX.Y.Z` branch. It is the one branch that does not carry an Issue number, because the release is not an implementation task and has no plan. The Pull Request:
+
+1. sets `workspace.package.version` in the root `Cargo.toml` to `X.Y.Z`;
+2. refreshes `Cargo.lock` so the workspace crates carry the new version;
+3. renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and opens a fresh empty `## [Unreleased]` above it;
+4. updates the link definitions at the foot of the changelog.
+
+Dry-run the checks the release workflow makes before pushing anything:
+
+```sh
+.github/scripts/release-notes.sh vX.Y.Z
+```
+
+It fails if the tag does not match `workspace.package.version` or the changelog has no section for it, and otherwise prints the section that becomes the GitHub Release description.
+
+After the Pull Request is squash-merged, tag the merge commit on an up-to-date `main`:
+
+```sh
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+The tag starts `.github/workflows/release.yml`, which verifies the tag against the workspace version and the changelog, runs the test suite, builds `aspec` for `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`, checks that each binary reports the version being released, and publishes `aspec-vX.Y.Z-<target>.tar.gz`, `aspec-vX.Y.Z-<target>.zip` and `SHA256SUMS` with the changelog section as the release description. Verification failures happen before anything is built, so a mistyped tag publishes nothing.
+
+To redo a published release, delete it together with its tag and start again:
+
+```sh
+gh release delete vX.Y.Z --cleanup-tag
+```
