@@ -92,6 +92,19 @@ decision below.
   removes the chance of discovering a typo during the real release, when the fix is a
   deleted tag and a re-tag. The alternative -- a permanent `workflow_dispatch` dry-run
   mode -- would leave a second, less-tested path through the same workflow.
+- ➕ **Strictness moved from the command line into the manifest.** A gate that is strict
+  only when someone remembers `-D warnings` is not a gate. `[workspace.lints]` sets
+  `warnings = "deny"`, every crate inherits it, and a plain `cargo clippy` now fails
+  locally exactly as it fails in CI. The flag is gone from the workflow and the docs.
+- ➕ **The owner extended this branch to cover the suppressions the new gate exposed.**
+  Scoping them to Issue #8 was proposed and rejected: shipping CI whose lint step is
+  silenced in four places by unexplained attributes would ship the formality, not the
+  check. #8 keeps the part that adds *new* lints and thresholds.
+- ➕ **Two review rules that no lint can enforce are written into `AGENTS.md`.** Opaque
+  nested conditionals, and suppressions needing the owner's agreement before a push.
+  Measurement backs the first: `write_report` scores 7 on cognitive complexity against
+  19 for `Layout::compute`, and its nesting never exceeds three levels, so no threshold
+  reaches it without flagging half the repository. It is a review obligation or nothing.
 - ➕ **Branch protection is wired before the merge, not after it.** GitHub will accept a
   required check as soon as it has seen a run with that name, and both names have now
   been seen on this Pull Request. Requiring them now closes the Issue's "protected `main`
@@ -145,6 +158,22 @@ decision below.
 - [x] ➕ Require the `linux` and `windows` checks on protected `main`, with strict
       up-to-date branches. Moved out of `Post-completion` once it became clear GitHub
       accepts the check names as soon as it has seen them, which it now has.
+- [x] ➕ Write the two unenforceable review rules into `AGENTS.md`, and document the
+      local gate and the suppression rule in `CONTRIBUTING.md`.
+- [x] ➕ Deny warnings through `[workspace.lints]` inherited by every crate, drop the
+      `-D warnings` flag from the workflow and the docs, and add a `pre-push` hook that
+      runs the same three checks before anything leaves the machine.
+- [x] ➕ Split `write_report` into two named decisions, one per output stream, and cover
+      the policy with unit tests that do not need a spawned process.
+- [x] ➕ Cut `Report::new` from nine arguments to four by handing it the
+      `AnalysisRequest` that produced the analysis, built once and shared with `analyze`.
+- [x] ➕ Group `TextRenderer::draw`'s placement and style into `Anchor` and `TextStyle`,
+      collapsing eight repetitions of the same size-and-colour pair into one named
+      `LABEL`.
+- [x] ➕ Group `stft::render`'s parameters into `DbGrid` and `Shading`.
+- [x] ➕ Delete the suppression in `crates/io/src/decoder.rs`, which had stopped
+      suppressing anything: the function has exactly seven arguments and the lint fires
+      at eight.
 - [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
@@ -179,6 +208,14 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [x] Protected `main` now lists `linux` and `windows` as required checks with `strict`
       enabled; signed commits, linear history, `enforce_admins` and required conversation
       resolution were all preserved.
+- [x] No `#[allow]` or `#[expect]` attribute remains anywhere in `crates/`.
+- [x] Removing the suppression in `report.rs` made a plain `cargo clippy` fail with
+      `this function has too many arguments (9/7)`, and removing the one in `decoder.rs`
+      changed nothing, which is how the stale attribute was identified.
+- [x] The refactors are behaviour-preserving, checked against a binary built from the
+      commit before them: the same capture rendered through both produces byte-identical
+      PNGs, and `--json`, `-q`, `-v` and the default mode produce identical output apart
+      from `elapsed_seconds`.
 - [x] Every badge in `README.md` resolves: the CI badge to `ci.yml`, the licence badge to
       the repository's detected MIT licence, the Rust badge to `rust-toolchain.toml`. The
       release badge reads "no releases" until `v0.1.0` is tagged, which is the

@@ -35,7 +35,6 @@ pub struct DecodedSource {
 }
 
 impl DecodedSource {
-    #[allow(clippy::too_many_arguments)]
     pub fn open(
         path: &Path,
         container: &'static str,

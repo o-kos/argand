@@ -382,7 +382,18 @@ pub fn analyze(
     let db_min = db_max - dynamic_range_db;
 
     let spectrogram = render(
-        &db, out_width, out_height, colormap, db_min, db_max, &meta, &range,
+        &DbGrid {
+            values: &db,
+            width: out_width,
+            height: out_height,
+        },
+        Shading {
+            colormap,
+            db_min,
+            db_max,
+        },
+        &meta,
+        &range,
     );
 
     let psd = Psd {
@@ -652,17 +663,42 @@ impl ColumnStore {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn render(
-    db: &[f32],
+/// Decibel values and the shape they are laid out in.
+///
+/// The slice is column-major: `values[x * height + bin]`. Carrying the two
+/// dimensions next to the slice is what keeps that readable at the one place
+/// it is indexed.
+struct DbGrid<'a> {
+    values: &'a [f32],
     width: usize,
     height: usize,
+}
+
+/// How a decibel value becomes a colour.
+#[derive(Clone, Copy)]
+struct Shading {
     colormap: Colormap,
     db_min: f32,
     db_max: f32,
+}
+
+fn render(
+    grid: &DbGrid<'_>,
+    shading: Shading,
     meta: &SignalMeta,
     range: &SampleRange,
 ) -> SpectrogramImage {
+    let DbGrid {
+        values,
+        width,
+        height,
+    } = *grid;
+    let Shading {
+        colormap,
+        db_min,
+        db_max,
+    } = shading;
+
     let gradient = colormap.gradient();
     let span = (db_max - db_min).max(1e-6);
     let mut image = SpectrogramImage::new(width, height);
@@ -670,7 +706,7 @@ fn render(
     for x in 0..width {
         for y in 0..height {
             // Row 0 is the top of the image, which is the highest frequency.
-            let value = db[x * height + (height - 1 - y)];
+            let value = values[x * height + (height - 1 - y)];
             let normalized = if value.is_finite() {
                 (value - db_min) / span
             } else {
