@@ -163,10 +163,7 @@ impl Theme {
     const MUTED: Rgb<u8> = Rgb([132, 140, 156]);
     const AXIS: Rgb<u8> = Rgb([72, 79, 94]);
     const GRID: Rgb<u8> = Rgb([38, 42, 52]);
-    /// Also the I channel and a real signal's single trace.
     const TRACE: Rgb<u8> = Rgb([120, 200, 255]);
-    /// Q has to stay apart from I at a glance, in hue and in lightness.
-    const TRACE_Q: Rgb<u8> = Rgb([255, 176, 90]);
 }
 
 const PAD: i64 = 12;
@@ -180,9 +177,6 @@ const CBAR_LABEL_W: i64 = 60;
 const GAP: i64 = 14;
 /// The waveform is a mini-map rather than a panel that grows with the image.
 const WAVEFORM_SPAN: i64 = 64;
-/// Traces are blended so an I/Q overlap reads as a mix, not as whichever
-/// channel happened to be drawn second.
-const TRACE_ALPHA: f32 = 0.78;
 const FONT_SIZE: f32 = 13.0;
 const TITLE_SIZE: f32 = 14.0;
 
@@ -644,82 +638,65 @@ fn draw_waveform(
         }
     };
 
-    // Q first: I is the channel a reader looks for, so it ends up on top.
-    for channel in (0..waveform.channels).rev() {
-        let color = if waveform.channels > 1 && channel == 1 {
-            Theme::TRACE_Q
-        } else {
-            Theme::TRACE
+    // I and Q are merged into one span rather than drawn as two traces. On a
+    // real capture their envelopes very nearly coincide, so the second colour
+    // ended up hidden under the first everywhere except at the extremes, and
+    // paid for that with a legend and a blend nobody could read.
+    let mut previous: Option<(i64, i64)> = None;
+    for step in 0..columns {
+        let column = (step as usize * waveform.columns) / columns.max(1) as usize;
+        let Some((mut lo, mut hi)) = merged_span(waveform, column, &offset) else {
+            continue;
         };
-        let mut previous: Option<(i64, i64)> = None;
+        // Join to the previous column so a trace moving faster than one column
+        // per pixel reads as a line rather than a dotted scatter.
+        if let Some((prev_lo, prev_hi)) = previous {
+            lo = lo.min(prev_hi);
+            hi = hi.max(prev_lo);
+        }
+        previous = Some((lo, hi));
 
-        for step in 0..columns {
-            let column = (step as usize * waveform.columns) / columns.max(1) as usize;
-            let Some((min, max)) = waveform.column(column, channel) else {
-                continue;
-            };
-            let (mut lo, mut hi) = (offset(max).min(offset(min)), offset(max).max(offset(min)));
-            // Join to the previous column so a trace moving faster than one
-            // column per pixel reads as a line rather than a dotted scatter.
-            if let Some((prev_lo, prev_hi)) = previous {
-                lo = lo.min(prev_hi);
-                hi = hi.max(prev_lo);
-            }
-            previous = Some((lo, hi));
-
-            if horizontal {
-                vline_blend(
-                    canvas,
-                    rect.x + step,
-                    middle + lo,
-                    middle + hi + 1,
-                    color,
-                    TRACE_ALPHA,
-                );
-            } else {
-                hline_blend(
-                    canvas,
-                    middle + lo,
-                    middle + hi + 1,
-                    rect.y + step,
-                    color,
-                    TRACE_ALPHA,
-                );
-            }
+        if horizontal {
+            vline(
+                canvas,
+                rect.x + step,
+                middle + lo,
+                middle + hi + 1,
+                Theme::TRACE,
+            );
+        } else {
+            hline(
+                canvas,
+                middle + lo,
+                middle + hi + 1,
+                rect.y + step,
+                Theme::TRACE,
+            );
         }
     }
 
     frame(canvas, rect);
-    if waveform.channels > 1 {
-        draw_iq_legend(canvas, text, rect, orientation, middle);
-    }
 }
 
-/// Names the two colours, in space the axis labels have already reserved.
-fn draw_iq_legend(
-    canvas: &mut RgbImage,
-    text: &TextRenderer,
-    rect: Rect,
-    orientation: Orientation,
-    middle: i64,
-) {
-    let gap = text.width("Q", FONT_SIZE) + 5.0;
-    let (x, y) = match orientation {
-        // The frequency gutter to the left of the strip.
-        Orientation::Horizontal => ((rect.x - 6) as f32, (middle + 4) as f32),
-        // The tick row underneath it.
-        Orientation::Vertical => ((rect.right()) as f32, (rect.bottom() + 16) as f32),
-    };
-    text.draw(canvas, "Q", x, y, FONT_SIZE, Theme::TRACE_Q, Align::Right);
-    text.draw(
-        canvas,
-        "I",
-        x - gap,
-        y,
-        FONT_SIZE,
-        Theme::TRACE,
-        Align::Right,
-    );
+/// The column's extent across every channel, in pixels from the centre line.
+///
+/// A complex signal is one track: the strip answers "how big was the signal
+/// here", and that is the wider of I and Q, not either on its own.
+fn merged_span(
+    waveform: &WaveformEnvelope,
+    column: usize,
+    offset: &impl Fn(f32) -> i64,
+) -> Option<(i64, i64)> {
+    let mut span: Option<(i64, i64)> = None;
+    for channel in 0..waveform.channels {
+        let (min, max) = waveform.column(column, channel)?;
+        let (lo, hi) = (offset(max).min(offset(min)), offset(max).max(offset(min)));
+        span = Some(match span {
+            Some((s_lo, s_hi)) => (s_lo.min(lo), s_hi.max(hi)),
+            None => (lo, hi),
+        });
+    }
+    span
 }
 
 /// dB bounds that fit the trace with a little air around it.
@@ -1029,29 +1006,6 @@ fn fill(canvas: &mut RgbImage, rect: Rect, color: Rgb<u8>) {
         for x in rect.x..rect.right() {
             put(canvas, x, y, color);
         }
-    }
-}
-
-/// Mix `color` into what is already there, rather than replacing it.
-fn blend(canvas: &mut RgbImage, x: i64, y: i64, color: Rgb<u8>, alpha: f32) {
-    if x < 0 || y < 0 || x as u32 >= canvas.width() || y as u32 >= canvas.height() {
-        return;
-    }
-    let dst = canvas.get_pixel_mut(x as u32, y as u32);
-    for i in 0..3 {
-        dst.0[i] = (dst.0[i] as f32 * (1.0 - alpha) + color.0[i] as f32 * alpha).round() as u8;
-    }
-}
-
-fn hline_blend(canvas: &mut RgbImage, x0: i64, x1: i64, y: i64, color: Rgb<u8>, alpha: f32) {
-    for x in x0.min(x1)..x0.max(x1) {
-        blend(canvas, x, y, color, alpha);
-    }
-}
-
-fn vline_blend(canvas: &mut RgbImage, x: i64, y0: i64, y1: i64, color: Rgb<u8>, alpha: f32) {
-    for y in y0.min(y1)..y0.max(y1) {
-        blend(canvas, x, y, color, alpha);
     }
 }
 

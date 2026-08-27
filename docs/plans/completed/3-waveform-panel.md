@@ -58,8 +58,13 @@ colour bar become opt-in.
   frequency axis (its `y`/`h` when horizontal, its `x`/`w` when vertical) rather than
   stretching across the waveform strip as well. Bin-for-bin alignment matters more than
   the small empty corner beside a 64-pixel strip.
-- Complex traces are alpha-blended per pixel so an overlap reads as a blend instead of
-  the later channel winning outright.
+- A complex signal is drawn as one track: each column spans whichever of I and Q reached
+  further.
+- ➕ Two colour-coded traces, alpha-blended where they overlap, were built first. Dropped
+  after review: on a real capture the two envelopes very nearly coincide, so the second
+  colour was hidden under the first everywhere except at the extremes, and it cost a
+  legend and a blend for a distinction nobody could read. `AGENTS.md` already asks for
+  one combined track for complex signals.
 
 ### Divergence from the Issue text
 
@@ -97,8 +102,7 @@ spectrogram to explain. The remaining criteria are unchanged.
 - [x] Lay out the waveform strip above the spectrogram when horizontal and to its right
       when vertical, sharing the time axis, with the PSD and colour bar opt-in.
 - [x] Draw the strip: min/max spans scaled to the reference level, joined between
-      columns, with colour-coded alpha-blended I and Q traces and a legend for complex
-      signals.
+      columns, merging I and Q into one track for complex signals.
 - [x] Record the panel set in the JSON report.
 - [x] Update `README.md`, the CLI help and examples, and the `aspec` description in
       `docs/plans/IMPLEMENTATION_PLAN.md`.

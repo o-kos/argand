@@ -231,6 +231,8 @@ fn trace_colors(canvas: &RgbImage, rect: Rect) -> (usize, usize) {
     for y in rect.y..rect.bottom() {
         for x in rect.x..rect.right() {
             let [r, _, b] = canvas.get_pixel(x as u32, y as u32).0;
+            // In i32: the trace is full blue, so u8 arithmetic overflows here.
+            let (r, b) = (r as i32, b as i32);
             if r > b + 30 {
                 warm += 1;
             } else if b > r + 60 {
@@ -242,9 +244,9 @@ fn trace_colors(canvas: &RgbImage, rect: Rect) -> (usize, usize) {
 }
 
 #[test]
-fn i_and_q_stay_apart_in_the_strip() {
-    // Q swings wider than I, so the outside of each span is Q alone. Equal
-    // amplitudes would hide one channel exactly beneath the other.
+fn the_strip_merges_i_and_q_into_one_span() {
+    // Q swings far wider than I. A single track has to follow the wider of
+    // the two, and must not reach for a second colour to say so.
     let mut values = Vec::new();
     for n in 0..8192 {
         let phase = std::f64::consts::TAU * TONE_HZ * n as f64 / RATE;
@@ -255,15 +257,29 @@ fn i_and_q_stay_apart_in_the_strip() {
     let dir = TempDir::new("render-iq");
     let layout = Layout::compute(900, 320, WAVEFORM, Orientation::Horizontal);
     let a = analysis_of(&dir, "iq.wav", &values, true, &layout);
+    assert_eq!(a.waveform.as_ref().unwrap().channels, 2, "both are kept");
     let canvas = plot(&layout, &a);
 
-    let (warm, cool) = trace_colors(&canvas, layout.waveform.unwrap());
-    assert!(warm > 200, "Q is not visible: {warm} warm pixels");
-    assert!(cool > 200, "I is not visible: {cool} cool pixels");
+    let strip = layout.waveform.unwrap();
+    let (warm, cool) = trace_colors(&canvas, strip);
+    assert!(cool > 200, "the trace is missing: {cool} cool pixels");
+    assert_eq!(warm, 0, "one track means one colour");
+
+    // Following I alone would reach a quarter of the height, not all of it.
+    let column = strip.x + strip.w / 2;
+    let lit: Vec<i64> = (strip.y..strip.bottom())
+        .filter(|y| canvas.get_pixel(column as u32, *y as u32).0[2] > 100)
+        .collect();
+    let span = lit.last().unwrap() - lit.first().unwrap();
+    assert!(
+        span >= strip.h - 4,
+        "the span follows I ({span} of {}), not Q",
+        strip.h
+    );
 }
 
 #[test]
-fn a_real_signal_gets_one_trace_and_no_legend() {
+fn nothing_is_drawn_outside_the_strip() {
     let dir = TempDir::new("render-real");
     let layout = Layout::compute(900, 320, WAVEFORM, Orientation::Horizontal);
     let a = analysis(&dir, "real.wav", false, &layout);
@@ -271,17 +287,15 @@ fn a_real_signal_gets_one_trace_and_no_legend() {
 
     let canvas = plot(&layout, &a);
     let strip = layout.waveform.unwrap();
-    let (warm, cool) = trace_colors(&canvas, strip);
-    assert!(cool > 200, "the trace is missing: {cool} cool pixels");
-    assert_eq!(warm, 0, "a real signal has no Q to colour");
+    assert!(trace_colors(&canvas, strip).1 > 200, "the trace is missing");
 
-    // The legend would land in the gutter to the left of the strip.
+    // The gutter beside the strip carries axis labels and nothing else.
     let gutter = Rect {
         x: strip.x - FREQ_LABEL_W,
         w: FREQ_LABEL_W - 2,
         ..strip
     };
-    assert_eq!(trace_colors(&canvas, gutter), (0, 0), "unexpected legend");
+    assert_eq!(trace_colors(&canvas, gutter), (0, 0), "the trace leaked out");
 }
 
 #[test]

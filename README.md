@@ -127,8 +127,8 @@ burst can be traced from one panel into the other. It is a min/max envelope
 rather than a decimated one: a burst shorter than a single pixel column still
 reaches the edge of the strip instead of averaging away. Its scale is linear
 against the `--ref` level -- full scale, or this file's loudest sample under
-`--ref peak`. A complex signal gets two overlaid traces, I in blue and Q in
-amber, blended where they cross.
+`--ref peak`. A complex signal is one track, spanning whichever of I and Q
+reached further in that column.
 
 ### What it gets right
 
