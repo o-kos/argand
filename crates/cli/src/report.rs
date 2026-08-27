@@ -235,9 +235,25 @@ impl Report {
             write!(out, " · peak {:+.1} dBFS", peak.level.dbfs)?;
         }
         if let Some(output) = &self.output {
-            write!(out, "  →  {}  {}", output.path, format_bytes(output.bytes))?;
+            write!(
+                out,
+                "  →  {}  {}",
+                self.output_label(output),
+                format_bytes(output.bytes)
+            )?;
         }
         writeln!(out, "  {}", format_duration(self.elapsed_seconds))
+    }
+
+    /// Where the render went, with the input's own path folded into a `*`.
+    ///
+    /// A batch always writes `<input>.png`, so spelling the whole path out
+    /// again buries the part of the line that says anything.
+    fn output_label(&self, output: &OutputReport) -> String {
+        match output.path.strip_prefix(&self.file) {
+            Some(suffix) => format!("*{suffix}"),
+            None => output.path.clone(),
+        }
     }
 
     /// The block printed to stderr when the run finishes.

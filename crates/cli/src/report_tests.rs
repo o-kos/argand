@@ -66,6 +66,45 @@ fn human(r: &Report) -> String {
     String::from_utf8(out).unwrap()
 }
 
+fn compact(r: &Report, index: usize, total: usize) -> String {
+    let mut out = Vec::new();
+    r.write_compact(&mut out, index, total).unwrap();
+    String::from_utf8(out).unwrap()
+}
+
+#[test]
+fn the_compact_line_folds_the_input_path_into_a_star() {
+    let m = meta(SampleFormat::I16, 32768.0);
+    let a = analysis(-11.4, -87.2, 0.2692, 0.0);
+    let beside = report(&m, &a, DbReference::FullScale).with_output(
+        std::path::Path::new("/data/12.579000_capture.iqw.png"),
+        2048,
+        512,
+        253_952,
+        "waveform".to_string(),
+    );
+
+    let line = compact(&beside, 2, 7);
+    assert!(line.starts_with("[2/7] 12.579000_capture.iqw  iq_i16 · 24 kHz · 30m"), "{line}");
+    assert!(line.contains("peak -11.4 dBFS"), "{line}");
+    assert!(
+        line.contains("→  *.png  248 KiB"),
+        "the render is named by what it adds to the input:\n{line}"
+    );
+    assert!(!line.contains("/data/12.579000_capture.iqw.png"), "{line}");
+    assert_eq!(line.lines().count(), 1, "one file, one line:\n{line}");
+
+    // A render that is not the input's own name is spelled out in full.
+    let elsewhere = report(&m, &a, DbReference::FullScale).with_output(
+        std::path::Path::new("/tmp/spec.png"),
+        2048,
+        512,
+        253_952,
+        "waveform".to_string(),
+    );
+    assert!(compact(&elsewhere, 1, 1).contains("→  /tmp/spec.png"));
+}
+
 #[test]
 fn levels_are_given_in_decibels_and_in_file_units() {
     let m = meta(SampleFormat::I16, 32768.0);

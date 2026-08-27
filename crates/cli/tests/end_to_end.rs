@@ -618,12 +618,26 @@ fn a_mask_renders_every_file_it_matches_in_sorted_order() {
     for line in ["[1/3] a.wav", "[2/3] b.wav", "[3/3] c.wav"] {
         assert!(stderr.contains(line), "missing {line}:\n{stderr}");
     }
+    assert_eq!(
+        stderr.matches("→  *.png").count(),
+        3,
+        "the render is named by what it adds to the input:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains(&dir.join("a.wav.png").display().to_string()),
+        "the line should not spell the whole path out again:\n{stderr}"
+    );
     assert!(
         stderr.contains("processed 3 · 3 succeeded · 0 failed"),
         "no summary:\n{stderr}"
     );
     // The block belongs to -v now, not to the default batch output.
     assert!(!stderr.contains("peak spl"), "{stderr}");
+    assert_eq!(
+        stderr.lines().count(),
+        4,
+        "three files, one line each, and the summary:\n{stderr}"
+    );
 }
 
 #[test]

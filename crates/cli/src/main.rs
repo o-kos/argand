@@ -55,6 +55,14 @@ fn run(args: &Args) -> Result<usize> {
 
     let total = files.len();
     let batch = total > 1;
+    let reporting = Reporting {
+        batch,
+        total,
+        // A batch on a terminal already says where every render went, so
+        // echoing the path on stdout only doubles the lines and reads like a
+        // file the mask swept up. Piped, those paths are the point of stdout.
+        echo_paths: !batch || !std::io::stdout().is_terminal(),
+    };
     if batch && args.output.is_some() {
         bail!(
             "--output names one PNG but {total} files resolved; \
@@ -66,7 +74,7 @@ fn run(args: &Args) -> Result<usize> {
     for (i, file) in files.iter().enumerate() {
         let index = i + 1;
         match process(args, file, index, total) {
-            Ok(report) => write_report(args, &report, batch, index, total),
+            Ok(report) => write_report(args, &report, &reporting, index),
             Err(e) if batch => {
                 failed += 1;
                 // Errors survive --quiet: a silent failure is worse than noise.
@@ -176,14 +184,23 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
     Ok(report)
 }
 
+/// How the run reports itself, decided once and used for every file.
+struct Reporting {
+    /// More than one file resolved, so the block shrinks to a line.
+    batch: bool,
+    total: usize,
+    /// Repeat each render's path on stdout, for whatever is reading it.
+    echo_paths: bool,
+}
+
 /// Say what one finished file produced, in whichever mode was asked for.
 ///
 /// A batch shrinks the block to a line unless `-v` asks for the block back;
 /// one file on its own always gets the block, exactly as it always did.
-fn write_report(args: &Args, report: &Report, batch: bool, index: usize, total: usize) {
+fn write_report(args: &Args, report: &Report, reporting: &Reporting, index: usize) {
     if args.json {
         println!("{}", report.to_json());
-    } else if !args.quiet {
+    } else if !args.quiet && reporting.echo_paths {
         if let Some(output) = &report.output {
             println!("{}", output.path);
         }
@@ -193,10 +210,12 @@ fn write_report(args: &Args, report: &Report, batch: bool, index: usize, total: 
     }
 
     let mut stderr = std::io::stderr().lock();
-    if batch && args.verbose == 0 {
-        report.write_compact(&mut stderr, index, total).ok();
+    if reporting.batch && args.verbose == 0 {
+        report
+            .write_compact(&mut stderr, index, reporting.total)
+            .ok();
     } else {
-        if batch && index > 1 {
+        if reporting.batch && index > 1 {
             writeln!(stderr).ok();
         }
         report.write_human(&mut stderr).ok();

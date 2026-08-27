@@ -135,11 +135,21 @@ The report goes to stderr, the output path to stdout, so `aspec x.iqw` can be
 piped. `--json` replaces the path with the full report, which is what the
 tests assert against.
 
-A batch keeps that split and shrinks the report to one line per file, with a
-processed/succeeded/failed/elapsed summary after it. `-v` brings the full
-block back for every file, `-q` says nothing but still names any file that
-failed, and `--json` prints one report object per file -- a stream that `jq`
-and `serde_json::StreamDeserializer` both read as it arrives.
+A batch shrinks the report to one line per file, with a
+processed/succeeded/failed/elapsed summary after it:
+
+```
+[1/3] 12.579000_25_08_26_06_09_10.iqw  iq_i16 · 24 kHz · 30m · peak -99.8 dBFS  →  *.png  212.8 KiB  463ms
+```
+
+`*.png` is the render, named by what it adds to the input rather than by
+spelling the whole path out a second time. On a terminal that line is all a
+finished file prints; the paths reappear on stdout the moment stdout is a
+pipe or a file, one per line, so `aspec '*.iqw' | xargs feh` still works.
+`-v` brings the full block back for every file, `-q` says nothing but still
+names any file that failed, and `--json` prints one report object per file --
+a stream that `jq` and `serde_json::StreamDeserializer` both read as it
+arrives.
 
 ### Panels
 

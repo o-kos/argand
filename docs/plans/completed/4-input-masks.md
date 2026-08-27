@@ -59,6 +59,13 @@ keeps going after an individual failure.
   already does: `--quiet` suppresses the report, never the reason a file produced none.
 - The batch output modes apply when more than one file resolves. One file keeps today's
   output byte for byte, including having no summary line after it.
+- The compact line names the render `*.png` rather than repeating the input's path,
+  which in a batch it always is. Review of the first draft found the full path made the
+  line's own content hard to find.
+- In a batch, output paths reach stdout only when stdout is not a terminal. Interleaved
+  with the compact lines they doubled the output and read like files the mask had swept
+  up; piped, they are what stdout is for, so nothing changes there. `--json` is an
+  explicit request for machine output and always prints.
 
 ## Rejected alternatives
 
@@ -95,6 +102,8 @@ keeps going after an individual failure.
 - [x] Add the `[n/N]` file counter to the progress bar.
 - [x] Update `README.md` and the CLI help and examples.
 - [ ] Complete validation.
+- [x] ➕ Rework the batch line after review: name the render `*.png` and keep the stdout
+      path echo for pipes only, so a terminal shows one line per file.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use ➕ for tasks discovered after implementation begins and ⚠️ for blocked tasks.
@@ -103,15 +112,16 @@ Use ➕ for tasks discovered after implementation begins and ⚠️ for blocked 
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked -- -D warnings`
-- [x] `cargo test --locked`: 218 tests, all passing.
+- [x] `cargo test --locked`: 219 tests, all passing.
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] Matcher tests cover `*`, `?`, ranges, negation, the leading-dot rule and rejected
       patterns.
 - [x] Resolver tests cover exact paths, masks, sorting, deduplication, zero matches and
       metacharacters in a directory component.
 - [x] End-to-end tests cover a batch, a batch with one failing file and its exit status,
-      `-o` rejected for a batch, every output mode, and the error text that no longer
-      repeats itself.
+      `-o` rejected for a batch, every output mode, the `*.png` render label and the one
+      line per file it leaves on a terminal, and the error text that no longer repeats
+      itself.
 - [x] Run a real batch over `tests/signals/` and read the summary. Four masks over the
       twelve captures there, including the two 30-minute I/Q files and two names holding
       spaces, rendered in 1.26 s with `processed 12 · 12 succeeded · 0 failed`.
