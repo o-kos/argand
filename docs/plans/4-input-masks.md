@@ -93,7 +93,7 @@ keeps going after an individual failure.
       `-v`, silence under `--quiet`, one pretty JSON object per file under `--json`, and
       a processed/succeeded/failed/elapsed summary on stderr.
 - [x] Add the `[n/N]` file counter to the progress bar.
-- [ ] Update `README.md` and the CLI help and examples.
+- [x] Update `README.md` and the CLI help and examples.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
