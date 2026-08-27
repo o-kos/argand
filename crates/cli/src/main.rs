@@ -7,15 +7,18 @@
 //! into the core here would leak toolkit types there.
 
 mod cli;
+mod inputs;
+mod mask;
 mod render;
 mod report;
 mod text;
 
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
+use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
-use argand_core::{SampleRange, SignalMeta};
+use argand_core::{SampleRange, SignalMeta, format_duration};
 use argand_dsp::{AnalysisRequest, StftConfig, analyze};
 use argand_io::{Normalize, OpenHints};
 use clap::Parser;
@@ -29,15 +32,62 @@ fn main() -> Result<()> {
     let args = Args::parse();
     init_tracing(args.verbose);
 
-    if let Err(e) = run(&args) {
-        // clap already prints usage for argument errors; this covers the rest.
-        eprintln!("error: {e:#}");
-        std::process::exit(1);
+    match run(&args) {
+        Ok(0) => Ok(()),
+        // A batch has already said which files failed and why.
+        Ok(_) => std::process::exit(1),
+        Err(e) => {
+            // clap already prints usage for argument errors; this covers the rest.
+            eprintln!("error: {e:#}");
+            std::process::exit(1);
+        }
     }
-    Ok(())
 }
 
-fn run(args: &Args) -> Result<()> {
+/// Resolve the inputs, process each one, and report how many failed.
+///
+/// A single file keeps the exit path it always had: its error travels out of
+/// here and is printed once. A batch prints each failure as it happens and
+/// carries on, because one unreadable capture is no reason to skip the rest.
+fn run(args: &Args) -> Result<usize> {
+    let started = Instant::now();
+    let files = inputs::resolve(&args.inputs)?;
+
+    let total = files.len();
+    let batch = total > 1;
+    if batch && args.output.is_some() {
+        bail!(
+            "--output names one PNG but {total} files resolved; \
+             drop -o to write <input>.png beside each input"
+        );
+    }
+
+    let mut failed = 0;
+    for (i, file) in files.iter().enumerate() {
+        let index = i + 1;
+        match process(args, file, index, total) {
+            Ok(report) => write_report(args, &report, batch, index, total),
+            Err(e) if batch => {
+                failed += 1;
+                // Errors survive --quiet: a silent failure is worse than noise.
+                eprintln!("[{index}/{total}] {}  error: {e:#}", name_of(file));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    if batch && !args.quiet {
+        eprintln!(
+            "  processed {total} · {} succeeded · {failed} failed · {}",
+            total - failed,
+            format_duration(started.elapsed().as_secs_f64())
+        );
+    }
+    Ok(failed)
+}
+
+/// Analyse one file and write its PNG.
+fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Report> {
     let started = Instant::now();
 
     let hints = OpenHints {
@@ -50,8 +100,7 @@ fn run(args: &Args) -> Result<()> {
         gain_db: args.gain,
     };
 
-    let mut source = argand_io::open(&args.input, &hints)
-        .with_context(|| format!("opening {}", args.input.display()))?;
+    let mut source = argand_io::open(input, &hints)?;
     let meta = source.meta().clone();
     let range = resolve_range(&meta, args)?;
 
@@ -68,7 +117,7 @@ fn run(args: &Args) -> Result<()> {
         bail!("image {width}x{height} leaves no room for the plot; try a larger --image-size");
     }
 
-    let progress = make_progress(args);
+    let progress = make_progress(args, index, total);
     let analysis = analyze(
         source.as_mut(),
         &AnalysisRequest {
@@ -116,7 +165,7 @@ fn run(args: &Args) -> Result<()> {
         },
     );
 
-    let output = args.output_path();
+    let output = args.output_path(input);
     canvas
         .save(&output)
         .with_context(|| format!("writing {}", output.display()))?;
@@ -124,18 +173,40 @@ fn run(args: &Args) -> Result<()> {
 
     report = report.with_output(&output, width, height, bytes, args.panels.to_string());
     report.elapsed_seconds = started.elapsed().as_secs_f64();
+    Ok(report)
+}
 
+/// Say what one finished file produced, in whichever mode was asked for.
+///
+/// A batch shrinks the block to a line unless `-v` asks for the block back;
+/// one file on its own always gets the block, exactly as it always did.
+fn write_report(args: &Args, report: &Report, batch: bool, index: usize, total: usize) {
     if args.json {
         println!("{}", report.to_json());
     } else if !args.quiet {
-        println!("{}", output.display());
+        if let Some(output) = &report.output {
+            println!("{}", output.path);
+        }
     }
-    if !args.quiet {
-        let mut stderr = std::io::stderr().lock();
-        report.write_human(&mut stderr).ok();
+    if args.quiet {
+        return;
     }
 
-    Ok(())
+    let mut stderr = std::io::stderr().lock();
+    if batch && args.verbose == 0 {
+        report.write_compact(&mut stderr, index, total).ok();
+    } else {
+        if batch && index > 1 {
+            writeln!(stderr).ok();
+        }
+        report.write_human(&mut stderr).ok();
+    }
+}
+
+fn name_of(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string())
 }
 
 /// Turn `--start` and `--duration` into a sample span.
@@ -163,14 +234,21 @@ fn resolve_range(meta: &SignalMeta, args: &Args) -> Result<SampleRange> {
     Ok(SampleRange::new(start, len).clamped_to(meta.len_samples))
 }
 
-fn make_progress(args: &Args) -> ProgressBar {
+fn make_progress(args: &Args, index: usize, total: usize) -> ProgressBar {
     if args.quiet || !std::io::stderr().is_terminal() {
         return ProgressBar::hidden();
     }
+    // A batch of one long capture still has to show that it is alive, so the
+    // bar stays and only gains the counter telling you how far along it is.
+    let counter = if total > 1 {
+        format!("[{index}/{total}] ")
+    } else {
+        String::new()
+    };
     let bar = ProgressBar::new(1);
-    if let Ok(style) = ProgressStyle::with_template(
-        "  stft  [{bar:28.cyan/blue}] {percent:>3}%  {pos}/{len} frames  eta {eta}",
-    ) {
+    if let Ok(style) = ProgressStyle::with_template(&format!(
+        "  {counter}stft  [{{bar:28.cyan/blue}}] {{percent:>3}}%  {{pos}}/{{len}} frames  eta {{eta}}"
+    )) {
         bar.set_style(style.progress_chars("##-"));
     }
     bar

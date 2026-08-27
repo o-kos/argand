@@ -55,6 +55,10 @@ keeps going after an individual failure.
   long capture still needs to show that it is alive.
 - The batch summary goes to stderr even under `--json`, so stdout carries nothing but
   report objects.
+- A per-file failure line is printed even under `--quiet`, which is what a single file
+  already does: `--quiet` suppresses the report, never the reason a file produced none.
+- The batch output modes apply when more than one file resolves. One file keeps today's
+  output byte for byte, including having no summary line after it.
 
 ## Rejected alternatives
 
@@ -71,21 +75,24 @@ keeps going after an individual failure.
 
 ## Implementation steps
 
-- [ ] Stop `IoError` from printing its source twice, and drop the `main.rs` context line
+- [x] Stop `IoError` from printing its source twice, and drop the `main.rs` context line
       that repeats the path.
-- [ ] Add a filename mask matcher supporting `*`, `?` and `[...]` with ranges and
+- [x] ➕ Apply the same fix to `SourceError::Io`, `DspError::Source` and
+      `ParseRawSpecError`, which repeat their own source the same way and sit in the
+      same chain, so fixing `IoError` alone would still print it twice.
+- [x] Add a filename mask matcher supporting `*`, `?` and `[...]` with ranges and
       negation, rejecting `**`.
-- [ ] Add input resolution: exact paths pass through, masks list one directory, results
+- [x] Add input resolution: exact paths pass through, masks list one directory, results
       sort by filename and deduplicate, zero matches and directory-component
       metacharacters are errors.
-- [ ] Accept several inputs on the command line and reject `--output` unless exactly one
+- [x] Accept several inputs on the command line and reject `--output` unless exactly one
       file resolves.
-- [ ] Split the run into a per-file unit and a batch driver that continues past a
+- [x] Split the run into a per-file unit and a batch driver that continues past a
       failure and exits non-zero if any file failed.
-- [ ] Give the batch its output modes: a compact line per file, the full report under
+- [x] Give the batch its output modes: a compact line per file, the full report under
       `-v`, silence under `--quiet`, one pretty JSON object per file under `--json`, and
       a processed/succeeded/failed/elapsed summary on stderr.
-- [ ] Add the `[n/N]` file counter to the progress bar.
+- [x] Add the `[n/N]` file counter to the progress bar.
 - [ ] Update `README.md` and the CLI help and examples.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.

@@ -80,14 +80,29 @@ fn level_controls_accept_their_documented_spellings() {
 
 #[test]
 fn output_defaults_to_the_input_with_a_png_suffix() {
+    let input = Path::new("/data/capture.iqw");
     assert_eq!(
-        parse(&["/data/capture.iqw"]).output_path(),
+        parse(&["/data/capture.iqw"]).output_path(input),
         PathBuf::from("/data/capture.iqw.png")
     );
     assert_eq!(
-        parse(&["x.wav", "-o", "out.png"]).output_path(),
+        parse(&["x.wav", "-o", "out.png"]).output_path(input),
         PathBuf::from("out.png")
     );
+}
+
+#[test]
+fn inputs_collect_every_positional_argument() {
+    let args = parse(&["a.wav", "*.iqw", "-f", "256", "/data/b.wav"]);
+    assert_eq!(
+        args.inputs,
+        [
+            PathBuf::from("a.wav"),
+            PathBuf::from("*.iqw"),
+            PathBuf::from("/data/b.wav")
+        ]
+    );
+    assert_eq!(args.fft_size, 256);
 }
 
 #[test]
@@ -142,4 +157,5 @@ fn quiet_and_verbose_are_mutually_exclusive() {
 #[test]
 fn an_input_file_is_required() {
     assert!(Args::try_parse_from(["aspec"]).is_err());
+    assert_eq!(parse(&["x.wav"]).inputs, [PathBuf::from("x.wav")]);
 }

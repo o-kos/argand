@@ -3,7 +3,7 @@
 //! Short flags deliberately match the sgvr CLI (`-f -w -c -i -d`) so that
 //! muscle memory carries between the two tools.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use argand_core::{Colormap, SampleType};
 use argand_dsp::{DbReference, Reduce, Window};
@@ -19,8 +19,19 @@ use crate::render::{Orientation, Panels};
     about = "Render a signal file's spectrum to a PNG",
     long_about = "Render a signal file's spectrogram to a PNG, with a waveform strip above it.\n\n\
                   The container is detected from the file's content, not its extension, so \
-                  .wav, .iqw and .wavs captures all work. A file with no header needs --raw.",
+                  .wav, .iqw and .wavs captures all work. A file with no header needs --raw.\n\n\
+                  Several inputs may be given, each an exact path or a filename mask. Every \
+                  option applies to every file, and a file that fails does not stop the rest.",
     after_help = concat!(
+        "INPUTS:\n    ",
+        "An input is an exact path or a mask over the filenames of one directory:\n    ",
+        "* for any run, ? for one character, [0-9] and [!0-9] for a set.\n\n",
+        "    Quote a mask so the shell passes it through. Masks are not recursive:\n",
+        "    ** and masks in a directory component are refused, and a mask that\n",
+        "    matches nothing is an error. Matches are sorted and de-duplicated.\n\n",
+        "    With more than one file, -o is refused and each PNG is written beside\n",
+        "    its input; the report shrinks to one line per file, or the full block\n",
+        "    under -v, and a summary follows on stderr.\n\n",
         "PANELS:\n    ",
         "The spectrogram is always drawn; --panels selects what joins it.\n    ",
         "waveform, psd, db (the colour bar), or none for the spectrogram alone.\n\n",
@@ -35,12 +46,15 @@ use crate::render::{Orientation, Panels};
         "aspec dump.bin --raw iq_i16@24k --center 12.579M\n    ",
         "aspec quiet.wav --normalize auto --ref peak\n    ",
         "aspec long.iqw --start 5m --duration 30s --orientation v\n    ",
-        "aspec capture.iqw --panels waveform,psd,db",
+        "aspec capture.iqw --panels waveform,psd,db\n    ",
+        "aspec '*.iqw' --center 12.579M\n    ",
+        "aspec /data/'[0-9]*.wav' --raw iq_i16@24k -q",
     )
 )]
 pub struct Args {
-    /// Signal file to analyse
-    pub input: PathBuf,
+    /// Signal files to analyse: exact paths or filename masks
+    #[arg(required = true, value_name = "INPUT")]
+    pub inputs: Vec<PathBuf>,
 
     /// Read as a headerless file: <type>[@<rate>], e.g. iq_i16@24k
     #[arg(long, value_name = "SPEC")]
@@ -90,7 +104,7 @@ pub struct Args {
     )]
     pub gain: f32,
 
-    /// Output PNG (default: <input>.png)
+    /// Output PNG, for a single input only (default: <input>.png)
     #[arg(short = 'o', long, value_name = "PNG")]
     pub output: Option<PathBuf>,
 
@@ -153,10 +167,10 @@ pub struct Args {
 }
 
 impl Args {
-    /// Where the PNG goes when `--output` was not given.
-    pub fn output_path(&self) -> PathBuf {
+    /// Where `input`'s PNG goes when `--output` was not given.
+    pub fn output_path(&self, input: &Path) -> PathBuf {
         self.output.clone().unwrap_or_else(|| {
-            let mut name = self.input.as_os_str().to_owned();
+            let mut name = input.as_os_str().to_owned();
             name.push(".png");
             PathBuf::from(name)
         })

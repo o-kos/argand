@@ -189,12 +189,17 @@ impl Report {
         )
     }
 
-    /// Text the header of the image carries.
-    pub fn plot_title(&self) -> String {
-        let name = Path::new(&self.file)
+    /// The input's own name, which is what identifies it once it is drawn.
+    fn file_name(&self) -> String {
+        Path::new(&self.file)
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| self.file.clone());
+            .unwrap_or_else(|| self.file.clone())
+    }
+
+    /// Text the header of the image carries.
+    pub fn plot_title(&self) -> String {
+        let name = self.file_name();
         format!(
             "{name} · {} · {} · {} · {}",
             self.container,
@@ -208,12 +213,36 @@ impl Report {
         serde_json::to_string_pretty(self).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
     }
 
+    /// One line per file, which is what a batch prints instead of the block.
+    ///
+    /// It carries what tells two captures apart at a glance -- format, rate,
+    /// length and level -- and where the render went.
+    pub fn write_compact(
+        &self,
+        out: &mut impl Write,
+        index: usize,
+        total: usize,
+    ) -> std::io::Result<()> {
+        write!(
+            out,
+            "[{index}/{total}] {}  {} · {} · {}",
+            self.file_name(),
+            self.sample_type,
+            format_hz(self.sample_rate),
+            format_duration(self.analysed_seconds)
+        )?;
+        if let Some(peak) = &self.peak_bin {
+            write!(out, " · peak {:+.1} dBFS", peak.level.dbfs)?;
+        }
+        if let Some(output) = &self.output {
+            write!(out, "  →  {}  {}", output.path, format_bytes(output.bytes))?;
+        }
+        writeln!(out, "  {}", format_duration(self.elapsed_seconds))
+    }
+
     /// The block printed to stderr when the run finishes.
     pub fn write_human(&self, out: &mut impl Write) -> std::io::Result<()> {
-        let name = Path::new(&self.file)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| self.file.clone());
+        let name = self.file_name();
 
         writeln!(out, "  file      {name}")?;
         writeln!(
