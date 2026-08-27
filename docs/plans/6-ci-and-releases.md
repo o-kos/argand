@@ -110,13 +110,17 @@ decision below.
 
 - [x] Add `CHANGELOG.md` in Keep a Changelog format, with everything `aspec` does today
       under `[Unreleased]`.
-- [ ] Add `.github/workflows/ci.yml`: `linux` and `windows` jobs, toolchain from
+- [x] Add `.github/workflows/ci.yml`: `linux` and `windows` jobs, toolchain from
       `rust-toolchain.toml`, cargo caching, Pull-Request-only run cancellation, and
       read-only permissions.
-- [ ] Add the release verification script: check the tag against
+- [x] ➕ Fix `an_error_states_its_cause_once`, which the first Windows run failed. It
+      asserted on the Unix wording of `ErrorKind::NotFound` while what it actually
+      guards is that the cause appears once; it now asks the platform for its own
+      wording. This is the first thing CI found, and it is what the Issue exists for.
+- [x] Add the release verification script: check the tag against
       `workspace.package.version`, check that the matching changelog section exists, and
       print that section.
-- [ ] Add `.github/workflows/release.yml`: `verify`, then Linux and Windows builds with
+- [x] Add `.github/workflows/release.yml`: `verify`, then Linux and Windows builds with
       an `aspec --version` smoke check, then `publish` with `SHA256SUMS`, the archives
       and the changelog section as the Release body.
 - [ ] Add the CI, release, license and Rust-version badges to `README.md`, and document
