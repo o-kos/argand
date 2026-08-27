@@ -156,7 +156,7 @@ impl std::fmt::Display for DbReference {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DspError {
-    #[error("reading samples: {0}")]
+    #[error("reading samples")]
     Source(#[from] SourceError),
     #[error("fft size must be a power of two of at least 2, got {0}")]
     BadFftSize(usize),
