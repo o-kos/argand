@@ -85,6 +85,17 @@ decision below.
   fixes the compare links, which is the Keep a Changelog flow the Issue asks for.
 - **The release badge will read "no releases" until that tag is pushed.** That is
   accurate rather than broken: it is what the repository state is.
+- ➕ **The Windows archive and the publishing step are rehearsed with a throwaway
+  `v0.0.0` tag rather than trusted on first use.** Everything else here could be proven
+  locally or by a failing probe; `7z`, the `.exe` suffix and `gh release create` could
+  not. A rehearsal that is published and immediately deleted costs one throwaway tag and
+  removes the chance of discovering a typo during the real release, when the fix is a
+  deleted tag and a re-tag. The alternative -- a permanent `workflow_dispatch` dry-run
+  mode -- would leave a second, less-tested path through the same workflow.
+- ➕ **Branch protection is wired before the merge, not after it.** GitHub will accept a
+  required check as soon as it has seen a run with that name, and both names have now
+  been seen on this Pull Request. Requiring them now closes the Issue's "protected `main`
+  requires both CI jobs" criterion inside the Issue instead of leaving it as a promise.
 
 ## Rejected alternatives
 
@@ -123,37 +134,60 @@ decision below.
 - [x] Add `.github/workflows/release.yml`: `verify`, then Linux and Windows builds with
       an `aspec --version` smoke check, then `publish` with `SHA256SUMS`, the archives
       and the changelog section as the Release body.
-- [ ] Add the CI, release, license and Rust-version badges to `README.md`, and document
+- [x] Add the CI, release, license and Rust-version badges to `README.md`, and document
       where to get a binary.
-- [ ] Document the release procedure and the changelog convention in `CONTRIBUTING.md`.
-- [ ] Verify that a deliberate format, lint and test failure each turn CI red, and that
+- [x] Document the release procedure and the changelog convention in `CONTRIBUTING.md`.
+- [x] Verify that a deliberate format, lint and test failure each turn CI red, and that
       a tag whose version does not match the workspace fails before anything is built.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] ➕ Rehearse the whole release on a throwaway `v0.0.0` tag, then delete the release
+      and the tag. The Windows `7z` archive, the `.exe` staging path and `gh release
+      create` had no other way of being exercised before the real release.
+- [x] ➕ Require the `linux` and `windows` checks on protected `main`, with strict
+      up-to-date branches. Moved out of `Post-completion` once it became clear GitHub
+      accepts the check names as soon as it has seen them, which it now has.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked -- -D warnings`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Both CI jobs pass on this Pull Request.
-- [ ] A commit that breaks formatting fails the `linux` job; a commit that trips Clippy
-      fails it; a failing test fails both jobs. Each is verified and reverted.
-- [ ] A tag whose version does not match `workspace.package.version` fails the `verify`
-      job and publishes nothing. The tag is deleted afterwards.
-- [ ] The release script prints the correct changelog section for a given version and
-      fails when the section is missing.
-- [ ] Every badge in `README.md` resolves to a real workflow, release feed, license file
-      or version.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked -- -D warnings`
+- [x] `cargo test --locked`: 219 tests, all passing.
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Both CI jobs pass on this Pull Request: `linux` in 47 s once the cache is warm,
+      `windows` in 3 m 48 s.
+- [x] A deliberate violation of each check turns CI red, and each probe was reverted:
+      - formatting: `linux` failed at `Check formatting`, with `Lint`, `Test` and
+        `Build release` skipped;
+      - lint: `Check formatting` passed and `linux` failed at `Lint`;
+      - a failing test: both `linux` and `windows` failed at `Test`.
+- [x] Tag `v9.9.9` against workspace version `0.1.0` failed the `verify` job on its first
+      step -- `tag 'v9.9.9' does not match workspace version '0.1.0'` -- with `build` and
+      `publish` skipped and nothing published. The tag was deleted.
+- [x] The release script was exercised over all six of its outcomes: a matching version
+      with a section, a version mismatch, a missing section, a section with no content, a
+      malformed tag, and a missing changelog file.
+- [x] A full release rehearsal on a throwaway `v0.0.0` tag ran `verify` -> both builds ->
+      `publish` green. Both archives were downloaded from the release: `SHA256SUMS`
+      verified, each archive held `aspec`/`aspec.exe`, `README.md`, `LICENSE` and
+      `CHANGELOG.md` under one top-level directory, and the extracted Linux binary
+      reported `aspec 0.0.0`. The release and its tag were then deleted with
+      `gh release delete v0.0.0 --cleanup-tag`, and the workspace version returned to
+      `0.1.0`.
+- [x] Protected `main` now lists `linux` and `windows` as required checks with `strict`
+      enabled; signed commits, linear history, `enforce_admins` and required conversation
+      resolution were all preserved.
+- [x] Every badge in `README.md` resolves: the CI badge to `ci.yml`, the licence badge to
+      the repository's detected MIT licence, the Rust badge to `rust-toolchain.toml`. The
+      release badge reads "no releases" until `v0.1.0` is tagged, which is the
+      repository's actual state.
 
 ## Post-completion
 
-- Require the `linux` and `windows` checks on protected `main`, with strict up-to-date
-  branches, once a run of each has been recorded on `main`.
-- After Issue #8 merges, cut the first release: annotated tag `v0.1.0`, confirm the
-  Release is published, then download both archives and verify their checksums and
-  `aspec --version`.
+- After Issue #8 merges, cut the first release through a `chore/release-v0.1.0` Pull
+  Request that renames `[Unreleased]` to `[0.1.0] - <date>` and fixes the changelog
+  links, then tag `v0.1.0`. The release workflow itself needs no further proving: the
+  `v0.0.0` rehearsal already ran it end to end.
 - Merge the Pull Request with squash after review conversations and checks are complete.
