@@ -84,6 +84,7 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 - Open a Draft Pull Request early and link it to the Issue with a closing keyword.
 - Update plan checkboxes in the commits that complete the corresponding work. Do not record commit hashes in plans.
 - Move a finished plan to `docs/plans/completed/` before final review.
+- Rebuild the release binary once the standard checks pass and before the owner is asked to accept the Pull Request. Any behaviour shown to the owner must come from a binary built from the current code, never from a stale `target/release/`.
 - `main` is protected. Merge only through a Pull Request using squash merge after all checks pass and all review conversations are resolved.
 
 ## Current status

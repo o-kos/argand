@@ -33,6 +33,7 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --all-targets --locked -- -D warnings`
 - [ ] `cargo test --locked`
+- [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] Change-specific manual or automated validation.
 
 ## Post-completion

@@ -39,6 +39,7 @@ fn analysis_at(
             db: vec![floor_db, floor_db, peak_db],
             segments: 10,
         },
+        waveform: None,
         time_peak,
         frames: 84_372,
         enbw_hz: 17.578125,
@@ -186,7 +187,13 @@ fn json_is_valid_and_carries_the_numbers() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.2692, 0.0);
     let r = report(&m, &a, DbReference::FullScale)
-        .with_output(std::path::Path::new("spec.png"), 2048, 512, 253_952);
+        .with_output(
+            std::path::Path::new("spec.png"),
+            2048,
+            512,
+            253_952,
+            "waveform".to_string(),
+        );
 
     let value: serde_json::Value = serde_json::from_str(&r.to_json()).expect("valid json");
     assert_eq!(value["sample_type"], "iq_i16");

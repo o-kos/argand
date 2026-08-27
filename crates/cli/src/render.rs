@@ -6,20 +6,104 @@
 //! one. Nothing is resampled, which is what keeps a single-frame carrier one
 //! pixel wide instead of a smear.
 
+use argand_core::WaveformEnvelope;
 use argand_core::{Colormap, SpectrogramImage, format_duration, format_hz};
-use argand_dsp::Analysis;
+use argand_dsp::{Analysis, DbReference};
 use image::{Rgb, RgbImage};
 
 use crate::text::{Align, TextRenderer};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    Spectrogram,
-    Psd,
-    Both,
+/// Panels drawn beside the spectrogram.
+///
+/// The spectrogram itself is not selectable. It is the point of the tool, so
+/// `--panels` names only what joins it, and `none` renders it on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Panels {
+    pub waveform: bool,
+    pub psd: bool,
+    pub db: bool,
 }
 
-pub const MODE_NAMES: [&str; 3] = ["spectrogram", "psd", "both"];
+pub const PANEL_NAMES: [&str; 4] = ["waveform", "psd", "db", "none"];
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ParsePanelsError {
+    #[error("unknown panel `{name}`, expected one of: {options}")]
+    Unknown { name: String, options: String },
+    #[error("no panels given; use `none` for the spectrogram on its own")]
+    Empty,
+    #[error("`none` cannot be combined with other panels")]
+    NoneWithOthers,
+}
+
+impl Panels {
+    pub const NONE: Self = Self {
+        waveform: false,
+        psd: false,
+        db: false,
+    };
+
+    pub fn names(self) -> Vec<&'static str> {
+        let mut names = Vec::new();
+        if self.waveform {
+            names.push("waveform");
+        }
+        if self.psd {
+            names.push("psd");
+        }
+        if self.db {
+            names.push("db");
+        }
+        names
+    }
+}
+
+impl std::str::FromStr for Panels {
+    type Err = ParsePanelsError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut panels = Panels::NONE;
+        let mut explicit_none = false;
+        let mut count = 0;
+
+        for token in s.split(',') {
+            let token = token.trim().to_ascii_lowercase();
+            if token.is_empty() {
+                continue;
+            }
+            count += 1;
+            match token.as_str() {
+                "waveform" | "wave" => panels.waveform = true,
+                "psd" | "spectrum" => panels.psd = true,
+                "db" | "colorbar" => panels.db = true,
+                "none" => explicit_none = true,
+                _ => {
+                    return Err(ParsePanelsError::Unknown {
+                        name: token,
+                        options: PANEL_NAMES.join(", "),
+                    });
+                }
+            }
+        }
+
+        match (count, explicit_none) {
+            (0, _) => Err(ParsePanelsError::Empty),
+            (1, true) => Ok(Panels::NONE),
+            (_, true) => Err(ParsePanelsError::NoneWithOthers),
+            _ => Ok(panels),
+        }
+    }
+}
+
+impl std::fmt::Display for Panels {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names = self.names();
+        if names.is_empty() {
+            return f.write_str("none");
+        }
+        f.write_str(&names.join(","))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Orientation {
@@ -37,39 +121,6 @@ pub struct ParseError {
     pub what: &'static str,
     pub name: String,
     pub options: String,
-}
-
-impl Mode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Mode::Spectrogram => "spectrogram",
-            Mode::Psd => "psd",
-            Mode::Both => "both",
-        }
-    }
-}
-
-impl std::str::FromStr for Mode {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "spectrogram" | "spec" => Ok(Mode::Spectrogram),
-            "psd" | "spectrum" => Ok(Mode::Psd),
-            "both" => Ok(Mode::Both),
-            _ => Err(ParseError {
-                what: "mode",
-                name: s.to_string(),
-                options: MODE_NAMES.join(", "),
-            }),
-        }
-    }
-}
-
-impl std::fmt::Display for Mode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
 }
 
 impl Orientation {
@@ -124,6 +175,8 @@ const DB_LABEL_W: i64 = 44;
 const CBAR_W: i64 = 14;
 const CBAR_LABEL_W: i64 = 60;
 const GAP: i64 = 14;
+/// The waveform is a mini-map rather than a panel that grows with the image.
+const WAVEFORM_SPAN: i64 = 64;
 const FONT_SIZE: f32 = 13.0;
 const TITLE_SIZE: f32 = 14.0;
 
@@ -148,26 +201,24 @@ impl Rect {
 }
 
 /// Where each piece of the plot goes.
+///
+/// The spectrogram is unconditional; `panels` only decides what joins it. The
+/// waveform strip shares the spectrogram's time axis -- its width when time
+/// runs across, its height when time runs down -- so a burst can be traced
+/// from one panel into the other.
 #[derive(Debug, Clone)]
 pub struct Layout {
     pub width: u32,
     pub height: u32,
-    pub mode: Mode,
     pub orientation: Orientation,
     pub spectrogram: Option<Rect>,
+    pub waveform: Option<Rect>,
     pub psd: Option<Rect>,
     pub colorbar: Option<Rect>,
 }
 
 impl Layout {
-    /// A standalone spectrum is always drawn the conventional way round --
-    /// frequency across, level up -- so orientation only applies when a
-    /// spectrogram is present.
-    fn psd_is_standalone(mode: Mode) -> bool {
-        matches!(mode, Mode::Psd)
-    }
-
-    pub fn compute(width: u32, height: u32, mode: Mode, orientation: Orientation) -> Self {
+    pub fn compute(width: u32, height: u32, panels: Panels, orientation: Orientation) -> Self {
         let (w, h) = (width as i64, height as i64);
         let content = Rect {
             x: PAD,
@@ -179,9 +230,9 @@ impl Layout {
         let mut layout = Self {
             width,
             height,
-            mode,
             orientation,
             spectrogram: None,
+            waveform: None,
             psd: None,
             colorbar: None,
         };
@@ -189,18 +240,12 @@ impl Layout {
             return layout;
         }
 
-        if Self::psd_is_standalone(mode) {
-            layout.psd = Some(Rect {
-                x: content.x + DB_LABEL_W,
-                y: content.y,
-                w: content.w - DB_LABEL_W,
-                h: content.h - TICK_LABEL_H,
-            })
-            .filter(Rect::is_valid);
-            return layout;
-        }
-
-        let cbar_reserve = CBAR_W + CBAR_LABEL_W + GAP;
+        let cbar_reserve = if panels.db {
+            CBAR_W + CBAR_LABEL_W + GAP
+        } else {
+            0
+        };
+        let cbar_x = w - PAD - CBAR_LABEL_W - CBAR_W;
 
         match orientation {
             Orientation::Horizontal => {
@@ -214,68 +259,123 @@ impl Layout {
                     return layout;
                 }
 
-                let psd_w = if matches!(mode, Mode::Both) {
+                // The spectrum takes its column first: it is the only panel
+                // whose width carries meaning.
+                let psd_w = if panels.psd {
                     ((plot.w as f64 * 0.16) as i64)
                         .clamp(110, 300)
                         .min(plot.w / 2)
                 } else {
                     0
                 };
-                let spec_w = plot.w - if psd_w > 0 { psd_w + GAP } else { 0 };
+                let time_w = plot.w - if psd_w > 0 { psd_w + GAP } else { 0 };
 
-                layout.spectrogram = Some(Rect { w: spec_w, ..plot }).filter(Rect::is_valid);
-                if psd_w > 0 {
-                    layout.psd = Some(Rect {
-                        x: plot.right() - psd_w,
-                        w: psd_w,
+                let strip_h = if panels.waveform {
+                    WAVEFORM_SPAN.min(plot.h / 3)
+                } else {
+                    0
+                };
+                let spec_y = plot.y + if strip_h > 0 { strip_h + GAP } else { 0 };
+                let spec_h = plot.bottom() - spec_y;
+
+                if strip_h > 0 {
+                    layout.waveform = Some(Rect {
+                        w: time_w,
+                        h: strip_h,
                         ..plot
                     })
                     .filter(Rect::is_valid);
                 }
-                layout.colorbar = Some(Rect {
-                    x: w - PAD - CBAR_LABEL_W - CBAR_W,
-                    y: plot.y,
-                    w: CBAR_W,
-                    h: plot.h,
+                layout.spectrogram = Some(Rect {
+                    y: spec_y,
+                    w: time_w,
+                    h: spec_h,
+                    ..plot
                 })
                 .filter(Rect::is_valid);
+                if psd_w > 0 {
+                    // Aligned to the spectrogram's frequency axis, not to the
+                    // strip above it: a bin has to sit on its own row.
+                    layout.psd = Some(Rect {
+                        x: plot.right() - psd_w,
+                        y: spec_y,
+                        w: psd_w,
+                        h: spec_h,
+                    })
+                    .filter(Rect::is_valid);
+                }
+                if panels.db {
+                    layout.colorbar = Some(Rect {
+                        x: cbar_x,
+                        y: spec_y,
+                        w: CBAR_W,
+                        h: spec_h,
+                    })
+                    .filter(Rect::is_valid);
+                }
             }
             Orientation::Vertical => {
+                let gutter = DB_LABEL_W.max(FREQ_LABEL_W / 2);
                 let plot = Rect {
-                    x: content.x + DB_LABEL_W.max(FREQ_LABEL_W / 2),
+                    x: content.x + gutter,
                     y: content.y,
-                    w: content.w - DB_LABEL_W.max(FREQ_LABEL_W / 2) - cbar_reserve,
+                    w: content.w - gutter - cbar_reserve,
                     h: content.h - TICK_LABEL_H,
                 };
                 if !plot.is_valid() {
                     return layout;
                 }
 
-                let psd_h = if matches!(mode, Mode::Both) {
+                let psd_h = if panels.psd {
                     ((plot.h as f64 * 0.22) as i64)
                         .clamp(60, 200)
                         .min(plot.h / 2)
                 } else {
                     0
                 };
-                let spec_y = plot.y + if psd_h > 0 { psd_h + GAP } else { 0 };
+                let time_y = plot.y + if psd_h > 0 { psd_h + GAP } else { 0 };
+                let time_h = plot.bottom() - time_y;
 
-                if psd_h > 0 {
-                    layout.psd = Some(Rect { h: psd_h, ..plot }).filter(Rect::is_valid);
-                }
+                let strip_w = if panels.waveform {
+                    WAVEFORM_SPAN.min(plot.w / 3)
+                } else {
+                    0
+                };
+                let spec_w = plot.w - if strip_w > 0 { strip_w + GAP } else { 0 };
+
                 layout.spectrogram = Some(Rect {
-                    y: spec_y,
-                    h: plot.bottom() - spec_y,
+                    y: time_y,
+                    w: spec_w,
+                    h: time_h,
                     ..plot
                 })
                 .filter(Rect::is_valid);
-                layout.colorbar = Some(Rect {
-                    x: w - PAD - CBAR_LABEL_W - CBAR_W,
-                    y: spec_y,
-                    w: CBAR_W,
-                    h: plot.bottom() - spec_y,
-                })
-                .filter(Rect::is_valid);
+                if strip_w > 0 {
+                    layout.waveform = Some(Rect {
+                        x: plot.x + spec_w + GAP,
+                        y: time_y,
+                        w: strip_w,
+                        h: time_h,
+                    })
+                    .filter(Rect::is_valid);
+                }
+                if psd_h > 0 {
+                    layout.psd = Some(Rect {
+                        w: spec_w,
+                        h: psd_h,
+                        ..plot
+                    })
+                    .filter(Rect::is_valid);
+                }
+                if panels.db {
+                    layout.colorbar = Some(Rect {
+                        x: cbar_x,
+                        y: time_y,
+                        w: CBAR_W,
+                        h: time_h,
+                    })
+                    .filter(Rect::is_valid);
+                }
             }
         }
 
@@ -292,9 +392,16 @@ impl Layout {
                 Orientation::Horizontal => (r.w as usize, r.h as usize),
                 Orientation::Vertical => (r.h as usize, r.w as usize),
             },
-            // No spectrogram panel, but the transform still drives the PSD.
-            None => (64, 64),
+            None => (0, 0),
         }
+    }
+
+    /// Envelope columns the strip needs, along whichever axis carries time.
+    pub fn waveform_columns(&self) -> Option<usize> {
+        self.waveform.map(|r| match self.orientation {
+            Orientation::Horizontal => r.w as usize,
+            Orientation::Vertical => r.h as usize,
+        })
     }
 }
 
@@ -303,6 +410,25 @@ pub struct PlotInput<'a> {
     pub title: &'a str,
     pub footer: &'a str,
     pub colormap: Colormap,
+    /// Sample value the edge of the waveform strip stands for.
+    pub waveform_full_scale: f32,
+}
+
+/// The level the edge of the strip stands for, following `--ref`.
+///
+/// The reference is read in the time domain: the loudest *sample* rather than
+/// the loudest bin, because a sample is what the strip actually draws.
+///
+/// The scale is linear. A decibel strip was tried first, so that `-d` would
+/// size the strip and the colour bar alike, but a min/max span in decibels
+/// pins almost anything above the noise to the edges: a capture at -6 dBFS
+/// fills 90% of the half-height, and the shape the strip exists to show
+/// disappears into a solid band.
+pub fn waveform_full_scale(time_peak: f32, reference: DbReference) -> f32 {
+    match reference {
+        DbReference::FullScale => 1.0,
+        DbReference::Peak => time_peak.max(1e-6),
+    }
 }
 
 pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
@@ -331,8 +457,18 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
     if let Some(rect) = layout.spectrogram {
         draw_spectrogram(&mut canvas, &text, rect, layout.orientation, input);
     }
+    if let Some((rect, waveform)) = layout.waveform.zip(input.analysis.waveform.as_ref()) {
+        draw_waveform(
+            &mut canvas,
+            &text,
+            rect,
+            layout.orientation,
+            waveform,
+            input,
+        );
+    }
     if let Some(rect) = layout.psd {
-        draw_psd(&mut canvas, &text, rect, layout, input);
+        draw_psd(&mut canvas, &text, rect, layout.orientation, input);
     }
     if let Some(rect) = layout.colorbar {
         draw_colorbar(&mut canvas, &text, rect, input);
@@ -354,11 +490,11 @@ fn draw_spectrogram(
 
     match orientation {
         Orientation::Horizontal => {
-            time_axis_horizontal(canvas, text, rect, img);
+            time_axis_horizontal(canvas, text, rect, img, true);
             freq_axis_vertical(canvas, text, rect, img, true);
         }
         Orientation::Vertical => {
-            time_axis_vertical(canvas, text, rect, img);
+            time_axis_vertical(canvas, text, rect, img, true);
             freq_axis_horizontal(canvas, text, rect, img);
         }
     }
@@ -388,14 +524,13 @@ fn draw_psd(
     canvas: &mut RgbImage,
     text: &TextRenderer,
     rect: Rect,
-    layout: &Layout,
+    orientation: Orientation,
     input: &PlotInput<'_>,
 ) {
     fill(canvas, rect, Theme::PANEL);
     frame(canvas, rect);
 
     let psd = &input.analysis.psd;
-    let img = &input.analysis.spectrogram;
     if psd.db.is_empty() {
         return;
     }
@@ -408,8 +543,7 @@ fn draw_psd(
 
     // Frequency runs along whichever axis the spectrogram is not using for
     // time, so the two panels line up bin for bin.
-    let freq_vertical = matches!(layout.orientation, Orientation::Horizontal)
-        && !Layout::psd_is_standalone(layout.mode);
+    let freq_vertical = matches!(orientation, Orientation::Horizontal);
 
     let level_at = |i: usize| ((psd.db[i] - db_min) / span).clamp(0.0, 1.0);
 
@@ -454,10 +588,115 @@ fn draw_psd(
             previous = Some(y);
         }
         db_axis_vertical(canvas, text, rect, db_min, db_max);
-        if Layout::psd_is_standalone(layout.mode) {
-            freq_axis_horizontal(canvas, text, rect, img);
+    }
+}
+
+/// The time-domain strip: a min/max span per column, scaled to the reference.
+fn draw_waveform(
+    canvas: &mut RgbImage,
+    text: &TextRenderer,
+    rect: Rect,
+    orientation: Orientation,
+    waveform: &WaveformEnvelope,
+    input: &PlotInput<'_>,
+) {
+    fill(canvas, rect, Theme::PANEL);
+
+    let horizontal = matches!(orientation, Orientation::Horizontal);
+    let (columns, span) = if horizontal {
+        (rect.w, rect.h)
+    } else {
+        (rect.h, rect.w)
+    };
+    // Zero sits in the middle; each half carries the whole dB window.
+    let middle = if horizontal {
+        rect.y + span / 2
+    } else {
+        rect.x + span / 2
+    };
+    let half = ((span - 1) / 2).max(1);
+
+    if horizontal {
+        hline(canvas, rect.x, rect.right(), middle, Theme::GRID);
+        time_axis_horizontal(canvas, text, rect, &input.analysis.spectrogram, false);
+    } else {
+        vline(canvas, middle, rect.y, rect.bottom(), Theme::GRID);
+        time_axis_vertical(canvas, text, rect, &input.analysis.spectrogram, false);
+    }
+
+    let full_scale = input.waveform_full_scale.max(1e-6);
+    let offset = |value: f32| -> i64 {
+        let level = (value.abs() / full_scale).clamp(0.0, 1.0);
+        let distance = (level * half as f32).round() as i64;
+        if value >= 0.0 {
+            // Positive is up when time runs across, right when it runs down.
+            if horizontal { -distance } else { distance }
+        } else if horizontal {
+            distance
+        } else {
+            -distance
+        }
+    };
+
+    // I and Q are merged into one span rather than drawn as two traces. On a
+    // real capture their envelopes very nearly coincide, so the second colour
+    // ended up hidden under the first everywhere except at the extremes, and
+    // paid for that with a legend and a blend nobody could read.
+    let mut previous: Option<(i64, i64)> = None;
+    for step in 0..columns {
+        let column = (step as usize * waveform.columns) / columns.max(1) as usize;
+        let Some((mut lo, mut hi)) = merged_span(waveform, column, &offset) else {
+            continue;
+        };
+        // Join to the previous column so a trace moving faster than one column
+        // per pixel reads as a line rather than a dotted scatter.
+        if let Some((prev_lo, prev_hi)) = previous {
+            lo = lo.min(prev_hi);
+            hi = hi.max(prev_lo);
+        }
+        previous = Some((lo, hi));
+
+        if horizontal {
+            vline(
+                canvas,
+                rect.x + step,
+                middle + lo,
+                middle + hi + 1,
+                Theme::TRACE,
+            );
+        } else {
+            hline(
+                canvas,
+                middle + lo,
+                middle + hi + 1,
+                rect.y + step,
+                Theme::TRACE,
+            );
         }
     }
+
+    frame(canvas, rect);
+}
+
+/// The column's extent across every channel, in pixels from the centre line.
+///
+/// A complex signal is one track: the strip answers "how big was the signal
+/// here", and that is the wider of I and Q, not either on its own.
+fn merged_span(
+    waveform: &WaveformEnvelope,
+    column: usize,
+    offset: &impl Fn(f32) -> i64,
+) -> Option<(i64, i64)> {
+    let mut span: Option<(i64, i64)> = None;
+    for channel in 0..waveform.channels {
+        let (min, max) = waveform.column(column, channel)?;
+        let (lo, hi) = (offset(max).min(offset(min)), offset(max).max(offset(min)));
+        span = Some(match span {
+            Some((s_lo, s_hi)) => (s_lo.min(lo), s_hi.max(hi)),
+            None => (lo, hi),
+        });
+    }
+    span
 }
 
 /// dB bounds that fit the trace with a little air around it.
@@ -511,6 +750,7 @@ fn time_axis_horizontal(
     text: &TextRenderer,
     rect: Rect,
     img: &SpectrogramImage,
+    labels: bool,
 ) {
     for value in nice_time_ticks(img.t0, img.t1, 8) {
         let t = (value - img.t0) / (img.t1 - img.t0).max(1e-9);
@@ -519,6 +759,9 @@ fn time_axis_horizontal(
             continue;
         }
         vline(canvas, x, rect.y, rect.bottom(), Theme::GRID);
+        if !labels {
+            continue;
+        }
         vline(canvas, x, rect.bottom(), rect.bottom() + 3, Theme::AXIS);
         text.draw(
             canvas,
@@ -537,6 +780,7 @@ fn time_axis_vertical(
     text: &TextRenderer,
     rect: Rect,
     img: &SpectrogramImage,
+    labels: bool,
 ) {
     for value in nice_time_ticks(img.t0, img.t1, 6) {
         let t = (value - img.t0) / (img.t1 - img.t0).max(1e-9);
@@ -545,6 +789,9 @@ fn time_axis_vertical(
             continue;
         }
         hline(canvas, rect.x, rect.right(), y, Theme::GRID);
+        if !labels {
+            continue;
+        }
         hline(canvas, rect.x - 3, rect.x, y, Theme::AXIS);
         text.draw(
             canvas,

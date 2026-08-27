@@ -15,7 +15,7 @@
 
 use argand_core::{
     Colormap, Psd, SampleRange, SampleSource, SignalMeta, SourceError, SpectrogramImage,
-    gradient_index,
+    WaveformEnvelope, gradient_index,
 };
 use rayon::prelude::*;
 use realfft::{RealFftPlanner, RealToComplex};
@@ -23,6 +23,7 @@ use rustfft::num_complex::Complex32;
 use rustfft::{Fft, FftPlanner};
 use std::sync::Arc;
 
+use crate::waveform::EnvelopeBuilder;
 use crate::window::{Window, WindowTable};
 
 /// Samples pulled from the source per block. Large enough that the read cost
@@ -173,6 +174,8 @@ pub enum DspError {
 pub struct Analysis {
     pub spectrogram: SpectrogramImage,
     pub psd: Psd,
+    /// Time-domain envelope, present only when one was asked for.
+    pub waveform: Option<WaveformEnvelope>,
     /// Largest absolute sample value seen, on the unit scale.
     pub time_peak: f32,
     pub frames: u64,
@@ -180,23 +183,49 @@ pub struct Analysis {
     pub enbw_hz: f64,
 }
 
-/// Run the transform over `range` and render both views of it.
+/// What one pass over the signal should produce.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnalysisRequest {
+    pub cfg: StftConfig,
+    pub range: SampleRange,
+    /// Spectrogram size in pixels, on the transform's own (time, frequency)
+    /// axes rather than the image's.
+    pub width: usize,
+    pub height: usize,
+    pub reduce: Reduce,
+    pub colormap: Colormap,
+    pub dynamic_range_db: f32,
+    pub reference: DbReference,
+    /// Columns of time-domain envelope to build, or `None` for no waveform.
+    ///
+    /// Matching this to `width` is what keeps a waveform panel aligned with
+    /// the spectrogram it sits beside.
+    pub waveform_columns: Option<usize>,
+}
+
+/// Run the transform over the requested range and render every view of it.
 ///
-/// The spectrogram and the averaged spectrum come from the same frames, so
-/// asking for both costs one pass over the file, not two.
-#[allow(clippy::too_many_arguments)]
+/// The spectrogram, the averaged spectrum and the time-domain envelope all
+/// come from the same streamed blocks, so asking for all three costs one pass
+/// over the file rather than three.
 pub fn analyze(
     src: &mut dyn SampleSource,
-    cfg: &StftConfig,
-    range: SampleRange,
-    out_width: usize,
-    out_height: usize,
-    reduce: Reduce,
-    colormap: Colormap,
-    dynamic_range_db: f32,
-    reference: DbReference,
+    request: &AnalysisRequest,
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<Analysis, DspError> {
+    let AnalysisRequest {
+        cfg,
+        range,
+        width: out_width,
+        height: out_height,
+        reduce,
+        colormap,
+        dynamic_range_db,
+        reference,
+        waveform_columns,
+    } = *request;
+    let cfg = &cfg;
+
     if cfg.fft_size < 2 || !cfg.fft_size.is_power_of_two() {
         return Err(DspError::BadFftSize(cfg.fft_size));
     }
@@ -228,11 +257,17 @@ pub fn analyze(
     let mut time_peak = 0.0f32;
 
     let channels = meta.channels();
+    let mut envelope = waveform_columns
+        .filter(|c| *c > 0)
+        .map(|c| EnvelopeBuilder::new(c, channels, range.len));
     let mut buf = vec![0.0f32; BLOCK_SAMPLES.max(cfg.fft_size) * channels];
     let capacity = buf.len() / channels;
     let mut filled = 0usize;
     let mut remaining = range.len;
     let mut frame_base = 0u64;
+    // Range index of `buf[0]`, and how much of the range the envelope has seen.
+    let mut buf_start = 0u64;
+    let mut folded = 0u64;
 
     src.seek(range.start)?;
     progress(0, total_frames);
@@ -249,6 +284,17 @@ pub fn analyze(
             let samples = got / channels;
             filled += samples;
             remaining -= samples as u64;
+        }
+
+        // Fold before the frame check: the last block can be shorter than one
+        // transform and still hold samples the strip has to show.
+        if let Some(builder) = envelope.as_mut() {
+            let available = buf_start + filled as u64;
+            if available > folded {
+                let from = (folded - buf_start) as usize * channels;
+                builder.fold(&buf[from..filled * channels], folded);
+                folded = available;
+            }
         }
 
         if filled < cfg.fft_size {
@@ -291,9 +337,27 @@ pub fn analyze(
         let consumed = frames_here * cfg.hop;
         buf.copy_within(consumed * channels..filled * channels, 0);
         filled -= consumed;
+        buf_start += consumed as u64;
 
         if frame_base >= total_frames || (remaining == 0 && filled < cfg.fft_size) {
             break;
+        }
+    }
+
+    // The frame loop stops at the last whole transform, which can leave up to
+    // one hop unread. The strip spans the same time axis as the spectrogram,
+    // so those samples are read rather than left to a borrowed column.
+    if let Some(builder) = envelope.as_mut() {
+        while remaining > 0 {
+            let want = remaining.min(capacity as u64) as usize;
+            let got = src.read(&mut buf[..want * channels])?;
+            if got == 0 {
+                break;
+            }
+            let samples = got / channels;
+            builder.fold(&buf[..samples * channels], folded);
+            folded += samples as u64;
+            remaining -= samples as u64;
         }
     }
 
@@ -331,6 +395,12 @@ pub fn analyze(
     };
 
     Ok(Analysis {
+        waveform: envelope.map(|b| {
+            b.finish(
+                range.start as f64 / meta.sample_rate,
+                range.end() as f64 / meta.sample_rate,
+            )
+        }),
         spectrogram,
         psd,
         time_peak,

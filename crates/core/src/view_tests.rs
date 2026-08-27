@@ -47,3 +47,22 @@ fn floor_ignores_a_lone_strong_carrier() {
     let p = psd(&[0.0, 1.0, 2.0, 3.0, 4.0], &[-87.0, -86.0, -87.2, -88.0, 0.0]);
     assert_eq!(p.floor_db().unwrap(), -87.0);
 }
+
+#[test]
+fn an_envelope_addresses_channels_within_a_column() {
+    let mut env = WaveformEnvelope::new(3, 2);
+    assert_eq!(env.min.len(), 6);
+    assert_eq!(env.column(0, 0), Some((0.0, 0.0)));
+
+    // Column 1: I spans [-0.5, 0.5], Q spans [-0.1, 0.9].
+    env.min[2] = -0.5;
+    env.max[2] = 0.5;
+    env.min[3] = -0.1;
+    env.max[3] = 0.9;
+    assert_eq!(env.column(1, 0), Some((-0.5, 0.5)));
+    assert_eq!(env.column(1, 1), Some((-0.1, 0.9)));
+
+    assert_eq!(env.column(1, 2), None, "no third channel");
+    assert_eq!(env.column(3, 0), None, "no fourth column");
+    assert_eq!(env.peak(), 0.9);
+}

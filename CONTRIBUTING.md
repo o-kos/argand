@@ -51,7 +51,13 @@ Run relevant tests throughout implementation. Before requesting final review, ru
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
+cargo build --release --locked
 ```
+
+The release build comes last, after every other check has passed, so that
+`target/release/` holds a binary built from the branch as submitted. Never
+demonstrate, measure, or diagnose behaviour with a binary left over from
+earlier code.
 
 Document any additional validation or explain why a standard check does not apply.
 
@@ -60,9 +66,10 @@ Document any additional validation or explain why a standard check does not appl
 Before marking the Pull Request ready for final review:
 
 1. complete every in-scope plan task and validation item;
-2. move the plan to `docs/plans/completed/` in a final commit;
-3. update the Pull Request description if its scope or validation changed;
-4. mark the Pull Request ready for review.
+2. rebuild the release binary so it matches the final state of the branch;
+3. move the plan to `docs/plans/completed/` in a final commit;
+4. update the Pull Request description if its scope or validation changed;
+5. mark the Pull Request ready for review.
 
 After all checks pass and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the branch after merge. The linked Issue closes through the Pull Request keyword.
 

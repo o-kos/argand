@@ -58,6 +58,60 @@ impl SpectrogramImage {
     }
 }
 
+/// A time-domain min/max envelope, one column per output pixel.
+///
+/// Min and max are kept rather than a single decimated value because a burst
+/// shorter than a column is the thing a capture is usually being checked for,
+/// and averaging is exactly what loses it.
+///
+/// Values stay linear and on the [-1, 1] scale the transform worked with.
+/// Mapping them to a decibel window is a presentation choice and belongs to
+/// whatever draws the envelope.
+#[derive(Debug, Clone)]
+pub struct WaveformEnvelope {
+    pub columns: usize,
+    /// 1 for a real signal, 2 for interleaved I/Q.
+    pub channels: usize,
+    /// `columns * channels` values, channel-interleaved: every channel of
+    /// column 0, then every channel of column 1.
+    pub min: Vec<f32>,
+    pub max: Vec<f32>,
+    /// Time extent in seconds, from the start of the file.
+    pub t0: f64,
+    pub t1: f64,
+}
+
+impl WaveformEnvelope {
+    pub fn new(columns: usize, channels: usize) -> Self {
+        Self {
+            columns,
+            channels,
+            min: vec![0.0; columns * channels],
+            max: vec![0.0; columns * channels],
+            t0: 0.0,
+            t1: 0.0,
+        }
+    }
+
+    /// Lowest and highest value `column` reached on `channel`.
+    pub fn column(&self, column: usize, channel: usize) -> Option<(f32, f32)> {
+        if channel >= self.channels {
+            return None;
+        }
+        let i = column * self.channels + channel;
+        Some((*self.min.get(i)?, *self.max.get(i)?))
+    }
+
+    /// Largest excursion from zero anywhere in the envelope.
+    pub fn peak(&self) -> f32 {
+        self.min
+            .iter()
+            .chain(self.max.iter())
+            .filter(|v| v.is_finite())
+            .fold(0.0f32, |m, v| m.max(v.abs()))
+    }
+}
+
 /// An averaged power spectrum.
 #[derive(Debug, Clone, Serialize)]
 pub struct Psd {

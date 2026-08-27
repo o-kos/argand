@@ -8,7 +8,7 @@ See [`AGENTS.md`](../../AGENTS.md) for the technology stack and architecture. Ea
 
 ## Current CLI implementation
 
-Before the GUI, the project gained the `aspec` CLI in `crates/cli`. It renders a signal file's spectrogram and averaged spectrum to PNG. It is not a disposable prototype: the domain model, readers, and transforms live in `argand-core`, `argand-io`, and `argand-dsp`, and the GUI will reuse them unchanged. See [`README.md`](../../README.md) for details.
+Before the GUI, the project gained the `aspec` CLI in `crates/cli`. It renders a signal file's spectrogram to PNG, with a waveform strip on the same time axis and an optional averaged spectrum. It is not a disposable prototype: the domain model, readers, and transforms live in `argand-core`, `argand-io`, and `argand-dsp`, and the GUI will reuse them unchanged. See [`README.md`](../../README.md) for details.
 
 The following work is complete:
 
@@ -62,7 +62,7 @@ Goal: open a file and obtain an in-memory representation of its signal.
 Goal: provide fast time-domain viewing, zooming, and panning.
 
 - Build a min/max peak pyramid in background work in `argand-dsp`.
-- Expose `WaveformEnvelope` as a toolkit-independent render model from `argand-core`.
+- Expose `WaveformEnvelope` as a toolkit-independent render model from `argand-core`. Done: `aspec` builds a single-level envelope during the transform pass; the GUI adds the pyramid levels above it.
 - Render the envelope with GPUI paths or quads, choose level of detail by zoom, and provide zoom, pan, scrolling, and a time axis.
 - Show I and Q in one track for complex signals and prepare the view for spectrogram mode.
 

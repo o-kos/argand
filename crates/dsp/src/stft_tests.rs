@@ -89,17 +89,30 @@ fn run_with(
     let range = SampleRange::new(0, src.meta().len_samples);
     analyze(
         src,
-        &StftConfig::new(FFT, Window::Hann),
-        range,
-        width,
-        height,
-        reduce,
-        Colormap::Grayscale,
-        dynamic_range,
-        reference,
+        &AnalysisRequest {
+            reduce,
+            reference,
+            dynamic_range_db: dynamic_range,
+            ..request(width, height, range)
+        },
         &mut |_, _| {},
     )
     .expect("analysis should succeed")
+}
+
+/// The defaults every test starts from; each one overrides what it is about.
+fn request(width: usize, height: usize, range: SampleRange) -> AnalysisRequest {
+    AnalysisRequest {
+        cfg: StftConfig::new(FFT, Window::Hann),
+        range,
+        width,
+        height,
+        reduce: Reduce::Max,
+        colormap: Colormap::Grayscale,
+        dynamic_range_db: 110.0,
+        reference: DbReference::FullScale,
+        waveform_columns: None,
+    }
 }
 
 #[test]
@@ -308,14 +321,7 @@ fn a_range_selects_part_of_the_signal() {
     let mut src = VecSource::new(Domain::Iq, iq_tone(24_000, TONE_HZ, 1.0), 0.0);
     let analysis = analyze(
         &mut src,
-        &StftConfig::new(FFT, Window::Hann),
-        SampleRange::new(6_000, 12_000),
-        16,
-        16,
-        Reduce::Max,
-        Colormap::Grayscale,
-        110.0,
-        DbReference::FullScale,
+        &request(16, 16, SampleRange::new(6_000, 12_000)),
         &mut |_, _| {},
     )
     .unwrap();
@@ -329,18 +335,9 @@ fn progress_runs_from_zero_to_the_frame_count() {
     let mut src = VecSource::new(Domain::Iq, iq_tone(20_000, TONE_HZ, 1.0), 0.0);
     let mut seen: Vec<(u64, u64)> = Vec::new();
     let range = SampleRange::new(0, src.meta().len_samples);
-    let analysis = analyze(
-        &mut src,
-        &StftConfig::new(FFT, Window::Hann),
-        range,
-        16,
-        16,
-        Reduce::Max,
-        Colormap::Grayscale,
-        110.0,
-        DbReference::FullScale,
-        &mut |done, total| seen.push((done, total)),
-    )
+    let analysis = analyze(&mut src, &request(16, 16, range), &mut |done, total| {
+        seen.push((done, total))
+    })
     .unwrap();
 
     assert_eq!(seen.first().unwrap().0, 0);
@@ -356,14 +353,10 @@ fn rejects_configurations_it_cannot_honour() {
     let call = |src: &mut VecSource, cfg: StftConfig, w: usize, h: usize| {
         analyze(
             src,
-            &cfg,
-            range,
-            w,
-            h,
-            Reduce::Max,
-            Colormap::Grayscale,
-            110.0,
-            DbReference::FullScale,
+            &AnalysisRequest {
+                cfg,
+                ..request(w, h, range)
+            },
             &mut |_, _| {},
         )
     };
@@ -393,17 +386,62 @@ fn rejects_configurations_it_cannot_honour() {
     let mut tiny = VecSource::new(Domain::Iq, iq_tone(100, TONE_HZ, 1.0), 0.0);
     let err = analyze(
         &mut tiny,
-        &StftConfig::new(FFT, Window::Hann),
-        SampleRange::new(0, 100),
-        8,
-        8,
-        Reduce::Max,
-        Colormap::Grayscale,
-        110.0,
-        DbReference::FullScale,
+        &request(8, 8, SampleRange::new(0, 100)),
         &mut |_, _| {},
     );
     assert!(matches!(err, Err(DspError::TooShort { samples: 100, .. })));
+}
+
+#[test]
+fn the_envelope_shares_the_spectrogram_time_axis() {
+    let mut src = VecSource::new(Domain::Iq, iq_tone(24_000, TONE_HZ, 0.8), 0.0);
+    let analysis = analyze(
+        &mut src,
+        &AnalysisRequest {
+            waveform_columns: Some(64),
+            ..request(64, 32, SampleRange::new(6_000, 12_000))
+        },
+        &mut |_, _| {},
+    )
+    .unwrap();
+
+    let waveform = analysis.waveform.expect("a waveform was asked for");
+    assert_eq!(waveform.columns, 64);
+    assert_eq!(waveform.channels, 2, "i/q keeps both channels");
+    assert_eq!(waveform.t0, analysis.spectrogram.t0);
+    assert_eq!(waveform.t1, analysis.spectrogram.t1);
+    // A unit-amplitude tone: both channels reach their amplitude everywhere.
+    assert!((waveform.peak() - 0.8).abs() < 1e-3, "{}", waveform.peak());
+}
+
+#[test]
+fn no_waveform_is_built_unless_one_is_asked_for() {
+    let mut src = VecSource::new(Domain::Real, real_tone(4096, TONE_HZ, 0.5), 0.0);
+    assert!(run(&mut src, 16, 16).waveform.is_none());
+}
+
+#[test]
+fn the_envelope_covers_the_tail_past_the_last_whole_frame() {
+    // 5000 samples with hop 256: the last frame ends at 4864, so the frame
+    // loop never reads the final 136 samples. The strip still has to show them.
+    let mut data = real_tone(5000, TONE_HZ, 0.1);
+    data[4990] = 0.95;
+    let mut src = VecSource::new(Domain::Real, data, 0.0);
+
+    let analysis = analyze(
+        &mut src,
+        &AnalysisRequest {
+            cfg: StftConfig::new(FFT, Window::Hann),
+            waveform_columns: Some(25),
+            ..request(25, 16, SampleRange::new(0, 5000))
+        },
+        &mut |_, _| {},
+    )
+    .unwrap();
+
+    let waveform = analysis.waveform.expect("a waveform was asked for");
+    let (_, max) = waveform.column(24, 0).expect("the last column");
+    assert_eq!(max, 0.95, "the tail spike never reached the envelope");
 }
 
 #[test]

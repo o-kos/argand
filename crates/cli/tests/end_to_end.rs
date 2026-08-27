@@ -318,20 +318,21 @@ fn a_span_can_be_selected_out_of_a_longer_capture() {
 }
 
 #[test]
-fn every_mode_and_orientation_produces_a_png() {
+fn every_panel_set_and_orientation_produces_a_png() {
     let dir = TempDir::new("e2e-layout");
     let sample_type = "iq_i16".parse().unwrap();
     let values = iq_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
     let input = write_wav(&dir.join("x.wav"), sample_type, RATE, &values, 1.0);
 
     let mut sizes = Vec::new();
-    for mode in ["spectrogram", "psd", "both"] {
+    for panels in ["none", "waveform", "psd", "waveform,psd,db"] {
         for orientation in ["horizontal", "vertical"] {
-            let output = png(&dir, &format!("{mode}-{orientation}.png"));
+            let name = panels.replace(',', "-");
+            let output = png(&dir, &format!("{name}-{orientation}.png"));
             let out = run(&[
                 input.to_str().unwrap(),
-                "--mode",
-                mode,
+                "--panels",
+                panels,
                 "--orientation",
                 orientation,
                 "-f",
@@ -344,7 +345,7 @@ fn every_mode_and_orientation_produces_a_png() {
             ]);
             assert!(
                 out.status.success(),
-                "{mode}/{orientation}: {}",
+                "{panels}/{orientation}: {}",
                 String::from_utf8_lossy(&out.stderr)
             );
             assert_png(&output);
@@ -355,6 +356,56 @@ fn every_mode_and_orientation_produces_a_png() {
         sizes.iter().collect::<std::collections::HashSet<_>>().len() > 1,
         "the layouts should not all render identically"
     );
+}
+
+#[test]
+fn the_default_render_is_a_waveform_and_a_spectrogram() {
+    let dir = TempDir::new("e2e-default-panels");
+    let sample_type = "iq_i16".parse().unwrap();
+    let values = iq_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
+    let input = write_wav(&dir.join("x.wav"), sample_type, RATE, &values, 1.0);
+
+    let report = run_json(
+        &[
+            &[
+                input.to_str().unwrap(),
+                "-o",
+                png(&dir, "default.png").to_str().unwrap(),
+            ],
+            fft_args().as_slice(),
+        ]
+        .concat(),
+    );
+    assert_eq!(report["output"]["panels"], "waveform");
+
+    // The spectrum panel is opt-in, but the report still measures one: the
+    // transform runs whatever is drawn.
+    assert!(report["peak_bin"]["bin"].is_number());
+    assert!(report["stft"]["frames"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn an_unusable_panel_list_is_refused_with_an_explanation() {
+    let dir = TempDir::new("e2e-bad-panels");
+    let sample_type = "rl_i16".parse().unwrap();
+    let values = real_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
+    let input = write_wav(&dir.join("x.wav"), sample_type, RATE, &values, 1.0);
+
+    for (panels, expected) in [
+        // The spectrogram is not a panel: it is always drawn.
+        ("spectrogram", "waveform, psd, db, none"),
+        ("waterfall", "unknown panel"),
+        ("", "use `none`"),
+        ("none,db", "cannot be combined"),
+    ] {
+        let out = run(&[input.to_str().unwrap(), "--panels", panels, "--quiet"]);
+        assert!(!out.status.success(), "--panels {panels} was accepted");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(expected),
+            "--panels {panels} said: {stderr}"
+        );
+    }
 }
 
 #[test]
