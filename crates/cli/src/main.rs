@@ -26,7 +26,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::cli::Args;
 use crate::render::{Layout, PlotInput};
-use crate::report::Report;
+use crate::report::{Report, Scaling};
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -118,42 +118,35 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
         bail!("image {width}x{height} leaves no room for the plot; try a larger --image-size");
     }
 
+    // Built once and handed to both the transform and the report, so the
+    // report cannot end up describing settings the transform never used.
+    let request = AnalysisRequest {
+        cfg,
+        range,
+        width: transform_w,
+        height: transform_h,
+        reduce: args.reduce,
+        colormap: args.color_scheme,
+        dynamic_range_db: args.dynamic_range,
+        reference: args.reference,
+        waveform_columns: layout.waveform_columns(),
+    };
+
     let progress = make_progress(args, index, total);
-    let analysis = analyze(
-        source.as_mut(),
-        &AnalysisRequest {
-            cfg,
-            range,
-            width: transform_w,
-            height: transform_h,
-            reduce: args.reduce,
-            colormap: args.color_scheme,
-            dynamic_range_db: args.dynamic_range,
-            reference: args.reference,
-            waveform_columns: layout.waveform_columns(),
-        },
-        &mut |done, total| {
-            progress.set_length(total);
-            progress.set_position(done);
-        },
-    )
+    let analysis = analyze(source.as_mut(), &request, &mut |done, total| {
+        progress.set_length(total);
+        progress.set_position(done);
+    })
     .context("computing the spectrum")?;
     progress.finish_and_clear();
 
-    let effective_normalize = args
-        .normalize
-        .unwrap_or_else(|| Normalize::default_for(meta.sample_type.format));
-    let mut report = Report::new(
-        &meta,
-        &analysis,
-        &cfg,
-        args.reduce,
-        args.reference,
-        args.dynamic_range,
-        effective_normalize,
-        args.gain,
-        range.len as f64 / meta.sample_rate,
-    );
+    let scaling = Scaling {
+        normalize: args
+            .normalize
+            .unwrap_or_else(|| Normalize::default_for(meta.sample_type.format)),
+        gain_db: args.gain,
+    };
+    let mut report = Report::new(&meta, &analysis, &request, scaling);
 
     let canvas = render::render(
         &layout,
