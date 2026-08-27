@@ -95,24 +95,26 @@ keeps going after an individual failure.
 - [x] Add the `[n/N]` file counter to the progress bar.
 - [x] Update `README.md` and the CLI help and examples.
 - [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use ➕ for tasks discovered after implementation begins and ⚠️ for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked -- -D warnings`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Matcher tests cover `*`, `?`, ranges, negation, the leading-dot rule and rejected
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked -- -D warnings`
+- [x] `cargo test --locked`: 218 tests, all passing.
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Matcher tests cover `*`, `?`, ranges, negation, the leading-dot rule and rejected
       patterns.
-- [ ] Resolver tests cover exact paths, masks, sorting, deduplication, zero matches and
+- [x] Resolver tests cover exact paths, masks, sorting, deduplication, zero matches and
       metacharacters in a directory component.
-- [ ] End-to-end tests cover a batch, a batch with one failing file and its exit status,
+- [x] End-to-end tests cover a batch, a batch with one failing file and its exit status,
       `-o` rejected for a batch, every output mode, and the error text that no longer
       repeats itself.
-- [ ] Run a real batch over `tests/signals/` and read the summary.
+- [x] Run a real batch over `tests/signals/` and read the summary. Four masks over the
+      twelve captures there, including the two 30-minute I/Q files and two names holding
+      spaces, rendered in 1.26 s with `processed 12 · 12 succeeded · 0 failed`.
 
 ## Post-completion
 
