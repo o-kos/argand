@@ -69,6 +69,8 @@ pub struct OutputReport {
     pub width: u32,
     pub height: u32,
     pub bytes: u64,
+    /// Panels drawn beside the spectrogram, as `--panels` spelled them.
+    pub panels: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -151,12 +153,20 @@ impl Report {
         }
     }
 
-    pub fn with_output(mut self, path: &Path, width: u32, height: u32, bytes: u64) -> Self {
+    pub fn with_output(
+        mut self,
+        path: &Path,
+        width: u32,
+        height: u32,
+        bytes: u64,
+        panels: String,
+    ) -> Self {
         self.output = Some(OutputReport {
             path: path.display().to_string(),
             width,
             height,
             bytes,
+            panels,
         });
         self
     }

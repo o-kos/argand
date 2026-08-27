@@ -10,17 +10,22 @@ use argand_dsp::{DbReference, Reduce, Window};
 use argand_io::{Normalize, RawSpec, parse_hz, parse_time};
 use clap::{ArgAction, Parser};
 
-use crate::render::{Mode, Orientation};
+use crate::render::{Orientation, Panels};
 
 #[derive(Parser, Debug)]
 #[command(
     name = "aspec",
     version,
     about = "Render a signal file's spectrum to a PNG",
-    long_about = "Render a signal file's spectrogram and averaged spectrum to a PNG.\n\n\
+    long_about = "Render a signal file's spectrogram to a PNG, with a waveform strip above it.\n\n\
                   The container is detected from the file's content, not its extension, so \
                   .wav, .iqw and .wavs captures all work. A file with no header needs --raw.",
     after_help = concat!(
+        "PANELS:\n    ",
+        "The spectrogram is always drawn; --panels selects what joins it.\n    ",
+        "waveform, psd, db (the colour bar), or none for the spectrogram alone.\n\n",
+        "    The waveform strip is a min/max envelope scaled to the --ref level,\n",
+        "    so a burst shorter than one pixel column still shows.\n\n",
         "SAMPLE TYPES:\n    ",
         "rl_u8, rl_i16, rl_i32, rl_f32, rl_f16x8 (real)\n    ",
         "iq_u8, iq_i16, iq_i32, iq_f32, iq_f16x8 (complex, I/Q interleaved)\n\n",
@@ -29,7 +34,8 @@ use crate::render::{Mode, Orientation};
         "aspec capture.iqw -o spec.png\n    ",
         "aspec dump.bin --raw iq_i16@24k --center 12.579M\n    ",
         "aspec quiet.wav --normalize auto --ref peak\n    ",
-        "aspec long.iqw --start 5m --duration 30s --orientation v",
+        "aspec long.iqw --start 5m --duration 30s --orientation v\n    ",
+        "aspec capture.iqw --panels waveform,psd,db",
     )
 )]
 pub struct Args {
@@ -92,10 +98,14 @@ pub struct Args {
     #[arg(short = 'i', long, value_name = "WxH", default_value = "2048x512", value_parser = image_size)]
     pub image_size: (u32, u32),
 
-    /// Which panels to draw
-    #[arg(long, value_name = "MODE", default_value = "both",
-          help = concat!("Which panels to draw [", "spectrogram, psd, both", "]"))]
-    pub mode: Mode,
+    /// Panels drawn beside the spectrogram, which is always present
+    #[arg(
+        long,
+        value_name = "P",
+        default_value = "waveform",
+        help = "Panels beside the spectrogram [waveform, psd, db, none]"
+    )]
+    pub panels: Panels,
 
     /// Time axis direction: horizontal (across) or vertical (waterfall)
     #[arg(long, value_name = "DIR", default_value = "horizontal")]

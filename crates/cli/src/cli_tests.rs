@@ -22,7 +22,7 @@ fn defaults_match_the_documented_ones() {
     assert_eq!(args.dynamic_range, 110.0);
     assert_eq!(args.reduce, Reduce::Max);
     assert_eq!(args.reference, DbReference::FullScale);
-    assert_eq!(args.mode, Mode::Both);
+    assert_eq!(args.panels.to_string(), "waveform");
     assert_eq!(args.orientation, Orientation::Horizontal);
     assert_eq!(args.center, 0.0);
     assert_eq!(args.gain, 0.0);
@@ -115,7 +115,9 @@ fn bad_values_are_rejected_with_a_useful_message() {
         (vec!["x.wav", "-t", "iq_f64"], "iq_f16x8"),
         (vec!["x.wav", "-w", "kaiser"], "hann"),
         (vec!["x.wav", "-c", "plasma"], "viridis"),
-        (vec!["x.wav", "--mode", "waterfall"], "spectrogram"),
+        (vec!["x.wav", "--panels", "waterfall"], "unknown panel"),
+        (vec!["x.wav", "--panels", "spectrogram"], "waveform, psd, db, none"),
+        (vec!["x.wav", "--panels", "none,psd"], "cannot be combined"),
         (vec!["x.wav", "--orientation", "sideways"], "horizontal"),
         (vec!["x.wav", "--reduce", "median"], "mean"),
         (vec!["x.wav", "--ref", "loudest"], "peak"),

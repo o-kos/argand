@@ -38,11 +38,15 @@ colour bar become opt-in.
   `(64, 64)` fallback.
 - The waveform is a fixed 64-pixel strip -- a mini-map, not a full panel. It has a frame
   and a centre line but no labelled amplitude axis of its own.
-- The strip's vertical scale is logarithmic over the same dB window as the colour bar:
-  distance from the centre line is `(20*log10|v| - db_min) / (db_max - db_min)`, with
-  `db_max` at 0 dBFS under `--ref fs` and at `20*log10(time_peak)` under `--ref peak`,
-  and `db_min = db_max - dynamic_range`. `-d` therefore scales the strip and the colour
-  bar together, and the existing plot footer already states that window.
+- The strip's vertical scale is linear, with the edge standing for the `--ref` level:
+  full scale under `--ref fs`, the loudest sample under `--ref peak`. The reference is
+  read in the time domain, because a sample is what the strip draws.
+- ➕ That scale was logarithmic over the `-d` window first, so the strip and the colour
+  bar would size together. It was changed after seeing it on a real capture: a min/max
+  span in decibels pins anything above the noise to the edges -- a capture at -6 dBFS
+  fills 90% of the half-height -- and the strip became a solid band with no shape in it.
+  A linear strip of the same capture shows the level rising past the 25th minute,
+  individual bursts, and the I and Q traces apart from one another.
 - `WaveformEnvelope` stores linear min/max. Mapping to dB is a presentation choice and
   belongs to `argand-cli`; a GUI may want the linear values.
 - The envelope is built during the STFT pass rather than in a pass of its own, so the
@@ -72,10 +76,10 @@ spectrogram to explain. The remaining criteria are unchanged.
   of the default render for no gain.
 - Skipping the STFT when no spectral panel is requested. Moot once the spectrogram is
   unconditional, and it would have cost the report its `peak_bin`, `floor` and `hint`.
-- A linear amplitude scale for the strip, fixed at full scale or auto-fitted to the peak.
-  Rejected in favour of tying the strip to `-d` so both views of the signal share one
-  window. If the logarithmic strip reads poorly in practice, a `--waveform-scale`
-  option can follow as separate work.
+- A logarithmic strip over the `-d` window, so `-d` would scale both views of the signal
+  at once. Implemented, rendered and rejected on the evidence; see the decision above.
+- A `--waveform-scale linear|db` option offering both. Rejected as an option nobody would
+  reach for once the decibel strip was seen: it has no reading the linear one lacks.
 - Building the multi-level min/max pyramid now. That belongs to Phase 2 of the roadmap;
   the CLI needs exactly one level, at the output width.
 
@@ -87,14 +91,15 @@ spectrogram to explain. The remaining criteria are unchanged.
       pass, including the sub-hop tail the frame loop leaves unread.
 - [x] Replace `analyze`'s positional parameters with `AnalysisRequest` and return the
       envelope on `Analysis`.
-- [ ] Replace `Mode` with `Panels` (`waveform`, `psd`, `db`, `none`) and wire
+- [x] Replace `Mode` with `Panels` (`waveform`, `psd`, `db`, `none`) and wire
       `--panels` into the CLI with clear errors for unknown, empty and mixed `none`
       values.
-- [ ] Lay out the waveform strip above the spectrogram when horizontal and to its right
+- [x] Lay out the waveform strip above the spectrogram when horizontal and to its right
       when vertical, sharing the time axis, with the PSD and colour bar opt-in.
-- [ ] Draw the strip: min/max spans on the shared dB window, joined between columns,
-      with colour-coded alpha-blended I and Q traces and a legend for complex signals.
-- [ ] Record the panel set in the JSON report.
+- [x] Draw the strip: min/max spans scaled to the reference level, joined between
+      columns, with colour-coded alpha-blended I and Q traces and a legend for complex
+      signals.
+- [x] Record the panel set in the JSON report.
 - [ ] Update `README.md`, the CLI help and examples, and the `aspec` description in
       `docs/plans/IMPLEMENTATION_PLAN.md`.
 - [ ] Complete validation.

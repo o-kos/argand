@@ -62,7 +62,7 @@ fn run(args: &Args) -> Result<()> {
     };
 
     let (width, height) = args.image_size;
-    let layout = Layout::compute(width, height, args.mode, args.orientation);
+    let layout = Layout::compute(width, height, args.panels, args.orientation);
     let (transform_w, transform_h) = layout.transform_size();
     if transform_w == 0 || transform_h == 0 {
         bail!("image {width}x{height} leaves no room for the plot; try a larger --image-size");
@@ -80,7 +80,7 @@ fn run(args: &Args) -> Result<()> {
             colormap: args.color_scheme,
             dynamic_range_db: args.dynamic_range,
             reference: args.reference,
-            waveform_columns: None,
+            waveform_columns: layout.waveform_columns(),
         },
         &mut |done, total| {
             progress.set_length(total);
@@ -112,6 +112,7 @@ fn run(args: &Args) -> Result<()> {
             title: &report.plot_title(),
             footer: &report.plot_footer(),
             colormap: args.color_scheme,
+            waveform_full_scale: render::waveform_full_scale(analysis.time_peak, args.reference),
         },
     );
 
@@ -121,7 +122,7 @@ fn run(args: &Args) -> Result<()> {
         .with_context(|| format!("writing {}", output.display()))?;
     let bytes = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
 
-    report = report.with_output(&output, width, height, bytes);
+    report = report.with_output(&output, width, height, bytes, args.panels.to_string());
     report.elapsed_seconds = started.elapsed().as_secs_f64();
 
     if args.json {
