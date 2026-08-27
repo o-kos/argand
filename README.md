@@ -11,8 +11,9 @@ captures as first-class citizens rather than an afterthought. See
 [CONTRIBUTING.md](CONTRIBUTING.md) before starting a change.
 
 The GUI is not built yet. What exists today is `aspec`, a command line tool
-that renders a signal file's spectrogram and averaged spectrum to a PNG. It is
-not a throwaway: the domain model, the readers and the transforms live in
+that renders a signal file's spectrogram to a PNG, with a waveform strip above
+it. It is not a throwaway: the domain model, the readers and the transforms
+live in
 `argand-core`, `argand-io` and `argand-dsp`, which the GPUI front end will use
 unchanged. `aspec` only turns their output into an image.
 
@@ -51,6 +52,7 @@ aspec capture.iqw -o spec.png
 aspec dump.bin --raw iq_i16@24k --center 12.579M
 aspec quiet.wav --normalize auto --ref peak -d 40
 aspec long.iqw --start 5m --duration 30s --orientation v
+aspec capture.iqw --panels waveform,psd,db
 ```
 
 The container is detected from the file's content, not its extension, so
@@ -90,7 +92,7 @@ Short flags match the sgvr CLI (`-f -w -c -i -d`) on purpose.
       --reduce <R>          max or mean, when frames share a column [max]
 
   -i, --image-size <WxH>    [2048x512]
-      --mode <M>            spectrogram, psd, both [both]
+      --panels <P>          waveform, psd, db, none [waveform]
       --orientation <D>     horizontal (time across) or vertical (waterfall)
   -o, --output <PNG>        [<input>.png]
       --json                machine-readable report on stdout
@@ -107,6 +109,26 @@ Short flags match the sgvr CLI (`-f -w -c -i -d`) on purpose.
 The report goes to stderr, the output path to stdout, so `aspec x.iqw` can be
 piped. `--json` replaces the path with the full report, which is what the
 tests assert against.
+
+### Panels
+
+The spectrogram is always drawn, so `--panels` selects only what joins it:
+
+| panel | what it adds |
+|---|---|
+| `waveform` | a time-domain strip sharing the spectrogram's time axis |
+| `psd` | the averaged spectrum, on the spectrogram's frequency axis |
+| `db` | the colour bar explaining the spectrogram's colours |
+| `none` | nothing; the spectrogram on its own |
+
+The strip goes above the spectrogram when time runs across and to its right
+when time runs down, always covering the same span of the time axis, so a
+burst can be traced from one panel into the other. It is a min/max envelope
+rather than a decimated one: a burst shorter than a single pixel column still
+reaches the edge of the strip instead of averaging away. Its scale is linear
+against the `--ref` level -- full scale, or this file's loudest sample under
+`--ref peak`. A complex signal gets two overlaid traces, I in blue and Q in
+amber, blended where they cross.
 
 ### What it gets right
 

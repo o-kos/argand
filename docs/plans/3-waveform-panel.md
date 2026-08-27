@@ -100,7 +100,7 @@ spectrogram to explain. The remaining criteria are unchanged.
       columns, with colour-coded alpha-blended I and Q traces and a legend for complex
       signals.
 - [x] Record the panel set in the JSON report.
-- [ ] Update `README.md`, the CLI help and examples, and the `aspec` description in
+- [x] Update `README.md`, the CLI help and examples, and the `aspec` description in
       `docs/plans/IMPLEMENTATION_PLAN.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
