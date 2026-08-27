@@ -50,7 +50,7 @@ sha256sum --check --ignore-missing SHA256SUMS
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --all-targets --locked -- -D warnings
+cargo clippy --all-targets --locked
 cargo test --locked
 cargo build --release --locked        # target/release/aspec
 ```

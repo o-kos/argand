@@ -10,6 +10,9 @@ description = "aspec - render a signal file spectrum to PNG"
 name = "aspec"
 path = "src/main.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 argand-core.workspace = true
 argand-dsp.workspace = true

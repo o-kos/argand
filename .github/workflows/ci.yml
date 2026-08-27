@@ -41,8 +41,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      # Strictness lives in [workspace.lints], not in a flag here.
       - name: Lint
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --all-targets --locked
 
       - name: Test
         run: cargo test --locked
