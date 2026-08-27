@@ -102,23 +102,30 @@ spectrogram to explain. The remaining criteria are unchanged.
 - [x] Record the panel set in the JSON report.
 - [x] Update `README.md`, the CLI help and examples, and the `aspec` description in
       `docs/plans/IMPLEMENTATION_PLAN.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use ➕ for tasks discovered after implementation begins and ⚠️ for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked -- -D warnings`
-- [ ] `cargo test --locked`
-- [ ] Envelope tests prove a single-sample peak survives decimation to a few hundred
-      columns.
-- [ ] Layout tests prove the waveform and the spectrogram share the time-axis extent in
-      both orientations, and that the PSD and colour bar are absent by default.
-- [ ] End-to-end tests cover the `--panels` matrix and the rejected values.
-- [ ] Eyeball the default render of a real capture from `tests/signals/` in both
-      orientations, for a real and a complex signal.
+- [x] `cargo fmt --all -- --check` passed.
+- [x] `cargo clippy --all-targets --locked -- -D warnings` passed.
+- [x] `cargo test --locked` passed: 186 tests.
+- [x] Envelope tests prove a single-sample peak survives decimation to a few hundred
+      columns, that block boundaries do not change the result, and that the tail past
+      the last whole frame still reaches the strip.
+- [x] Layout tests prove the waveform and the spectrogram share the time-axis extent in
+      both orientations, that the PSD stays on the spectrogram's frequency axis, and
+      that the PSD and colour bar are absent by default.
+- [x] Render tests prove both I and Q remain visible when their amplitudes differ, that
+      a real signal draws one trace and no legend, and that a quiet capture still fills
+      the strip under `--ref peak`.
+- [x] End-to-end tests cover the `--panels` matrix in both orientations, the default
+      panel set in the JSON report, and every rejected panel value.
+- [x] Rendered `12.579000_25_08_26_06_41_10.iqw` (30 min, complex) in both orientations
+      and `rl_f32-hfdl.wav` (real) horizontally. The strip's bursts line up with the
+      spectrogram's, and the complex traces stay apart.
 
 ## Post-completion
 
