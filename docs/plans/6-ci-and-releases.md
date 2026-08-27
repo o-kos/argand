@@ -78,6 +78,11 @@ decision below.
   through the policy it is about to adopt. The tag moves to `Post-completion` and is cut
   after #8 merges. Everything that makes the release possible -- workflow, script,
   changelog, badges -- still lands here and is verified here.
+- **The initial changelog content sits under `[Unreleased]`, not under a `[0.1.0]`
+  heading.** With the tag deferred there is no released `0.1.0`, and writing a section
+  for a version nobody can download would be the changelog lying about the repository.
+  The release-preparation Pull Request renames `[Unreleased]` to `[0.1.0] - <date>` and
+  fixes the compare links, which is the Keep a Changelog flow the Issue asks for.
 - **The release badge will read "no releases" until that tag is pushed.** That is
   accurate rather than broken: it is what the repository state is.
 
@@ -103,8 +108,8 @@ decision below.
 
 ## Implementation steps
 
-- [ ] Add `CHANGELOG.md` in Keep a Changelog format, with an `[Unreleased]` section and
-      a `[0.1.0]` section describing what `aspec` does today.
+- [x] Add `CHANGELOG.md` in Keep a Changelog format, with everything `aspec` does today
+      under `[Unreleased]`.
 - [ ] Add `.github/workflows/ci.yml`: `linux` and `windows` jobs, toolchain from
       `rust-toolchain.toml`, cargo caching, Pull-Request-only run cancellation, and
       read-only permissions.
