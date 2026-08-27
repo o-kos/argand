@@ -55,14 +55,7 @@ fn run(args: &Args) -> Result<usize> {
 
     let total = files.len();
     let batch = total > 1;
-    let reporting = Reporting {
-        batch,
-        total,
-        // A batch on a terminal already says where every render went, so
-        // echoing the path on stdout only doubles the lines and reads like a
-        // file the mask swept up. Piped, those paths are the point of stdout.
-        echo_paths: !batch || !std::io::stdout().is_terminal(),
-    };
+    let reporting = Reporting::new(args, batch, total);
     if batch && args.output.is_some() {
         bail!(
             "--output names one PNG but {total} files resolved; \
@@ -74,7 +67,7 @@ fn run(args: &Args) -> Result<usize> {
     for (i, file) in files.iter().enumerate() {
         let index = i + 1;
         match process(args, file, index, total) {
-            Ok(report) => write_report(args, &report, &reporting, index),
+            Ok(report) => write_report(&report, &reporting, index),
             Err(e) if batch => {
                 failed += 1;
                 // Errors survive --quiet: a silent failure is worse than noise.
@@ -184,41 +177,113 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
     Ok(report)
 }
 
+/// What a finished file puts on stdout, which is the machine-readable stream.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum StdoutLine {
+    /// The whole report, for whatever is parsing it.
+    Json,
+    /// Only the render's path, so the run can be piped.
+    Path,
+    Nothing,
+}
+
+/// What a finished file puts on stderr, which is the stream a person reads.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum StderrBlock {
+    /// One line per file, for a batch.
+    Compact,
+    /// The full multi-line block.
+    Human,
+    Nothing,
+}
+
 /// How the run reports itself, decided once and used for every file.
 struct Reporting {
     /// More than one file resolved, so the block shrinks to a line.
     batch: bool,
     total: usize,
-    /// Repeat each render's path on stdout, for whatever is reading it.
-    echo_paths: bool,
+    stdout: StdoutLine,
+    stderr: StderrBlock,
+}
+
+/// Pick the stdout stream's content.
+///
+/// `--json` is a request for machine output and outranks `--quiet`; anything
+/// else on stdout is suppressed by either `--quiet` or a caller that does not
+/// want paths echoed.
+fn stdout_line(args: &Args, echo_paths: bool) -> StdoutLine {
+    if args.json {
+        StdoutLine::Json
+    } else if args.quiet || !echo_paths {
+        StdoutLine::Nothing
+    } else {
+        StdoutLine::Path
+    }
+}
+
+/// Pick the stderr stream's content.
+///
+/// `--quiet` silences it outright. A batch shrinks the block to one line per
+/// file unless `-v` asks for the block back.
+fn stderr_block(args: &Args, batch: bool) -> StderrBlock {
+    if args.quiet {
+        StderrBlock::Nothing
+    } else if batch && args.verbose == 0 {
+        StderrBlock::Compact
+    } else {
+        StderrBlock::Human
+    }
+}
+
+impl Reporting {
+    /// Settle both output decisions up front, so that printing a file is a
+    /// lookup rather than a re-derivation.
+    ///
+    /// The two streams are decided independently, which is the point: reading
+    /// either rule out of interleaved conditions is what made the previous
+    /// shape hard to trust.
+    fn new(args: &Args, batch: bool, total: usize) -> Self {
+        // A batch on a terminal already says where every render went, so
+        // echoing the path on stdout only doubles the lines and reads like a
+        // file the mask swept up. Piped, those paths are the point of stdout.
+        let echo_paths = !batch || !std::io::stdout().is_terminal();
+
+        Self {
+            batch,
+            total,
+            stdout: stdout_line(args, echo_paths),
+            stderr: stderr_block(args, batch),
+        }
+    }
 }
 
 /// Say what one finished file produced, in whichever mode was asked for.
-///
-/// A batch shrinks the block to a line unless `-v` asks for the block back;
-/// one file on its own always gets the block, exactly as it always did.
-fn write_report(args: &Args, report: &Report, reporting: &Reporting, index: usize) {
-    if args.json {
-        println!("{}", report.to_json());
-    } else if !args.quiet && reporting.echo_paths {
-        if let Some(output) = &report.output {
-            println!("{}", output.path);
+fn write_report(report: &Report, reporting: &Reporting, index: usize) {
+    match reporting.stdout {
+        StdoutLine::Json => println!("{}", report.to_json()),
+        StdoutLine::Path => {
+            if let Some(output) = &report.output {
+                println!("{}", output.path);
+            }
         }
-    }
-    if args.quiet {
-        return;
+        StdoutLine::Nothing => {}
     }
 
     let mut stderr = std::io::stderr().lock();
-    if reporting.batch && args.verbose == 0 {
-        report
-            .write_compact(&mut stderr, index, reporting.total)
-            .ok();
-    } else {
-        if reporting.batch && index > 1 {
-            writeln!(stderr).ok();
+    match reporting.stderr {
+        StderrBlock::Compact => {
+            report
+                .write_compact(&mut stderr, index, reporting.total)
+                .ok();
         }
-        report.write_human(&mut stderr).ok();
+        StderrBlock::Human => {
+            let follows_another_block = reporting.batch && index > 1;
+            if follows_another_block {
+                writeln!(stderr).ok();
+            }
+            report.write_human(&mut stderr).ok();
+        }
+        StderrBlock::Nothing => {}
     }
 }
 
@@ -289,4 +354,9 @@ fn init_tracing(verbosity: u8) {
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
         .try_init();
+}
+
+#[cfg(test)]
+mod tests {
+    include!("main_tests.rs");
 }
