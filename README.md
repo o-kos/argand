@@ -11,8 +11,7 @@
 
 # Argand
 
-Cross-platform editor and analyser for recorded signals, with I/Q (complex)
-captures as first-class citizens rather than an afterthought. See
+A cross-platform editor and analyzer of recorded signals in both real and I/Q formats. See
 [AGENTS.md](AGENTS.md) for the architecture and
 [implementation roadmap](docs/plans/IMPLEMENTATION_PLAN.md). See
 [CONTRIBUTING.md](CONTRIBUTING.md) before starting a change.
