@@ -64,7 +64,9 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 - After the GUI scaffold exists, run it with `cargo run -p argand --locked`; build releases with `cargo build --release --locked`.
 - Pin GPUI and gpui-component to fixed Git revisions in `Cargo.toml`.
 - Commit the complete dependency graph in `Cargo.lock`; do not commit `vendor/`. Run `cargo fetch --locked` before an offline build, then use `cargo build --frozen`.
-- Run rustfmt and Clippy for every change: `cargo fmt --all -- --check` and `cargo clippy --all-targets --locked -- -D warnings`.
+- Run rustfmt and Clippy for every change: `cargo fmt --all -- --check` and `cargo clippy --all-targets --locked`.
+- Clippy warnings are errors, and that is a property of the repository, not of the command line. `[workspace.lints]` sets `warnings = "deny"`, so a plain `cargo clippy` fails locally exactly as it fails in CI. Never rely on a `-D warnings` flag to make a check strict; a check that is strict only when someone remembers a flag is not a check.
+- Run the full local gate before every push, not only before a Pull Request: `cargo fmt --all -- --check`, `cargo clippy --all-targets --locked`, `cargo test --locked`. Install the repository hook once with `git config core.hooksPath .githooks` and it runs for you.
 - A real GPU is required. Software rendering and some virtual machines may degrade performance.
 
 ## Engineering conventions
@@ -75,6 +77,38 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 - Direct conversation with the project owner must be in Russian only.
 - All repository content and project communication outside that direct conversation must be in English. This includes source comments, user-facing messages, logs, documentation, branch names, commit messages, Pull Request titles and descriptions, issues, and release notes.
 - Write code comments only when the intent is not evident from the code itself, and keep them concise.
+- Do not write nested, multi-level, opaque `if` chains. A reader must be able to tell what a branch does without holding three conditions and a later early return in their head at once. No lint catches this: it is a review obligation, and the two shapes below are the ones that keep appearing.
+  - **One flag tested twice in two different roles.** Here `args.quiet` gates stdout in the `else if`, then gates stderr as an early return three lines later, so it reads like a duplicate that has to be proven not to be one:
+
+    ```rust
+    if args.json {
+        println!("{}", report.to_json());
+    } else if !args.quiet && reporting.echo_paths {
+        if let Some(output) = &report.output {
+            println!("{}", output.path);
+        }
+    }
+    if args.quiet {
+        return;
+    }
+    ```
+
+    Decide once, in one place. Name the outcome — an enum, a `match`, or a single early return at the top — and let each branch do one thing.
+  - **A condition repeated inside its own `else`.** Here `reporting.batch` is tested in the `if` and again in the `else`, which forces the reader to work out that the second test is not the same question as the first:
+
+    ```rust
+    if reporting.batch && args.verbose == 0 {
+        report.write_compact(&mut stderr, index, reporting.total).ok();
+    } else {
+        if reporting.batch && index > 1 {
+            writeln!(stderr).ok();
+        }
+        report.write_human(&mut stderr).ok();
+    }
+    ```
+
+    Hoist the shared condition, or split the function so each half has one job.
+- Every lint suppression must be agreed with the project owner before it is pushed. This covers `#[allow(...)]`, `#[expect(...)]`, `-A` flags, and lint levels relaxed in `Cargo.toml` or `clippy.toml`. Refactor first; a suppression is the last resort, never the quick one. When one is genuinely unavoidable, ask for it explicitly, state what was tried, and use `#[expect(..., reason = "...")]` so it fails once it stops being needed. A suppression that nobody re-reads turns the whole gate into a formality.
 - Never state or imply in commit messages, Pull Requests, issues, or release notes that an AI tool was used during development.
 
 ## Git workflow

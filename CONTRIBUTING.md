@@ -49,7 +49,7 @@ Run relevant tests throughout implementation. Before requesting final review, ru
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --all-targets --locked -- -D warnings
+cargo clippy --all-targets --locked
 cargo test --locked
 cargo build --release --locked
 ```
@@ -60,6 +60,24 @@ demonstrate, measure, or diagnose behaviour with a binary left over from
 earlier code.
 
 Document any additional validation or explain why a standard check does not apply.
+
+Clippy warnings are errors. That is set in `[workspace.lints]` and inherited by every crate, so a plain `cargo clippy` is as strict on your machine as it is in CI. There is no `-D warnings` flag to remember and no way to get a laxer result by forgetting one.
+
+The first three checks also run as a `pre-push` hook. Install it once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+`git push --no-verify` skips it. If you use that, say why in the Pull Request.
+
+## Lint suppressions
+
+Every suppression must be agreed with the project owner before it is pushed. This covers `#[allow(...)]`, `#[expect(...)]`, `-A` flags, and any lint level relaxed in `Cargo.toml` or `clippy.toml`.
+
+Refactor first. A suppression is the last resort, not the quick one, and the fact that a lint is inconvenient is not an argument that it is wrong. When one is genuinely unavoidable, ask for it explicitly and say what you tried, then write it as `#[expect(..., reason = "...")]` so that it fails the build once it stops being needed.
+
+An unexplained suppression that nobody re-reads turns the whole gate into a formality. This repository has already seen that: four `#[allow(clippy::too_many_arguments)]` attributes silenced the only maintainability lint that was active, and one of them had stopped suppressing anything at all without anybody noticing.
 
 ## Continuous integration
 
