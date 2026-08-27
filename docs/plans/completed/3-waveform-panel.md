@@ -112,6 +112,8 @@ Use ➕ for tasks discovered after implementation begins and ⚠️ for blocked 
 - [x] `cargo fmt --all -- --check` passed.
 - [x] `cargo clippy --all-targets --locked -- -D warnings` passed.
 - [x] `cargo test --locked` passed: 186 tests.
+- [x] `cargo build --release --locked` rebuilt after the checks above, so the demonstrated
+      binary matches the branch.
 - [x] Envelope tests prove a single-sample peak survives decimation to a few hundred
       columns, that block boundaries do not change the result, and that the tail past
       the last whole frame still reaches the strip.
