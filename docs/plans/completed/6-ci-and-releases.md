@@ -1,6 +1,12 @@
 # Issue #6: Add Rust CI and tagged Linux and Windows releases
 
-Resolves #6.
+Resolves #6 and #12.
+
+One plan covers two Issues here. The lint work in #12 was found while reviewing #6 and
+had to land with it: shipping CI whose lint step was silenced in four unexplained places
+would have shipped the formality rather than the check. #12 was opened once that work had
+clearly grown past what #6 describes, and it is recorded below among the `➕` steps rather
+than in a second plan written after the fact.
 
 ## Overview
 
