@@ -62,9 +62,10 @@ decision below.
 - **Cancel superseded runs for Pull Requests only.** `cancel-in-progress` is keyed on
   the event, so a `main` push always finishes; killing it would leave `main` with no
   recorded result for that commit.
-- **Third-party actions are pinned to a commit SHA** with the version in a trailing
-  comment; GitHub-owned actions are pinned to their major tag. A moving third-party tag
-  is the supply-chain risk worth spending a line of noise on.
+- **Actions are pinned to a commit SHA** with the version in a trailing comment. This
+  started as third-party actions only, leaving GitHub's own on a major tag; review found
+  that inconsistent with GitHub's own guidance and it was tightened to cover every
+  action. See the superseding decision below.
 - **Workflow permissions are `contents: read` at the top level**, raised to
   `contents: write` on the single release-publishing job. Nothing else in either
   workflow can write to the repository.
@@ -112,12 +113,17 @@ decision below.
   19 for `Layout::compute`, and its nesting never exceeds three levels, so no threshold
   reaches it without flagging half the repository. It is a review obligation or nothing.
 - ➕ **A release tag must point at a commit on `main`.** Branch protection does not reach
-  tags: anyone able to create one could point it at unreviewed code and get an official
-  Release built from it, and `gh release create --verify-tag` only checks that the tag
-  exists. The `verify` job now refuses a tag whose commit is not an ancestor of `main`.
-  This deliberately closes the rehearsal route used here -- a throwaway tag on a branch
-  commit -- so any future rehearsal has to run from `main` after a merge. Protecting the
-  `v*` tag namespace with a ruleset would close the remaining gap and is the owner's call.
+  tags, and `gh release create --verify-tag` only checks that the tag exists, so a tag on
+  an unreviewed commit would otherwise produce an official Release built from it. The
+  `verify` job now refuses a tag whose commit is not an ancestor of `main`.
+  **This is a guard against mistakes, not a trust boundary.** A tag push runs the
+  workflow from the tagged commit, so anyone able to push a tag can push a commit that
+  deletes this check along with it. Only a ruleset over the `v*` namespace, restricting
+  who may create those tags, actually closes the hole; that is a repository setting and
+  the owner's call. The check is still worth having: the realistic failure here is a
+  mistyped or stale tag, not an attacker.
+  It deliberately closes the rehearsal route used on this branch -- a throwaway tag on a
+  branch commit -- so any future rehearsal has to run from `main` after a merge.
 - ➕ **`actions/checkout` is pinned by commit SHA like every other action.** The original
   decision pinned only third-party actions and left GitHub's own on a major tag, but
   GitHub's own guidance is that nothing short of a full SHA is immutable, and in the
