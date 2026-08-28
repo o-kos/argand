@@ -56,13 +56,13 @@ diagnostics, help, defaults, and rendered images remain unchanged.
 
 ## Implementation steps
 
-- [ ] Introduce typed panel metadata and derive panel parsing, formatting, diagnostics,
+- [x] Introduce typed panel metadata and derive panel parsing, formatting, diagnostics,
       ordering, help, and the CLI default from it.
-- [ ] Derive orientation parsing, formatting, diagnostics, help, and the CLI default from
+- [x] Derive orientation parsing, formatting, diagnostics, help, and the CLI default from
       `Orientation` metadata.
-- [ ] Add contract coverage for every alias, generated help, canonical formatting, and
+- [x] Add contract coverage for every alias, generated help, canonical formatting, and
       unchanged invalid-value diagnostics.
-- [ ] Confirm the refactor does not change existing CLI or render behaviour.
+- [x] Confirm the refactor does not change existing CLI or render behaviour.
 - [ ] External review round, then act on the findings.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
@@ -76,9 +76,9 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [ ] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] `git diff --check`
-- [ ] Focused CLI and render tests cover every canonical name and alias, both defaults,
+- [x] Focused CLI and render tests cover every canonical name and alias, both defaults,
       stable diagnostics, and generated help.
-- [ ] Existing end-to-end panel/orientation rendering tests pass without output changes.
+- [x] Existing end-to-end panel/orientation rendering tests pass without output changes.
 
 ## Post-completion
 

@@ -10,7 +10,9 @@ use argand_dsp::{DbReference, Reduce, Window};
 use argand_io::{Normalize, RawSpec, parse_hz, parse_time};
 use clap::{ArgAction, Parser};
 
-use crate::render::{Orientation, Panels};
+use crate::render::{
+    Orientation, Panels, orientation_help, panels_help, panels_overview, vertical_orientation_alias,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -22,36 +24,7 @@ use crate::render::{Orientation, Panels};
                   .wav, .iqw and .wavs captures all work. A file with no header needs --raw.\n\n\
                   Several inputs may be given, each an exact path or a filename mask. Every \
                   option applies to every file, and a file that fails does not stop the rest.",
-    after_help = concat!(
-        "INPUTS:\n    ",
-        "An input is an exact path or a mask over the filenames of one directory:\n    ",
-        "* for any run, ? for one character, [0-9] and [!0-9] for a set.\n\n",
-        "    Quote a mask so the shell passes it through. Masks are not recursive:\n",
-        "    ** and masks in a directory component are refused, and a mask that\n",
-        "    matches nothing is an error. Matches are sorted and de-duplicated.\n\n",
-        "    With more than one file, -o is refused and each PNG is written beside\n",
-        "    its input; the report shrinks to one line per file naming the render\n",
-        "    as *.png, or the full block under -v, and a summary follows on stderr.\n",
-        "    Output paths reach stdout only when stdout is a pipe or a file, since\n",
-        "    on a terminal the line above already says where the render went.\n\n",
-        "PANELS:\n    ",
-        "The spectrogram is always drawn; --panels selects what joins it.\n    ",
-        "waveform, psd, db (the colour bar), or none for the spectrogram alone.\n\n",
-        "    The waveform strip is a min/max envelope scaled to the --ref level,\n",
-        "    so a burst shorter than one pixel column still shows.\n\n",
-        "SAMPLE TYPES:\n    ",
-        "rl_u8, rl_i16, rl_i32, rl_f32, rl_f16x8 (real)\n    ",
-        "iq_u8, iq_i16, iq_i32, iq_f32, iq_f16x8 (complex, I/Q interleaved)\n\n",
-        "    f32 is scaled to [-1, 1]; f16x8 is float32 at arbitrary scale.\n\n",
-        "EXAMPLES:\n    ",
-        "aspec capture.iqw -o spec.png\n    ",
-        "aspec dump.bin --raw iq_i16@24k --center 12.579M\n    ",
-        "aspec quiet.wav --normalize auto --ref peak\n    ",
-        "aspec long.iqw --start 5m --duration 30s --orientation v\n    ",
-        "aspec capture.iqw --panels waveform,psd,db\n    ",
-        "aspec '*.iqw' --center 12.579M\n    ",
-        "aspec /data/'[0-9]*.wav' --raw iq_i16@24k -q",
-    )
+    after_help = extended_help()
 )]
 pub struct Args {
     /// Signal files to analyse: exact paths or filename masks
@@ -118,13 +91,18 @@ pub struct Args {
     #[arg(
         long,
         value_name = "P",
-        default_value = "waveform",
-        help = "Panels beside the spectrogram [waveform, psd, db, none]"
+        default_value_t = Panels::WAVEFORM,
+        help = panels_help()
     )]
     pub panels: Panels,
 
-    /// Time axis direction: horizontal (across) or vertical (waterfall)
-    #[arg(long, value_name = "DIR", default_value = "horizontal")]
+    /// Time axis direction
+    #[arg(
+        long,
+        value_name = "DIR",
+        default_value_t = Orientation::Horizontal,
+        help = orientation_help()
+    )]
     pub orientation: Orientation,
 
     /// Print a machine-readable report on stdout
@@ -166,6 +144,47 @@ pub struct Args {
     /// Log more; repeat for trace level
     #[arg(short = 'v', long, action = ArgAction::Count)]
     pub verbose: u8,
+}
+
+fn extended_help() -> String {
+    let panels = panels_overview();
+    let vertical = vertical_orientation_alias();
+    let all_panels = Panels::ALL;
+    format!(
+        concat!(
+            "INPUTS:\n    ",
+            "An input is an exact path or a mask over the filenames of one directory:\n    ",
+            "* for any run, ? for one character, [0-9] and [!0-9] for a set.\n\n",
+            "    Quote a mask so the shell passes it through. Masks are not recursive:\n",
+            "    ** and masks in a directory component are refused, and a mask that\n",
+            "    matches nothing is an error. Matches are sorted and de-duplicated.\n\n",
+            "    With more than one file, -o is refused and each PNG is written beside\n",
+            "    its input; the report shrinks to one line per file naming the render\n",
+            "    as *.png, or the full block under -v, and a summary follows on stderr.\n",
+            "    Output paths reach stdout only when stdout is a pipe or a file, since\n",
+            "    on a terminal the line above already says where the render went.\n\n",
+            "PANELS:\n    ",
+            "The spectrogram is always drawn; --panels selects what joins it.\n    ",
+            "{panels}\n\n",
+            "    The waveform strip is a min/max envelope scaled to the --ref level,\n",
+            "    so a burst shorter than one pixel column still shows.\n\n",
+            "SAMPLE TYPES:\n    ",
+            "rl_u8, rl_i16, rl_i32, rl_f32, rl_f16x8 (real)\n    ",
+            "iq_u8, iq_i16, iq_i32, iq_f32, iq_f16x8 (complex, I/Q interleaved)\n\n",
+            "    f32 is scaled to [-1, 1]; f16x8 is float32 at arbitrary scale.\n\n",
+            "EXAMPLES:\n    ",
+            "aspec capture.iqw -o spec.png\n    ",
+            "aspec dump.bin --raw iq_i16@24k --center 12.579M\n    ",
+            "aspec quiet.wav --normalize auto --ref peak\n    ",
+            "aspec long.iqw --start 5m --duration 30s --orientation {vertical}\n    ",
+            "aspec capture.iqw --panels {all_panels}\n    ",
+            "aspec '*.iqw' --center 12.579M\n    ",
+            "aspec /data/'[0-9]*.wav' --raw iq_i16@24k -q",
+        ),
+        panels = panels,
+        vertical = vertical,
+        all_panels = all_panels
+    )
 }
 
 impl Args {

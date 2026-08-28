@@ -13,6 +13,57 @@ use image::{Rgb, RgbImage};
 
 use crate::text::{Anchor, TextRenderer, TextStyle};
 
+const EMPTY_PANELS_NAME: &str = "none";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Panel {
+    Waveform,
+    Psd,
+    Db,
+}
+
+impl Panel {
+    const ALL: [Self; 3] = [Self::Waveform, Self::Psd, Self::Db];
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Waveform => "waveform",
+            Self::Psd => "psd",
+            Self::Db => "db",
+        }
+    }
+
+    const fn aliases(self) -> &'static [&'static str] {
+        match self {
+            Self::Waveform => &["wave"],
+            Self::Psd => &["spectrum"],
+            Self::Db => &["colorbar"],
+        }
+    }
+
+    fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|panel| panel.as_str() == name || panel.aliases().contains(&name))
+    }
+
+    const fn is_enabled(self, panels: Panels) -> bool {
+        match self {
+            Self::Waveform => panels.waveform,
+            Self::Psd => panels.psd,
+            Self::Db => panels.db,
+        }
+    }
+
+    fn enable(self, panels: &mut Panels) {
+        match self {
+            Self::Waveform => panels.waveform = true,
+            Self::Psd => panels.psd = true,
+            Self::Db => panels.db = true,
+        }
+    }
+}
+
 /// Panels drawn beside the spectrogram.
 ///
 /// The spectrogram itself is not selectable. It is the point of the tool, so
@@ -24,38 +75,63 @@ pub struct Panels {
     pub db: bool,
 }
 
-pub const PANEL_NAMES: [&str; 4] = ["waveform", "psd", "db", "none"];
-
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ParsePanelsError {
     #[error("unknown panel `{name}`, expected one of: {options}")]
     Unknown { name: String, options: String },
-    #[error("no panels given; use `none` for the spectrogram on its own")]
-    Empty,
-    #[error("`none` cannot be combined with other panels")]
-    NoneWithOthers,
+    #[error("no panels given; use `{empty}` for the spectrogram on its own")]
+    Empty { empty: &'static str },
+    #[error("`{empty}` cannot be combined with other panels")]
+    NoneWithOthers { empty: &'static str },
 }
 
 impl Panels {
+    pub const ALL: Self = Self {
+        waveform: true,
+        psd: true,
+        db: true,
+    };
+
     pub const NONE: Self = Self {
         waveform: false,
         psd: false,
         db: false,
     };
 
+    pub const WAVEFORM: Self = Self {
+        waveform: true,
+        psd: false,
+        db: false,
+    };
+
     pub fn names(self) -> Vec<&'static str> {
-        let mut names = Vec::new();
-        if self.waveform {
-            names.push("waveform");
-        }
-        if self.psd {
-            names.push("psd");
-        }
-        if self.db {
-            names.push("db");
-        }
-        names
+        Panel::ALL
+            .into_iter()
+            .filter(|panel| panel.is_enabled(self))
+            .map(Panel::as_str)
+            .collect()
     }
+
+    fn options() -> String {
+        Panel::ALL
+            .map(Panel::as_str)
+            .into_iter()
+            .chain(std::iter::once(EMPTY_PANELS_NAME))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+pub(crate) fn panels_help() -> String {
+    format!("Panels beside the spectrogram [{}]", Panels::options())
+}
+
+pub(crate) fn panels_overview() -> String {
+    let [waveform, psd, db] = Panel::ALL.map(Panel::as_str);
+    format!(
+        "{waveform}, {psd}, {db} (the colour bar), or {} for the spectrogram alone.",
+        Panels::NONE
+    )
 }
 
 impl std::str::FromStr for Panels {
@@ -72,24 +148,28 @@ impl std::str::FromStr for Panels {
                 continue;
             }
             count += 1;
-            match token.as_str() {
-                "waveform" | "wave" => panels.waveform = true,
-                "psd" | "spectrum" => panels.psd = true,
-                "db" | "colorbar" => panels.db = true,
-                "none" => explicit_none = true,
-                _ => {
-                    return Err(ParsePanelsError::Unknown {
-                        name: token,
-                        options: PANEL_NAMES.join(", "),
-                    });
-                }
+            if token == EMPTY_PANELS_NAME {
+                explicit_none = true;
+                continue;
             }
+
+            let Some(panel) = Panel::from_name(&token) else {
+                return Err(ParsePanelsError::Unknown {
+                    name: token,
+                    options: Panels::options(),
+                });
+            };
+            panel.enable(&mut panels);
         }
 
         match (count, explicit_none) {
-            (0, _) => Err(ParsePanelsError::Empty),
+            (0, _) => Err(ParsePanelsError::Empty {
+                empty: EMPTY_PANELS_NAME,
+            }),
             (1, true) => Ok(Panels::NONE),
-            (_, true) => Err(ParsePanelsError::NoneWithOthers),
+            (_, true) => Err(ParsePanelsError::NoneWithOthers {
+                empty: EMPTY_PANELS_NAME,
+            }),
             _ => Ok(panels),
         }
     }
@@ -99,7 +179,7 @@ impl std::fmt::Display for Panels {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let names = self.names();
         if names.is_empty() {
-            return f.write_str("none");
+            return f.write_str(EMPTY_PANELS_NAME);
         }
         f.write_str(&names.join(","))
     }
@@ -113,8 +193,6 @@ pub enum Orientation {
     Vertical,
 }
 
-pub const ORIENTATION_NAMES: [&str; 2] = ["horizontal", "vertical"];
-
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("unknown {what} `{name}`, expected one of: {options}")]
 pub struct ParseError {
@@ -124,27 +202,55 @@ pub struct ParseError {
 }
 
 impl Orientation {
+    pub const ALL: [Self; 2] = [Self::Horizontal, Self::Vertical];
+
     pub const fn as_str(self) -> &'static str {
         match self {
-            Orientation::Horizontal => "horizontal",
-            Orientation::Vertical => "vertical",
+            Self::Horizontal => "horizontal",
+            Self::Vertical => "vertical",
         }
     }
+
+    const fn aliases(self) -> &'static [&'static str] {
+        match self {
+            Self::Horizontal => &["h"],
+            Self::Vertical => &["v"],
+        }
+    }
+
+    fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|orientation| {
+            orientation.as_str() == name || orientation.aliases().contains(&name)
+        })
+    }
+
+    fn options() -> String {
+        Self::ALL.map(Self::as_str).join(", ")
+    }
+}
+
+pub(crate) fn orientation_help() -> String {
+    format!(
+        "Time axis direction: {} (across) or {} (waterfall)",
+        Orientation::Horizontal,
+        Orientation::Vertical
+    )
+}
+
+pub(crate) fn vertical_orientation_alias() -> &'static str {
+    Orientation::Vertical.aliases()[0]
 }
 
 impl std::str::FromStr for Orientation {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "horizontal" | "h" => Ok(Orientation::Horizontal),
-            "vertical" | "v" => Ok(Orientation::Vertical),
-            _ => Err(ParseError {
-                what: "orientation",
-                name: s.to_string(),
-                options: ORIENTATION_NAMES.join(", "),
-            }),
-        }
+        let name = s.trim().to_ascii_lowercase();
+        Orientation::from_name(&name).ok_or_else(|| ParseError {
+            what: "orientation",
+            name: s.to_string(),
+            options: Orientation::options(),
+        })
     }
 }
 
