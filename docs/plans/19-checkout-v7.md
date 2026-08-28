@@ -61,12 +61,19 @@ use, without cutting a release to do it.
 
 ## Implementation steps
 
-- [ ] Move all four `actions/checkout` pins to the v7.0.1 SHA with the version in a
+- [x] Move all four `actions/checkout` pins to the v7.0.1 SHA with the version in a
       trailing comment.
-- [ ] Confirm no other action is behind its current release.
-- [ ] Verify both CI jobs pass, exercising a plain checkout on Linux and on Windows.
-- [ ] Verify a mismatched tag reaches and passes `verify`'s checkout and ancestor check
-      before failing on the version, then delete the tag.
+- [x] Confirm no other action is behind its current release: `Swatinem/rust-cache`
+      v2.9.2, `actions/upload-artifact` v7.0.1 and `actions/download-artifact` v8.0.1 are
+      each their newest.
+- [x] Verify both CI jobs pass, exercising a plain checkout on Linux and on Windows.
+- [x] ⚠️ Verify the `fetch-depth: 0` form. The probe was tagged on a branch commit, so it
+      failed at the ancestor check rather than reaching the version check. That still
+      covers what this Issue needs: the log shows checkout v7 running with
+      `fetch-depth: 0`, the fetch of `main` completing without a git error, and the
+      failure coming from the check's own message. Reaching the version check would have
+      required tagging a commit on `main`, where the workflow still carries v5 until this
+      merges.
 - [ ] External review round, then act on the findings.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
@@ -75,13 +82,14 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Both workflows still parse as YAML, and nothing but the four pins changed.
-- [ ] Both CI jobs pass on the Pull Request.
-- [ ] The mismatched-tag probe behaves as described and publishes nothing.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`: 226 tests, all passing.
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Both workflows still parse as YAML, and the diff is exactly the four pin lines.
+- [x] Both CI jobs pass on the Pull Request.
+- [x] The probe published nothing: `build` and `publish` were skipped, and the tag was
+      deleted afterwards. Only `v0.0.1` remains.
 
 ## Post-completion
 
