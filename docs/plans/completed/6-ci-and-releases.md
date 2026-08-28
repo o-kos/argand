@@ -71,7 +71,7 @@ decision below.
   workflow can write to the repository.
 - **Release verification lives in a repository-owned script**, not inline in YAML, so a
   release can be dry-run locally before a tag is pushed. The script resolves the version
-  through `cargo metadata` rather than by parsing `Cargo.toml` with a regex, and prints
+  through `cargo pkgid` rather than by parsing `Cargo.toml` with a regex, and prints
   the changelog section that becomes the Release body.
 - **The release job graph is `verify` -> `build` (Linux, Windows) -> `publish`.**
   Version and changelog mismatches are caught before a single archive is built, which is
@@ -216,7 +216,7 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
-- [x] `cargo test --locked`: 219 tests, all passing.
+- [x] `cargo test --locked`: 224 tests, all passing.
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] Both CI jobs pass on this Pull Request: `linux` in 47 s once the cache is warm,
       `windows` in 3 m 48 s.

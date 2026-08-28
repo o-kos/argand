@@ -163,16 +163,24 @@ Dry-run the checks the release workflow makes before pushing anything:
 
 It fails if the tag does not match `workspace.package.version` or the changelog has no section for it, and otherwise prints the section that becomes the GitHub Release description.
 
-After the Pull Request is squash-merged, tag the merge commit on an up-to-date `main`:
+After the Pull Request is squash-merged, the repository administrator tags the merge
+commit on an up-to-date `main`:
 
 ```sh
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
+A ruleset restricts creating, moving and deleting `v*` tags to the administrator, so this
+step and the one below cannot be carried out by anyone else. Branch protection does not
+cover tags, and the workflow's own `main`-ancestor check runs from the tagged commit, so
+it guards against a mistyped tag rather than against someone who should not be releasing
+at all. Prepare the release Pull Request as usual and hand the tagging over.
+
 The tag starts `.github/workflows/release.yml`, which verifies the tag against the workspace version and the changelog, runs the test suite, builds `aspec` for `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`, checks that each binary reports the version being released, and publishes `aspec-vX.Y.Z-<target>.tar.gz`, `aspec-vX.Y.Z-<target>.zip` and `SHA256SUMS` with the changelog section as the release description. Verification failures happen before anything is built, so a mistyped tag publishes nothing.
 
-To redo a published release, delete it together with its tag and start again:
+To redo a published release, the administrator deletes it together with its tag and
+starts again:
 
 ```sh
 gh release delete vX.Y.Z --cleanup-tag
