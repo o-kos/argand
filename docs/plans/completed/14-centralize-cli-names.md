@@ -71,19 +71,19 @@ diagnostics, help, defaults, and rendered images remain unchanged.
       the preferred help spelling.
 - [x] ➕ Build orientation help by walking the exhaustive registry, with an exhaustive
       description match for each variant.
-- [ ] External review round, then act on the findings.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] External review round, then act on the findings.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] `git diff --check`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] `git diff --check`
 - [x] Focused CLI and render tests cover every canonical name and alias, both defaults,
       stable diagnostics, and generated help.
 - [x] Existing end-to-end panel/orientation rendering tests pass without output changes.
