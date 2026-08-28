@@ -98,6 +98,12 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
 - [x] Split `Layout::compute` in `crates/cli/src/render.rs`, 147 lines, into named stages.
 - [x] Resolve the six `excessive_nesting` sites in `argand-dsp`.
 - [x] Resolve `branches_sharing_code` in `crates/cli/src/render.rs`.
+- [x] ➕ Rebase onto a `main` that had gained two merged Pull Requests during the work,
+      one of which reworked `render.rs` substantially. It rebased without conflict and
+      its new code passes this policy unchanged. This also explained a discrepancy the
+      review caught: CI reported 226 tests against 224 locally, because a `pull_request`
+      run tests the branch merged into its base, so CI was already running code the
+      branch did not have.
 - [x] ➕ Restore three rustdoc blocks that inserting helpers had detached from their
       functions, leaving `analyze`, `Plan::frame` and `EnvelopeBuilder::fold`
       undocumented while their text described the new neighbours.
@@ -108,9 +114,10 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
       through an `else`.
 - [x] Update `CONTRIBUTING.md` so the documented policy matches what is enforced.
 - [x] Verify a deliberate policy violation fails CI, then revert it.
-- [ ] External review round, then act on the findings.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] External review round, then act on the findings. Three rounds; every finding was
+      about the accuracy of a claim rather than about the code.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -118,19 +125,19 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
-- [x] `cargo test --locked`: 224 tests, all passing.
+- [x] `cargo test --locked`: 226 tests, all passing.
 - [x] `cargo build --release --locked`, after the checks above pass
-- [x] Every refactor is behaviour-preserving, checked against a binary built before it.
-      Four configurations rendered byte-identical PNGs, covering both orientations, every
-      panel set and both `--reduce` modes, and the JSON reports match apart from
-      `elapsed_seconds`.
+- [x] Every refactor is behaviour-preserving, checked against a binary built from
+      `main`. All sixteen combinations of the eight panel sets and two orientations
+      rendered byte-identical PNGs, as did both `--reduce` modes against both `--ref`
+      levels, and the JSON reports match apart from `elapsed_seconds`.
 - [x] Every configured threshold fires on a deliberate violation, each probed separately:
       8 arguments against 7, 107 lines against 100, cognitive complexity 61 against 25,
       five levels of nesting against 5, and 4 bool parameters against 3. An `#[allow]`
       without a reason fails as well. A pushed violation failed the `linux` job at
       `Lint`, with `Test` and `Build release` skipped; the probe was reverted.
 - [x] An `#[allow(...)]` without a reason fails the lint step.
-- [ ] Both CI jobs pass on the Pull Request.
+- [x] Both CI jobs pass on the Pull Request.
 
 ## Post-completion
 
