@@ -58,6 +58,11 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
   a policy: the next person needs to know what it is protecting against.
 - **`cognitive_complexity` is enabled even though it currently finds nothing.** Its
   value is preventing the next `Layout::compute`, not flagging today's.
+- ➕ **A classifier is written as early returns, not as an `if`/`else` expression.** Rust
+  allows both and no lint prefers either; `needless_return` only objects to a `return` on
+  a function's last expression. What settles it here is the codebase: `inputs::expand`
+  reads as a chain of guards, and non-test code contains 73 early returns. Each condition
+  then stands on its own line rather than being reached through an `else`.
 
 ## Rejected alternatives
 
@@ -81,6 +86,11 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
 - [ ] Split `Layout::compute` in `crates/cli/src/render.rs`, 147 lines, into named stages.
 - [ ] Resolve the six `excessive_nesting` sites in `argand-dsp`.
 - [ ] Resolve `branches_sharing_code` in `crates/cli/src/render.rs`.
+- [x] ➕ Write `stdout_line` and `stderr_block` as chains of early returns instead of
+      `if`/`else if`/`else` expressions. Requested by the owner, and it matches the
+      codebase: `inputs::expand` classifies exactly this way, and non-test code uses 73
+      early returns. Each condition now stands on its own instead of being reached
+      through an `else`.
 - [ ] Update `CONTRIBUTING.md` so the documented policy matches what is enforced.
 - [ ] Verify a deliberate policy violation fails CI, then revert it.
 - [ ] External review round, then act on the findings.
