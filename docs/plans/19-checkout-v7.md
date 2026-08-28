@@ -26,16 +26,22 @@ are reachable without cutting a release, and names the third rather than claimin
   (v6.0.2), fixes for SHA-256 repositories (v6.0.3), and a credential-cleanup fix that
   escapes the value passed to `git config --unset` (v7.0.1, not backported to v5.1.0).
 - The tag-handling fix is the one that bears on this repository, and it is worth more than
-  the release notes suggest. v5.1.0 fetched a tag as `+<commit>:refs/tags/<tag>`, by hash;
-  v6.0.2 changed that to the tag's own ref, `+refs/tags/<tag>:refs/tags/<tag>`. The
-  wildcard `+refs/tags/*:refs/tags/*` is used only under `fetch-tags: true`, which the
-  `build` job leaves at its default.
-- ➕ **v7 refuses a tag that moved after the event fired; v5.1.0 checks out the new commit
-  silently.** `git-source-provider.ts` in v7.0.1 verifies after the fetch that the ref
-  still points at the commit the event carried, and fails with a message saying the ref
-  may have been updated. v5.1.0 has no such check. This is the strongest argument for the
-  upgrade and it is not in any release note; it was found by reading the source during
-  review.
+  the release notes suggest. On the shallow path the `build` job uses, v5.1.0 fetched a
+  tag as `+<event commit>:refs/tags/<tag>` -- by hash, forcing the local tag onto the
+  commit the event carried -- while v6.0.2 changed that to the tag's own ref,
+  `+refs/tags/<tag>:refs/tags/<tag>`, and then verifies what came back. The wildcard
+  `+refs/tags/*:refs/tags/*` is not part of that difference: on the shallow path it
+  appears only under `fetch-tags: true`, which `build` leaves at its default, but on the
+  `fetch-depth: 0` path `verify` uses it is always included regardless.
+- ➕ **v7 refuses a tag that moved after the event fired; v5.1.0 builds the event's commit
+  and says nothing.** `git-source-provider.ts` in v7.0.1 verifies after the fetch that the
+  ref still points at the commit the event carried, and fails with a message saying the
+  ref may have been updated. v5.1.0 has no equivalent refusal: fetching by hash gives it
+  the original commit, so it builds that and succeeds, leaving a published Release
+  attached to a tag that points somewhere else -- or it fails outright if that commit has
+  become unreachable. The difference is not a wrong commit against a right one; it is a
+  silent inconsistency between artifact and tag against a stopped workflow. Found by
+  reading the source during review, and in no release note.
 - `checkout` appears four times, and `publish` does not use it at all:
 
   | workflow | job | inputs |
@@ -112,6 +118,9 @@ are reachable without cutting a release, and names the third rather than claimin
       source showed the action already refuses a tag that moved after the event fired,
       which was the case the check was written for. The diff is four lines again, exactly
       what the Issue describes.
+- [x] ➕ Correct three claims about how each version handles a moved tag, after checking
+      `ref-helper.ts` and `git-source-provider.ts` in both. Two of them had already been
+      posted as Issue comments and are withdrawn there rather than edited away.
 - [ ] External review round, then act on the findings.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
