@@ -32,10 +32,11 @@ branch.
 - **Eligibility is defined by scope and risk, not merely size.** A finding may enter the
   backlog only when it is pre-existing, unrelated to the active objective, non-urgent,
   and irrelevant to the current acceptance criteria and claimed behaviour.
-- **Required findings remain in the active work.** Regressions introduced by the branch,
-  unmet acceptance criteria, false claims, required-check failures, and security,
-  correctness, or data-safety problems cannot be deferred under this rule.
-- **Tests and review keep an audit trail.** A backlog Issue records the problem, desired
+- **Routing is ordered by obligation and impact.** Regressions introduced by the branch,
+  unmet acceptance criteria, false claims, and required-check failures remain in the
+  active work. Material or urgent unrelated findings, especially security, correctness,
+  or data-safety problems, become normal Issues and can never enter the backlog.
+- **Issues and review keep an audit trail.** A backlog Issue records the problem, desired
   outcome, discovery context, and source Issue or Pull Request. A deferred review finding
   is resolved with a link to that Issue.
 
