@@ -5,10 +5,11 @@ Resolves #8.
 ## Overview
 
 Clippy runs with its default lint set. That set is large and catches real bugs, but it
-says almost nothing about maintainability: of the ten lints this Issue names, exactly one
-is active by default, and the rest are `allow` in `pedantic`, `nursery` or `restriction`.
-Thresholds are implicit, so nobody can tell what the project considers too long, too
-wide or too deeply nested without reading Clippy's source.
+says almost nothing about maintainability. Of the ten lints this Issue names, one does
+work by default; `excessive_nesting` is at `warn` but inert, because its threshold
+defaults to zero and zero disables it; and the remaining eight are `allow` in `pedantic`,
+`nursery` or `restriction`. Thresholds are implicit, so nobody can tell what the project
+considers too long, too wide or too deeply nested without reading Clippy's source.
 
 This change writes that policy into the repository, turns it on for every crate, and
 fixes what it finds.
@@ -91,7 +92,7 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
 
 ## Implementation steps
 
-- [x] Add `clippy.toml` with the four thresholds, each carrying its reason.
+- [x] Add `clippy.toml` with the five thresholds, each carrying its reason.
 - [x] Enable the ten lints in `[workspace.lints.clippy]`, inherited by every crate.
 - [x] Split `analyze` in `crates/dsp/src/stft.rs`, 176 lines, into named stages.
 - [x] Split `Layout::compute` in `crates/cli/src/render.rs`, 147 lines, into named stages.

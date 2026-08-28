@@ -126,7 +126,7 @@ Every suppression must be agreed with the project owner before it is pushed. Thi
 
 Refactor first. A suppression is the last resort, not the quick one, and the fact that a lint is inconvenient is not an argument that it is wrong. When one is genuinely unavoidable, ask for it explicitly and say what you tried, then write it as `#[expect(..., reason = "...")]` so that it fails the build once it stops being needed.
 
-An unexplained suppression that nobody re-reads turns the whole gate into a formality. This repository has already seen that: four `#[allow(clippy::too_many_arguments)]` attributes silenced the only maintainability lint that was active, and one of them had stopped suppressing anything at all without anybody noticing.
+An unexplained suppression that nobody re-reads turns the whole gate into a formality. This repository has already seen that: four `#[allow(clippy::too_many_arguments)]` attributes silenced the only maintainability lint that was doing any work at the time, and one of them had stopped suppressing anything at all without anybody noticing.
 
 ## Continuous integration
 
