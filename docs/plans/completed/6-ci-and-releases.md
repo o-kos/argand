@@ -111,6 +111,18 @@ decision below.
   Measurement backs the first: `write_report` scores 7 on cognitive complexity against
   19 for `Layout::compute`, and its nesting never exceeds three levels, so no threshold
   reaches it without flagging half the repository. It is a review obligation or nothing.
+- ➕ **A release tag must point at a commit on `main`.** Branch protection does not reach
+  tags: anyone able to create one could point it at unreviewed code and get an official
+  Release built from it, and `gh release create --verify-tag` only checks that the tag
+  exists. The `verify` job now refuses a tag whose commit is not an ancestor of `main`.
+  This deliberately closes the rehearsal route used here -- a throwaway tag on a branch
+  commit -- so any future rehearsal has to run from `main` after a merge. Protecting the
+  `v*` tag namespace with a ruleset would close the remaining gap and is the owner's call.
+- ➕ **`actions/checkout` is pinned by commit SHA like every other action.** The original
+  decision pinned only third-party actions and left GitHub's own on a major tag, but
+  GitHub's own guidance is that nothing short of a full SHA is immutable, and in the
+  release workflow that checkout decides what ends up inside the published archives. The
+  pinned SHA is what `v5` already resolved to, so CI's result carries over unchanged.
 - ➕ **Branch protection is wired before the merge, not after it.** GitHub will accept a
   required check as soon as it has seen a run with that name, and both names have now
   been seen on this Pull Request. Requiring them now closes the Issue's "protected `main`
@@ -180,6 +192,10 @@ decision below.
 - [x] ➕ Delete the suppression in `crates/io/src/decoder.rs`, which had stopped
       suppressing anything: the function has exactly seven arguments and the lint fires
       at eight.
+- [x] ➕ Refuse a release tag whose commit is not on `main`, and pin `actions/checkout`
+      by SHA. Both came from an external review of the finished branch.
+- [x] ➕ Update `docs/plans/TEMPLATE.md`, which still told every future plan to validate
+      with `-D warnings` and would have kept reintroducing the flag this branch removed.
 - [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
@@ -188,7 +204,7 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --all-targets --locked -- -D warnings`
+- [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`: 219 tests, all passing.
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] Both CI jobs pass on this Pull Request: `linux` in 47 s once the cache is warm,
@@ -222,6 +238,8 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       commit before them: the same capture rendered through both produces byte-identical
       PNGs, and `--json`, `-q`, `-v` and the default mode produce identical output apart
       from `elapsed_seconds`.
+- [x] Both workflows parse as YAML after the changes, and the new tag check's shell body
+      passes `bash -n`.
 - [x] Every badge in `README.md` resolves: the CI badge to `ci.yml`, the licence badge to
       the repository's detected MIT licence, the Rust badge to `rust-toolchain.toml`. The
       release badge reads "no releases" until `v0.1.0` is tagged, which is the
