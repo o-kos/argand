@@ -18,10 +18,14 @@ use, without cutting a release to do it.
   the pinning questioned the mutable tag, not the version behind it.
 - v7.0.1 is commit `3d3c42e5aac5ba805825da76410c181273ba90b1`, which is also what the
   `v7` tag currently resolves to.
-- v6 moved credentials out of the shared git config into a separate file and added Node
-  24 support. v7 blocks checking out a fork's pull request under `pull_request_target`
-  and `workflow_run`, and moved the action to ESM. The v7 hardening does not apply here:
-  this repository uses neither trigger and takes no fork pull requests.
+- The net change from v5.1.0 is smaller than the v6 and v7 release notes suggest, because
+  v5.1.0 already carries two of the headline items: it runs on `node24`, and the
+  `pull_request_target` fork-checkout protection was backported into it. What the upgrade
+  actually brings is credentials written to a separate file rather than the shared git
+  config (v6.0.0), a tag-handling fix that preserves annotations and honours an explicit
+  `fetch-tags` (v6.0.2), and the move to ESM with refreshed dependencies (v7.0.0).
+- That tag-handling fix lands on the one path this branch cannot exercise, which is an
+  argument for taking the upgrade rather than against it.
 - `checkout` appears four times, and `publish` does not use it at all:
 
   | workflow | job | inputs |
@@ -37,16 +41,27 @@ use, without cutting a release to do it.
   rehearsal and the `v0.0.1` release. Changing it next to anything else would make a
   failure ambiguous, and this is the code that decides what ends up inside published
   archives.
-- **Verification leans on equivalence rather than on a release.** The two CI jobs run a
-  plain checkout on Linux and on Windows, which is exactly what `build` does on the same
-  two runners with the same inputs. What CI cannot reach is `fetch-depth: 0`, and a
-  mismatched tag reaches it: `verify` checks out, fetches `main`, runs the ancestor check
-  and only then fails on the version. Between them the two cover every form in use.
+- **Verification covers two of the three forms, and the third is named rather than
+  claimed.** The two CI jobs run a plain checkout on Linux and on Windows, and a
+  mismatched tag exercises `fetch-depth: 0` in `verify`. What neither reaches is the
+  combination `build` uses: a shallow checkout of a *tag* ref. CI runs on `pull_request`,
+  so its shallow fetch takes the merge ref, and checkout builds a different refspec for
+  each; calling those equivalent would be wrong. `build` only runs after `verify` passes,
+  which needs a version that matches the workspace, so nothing short of a real release
+  reaches it.
+- **That residual gap is accepted, because its failure mode is safe.** If v7 mishandled a
+  tag ref, `build` would fail before `publish` ever runs: no archive, no release, nothing
+  to retract. The cost is a failed release run and a re-tag, against the cost of
+  publishing a version whose only content is a workflow pin in order to test it.
 - **No full release rehearsal.** The `main`-ancestor check added in #11 refuses a tag on a
   branch commit, which is what the `v0.0.0` rehearsal relied on. Rehearsing now would mean
-  publishing a real version for no user-visible change, which the changelog convention
-  says should not exist. The residual gap is `build`'s checkout, and it is covered by
-  equivalence with CI rather than left unstated.
+  publishing a real version whose only content is a workflow pin, which the changelog
+  convention says should not exist.
+- ➕ **The Issue's fourth acceptance criterion was written for a probe that cannot exist.**
+  It asked for a mismatched tag to pass the ancestor check and then fail on the version.
+  Passing the ancestor check needs a tag on `main`, where the workflow still carries v5
+  until this merges, so the probe would have tested the old version. The probe was run on
+  a branch commit instead, which still reaches and completes the checkout under test.
 
 ## Rejected alternatives
 
@@ -67,13 +82,15 @@ use, without cutting a release to do it.
       v2.9.2, `actions/upload-artifact` v7.0.1 and `actions/download-artifact` v8.0.1 are
       each their newest.
 - [x] Verify both CI jobs pass, exercising a plain checkout on Linux and on Windows.
-- [x] ⚠️ Verify the `fetch-depth: 0` form. The probe was tagged on a branch commit, so it
-      failed at the ancestor check rather than reaching the version check. That still
-      covers what this Issue needs: the log shows checkout v7 running with
-      `fetch-depth: 0`, the fetch of `main` completing without a git error, and the
-      failure coming from the check's own message. Reaching the version check would have
-      required tagging a commit on `main`, where the workflow still carries v5 until this
-      merges.
+- [x] Verify the `fetch-depth: 0` form. The probe was tagged on a branch commit, so it
+      failed at the ancestor check and the version check was skipped. The log shows
+      checkout v7 running with `fetch-depth: 0`, the fetch of `main` completing without a
+      git error, and the failure coming from the check's own message, so the form under
+      test was exercised. See the decision above on why the criterion as originally
+      worded could not be met.
+- [x] ➕ ⚠️ Leave `build`'s combination of a tag ref and a shallow fetch unexercised, and
+      say so. It is unreachable without a real release, and its failure mode is a failed
+      `build` before anything is published.
 - [ ] External review round, then act on the findings.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
