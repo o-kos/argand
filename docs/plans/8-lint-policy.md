@@ -56,6 +56,14 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
   a group grows silently on a toolchain bump.
 - **Thresholds live in `clippy.toml` with a comment each**, because a bare number is not
   a policy: the next person needs to know what it is protecting against.
+- **`analyze` is split by giving its streaming state a name.** Its length came from
+  seven interdependent locals -- buffer, fill level, remaining, buffer origin, folded
+  count -- moved in step by reading, envelope folding and carrying the overlap. A `Block`
+  owns them and each of those steps is a method, which is what the code was already doing
+  implicitly. Passing them as arguments instead would have traded a long function for a
+  wide one.
+- **`Layout::compute` is split along the `match` it already had**, one method per
+  orientation, since the two arms shared nothing but the content rectangle.
 - **`cognitive_complexity` is enabled even though it currently finds nothing.** Its
   value is preventing the next `Layout::compute`, not flagging today's.
 - ➕ **A classifier is written as early returns, not as an `if`/`else` expression.** Rust
@@ -80,12 +88,12 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
 
 ## Implementation steps
 
-- [ ] Add `clippy.toml` with the four thresholds, each carrying its reason.
-- [ ] Enable the ten lints in `[workspace.lints.clippy]`, inherited by every crate.
-- [ ] Split `analyze` in `crates/dsp/src/stft.rs`, 176 lines, into named stages.
-- [ ] Split `Layout::compute` in `crates/cli/src/render.rs`, 147 lines, into named stages.
-- [ ] Resolve the six `excessive_nesting` sites in `argand-dsp`.
-- [ ] Resolve `branches_sharing_code` in `crates/cli/src/render.rs`.
+- [x] Add `clippy.toml` with the four thresholds, each carrying its reason.
+- [x] Enable the ten lints in `[workspace.lints.clippy]`, inherited by every crate.
+- [x] Split `analyze` in `crates/dsp/src/stft.rs`, 176 lines, into named stages.
+- [x] Split `Layout::compute` in `crates/cli/src/render.rs`, 147 lines, into named stages.
+- [x] Resolve the six `excessive_nesting` sites in `argand-dsp`.
+- [x] Resolve `branches_sharing_code` in `crates/cli/src/render.rs`.
 - [x] ➕ Write `stdout_line` and `stderr_block` as chains of early returns instead of
       `if`/`else if`/`else` expressions. Requested by the owner, and it matches the
       codebase: `inputs::expand` classifies exactly this way, and non-test code uses 73

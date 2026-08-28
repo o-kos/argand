@@ -53,6 +53,23 @@ impl EnvelopeBuilder {
     ///
     /// Blocks must arrive in order and must not overlap; the caller owns that,
     /// because it is the same read loop that drives the transform.
+    /// Stretch one column's min/max envelope to cover one frame.
+    ///
+    /// Comparisons rather than `f32::min`/`max`: the accumulators start at
+    /// infinity and a NaN sample must leave them alone, which is what `<` and
+    /// `>` do and what the float methods do not.
+    fn widen(&mut self, slot: usize, frame: &[f32]) {
+        for (channel, value) in frame.iter().enumerate() {
+            let i = slot + channel;
+            if *value < self.min[i] {
+                self.min[i] = *value;
+            }
+            if *value > self.max[i] {
+                self.max[i] = *value;
+            }
+        }
+    }
+
     pub fn fold(&mut self, samples: &[f32], first: u64) {
         if self.is_degenerate() {
             return;
@@ -75,15 +92,7 @@ impl EnvelopeBuilder {
             self.seen[column] = true;
 
             for frame in samples[from..to].chunks_exact(self.channels) {
-                for (channel, value) in frame.iter().enumerate() {
-                    let i = slot + channel;
-                    if *value < self.min[i] {
-                        self.min[i] = *value;
-                    }
-                    if *value > self.max[i] {
-                        self.max[i] = *value;
-                    }
-                }
+                self.widen(slot, frame);
             }
         }
     }

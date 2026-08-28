@@ -208,6 +208,166 @@ pub struct AnalysisRequest {
 /// The spectrogram, the averaged spectrum and the time-domain envelope all
 /// come from the same streamed blocks, so asking for all three costs one pass
 /// over the file rather than three.
+/// The sliding window of samples the frame loop transforms.
+///
+/// Reading, envelope folding and carrying the overlap all move the same few
+/// indices in step, so they belong together rather than as loose locals in the
+/// middle of the loop.
+struct Block<'a> {
+    src: &'a mut dyn SampleSource,
+    buf: Vec<f32>,
+    channels: usize,
+    /// Samples the buffer holds when full.
+    capacity: usize,
+    /// Samples currently in the buffer.
+    filled: usize,
+    /// Samples of the range not yet read.
+    remaining: u64,
+    /// Range index of `buf[0]`.
+    start: u64,
+    /// How much of the range the envelope has already seen.
+    folded: u64,
+}
+
+impl<'a> Block<'a> {
+    fn new(src: &'a mut dyn SampleSource, fft_size: usize, channels: usize, len: u64) -> Self {
+        let buf = vec![0.0f32; BLOCK_SAMPLES.max(fft_size) * channels];
+        let capacity = buf.len() / channels;
+        Self {
+            src,
+            buf,
+            channels,
+            capacity,
+            filled: 0,
+            remaining: len,
+            start: 0,
+            folded: 0,
+        }
+    }
+
+    /// Top up the buffer, keeping whatever overlap the last pass left.
+    fn fill(&mut self) -> Result<(), DspError> {
+        while self.filled < self.capacity && self.remaining > 0 {
+            let want = ((self.capacity - self.filled) as u64).min(self.remaining) as usize;
+            let from = self.filled * self.channels;
+            let to = (self.filled + want) * self.channels;
+            let got = self.src.read(&mut self.buf[from..to])?;
+            if got == 0 {
+                self.remaining = 0;
+                break;
+            }
+            let samples = got / self.channels;
+            self.filled += samples;
+            self.remaining -= samples as u64;
+        }
+        Ok(())
+    }
+
+    /// Give the envelope whatever the buffer holds that it has not seen.
+    fn fold_into(&mut self, builder: &mut EnvelopeBuilder) {
+        let available = self.start + self.filled as u64;
+        if available <= self.folded {
+            return;
+        }
+        let from = (self.folded - self.start) as usize * self.channels;
+        builder.fold(&self.buf[from..self.filled * self.channels], self.folded);
+        self.folded = available;
+    }
+
+    /// Drop the samples the frames consumed, sliding the overlap to the front.
+    fn carry(&mut self, consumed: usize) {
+        self.buf
+            .copy_within(consumed * self.channels..self.filled * self.channels, 0);
+        self.filled -= consumed;
+        self.start += consumed as u64;
+    }
+
+    /// Read the rest of the range for the envelope alone.
+    ///
+    /// The frame loop stops at the last whole transform, which can leave up to
+    /// one hop unread. The strip spans the same time axis as the spectrogram,
+    /// so those samples are read rather than left to a borrowed column.
+    fn drain_into(&mut self, builder: &mut EnvelopeBuilder) -> Result<(), DspError> {
+        while self.remaining > 0 {
+            let want = self.remaining.min(self.capacity as u64) as usize;
+            let got = self.src.read(&mut self.buf[..want * self.channels])?;
+            if got == 0 {
+                break;
+            }
+            let samples = got / self.channels;
+            builder.fold(&self.buf[..samples * self.channels], self.folded);
+            self.folded += samples as u64;
+            self.remaining -= samples as u64;
+        }
+        Ok(())
+    }
+}
+
+/// Close the envelope over the span that was analysed, if one was built.
+fn finish_envelope(
+    envelope: Option<EnvelopeBuilder>,
+    range: SampleRange,
+    sample_rate: f64,
+) -> Option<WaveformEnvelope> {
+    envelope.map(|b| {
+        b.finish(
+            range.start as f64 / sample_rate,
+            range.end() as f64 / sample_rate,
+        )
+    })
+}
+
+/// The spectrum averaged over every frame, in dB against full scale.
+///
+/// The floor keeps a silent bin out of `log10(0)`; `frames` is at least one,
+/// so a capture that produced no frame still divides safely.
+fn averaged_spectrum(plan: &Plan, meta: &SignalMeta, power: &[f64], frames: u64) -> Psd {
+    Psd {
+        freqs_hz: (0..plan.bins).map(|i| plan.bin_freq(i, meta)).collect(),
+        db: power
+            .iter()
+            .map(|p| 10.0 * (p / frames as f64).max(1e-30).log10() as f32)
+            .collect(),
+        segments: frames,
+    }
+}
+
+/// Reject a request the transform cannot run before any of it is set up.
+fn check_request(cfg: &StftConfig, out_width: usize, out_height: usize) -> Result<(), DspError> {
+    if cfg.fft_size < 2 || !cfg.fft_size.is_power_of_two() {
+        return Err(DspError::BadFftSize(cfg.fft_size));
+    }
+    if cfg.hop == 0 {
+        return Err(DspError::BadHop);
+    }
+    if out_width == 0 || out_height == 0 {
+        return Err(DspError::BadOutputSize {
+            width: out_width,
+            height: out_height,
+        });
+    }
+    Ok(())
+}
+
+/// The decibel range the colours span, as `(min, max)`.
+///
+/// Full scale pins the top at 0 dBFS so two files are comparable. `Peak` pins
+/// it to this file's loudest bin, falling back to full scale when nothing
+/// finite was measured.
+fn db_window(db: &[f32], reference: DbReference, dynamic_range_db: f32) -> (f32, f32) {
+    let observed_max = db
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f32::NEG_INFINITY, f32::max);
+
+    let db_max = match reference {
+        DbReference::Peak if observed_max.is_finite() => observed_max,
+        DbReference::Peak | DbReference::FullScale => 0.0,
+    };
+    (db_max - dynamic_range_db, db_max)
+}
+
 pub fn analyze(
     src: &mut dyn SampleSource,
     request: &AnalysisRequest,
@@ -226,18 +386,7 @@ pub fn analyze(
     } = *request;
     let cfg = &cfg;
 
-    if cfg.fft_size < 2 || !cfg.fft_size.is_power_of_two() {
-        return Err(DspError::BadFftSize(cfg.fft_size));
-    }
-    if cfg.hop == 0 {
-        return Err(DspError::BadHop);
-    }
-    if out_width == 0 || out_height == 0 {
-        return Err(DspError::BadOutputSize {
-            width: out_width,
-            height: out_height,
-        });
-    }
+    check_request(cfg, out_width, out_height)?;
 
     let meta = src.meta().clone();
     let range = range.clamped_to(meta.len_samples);
@@ -252,7 +401,8 @@ pub fn analyze(
     let plan = Plan::new(cfg, &meta, out_height);
     let bins = plan.bins;
 
-    let mut columns = ColumnStore::new(out_width, out_height, reduce);
+    let mut store = ColumnStore::new(out_width, out_height, reduce);
+    let columns = Columns::new(total_frames, out_width);
     let mut power = vec![0.0f64; bins];
     let mut time_peak = 0.0f32;
 
@@ -260,71 +410,41 @@ pub fn analyze(
     let mut envelope = waveform_columns
         .filter(|c| *c > 0)
         .map(|c| EnvelopeBuilder::new(c, channels, range.len));
-    let mut buf = vec![0.0f32; BLOCK_SAMPLES.max(cfg.fft_size) * channels];
-    let capacity = buf.len() / channels;
-    let mut filled = 0usize;
-    let mut remaining = range.len;
     let mut frame_base = 0u64;
-    // Range index of `buf[0]`, and how much of the range the envelope has seen.
-    let mut buf_start = 0u64;
-    let mut folded = 0u64;
 
     src.seek(range.start)?;
     progress(0, total_frames);
+    let mut block = Block::new(src, cfg.fft_size, channels, range.len);
 
     loop {
-        // Top up the block, keeping whatever overlap the last pass left.
-        while filled < capacity && remaining > 0 {
-            let want = ((capacity - filled) as u64).min(remaining) as usize;
-            let got = src.read(&mut buf[filled * channels..(filled + want) * channels])?;
-            if got == 0 {
-                remaining = 0;
-                break;
-            }
-            let samples = got / channels;
-            filled += samples;
-            remaining -= samples as u64;
-        }
+        block.fill()?;
 
         // Fold before the frame check: the last block can be shorter than one
         // transform and still hold samples the strip has to show.
         if let Some(builder) = envelope.as_mut() {
-            let available = buf_start + filled as u64;
-            if available > folded {
-                let from = (folded - buf_start) as usize * channels;
-                builder.fold(&buf[from..filled * channels], folded);
-                folded = available;
-            }
+            block.fold_into(builder);
         }
 
-        if filled < cfg.fft_size {
+        if block.filled < cfg.fft_size {
             break;
         }
 
         let frames_here =
-            ((filled - cfg.fft_size) / cfg.hop + 1).min((total_frames - frame_base) as usize);
+            ((block.filled - cfg.fft_size) / cfg.hop + 1).min((total_frames - frame_base) as usize);
         if frames_here == 0 {
             break;
         }
 
-        let partial = (0..frames_here)
-            .into_par_iter()
-            .fold(
-                || Partial::new(bins, cfg.fft_size),
-                |mut acc, k| {
-                    let start = k * cfg.hop * channels;
-                    let frame = &buf[start..start + cfg.fft_size * channels];
-                    plan.frame(
-                        frame,
-                        &mut acc,
-                        column_of(frame_base + k as u64, total_frames, out_width),
-                    );
-                    acc
-                },
-            )
-            .reduce(|| Partial::new(bins, cfg.fft_size), Partial::merge);
+        let partial = plan.transform_block(
+            &block.buf,
+            cfg.hop,
+            channels,
+            frames_here,
+            frame_base,
+            columns,
+        );
 
-        columns.absorb(&partial, out_height);
+        store.absorb(&partial, out_height);
         for (slot, add) in power.iter_mut().zip(partial.power.iter()) {
             *slot += add;
         }
@@ -333,53 +453,20 @@ pub fn analyze(
         frame_base += frames_here as u64;
         progress(frame_base, total_frames);
 
-        // Carry the overlapping tail into the next block.
-        let consumed = frames_here * cfg.hop;
-        buf.copy_within(consumed * channels..filled * channels, 0);
-        filled -= consumed;
-        buf_start += consumed as u64;
+        block.carry(frames_here * cfg.hop);
 
-        if frame_base >= total_frames || (remaining == 0 && filled < cfg.fft_size) {
+        if frame_base >= total_frames || (block.remaining == 0 && block.filled < cfg.fft_size) {
             break;
         }
     }
 
-    // The frame loop stops at the last whole transform, which can leave up to
-    // one hop unread. The strip spans the same time axis as the spectrogram,
-    // so those samples are read rather than left to a borrowed column.
     if let Some(builder) = envelope.as_mut() {
-        while remaining > 0 {
-            let want = remaining.min(capacity as u64) as usize;
-            let got = src.read(&mut buf[..want * channels])?;
-            if got == 0 {
-                break;
-            }
-            let samples = got / channels;
-            builder.fold(&buf[..samples * channels], folded);
-            folded += samples as u64;
-            remaining -= samples as u64;
-        }
+        block.drain_into(builder)?;
     }
 
     let frames = frame_base.max(1);
-    let db = columns.finish();
-    let observed_max = db
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .fold(f32::NEG_INFINITY, f32::max);
-
-    let db_max = match reference {
-        DbReference::FullScale => 0.0,
-        DbReference::Peak => {
-            if observed_max.is_finite() {
-                observed_max
-            } else {
-                0.0
-            }
-        }
-    };
-    let db_min = db_max - dynamic_range_db;
+    let db = store.finish();
+    let (db_min, db_max) = db_window(&db, reference, dynamic_range_db);
 
     let spectrogram = render(
         &DbGrid {
@@ -396,22 +483,10 @@ pub fn analyze(
         &range,
     );
 
-    let psd = Psd {
-        freqs_hz: (0..bins).map(|i| plan.bin_freq(i, &meta)).collect(),
-        db: power
-            .iter()
-            .map(|p| 10.0 * (p / frames as f64).max(1e-30).log10() as f32)
-            .collect(),
-        segments: frames,
-    };
+    let psd = averaged_spectrum(&plan, &meta, &power, frames);
 
     Ok(Analysis {
-        waveform: envelope.map(|b| {
-            b.finish(
-                range.start as f64 / meta.sample_rate,
-                range.end() as f64 / meta.sample_rate,
-            )
-        }),
+        waveform: finish_envelope(envelope, range, meta.sample_rate),
         spectrogram,
         psd,
         time_peak,
@@ -420,12 +495,27 @@ pub fn analyze(
     })
 }
 
-/// Which image column a frame lands in.
-fn column_of(frame: u64, total_frames: u64, width: usize) -> usize {
-    if total_frames <= 1 {
-        return 0;
+/// Maps a frame index onto the image column it lands in.
+#[derive(Clone, Copy)]
+struct Columns {
+    total_frames: u64,
+    width: usize,
+}
+
+impl Columns {
+    const fn new(total_frames: u64, width: usize) -> Self {
+        Self {
+            total_frames,
+            width,
+        }
     }
-    ((frame * width as u64) / total_frames).min(width as u64 - 1) as usize
+
+    fn of(self, frame: u64) -> usize {
+        if self.total_frames <= 1 {
+            return 0;
+        }
+        ((frame * self.width as u64) / self.total_frames).min(self.width as u64 - 1) as usize
+    }
 }
 
 /// The transform, window and scaling for one configuration.
@@ -487,6 +577,30 @@ impl Plan {
     }
 
     /// Transform one frame and fold the result into `acc`.
+    /// Transform every whole frame the block holds, in parallel.
+    fn transform_block(
+        &self,
+        buf: &[f32],
+        hop: usize,
+        channels: usize,
+        frames: usize,
+        frame_base: u64,
+        columns: Columns,
+    ) -> Partial {
+        (0..frames)
+            .into_par_iter()
+            .fold(
+                || Partial::new(self.bins, self.fft_size),
+                |mut acc, k| {
+                    let start = k * hop * channels;
+                    let frame = &buf[start..start + self.fft_size * channels];
+                    self.frame(frame, &mut acc, columns.of(frame_base + k as u64));
+                    acc
+                },
+            )
+            .reduce(|| Partial::new(self.bins, self.fft_size), Partial::merge)
+    }
+
     fn frame(&self, samples: &[f32], acc: &mut Partial, column: usize) {
         acc.time_peak = samples
             .iter()
@@ -620,35 +734,28 @@ impl ColumnStore {
             }
             let src = &partial.rows[frame * height..(frame + 1) * height];
             let dst = &mut self.values[col * self.height..(col + 1) * self.height];
-            match self.reduce {
-                Reduce::Max => {
-                    for (d, s) in dst.iter_mut().zip(src) {
-                        if *s > *d {
-                            *d = *s;
-                        }
-                    }
-                }
-                Reduce::Mean => {
-                    for (d, s) in dst.iter_mut().zip(src) {
-                        *d = if d.is_finite() { *d + *s } else { *s };
-                    }
-                }
-            }
+            fold_column(dst, src, self.reduce);
             self.counts[col] += 1;
+        }
+    }
+
+    /// Divide each averaged column by the number of frames that landed in it.
+    fn average_columns(&mut self) {
+        for col in 0..self.width {
+            let n = self.counts[col];
+            if n <= 1 {
+                continue;
+            }
+            for v in &mut self.values[col * self.height..(col + 1) * self.height] {
+                *v /= n as f32;
+            }
         }
     }
 
     /// Column-major dB values, low frequency first within each column.
     fn finish(mut self) -> Vec<f32> {
         if matches!(self.reduce, Reduce::Mean) {
-            for col in 0..self.width {
-                let n = self.counts[col];
-                if n > 1 {
-                    for v in &mut self.values[col * self.height..(col + 1) * self.height] {
-                        *v /= n as f32;
-                    }
-                }
-            }
+            self.average_columns();
         }
         // A column no frame landed in borrows its neighbour rather than
         // showing as a black stripe.
@@ -660,6 +767,28 @@ impl ColumnStore {
             }
         }
         self.values
+    }
+}
+
+/// Fold one frame's rows into the column they share.
+///
+/// `Max` keeps the loudest value seen; `Mean` accumulates, and `finish`
+/// divides by the count afterwards. A non-finite accumulator means the column
+/// is still empty, so the first value replaces it rather than adding to it.
+fn fold_column(dst: &mut [f32], src: &[f32], reduce: Reduce) {
+    match reduce {
+        Reduce::Max => {
+            for (d, s) in dst.iter_mut().zip(src) {
+                if *s > *d {
+                    *d = *s;
+                }
+            }
+        }
+        Reduce::Mean => {
+            for (d, s) in dst.iter_mut().zip(src) {
+                *d = if d.is_finite() { *d + *s } else { *s };
+            }
+        }
     }
 }
 
