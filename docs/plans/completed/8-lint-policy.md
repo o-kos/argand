@@ -29,11 +29,15 @@ What remains is the lint *selection* and its *thresholds*, plus the code they fl
 
 Measured on `main` at the thresholds proposed below, `--all-targets`:
 
+Line numbers are against `main` at `7fff1d6`, the base this branch was finally rebased
+onto. The counts held across the rebase; only the positions in `render.rs` moved, because
+Issue #14 reworked that file in between.
+
 | lint | places | where |
 |---|---|---|
 | `excessive_nesting` | 6 | `dsp/src/stft.rs` 626, 633 (twice), 647; `dsp/src/waveform.rs` 80, 83 |
-| `too_many_lines` | 2 | `dsp/src/stft.rs:211` `analyze`, 176 lines; `cli/src/render.rs:232` `Layout::compute`, 147 |
-| `branches_sharing_code` | 1 | `cli/src/render.rs:555` |
+| `too_many_lines` | 2 | `dsp/src/stft.rs:211` `analyze`, 176 lines; `cli/src/render.rs:375` `Layout::compute`, 147 |
+| `branches_sharing_code` | 1 | `cli/src/render.rs:698` |
 | `cognitive_complexity` | 0 | — |
 | `fn_params_excessive_bools`, `manual_let_else`, `redundant_else` | 0 | — |
 | `allow_attributes`, `allow_attributes_without_reason` | 0 | nothing left to find; they guard against regression |
@@ -114,8 +118,11 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
       through an `else`.
 - [x] Update `CONTRIBUTING.md` so the documented policy matches what is enforced.
 - [x] Verify a deliberate policy violation fails CI, then revert it.
-- [x] External review round, then act on the findings. Three rounds; every finding was
-      about the accuracy of a claim rather than about the code.
+- [x] External review round, then act on the findings. Four rounds. Every finding was
+      about the accuracy of a claim rather than about the code: detached rustdoc, a wrong
+      statement about `f32::min` and NaN, a threshold left implicit, an overstated claim
+      that a lint can enforce the owner's agreement, a stale test count, a coverage claim
+      the evidence did not support, and stale line numbers after the rebase.
 - [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
