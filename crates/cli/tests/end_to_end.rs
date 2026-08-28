@@ -818,11 +818,17 @@ fn an_error_states_its_cause_once() {
     let dir = TempDir::new("e2e-once");
     let missing = dir.join("nope.wav");
 
+    // Ask the platform for its own "not found" wording rather than hard-coding
+    // the Unix one: what is under test is that the cause appears once.
+    let cause = std::fs::File::open(&missing)
+        .expect_err("the fixture path must not exist")
+        .to_string();
+
     let out = run(&[missing.to_str().unwrap()]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert_eq!(
-        stderr.matches("No such file or directory").count(),
+        stderr.matches(&cause).count(),
         1,
         "the cause belongs to the chain, not to the message as well:\n{stderr}"
     );

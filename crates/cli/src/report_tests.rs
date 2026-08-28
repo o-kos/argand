@@ -1,7 +1,7 @@
 use super::*;
-use argand_core::{Domain, SampleFormat, SampleType, SpectrogramImage};
+use argand_core::{Colormap, Domain, SampleFormat, SampleRange, SampleType, SpectrogramImage};
 use argand_core::{Psd, SignalMeta};
-use argand_dsp::{Analysis, Window};
+use argand_dsp::{Analysis, AnalysisRequest, DbReference, Reduce, StftConfig, Window};
 use std::path::PathBuf;
 
 fn meta(format: SampleFormat, divisor: f32) -> SignalMeta {
@@ -46,18 +46,32 @@ fn analysis_at(
     }
 }
 
-fn report(m: &SignalMeta, a: &Analysis, reference: DbReference) -> Report {
-    Report::new(
-        m,
-        a,
-        &StftConfig::new(2048, Window::Hann),
-        Reduce::Max,
+/// The whole fixture capture: 43.2 M samples at 24 kHz, so 1800 seconds.
+const FULL_SPAN: u64 = 43_200_000;
+
+fn request(reference: DbReference, analysed_samples: u64) -> AnalysisRequest {
+    AnalysisRequest {
+        cfg: StftConfig::new(2048, Window::Hann),
+        range: SampleRange::new(0, analysed_samples),
+        width: 4,
+        height: 4,
+        reduce: Reduce::Max,
+        colormap: Colormap::Oceanic,
+        dynamic_range_db: 110.0,
         reference,
-        110.0,
-        Normalize::None,
-        0.0,
-        1800.0,
-    )
+        waveform_columns: None,
+    }
+}
+
+fn unscaled() -> Scaling {
+    Scaling {
+        normalize: Normalize::None,
+        gain_db: 0.0,
+    }
+}
+
+fn report(m: &SignalMeta, a: &Analysis, reference: DbReference) -> Report {
+    Report::new(m, a, &request(reference, FULL_SPAN), unscaled())
 }
 
 fn human(r: &Report) -> String {
@@ -189,16 +203,12 @@ fn the_analysed_span_is_only_mentioned_when_it_differs() {
     let a = analysis(-11.4, -87.2, 0.5, 0.0);
     assert!(!human(&report(&m, &a, DbReference::FullScale)).contains("analysed"));
 
+    // 30 seconds of the 1800-second capture.
     let partial = Report::new(
         &m,
         &a,
-        &StftConfig::new(2048, Window::Hann),
-        Reduce::Max,
-        DbReference::FullScale,
-        110.0,
-        Normalize::None,
-        0.0,
-        30.0,
+        &request(DbReference::FullScale, 30 * 24_000),
+        unscaled(),
     );
     assert!(human(&partial).contains("analysed  30s"), "{}", human(&partial));
 }
@@ -274,13 +284,11 @@ fn the_normalization_mode_is_reported_verbatim() {
         Report::new(
             &m,
             &a,
-            &StftConfig::new(2048, Window::Hann),
-            Reduce::Max,
-            DbReference::FullScale,
-            110.0,
-            mode,
-            -6.0,
-            1800.0,
+            &request(DbReference::FullScale, FULL_SPAN),
+            Scaling {
+                normalize: mode,
+                gain_db: -6.0,
+            },
         )
     };
     assert!(human(&build(Normalize::Auto)).contains("normalize auto"));

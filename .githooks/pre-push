@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+#
+# The local gate. Same checks as CI, run before anything leaves this machine.
+#
+# Install once:  git config core.hooksPath .githooks
+# Skip once:     git push --no-verify   (say why in the Pull Request)
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+run() {
+    echo "pre-push: $*"
+    "$@" || {
+        echo "pre-push: FAILED -- $*" >&2
+        exit 1
+    }
+}
+
+run cargo fmt --all -- --check
+run cargo clippy --all-targets --locked
+run cargo test --locked
+
+echo "pre-push: all checks passed"

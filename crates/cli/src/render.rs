@@ -11,7 +11,7 @@ use argand_core::{Colormap, SpectrogramImage, format_duration, format_hz};
 use argand_dsp::{Analysis, DbReference};
 use image::{Rgb, RgbImage};
 
-use crate::text::{Align, TextRenderer};
+use crate::text::{Anchor, TextRenderer, TextStyle};
 
 /// Panels drawn beside the spectrogram.
 ///
@@ -179,6 +179,17 @@ const GAP: i64 = 14;
 const WAVEFORM_SPAN: i64 = 64;
 const FONT_SIZE: f32 = 13.0;
 const TITLE_SIZE: f32 = 14.0;
+
+/// The plot's heading.
+const TITLE: TextStyle = TextStyle {
+    size: TITLE_SIZE,
+    color: Theme::TEXT,
+};
+/// Every axis tick, footer and legend label.
+const LABEL: TextStyle = TextStyle {
+    size: FONT_SIZE,
+    color: Theme::MUTED,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
@@ -438,20 +449,14 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
     text.draw(
         &mut canvas,
         input.title,
-        PAD as f32,
-        (PAD + 15) as f32,
-        TITLE_SIZE,
-        Theme::TEXT,
-        Align::Left,
+        Anchor::left(PAD as f32, (PAD + 15) as f32),
+        TITLE,
     );
     text.draw(
         &mut canvas,
         input.footer,
-        PAD as f32,
-        (layout.height as i64 - PAD + 2) as f32,
-        FONT_SIZE,
-        Theme::MUTED,
-        Align::Left,
+        Anchor::left(PAD as f32, (layout.height as i64 - PAD + 2) as f32),
+        LABEL,
     );
 
     if let Some(rect) = layout.spectrogram {
@@ -736,11 +741,8 @@ fn draw_colorbar(canvas: &mut RgbImage, text: &TextRenderer, rect: Rect, input: 
         text.draw(
             canvas,
             &format!("{value:.0} dB"),
-            (rect.right() + 6) as f32,
-            (y + 4) as f32,
-            FONT_SIZE,
-            Theme::MUTED,
-            Align::Left,
+            Anchor::left((rect.right() + 6) as f32, (y + 4) as f32),
+            LABEL,
         );
     }
 }
@@ -766,11 +768,8 @@ fn time_axis_horizontal(
         text.draw(
             canvas,
             &time_label(value),
-            x as f32,
-            (rect.bottom() + 16) as f32,
-            FONT_SIZE,
-            Theme::MUTED,
-            Align::Center,
+            Anchor::center(x as f32, (rect.bottom() + 16) as f32),
+            LABEL,
         );
     }
 }
@@ -796,11 +795,8 @@ fn time_axis_vertical(
         text.draw(
             canvas,
             &time_label(value),
-            (rect.x - 6) as f32,
-            (y + 4) as f32,
-            FONT_SIZE,
-            Theme::MUTED,
-            Align::Right,
+            Anchor::right((rect.x - 6) as f32, (y + 4) as f32),
+            LABEL,
         );
     }
 }
@@ -825,11 +821,8 @@ fn freq_axis_vertical(
             text.draw(
                 canvas,
                 &format_hz(value),
-                (rect.x - 6) as f32,
-                (y + 4) as f32,
-                FONT_SIZE,
-                Theme::MUTED,
-                Align::Right,
+                Anchor::right((rect.x - 6) as f32, (y + 4) as f32),
+                LABEL,
             );
         }
     }
@@ -852,11 +845,8 @@ fn freq_axis_horizontal(
         text.draw(
             canvas,
             &format_hz(value),
-            x as f32,
-            (rect.bottom() + 16) as f32,
-            FONT_SIZE,
-            Theme::MUTED,
-            Align::Center,
+            Anchor::center(x as f32, (rect.bottom() + 16) as f32),
+            LABEL,
         );
     }
 }
@@ -878,11 +868,8 @@ fn db_axis_horizontal(
         text.draw(
             canvas,
             &format!("{value:.0}"),
-            x as f32,
-            (rect.bottom() + 16) as f32,
-            FONT_SIZE,
-            Theme::MUTED,
-            Align::Center,
+            Anchor::center(x as f32, (rect.bottom() + 16) as f32),
+            LABEL,
         );
     }
 }
@@ -904,11 +891,8 @@ fn db_axis_vertical(
         text.draw(
             canvas,
             &format!("{value:.0}"),
-            (rect.x - 6) as f32,
-            (y + 4) as f32,
-            FONT_SIZE,
-            Theme::MUTED,
-            Align::Right,
+            Anchor::right((rect.x - 6) as f32, (y + 4) as f32),
+            LABEL,
         );
     }
 }

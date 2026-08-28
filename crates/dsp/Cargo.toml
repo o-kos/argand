@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "STFT, PSD and window functions for argand"
 
+[lints]
+workspace = true
+
 [dependencies]
 argand-core.workspace = true
 rayon.workspace = true

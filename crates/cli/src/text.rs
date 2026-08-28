@@ -16,6 +16,47 @@ pub enum Align {
     Right,
 }
 
+/// Where a label sits, and which way it grows from that point.
+#[derive(Debug, Clone, Copy)]
+pub struct Anchor {
+    pub x: f32,
+    pub y: f32,
+    pub align: Align,
+}
+
+impl Anchor {
+    pub const fn left(x: f32, y: f32) -> Self {
+        Self {
+            x,
+            y,
+            align: Align::Left,
+        }
+    }
+
+    pub const fn center(x: f32, y: f32) -> Self {
+        Self {
+            x,
+            y,
+            align: Align::Center,
+        }
+    }
+
+    pub const fn right(x: f32, y: f32) -> Self {
+        Self {
+            x,
+            y,
+            align: Align::Right,
+        }
+    }
+}
+
+/// How a label looks. A plot uses two of these, so they are named once.
+#[derive(Debug, Clone, Copy)]
+pub struct TextStyle {
+    pub size: f32,
+    pub color: Rgb<u8>,
+}
+
 pub struct TextRenderer {
     font: FontRef<'static>,
 }
@@ -43,24 +84,15 @@ impl TextRenderer {
         width
     }
 
-    /// Draw `text` with its baseline at `y`, positioned horizontally by
-    /// `align` relative to `x`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn draw(
-        &self,
-        canvas: &mut RgbImage,
-        text: &str,
-        x: f32,
-        y: f32,
-        size: f32,
-        color: Rgb<u8>,
-        align: Align,
-    ) {
+    /// Draw `text` with its baseline at `at.y`, positioned horizontally by
+    /// `at.align` relative to `at.x`.
+    pub fn draw(&self, canvas: &mut RgbImage, text: &str, at: Anchor, style: TextStyle) {
+        let TextStyle { size, color } = style;
         let scaled = self.font.as_scaled(PxScale::from(size));
-        let mut caret = match align {
-            Align::Left => x,
-            Align::Center => x - self.width(text, size) / 2.0,
-            Align::Right => x - self.width(text, size),
+        let mut caret = match at.align {
+            Align::Left => at.x,
+            Align::Center => at.x - self.width(text, size) / 2.0,
+            Align::Right => at.x - self.width(text, size),
         };
 
         let (width, height) = (canvas.width() as i64, canvas.height() as i64);
@@ -70,7 +102,7 @@ impl TextRenderer {
             if let Some(prev) = previous {
                 caret += scaled.kern(prev, id);
             }
-            let glyph = id.with_scale_and_position(PxScale::from(size), point(caret, y));
+            let glyph = id.with_scale_and_position(PxScale::from(size), point(caret, at.y));
             caret += scaled.h_advance(id);
             previous = Some(id);
 

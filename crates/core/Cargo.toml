@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "Domain types and render view-models for argand"
 
+[lints]
+workspace = true
+
 [dependencies]
 hsl.workspace = true
 serde.workspace = true

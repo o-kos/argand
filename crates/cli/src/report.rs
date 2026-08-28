@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::Path;
 
 use argand_core::{SignalMeta, format_bytes, format_duration, format_hz, format_samples};
-use argand_dsp::{Analysis, DbReference, Reduce, StftConfig};
+use argand_dsp::{Analysis, AnalysisRequest};
 use argand_io::Normalize;
 use serde::Serialize;
 
@@ -94,21 +94,33 @@ pub struct Report {
     pub elapsed_seconds: f64,
 }
 
+/// How sample values were scaled before the transform saw them.
+///
+/// The mode here is the one actually applied, after any format default was
+/// resolved, which is what the report has to describe.
+#[derive(Debug, Clone, Copy)]
+pub struct Scaling {
+    pub normalize: Normalize,
+    pub gain_db: f32,
+}
+
 impl Report {
-    #[allow(clippy::too_many_arguments)]
+    /// Describe a finished analysis.
+    ///
+    /// The settings come from the `request` that produced `analysis` rather
+    /// than being passed again alongside it. Reading them twice from the
+    /// command line is what would let the report describe a transform that
+    /// never ran.
     pub fn new(
         meta: &SignalMeta,
         analysis: &Analysis,
-        cfg: &StftConfig,
-        reduce: Reduce,
-        reference: DbReference,
-        dynamic_range_db: f32,
-        normalize: Normalize,
-        gain_db: f32,
-        analysed_seconds: f64,
+        request: &AnalysisRequest,
+        scaling: Scaling,
     ) -> Self {
         let image = &analysis.spectrogram;
         let divisor = meta.divisor;
+        let cfg = &request.cfg;
+        let analysed_seconds = request.range.len as f64 / meta.sample_rate;
 
         let peak_bin = analysis.psd.peak(meta.center_freq).map(|p| PeakBin {
             bin: p.bin,
@@ -126,9 +138,9 @@ impl Report {
             samples: meta.len_samples,
             duration_seconds: meta.duration_seconds(),
             analysed_seconds,
-            normalize: describe_normalize(normalize),
+            normalize: describe_normalize(scaling.normalize),
             divisor,
-            gain_db,
+            gain_db: scaling.gain_db,
             stft: StftReport {
                 fft_size: cfg.fft_size,
                 hop: cfg.hop,
@@ -136,9 +148,9 @@ impl Report {
                 overlap_percent: cfg.overlap_percent(),
                 frames: analysis.frames,
                 enbw_hz: analysis.enbw_hz,
-                reduce: reduce.to_string(),
-                reference: reference.to_string(),
-                dynamic_range_db,
+                reduce: request.reduce.to_string(),
+                reference: request.reference.to_string(),
+                dynamic_range_db: request.dynamic_range_db,
                 db_min: image.db_min,
                 db_max: image.db_max,
             },

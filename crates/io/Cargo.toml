@@ -10,6 +10,9 @@ description = "Signal file readers for argand"
 # Fixture helpers, shared with the dsp and cli test suites.
 testutil = []
 
+[lints]
+workspace = true
+
 [dependencies]
 argand-core.workspace = true
 bytemuck.workspace = true

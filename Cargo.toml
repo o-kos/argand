@@ -8,6 +8,11 @@ edition = "2024"
 rust-version = "1.88"
 license = "MIT"
 
+# Warnings are errors here rather than on the command line, so a plain
+# `cargo clippy` is as strict locally as it is in CI.
+[workspace.lints.rust]
+warnings = "deny"
+
 [workspace.dependencies]
 argand-core = { path = "crates/core" }
 argand-io = { path = "crates/io" }
