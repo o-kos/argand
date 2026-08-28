@@ -53,23 +53,24 @@ branch.
 ## Implementation steps
 
 - [x] Create the GitHub `backlog` label and apply it to Issue #14.
-- [ ] Document detailed backlog eligibility, exclusions, and recording requirements in
+- [x] Document detailed backlog eligibility, exclusions, and recording requirements in
       `CONTRIBUTING.md`.
-- [ ] Add the mandatory condensed routing rule to `AGENTS.md`.
-- [ ] Verify the GitHub label and Issue #14 classification.
-- [ ] Complete validation.
+- [x] Add the mandatory condensed routing rule to `AGENTS.md`.
+- [x] Verify the GitHub label and Issue #14 classification.
+- [ ] External review round, then act on the findings.
+- [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] `git diff --check`
-- [ ] GitHub exposes Issue #14 under `is:open is:issue label:backlog` and excludes it
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] `git diff --check`
+- [x] GitHub exposes Issue #14 under `is:open is:issue label:backlog` and excludes it
       from `is:open is:issue -label:backlog`.
 
 ## Post-completion
