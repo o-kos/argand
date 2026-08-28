@@ -59,9 +59,9 @@ branch.
       `CONTRIBUTING.md`.
 - [x] Add the mandatory condensed routing rule to `AGENTS.md`.
 - [x] Verify the GitHub label and Issue #14 classification.
-- [ ] External review round, then act on the findings.
+- [x] External review round, then act on the findings.
 - [x] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
