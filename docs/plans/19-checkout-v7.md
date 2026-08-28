@@ -8,8 +8,8 @@ Resolves #19.
 job and decides what the workspace contains, so it is the one action worth keeping
 current. The other three pins are already at their newest release.
 
-This change moves the four pins and proves the new version on every form the workflows
-use, without cutting a release to do it.
+This change moves the four pins, proves the new version on the two checkout forms that
+are reachable without cutting a release, and names the third rather than claiming it.
 
 ## Context
 
@@ -20,12 +20,16 @@ use, without cutting a release to do it.
   `v7` tag currently resolves to.
 - The net change from v5.1.0 is smaller than the v6 and v7 release notes suggest, because
   v5.1.0 already carries two of the headline items: it runs on `node24`, and the
-  `pull_request_target` fork-checkout protection was backported into it. What the upgrade
-  actually brings is credentials written to a separate file rather than the shared git
-  config (v6.0.0), a tag-handling fix that preserves annotations and honours an explicit
-  `fetch-tags` (v6.0.2), and the move to ESM with refreshed dependencies (v7.0.0).
-- That tag-handling fix lands on the one path this branch cannot exercise, which is an
-  argument for taking the upgrade rather than against it.
+  `pull_request_target` fork-checkout protection was backported into it. The changes that
+  matter here, which is a selection rather than the full list, are credentials written to
+  a separate file rather than the shared git config (v6.0.0), the tag-handling fix
+  (v6.0.2), fixes for SHA-256 repositories (v6.0.3), and a credential-cleanup fix that
+  escapes the value passed to `git config --unset` (v7.0.1, not backported to v5.1.0).
+- The tag-handling fix is the one that bears on this repository. It changed a plain
+  shallow tag checkout to fetch through `+refs/tags/*:refs/tags/*` rather than by commit
+  hash, so the real tag object is fetched and its annotation preserved. That is exactly
+  the path the release `build` job takes, and it is the path this branch cannot exercise,
+  which argues for taking the upgrade rather than against it.
 - `checkout` appears four times, and `publish` does not use it at all:
 
   | workflow | job | inputs |
@@ -49,10 +53,15 @@ use, without cutting a release to do it.
   each; calling those equivalent would be wrong. `build` only runs after `verify` passes,
   which needs a version that matches the workspace, so nothing short of a real release
   reaches it.
-- **That residual gap is accepted, because its failure mode is safe.** If v7 mishandled a
-  tag ref, `build` would fail before `publish` ever runs: no archive, no release, nothing
-  to retract. The cost is a failed release run and a re-tag, against the cost of
-  publishing a version whose only content is a workflow pin in order to test it.
+- **The residual gap is accepted, and the workflow is changed so that accepting it is
+  safe.** The guarantee the workflow gave was narrower than the first draft of this plan
+  claimed: `publish` runs only if every `build` succeeds, but nothing checked that the
+  commit in the workspace was the tagged one. The only other check is the binary's version
+  string, which a different commit carrying the same `Cargo.toml` version would satisfy.
+  Both jobs that check out now compare `HEAD` against `GITHUB_SHA` and fail if they
+  differ, which also covers a tag moved between the event firing and the checkout running.
+  With that in place, a checkout that produces the wrong tree fails the job rather than
+  reaching an archive.
 - **No full release rehearsal.** The `main`-ancestor check added in #11 refuses a tag on a
   branch commit, which is what the `v0.0.0` rehearsal relied on. Rehearsing now would mean
   publishing a real version whose only content is a workflow pin, which the changelog
@@ -89,8 +98,11 @@ use, without cutting a release to do it.
       test was exercised. See the decision above on why the criterion as originally
       worded could not be met.
 - [x] ➕ ⚠️ Leave `build`'s combination of a tag ref and a shallow fetch unexercised, and
-      say so. It is unreachable without a real release, and its failure mode is a failed
-      `build` before anything is published.
+      say so. It is unreachable without a real release.
+- [x] ➕ Make both checkout-using jobs compare `HEAD` against `GITHUB_SHA`. Review found
+      the workflow had no way to notice a checkout of the wrong commit: the version string
+      is the only other check, and a different commit with the same `Cargo.toml` version
+      would pass it. Arguing the gap was safe was weaker than making it so.
 - [ ] External review round, then act on the findings.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
@@ -103,7 +115,9 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`: 226 tests, all passing.
 - [x] `cargo build --release --locked`, after the checks above pass
-- [x] Both workflows still parse as YAML, and the diff is exactly the four pin lines.
+- [x] Both workflows still parse as YAML.
+- [ ] The `HEAD` check passes on a legitimate tag and the release workflow still runs
+      green through `verify`.
 - [x] Both CI jobs pass on the Pull Request.
 - [x] The probe published nothing: `build` and `publish` were skipped, and the tag was
       deleted afterwards. Only `v0.0.1` remains.

@@ -25,6 +25,17 @@ jobs:
           # merge-base needs both histories, so the tag's shallow fetch is not enough.
           fetch-depth: 0
 
+      # A tag can be moved between the event firing and the checkout running.
+      # Nothing else here would notice: the archive's only other check is the
+      # binary's version string, which a different commit can satisfy.
+      - name: Verify the checkout is the tagged commit
+        run: |
+          head=$(git rev-parse HEAD)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "error: checked out $head, expected $GITHUB_SHA" >&2
+            exit 1
+          fi
+
       # A tag can be pushed at any commit, and branch protection does not reach
       # it. Without this, anyone able to create a tag could publish an official
       # Release built from code that never passed review.
@@ -72,6 +83,17 @@ jobs:
             target: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A tag can be moved between the event firing and the checkout running.
+      # Nothing else here would notice: the archive's only other check is the
+      # binary's version string, which a different commit can satisfy.
+      - name: Verify the checkout is the tagged commit
+        run: |
+          head=$(git rev-parse HEAD)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "error: checked out $head, expected $GITHUB_SHA" >&2
+            exit 1
+          fi
 
       - name: Install the toolchain pinned by rust-toolchain.toml
         run: |
