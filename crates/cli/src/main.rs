@@ -206,12 +206,12 @@ struct Reporting {
 /// want paths echoed.
 fn stdout_line(args: &Args, echo_paths: bool) -> StdoutLine {
     if args.json {
-        StdoutLine::Json
-    } else if args.quiet || !echo_paths {
-        StdoutLine::Nothing
-    } else {
-        StdoutLine::Path
+        return StdoutLine::Json;
     }
+    if args.quiet || !echo_paths {
+        return StdoutLine::Nothing;
+    }
+    StdoutLine::Path
 }
 
 /// Pick the stderr stream's content.
@@ -220,12 +220,12 @@ fn stdout_line(args: &Args, echo_paths: bool) -> StdoutLine {
 /// file unless `-v` asks for the block back.
 fn stderr_block(args: &Args, batch: bool) -> StderrBlock {
     if args.quiet {
-        StderrBlock::Nothing
-    } else if batch && args.verbose == 0 {
-        StderrBlock::Compact
-    } else {
-        StderrBlock::Human
+        return StderrBlock::Nothing;
     }
+    if batch && args.verbose == 0 {
+        return StderrBlock::Compact;
+    }
+    StderrBlock::Human
 }
 
 impl Reporting {

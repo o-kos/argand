@@ -371,7 +371,151 @@ pub struct Layout {
     pub colorbar: Option<Rect>,
 }
 
+/// Width the colour bar and its labels take out of the content area.
+const fn cbar_reserve(panels: Panels) -> i64 {
+    if panels.db {
+        CBAR_W + CBAR_LABEL_W + GAP
+    } else {
+        0
+    }
+}
+
 impl Layout {
+    /// Time across the image: the strip sits above the spectrogram.
+    fn place_time_across(&mut self, content: Rect, panels: Panels, cbar_x: i64) {
+        let cbar_reserve = cbar_reserve(panels);
+        let plot = Rect {
+            x: content.x + FREQ_LABEL_W,
+            y: content.y,
+            w: content.w - FREQ_LABEL_W - cbar_reserve,
+            h: content.h - TICK_LABEL_H,
+        };
+        if !plot.is_valid() {
+            return;
+        }
+
+        // The spectrum takes its column first: it is the only panel
+        // whose width carries meaning.
+        let psd_w = if panels.psd {
+            ((plot.w as f64 * 0.16) as i64)
+                .clamp(110, 300)
+                .min(plot.w / 2)
+        } else {
+            0
+        };
+        let time_w = plot.w - if psd_w > 0 { psd_w + GAP } else { 0 };
+
+        let strip_h = if panels.waveform {
+            WAVEFORM_SPAN.min(plot.h / 3)
+        } else {
+            0
+        };
+        let spec_y = plot.y + if strip_h > 0 { strip_h + GAP } else { 0 };
+        let spec_h = plot.bottom() - spec_y;
+
+        if strip_h > 0 {
+            self.waveform = Some(Rect {
+                w: time_w,
+                h: strip_h,
+                ..plot
+            })
+            .filter(Rect::is_valid);
+        }
+        self.spectrogram = Some(Rect {
+            y: spec_y,
+            w: time_w,
+            h: spec_h,
+            ..plot
+        })
+        .filter(Rect::is_valid);
+        if psd_w > 0 {
+            // Aligned to the spectrogram's frequency axis, not to the
+            // strip above it: a bin has to sit on its own row.
+            self.psd = Some(Rect {
+                x: plot.right() - psd_w,
+                y: spec_y,
+                w: psd_w,
+                h: spec_h,
+            })
+            .filter(Rect::is_valid);
+        }
+        if panels.db {
+            self.colorbar = Some(Rect {
+                x: cbar_x,
+                y: spec_y,
+                w: CBAR_W,
+                h: spec_h,
+            })
+            .filter(Rect::is_valid);
+        }
+    }
+
+    /// Time down the image: the strip sits to the spectrogram's right.
+    fn place_time_down(&mut self, content: Rect, panels: Panels, cbar_x: i64) {
+        let cbar_reserve = cbar_reserve(panels);
+        let gutter = DB_LABEL_W.max(FREQ_LABEL_W / 2);
+        let plot = Rect {
+            x: content.x + gutter,
+            y: content.y,
+            w: content.w - gutter - cbar_reserve,
+            h: content.h - TICK_LABEL_H,
+        };
+        if !plot.is_valid() {
+            return;
+        }
+
+        let psd_h = if panels.psd {
+            ((plot.h as f64 * 0.22) as i64)
+                .clamp(60, 200)
+                .min(plot.h / 2)
+        } else {
+            0
+        };
+        let time_y = plot.y + if psd_h > 0 { psd_h + GAP } else { 0 };
+        let time_h = plot.bottom() - time_y;
+
+        let strip_w = if panels.waveform {
+            WAVEFORM_SPAN.min(plot.w / 3)
+        } else {
+            0
+        };
+        let spec_w = plot.w - if strip_w > 0 { strip_w + GAP } else { 0 };
+
+        self.spectrogram = Some(Rect {
+            y: time_y,
+            w: spec_w,
+            h: time_h,
+            ..plot
+        })
+        .filter(Rect::is_valid);
+        if strip_w > 0 {
+            self.waveform = Some(Rect {
+                x: plot.x + spec_w + GAP,
+                y: time_y,
+                w: strip_w,
+                h: time_h,
+            })
+            .filter(Rect::is_valid);
+        }
+        if psd_h > 0 {
+            self.psd = Some(Rect {
+                w: spec_w,
+                h: psd_h,
+                ..plot
+            })
+            .filter(Rect::is_valid);
+        }
+        if panels.db {
+            self.colorbar = Some(Rect {
+                x: cbar_x,
+                y: time_y,
+                w: CBAR_W,
+                h: time_h,
+            })
+            .filter(Rect::is_valid);
+        }
+    }
+
     pub fn compute(width: u32, height: u32, panels: Panels, orientation: Orientation) -> Self {
         let (w, h) = (width as i64, height as i64);
         let content = Rect {
@@ -394,143 +538,11 @@ impl Layout {
             return layout;
         }
 
-        let cbar_reserve = if panels.db {
-            CBAR_W + CBAR_LABEL_W + GAP
-        } else {
-            0
-        };
         let cbar_x = w - PAD - CBAR_LABEL_W - CBAR_W;
 
         match orientation {
-            Orientation::Horizontal => {
-                let plot = Rect {
-                    x: content.x + FREQ_LABEL_W,
-                    y: content.y,
-                    w: content.w - FREQ_LABEL_W - cbar_reserve,
-                    h: content.h - TICK_LABEL_H,
-                };
-                if !plot.is_valid() {
-                    return layout;
-                }
-
-                // The spectrum takes its column first: it is the only panel
-                // whose width carries meaning.
-                let psd_w = if panels.psd {
-                    ((plot.w as f64 * 0.16) as i64)
-                        .clamp(110, 300)
-                        .min(plot.w / 2)
-                } else {
-                    0
-                };
-                let time_w = plot.w - if psd_w > 0 { psd_w + GAP } else { 0 };
-
-                let strip_h = if panels.waveform {
-                    WAVEFORM_SPAN.min(plot.h / 3)
-                } else {
-                    0
-                };
-                let spec_y = plot.y + if strip_h > 0 { strip_h + GAP } else { 0 };
-                let spec_h = plot.bottom() - spec_y;
-
-                if strip_h > 0 {
-                    layout.waveform = Some(Rect {
-                        w: time_w,
-                        h: strip_h,
-                        ..plot
-                    })
-                    .filter(Rect::is_valid);
-                }
-                layout.spectrogram = Some(Rect {
-                    y: spec_y,
-                    w: time_w,
-                    h: spec_h,
-                    ..plot
-                })
-                .filter(Rect::is_valid);
-                if psd_w > 0 {
-                    // Aligned to the spectrogram's frequency axis, not to the
-                    // strip above it: a bin has to sit on its own row.
-                    layout.psd = Some(Rect {
-                        x: plot.right() - psd_w,
-                        y: spec_y,
-                        w: psd_w,
-                        h: spec_h,
-                    })
-                    .filter(Rect::is_valid);
-                }
-                if panels.db {
-                    layout.colorbar = Some(Rect {
-                        x: cbar_x,
-                        y: spec_y,
-                        w: CBAR_W,
-                        h: spec_h,
-                    })
-                    .filter(Rect::is_valid);
-                }
-            }
-            Orientation::Vertical => {
-                let gutter = DB_LABEL_W.max(FREQ_LABEL_W / 2);
-                let plot = Rect {
-                    x: content.x + gutter,
-                    y: content.y,
-                    w: content.w - gutter - cbar_reserve,
-                    h: content.h - TICK_LABEL_H,
-                };
-                if !plot.is_valid() {
-                    return layout;
-                }
-
-                let psd_h = if panels.psd {
-                    ((plot.h as f64 * 0.22) as i64)
-                        .clamp(60, 200)
-                        .min(plot.h / 2)
-                } else {
-                    0
-                };
-                let time_y = plot.y + if psd_h > 0 { psd_h + GAP } else { 0 };
-                let time_h = plot.bottom() - time_y;
-
-                let strip_w = if panels.waveform {
-                    WAVEFORM_SPAN.min(plot.w / 3)
-                } else {
-                    0
-                };
-                let spec_w = plot.w - if strip_w > 0 { strip_w + GAP } else { 0 };
-
-                layout.spectrogram = Some(Rect {
-                    y: time_y,
-                    w: spec_w,
-                    h: time_h,
-                    ..plot
-                })
-                .filter(Rect::is_valid);
-                if strip_w > 0 {
-                    layout.waveform = Some(Rect {
-                        x: plot.x + spec_w + GAP,
-                        y: time_y,
-                        w: strip_w,
-                        h: time_h,
-                    })
-                    .filter(Rect::is_valid);
-                }
-                if psd_h > 0 {
-                    layout.psd = Some(Rect {
-                        w: spec_w,
-                        h: psd_h,
-                        ..plot
-                    })
-                    .filter(Rect::is_valid);
-                }
-                if panels.db {
-                    layout.colorbar = Some(Rect {
-                        x: cbar_x,
-                        y: time_y,
-                        w: CBAR_W,
-                        h: time_h,
-                    })
-                    .filter(Rect::is_valid);
-                }
-            }
+            Orientation::Horizontal => layout.place_time_across(content, panels, cbar_x),
+            Orientation::Vertical => layout.place_time_down(content, panels, cbar_x),
         }
 
         layout
@@ -695,10 +707,11 @@ fn draw_psd(
 
     let level_at = |i: usize| ((psd.db[i] - db_min) / span).clamp(0.0, 1.0);
 
+    // Consecutive samples are joined so a fast-moving trace reads as a line
+    // rather than a dotted scatter.
+    let mut previous: Option<i64> = None;
+
     if freq_vertical {
-        // Consecutive rows are joined so a fast-moving trace reads as a line
-        // rather than a dotted scatter.
-        let mut previous: Option<i64> = None;
         for py in 0..rect.h {
             // Row 0 is the top of the panel: highest frequency.
             let t = (rect.h - 1 - py) as f64 / (rect.h.max(2) - 1) as f64;
@@ -718,7 +731,6 @@ fn draw_psd(
         }
         db_axis_horizontal(canvas, text, rect, db_min, db_max);
     } else {
-        let mut previous: Option<i64> = None;
         for px in 0..rect.w {
             let t = px as f64 / (rect.w.max(2) - 1) as f64;
             let i = ((t * (psd.db.len() - 1) as f64).round() as usize).min(psd.db.len() - 1);

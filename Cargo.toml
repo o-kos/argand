@@ -13,6 +13,25 @@ license = "MIT"
 [workspace.lints.rust]
 warnings = "deny"
 
+# Maintainability lints, chosen one at a time. The pedantic, nursery and
+# restriction groups are never enabled wholesale: they contain lints that
+# contradict this codebase and each other, and a group grows silently on a
+# toolchain bump. Thresholds live in clippy.toml.
+[workspace.lints.clippy]
+too_many_arguments = "warn"
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+excessive_nesting = "warn"
+fn_params_excessive_bools = "warn"
+manual_let_else = "warn"
+redundant_else = "warn"
+branches_sharing_code = "warn"
+# These two enforce the shape of a suppression: it must be `expect`, so it fails
+# once it stops being needed, and it must carry a reason. Whether the owner
+# agreed to it is a review obligation no lint can check.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+
 [workspace.dependencies]
 argand-core = { path = "crates/core" }
 argand-io = { path = "crates/io" }

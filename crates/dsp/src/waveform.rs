@@ -49,6 +49,23 @@ impl EnvelopeBuilder {
         n.div_ceil(self.columns as u64)
     }
 
+    /// Stretch one column's min/max envelope to cover one frame.
+    ///
+    /// The accumulators start at infinity and only ever take a value that
+    /// compared smaller or larger, so they never hold NaN and a NaN sample
+    /// never widens them.
+    fn widen(&mut self, slot: usize, frame: &[f32]) {
+        for (channel, value) in frame.iter().enumerate() {
+            let i = slot + channel;
+            if *value < self.min[i] {
+                self.min[i] = *value;
+            }
+            if *value > self.max[i] {
+                self.max[i] = *value;
+            }
+        }
+    }
+
     /// Fold channel-interleaved `samples` beginning at range index `first`.
     ///
     /// Blocks must arrive in order and must not overlap; the caller owns that,
@@ -75,15 +92,7 @@ impl EnvelopeBuilder {
             self.seen[column] = true;
 
             for frame in samples[from..to].chunks_exact(self.channels) {
-                for (channel, value) in frame.iter().enumerate() {
-                    let i = slot + channel;
-                    if *value < self.min[i] {
-                        self.min[i] = *value;
-                    }
-                    if *value > self.max[i] {
-                        self.max[i] = *value;
-                    }
-                }
+                self.widen(slot, frame);
             }
         }
     }

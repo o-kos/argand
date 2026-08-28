@@ -1,0 +1,26 @@
+# Maintainability thresholds. A bare number is not a policy: each one says what
+# it protects against, so the next person can argue with the reasoning rather
+# than guess at it.
+
+# Clippy's own default. Past seven, a call site stops being readable without
+# counting positions, and the parameters almost always group into a type.
+too-many-arguments-threshold = 7
+
+# A function longer than this is a sequence of stages that has not been named.
+# Splitting it is nearly always possible and nearly always an improvement.
+too-many-lines-threshold = 100
+
+# Clippy's own default, and it earns its keep as a backstop rather than a
+# day-to-day check: nothing in the workspace currently reaches it.
+cognitive-complexity-threshold = 25
+
+# Five, not the four originally proposed. At four the lint fires on `if`/`else`
+# used as an expression -- `let x = if c { a } else { b };` inside a loop --
+# because each arm counts as its own block, which is idiomatic Rust and not a
+# nesting problem. At six nothing fires at all, so six buys nothing.
+excessive-nesting-threshold = 5
+
+# Clippy's own default. Past three, a call site is a row of bare `true`/`false`
+# that cannot be read without the signature next to it; the flags want an enum
+# or a struct.
+max-fn-params-bools = 3
