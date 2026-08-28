@@ -77,8 +77,10 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
 - ➕ **A classifier is written as early returns, not as an `if`/`else` expression.** Rust
   allows both and no lint prefers either; `needless_return` only objects to a `return` on
   a function's last expression. What settles it here is the codebase: `inputs::expand`
-  reads as a chain of guards, and non-test code contains 73 early returns. Each condition
-  then stands on its own line rather than being reached through an `else`.
+  reads as a chain of guards, and 84 lines across 18 non-test source files start with an
+  early `return` -- every line matching `^\s*return\b` under `crates/*/src/`, excluding
+  `*_tests.rs`. Each condition then stands on its own line rather than being reached
+  through an `else`.
 
 ## Rejected alternatives
 
