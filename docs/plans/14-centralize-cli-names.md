@@ -26,15 +26,17 @@ diagnostics, help, defaults, and rendered images remain unchanged.
 
 ## Decisions
 
-- **A private `Panel` enum owns selectable-panel metadata.** `Panel::ALL`, `as_str`, and
-  `aliases` become the single source for canonical names, aliases, parsing order,
-  formatting order, and enabled-flag access. `Panels` remains the public combinable set,
-  so rendering code and report data do not change shape.
+- **A private `Panel` enum owns selectable-panel metadata.** A local macro generates the
+  enum, its exhaustive `ALL` registry, and `as_str` from one declaration; exhaustive
+  matches attach aliases and enabled-flag access. Parsing and formatting order follow
+  `ALL`. `Panels` remains the public combinable set, so rendering code and report data do
+  not change shape.
 - **`none` remains separate metadata.** It is an empty selection token, not a fourth
   drawable panel. Its canonical spelling is defined once and reused by parsing,
   formatting, diagnostics, and help.
-- **`Orientation` owns `ALL`, `as_str`, and `aliases`.** Its parser walks those typed
-  variants instead of matching string literals. The CLI default uses
+- **`Orientation` owns `ALL`, `as_str`, and its short aliases.** The same macro makes the
+  variant registry exhaustive, while an exhaustive `short_alias` match gives the help
+  example an explicit source. The parser walks those typed variants. The CLI default uses
   `default_value_t`, so the default is formatted by the type rather than repeated as a
   string.
 - **CLI help is built from typed metadata.** Small helper functions construct the current
@@ -63,6 +65,10 @@ diagnostics, help, defaults, and rendered images remain unchanged.
 - [x] Add contract coverage for every alias, generated help, canonical formatting, and
       unchanged invalid-value diagnostics.
 - [x] Confirm the refactor does not change existing CLI or render behaviour.
+- [x] ➕ Generate each enum and its `ALL` registry together so a new variant cannot be
+      omitted from parsing, formatting, diagnostics, or help.
+- [x] ➕ Model orientation short aliases explicitly instead of treating the first alias as
+      the preferred help spelling.
 - [ ] External review round, then act on the findings.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.

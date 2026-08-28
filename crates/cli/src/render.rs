@@ -15,24 +15,43 @@ use crate::text::{Anchor, TextRenderer, TextStyle};
 
 const EMPTY_PANELS_NAME: &str = "none";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Panel {
-    Waveform,
-    Psd,
-    Db,
+macro_rules! cli_enum {
+    (
+        $(#[$enum_meta:meta])*
+        $visibility:vis enum $name:ident {
+            $(
+                $(#[$variant_meta:meta])*
+                $variant:ident => $canonical:literal
+            ),+ $(,)?
+        }
+    ) => {
+        $(#[$enum_meta])*
+        $visibility enum $name {
+            $($(#[$variant_meta])* $variant),+
+        }
+
+        impl $name {
+            const ALL: &'static [Self] = &[$(Self::$variant),+];
+
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $canonical),+
+                }
+            }
+        }
+    };
+}
+
+cli_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Panel {
+        Waveform => "waveform",
+        Psd => "psd",
+        Db => "db",
+    }
 }
 
 impl Panel {
-    const ALL: [Self; 3] = [Self::Waveform, Self::Psd, Self::Db];
-
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Waveform => "waveform",
-            Self::Psd => "psd",
-            Self::Db => "db",
-        }
-    }
-
     const fn aliases(self) -> &'static [&'static str] {
         match self {
             Self::Waveform => &["wave"],
@@ -43,7 +62,8 @@ impl Panel {
 
     fn from_name(name: &str) -> Option<Self> {
         Self::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .find(|panel| panel.as_str() == name || panel.aliases().contains(&name))
     }
 
@@ -106,7 +126,8 @@ impl Panels {
 
     pub fn names(self) -> Vec<&'static str> {
         Panel::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|panel| panel.is_enabled(self))
             .map(Panel::as_str)
             .collect()
@@ -114,8 +135,9 @@ impl Panels {
 
     fn options() -> String {
         Panel::ALL
+            .iter()
+            .copied()
             .map(Panel::as_str)
-            .into_iter()
             .chain(std::iter::once(EMPTY_PANELS_NAME))
             .collect::<Vec<_>>()
             .join(", ")
@@ -127,11 +149,19 @@ pub(crate) fn panels_help() -> String {
 }
 
 pub(crate) fn panels_overview() -> String {
-    let [waveform, psd, db] = Panel::ALL.map(Panel::as_str);
-    format!(
-        "{waveform}, {psd}, {db} (the colour bar), or {} for the spectrogram alone.",
-        Panels::NONE
-    )
+    let panels = Panel::ALL
+        .iter()
+        .copied()
+        .map(|panel| {
+            if panel == Panel::Db {
+                format!("{} (the colour bar)", panel.as_str())
+            } else {
+                panel.as_str().to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{panels}, or {} for the spectrogram alone.", Panels::NONE)
 }
 
 impl std::str::FromStr for Panels {
@@ -185,12 +215,14 @@ impl std::fmt::Display for Panels {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Orientation {
-    /// Time along the horizontal axis, as the editor's linked views will use.
-    Horizontal,
-    /// Time downwards: the familiar SDR waterfall.
-    Vertical,
+cli_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Orientation {
+        /// Time along the horizontal axis, as the editor's linked views will use.
+        Horizontal => "horizontal",
+        /// Time downwards: the familiar SDR waterfall.
+        Vertical => "vertical",
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -202,30 +234,27 @@ pub struct ParseError {
 }
 
 impl Orientation {
-    pub const ALL: [Self; 2] = [Self::Horizontal, Self::Vertical];
-
-    pub const fn as_str(self) -> &'static str {
+    const fn short_alias(self) -> &'static str {
         match self {
-            Self::Horizontal => "horizontal",
-            Self::Vertical => "vertical",
-        }
-    }
-
-    const fn aliases(self) -> &'static [&'static str] {
-        match self {
-            Self::Horizontal => &["h"],
-            Self::Vertical => &["v"],
+            Self::Horizontal => "h",
+            Self::Vertical => "v",
         }
     }
 
     fn from_name(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|orientation| {
-            orientation.as_str() == name || orientation.aliases().contains(&name)
-        })
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|orientation| orientation.as_str() == name || orientation.short_alias() == name)
     }
 
     fn options() -> String {
-        Self::ALL.map(Self::as_str).join(", ")
+        Self::ALL
+            .iter()
+            .copied()
+            .map(Self::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
@@ -238,7 +267,7 @@ pub(crate) fn orientation_help() -> String {
 }
 
 pub(crate) fn vertical_orientation_alias() -> &'static str {
-    Orientation::Vertical.aliases()[0]
+    Orientation::Vertical.short_alias()
 }
 
 impl std::str::FromStr for Orientation {
