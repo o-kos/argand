@@ -203,11 +203,6 @@ pub struct AnalysisRequest {
     pub waveform_columns: Option<usize>,
 }
 
-/// Run the transform over the requested range and render every view of it.
-///
-/// The spectrogram, the averaged spectrum and the time-domain envelope all
-/// come from the same streamed blocks, so asking for all three costs one pass
-/// over the file rather than three.
 /// The sliding window of samples the frame loop transforms.
 ///
 /// Reading, envelope folding and carrying the overlap all move the same few
@@ -368,6 +363,11 @@ fn db_window(db: &[f32], reference: DbReference, dynamic_range_db: f32) -> (f32,
     (db_max - dynamic_range_db, db_max)
 }
 
+/// Run the transform over the requested range and render every view of it.
+///
+/// The spectrogram, the averaged spectrum and the time-domain envelope all
+/// come from the same streamed blocks, so asking for all three costs one pass
+/// over the file rather than three.
 pub fn analyze(
     src: &mut dyn SampleSource,
     request: &AnalysisRequest,
@@ -576,7 +576,6 @@ impl Plan {
         }
     }
 
-    /// Transform one frame and fold the result into `acc`.
     /// Transform every whole frame the block holds, in parallel.
     fn transform_block(
         &self,
@@ -601,6 +600,7 @@ impl Plan {
             .reduce(|| Partial::new(self.bins, self.fft_size), Partial::merge)
     }
 
+    /// Transform one frame and fold the result into `acc`.
     fn frame(&self, samples: &[f32], acc: &mut Partial, column: usize) {
         acc.time_peak = samples
             .iter()

@@ -26,8 +26,9 @@ fn_params_excessive_bools = "warn"
 manual_let_else = "warn"
 redundant_else = "warn"
 branches_sharing_code = "warn"
-# A suppression needs the owner's agreement and a stated reason; these two make
-# that enforceable rather than a convention.
+# These two enforce the shape of a suppression: it must be `expect`, so it fails
+# once it stops being needed, and it must carry a reason. Whether the owner
+# agreed to it is a review obligation no lint can check.
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
 

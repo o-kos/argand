@@ -19,3 +19,8 @@ cognitive-complexity-threshold = 25
 # because each arm counts as its own block, which is idiomatic Rust and not a
 # nesting problem. At six nothing fires at all, so six buys nothing.
 excessive-nesting-threshold = 5
+
+# Clippy's own default. Past three, a call site is a row of bare `true`/`false`
+# that cannot be read without the signature next to it; the flags want an enum
+# or a struct.
+max-fn-params-bools = 3
