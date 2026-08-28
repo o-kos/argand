@@ -99,8 +99,8 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
       codebase: `inputs::expand` classifies exactly this way, and non-test code uses 73
       early returns. Each condition now stands on its own instead of being reached
       through an `else`.
-- [ ] Update `CONTRIBUTING.md` so the documented policy matches what is enforced.
-- [ ] Verify a deliberate policy violation fails CI, then revert it.
+- [x] Update `CONTRIBUTING.md` so the documented policy matches what is enforced.
+- [x] Verify a deliberate policy violation fails CI, then revert it.
 - [ ] External review round, then act on the findings.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
@@ -109,14 +109,19 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Every refactor is behaviour-preserving, checked against a binary built before it:
-      byte-identical renders and identical output in every reporting mode.
-- [ ] A deliberate violation of each configured threshold fails the `linux` job.
-- [ ] An `#[allow(...)]` without a reason fails the lint step.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`: 224 tests, all passing.
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Every refactor is behaviour-preserving, checked against a binary built before it.
+      Four configurations rendered byte-identical PNGs, covering both orientations, every
+      panel set and both `--reduce` modes, and the JSON reports match apart from
+      `elapsed_seconds`.
+- [x] Each configured threshold fires on a deliberate violation: 8 arguments against 7,
+      107 lines against 100, five levels of nesting against 5, and an `#[allow]` with no
+      reason. A pushed violation failed the `linux` job at `Lint`, with `Test` and
+      `Build release` skipped; the probe was reverted.
+- [x] An `#[allow(...)]` without a reason fails the lint step.
 - [ ] Both CI jobs pass on the Pull Request.
 
 ## Post-completion
