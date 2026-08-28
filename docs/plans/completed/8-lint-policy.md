@@ -113,9 +113,9 @@ that fails to compile is not linted, so `argand-cli` findings stay hidden behind
       undocumented while their text described the new neighbours.
 - [x] ➕ Write `stdout_line` and `stderr_block` as chains of early returns instead of
       `if`/`else if`/`else` expressions. Requested by the owner, and it matches the
-      codebase: `inputs::expand` classifies exactly this way, and non-test code uses 73
-      early returns. Each condition now stands on its own instead of being reached
-      through an `else`.
+      codebase: `inputs::expand` classifies exactly this way, and 84 lines across 18
+      non-test source files start with an early `return`. Each condition now stands on
+      its own instead of being reached through an `else`.
 - [x] Update `CONTRIBUTING.md` so the documented policy matches what is enforced.
 - [x] Verify a deliberate policy violation fails CI, then revert it.
 - [x] External review round, then act on the findings. Four rounds. Every finding was
