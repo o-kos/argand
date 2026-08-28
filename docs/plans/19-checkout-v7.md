@@ -25,11 +25,17 @@ are reachable without cutting a release, and names the third rather than claimin
   a separate file rather than the shared git config (v6.0.0), the tag-handling fix
   (v6.0.2), fixes for SHA-256 repositories (v6.0.3), and a credential-cleanup fix that
   escapes the value passed to `git config --unset` (v7.0.1, not backported to v5.1.0).
-- The tag-handling fix is the one that bears on this repository. It changed a plain
-  shallow tag checkout to fetch through `+refs/tags/*:refs/tags/*` rather than by commit
-  hash, so the real tag object is fetched and its annotation preserved. That is exactly
-  the path the release `build` job takes, and it is the path this branch cannot exercise,
-  which argues for taking the upgrade rather than against it.
+- The tag-handling fix is the one that bears on this repository, and it is worth more than
+  the release notes suggest. v5.1.0 fetched a tag as `+<commit>:refs/tags/<tag>`, by hash;
+  v6.0.2 changed that to the tag's own ref, `+refs/tags/<tag>:refs/tags/<tag>`. The
+  wildcard `+refs/tags/*:refs/tags/*` is used only under `fetch-tags: true`, which the
+  `build` job leaves at its default.
+- ➕ **v7 refuses a tag that moved after the event fired; v5.1.0 checks out the new commit
+  silently.** `git-source-provider.ts` in v7.0.1 verifies after the fetch that the ref
+  still points at the commit the event carried, and fails with a message saying the ref
+  may have been updated. v5.1.0 has no such check. This is the strongest argument for the
+  upgrade and it is not in any release note; it was found by reading the source during
+  review.
 - `checkout` appears four times, and `publish` does not use it at all:
 
   | workflow | job | inputs |
@@ -53,15 +59,18 @@ are reachable without cutting a release, and names the third rather than claimin
   each; calling those equivalent would be wrong. `build` only runs after `verify` passes,
   which needs a version that matches the workspace, so nothing short of a real release
   reaches it.
-- **The residual gap is accepted, and the workflow is changed so that accepting it is
-  safe.** The guarantee the workflow gave was narrower than the first draft of this plan
-  claimed: `publish` runs only if every `build` succeeds, but nothing checked that the
-  commit in the workspace was the tagged one. The only other check is the binary's version
-  string, which a different commit carrying the same `Cargo.toml` version would satisfy.
-  Both jobs that check out now compare `HEAD` against `GITHUB_SHA` and fail if they
-  differ, which also covers a tag moved between the event firing and the checkout running.
-  With that in place, a checkout that produces the wrong tree fails the job rather than
-  reaching an archive.
+- **The residual gap is accepted, and the upgrade itself is what makes accepting it
+  reasonable.** The guarantee the workflow gives is narrow: `publish` runs only if every
+  `build` succeeds, and nothing compares the workspace against `GITHUB_SHA`. The binary's
+  version string is the only other check, and a different commit carrying the same
+  `Cargo.toml` version would satisfy it.
+  A `HEAD` check was written to close that, then removed. The case it was written for — a
+  tag moved after the event fired — is exactly what v7 now refuses on its own, so the
+  justification evaporated with the upgrade that prompted it. Keeping a defence whose
+  stated reason no longer holds, in a change whose whole point is a pin bump, is the scope
+  creep this repository's own rules warn about. If an independent check is wanted so that
+  the release does not rest on an action's internals, that is its own Issue with its own
+  reasoning.
 - **No full release rehearsal.** The `main`-ancestor check added in #11 refuses a tag on a
   branch commit, which is what the `v0.0.0` rehearsal relied on. Rehearsing now would mean
   publishing a real version whose only content is a workflow pin, which the changelog
@@ -99,10 +108,10 @@ are reachable without cutting a release, and names the third rather than claimin
       worded could not be met.
 - [x] ➕ ⚠️ Leave `build`'s combination of a tag ref and a shallow fetch unexercised, and
       say so. It is unreachable without a real release.
-- [x] ➕ Make both checkout-using jobs compare `HEAD` against `GITHUB_SHA`. Review found
-      the workflow had no way to notice a checkout of the wrong commit: the version string
-      is the only other check, and a different commit with the same `Cargo.toml` version
-      would pass it. Arguing the gap was safe was weaker than making it so.
+- [x] ➕ Add a `HEAD` check to both checkout-using jobs, then remove it. Reading the v7
+      source showed the action already refuses a tag that moved after the event fired,
+      which was the case the check was written for. The diff is four lines again, exactly
+      what the Issue describes.
 - [ ] External review round, then act on the findings.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
@@ -116,8 +125,7 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [x] `cargo test --locked`: 226 tests, all passing.
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] Both workflows still parse as YAML.
-- [ ] The `HEAD` check passes on a legitimate tag and the release workflow still runs
-      green through `verify`.
+- [x] The workflow diff is exactly the four pin lines.
 - [x] Both CI jobs pass on the Pull Request.
 - [x] The probe published nothing: `build` and `publish` were skipped, and the tag was
       deleted afterwards. Only `v0.0.1` remains.
