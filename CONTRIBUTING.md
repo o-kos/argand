@@ -31,6 +31,34 @@ Push the branch and open a Draft Pull Request as soon as the initial plan is ava
 
 Keep the branch focused on one Issue. If new work is independent of the Issue or materially expands its scope, create a separate Issue instead of silently adding it.
 
+## Out-of-scope findings and backlog
+
+Classify a problem found during implementation or review against the active Issue before
+changing its scope. Apply these routes in order; the first matching route decides the
+destination:
+
+- Keep the finding in the active work when the branch introduced it, when it prevents an
+  acceptance criterion or required check from passing, or when leaving it unresolved
+  would make the plan, Pull Request, or claimed behaviour false.
+- Otherwise, raise a separate normal Issue promptly when an unrelated finding is
+  material or urgent, or when it concerns security, correctness, or data safety
+  regardless of its apparent impact or urgency. Do not hide it in either the active plan
+  or the backlog.
+- Only when neither route above applies, create a separate Issue with the `backlog` label
+  when the finding is minor in impact, pre-existing, non-urgent, unrelated to the active
+  objective, has no effect on the current functionality or acceptance criteria, and does
+  not concern security, correctness, or data safety. Do not expand the active plan or
+  Pull Request to include it.
+
+A backlog Issue must state the observed problem, the desired outcome, why it is safe to
+defer, and where it was discovered. Link the active Issue or Pull Request so that the
+context is not lost. When a review finding is deferred, reply with the backlog Issue link
+instead of dismissing it only as out of scope.
+
+Use `is:open is:issue label:backlog` to list backlog work and
+`is:open is:issue -label:backlog` to list open Issues under normal triage. The absence of
+the label does not itself promise that an Issue is scheduled.
+
 ## Implementing the plan
 
 Keep commits atomic and write commit messages in English. When a plan task is completed, change its checkbox to `[x]` in the same commit as the corresponding work whenever practical.
