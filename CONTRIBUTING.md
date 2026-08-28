@@ -99,6 +99,27 @@ git config core.hooksPath .githooks
 
 `git push --no-verify` skips it. If you use that, say why in the Pull Request.
 
+## Lint policy
+
+`[workspace.lints]` in the root `Cargo.toml` names every lint this project enforces
+beyond Clippy's defaults, and each crate inherits it with `lints.workspace = true`. The
+thresholds those lints read live in `clippy.toml`, one comment per value saying what it
+protects against.
+
+Lints are enabled one at a time. The `pedantic`, `nursery` and `restriction` groups are
+never turned on wholesale: they contain lints that contradict this codebase and each
+other, and a group grows silently on a toolchain bump. Adding a lint is a deliberate act,
+and so is changing a threshold — say why in the Pull Request.
+
+When a maintainability lint fires, the first answer is to change the code. A long
+function is a sequence of stages that has not been named; a wide signature is a type that
+has not been written. Raising a threshold to make a warning go away needs the same
+agreement as a suppression.
+
+One trap when measuring by hand: `warnings = "deny"` turns findings into errors, and a
+crate that fails to compile is never linted, so findings in a crate that depends on a
+failing one stay hidden. Pass `-W warnings` to put the level back while surveying.
+
 ## Lint suppressions
 
 Every suppression must be agreed with the project owner before it is pushed. This covers `#[allow(...)]`, `#[expect(...)]`, `-A` flags, and any lint level relaxed in `Cargo.toml` or `clippy.toml`.
