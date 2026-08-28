@@ -13,6 +13,77 @@ use image::{Rgb, RgbImage};
 
 use crate::text::{Anchor, TextRenderer, TextStyle};
 
+const EMPTY_PANELS_NAME: &str = "none";
+
+macro_rules! cli_enum {
+    (
+        $(#[$enum_meta:meta])*
+        $visibility:vis enum $name:ident {
+            $(
+                $(#[$variant_meta:meta])*
+                $variant:ident => $canonical:literal
+            ),+ $(,)?
+        }
+    ) => {
+        $(#[$enum_meta])*
+        $visibility enum $name {
+            $($(#[$variant_meta])* $variant),+
+        }
+
+        impl $name {
+            const ALL: &'static [Self] = &[$(Self::$variant),+];
+
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $canonical),+
+                }
+            }
+        }
+    };
+}
+
+cli_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Panel {
+        Waveform => "waveform",
+        Psd => "psd",
+        Db => "db",
+    }
+}
+
+impl Panel {
+    const fn aliases(self) -> &'static [&'static str] {
+        match self {
+            Self::Waveform => &["wave"],
+            Self::Psd => &["spectrum"],
+            Self::Db => &["colorbar"],
+        }
+    }
+
+    fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|panel| panel.as_str() == name || panel.aliases().contains(&name))
+    }
+
+    const fn is_enabled(self, panels: Panels) -> bool {
+        match self {
+            Self::Waveform => panels.waveform,
+            Self::Psd => panels.psd,
+            Self::Db => panels.db,
+        }
+    }
+
+    fn enable(self, panels: &mut Panels) {
+        match self {
+            Self::Waveform => panels.waveform = true,
+            Self::Psd => panels.psd = true,
+            Self::Db => panels.db = true,
+        }
+    }
+}
+
 /// Panels drawn beside the spectrogram.
 ///
 /// The spectrogram itself is not selectable. It is the point of the tool, so
@@ -24,38 +95,73 @@ pub struct Panels {
     pub db: bool,
 }
 
-pub const PANEL_NAMES: [&str; 4] = ["waveform", "psd", "db", "none"];
-
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ParsePanelsError {
     #[error("unknown panel `{name}`, expected one of: {options}")]
     Unknown { name: String, options: String },
-    #[error("no panels given; use `none` for the spectrogram on its own")]
-    Empty,
-    #[error("`none` cannot be combined with other panels")]
-    NoneWithOthers,
+    #[error("no panels given; use `{empty}` for the spectrogram on its own")]
+    Empty { empty: &'static str },
+    #[error("`{empty}` cannot be combined with other panels")]
+    NoneWithOthers { empty: &'static str },
 }
 
 impl Panels {
+    pub const ALL: Self = Self {
+        waveform: true,
+        psd: true,
+        db: true,
+    };
+
     pub const NONE: Self = Self {
         waveform: false,
         psd: false,
         db: false,
     };
 
+    pub const WAVEFORM: Self = Self {
+        waveform: true,
+        psd: false,
+        db: false,
+    };
+
     pub fn names(self) -> Vec<&'static str> {
-        let mut names = Vec::new();
-        if self.waveform {
-            names.push("waveform");
-        }
-        if self.psd {
-            names.push("psd");
-        }
-        if self.db {
-            names.push("db");
-        }
-        names
+        Panel::ALL
+            .iter()
+            .copied()
+            .filter(|panel| panel.is_enabled(self))
+            .map(Panel::as_str)
+            .collect()
     }
+
+    fn options() -> String {
+        Panel::ALL
+            .iter()
+            .copied()
+            .map(Panel::as_str)
+            .chain(std::iter::once(EMPTY_PANELS_NAME))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+pub(crate) fn panels_help() -> String {
+    format!("Panels beside the spectrogram [{}]", Panels::options())
+}
+
+pub(crate) fn panels_overview() -> String {
+    let panels = Panel::ALL
+        .iter()
+        .copied()
+        .map(|panel| {
+            if panel == Panel::Db {
+                format!("{} (the colour bar)", panel.as_str())
+            } else {
+                panel.as_str().to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{panels}, or {} for the spectrogram alone.", Panels::NONE)
 }
 
 impl std::str::FromStr for Panels {
@@ -72,24 +178,28 @@ impl std::str::FromStr for Panels {
                 continue;
             }
             count += 1;
-            match token.as_str() {
-                "waveform" | "wave" => panels.waveform = true,
-                "psd" | "spectrum" => panels.psd = true,
-                "db" | "colorbar" => panels.db = true,
-                "none" => explicit_none = true,
-                _ => {
-                    return Err(ParsePanelsError::Unknown {
-                        name: token,
-                        options: PANEL_NAMES.join(", "),
-                    });
-                }
+            if token == EMPTY_PANELS_NAME {
+                explicit_none = true;
+                continue;
             }
+
+            let Some(panel) = Panel::from_name(&token) else {
+                return Err(ParsePanelsError::Unknown {
+                    name: token,
+                    options: Panels::options(),
+                });
+            };
+            panel.enable(&mut panels);
         }
 
         match (count, explicit_none) {
-            (0, _) => Err(ParsePanelsError::Empty),
+            (0, _) => Err(ParsePanelsError::Empty {
+                empty: EMPTY_PANELS_NAME,
+            }),
             (1, true) => Ok(Panels::NONE),
-            (_, true) => Err(ParsePanelsError::NoneWithOthers),
+            (_, true) => Err(ParsePanelsError::NoneWithOthers {
+                empty: EMPTY_PANELS_NAME,
+            }),
             _ => Ok(panels),
         }
     }
@@ -99,21 +209,21 @@ impl std::fmt::Display for Panels {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let names = self.names();
         if names.is_empty() {
-            return f.write_str("none");
+            return f.write_str(EMPTY_PANELS_NAME);
         }
         f.write_str(&names.join(","))
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Orientation {
-    /// Time along the horizontal axis, as the editor's linked views will use.
-    Horizontal,
-    /// Time downwards: the familiar SDR waterfall.
-    Vertical,
+cli_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Orientation {
+        /// Time along the horizontal axis, as the editor's linked views will use.
+        Horizontal => "horizontal",
+        /// Time downwards: the familiar SDR waterfall.
+        Vertical => "vertical",
+    }
 }
-
-pub const ORIENTATION_NAMES: [&str; 2] = ["horizontal", "vertical"];
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("unknown {what} `{name}`, expected one of: {options}")]
@@ -124,27 +234,60 @@ pub struct ParseError {
 }
 
 impl Orientation {
-    pub const fn as_str(self) -> &'static str {
+    const fn short_alias(self) -> &'static str {
         match self {
-            Orientation::Horizontal => "horizontal",
-            Orientation::Vertical => "vertical",
+            Self::Horizontal => "h",
+            Self::Vertical => "v",
         }
     }
+
+    const fn help_description(self) -> &'static str {
+        match self {
+            Self::Horizontal => "across",
+            Self::Vertical => "waterfall",
+        }
+    }
+
+    fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|orientation| orientation.as_str() == name || orientation.short_alias() == name)
+    }
+
+    fn options() -> String {
+        Self::ALL
+            .iter()
+            .copied()
+            .map(Self::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+pub(crate) fn orientation_help() -> String {
+    let orientations = Orientation::ALL
+        .iter()
+        .map(|orientation| format!("{orientation} ({})", orientation.help_description()))
+        .collect::<Vec<_>>()
+        .join(" or ");
+    format!("Time axis direction: {orientations}")
+}
+
+pub(crate) fn vertical_orientation_alias() -> &'static str {
+    Orientation::Vertical.short_alias()
 }
 
 impl std::str::FromStr for Orientation {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "horizontal" | "h" => Ok(Orientation::Horizontal),
-            "vertical" | "v" => Ok(Orientation::Vertical),
-            _ => Err(ParseError {
-                what: "orientation",
-                name: s.to_string(),
-                options: ORIENTATION_NAMES.join(", "),
-            }),
-        }
+        let name = s.trim().to_ascii_lowercase();
+        Orientation::from_name(&name).ok_or_else(|| ParseError {
+            what: "orientation",
+            name: s.to_string(),
+            options: Orientation::options(),
+        })
     }
 }
 

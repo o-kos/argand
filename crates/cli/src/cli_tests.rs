@@ -12,6 +12,25 @@ fn the_command_definition_is_valid() {
 }
 
 #[test]
+fn help_lists_the_canonical_panel_and_orientation_names() {
+    let help = Args::command().render_long_help().to_string();
+    assert!(
+        help.contains("Panels beside the spectrogram [waveform, psd, db, none]"),
+        "{help}"
+    );
+    assert!(
+        help.contains("Time axis direction: horizontal (across) or vertical (waterfall)"),
+        "{help}"
+    );
+    assert!(
+        help.contains("waveform, psd, db (the colour bar), or none for the spectrogram alone."),
+        "{help}"
+    );
+    assert!(help.contains("--orientation v"), "{help}");
+    assert!(help.contains("--panels waveform,psd,db"), "{help}");
+}
+
+#[test]
 fn defaults_match_the_documented_ones() {
     let args = parse(&["capture.iqw"]);
     assert_eq!(args.image_size, (2048, 512));

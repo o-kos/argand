@@ -404,26 +404,50 @@ fn panel_lists_round_trip_through_their_names() {
 }
 
 #[test]
+fn every_panel_alias_resolves_to_its_canonical_name() {
+    use std::str::FromStr;
+    for (alias, canonical) in [
+        ("wave", "waveform"),
+        ("spectrum", "psd"),
+        ("colorbar", "db"),
+    ] {
+        assert_eq!(Panels::from_str(alias).unwrap().to_string(), canonical);
+    }
+}
+
+#[test]
 fn panel_lists_reject_what_cannot_be_drawn() {
     use std::str::FromStr;
     // The spectrogram is not a panel: it is always there.
     let err = Panels::from_str("spectrogram").unwrap_err().to_string();
-    assert!(err.contains("unknown panel `spectrogram`"), "{err}");
-    assert!(err.contains("waveform, psd, db, none"), "{err}");
+    assert_eq!(
+        err,
+        "unknown panel `spectrogram`, expected one of: waveform, psd, db, none"
+    );
 
     let err = Panels::from_str(" , ").unwrap_err().to_string();
-    assert!(err.contains("use `none`"), "{err}");
+    assert_eq!(
+        err,
+        "no panels given; use `none` for the spectrogram on its own"
+    );
 
     let err = Panels::from_str("none,waveform").unwrap_err().to_string();
-    assert!(err.contains("cannot be combined"), "{err}");
+    assert_eq!(err, "`none` cannot be combined with other panels");
 }
 
 #[test]
 fn orientation_names_round_trip() {
     use std::str::FromStr;
-    for name in ORIENTATION_NAMES {
+    for name in ["horizontal", "vertical"] {
         assert_eq!(Orientation::from_str(name).unwrap().to_string(), name);
     }
+    assert_eq!(
+        Orientation::from_str(" H ").unwrap(),
+        Orientation::Horizontal
+    );
     assert_eq!(Orientation::from_str("v").unwrap(), Orientation::Vertical);
-    assert!(Orientation::from_str("sideways").is_err());
+    assert_eq!(
+        Orientation::from_str("sideways").unwrap_err().to_string(),
+        "unknown orientation `sideways`, expected one of: horizontal, vertical"
+    );
 }
