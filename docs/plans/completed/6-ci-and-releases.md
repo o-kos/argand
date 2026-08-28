@@ -120,8 +120,9 @@ decision below.
   workflow from the tagged commit, so anyone able to push a tag can push a commit that
   deletes this check along with it. Only a ruleset over the `v*` namespace, restricting
   who may create those tags, actually closes the hole; that is a repository setting and
-  the owner's call. The check is still worth having: the realistic failure here is a
-  mistyped or stale tag, not an attacker.
+  the owner's call, and the owner has since made it: a ruleset now restricts creation,
+  update and deletion of `refs/tags/v*` to the repository admin. The workflow check keeps
+  its own value as a guard against a mistyped or stale tag pushed by the admin.
   It deliberately closes the rehearsal route used on this branch -- a throwaway tag on a
   branch commit -- so any future rehearsal has to run from `main` after a merge.
 - ➕ **`actions/checkout` is pinned by commit SHA like every other action.** The original
@@ -202,6 +203,10 @@ decision below.
       by SHA. Both came from an external review of the finished branch.
 - [x] ➕ Update `docs/plans/TEMPLATE.md`, which still told every future plan to validate
       with `-D warnings` and would have kept reintroducing the flag this branch removed.
+- [x] ➕ Protect the `v*` tag namespace with a ruleset restricting creation, update and
+      deletion to the repository admin, closing the gap the workflow check cannot.
+- [x] ➕ Write the external review step into `AGENTS.md` and `CONTRIBUTING.md`, including
+      the working `codex exec` invocation and how to write a prompt for it.
 - [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
@@ -244,6 +249,9 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       commit before them: the same capture rendered through both produces byte-identical
       PNGs, and `--json`, `-q`, `-v` and the default mode produce identical output apart
       from `elapsed_seconds`.
+- [x] Tag `v9.9.9` pushed at a branch commit was refused by the new check on its own step,
+      with every later step skipped and nothing published; the ruleset let the admin push
+      and later delete that tag, so `gh release delete --cleanup-tag` still works.
 - [x] Both workflows parse as YAML after the changes, and the new tag check's shell body
       passes `bash -n`.
 - [x] Every badge in `README.md` resolves: the CI badge to `ci.yml`, the licence badge to

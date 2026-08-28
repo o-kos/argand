@@ -87,6 +87,43 @@ The commands are not restated in the workflow with different flags. Formatting a
 
 The toolchain comes from `rust-toolchain.toml`, which is the only place the Rust version is written down. Tests that need real captures skip when `tests/signals/` is absent, so a clean CI checkout runs the rest of the suite.
 
+## External review
+
+Before the owner is asked to review, the Pull Request goes through a review by a second
+agent. Run it read-only so that the changes stay deliberate and this repository's own
+rules -- in particular that suppressions need the owner's agreement -- are not bypassed
+by an agent that has not read them:
+
+```sh
+codex exec -s read-only -C "$(git rev-parse --show-toplevel)" "$(cat review-prompt.md)" < /dev/null
+```
+
+Closing stdin is required; without it the command waits for input forever. Note that
+`codex review --base <branch>` cannot be combined with a custom prompt, which is why
+`codex exec` is used with the diff range named in the prompt itself.
+
+Write the prompt for this repository rather than asking for a general review:
+
+- name the exact diff under review, and the Issues the Pull Request closes;
+- tell it to read `AGENTS.md` and `CONTRIBUTING.md` first, since a change may both extend
+  those rules and have to obey them;
+- rank what matters. Rarely-executed code that fails expensively -- workflows, release
+  scripts -- comes before everything else, and behaviour changes in refactoring that was
+  meant to preserve behaviour come next;
+- exclude what the automated gate already covers. Asking a second reviewer about
+  formatting or Clippy findings wastes it;
+- ask it to say so explicitly when a category has nothing, rather than inventing a
+  finding to look useful.
+
+Act on the findings, then run another round naming what was fixed and what was declined,
+and ask it to challenge the reasoning behind the declines. Repeat until a round returns
+nothing substantive.
+
+Then tell the owner what was accepted, what was rejected and why. A reviewer without the
+conversation's context will sometimes object to decisions the owner already made
+deliberately; decline those with the reason, never silently. Its most valuable findings
+are the ones that correct a claim in the Pull Request description or the plan.
+
 ## Completing the plan
 
 Before marking the Pull Request ready for final review:
