@@ -11,6 +11,8 @@ promise applies to.
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-08-28
+
 ### Added
 
 - `aspec`, a command line tool that renders a signal file to a PNG: a
@@ -37,5 +39,8 @@ promise applies to.
 - A machine-readable report on stdout under `--json`.
 - Continuous integration on Linux and Windows, and a tag-driven release
   workflow producing archives and checksums for both platforms.
+- A workspace-wide lint policy: ten maintainability lints with explicit
+  thresholds, enforced identically on a developer's machine and in CI.
 
-[Unreleased]: https://github.com/o-kos/argand/commits/main
+[Unreleased]: https://github.com/o-kos/argand/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/o-kos/argand/releases/tag/v0.0.1
