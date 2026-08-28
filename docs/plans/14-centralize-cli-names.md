@@ -69,6 +69,8 @@ diagnostics, help, defaults, and rendered images remain unchanged.
       omitted from parsing, formatting, diagnostics, or help.
 - [x] ➕ Model orientation short aliases explicitly instead of treating the first alias as
       the preferred help spelling.
+- [x] ➕ Build orientation help by walking the exhaustive registry, with an exhaustive
+      description match for each variant.
 - [ ] External review round, then act on the findings.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.

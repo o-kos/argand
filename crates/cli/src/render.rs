@@ -241,6 +241,13 @@ impl Orientation {
         }
     }
 
+    const fn help_description(self) -> &'static str {
+        match self {
+            Self::Horizontal => "across",
+            Self::Vertical => "waterfall",
+        }
+    }
+
     fn from_name(name: &str) -> Option<Self> {
         Self::ALL
             .iter()
@@ -259,11 +266,12 @@ impl Orientation {
 }
 
 pub(crate) fn orientation_help() -> String {
-    format!(
-        "Time axis direction: {} (across) or {} (waterfall)",
-        Orientation::Horizontal,
-        Orientation::Vertical
-    )
+    let orientations = Orientation::ALL
+        .iter()
+        .map(|orientation| format!("{orientation} ({})", orientation.help_description()))
+        .collect::<Vec<_>>()
+        .join(" or ");
+    format!("Time axis direction: {orientations}")
 }
 
 pub(crate) fn vertical_orientation_alias() -> &'static str {
