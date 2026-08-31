@@ -77,6 +77,13 @@ tick, or the same value on a panel that shares the axis.
 - Labels whose ink would leave the canvas or its gutter are dropped, and their grid
   lines with them, rather than being clipped or nudged. A missing outermost label is
   legible; half a label is not.
+- ➕ The tolerance that keeps a tick landing exactly on the range's end is scaled to the
+  values, not to the step. Scaled to the step it grows without bound as the ladder
+  climbs, and a step of a few thousand seconds ends up reaching past a half-second range
+  and inventing a tick outside it.
+- ➕ Grid lines in the spectrum panel are drawn before its trace rather than after. With
+  the panel's frequency grid added, drawing the grid last cut the trace into dashes
+  exactly where it is read.
 - Panels that share an axis are given one tick set computed once, from the spectrogram's
   geometry, rather than computing the same thing twice and hoping the two agree. The
   spectrum panel gains frequency grid lines at those values; it previously had none.
@@ -117,24 +124,24 @@ selection in both directions.
 
 ## Implementation steps
 
-- [ ] Add `TextRenderer::digit_height`, measuring the ink a numeric label puts on the
+- [x] Add `TextRenderer::digit_height`, measuring the ink a numeric label puts on the
       canvas from the embedded font.
-- [ ] Add `crates/cli/src/ticks.rs`: `Axis`, `AxisKind`, `LabelRun`, `Tick`, the decimal
+- [x] Add `crates/cli/src/ticks.rs`: `Axis`, `AxisKind`, `LabelRun`, `Tick`, the decimal
       and clock ladders, the densest-acceptable-step search, and `widest_label`.
-- [ ] Format time labels as `h:mm:ss` and `m.ss`, with whole seconds only and a
+- [x] Format time labels as `h:mm:ss` and `m.ss`, with whole seconds only and a
       one-second minimum step.
-- [ ] Replace `FREQ_LABEL_W`, `DB_LABEL_W` and `CBAR_LABEL_W` with `Gutters`, measured
+- [x] Replace `FREQ_LABEL_W`, `DB_LABEL_W` and `CBAR_LABEL_W` with `Gutters`, measured
       from the time and frequency extents, and thread it through `Layout::compute` and
       `main.rs::process`.
-- [ ] Compute the shared time and frequency tick sets once per render and draw every
+- [x] Compute the shared time and frequency tick sets once per render and draw every
       axis, grid line and tick mark from them, including the spectrum panel's frequency
       grid and the colour bar.
-- [ ] Cover the policy with tests: short and long axes, narrow and wide labels, real and
+- [x] Cover the policy with tests: short and long axes, narrow and wide labels, real and
       complex frequency ranges, subsecond, minute-scale and hour-scale spans, decibel
       ranges, boundary clipping, exact label formatting, the one-second floor,
       cross-panel alignment, non-overlap over a matrix of sizes and panels, and density
       growing with the axis.
-- [ ] Update `README.md` and `CHANGELOG.md`.
+- [x] Update `README.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

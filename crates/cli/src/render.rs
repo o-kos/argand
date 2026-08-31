@@ -6,12 +6,12 @@
 //! one. Nothing is resampled, which is what keeps a single-frame carrier one
 //! pixel wide instead of a smear.
 
-use argand_core::WaveformEnvelope;
-use argand_core::{Colormap, SpectrogramImage, format_duration, format_hz};
+use argand_core::{Colormap, Psd, SpectrogramImage, WaveformEnvelope};
 use argand_dsp::{Analysis, DbReference};
 use image::{Rgb, RgbImage};
 
 use crate::text::{Anchor, TextRenderer, TextStyle};
+use crate::ticks::{self, Axis, AxisKind, LabelMetrics, LabelRun, Tick};
 
 const EMPTY_PANELS_NAME: &str = "none";
 
@@ -313,15 +313,21 @@ const PAD: i64 = 12;
 const HEADER_H: i64 = 24;
 const FOOTER_H: i64 = 20;
 const TICK_LABEL_H: i64 = 20;
-const FREQ_LABEL_W: i64 = 78;
-const DB_LABEL_W: i64 = 44;
 const CBAR_W: i64 = 14;
-const CBAR_LABEL_W: i64 = 60;
 const GAP: i64 = 14;
+/// Clear space between a label and the plot edge it is aligned against.
+const LABEL_PAD: i64 = 6;
 /// The waveform is a mini-map rather than a panel that grows with the image.
 const WAVEFORM_SPAN: i64 = 64;
 const FONT_SIZE: f32 = 13.0;
 const TITLE_SIZE: f32 = 14.0;
+
+/// The lowest decibel the transform can put on an axis.
+///
+/// `f32`'s smallest normal is about `1e-38`, which is -760 dBFS. A decibel
+/// range is not known until the transform has run, so the gutters that hold
+/// decibel labels are reserved from this bound rather than from a measurement.
+const DB_FLOOR: f64 = -760.0;
 
 /// The plot's heading.
 const TITLE: TextStyle = TextStyle {
@@ -354,6 +360,63 @@ impl Rect {
     }
 }
 
+/// Room the stacked axis labels need beside the plot.
+///
+/// Measured before the transform runs, because the transform is asked for
+/// exactly the pixels the spectrogram will occupy and how many that is depends
+/// on what the labels take. The fixed gutters this replaced predated the
+/// frequency formatter: a capture centred on 12.579 MHz prints
+/// `12.579887 MHz`, half again wider than the 78 pixels reserved for it, so
+/// the label ran off the left of the canvas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Gutters {
+    /// Frequency labels, left of a horizontal plot.
+    frequency: i64,
+    /// Time labels, left of a vertical plot.
+    time: i64,
+    /// The spectrum panel's decibels, left of a vertical plot.
+    decibels: i64,
+    /// The colour bar's decibels, right of the bar.
+    colorbar: i64,
+}
+
+impl Gutters {
+    /// Measure the widest label each axis could print, in the font and at the
+    /// size the plot will draw with.
+    pub fn measure(time: (f64, f64), frequency: (f64, f64)) -> Self {
+        let text = TextRenderer::new();
+        let width = |kind: AxisKind, (min, max): (f64, f64)| -> i64 {
+            text.width(&ticks::widest_label(kind, min, max), FONT_SIZE)
+                .ceil() as i64
+        };
+        Self {
+            frequency: width(AxisKind::Frequency, frequency),
+            time: width(AxisKind::Time, time),
+            decibels: width(AxisKind::Decibels, (DB_FLOOR, 0.0)),
+            colorbar: width(AxisKind::DecibelsWithUnit, (DB_FLOOR, 0.0)),
+        }
+    }
+
+    /// What the frequency labels take out of the left of a horizontal plot.
+    const fn across(self) -> i64 {
+        self.frequency + LABEL_PAD
+    }
+
+    /// What the time and spectrum labels take out of the left of a vertical one.
+    fn down(self) -> i64 {
+        self.time.max(self.decibels) + LABEL_PAD
+    }
+
+    /// What the colour bar and its labels take out of the right of either.
+    const fn colorbar(self, panels: Panels) -> i64 {
+        if panels.db {
+            CBAR_W + LABEL_PAD + self.colorbar + GAP
+        } else {
+            0
+        }
+    }
+}
+
 /// Where each piece of the plot goes.
 ///
 /// The spectrogram is unconditional; `panels` only decides what joins it. The
@@ -371,23 +434,13 @@ pub struct Layout {
     pub colorbar: Option<Rect>,
 }
 
-/// Width the colour bar and its labels take out of the content area.
-const fn cbar_reserve(panels: Panels) -> i64 {
-    if panels.db {
-        CBAR_W + CBAR_LABEL_W + GAP
-    } else {
-        0
-    }
-}
-
 impl Layout {
     /// Time across the image: the strip sits above the spectrogram.
-    fn place_time_across(&mut self, content: Rect, panels: Panels, cbar_x: i64) {
-        let cbar_reserve = cbar_reserve(panels);
+    fn place_time_across(&mut self, content: Rect, panels: Panels, gutters: Gutters, cbar_x: i64) {
         let plot = Rect {
-            x: content.x + FREQ_LABEL_W,
+            x: content.x + gutters.across(),
             y: content.y,
-            w: content.w - FREQ_LABEL_W - cbar_reserve,
+            w: content.w - gutters.across() - gutters.colorbar(panels),
             h: content.h - TICK_LABEL_H,
         };
         if !plot.is_valid() {
@@ -451,13 +504,11 @@ impl Layout {
     }
 
     /// Time down the image: the strip sits to the spectrogram's right.
-    fn place_time_down(&mut self, content: Rect, panels: Panels, cbar_x: i64) {
-        let cbar_reserve = cbar_reserve(panels);
-        let gutter = DB_LABEL_W.max(FREQ_LABEL_W / 2);
+    fn place_time_down(&mut self, content: Rect, panels: Panels, gutters: Gutters, cbar_x: i64) {
         let plot = Rect {
-            x: content.x + gutter,
+            x: content.x + gutters.down(),
             y: content.y,
-            w: content.w - gutter - cbar_reserve,
+            w: content.w - gutters.down() - gutters.colorbar(panels),
             h: content.h - TICK_LABEL_H,
         };
         if !plot.is_valid() {
@@ -516,7 +567,13 @@ impl Layout {
         }
     }
 
-    pub fn compute(width: u32, height: u32, panels: Panels, orientation: Orientation) -> Self {
+    pub fn compute(
+        width: u32,
+        height: u32,
+        panels: Panels,
+        orientation: Orientation,
+        gutters: Gutters,
+    ) -> Self {
         let (w, h) = (width as i64, height as i64);
         let content = Rect {
             x: PAD,
@@ -538,11 +595,11 @@ impl Layout {
             return layout;
         }
 
-        let cbar_x = w - PAD - CBAR_LABEL_W - CBAR_W;
+        let cbar_x = w - PAD - LABEL_PAD - gutters.colorbar - CBAR_W;
 
         match orientation {
-            Orientation::Horizontal => layout.place_time_across(content, panels, cbar_x),
-            Orientation::Vertical => layout.place_time_down(content, panels, cbar_x),
+            Orientation::Horizontal => layout.place_time_across(content, panels, gutters, cbar_x),
+            Orientation::Vertical => layout.place_time_down(content, panels, gutters, cbar_x),
         }
 
         layout
@@ -597,9 +654,224 @@ pub fn waveform_full_scale(time_peak: f32, reference: DbReference) -> f32 {
     }
 }
 
+/// Whether an axis draws its labels, or only the grid lines that go with them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Labelled {
+    Yes,
+    No,
+}
+
+/// What every panel draws against.
+///
+/// The time and frequency ticks are chosen once, from the spectrogram's
+/// geometry, and handed to each panel that shares those axes. Choosing them
+/// twice and trusting the two to agree is how grid lines drift apart.
+struct Scene<'a> {
+    text: &'a TextRenderer,
+    input: &'a PlotInput<'a>,
+    layout: &'a Layout,
+    /// Half a digit's ink: what centres a stacked label on its tick, and what
+    /// the outermost one borrows past the end of its axis.
+    rise: i64,
+    /// Baseline drop from a plot's lower edge to the labels underneath it.
+    drop: i64,
+    time: Vec<Tick>,
+    frequency: Vec<Tick>,
+}
+
+impl<'a> Scene<'a> {
+    fn new(layout: &'a Layout, input: &'a PlotInput<'a>, text: &'a TextRenderer) -> Self {
+        let ink = f64::from(text.digit_height(FONT_SIZE));
+        let rise = (ink / 2.0).round() as i64;
+        let img = &input.analysis.spectrogram;
+        Self {
+            text,
+            input,
+            layout,
+            rise,
+            drop: ink.ceil() as i64 + LABEL_PAD,
+            time: time_ticks(layout, img, text, rise),
+            frequency: frequency_ticks(layout, img, text, rise),
+        }
+    }
+
+    /// Labels side by side along their axis.
+    fn along(&self) -> LabelMetrics<'_> {
+        LabelMetrics::new(self.text, FONT_SIZE, LabelRun::Across)
+    }
+
+    /// Labels stacked across it.
+    fn stacked(&self) -> LabelMetrics<'_> {
+        LabelMetrics::new(self.text, FONT_SIZE, LabelRun::Down)
+    }
+
+    /// Baseline for a label centred on `y` beside a plot.
+    fn beside(&self, y: i64) -> f32 {
+        (y + self.rise) as f32
+    }
+
+    /// Baseline for a label under a plot whose lower edge is `bottom`.
+    fn under(&self, bottom: i64) -> f32 {
+        (bottom + self.drop) as f32
+    }
+
+    /// Ticks running left to right: a grid line each, and labels underneath.
+    fn across(&self, canvas: &mut RgbImage, rect: Rect, ticks: &[Tick], labelled: Labelled) {
+        for tick in ticks {
+            let x = rect.x + tick.offset;
+            vline(canvas, x, rect.y, rect.bottom(), Theme::GRID);
+            if labelled == Labelled::No {
+                continue;
+            }
+            vline(canvas, x, rect.bottom(), rect.bottom() + 3, Theme::AXIS);
+            self.text.draw(
+                canvas,
+                &tick.label,
+                Anchor::center(x as f32, self.under(rect.bottom())),
+                LABEL,
+            );
+        }
+    }
+
+    /// Ticks running top to bottom, which is how time falls on a waterfall.
+    fn down(&self, canvas: &mut RgbImage, rect: Rect, ticks: &[Tick], labelled: Labelled) {
+        for tick in ticks {
+            self.row(canvas, rect, rect.y + tick.offset, tick, labelled);
+        }
+    }
+
+    /// Ticks running bottom to top, which is how frequency and decibels rise.
+    fn up(&self, canvas: &mut RgbImage, rect: Rect, ticks: &[Tick], labelled: Labelled) {
+        for tick in ticks {
+            self.row(
+                canvas,
+                rect,
+                rect.bottom() - 1 - tick.offset,
+                tick,
+                labelled,
+            );
+        }
+    }
+
+    /// One horizontal grid line, with its label right-aligned in the gutter.
+    fn row(&self, canvas: &mut RgbImage, rect: Rect, y: i64, tick: &Tick, labelled: Labelled) {
+        hline(canvas, rect.x, rect.right(), y, Theme::GRID);
+        if labelled == Labelled::No {
+            return;
+        }
+        hline(canvas, rect.x - 3, rect.x, y, Theme::AXIS);
+        self.text.draw(
+            canvas,
+            &tick.label,
+            Anchor::right((rect.x - LABEL_PAD) as f32, self.beside(y)),
+            LABEL,
+        );
+    }
+}
+
+/// Pixels a label may take to the right of `edge`.
+///
+/// Two panels that label the same row meet halfway across the gap between
+/// them, so neither has to know how wide the other's labels are. With nothing
+/// beside it, a label runs to the edge of the canvas.
+fn room_right(edge: i64, neighbour: Option<i64>, canvas: u32) -> i64 {
+    neighbour.map_or(i64::from(canvas) - edge, |left| (left - edge) / 2)
+}
+
+/// Pixels a label may take to the left of `edge`, by the same rule.
+fn room_left(edge: i64, neighbour: Option<i64>) -> i64 {
+    neighbour.map_or(edge, |right| (edge - right) / 2)
+}
+
+/// The time ticks the spectrogram and the waveform strip both draw.
+fn time_ticks(
+    layout: &Layout,
+    img: &SpectrogramImage,
+    text: &TextRenderer,
+    rise: i64,
+) -> Vec<Tick> {
+    let Some(rect) = layout.spectrogram else {
+        return Vec::new();
+    };
+    let (axis, run) = match layout.orientation {
+        // Labels sit in a row under the plot. The canvas bounds them on the
+        // left; on the right they meet the spectrum panel's decibel labels,
+        // which share that row.
+        Orientation::Horizontal => (
+            Axis {
+                length: rect.w,
+                min: img.t0,
+                max: img.t1,
+                lead: rect.x,
+                trail: room_right(rect.right(), layout.psd.map(|p| p.x), layout.width),
+            },
+            LabelRun::Across,
+        ),
+        // Labels stack in the left gutter, which was measured to hold them.
+        Orientation::Vertical => (
+            Axis {
+                length: rect.h,
+                min: img.t0,
+                max: img.t1,
+                lead: rise,
+                trail: rise,
+            },
+            LabelRun::Down,
+        ),
+    };
+    ticks::ticks(
+        AxisKind::Time,
+        axis,
+        &LabelMetrics::new(text, FONT_SIZE, run),
+    )
+}
+
+/// The frequency ticks the spectrogram and the spectrum panel both draw.
+fn frequency_ticks(
+    layout: &Layout,
+    img: &SpectrogramImage,
+    text: &TextRenderer,
+    rise: i64,
+) -> Vec<Tick> {
+    let Some(rect) = layout.spectrogram else {
+        return Vec::new();
+    };
+    let (axis, run) = match layout.orientation {
+        // Upwards beside the plot: offset 0 is the lowest frequency, at the
+        // bottom, and the gutter was measured to hold the labels.
+        Orientation::Horizontal => (
+            Axis {
+                length: rect.h,
+                min: img.f0,
+                max: img.f1,
+                lead: rise,
+                trail: rise,
+            },
+            LabelRun::Down,
+        ),
+        // Across, under the plot, sharing that row with nothing else.
+        Orientation::Vertical => (
+            Axis {
+                length: rect.w,
+                min: img.f0,
+                max: img.f1,
+                lead: rect.x,
+                trail: i64::from(layout.width) - rect.right(),
+            },
+            LabelRun::Across,
+        ),
+    };
+    ticks::ticks(
+        AxisKind::Frequency,
+        axis,
+        &LabelMetrics::new(text, FONT_SIZE, run),
+    )
+}
+
 pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
     let mut canvas = RgbImage::from_pixel(layout.width, layout.height, Theme::BACKGROUND);
     let text = TextRenderer::new();
+    let scene = Scene::new(layout, input, &text);
 
     text.draw(
         &mut canvas,
@@ -610,52 +882,39 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
     text.draw(
         &mut canvas,
         input.footer,
-        Anchor::left(PAD as f32, (layout.height as i64 - PAD + 2) as f32),
+        Anchor::left(PAD as f32, (i64::from(layout.height) - PAD + 2) as f32),
         LABEL,
     );
 
     if let Some(rect) = layout.spectrogram {
-        draw_spectrogram(&mut canvas, &text, rect, layout.orientation, input);
+        draw_spectrogram(&mut canvas, &scene, rect);
     }
     if let Some((rect, waveform)) = layout.waveform.zip(input.analysis.waveform.as_ref()) {
-        draw_waveform(
-            &mut canvas,
-            &text,
-            rect,
-            layout.orientation,
-            waveform,
-            input,
-        );
+        draw_waveform(&mut canvas, &scene, rect, waveform);
     }
     if let Some(rect) = layout.psd {
-        draw_psd(&mut canvas, &text, rect, layout.orientation, input);
+        draw_psd(&mut canvas, &scene, rect);
     }
     if let Some(rect) = layout.colorbar {
-        draw_colorbar(&mut canvas, &text, rect, input);
+        draw_colorbar(&mut canvas, &scene, rect);
     }
 
     canvas
 }
 
-fn draw_spectrogram(
-    canvas: &mut RgbImage,
-    text: &TextRenderer,
-    rect: Rect,
-    orientation: Orientation,
-    input: &PlotInput<'_>,
-) {
-    let img = &input.analysis.spectrogram;
-    blit(canvas, rect, img, orientation);
+fn draw_spectrogram(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
+    let orientation = scene.layout.orientation;
+    blit(canvas, rect, &scene.input.analysis.spectrogram, orientation);
     frame(canvas, rect);
 
     match orientation {
         Orientation::Horizontal => {
-            time_axis_horizontal(canvas, text, rect, img, true);
-            freq_axis_vertical(canvas, text, rect, img, true);
+            scene.across(canvas, rect, &scene.time, Labelled::Yes);
+            scene.up(canvas, rect, &scene.frequency, Labelled::Yes);
         }
         Orientation::Vertical => {
-            time_axis_vertical(canvas, text, rect, img, true);
-            freq_axis_horizontal(canvas, text, rect, img);
+            scene.down(canvas, rect, &scene.time, Labelled::Yes);
+            scene.across(canvas, rect, &scene.frequency, Labelled::Yes);
         }
     }
 }
@@ -680,43 +939,94 @@ fn blit(canvas: &mut RgbImage, rect: Rect, img: &SpectrogramImage, orientation: 
     }
 }
 
-fn draw_psd(
-    canvas: &mut RgbImage,
-    text: &TextRenderer,
-    rect: Rect,
-    orientation: Orientation,
-    input: &PlotInput<'_>,
-) {
+fn draw_psd(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
     fill(canvas, rect, Theme::PANEL);
-    frame(canvas, rect);
 
-    let psd = &input.analysis.psd;
+    let psd = &scene.input.analysis.psd;
     if psd.db.is_empty() {
+        frame(canvas, rect);
         return;
     }
-
-    // The averaged spectrum sits well below the spectrogram's per-frame
-    // maxima, so sharing the colour bar's dB range would squash the whole
-    // trace against one edge. The panel gets its own scale, labelled.
-    let (db_min, db_max) = psd_range(&psd.db);
-    let span = (db_max - db_min).max(1e-6);
+    let range = psd_range(&psd.db);
+    let decibels = psd_db_ticks(scene, rect, range);
 
     // Frequency runs along whichever axis the spectrogram is not using for
-    // time, so the two panels line up bin for bin.
-    let freq_vertical = matches!(orientation, Orientation::Horizontal);
+    // time, so the two panels line up bin for bin. The grid goes down before
+    // the trace: drawn after it, a grid line cuts the trace into dashes
+    // exactly where it is being read.
+    let freq_vertical = matches!(scene.layout.orientation, Orientation::Horizontal);
+    if freq_vertical {
+        scene.up(canvas, rect, &scene.frequency, Labelled::No);
+        scene.across(canvas, rect, &decibels, Labelled::Yes);
+    } else {
+        scene.across(canvas, rect, &scene.frequency, Labelled::No);
+        scene.up(canvas, rect, &decibels, Labelled::Yes);
+    }
 
+    draw_psd_trace(canvas, rect, psd, range, freq_vertical);
+    frame(canvas, rect);
+}
+
+/// The spectrum panel's own decibel scale.
+///
+/// The averaged spectrum sits well below the spectrogram's per-frame maxima,
+/// so sharing the colour bar's dB range would squash the whole trace against
+/// one edge. The panel gets its own, labelled.
+fn psd_db_ticks(scene: &Scene<'_>, rect: Rect, range: (f32, f32)) -> Vec<Tick> {
+    let (min, max) = (f64::from(range.0), f64::from(range.1));
+    match scene.layout.orientation {
+        // Across the panel, labelled underneath, sharing that row with the
+        // spectrogram's time labels on the other side of the gap.
+        Orientation::Horizontal => {
+            let axis = Axis {
+                length: rect.w,
+                min,
+                max,
+                lead: room_left(rect.x, scene.layout.spectrogram.map(|s| s.right())),
+                trail: room_right(
+                    rect.right(),
+                    scene.layout.colorbar.map(|c| c.x),
+                    scene.layout.width,
+                ),
+            };
+            ticks::ticks(AxisKind::Decibels, axis, &scene.along())
+        }
+        // Stacked in the left gutter, which was measured to hold them.
+        Orientation::Vertical => {
+            let axis = Axis {
+                length: rect.h,
+                min,
+                max,
+                lead: scene.rise,
+                trail: scene.rise,
+            };
+            ticks::ticks(AxisKind::Decibels, axis, &scene.stacked())
+        }
+    }
+}
+
+/// The averaged spectrum itself, one pixel per row or column.
+///
+/// Consecutive samples are joined so a fast-moving trace reads as a line
+/// rather than a dotted scatter.
+fn draw_psd_trace(
+    canvas: &mut RgbImage,
+    rect: Rect,
+    psd: &Psd,
+    range: (f32, f32),
+    freq_vertical: bool,
+) {
+    let (db_min, db_max) = range;
+    let span = (db_max - db_min).max(1e-6);
     let level_at = |i: usize| ((psd.db[i] - db_min) / span).clamp(0.0, 1.0);
+    let bin_at = |t: f64| ((t * (psd.db.len() - 1) as f64).round() as usize).min(psd.db.len() - 1);
 
-    // Consecutive samples are joined so a fast-moving trace reads as a line
-    // rather than a dotted scatter.
     let mut previous: Option<i64> = None;
-
     if freq_vertical {
         for py in 0..rect.h {
             // Row 0 is the top of the panel: highest frequency.
             let t = (rect.h - 1 - py) as f64 / (rect.h.max(2) - 1) as f64;
-            let i = ((t * (psd.db.len() - 1) as f64).round() as usize).min(psd.db.len() - 1);
-            let x = rect.x + (level_at(i) * (rect.w - 1) as f32).round() as i64;
+            let x = rect.x + (level_at(bin_at(t)) * (rect.w - 1) as f32).round() as i64;
             match previous {
                 Some(prev) if (prev - x).abs() > 1 => hline(
                     canvas,
@@ -729,40 +1039,36 @@ fn draw_psd(
             }
             previous = Some(x);
         }
-        db_axis_horizontal(canvas, text, rect, db_min, db_max);
-    } else {
-        for px in 0..rect.w {
-            let t = px as f64 / (rect.w.max(2) - 1) as f64;
-            let i = ((t * (psd.db.len() - 1) as f64).round() as usize).min(psd.db.len() - 1);
-            let y = rect.bottom() - 1 - (level_at(i) * (rect.h - 1) as f32).round() as i64;
-            match previous {
-                Some(prev) if (prev - y).abs() > 1 => vline(
-                    canvas,
-                    rect.x + px,
-                    prev.min(y),
-                    prev.max(y) + 1,
-                    Theme::TRACE,
-                ),
-                _ => put(canvas, rect.x + px, y, Theme::TRACE),
-            }
-            previous = Some(y);
+        return;
+    }
+
+    for px in 0..rect.w {
+        let t = px as f64 / (rect.w.max(2) - 1) as f64;
+        let y = rect.bottom() - 1 - (level_at(bin_at(t)) * (rect.h - 1) as f32).round() as i64;
+        match previous {
+            Some(prev) if (prev - y).abs() > 1 => vline(
+                canvas,
+                rect.x + px,
+                prev.min(y),
+                prev.max(y) + 1,
+                Theme::TRACE,
+            ),
+            _ => put(canvas, rect.x + px, y, Theme::TRACE),
         }
-        db_axis_vertical(canvas, text, rect, db_min, db_max);
+        previous = Some(y);
     }
 }
 
 /// The time-domain strip: a min/max span per column, scaled to the reference.
 fn draw_waveform(
     canvas: &mut RgbImage,
-    text: &TextRenderer,
+    scene: &Scene<'_>,
     rect: Rect,
-    orientation: Orientation,
     waveform: &WaveformEnvelope,
-    input: &PlotInput<'_>,
 ) {
     fill(canvas, rect, Theme::PANEL);
 
-    let horizontal = matches!(orientation, Orientation::Horizontal);
+    let horizontal = matches!(scene.layout.orientation, Orientation::Horizontal);
     let (columns, span) = if horizontal {
         (rect.w, rect.h)
     } else {
@@ -776,15 +1082,17 @@ fn draw_waveform(
     };
     let half = ((span - 1) / 2).max(1);
 
+    // The strip carries the spectrogram's time grid and none of its labels:
+    // the two panels are read together, so the values are written once.
     if horizontal {
         hline(canvas, rect.x, rect.right(), middle, Theme::GRID);
-        time_axis_horizontal(canvas, text, rect, &input.analysis.spectrogram, false);
+        scene.across(canvas, rect, &scene.time, Labelled::No);
     } else {
         vline(canvas, middle, rect.y, rect.bottom(), Theme::GRID);
-        time_axis_vertical(canvas, text, rect, &input.analysis.spectrogram, false);
+        scene.down(canvas, rect, &scene.time, Labelled::No);
     }
 
-    let full_scale = input.waveform_full_scale.max(1e-6);
+    let full_scale = scene.input.waveform_full_scale.max(1e-6);
     let offset = |value: f32| -> i64 {
         let level = (value.abs() / full_scale).clamp(0.0, 1.0);
         let distance = (level * half as f32).round() as i64;
@@ -872,9 +1180,9 @@ fn psd_range(db: &[f32]) -> (f32, f32) {
     (lo, hi + margin)
 }
 
-fn draw_colorbar(canvas: &mut RgbImage, text: &TextRenderer, rect: Rect, input: &PlotInput<'_>) {
-    let gradient = input.colormap.gradient();
-    let img = &input.analysis.spectrogram;
+fn draw_colorbar(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
+    let gradient = scene.input.colormap.gradient();
+    let img = &scene.input.analysis.spectrogram;
 
     for py in 0..rect.h {
         // Strongest at the top.
@@ -886,252 +1194,23 @@ fn draw_colorbar(canvas: &mut RgbImage, text: &TextRenderer, rect: Rect, input: 
     }
     frame(canvas, rect);
 
-    for value in nice_ticks(img.db_min as f64, img.db_max as f64, 5) {
-        let t = (value - img.db_min as f64) / (img.db_max - img.db_min).max(1e-6) as f64;
-        let y = rect.bottom() - 1 - (t * (rect.h - 1) as f64).round() as i64;
-        if y < rect.y || y >= rect.bottom() {
-            continue;
-        }
+    let axis = Axis {
+        length: rect.h,
+        min: f64::from(img.db_min),
+        max: f64::from(img.db_max),
+        lead: scene.rise,
+        trail: scene.rise,
+    };
+    for tick in ticks::ticks(AxisKind::DecibelsWithUnit, axis, &scene.stacked()) {
+        let y = rect.bottom() - 1 - tick.offset;
         hline(canvas, rect.right(), rect.right() + 3, y, Theme::AXIS);
-        text.draw(
+        scene.text.draw(
             canvas,
-            &format!("{value:.0} dB"),
-            Anchor::left((rect.right() + 6) as f32, (y + 4) as f32),
+            &tick.label,
+            Anchor::left((rect.right() + LABEL_PAD) as f32, scene.beside(y)),
             LABEL,
         );
     }
-}
-
-fn time_axis_horizontal(
-    canvas: &mut RgbImage,
-    text: &TextRenderer,
-    rect: Rect,
-    img: &SpectrogramImage,
-    labels: bool,
-) {
-    for value in nice_time_ticks(img.t0, img.t1, 8) {
-        let t = (value - img.t0) / (img.t1 - img.t0).max(1e-9);
-        let x = rect.x + (t * (rect.w - 1) as f64).round() as i64;
-        if x < rect.x || x >= rect.right() {
-            continue;
-        }
-        vline(canvas, x, rect.y, rect.bottom(), Theme::GRID);
-        if !labels {
-            continue;
-        }
-        vline(canvas, x, rect.bottom(), rect.bottom() + 3, Theme::AXIS);
-        text.draw(
-            canvas,
-            &time_label(value),
-            Anchor::center(x as f32, (rect.bottom() + 16) as f32),
-            LABEL,
-        );
-    }
-}
-
-fn time_axis_vertical(
-    canvas: &mut RgbImage,
-    text: &TextRenderer,
-    rect: Rect,
-    img: &SpectrogramImage,
-    labels: bool,
-) {
-    for value in nice_time_ticks(img.t0, img.t1, 6) {
-        let t = (value - img.t0) / (img.t1 - img.t0).max(1e-9);
-        let y = rect.y + (t * (rect.h - 1) as f64).round() as i64;
-        if y < rect.y || y >= rect.bottom() {
-            continue;
-        }
-        hline(canvas, rect.x, rect.right(), y, Theme::GRID);
-        if !labels {
-            continue;
-        }
-        hline(canvas, rect.x - 3, rect.x, y, Theme::AXIS);
-        text.draw(
-            canvas,
-            &time_label(value),
-            Anchor::right((rect.x - 6) as f32, (y + 4) as f32),
-            LABEL,
-        );
-    }
-}
-
-fn freq_axis_vertical(
-    canvas: &mut RgbImage,
-    text: &TextRenderer,
-    rect: Rect,
-    img: &SpectrogramImage,
-    labels: bool,
-) {
-    for value in nice_ticks(img.f0, img.f1, 6) {
-        let t = (value - img.f0) / (img.f1 - img.f0).max(1e-9);
-        // Highest frequency at the top.
-        let y = rect.bottom() - 1 - (t * (rect.h - 1) as f64).round() as i64;
-        if y < rect.y || y >= rect.bottom() {
-            continue;
-        }
-        hline(canvas, rect.x, rect.right(), y, Theme::GRID);
-        if labels {
-            hline(canvas, rect.x - 3, rect.x, y, Theme::AXIS);
-            text.draw(
-                canvas,
-                &format_hz(value),
-                Anchor::right((rect.x - 6) as f32, (y + 4) as f32),
-                LABEL,
-            );
-        }
-    }
-}
-
-fn freq_axis_horizontal(
-    canvas: &mut RgbImage,
-    text: &TextRenderer,
-    rect: Rect,
-    img: &SpectrogramImage,
-) {
-    for value in nice_ticks(img.f0, img.f1, 6) {
-        let t = (value - img.f0) / (img.f1 - img.f0).max(1e-9);
-        let x = rect.x + (t * (rect.w - 1) as f64).round() as i64;
-        if x < rect.x || x >= rect.right() {
-            continue;
-        }
-        vline(canvas, x, rect.y, rect.bottom(), Theme::GRID);
-        vline(canvas, x, rect.bottom(), rect.bottom() + 3, Theme::AXIS);
-        text.draw(
-            canvas,
-            &format_hz(value),
-            Anchor::center(x as f32, (rect.bottom() + 16) as f32),
-            LABEL,
-        );
-    }
-}
-
-fn db_axis_horizontal(
-    canvas: &mut RgbImage,
-    text: &TextRenderer,
-    rect: Rect,
-    db_min: f32,
-    db_max: f32,
-) {
-    for value in nice_ticks(db_min as f64, db_max as f64, 3) {
-        let t = (value - db_min as f64) / (db_max - db_min).max(1e-6) as f64;
-        let x = rect.x + (t * (rect.w - 1) as f64).round() as i64;
-        if x < rect.x || x >= rect.right() {
-            continue;
-        }
-        vline(canvas, x, rect.y, rect.bottom(), Theme::GRID);
-        text.draw(
-            canvas,
-            &format!("{value:.0}"),
-            Anchor::center(x as f32, (rect.bottom() + 16) as f32),
-            LABEL,
-        );
-    }
-}
-
-fn db_axis_vertical(
-    canvas: &mut RgbImage,
-    text: &TextRenderer,
-    rect: Rect,
-    db_min: f32,
-    db_max: f32,
-) {
-    for value in nice_ticks(db_min as f64, db_max as f64, 4) {
-        let t = (value - db_min as f64) / (db_max - db_min).max(1e-6) as f64;
-        let y = rect.bottom() - 1 - (t * (rect.h - 1) as f64).round() as i64;
-        if y < rect.y || y >= rect.bottom() {
-            continue;
-        }
-        hline(canvas, rect.x, rect.right(), y, Theme::GRID);
-        text.draw(
-            canvas,
-            &format!("{value:.0}"),
-            Anchor::right((rect.x - 6) as f32, (y + 4) as f32),
-            LABEL,
-        );
-    }
-}
-
-/// Axis labels want a bare zero, not the report's "0ms".
-fn time_label(seconds: f64) -> String {
-    if seconds == 0.0 {
-        "0".to_string()
-    } else {
-        format_duration(seconds)
-    }
-}
-
-/// Tick positions for a time axis, in seconds.
-///
-/// Decimal steps put marks at 250-second intervals, which read as "8m20" and
-/// tell nobody anything. Clocks step in 1, 5, 15, 30 and 60, so the axis does
-/// too, falling back to decimal steps below a second.
-pub fn nice_time_ticks(min: f64, max: f64, target: usize) -> Vec<f64> {
-    const STEPS: [f64; 14] = [
-        1.0, 2.0, 5.0, 10.0, 15.0, 30.0, // seconds
-        60.0, 120.0, 300.0, 600.0, 900.0, 1800.0, // minutes
-        3600.0, 7200.0, // hours
-    ];
-    if !min.is_finite() || !max.is_finite() || max <= min || target == 0 {
-        return Vec::new();
-    }
-
-    let raw = (max - min) / target as f64;
-    if raw < 1.0 {
-        return nice_ticks(min, max, target);
-    }
-    let step = STEPS
-        .iter()
-        .copied()
-        .find(|&s| s >= raw)
-        // Past two hours, go back to round multiples of an hour.
-        .unwrap_or_else(|| (raw / 3600.0).ceil() * 3600.0);
-
-    ticks_from_step(min, max, step, target)
-}
-
-/// Round tick positions to values a reader can hold in their head.
-pub fn nice_ticks(min: f64, max: f64, target: usize) -> Vec<f64> {
-    if !min.is_finite() || !max.is_finite() || max <= min || target == 0 {
-        return Vec::new();
-    }
-    let raw = (max - min) / target as f64;
-    let magnitude = 10f64.powf(raw.log10().floor());
-    let normalized = raw / magnitude;
-    let step = magnitude
-        * if normalized <= 1.0 {
-            1.0
-        } else if normalized <= 2.0 {
-            2.0
-        } else if normalized <= 5.0 {
-            5.0
-        } else {
-            10.0
-        };
-
-    ticks_from_step(min, max, step, target)
-}
-
-fn ticks_from_step(min: f64, max: f64, step: f64, target: usize) -> Vec<f64> {
-    if step <= 0.0 {
-        return Vec::new();
-    }
-    let mut ticks = Vec::new();
-    let mut value = (min / step).ceil() * step;
-    // Guard against a step that rounding made useless.
-    for _ in 0..(target * 4 + 4) {
-        if value > max + step * 1e-9 {
-            break;
-        }
-        // Snap away the float dust that ceil and multiply leave behind.
-        ticks.push(if value.abs() < step * 1e-9 {
-            0.0
-        } else {
-            value
-        });
-        value += step;
-    }
-    ticks
 }
 
 fn put(canvas: &mut RgbImage, x: i64, y: i64, color: Rgb<u8>) {

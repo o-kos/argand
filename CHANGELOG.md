@@ -11,6 +11,23 @@ promise applies to.
 
 ## [Unreleased]
 
+### Changed
+
+- Axis tick density now follows the length of the axis and the measured width
+  of its labels rather than a count fixed per axis, so a large render carries
+  many more coordinates and a small one no longer overlaps them. Labels that
+  would not fit whole inside the canvas are dropped with their grid lines
+  instead of being clipped.
+- Time axis labels read as a clock: `1:02:09` on an axis reaching an hour and
+  `3.07` below that. Ticks never step finer than one second and labels no
+  longer carry fractional seconds.
+- Panels sharing an axis are given one set of tick values, so the waveform
+  strip's time grid and the spectrum panel's frequency grid line up with the
+  spectrogram's exactly. The spectrum panel gained frequency grid lines.
+- The gutters holding axis labels are measured from the widest label the axis
+  can print. Frequency labels on a tuned capture, such as `12.579887 MHz`, no
+  longer run off the left of the image.
+
 ## [0.0.1] - 2026-08-28
 
 ### Added

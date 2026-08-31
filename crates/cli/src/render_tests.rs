@@ -20,6 +20,15 @@ const EVERYTHING: Panels = Panels {
     db: true,
 };
 
+/// The gutters the test captures need: 8192 samples at 24 kHz, at baseband.
+fn gutters() -> Gutters {
+    Gutters::measure((0.0, 8192.0 / RATE), (-RATE / 2.0, RATE / 2.0))
+}
+
+fn laid_out(width: u32, height: u32, panels: Panels, orientation: Orientation) -> Layout {
+    Layout::compute(width, height, panels, orientation, gutters())
+}
+
 fn analysis_of(dir: &TempDir, name: &str, values: &[f32], iq: bool, layout: &Layout) -> Analysis {
     let st: SampleType = if iq { "iq_f32" } else { "rl_f32" }.parse().unwrap();
     let path = write_wav(&dir.join(name), st, RATE as u32, values, 1.0);
@@ -69,7 +78,7 @@ fn plot(layout: &Layout, analysis: &Analysis) -> RgbImage {
 #[test]
 fn the_default_render_is_a_waveform_and_a_spectrogram_only() {
     for orientation in [Orientation::Horizontal, Orientation::Vertical] {
-        let layout = Layout::compute(900, 500, WAVEFORM, orientation);
+        let layout = laid_out(900, 500, WAVEFORM, orientation);
         assert!(layout.spectrogram.is_some(), "{orientation}");
         assert!(layout.waveform.is_some(), "{orientation}");
         assert!(layout.psd.is_none(), "{orientation}: psd is opt-in");
@@ -80,14 +89,14 @@ fn the_default_render_is_a_waveform_and_a_spectrogram_only() {
 #[test]
 fn the_spectrogram_is_drawn_whatever_the_panels_say() {
     for panels in [Panels::NONE, WAVEFORM, EVERYTHING] {
-        let layout = Layout::compute(900, 500, panels, Orientation::Horizontal);
+        let layout = laid_out(900, 500, panels, Orientation::Horizontal);
         assert!(layout.spectrogram.is_some(), "{panels}");
     }
 }
 
 #[test]
 fn a_horizontal_strip_sits_above_the_spectrogram_on_the_same_time_axis() {
-    let layout = Layout::compute(1600, 500, EVERYTHING, Orientation::Horizontal);
+    let layout = laid_out(1600, 500, EVERYTHING, Orientation::Horizontal);
     let spec = layout.spectrogram.expect("spectrogram");
     let strip = layout.waveform.expect("waveform");
 
@@ -100,7 +109,7 @@ fn a_horizontal_strip_sits_above_the_spectrogram_on_the_same_time_axis() {
 
 #[test]
 fn a_vertical_strip_sits_beside_the_spectrogram_on_the_same_time_axis() {
-    let layout = Layout::compute(700, 900, EVERYTHING, Orientation::Vertical);
+    let layout = laid_out(700, 900, EVERYTHING, Orientation::Vertical);
     let spec = layout.spectrogram.expect("spectrogram");
     let strip = layout.waveform.expect("waveform");
 
@@ -114,7 +123,7 @@ fn a_vertical_strip_sits_beside_the_spectrogram_on_the_same_time_axis() {
 #[test]
 fn the_spectrum_stays_on_the_spectrogram_frequency_axis() {
     // Horizontal: a column beside the waterfall, row for row with it.
-    let layout = Layout::compute(1600, 500, EVERYTHING, Orientation::Horizontal);
+    let layout = laid_out(1600, 500, EVERYTHING, Orientation::Horizontal);
     let spec = layout.spectrogram.unwrap();
     let psd = layout.psd.expect("psd");
     let bar = layout.colorbar.expect("colorbar");
@@ -124,9 +133,9 @@ fn the_spectrum_stays_on_the_spectrogram_frequency_axis() {
     assert!(spec.w > psd.w * 2, "the waterfall keeps most of the width");
 
     // Vertical: a row above the waterfall, column for column with it.
-    let layout = Layout::compute(700, 900, EVERYTHING, Orientation::Vertical);
-    let spec = layout.spectrogram.unwrap();
-    let psd = layout.psd.expect("psd");
+    let down = laid_out(700, 900, EVERYTHING, Orientation::Vertical);
+    let spec = down.spectrogram.unwrap();
+    let psd = down.psd.expect("psd");
     assert!(psd.bottom() < spec.y);
     assert_eq!((psd.x, psd.w), (spec.x, spec.w));
     assert!(spec.h > psd.h);
@@ -134,8 +143,8 @@ fn the_spectrum_stays_on_the_spectrogram_frequency_axis() {
 
 #[test]
 fn dropping_a_panel_gives_its_room_to_the_spectrogram() {
-    let all = Layout::compute(1600, 500, EVERYTHING, Orientation::Horizontal);
-    let bare = Layout::compute(1600, 500, Panels::NONE, Orientation::Horizontal);
+    let all = laid_out(1600, 500, EVERYTHING, Orientation::Horizontal);
+    let bare = laid_out(1600, 500, Panels::NONE, Orientation::Horizontal);
 
     let (all_spec, bare_spec) = (all.spectrogram.unwrap(), bare.spectrogram.unwrap());
     assert!(bare_spec.w > all_spec.w, "the spectrum column came back");
@@ -145,12 +154,12 @@ fn dropping_a_panel_gives_its_room_to_the_spectrogram() {
 
 #[test]
 fn the_transform_is_asked_for_the_pixels_it_will_fill() {
-    let horizontal = Layout::compute(1600, 500, EVERYTHING, Orientation::Horizontal);
+    let horizontal = laid_out(1600, 500, EVERYTHING, Orientation::Horizontal);
     let rect = horizontal.spectrogram.unwrap();
     assert_eq!(horizontal.transform_size(), (rect.w as usize, rect.h as usize));
 
     // Turning the waterfall on its side swaps which axis is time.
-    let vertical = Layout::compute(700, 900, EVERYTHING, Orientation::Vertical);
+    let vertical = laid_out(700, 900, EVERYTHING, Orientation::Vertical);
     let rect = vertical.spectrogram.unwrap();
     assert_eq!(vertical.transform_size(), (rect.h as usize, rect.w as usize));
 }
@@ -158,7 +167,7 @@ fn the_transform_is_asked_for_the_pixels_it_will_fill() {
 #[test]
 fn an_image_too_small_for_a_plot_yields_no_panels() {
     for (w, h) in [(1, 1), (40, 40), (200, 20)] {
-        let layout = Layout::compute(w, h, EVERYTHING, Orientation::Horizontal);
+        let layout = laid_out(w, h, EVERYTHING, Orientation::Horizontal);
         assert!(
             layout.spectrogram.is_none() || layout.spectrogram.unwrap().is_valid(),
             "{w}x{h} produced a degenerate rect"
@@ -173,7 +182,7 @@ fn an_image_too_small_for_a_plot_yields_no_panels() {
 #[test]
 fn rendering_fills_the_requested_canvas() {
     let dir = TempDir::new("render-size");
-    let layout = Layout::compute(900, 320, EVERYTHING, Orientation::Horizontal);
+    let layout = laid_out(900, 320, EVERYTHING, Orientation::Horizontal);
     let a = analysis(&dir, "a.wav", true, &layout);
     let canvas = plot(&layout, &a);
 
@@ -185,7 +194,7 @@ fn rendering_fills_the_requested_canvas() {
 #[test]
 fn the_waterfall_lands_inside_its_panel_and_nowhere_else() {
     let dir = TempDir::new("render-bounds");
-    let layout = Layout::compute(900, 320, Panels::NONE, Orientation::Horizontal);
+    let layout = laid_out(900, 320, Panels::NONE, Orientation::Horizontal);
     let a = analysis(&dir, "b.wav", true, &layout);
     let canvas = plot(&layout, &a);
     let rect = layout.spectrogram.unwrap();
@@ -205,7 +214,7 @@ fn the_waterfall_lands_inside_its_panel_and_nowhere_else() {
 #[test]
 fn a_vertical_waterfall_puts_low_frequency_on_the_left() {
     let dir = TempDir::new("render-vertical");
-    let layout = Layout::compute(400, 700, Panels::NONE, Orientation::Vertical);
+    let layout = laid_out(400, 700, Panels::NONE, Orientation::Vertical);
     let a = analysis(&dir, "c.wav", false, &layout);
     let canvas = plot(&layout, &a);
     let rect = layout.spectrogram.unwrap();
@@ -255,7 +264,7 @@ fn the_strip_merges_i_and_q_into_one_span() {
     }
 
     let dir = TempDir::new("render-iq");
-    let layout = Layout::compute(900, 320, WAVEFORM, Orientation::Horizontal);
+    let layout = laid_out(900, 320, WAVEFORM, Orientation::Horizontal);
     let a = analysis_of(&dir, "iq.wav", &values, true, &layout);
     assert_eq!(a.waveform.as_ref().unwrap().channels, 2, "both are kept");
     let canvas = plot(&layout, &a);
@@ -281,7 +290,7 @@ fn the_strip_merges_i_and_q_into_one_span() {
 #[test]
 fn nothing_is_drawn_outside_the_strip() {
     let dir = TempDir::new("render-real");
-    let layout = Layout::compute(900, 320, WAVEFORM, Orientation::Horizontal);
+    let layout = laid_out(900, 320, WAVEFORM, Orientation::Horizontal);
     let a = analysis(&dir, "real.wav", false, &layout);
     assert_eq!(a.waveform.as_ref().unwrap().channels, 1);
 
@@ -291,8 +300,8 @@ fn nothing_is_drawn_outside_the_strip() {
 
     // The gutter beside the strip carries axis labels and nothing else.
     let gutter = Rect {
-        x: strip.x - FREQ_LABEL_W,
-        w: FREQ_LABEL_W - 2,
+        x: PAD,
+        w: strip.x - PAD - 2,
         ..strip
     };
     assert_eq!(trace_colors(&canvas, gutter), (0, 0), "the trace leaked out");
@@ -301,7 +310,7 @@ fn nothing_is_drawn_outside_the_strip() {
 #[test]
 fn the_strip_reaches_its_edge_at_the_reference_level() {
     let dir = TempDir::new("render-scale");
-    let layout = Layout::compute(900, 320, WAVEFORM, Orientation::Horizontal);
+    let layout = laid_out(900, 320, WAVEFORM, Orientation::Horizontal);
     // A quiet signal: under --ref peak the strip still uses its full height.
     let values = real_tone(8192, RATE, TONE_HZ, 0.02);
     let a = analysis_of(&dir, "quiet.wav", &values, false, &layout);
@@ -326,46 +335,6 @@ fn the_reference_level_follows_the_ref_flag() {
     assert_eq!(waveform_full_scale(0.5, DbReference::Peak), 0.5);
     // Silence must not become a division by zero.
     assert!(waveform_full_scale(0.0, DbReference::Peak) > 0.0);
-}
-
-#[test]
-fn decimal_ticks_land_on_round_numbers() {
-    let ticks = nice_ticks(-12_000.0, 12_000.0, 6);
-    assert!(ticks.contains(&0.0), "{ticks:?}");
-    assert!(ticks.iter().all(|v| (v / 5000.0).fract().abs() < 1e-9), "{ticks:?}");
-    assert!(ticks.len() >= 4 && ticks.len() <= 12, "{ticks:?}");
-
-    assert!(nice_ticks(5.0, 5.0, 6).is_empty(), "degenerate span");
-    assert!(nice_ticks(f64::NAN, 1.0, 6).is_empty());
-    assert!(nice_ticks(0.0, 1.0, 0).is_empty());
-}
-
-#[test]
-fn time_ticks_use_clock_steps_not_decimal_ones() {
-    // Half an hour: decimal steps would mark every 250 seconds ("8m20").
-    let ticks = nice_time_ticks(0.0, 1800.0, 8);
-    assert!(ticks.len() >= 4, "{ticks:?}");
-    for value in &ticks {
-        assert_eq!(
-            value % 300.0,
-            0.0,
-            "{value} is not a round number of minutes: {ticks:?}"
-        );
-    }
-    assert!(ticks.contains(&0.0));
-}
-
-#[test]
-fn short_spans_fall_back_to_decimal_time_steps() {
-    let ticks = nice_time_ticks(0.0, 0.2, 4);
-    assert!(ticks.len() >= 3, "{ticks:?}");
-    assert!(ticks.iter().all(|v| *v >= 0.0 && *v <= 0.2));
-}
-
-#[test]
-fn the_zero_tick_is_bare() {
-    assert_eq!(time_label(0.0), "0");
-    assert_eq!(time_label(300.0), "5m");
 }
 
 #[test]
@@ -450,4 +419,230 @@ fn orientation_names_round_trip() {
         Orientation::from_str("sideways").unwrap_err().to_string(),
         "unknown orientation `sideways`, expected one of: horizontal, vertical"
     );
+}
+
+/// A spectrogram carrying only the axis extents a render would give it: these
+/// tests are about where the labels land, not about what is drawn under them.
+fn extents(time: (f64, f64), frequency: (f64, f64)) -> SpectrogramImage {
+    let mut img = SpectrogramImage::new(1, 1);
+    img.t0 = time.0;
+    img.t1 = time.1;
+    img.f0 = frequency.0;
+    img.f1 = frequency.1;
+    img
+}
+
+/// The label geometry the plot draws with, so a test can measure the same
+/// boxes the renderer does.
+struct Ruler {
+    text: TextRenderer,
+    ink: f64,
+    gap: f64,
+    rise: i64,
+}
+
+impl Ruler {
+    fn new() -> Self {
+        let text = TextRenderer::new();
+        let ink = f64::from(text.digit_height(FONT_SIZE));
+        let gap = f64::from(text.width("00", FONT_SIZE));
+        Self {
+            rise: (ink / 2.0).round() as i64,
+            text,
+            ink,
+            gap,
+        }
+    }
+
+    /// Labels centred on their ticks along the axis, which starts at `start`
+    /// on a canvas `canvas` pixels wide.
+    fn check_along(&self, marks: &[Tick], start: i64, canvas: u32, what: &str) {
+        let box_of = |tick: &Tick| {
+            let centre = f64::from(u32::try_from(start + tick.offset).unwrap_or(0));
+            let half = f64::from(self.text.width(&tick.label, FONT_SIZE)) / 2.0;
+            (centre - half, centre + half)
+        };
+        for pair in marks.windows(2) {
+            let clear = box_of(&pair[1]).0 - box_of(&pair[0]).1;
+            assert!(
+                clear >= self.gap,
+                "{what}: {:?} and {:?} leave {clear:.1}px",
+                pair[0].label,
+                pair[1].label
+            );
+        }
+        if let (Some(first), Some(last)) = (marks.first(), marks.last()) {
+            assert!(box_of(first).0 >= 0.0, "{what}: {:?} is off the left", first.label);
+            assert!(
+                box_of(last).1 <= f64::from(canvas - 1),
+                "{what}: {:?} is off the right",
+                last.label
+            );
+        }
+    }
+
+    /// Both of a plot's axes, measured where the renderer would draw them.
+    fn check_layout(&self, layout: &Layout, ranges: ((f64, f64), (f64, f64)), what: &str) {
+        let Some(spec) = layout.spectrogram else {
+            return;
+        };
+        let img = extents(ranges.0, ranges.1);
+        let clock = time_ticks(layout, &img, &self.text, self.rise);
+        let hertz = frequency_ticks(layout, &img, &self.text, self.rise);
+        match layout.orientation {
+            Orientation::Horizontal => {
+                self.check_along(&clock, spec.x, layout.width, what);
+                self.check_stacked(&hertz, spec.x, what);
+            }
+            Orientation::Vertical => {
+                self.check_stacked(&clock, spec.x, what);
+                self.check_along(&hertz, spec.x, layout.width, what);
+            }
+        }
+    }
+
+    /// Labels stacked in the gutter left of a plot whose edge is at `x`.
+    fn check_stacked(&self, marks: &[Tick], x: i64, what: &str) {
+        for pair in marks.windows(2) {
+            let clear = (pair[1].offset - pair[0].offset) as f64 - self.ink;
+            assert!(
+                clear >= self.gap,
+                "{what}: {:?} and {:?} leave {clear:.1}px",
+                pair[0].label,
+                pair[1].label
+            );
+        }
+        for tick in marks {
+            let left = (x - LABEL_PAD) as f64 - f64::from(self.text.width(&tick.label, FONT_SIZE));
+            assert!(left >= 0.0, "{what}: {:?} starts at {left:.1}", tick.label);
+        }
+    }
+}
+
+/// Every panel set and orientation a plot can be asked for.
+const SHAPES: [(Panels, Orientation); 6] = [
+    (Panels::NONE, Orientation::Horizontal),
+    (Panels::NONE, Orientation::Vertical),
+    (WAVEFORM, Orientation::Horizontal),
+    (WAVEFORM, Orientation::Vertical),
+    (EVERYTHING, Orientation::Horizontal),
+    (EVERYTHING, Orientation::Vertical),
+];
+
+/// Extents worth checking every shape against.
+const RANGES: [((f64, f64), (f64, f64)); 4] = [
+    ((0.0, 1800.0), (-12_000.0, 12_000.0)), // half an hour of complex baseband
+    ((0.0, 5.0), (0.0, 6_300.0)),           // five seconds of a real capture
+    ((0.0, 4_320.0), (12_567_000.0, 12_591_000.0)), // over an hour, tuned to HF
+    ((3_600.0, 3_600.2), (-8_000.0, 8_000.0)), // a subsecond window an hour in
+];
+
+#[test]
+fn no_two_labels_overlap_at_any_supported_size() {
+    let ruler = Ruler::new();
+    for (w, h) in [(560, 300), (900, 320), (1600, 500), (2048, 512), (700, 900)] {
+        for (panels, orientation) in SHAPES {
+            for (time, frequency) in RANGES {
+                let gutters = Gutters::measure(time, frequency);
+                let layout = Layout::compute(w, h, panels, orientation, gutters);
+                let what = format!("{w}x{h} {panels} {orientation} {time:?}");
+                ruler.check_layout(&layout, (time, frequency), &what);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_wider_image_gets_more_time_labels() {
+    let ruler = Ruler::new();
+    let (time, frequency) = ((0.0, 1800.0), (-12_000.0, 12_000.0));
+    let img = extents(time, frequency);
+    let counts: Vec<usize> = [600, 1000, 1600, 2048]
+        .into_iter()
+        .map(|w| {
+            let gutters = Gutters::measure(time, frequency);
+            let layout = Layout::compute(w, 400, Panels::NONE, Orientation::Horizontal, gutters);
+            time_ticks(&layout, &img, &ruler.text, ruler.rise).len()
+        })
+        .collect();
+    // The clock ladder is coarse -- a half-hour axis steps from a mark a
+    // minute to one every thirty seconds and nothing between -- so density
+    // climbs in stairs rather than continuously, but it only ever climbs.
+    assert!(
+        counts.windows(2).all(|c| c[1] >= c[0]),
+        "a wider image lost labels: {counts:?}"
+    );
+    assert!(
+        counts[counts.len() - 1] > counts[0] * 3,
+        "the extra width bought almost nothing: {counts:?}"
+    );
+}
+
+#[test]
+fn a_megahertz_frequency_label_gets_a_gutter_that_holds_it() {
+    let ruler = Ruler::new();
+    let (time, tuned) = ((0.0, 1800.0), (12_567_000.0, 12_591_000.0));
+    let gutters = Gutters::measure(time, tuned);
+    let layout = Layout::compute(2048, 512, Panels::NONE, Orientation::Horizontal, gutters);
+    let spec = layout.spectrogram.expect("spectrogram");
+
+    let hertz = frequency_ticks(&layout, &extents(time, tuned), &ruler.text, ruler.rise);
+    assert!(hertz.iter().any(|t| t.label.ends_with(" MHz")), "{hertz:?}");
+    ruler.check_stacked(&hertz, spec.x, "tuned to HF");
+
+    // The 78-pixel gutter this replaced could not hold them, and a baseband
+    // axis does not need anything like as much.
+    assert!(gutters.frequency + LABEL_PAD > 78, "{gutters:?}");
+    let baseband = Gutters::measure(time, (-12_000.0, 12_000.0));
+    assert!(
+        gutters.frequency > baseband.frequency,
+        "{gutters:?} against {baseband:?}"
+    );
+}
+
+#[test]
+fn panels_that_share_an_axis_draw_the_same_grid() {
+    let dir = TempDir::new("render-shared");
+    let layout = laid_out(1600, 500, EVERYTHING, Orientation::Horizontal);
+    // Five seconds, so the clock has whole seconds to mark, and quiet against
+    // full scale, so the strip's trace stays near its centre line and leaves
+    // the grid at the top of the panel to read.
+    let values = real_tone(5 * RATE as usize, RATE, TONE_HZ, 0.3);
+    let a = analysis_of(&dir, "shared.wav", &values, false, &layout);
+    let canvas = render(
+        &layout,
+        &PlotInput {
+            analysis: &a,
+            title: "title",
+            footer: "footer",
+            colormap: Colormap::Grayscale,
+            waveform_full_scale: 1.0,
+        },
+    );
+
+    let spec = layout.spectrogram.unwrap();
+    let strip = layout.waveform.unwrap();
+    let psd = layout.psd.unwrap();
+    let is_grid = |x: i64, y: i64| canvas.get_pixel(x as u32, y as u32).0 == Theme::GRID.0;
+    let columns = |rect: Rect, y: i64| -> Vec<i64> {
+        (rect.x..rect.right()).filter(|x| is_grid(*x, y)).collect()
+    };
+
+    // Time: the strip carries the spectrogram's columns and no others.
+    let on_spectrogram = columns(spec, spec.y + 2);
+    assert!(on_spectrogram.len() > 4, "{on_spectrogram:?}");
+    assert_eq!(
+        columns(strip, strip.y + 2),
+        on_spectrogram,
+        "the strip's time grid drifted off the spectrogram's"
+    );
+
+    // Frequency: the spectrum panel carries the same rows, at the same values.
+    let ruler = Ruler::new();
+    let hertz = frequency_ticks(&layout, &a.spectrogram, &ruler.text, ruler.rise);
+    let mut expected: Vec<i64> = hertz.iter().map(|t| spec.bottom() - 1 - t.offset).collect();
+    expected.sort_unstable();
+    assert!(expected.len() > 4, "{expected:?}");
+    let on_psd: Vec<i64> = (psd.y..psd.bottom()).filter(|y| is_grid(psd.x, *y)).collect();
+    assert_eq!(on_psd, expected, "the spectrum panel's grid drifted");
 }

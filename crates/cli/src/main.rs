@@ -12,6 +12,7 @@ mod mask;
 mod render;
 mod report;
 mod text;
+mod ticks;
 
 use std::io::{IsTerminal, Write};
 use std::path::Path;
@@ -25,7 +26,7 @@ use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::cli::Args;
-use crate::render::{Layout, PlotInput};
+use crate::render::{Gutters, Layout, PlotInput};
 use crate::report::{Report, Scaling};
 
 fn main() -> Result<()> {
@@ -111,8 +112,15 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
         window: args.window_type,
     };
 
+    // The gutters come first: how much of the image the axis labels take
+    // decides how many pixels are left for the transform to fill.
     let (width, height) = args.image_size;
-    let layout = Layout::compute(width, height, args.panels, args.orientation);
+    let seconds = |sample: u64| sample as f64 / meta.sample_rate;
+    let gutters = Gutters::measure(
+        (seconds(range.start), seconds(range.end())),
+        meta.frequency_span(),
+    );
+    let layout = Layout::compute(width, height, args.panels, args.orientation, gutters);
     let (transform_w, transform_h) = layout.transform_size();
     if transform_w == 0 || transform_h == 0 {
         bail!("image {width}x{height} leaves no room for the plot; try a larger --image-size");

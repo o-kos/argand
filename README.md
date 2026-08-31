@@ -195,6 +195,30 @@ against the `--ref` level -- full scale, or this file's loudest sample under
 `--ref peak`. A complex signal is one track, spanning whichever of I and Q
 reached further in that column.
 
+### Axes
+
+How many labels an axis carries is decided from how long it is and how wide
+its labels turn out to be, not from a count fixed in advance. Every candidate
+step is formatted and measured with the font the plot draws with, and the
+densest one whose labels still keep two digits of clear space wins. A wider
+image therefore gets more coordinates rather than the same few spread further
+apart, and a narrow one does not stack them on top of each other.
+
+Values stay round. Numeric axes step by 1, 2 or 5 times a power of ten, and
+zero is exact whenever it is on the axis. Time steps on a clock -- 1, 5, 15,
+30 seconds, a minute, five, an hour -- and never finer than one second, so a
+label never carries a fraction. Time reads as `1:02:09` on an axis that
+reaches an hour and `3.07` below that, minutes and seconds. A window shorter
+than a second shows the whole seconds inside it and nothing else.
+
+Every label drawn has a grid line or tick mark at the same value, and a label
+that would not fit whole inside the canvas is dropped along with its line
+rather than clipped. Panels sharing an axis are given one set of values, so
+the waveform strip's grid lines fall on the spectrogram's, and the averaged
+spectrum's on the spectrogram's frequencies. The gutters holding the labels
+are sized from the widest label the axis can print, which is why a capture
+tuned to 12.579 MHz gets a wider left margin than a baseband one.
+
 ### What it gets right
 
 Two things here differ from an ordinary audio spectrogram, and both matter for
