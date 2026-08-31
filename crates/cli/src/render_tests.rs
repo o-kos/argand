@@ -628,9 +628,17 @@ fn panels_that_share_an_axis_draw_the_same_grid() {
         (rect.x..rect.right()).filter(|x| is_grid(*x, y)).collect()
     };
 
-    // Time: the strip carries the spectrogram's columns and no others.
+    // Time: one grid column per accepted label, and the strip carries the
+    // same columns and no others.
+    let ruler = Ruler::new();
+    let clock = time_ticks(&layout, &a.spectrogram, &ruler.text, ruler.rise);
+    let labelled: Vec<i64> = clock.iter().map(|t| spec.x + t.offset).collect();
+    assert!(labelled.len() > 4, "{labelled:?}");
     let on_spectrogram = columns(spec, spec.y + 2);
-    assert!(on_spectrogram.len() > 4, "{on_spectrogram:?}");
+    assert_eq!(
+        on_spectrogram, labelled,
+        "a grid line without a label, or a label without one"
+    );
     assert_eq!(
         columns(strip, strip.y + 2),
         on_spectrogram,
@@ -638,11 +646,46 @@ fn panels_that_share_an_axis_draw_the_same_grid() {
     );
 
     // Frequency: the spectrum panel carries the same rows, at the same values.
-    let ruler = Ruler::new();
     let hertz = frequency_ticks(&layout, &a.spectrogram, &ruler.text, ruler.rise);
     let mut expected: Vec<i64> = hertz.iter().map(|t| spec.bottom() - 1 - t.offset).collect();
     expected.sort_unstable();
     assert!(expected.len() > 4, "{expected:?}");
     let on_psd: Vec<i64> = (psd.y..psd.bottom()).filter(|y| is_grid(psd.x, *y)).collect();
     assert_eq!(on_psd, expected, "the spectrum panel's grid drifted");
+}
+
+#[test]
+fn the_colour_bar_labels_its_own_scale_and_stays_on_the_canvas() {
+    let dir = TempDir::new("render-colorbar");
+    let layout = laid_out(900, 700, EVERYTHING, Orientation::Horizontal);
+    let a = analysis(&dir, "bar.wav", true, &layout);
+    let canvas = plot(&layout, &a);
+    let bar = layout.colorbar.expect("colorbar");
+
+    let ruler = Ruler::new();
+    let axis = Axis {
+        length: bar.h,
+        min: f64::from(a.spectrogram.db_min),
+        max: f64::from(a.spectrogram.db_max),
+        lead: ruler.rise,
+        trail: ruler.rise,
+    };
+    let marks = ticks::ticks(
+        AxisKind::DecibelsWithUnit,
+        axis,
+        &LabelMetrics::new(&ruler.text, FONT_SIZE, LabelRun::Down),
+    );
+    // The fixed five-tick target this replaced gave the same count whatever
+    // the height was; a 700-pixel image has room for a good many more.
+    assert!(marks.len() > 8, "{marks:?}");
+
+    for tick in &marks {
+        assert!(tick.label.ends_with(" dB"), "{:?}", tick.label);
+        let right = (bar.right() + LABEL_PAD) as f32 + ruler.text.width(&tick.label, FONT_SIZE);
+        assert!(
+            right <= canvas.width() as f32,
+            "{:?} ends at {right}, past the canvas",
+            tick.label
+        );
+    }
 }
