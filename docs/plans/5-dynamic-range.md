@@ -72,7 +72,7 @@ or the peak and floor estimators.
 
 ## Implementation steps
 
-- [ ] Add the dynamic-range request/result model and recommendation resolution
+- [x] Add the dynamic-range request/result model and recommendation resolution
   to `argand-dsp`, including default, fixed, automatic, rounding, and clamp
   tests.
 - [ ] Replace `--ref` and the numeric default in the CLI, wire the resolved
