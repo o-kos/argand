@@ -86,7 +86,8 @@ fn plot(layout: &Layout, analysis: &Analysis) -> RgbImage {
             analysis,
             title: "title",
             footer: "footer",
-            suggestion: None,
+            compact_footer: "footer",
+            footer_warning: None,
             colormap: Colormap::Grayscale,
             waveform_full_scale: waveform_full_scale(
                 analysis.time_peak,
@@ -108,7 +109,7 @@ fn the_default_render_is_a_waveform_and_a_spectrogram_only() {
 }
 
 #[test]
-fn the_yellow_suggestion_is_drawn_without_depending_on_a_panel() {
+fn the_yellow_suggestion_is_drawn_in_the_footer_without_depending_on_a_panel() {
     let dir = TempDir::new("render-suggestion");
     for panels in [Panels::NONE, WAVEFORM, PSD, DB] {
         let layout = laid_out(900, 320, panels, Orientation::Horizontal);
@@ -118,13 +119,14 @@ fn the_yellow_suggestion_is_drawn_without_depending_on_a_panel() {
             &PlotInput {
                 analysis: &a,
                 title: "title",
-                footer: "footer",
-                suggestion: Some("Suggested: -d 40"),
+                footer: "60 dB below full scale · Suggested: -d 40 · dBFS",
+                compact_footer: "60 dB below full scale · Suggested: -d 40 · dBFS",
+                footer_warning: Some("Suggested: -d 40"),
                 colormap: Colormap::Grayscale,
                 waveform_full_scale: 1.0,
             },
         );
-        let yellow = (0..HEADER_H as u32)
+        let yellow = ((layout.height - FOOTER_H as u32)..layout.height)
             .flat_map(|y| (0..canvas.width()).map(move |x| (x, y)))
             .filter(|(x, y)| {
                 let [r, g, b] = canvas.get_pixel(*x, *y).0;
@@ -132,46 +134,79 @@ fn the_yellow_suggestion_is_drawn_without_depending_on_a_panel() {
             })
             .count();
         assert!(yellow > 20, "{panels} drew only {yellow} warning pixels");
+        let header_yellow = (0..HEADER_H as u32)
+            .flat_map(|y| (0..canvas.width()).map(move |x| (x, y)))
+            .filter(|(x, y)| {
+                let [r, g, b] = canvas.get_pixel(*x, *y).0;
+                r > 220 && g > 150 && b < 100
+            })
+            .count();
+        assert_eq!(header_yellow, 0, "{panels} left a warning in the header");
     }
 }
 
 #[test]
-fn a_long_title_stays_clear_of_the_suggestion() {
-    let dir = TempDir::new("render-title-suggestion");
-    let layout = laid_out(420, 320, Panels::NONE, Orientation::Horizontal);
-    let a = analysis(&dir, "long-title.wav", true, &layout);
-    let suggestion = "Suggested: -d 40";
-    let canvas = render(
-        &layout,
-        &PlotInput {
-            analysis: &a,
-            title: "a-very-long-capture-name-with-format-rate-and-duration-metadata.iqw",
-            footer: "footer",
-            suggestion: Some(suggestion),
-            colormap: Colormap::Grayscale,
-            waveform_full_scale: 1.0,
-        },
-    );
-
+fn a_narrow_footer_keeps_the_complete_warning_and_scale_metadata() {
+    let dir = TempDir::new("render-narrow-suggestion");
+    let layout = laid_out(500, 300, Panels::NONE, Orientation::Horizontal);
+    let a = analysis(&dir, "narrow.wav", true, &layout);
+    let warning = "Suggested: -d 40";
+    let full = "fft 256 · hann · hop 64 (75% overlap) · max · 110 dB below full scale · Suggested: -d 40 · dBFS, ENBW 140.625 Hz";
+    let compact =
+        "110 dB below full scale · Suggested: -d 40 · dBFS, ENBW 140.625 Hz";
     let text = TextRenderer::new();
-    let suggestion_left = layout.width as f32 - PAD as f32 - text.width(suggestion, FONT_SIZE);
-    let title_right = (0..HEADER_H as u32)
+    let available = layout.width as f32 - 2.0 * PAD as f32;
+    assert!(text.width(full, FONT_SIZE) > available);
+    assert!(text.width(compact, FONT_SIZE) <= available);
+
+    let input = PlotInput {
+        analysis: &a,
+        title: "title",
+        footer: full,
+        compact_footer: compact,
+        footer_warning: Some(warning),
+        colormap: Colormap::Grayscale,
+        waveform_full_scale: 1.0,
+    };
+    let canvas = render(&layout, &input);
+    let yellow_columns = ((layout.height - FOOTER_H as u32)..layout.height)
         .flat_map(|y| (0..canvas.width()).map(move |x| (x, y)))
         .filter(|(x, y)| {
             let [r, g, b] = canvas.get_pixel(*x, *y).0;
-            (180..=230).contains(&r) && (180..=230).contains(&g) && b >= 180
+            r > 220 && g > 150 && b < 100
         })
         .map(|(x, _)| x)
-        .max()
-        .expect("the fitted title should remain visible");
-    assert!(
-        title_right as f32 + LABEL_PAD as f32 <= suggestion_left,
-        "title ends at {title_right}, suggestion starts at {suggestion_left}"
-    );
+        .collect::<Vec<_>>();
+    let yellow_span = yellow_columns.iter().max().unwrap() - yellow_columns.iter().min().unwrap();
+    assert!(yellow_span > 90, "warning spans only {yellow_span} pixels");
+    let yellow_right = *yellow_columns.iter().max().unwrap();
+    let trailing_label = ((layout.height - FOOTER_H as u32)..layout.height)
+        .flat_map(|y| (yellow_right + 2..canvas.width()).map(move |x| (x, y)))
+        .filter(|(x, y)| {
+            let [r, g, b] = canvas.get_pixel(*x, *y).0;
+            r > 30 && b > g && g > r
+        })
+        .count();
+    assert!(trailing_label > 20, "the scale metadata after the warning was clipped");
 
-    let fitted = fit_title("abcdefghijklmnopqrstuvwxyz", 80.0, &text);
+    let (fitted, fitted_size) = footer_line(&input, 280.0, &text);
+    assert_eq!(fitted, compact);
+    assert!(fitted_size < FONT_SIZE);
+    assert!(text.width(fitted, fitted_size) <= 280.1);
+}
+
+#[test]
+fn a_long_title_is_fitted_to_the_full_header_width() {
+    let layout = laid_out(420, 320, Panels::NONE, Orientation::Horizontal);
+    let text = TextRenderer::new();
+    let available = layout.width as f32 - 2.0 * PAD as f32;
+    let fitted = fit_title(
+        "a-very-long-capture-name-with-format-rate-and-duration-metadata.iqw",
+        available,
+        &text,
+    );
     assert!(fitted.ends_with('…'));
-    assert!(text.width(&fitted, TITLE_SIZE) <= 80.0);
+    assert!(text.width(&fitted, TITLE_SIZE) <= available);
 }
 
 #[test]
@@ -851,7 +886,8 @@ fn assert_shared_grid(orientation: Orientation) {
         analysis: &a,
         title: "title",
         footer: "footer",
-        suggestion: None,
+        compact_footer: "footer",
+        footer_warning: None,
         colormap: Colormap::Grayscale,
         waveform_full_scale: 1.0,
     };
@@ -1064,7 +1100,8 @@ fn an_axis_with_no_labels_gets_no_caption_either() {
         analysis: &a,
         title: "title",
         footer: "footer",
-        suggestion: None,
+        compact_footer: "footer",
+        footer_warning: None,
         colormap: Colormap::Grayscale,
         waveform_full_scale: 1.0,
     };

@@ -689,7 +689,8 @@ pub struct PlotInput<'a> {
     pub analysis: &'a Analysis,
     pub title: &'a str,
     pub footer: &'a str,
-    pub suggestion: Option<&'a str>,
+    pub compact_footer: &'a str,
+    pub footer_warning: Option<&'a str>,
     pub colormap: Colormap,
     /// Sample value the edge of the waveform strip stands for.
     pub waveform_full_scale: f32,
@@ -980,10 +981,7 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
     let text = TextRenderer::new();
     let scene = Scene::new(layout, input, &text);
 
-    let suggestion_width = input.suggestion.map_or(0.0, |suggestion| {
-        text.width(suggestion, FONT_SIZE) + LABEL_PAD as f32
-    });
-    let title_width = (layout.width as f32 - 2.0 * PAD as f32 - suggestion_width).max(0.0);
+    let title_width = (layout.width as f32 - 2.0 * PAD as f32).max(0.0);
     let title = fit_title(input.title, title_width, &text);
     text.draw(
         &mut canvas,
@@ -991,20 +989,7 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
         Anchor::left(PAD as f32, (PAD + 15) as f32),
         TITLE,
     );
-    if let Some(suggestion) = input.suggestion {
-        text.draw(
-            &mut canvas,
-            suggestion,
-            Anchor::right((i64::from(layout.width) - PAD) as f32, (PAD + 15) as f32),
-            WARNING,
-        );
-    }
-    text.draw(
-        &mut canvas,
-        input.footer,
-        Anchor::left(PAD as f32, (i64::from(layout.height) - PAD + 2) as f32),
-        LABEL,
-    );
+    draw_footer(&mut canvas, layout, input, &text);
 
     if let Some(rect) = layout.spectrogram {
         draw_spectrogram(&mut canvas, &scene, rect);
@@ -1020,6 +1005,58 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
     }
 
     canvas
+}
+
+fn draw_footer(canvas: &mut RgbImage, layout: &Layout, input: &PlotInput<'_>, text: &TextRenderer) {
+    let anchor_x = PAD as f32;
+    let baseline = (i64::from(layout.height) - PAD + 2) as f32;
+    let available = layout.width as f32 - 2.0 * PAD as f32;
+    let (footer, font_size) = footer_line(input, available, text);
+    let label = TextStyle {
+        size: font_size,
+        ..LABEL
+    };
+    let warning_style = TextStyle {
+        size: font_size,
+        ..WARNING
+    };
+    let Some(warning) = input.footer_warning else {
+        text.draw(canvas, footer, Anchor::left(anchor_x, baseline), label);
+        return;
+    };
+    let Some((before, after)) = footer.split_once(warning) else {
+        text.draw(canvas, footer, Anchor::left(anchor_x, baseline), label);
+        return;
+    };
+
+    text.draw(canvas, before, Anchor::left(anchor_x, baseline), label);
+    let warning_x = anchor_x + text.width(before, font_size);
+    text.draw(
+        canvas,
+        warning,
+        Anchor::left(warning_x, baseline),
+        warning_style,
+    );
+    let after_x = warning_x + text.width(warning, font_size);
+    text.draw(canvas, after, Anchor::left(after_x, baseline), label);
+}
+
+fn footer_line<'a>(
+    input: &'a PlotInput<'_>,
+    available: f32,
+    text: &TextRenderer,
+) -> (&'a str, f32) {
+    if text.width(input.footer, FONT_SIZE) <= available {
+        return (input.footer, FONT_SIZE);
+    }
+
+    let compact_width = text.width(input.compact_footer, FONT_SIZE);
+    let font_size = if compact_width <= available {
+        FONT_SIZE
+    } else {
+        FONT_SIZE * available.max(1.0) / compact_width.max(1.0)
+    };
+    (input.compact_footer, font_size)
 }
 
 fn draw_spectrogram(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {

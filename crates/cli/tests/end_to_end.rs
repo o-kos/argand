@@ -179,7 +179,42 @@ fn dynamic_range_suggestion_reaches_human_reports_and_image() {
     );
 
     let image = image::open(&default_png).unwrap().to_rgb8();
-    let yellow = image
+    let footer_start = image.height().saturating_sub(20);
+    let yellow_columns = image
+        .rows()
+        .skip(footer_start as usize)
+        .flat_map(|row| row.enumerate())
+        .filter(|(_, pixel)| {
+            let [r, g, b] = pixel.0;
+            r > 220 && g > 150 && b < 100
+        })
+        .map(|(x, _)| x)
+        .collect::<Vec<_>>();
+    let yellow = yellow_columns.len();
+    assert!(
+        yellow > 20,
+        "suggestion did not reach the image footer: {yellow} pixels"
+    );
+    let yellow_span = yellow_columns.iter().max().unwrap() - yellow_columns.iter().min().unwrap();
+    assert!(
+        yellow_span > 90,
+        "suggestion spans only {yellow_span} pixels"
+    );
+    let yellow_right = *yellow_columns.iter().max().unwrap();
+    let trailing_label = image
+        .rows()
+        .skip(footer_start as usize)
+        .flat_map(|row| row.enumerate())
+        .filter(|(x, pixel)| {
+            let [r, g, b] = pixel.0;
+            *x > yellow_right + 2 && r > 30 && b > g && g > r
+        })
+        .count();
+    assert!(
+        trailing_label > 20,
+        "scale metadata after the suggestion was clipped"
+    );
+    let header_yellow = image
         .rows()
         .take(36)
         .flatten()
@@ -188,10 +223,7 @@ fn dynamic_range_suggestion_reaches_human_reports_and_image() {
             r > 220 && g > 150 && b < 100
         })
         .count();
-    assert!(
-        yellow > 20,
-        "suggestion did not reach the image: {yellow} pixels"
-    );
+    assert_eq!(header_yellow, 0, "suggestion remained in the image header");
 }
 
 #[test]

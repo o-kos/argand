@@ -249,8 +249,21 @@ fn the_plot_title_and_footer_describe_the_run() {
     assert!(footer.contains("75% overlap"), "{footer}");
     assert!(footer.contains("full scale"), "{footer}");
 
-    // The vertical scale is one field: its unit and the bandwidth behind it
-    // are a single statement, so the separator does not come between them.
+    let mut suggested = r.clone();
+    suggested.stft.recommended_dynamic_range_db = 100.0;
+    let suggested_footer = suggested.plot_footer();
+    let suggested_scale_footer = suggested.plot_scale_footer();
+    assert!(
+        suggested_footer.contains("full scale · Suggested: -d 100 · dBFS"),
+        "{suggested_footer}"
+    );
+    assert!(
+        suggested_scale_footer.starts_with("110 dB below full scale · Suggested: -d 100"),
+        "{suggested_scale_footer}"
+    );
+
+    // The unit and the bandwidth behind it remain one field after the optional
+    // recommendation.
     // Six decimals would print 17.578125 Hz here.
     assert!(footer.ends_with("· dBFS, ENBW 17.578 Hz"), "{footer}");
     // The unit divides by the window's coherent gain, not by a bandwidth, so

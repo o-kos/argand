@@ -29,8 +29,8 @@ or the peak and floor estimators.
 - The waveform strip follows the same reference policy as the colour scale:
   full scale in default mode and the measured time-domain peak in fixed and
   automatic modes.
-- The image header is drawn independently of optional waveform, PSD, and colour
-  bar panels, which makes it the stable place for the recommendation.
+- The image metadata footer is drawn independently of optional waveform, PSD,
+  and colour bar panels, which makes it the stable place for the recommendation.
 
 ## Decisions
 
@@ -54,9 +54,9 @@ or the peak and floor estimators.
   and add `recommended_dynamic_range_db` to the machine-readable STFT report.
   This preserves the meaning of the existing numeric field while exposing all
   three requested values separately.
-- Draw `Suggested: -d N` at the right side of the image header in a named yellow
-  warning colour and pass the same text to the human report. Header placement
-  keeps it independent of every optional panel.
+- Draw `Suggested: -d N` in a named yellow warning colour in the image metadata
+  footer, immediately after the scale reference, and pass the same text to the
+  human report. Footer placement keeps it independent of every optional panel.
 
 ## Rejected alternatives
 
@@ -68,7 +68,7 @@ or the peak and floor estimators.
   describe different values.
 - Relayout the image after analysis to reserve a separate warning row. Layout
   determines transform pixel dimensions, so doing that correctly would require
-  a second analysis; the existing header can carry the short annotation.
+  a second analysis; the existing metadata footer can carry the short annotation.
 
 ## Implementation steps
 
@@ -87,7 +87,9 @@ or the peak and floor estimators.
 - [x] ➕ Include the same range suggestion in compact batch reports.
 - [x] ➕ Measure the time-domain peak over the complete selected span,
   including samples after the last full STFT frame.
-- [x] ➕ Keep long image titles clear of the right-aligned suggestion.
+- [x] ➕ Place the image suggestion inline after the footer's scale reference.
+- [x] ➕ Keep the complete suggestion and trailing scale metadata visible in a
+  range-focused footer, fitting its font when even that line is too wide.
 - [x] ➕ Preserve fractional fixed ranges in the human report.
 - [x] ➕ Read the post-STFT tail for peak reporting even when no waveform
   panel is requested.
