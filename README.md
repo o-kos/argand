@@ -214,7 +214,8 @@ whole seconds inside it and nothing else.
 
 Every label drawn has a grid line or tick mark at the same value, and a label
 that would not fit whole inside the canvas is dropped along with its line
-rather than clipped. Panels sharing an axis are given one set of values, so
+rather than clipped. Coordinates stay inside the span being drawn, to within
+the pixel that separating a rounding artefact from a real value costs. Panels sharing an axis are given one set of values, so
 the waveform strip's grid lines fall on the spectrogram's, and the averaged
 spectrum's on the spectrogram's frequencies. The gutters holding the labels
 are sized by measuring the widest label the axis could print -- including the

@@ -113,17 +113,19 @@ tick, or the same value on a panel that shares the axis.
 - Time labels are `h:mm:ss` when the span reaches an hour and `m.ss` below that, with no
   fractional seconds and no step finer than one second.
 - The gutters holding stacked labels are measured rather than assumed:
-  `Gutters::measure` formats the widest label each axis could print over its range and
-  measures it. `FREQ_LABEL_W`, `DB_LABEL_W` and `CBAR_LABEL_W` are removed.
+  `Gutters::measure` measures every label `widest_labels` says the axis could print
+  over its range. `FREQ_LABEL_W`, `DB_LABEL_W` and `CBAR_LABEL_W` are removed.
 - The spectrum panel's decibel gutter is bounded rather than measured, because its scale
-  follows its own trace and answers to no setting. The bound is the transform's own
-  floor: it clamps silence rather than letting it reach `-inf`, so `argand-dsp` publishes
-  `DB_FLOOR` and a test there keeps it honest against the two clamps that produce it.
-  The gutter is also reserved only when that panel is up.
+  follows its own trace and answers to no setting. The bound starts at the transform's
+  own floor: it clamps silence rather than letting it reach `-inf`, so `argand-dsp`
+  publishes `DB_FLOOR` and a test there keeps it honest against the two clamps that
+  produce it. The panel's scale reaches a little below that, because it puts air around
+  its trace; three digits and a sign cover both, which a test here holds to. The gutter
+  is also reserved only when that panel is up.
 - The colour bar's gutter is measured from the window it can be asked to show, which
   `--dynamic-range` and `--ref` decide between them. Full scale pins the top of that
   window at 0 dBFS; this file's own peak does not, and is not known until the transform
-  has run, so `--ref peak` reserves from the `f32` floor instead.
+  has run, so `--ref peak` reserves from the transform's floor instead.
 
 ## Rejected alternatives
 
@@ -163,7 +165,7 @@ tick, or the same value on a panel that shares the axis.
 - [x] Add `TextRenderer::digit_height`, measuring the ink a numeric label puts on the
       canvas from the embedded font.
 - [x] Add `crates/cli/src/ticks.rs`: `Axis`, `AxisKind`, `LabelRun`, `Tick`, the decimal
-      and clock ladders, the densest-acceptable-step search, and `widest_label`.
+      and clock ladders, the densest-acceptable-step search, and `widest_labels`.
 - [x] Format time labels as `h:mm:ss` and `m.ss`, with whole seconds only and a
       one-second minimum step.
 - [x] Replace `FREQ_LABEL_W`, `DB_LABEL_W` and `CBAR_LABEL_W` with `Gutters`, measured
@@ -182,9 +184,10 @@ tick, or the same value on a panel that shares the axis.
       the default. Which panels are up decides what neighbours an axis has, and so how
       much room its outermost labels can borrow, which the three obvious sets left
       untested.
-- [x] ➕ Pin the defects review found: no tick outside the range it was given, a tick on
-      an exact end kept, a span no ladder was written for still terminating, and a
-      decibel window `--dynamic-range` opened wider than the f32 floor.
+- [x] ➕ Pin the defects review found: no tick further than a pixel outside the range it
+      was given, a tick on an exact end kept, a span no ladder was written for still
+      terminating, and a decibel window `--dynamic-range` opened wider than the
+      transform's floor.
 - [x] ➕ Pin what the second round found: a range ending one ulp short of a multiple
       staying inside the cap, a quotient too large to index refused rather than
       saturated, the colour-bar gutter following `--ref`, the spectrum gutter ignoring

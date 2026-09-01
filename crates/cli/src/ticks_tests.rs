@@ -443,21 +443,25 @@ fn a_range_ending_one_ulp_short_of_a_multiple_stays_bounded() {
         );
     }
 
-    // A span of one ulp at the same magnitude. The division's own error is far
-    // wider than the slack cap here, so only the check on the finished value
-    // keeps a tick from landing a whole span outside.
-    let boundary = 2f64.powi(40);
-    let ulp = boundary.next_up() - boundary;
-    let tight = axis(400, boundary - 2.0 * ulp, boundary - ulp);
-    for tick in ticks(AxisKind::Frequency, tight, &across(&text)) {
-        let pixel = (tight.max - tight.min) / (tight.length - 1) as f64;
+    // Spans of a few ulps, where the division's own error is far wider than the
+    // slack cap, so only the check on the finished value keeps a tick from
+    // landing a whole span outside. Measuring the distance rather than
+    // widening the end matters here too: at these magnitudes `max + pixel`
+    // rounds straight back to `max`.
+    for exponent in [-10, 0, 20, 40] {
+        let boundary = 2f64.powi(exponent);
+        let ulp = boundary.next_up() - boundary;
+        let tight = axis(600, boundary - 367.0 * ulp, boundary - ulp);
+        let marks = ticks(AxisKind::Frequency, tight, &across(&text));
         assert!(
-            (tight.min - pixel..=tight.max + pixel).contains(&tick.value),
-            "{} is outside {}..{}",
-            tick.value,
-            tight.min,
-            tight.max
+            !marks.iter().any(|t| t.value >= boundary),
+            "2^{exponent}: a tick reached {boundary}, past the end of the axis: {marks:?}"
         );
+        let pixel = (tight.max - tight.min) / (tight.length - 1) as f64;
+        for tick in &marks {
+            let outside = (tight.min - tick.value).max(tick.value - tight.max);
+            assert!(outside <= pixel, "2^{exponent}: {outside} past a {pixel} pixel");
+        }
     }
 }
 

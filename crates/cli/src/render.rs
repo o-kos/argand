@@ -322,13 +322,16 @@ const WAVEFORM_SPAN: i64 = 64;
 const FONT_SIZE: f32 = 13.0;
 const TITLE_SIZE: f32 = 14.0;
 
-/// The lowest decibel any axis here can show.
+/// The lowest decibel the transform can produce.
 ///
-/// The spectrum panel's scale follows its own trace rather than any setting, so
-/// it cannot be measured before the transform has run and is reserved from this
-/// bound instead. The transform clamps silence rather than letting it reach
-/// `-inf`, and `argand-dsp` publishes where: a test there keeps the two floors
-/// that produce it honest, so this cannot drift away from what is drawn.
+/// It clamps silence rather than letting it reach `-inf`, and `argand-dsp`
+/// publishes where: a test there keeps the two clamps that produce this honest,
+/// so it cannot drift away from what is drawn.
+///
+/// It is a floor on the data, not on every axis drawn from it. The spectrum
+/// panel puts air around its trace, so its own scale reaches a little below
+/// this; three digits and a sign still cover that, which is what the gutter is
+/// reserved for and what a test here holds to.
 pub const DB_FLOOR: f64 = argand_dsp::DB_FLOOR as f64;
 
 /// The plot's heading.

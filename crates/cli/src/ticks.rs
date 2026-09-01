@@ -233,8 +233,12 @@ fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Ve
     // what stops a range stopping at 0.3 with a step of 0.1 losing its last
     // tick to arithmetic nobody can see. Further out than a pixel is not an
     // artefact: it is a coordinate the caller never asked for.
+    //
+    // The distance is measured, not the widened end. `max + pixel` is itself a
+    // sum that rounds, and where the pixel is small against the value it is
+    // added to, that rounding swallows the very allowance being made.
     let pixel = span / (axis.length - 1) as f64;
-    placed.retain(|p| p.tick.value >= axis.min - pixel && p.tick.value <= axis.max + pixel);
+    placed.retain(|p| escape(p.tick.value, axis) <= pixel);
 
     let lo = -(axis.lead as f64);
     let hi = (axis.length - 1 + axis.trail) as f64;
@@ -243,6 +247,20 @@ fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Ve
         centre - p.extent / 2.0 >= lo && centre + p.extent / 2.0 <= hi
     });
     placed
+}
+
+/// How far a value lies outside the axis, and zero when it lies inside.
+///
+/// Subtracting two nearby values is exact where adding a small allowance to a
+/// large end is not, which is why the comparison is made this way round.
+fn escape(value: f64, axis: Axis) -> f64 {
+    if value < axis.min {
+        axis.min - value
+    } else if value > axis.max {
+        value - axis.max
+    } else {
+        0.0
+    }
 }
 
 /// Whether neighbouring labels stay apart and stay distinct.

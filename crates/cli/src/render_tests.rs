@@ -847,3 +847,30 @@ fn a_vertical_plot_reserves_the_spectrum_gutter_only_when_it_has_one() {
         "a waterfall with no spectrum panel still paid for its labels"
     );
 }
+
+
+#[test]
+fn the_spectrum_gutter_holds_the_widest_scale_its_panel_can_produce() {
+    // `psd_range` puts air around the trace, so the panel's floor sits below
+    // the transform's. The reserve has to cover what the panel draws, not just
+    // the floor the transform clamps to.
+    let text = TextRenderer::new();
+    let reserve = gutters().decibels;
+    let floor = DB_FLOOR as f32;
+    for hi in [0.0f32, -6.0, -60.0, -299.0] {
+        for lo in [floor, -250.0, -60.0, hi] {
+            if lo > hi {
+                continue;
+            }
+            let (low, high) = psd_range(&[lo, hi]);
+            assert!(low >= floor * 1.2, "{lo}..{hi} reached {low}, past any bound");
+            for value in [low, high] {
+                let label = format!("{value:.0}");
+                assert!(
+                    text.width(&label, FONT_SIZE).ceil() as i64 <= reserve,
+                    "{lo}..{hi} prints {label:?}, wider than the {reserve}px reserved"
+                );
+            }
+        }
+    }
+}
