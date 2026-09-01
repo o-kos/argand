@@ -165,7 +165,7 @@ and its facts indented under it, comma-separated and each said once.
   peak -53.3, bin -94.1 @ -9.387 kHz, floor -120.6 dBFS
 12.579000_25_08_26_06_41_10.iqw.png:
   fft 2048, hann, hop 512, 84372 frames, range 110 dB, try -d 40 to fit the drawn range
-  2048×512, 498 KiB, 1.246s
+  2048×512, 498.2 KiB, 1.246s
 ```
 
 What was measured in the signal belongs to the input; what the picture shows,

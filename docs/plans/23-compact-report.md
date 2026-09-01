@@ -79,16 +79,21 @@ rendered image, or any option's meaning.
 
 ## Implementation steps
 
-- [ ] Put a space before the unit in `format_samples` and update its tests.
-- [ ] Rewrite the human report as two indented sections with comma-separated
+- [x] Put a space before the unit in `format_samples` and update its tests.
+- [x] Rewrite the human report as two indented sections with comma-separated
   fields, a default and a verbose detail level, and no blank lines; cover the
   line count, the absence of every repeat the issue lists, and the empty
   spectrum.
-- [ ] Bring the compact line to the same field names, order and units, and
+- [x] Bring the compact line to the same field names, order and units, and
   convert the batch summary to commas.
-- [ ] Echo the render path on stdout only when stdout is not a terminal, and
+- [x] Echo the render path on stdout only when stdout is not a terminal, and
   select the stderr shape from quiet, verbose and batch in one place.
-- [ ] Update `--help`, README and the Unreleased changelog entry.
+- [x] Update `--help`, README and the Unreleased changelog entry.
+- [x] ➕ Correct the unreleased changelog entry for Issue #5, which described
+  the report field this branch replaced before either had been released.
+- [x] ➕ Make the terminal-versus-pipe decision testable by passing the one
+  environment fact into `Reporting`, since a pty test would not run on the
+  Windows job.
 - [ ] Complete validation, including a real terminal and a pipe.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
