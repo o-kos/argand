@@ -46,6 +46,11 @@ const POWER_FLOOR: f64 = 1e-30;
 /// the values, not whatever scale a renderer builds from them -- an axis is
 /// free to put air around what it was given, and one that does reaches lower.
 pub const DB_FLOOR: f32 = -300.0;
+/// Absolute full-scale window used when `-d` is omitted.
+pub const DEFAULT_DYNAMIC_RANGE_DB: f32 = 110.0;
+/// Bounds of the range recommendation, in decibels.
+pub const MIN_RECOMMENDED_RANGE_DB: f32 = 20.0;
+pub const MAX_RECOMMENDED_RANGE_DB: f32 = 120.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StftConfig {
@@ -83,16 +88,75 @@ pub enum Reduce {
 
 pub const REDUCE_NAMES: [&str; 2] = ["max", "mean"];
 
-/// What 0 dB on the colour scale means.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DbReference {
-    /// The format's full scale. Two files can be compared directly.
-    FullScale,
-    /// The loudest bin in this file. Always uses the full colour range.
-    Peak,
+/// How the colour scale's decibel window is selected.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DynamicRange {
+    /// Keep the absolute 0 to -110 dBFS scale.
+    Default,
+    /// Put a caller-selected range below the measured spectral peak.
+    Fixed(f32),
+    /// Put the recommended range below the measured spectral peak.
+    Auto,
 }
 
-pub const DB_REFERENCE_NAMES: [&str; 2] = ["fs", "peak"];
+impl DynamicRange {
+    pub const fn mode(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Fixed(_) => "fixed",
+            Self::Auto => "auto",
+        }
+    }
+}
+
+impl Default for DynamicRange {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[error("invalid dynamic range `{value}`, expected a positive number or auto")]
+pub struct ParseDynamicRangeError {
+    pub value: String,
+}
+
+impl std::str::FromStr for DynamicRange {
+    type Err = ParseDynamicRangeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let value = s.trim();
+        if value.eq_ignore_ascii_case("auto") {
+            return Ok(Self::Auto);
+        }
+        value
+            .parse::<f32>()
+            .ok()
+            .filter(|range| range.is_finite() && *range > 0.0)
+            .map(Self::Fixed)
+            .ok_or_else(|| ParseDynamicRangeError {
+                value: s.to_string(),
+            })
+    }
+}
+
+impl std::fmt::Display for DynamicRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Default => f.write_str("default"),
+            Self::Fixed(range) => write!(f, "{range}"),
+            Self::Auto => f.write_str("auto"),
+        }
+    }
+}
+
+/// The requested range together with the values measured and applied.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DynamicRangeResult {
+    pub requested: DynamicRange,
+    pub effective_db: f32,
+    pub recommended_db: f32,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("unknown {what} `{name}`, expected one of: {options}")]
@@ -133,37 +197,6 @@ impl std::fmt::Display for Reduce {
     }
 }
 
-impl DbReference {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            DbReference::FullScale => "fs",
-            DbReference::Peak => "peak",
-        }
-    }
-}
-
-impl std::str::FromStr for DbReference {
-    type Err = ParseEnumError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "fs" | "full-scale" | "fullscale" => Ok(DbReference::FullScale),
-            "peak" => Ok(DbReference::Peak),
-            _ => Err(ParseEnumError {
-                what: "dB reference",
-                name: s.to_string(),
-                options: DB_REFERENCE_NAMES.join(", "),
-            }),
-        }
-    }
-}
-
-impl std::fmt::Display for DbReference {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum DspError {
     #[error("reading samples")]
@@ -174,6 +207,8 @@ pub enum DspError {
     BadHop,
     #[error("output size must be at least 1x1, got {width}x{height}")]
     BadOutputSize { width: usize, height: usize },
+    #[error("dynamic range must be finite and greater than zero, got {0}")]
+    BadDynamicRange(f32),
     #[error(
         "selection holds {samples} samples, which is fewer than the {fft_size}-point transform"
     )]
@@ -191,6 +226,8 @@ pub struct Analysis {
     pub frames: u64,
     /// Equivalent noise bandwidth of the window, in hertz.
     pub enbw_hz: f64,
+    /// Requested, recommended, and applied colour range.
+    pub dynamic_range: DynamicRangeResult,
 }
 
 /// What one pass over the signal should produce.
@@ -204,8 +241,7 @@ pub struct AnalysisRequest {
     pub height: usize,
     pub reduce: Reduce,
     pub colormap: Colormap,
-    pub dynamic_range_db: f32,
-    pub reference: DbReference,
+    pub dynamic_range: DynamicRange,
     /// Columns of time-domain envelope to build, or `None` for no waveform.
     ///
     /// Matching this to `width` is what keeps a waveform panel aligned with
@@ -232,6 +268,8 @@ struct Block<'a> {
     start: u64,
     /// How much of the range the envelope has already seen.
     folded: u64,
+    /// Largest absolute sample read anywhere in the selected range.
+    peak: f32,
 }
 
 impl<'a> Block<'a> {
@@ -247,7 +285,17 @@ impl<'a> Block<'a> {
             remaining: len,
             start: 0,
             folded: 0,
+            peak: 0.0,
         }
+    }
+
+    fn measure_peak(&mut self, from: usize, to: usize) {
+        self.peak = self.buf[from..to]
+            .iter()
+            .copied()
+            .filter(|sample| sample.is_finite())
+            .map(f32::abs)
+            .fold(self.peak, f32::max);
     }
 
     /// Top up the buffer, keeping whatever overlap the last pass left.
@@ -261,6 +309,7 @@ impl<'a> Block<'a> {
                 self.remaining = 0;
                 break;
             }
+            self.measure_peak(from, from + got);
             let samples = got / self.channels;
             self.filled += samples;
             self.remaining -= samples as u64;
@@ -287,20 +336,23 @@ impl<'a> Block<'a> {
         self.start += consumed as u64;
     }
 
-    /// Read the rest of the range for the envelope alone.
+    /// Read the rest of the range after the final whole transform.
     ///
     /// The frame loop stops at the last whole transform, which can leave up to
-    /// one hop unread. The strip spans the same time axis as the spectrogram,
-    /// so those samples are read rather than left to a borrowed column.
-    fn drain_into(&mut self, builder: &mut EnvelopeBuilder) -> Result<(), DspError> {
+    /// one hop unread. Its peak belongs to the report under every panel set;
+    /// when a strip was requested, its envelope spans those samples too.
+    fn drain(&mut self, mut builder: Option<&mut EnvelopeBuilder>) -> Result<(), DspError> {
         while self.remaining > 0 {
             let want = self.remaining.min(self.capacity as u64) as usize;
             let got = self.src.read(&mut self.buf[..want * self.channels])?;
             if got == 0 {
                 break;
             }
+            self.measure_peak(0, got);
             let samples = got / self.channels;
-            builder.fold(&self.buf[..samples * self.channels], self.folded);
+            if let Some(builder) = builder.as_deref_mut() {
+                builder.fold(&self.buf[..samples * self.channels], self.folded);
+            }
             self.folded += samples as u64;
             self.remaining -= samples as u64;
         }
@@ -338,39 +390,72 @@ fn averaged_spectrum(plan: &Plan, meta: &SignalMeta, power: &[f64], frames: u64)
 }
 
 /// Reject a request the transform cannot run before any of it is set up.
-fn check_request(cfg: &StftConfig, out_width: usize, out_height: usize) -> Result<(), DspError> {
+fn check_request(request: &AnalysisRequest) -> Result<(), DspError> {
+    let cfg = &request.cfg;
     if cfg.fft_size < 2 || !cfg.fft_size.is_power_of_two() {
         return Err(DspError::BadFftSize(cfg.fft_size));
     }
     if cfg.hop == 0 {
         return Err(DspError::BadHop);
     }
-    if out_width == 0 || out_height == 0 {
+    if request.width == 0 || request.height == 0 {
         return Err(DspError::BadOutputSize {
-            width: out_width,
-            height: out_height,
+            width: request.width,
+            height: request.height,
         });
+    }
+    if let DynamicRange::Fixed(range) = request.dynamic_range
+        && (!range.is_finite() || range <= 0.0)
+    {
+        return Err(DspError::BadDynamicRange(range));
     }
     Ok(())
 }
 
-/// The decibel range the colours span, as `(min, max)`.
-///
-/// Full scale pins the top at 0 dBFS so two files are comparable. `Peak` pins
-/// it to this file's loudest bin, falling back to full scale when nothing
-/// finite was measured.
-fn db_window(db: &[f32], reference: DbReference, dynamic_range_db: f32) -> (f32, f32) {
+/// Peak-to-floor span with 50% headroom, rounded upward to a 10 dB step.
+fn recommended_dynamic_range(psd: &Psd) -> f32 {
+    let mut finite: Vec<f32> = psd.db.iter().copied().filter(|db| db.is_finite()).collect();
+    if finite.is_empty() {
+        return MIN_RECOMMENDED_RANGE_DB;
+    }
+    finite.sort_by(f32::total_cmp);
+    let peak = finite[finite.len() - 1];
+    let floor = finite[finite.len() / 2];
+    (((peak - floor).max(0.0) * 1.5 / 10.0).ceil() * 10.0)
+        .clamp(MIN_RECOMMENDED_RANGE_DB, MAX_RECOMMENDED_RANGE_DB)
+}
+
+/// Resolve the requested colour window after its peak and floor are known.
+fn resolve_dynamic_range(
+    requested: DynamicRange,
+    db: &[f32],
+    psd: &Psd,
+) -> (DynamicRangeResult, f32, f32) {
     let observed_max = db
         .iter()
         .copied()
         .filter(|v| v.is_finite())
         .fold(f32::NEG_INFINITY, f32::max);
-
-    let db_max = match reference {
-        DbReference::Peak if observed_max.is_finite() => observed_max,
-        DbReference::Peak | DbReference::FullScale => 0.0,
+    let peak = if observed_max.is_finite() {
+        observed_max
+    } else {
+        0.0
     };
-    (db_max - dynamic_range_db, db_max)
+    let recommended_db = recommended_dynamic_range(psd);
+    let (effective_db, db_max) = match requested {
+        DynamicRange::Default => (DEFAULT_DYNAMIC_RANGE_DB, 0.0),
+        DynamicRange::Fixed(range) => (range, peak),
+        DynamicRange::Auto => (recommended_db, peak),
+    };
+    (
+        DynamicRangeResult {
+            requested,
+            effective_db,
+            recommended_db,
+        },
+        db_max - effective_db,
+        db_max,
+    )
 }
 
 /// Run the transform over the requested range and render every view of it.
@@ -390,13 +475,12 @@ pub fn analyze(
         height: out_height,
         reduce,
         colormap,
-        dynamic_range_db,
-        reference,
+        dynamic_range,
         waveform_columns,
     } = *request;
     let cfg = &cfg;
 
-    check_request(cfg, out_width, out_height)?;
+    check_request(request)?;
 
     let meta = src.meta().clone();
     let range = range.clamped_to(meta.len_samples);
@@ -470,13 +554,13 @@ pub fn analyze(
         }
     }
 
-    if let Some(builder) = envelope.as_mut() {
-        block.drain_into(builder)?;
-    }
+    block.drain(envelope.as_mut())?;
+    time_peak = time_peak.max(block.peak);
 
     let frames = frame_base.max(1);
     let db = store.finish();
-    let (db_min, db_max) = db_window(&db, reference, dynamic_range_db);
+    let psd = averaged_spectrum(&plan, &meta, &power, frames);
+    let (dynamic_range, db_min, db_max) = resolve_dynamic_range(dynamic_range, &db, &psd);
 
     let spectrogram = render(
         &DbGrid {
@@ -493,8 +577,6 @@ pub fn analyze(
         &range,
     );
 
-    let psd = averaged_spectrum(&plan, &meta, &power, frames);
-
     Ok(Analysis {
         waveform: finish_envelope(envelope, range, meta.sample_rate),
         spectrogram,
@@ -502,6 +584,7 @@ pub fn analyze(
         time_peak,
         frames: frame_base,
         enbw_hz: plan.window.enbw_hz(meta.sample_rate),
+        dynamic_range,
     })
 }
 

@@ -55,7 +55,185 @@ fn assert_png(path: &Path) {
 }
 
 fn fft_args() -> Vec<&'static str> {
-    vec!["-f", "256", "--ref", "peak", "-d", "60", "-i", "500x300"]
+    vec!["-f", "256", "-d", "60", "-i", "500x300"]
+}
+
+fn write_quiet_wav(dir: &TempDir, name: &str) -> PathBuf {
+    let mut values = real_tone(SAMPLES, RATE as f64, TONE_HZ, 0.001);
+    for (n, value) in values.iter_mut().enumerate() {
+        let noise = ((n * 17 % 251) as f32 / 125.0 - 1.0) * 0.0001;
+        *value += noise;
+    }
+    let sample_type = "rl_f32".parse().unwrap();
+    write_wav(&dir.join(name), sample_type, RATE, &values, 1.0)
+}
+
+#[test]
+fn dynamic_range_modes_are_applied_and_reported() {
+    let dir = TempDir::new("e2e-range-modes");
+    let input = write_quiet_wav(&dir, "quiet.wav");
+    let input = input.to_str().unwrap();
+
+    let default_png = png(&dir, "default.png");
+    let default = run_json(&[
+        input,
+        "-f",
+        "256",
+        "-i",
+        "500x300",
+        "-o",
+        default_png.to_str().unwrap(),
+    ]);
+    assert_eq!(default["stft"]["dynamic_range_mode"], "default");
+    assert_eq!(default["stft"]["dynamic_range_db"], 110.0);
+    assert_eq!(default["stft"]["db_max"], 0.0);
+
+    let fixed_png = png(&dir, "fixed.png");
+    let fixed = run_json(&[
+        input,
+        "-f",
+        "256",
+        "-d",
+        "40",
+        "-o",
+        fixed_png.to_str().unwrap(),
+    ]);
+    assert_eq!(fixed["stft"]["dynamic_range_mode"], "fixed");
+    assert_eq!(fixed["stft"]["dynamic_range_db"], 40.0);
+    assert!(fixed["stft"]["db_max"].as_f64().unwrap() < -40.0);
+    assert!(
+        (fixed["stft"]["db_max"].as_f64().unwrap()
+            - fixed["stft"]["db_min"].as_f64().unwrap()
+            - 40.0)
+            .abs()
+            < 0.01
+    );
+
+    let auto_png = png(&dir, "auto.png");
+    let automatic = run_json(&[
+        input,
+        "-f",
+        "256",
+        "-d",
+        "auto",
+        "-o",
+        auto_png.to_str().unwrap(),
+    ]);
+    assert_eq!(automatic["stft"]["dynamic_range_mode"], "auto");
+    assert_eq!(
+        automatic["stft"]["dynamic_range_db"],
+        automatic["stft"]["recommended_dynamic_range_db"]
+    );
+}
+
+#[test]
+fn dynamic_range_suggestion_reaches_human_reports_and_image() {
+    let dir = TempDir::new("e2e-range-suggestion");
+    let input = write_quiet_wav(&dir, "quiet.wav");
+    let second = write_quiet_wav(&dir, "quiet-2.wav");
+    let input = input.to_str().unwrap();
+    let second = second.to_str().unwrap();
+    let default_png = png(&dir, "default.png");
+    let default = run_json(&[
+        input,
+        "-f",
+        "256",
+        "-i",
+        "500x300",
+        "-o",
+        default_png.to_str().unwrap(),
+    ]);
+
+    let recommended = default["stft"]["recommended_dynamic_range_db"]
+        .as_f64()
+        .unwrap();
+    assert!(
+        recommended <= 100.0,
+        "fixture recommendation was {recommended}"
+    );
+    let human = run(&[
+        input,
+        "-f",
+        "256",
+        "-i",
+        "500x300",
+        "-o",
+        default_png.to_str().unwrap(),
+    ]);
+    assert!(human.status.success());
+    let stderr = String::from_utf8_lossy(&human.stderr);
+    assert!(
+        stderr.contains(&format!("  sugg      -d {recommended:.0}")),
+        "{stderr}"
+    );
+
+    let batch = run(&[input, second, "-f", "256"]);
+    assert!(batch.status.success());
+    let batch_stderr = String::from_utf8_lossy(&batch.stderr);
+    assert_eq!(
+        batch_stderr
+            .matches(&format!("sugg -d {recommended:.0}"))
+            .count(),
+        2,
+        "{batch_stderr}"
+    );
+
+    let image = image::open(&default_png).unwrap().to_rgb8();
+    let footer_start = image.height().saturating_sub(20);
+    let yellow_columns = image
+        .rows()
+        .skip(footer_start as usize)
+        .flat_map(|row| row.enumerate())
+        .filter(|(_, pixel)| {
+            let [r, g, b] = pixel.0;
+            r > 220 && g > 150 && b < 100
+        })
+        .map(|(x, _)| x)
+        .collect::<Vec<_>>();
+    let yellow = yellow_columns.len();
+    assert!(
+        yellow > 20,
+        "suggestion did not reach the image footer: {yellow} pixels"
+    );
+    let yellow_span = yellow_columns.iter().max().unwrap() - yellow_columns.iter().min().unwrap();
+    assert!(
+        yellow_span > 50,
+        "suggestion spans only {yellow_span} pixels"
+    );
+    let yellow_right = *yellow_columns.iter().max().unwrap();
+    let trailing_label = image
+        .rows()
+        .skip(footer_start as usize)
+        .flat_map(|row| row.enumerate())
+        .filter(|(x, pixel)| {
+            let [r, g, b] = pixel.0;
+            *x > yellow_right + 2 && r > 30 && b > g && g > r
+        })
+        .count();
+    assert!(
+        trailing_label > 20,
+        "scale metadata after the suggestion was clipped"
+    );
+    let header_yellow = image
+        .rows()
+        .take(36)
+        .flatten()
+        .filter(|pixel| {
+            let [r, g, b] = pixel.0;
+            r > 220 && g > 150 && b < 100
+        })
+        .count();
+    assert_eq!(header_yellow, 0, "suggestion remained in the image header");
+}
+
+#[test]
+fn removed_reference_option_is_rejected() {
+    let dir = TempDir::new("e2e-removed-reference");
+    let input = write_quiet_wav(&dir, "quiet.wav");
+    let input = input.to_str().unwrap();
+    let removed = run(&[input, "--ref", "peak"]);
+    assert!(!removed.status.success());
+    assert!(String::from_utf8_lossy(&removed.stderr).contains("unexpected argument '--ref'"));
 }
 
 #[test]
@@ -519,8 +697,6 @@ fn real_captures_render_end_to_end() {
         let output = png(&dir, &format!("{name}.png"));
         let report = run_json(&[
             input.to_str().unwrap(),
-            "--ref",
-            "peak",
             "-d",
             "60",
             "-i",
@@ -556,8 +732,6 @@ fn the_half_hour_capture_renders_end_to_end() {
         input.to_str().unwrap(),
         "--center",
         "12.579M",
-        "--ref",
-        "peak",
         "-d",
         "40",
         "-i",

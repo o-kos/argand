@@ -57,8 +57,9 @@ pub struct StftReport {
     pub frames: u64,
     pub enbw_hz: f64,
     pub reduce: String,
-    pub reference: String,
+    pub dynamic_range_mode: String,
     pub dynamic_range_db: f32,
+    pub recommended_dynamic_range_db: f32,
     pub db_min: f32,
     pub db_max: f32,
 }
@@ -149,8 +150,9 @@ impl Report {
                 frames: analysis.frames,
                 enbw_hz: analysis.enbw_hz,
                 reduce: request.reduce.to_string(),
-                reference: request.reference.to_string(),
-                dynamic_range_db: request.dynamic_range_db,
+                dynamic_range_mode: analysis.dynamic_range.requested.mode().to_string(),
+                dynamic_range_db: analysis.dynamic_range.effective_db,
+                recommended_dynamic_range_db: analysis.dynamic_range.recommended_db,
                 db_min: image.db_min,
                 db_max: image.db_max,
             },
@@ -185,33 +187,43 @@ impl Report {
 
     /// Text the foot of the image carries.
     ///
-    /// The vertical scale is one field, not two. Its unit and the bandwidth
-    /// behind it are a single statement -- levels are referenced to full scale
-    /// and each point of the spectrum covers this much of it -- and splitting
-    /// them on the same separator as everything else made them read as two
-    /// unrelated facts.
+    /// The scale reference and an optional recommendation stay adjacent so the
+    /// action reads as a direct response to the range it follows.
     ///
     /// The unit is `dBFS`, without a `per bin`: the transform divides by the
     /// window's coherent gain, not by any bandwidth. A full-scale tone on a bin
     /// centre therefore reads 0 dBFS at any transform size, and one between
     /// bins reads under it by the window's scalloping loss rather than by
     /// anything to do with the bin's width. Only noise moves with the
-    /// bandwidth, which is why that bandwidth is named beside it -- and named
-    /// as `ENBW`, since how much noise a bin answers to is the window's to
-    /// decide and only a rectangular one leaves it at the bin spacing.
+    /// bandwidth, which is why that bandwidth is named in the same field -- and
+    /// named as `ENBW`, since how much noise a bin answers to is the window's
+    /// to decide and only a rectangular one leaves it at the bin spacing.
     pub fn plot_footer(&self) -> String {
         format!(
-            "fft {} · {} · hop {} ({:.0}% overlap) · {} · {} dB below {} · dBFS, ENBW {}",
+            "fft {} · {} · hop {} ({:.0}% overlap) · {} · {}",
             self.stft.fft_size,
             self.stft.window,
             self.stft.hop,
             self.stft.overlap_percent,
             self.stft.reduce,
+            self.plot_scale_footer(),
+        )
+    }
+
+    /// Scale information retained when the complete footer does not fit.
+    pub fn plot_scale_footer(&self) -> String {
+        let reference = match self.stft.dynamic_range_mode.as_str() {
+            "default" => "full scale".to_string(),
+            _ => format!("peak ({:.1} dBFS)", self.stft.db_max),
+        };
+        let suggestion = self
+            .range_suggestion()
+            .map_or_else(String::new, |value| format!(" ({value})"));
+        format!(
+            "{} dB below {}{} · dBFS, ENBW {}",
             self.stft.dynamic_range_db,
-            match self.stft.reference.as_str() {
-                "fs" => "full scale".to_string(),
-                _ => format!("{:.1} dBFS", self.stft.db_max),
-            },
+            reference,
+            suggestion,
             format_hz(self.stft.enbw_hz),
         )
     }
@@ -260,6 +272,9 @@ impl Report {
         )?;
         if let Some(peak) = &self.peak_bin {
             write!(out, " · peak {:+.1} dBFS", peak.level.dbfs)?;
+        }
+        if let Some(suggestion) = self.range_suggestion() {
+            write!(out, " · {suggestion}")?;
         }
         if let Some(output) = &self.output {
             write!(
@@ -318,6 +333,16 @@ impl Report {
             "  stft      fft {} · {} · hop {} · {} frames",
             self.stft.fft_size, self.stft.window, self.stft.hop, self.stft.frames
         )?;
+        writeln!(
+            out,
+            "  range     {} · {} dB effective · {:.0} dB recommended",
+            self.stft.dynamic_range_mode,
+            self.stft.dynamic_range_db,
+            self.stft.recommended_dynamic_range_db
+        )?;
+        if let Some(range) = self.suggested_range_db() {
+            writeln!(out, "  sugg      -d {range:.0}")?;
+        }
         writeln!(out)?;
 
         writeln!(
@@ -347,9 +372,6 @@ impl Report {
                 self.absolute(floor),
                 floor.dbfs
             )?;
-        }
-        if let Some(hint) = self.contrast_hint() {
-            writeln!(out, "  hint      {hint}")?;
         }
         if let Some(output) = &self.output {
             writeln!(
@@ -391,27 +413,21 @@ impl Report {
 }
 
 impl Report {
-    /// Warn when everything interesting sits in the bottom of the colour ramp.
-    ///
-    /// With the full-scale reference a quiet capture is drawn almost entirely
-    /// in the darkest few colours, which looks like a broken render rather
-    /// than a correct one.
-    pub fn contrast_hint(&self) -> Option<String> {
-        if self.stft.reference != "fs" {
+    fn suggested_range_db(&self) -> Option<f32> {
+        if self.stft.dynamic_range_mode == "auto" {
             return None;
         }
-        let peak = self.peak_bin.as_ref()?.level.dbfs;
-        let headroom = self.stft.db_max - peak;
-        if headroom <= self.stft.dynamic_range_db * 0.5 {
+        if self.stft.dynamic_range_db - self.stft.recommended_dynamic_range_db < 10.0 {
             return None;
         }
-        // The span worth colouring is peak to noise floor, with room to spare.
-        let floor = self.floor.as_ref().map(|f| f.dbfs).unwrap_or(peak - 40.0);
-        let useful = (((peak - floor) * 1.5 / 10.0).ceil() * 10.0).clamp(20.0, 120.0);
-        Some(format!(
-            "peak sits {headroom:.0} dB below full scale, so nearly the whole colour range is \
-             unused; try --ref peak -d {useful:.0}"
-        ))
+        Some(self.stft.recommended_dynamic_range_db)
+    }
+
+    /// Suggest the measured range when the selected one is wider by at least
+    /// one whole 10 dB recommendation step.
+    pub fn range_suggestion(&self) -> Option<String> {
+        self.suggested_range_db()
+            .map(|range| format!("sugg -d {range:.0}"))
     }
 }
 

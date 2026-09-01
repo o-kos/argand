@@ -1,6 +1,6 @@
 use super::*;
 use argand_core::{SampleRange, SampleType};
-use argand_dsp::{AnalysisRequest, DbReference, Reduce, StftConfig, Window, analyze};
+use argand_dsp::{AnalysisRequest, DynamicRange, Reduce, StftConfig, Window, analyze};
 use argand_io::OpenHints;
 use argand_io::testutil::{TempDir, iq_tone, real_tone, write_wav};
 
@@ -62,8 +62,7 @@ fn analysis_of(dir: &TempDir, name: &str, values: &[f32], iq: bool, layout: &Lay
             height,
             reduce: Reduce::Max,
             colormap: Colormap::Grayscale,
-            dynamic_range_db: 60.0,
-            reference: DbReference::Peak,
+            dynamic_range: DynamicRange::Fixed(60.0),
             waveform_columns: layout.waveform_columns(),
         },
         &mut |_, _| {},
@@ -87,8 +86,13 @@ fn plot(layout: &Layout, analysis: &Analysis) -> RgbImage {
             analysis,
             title: "title",
             footer: "footer",
+            compact_footer: "footer",
+            footer_warning: None,
             colormap: Colormap::Grayscale,
-            waveform_full_scale: waveform_full_scale(analysis.time_peak, DbReference::Peak),
+            waveform_full_scale: waveform_full_scale(
+                analysis.time_peak,
+                DynamicRange::Fixed(60.0),
+            ),
         },
     )
 }
@@ -102,6 +106,106 @@ fn the_default_render_is_a_waveform_and_a_spectrogram_only() {
         assert!(layout.psd.is_none(), "{orientation}: psd is opt-in");
         assert!(layout.colorbar.is_none(), "{orientation}: db is opt-in");
     }
+}
+
+#[test]
+fn the_yellow_suggestion_is_drawn_in_the_footer_without_depending_on_a_panel() {
+    let dir = TempDir::new("render-suggestion");
+    for panels in [Panels::NONE, WAVEFORM, PSD, DB] {
+        let layout = laid_out(900, 320, panels, Orientation::Horizontal);
+        let a = analysis(&dir, &format!("{panels}.wav"), true, &layout);
+        let canvas = render(
+            &layout,
+            &PlotInput {
+                analysis: &a,
+                title: "title",
+                footer: "60 dB below full scale (sugg -d 40) · dBFS",
+                compact_footer: "60 dB below full scale (sugg -d 40) · dBFS",
+                footer_warning: Some("sugg -d 40"),
+                colormap: Colormap::Grayscale,
+                waveform_full_scale: 1.0,
+            },
+        );
+        let yellow = ((layout.height - FOOTER_H as u32)..layout.height)
+            .flat_map(|y| (0..canvas.width()).map(move |x| (x, y)))
+            .filter(|(x, y)| {
+                let [r, g, b] = canvas.get_pixel(*x, *y).0;
+                r > 220 && g > 150 && b < 100
+            })
+            .count();
+        assert!(yellow > 20, "{panels} drew only {yellow} warning pixels");
+        let header_yellow = (0..HEADER_H as u32)
+            .flat_map(|y| (0..canvas.width()).map(move |x| (x, y)))
+            .filter(|(x, y)| {
+                let [r, g, b] = canvas.get_pixel(*x, *y).0;
+                r > 220 && g > 150 && b < 100
+            })
+            .count();
+        assert_eq!(header_yellow, 0, "{panels} left a warning in the header");
+    }
+}
+
+#[test]
+fn a_narrow_footer_keeps_the_complete_warning_and_scale_metadata() {
+    let dir = TempDir::new("render-narrow-suggestion");
+    let layout = laid_out(500, 300, Panels::NONE, Orientation::Horizontal);
+    let a = analysis(&dir, "narrow.wav", true, &layout);
+    let warning = "sugg -d 40";
+    let full = "fft 256 · hann · hop 64 (75% overlap) · max · 110 dB below full scale (sugg -d 40) · dBFS, ENBW 140.625 Hz";
+    let compact = "110 dB below full scale (sugg -d 40) · dBFS, ENBW 140.625 Hz";
+    let text = TextRenderer::new();
+    let available = layout.width as f32 - 2.0 * PAD as f32;
+    assert!(text.width(full, FONT_SIZE) > available);
+    assert!(text.width(compact, FONT_SIZE) <= available);
+
+    let input = PlotInput {
+        analysis: &a,
+        title: "title",
+        footer: full,
+        compact_footer: compact,
+        footer_warning: Some(warning),
+        colormap: Colormap::Grayscale,
+        waveform_full_scale: 1.0,
+    };
+    let canvas = render(&layout, &input);
+    let yellow_columns = ((layout.height - FOOTER_H as u32)..layout.height)
+        .flat_map(|y| (0..canvas.width()).map(move |x| (x, y)))
+        .filter(|(x, y)| {
+            let [r, g, b] = canvas.get_pixel(*x, *y).0;
+            r > 220 && g > 150 && b < 100
+        })
+        .map(|(x, _)| x)
+        .collect::<Vec<_>>();
+    let yellow_span = yellow_columns.iter().max().unwrap() - yellow_columns.iter().min().unwrap();
+    assert!(yellow_span > 50, "warning spans only {yellow_span} pixels");
+    let yellow_right = *yellow_columns.iter().max().unwrap();
+    let trailing_label = ((layout.height - FOOTER_H as u32)..layout.height)
+        .flat_map(|y| (yellow_right + 2..canvas.width()).map(move |x| (x, y)))
+        .filter(|(x, y)| {
+            let [r, g, b] = canvas.get_pixel(*x, *y).0;
+            r > 30 && b > g && g > r
+        })
+        .count();
+    assert!(trailing_label > 20, "the scale metadata after the warning was clipped");
+
+    let (fitted, fitted_size) = footer_line(&input, 280.0, &text);
+    assert_eq!(fitted, compact);
+    assert!(fitted_size < FONT_SIZE);
+    assert!(text.width(fitted, fitted_size) <= 280.1);
+}
+
+#[test]
+fn a_long_title_is_fitted_to_the_full_header_width() {
+    let layout = laid_out(420, 320, Panels::NONE, Orientation::Horizontal);
+    let text = TextRenderer::new();
+    let available = layout.width as f32 - 2.0 * PAD as f32;
+    let fitted = fit_title(
+        "a-very-long-capture-name-with-format-rate-and-duration-metadata.iqw",
+        available,
+        &text,
+    );
+    assert!(fitted.ends_with('…'));
+    assert!(text.width(&fitted, TITLE_SIZE) <= available);
 }
 
 #[test]
@@ -329,7 +433,7 @@ fn nothing_is_drawn_outside_the_strip() {
 fn the_strip_reaches_its_edge_at_the_reference_level() {
     let dir = TempDir::new("render-scale");
     let layout = laid_out(900, 320, WAVEFORM, Orientation::Horizontal);
-    // A quiet signal: under --ref peak the strip still uses its full height.
+    // A quiet signal: under a peak-relative range the strip still uses its full height.
     let values = real_tone(8192, RATE, TONE_HZ, 0.02);
     let a = analysis_of(&dir, "quiet.wav", &values, false, &layout);
     let canvas = plot(&layout, &a);
@@ -348,11 +452,12 @@ fn the_strip_reaches_its_edge_at_the_reference_level() {
 }
 
 #[test]
-fn the_reference_level_follows_the_ref_flag() {
-    assert_eq!(waveform_full_scale(0.5, DbReference::FullScale), 1.0);
-    assert_eq!(waveform_full_scale(0.5, DbReference::Peak), 0.5);
+fn the_waveform_scale_follows_the_dynamic_range_mode() {
+    assert_eq!(waveform_full_scale(0.5, DynamicRange::Default), 1.0);
+    assert_eq!(waveform_full_scale(0.5, DynamicRange::Fixed(40.0)), 0.5);
+    assert_eq!(waveform_full_scale(0.5, DynamicRange::Auto), 0.5);
     // Silence must not become a division by zero.
-    assert!(waveform_full_scale(0.0, DbReference::Peak) > 0.0);
+    assert!(waveform_full_scale(0.0, DynamicRange::Auto) > 0.0);
 }
 
 #[test]
@@ -780,6 +885,8 @@ fn assert_shared_grid(orientation: Orientation) {
         analysis: &a,
         title: "title",
         footer: "footer",
+        compact_footer: "footer",
+        footer_warning: None,
         colormap: Colormap::Grayscale,
         waveform_full_scale: 1.0,
     };
@@ -896,15 +1003,15 @@ fn the_colour_bar_labels_its_own_scale_and_stays_on_the_canvas() {
 }
 
 #[test]
-fn the_colour_bar_gutter_follows_the_reference_it_was_given() {
-    // Under `--ref fs` the window's top is 0 dBFS, so `-d 60` cannot print
-    // wider than `-60 dB`. Under `--ref peak` the top is this file's own peak,
-    // which is not known yet and can sit anywhere down to the f32 floor.
+fn the_colour_bar_gutter_reserves_for_an_unknown_peak() {
+    // The absolute default has a known top at 0 dBFS. A numeric range is
+    // peak-relative, and that peak is not known yet, so it can sit anywhere
+    // down to the f32 floor.
     let full_scale = Gutters::measure(TIME, BASEBAND, (-60.0, 0.0));
     let peak = Gutters::measure(TIME, BASEBAND, (DB_FLOOR - 60.0, 0.0));
     assert!(
         peak.colorbar > full_scale.colorbar,
-        "a peak reference needs the wider gutter: {peak:?} against {full_scale:?}"
+        "a peak-relative range needs the wider gutter: {peak:?} against {full_scale:?}"
     );
 
     let text = TextRenderer::new();
@@ -992,6 +1099,8 @@ fn an_axis_with_no_labels_gets_no_caption_either() {
         analysis: &a,
         title: "title",
         footer: "footer",
+        compact_footer: "footer",
+        footer_warning: None,
         colormap: Colormap::Grayscale,
         waveform_full_scale: 1.0,
     };

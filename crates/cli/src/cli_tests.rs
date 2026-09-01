@@ -28,6 +28,9 @@ fn help_lists_the_canonical_panel_and_orientation_names() {
     );
     assert!(help.contains("--orientation v"), "{help}");
     assert!(help.contains("--panels waveform,psd,db"), "{help}");
+    assert!(help.contains("--dynamic-range <DB|auto>"), "{help}");
+    assert!(help.contains("absolute 0...-110 dBFS"), "{help}");
+    assert!(!help.contains("--ref"), "{help}");
 }
 
 #[test]
@@ -38,9 +41,9 @@ fn defaults_match_the_documented_ones() {
     assert_eq!(args.hop, None);
     assert_eq!(args.window_type, Window::Hann);
     assert_eq!(args.color_scheme, Colormap::Oceanic);
-    assert_eq!(args.dynamic_range, 110.0);
+    assert_eq!(args.dynamic_range, None);
+    assert_eq!(args.requested_dynamic_range(), DynamicRange::Default);
     assert_eq!(args.reduce, Reduce::Max);
-    assert_eq!(args.reference, DbReference::FullScale);
     assert_eq!(args.panels.to_string(), "waveform");
     assert_eq!(args.orientation, Orientation::Horizontal);
     assert_eq!(args.center, 0.0);
@@ -58,7 +61,7 @@ fn short_flags_match_the_sgvr_cli() {
     assert_eq!(args.window_type, Window::Hamming);
     assert_eq!(args.color_scheme, Colormap::Viridis);
     assert_eq!(args.image_size, (800, 600));
-    assert_eq!(args.dynamic_range, 60.0);
+    assert_eq!(args.dynamic_range, Some(DynamicRange::Fixed(60.0)));
 }
 
 #[test]
@@ -95,6 +98,14 @@ fn level_controls_accept_their_documented_spellings() {
     // A negative value with a unit suffix must not look like a flag.
     assert_eq!(parse(&["x.wav", "--center", "-1M"]).center, -1_000_000.0);
     assert_eq!(parse(&["x.wav", "-g", "-6.5"]).gain, -6.5);
+    assert_eq!(
+        parse(&["x.wav", "-d", "auto"]).requested_dynamic_range(),
+        DynamicRange::Auto
+    );
+    assert_eq!(
+        parse(&["x.wav", "-d", "40"]).requested_dynamic_range(),
+        DynamicRange::Fixed(40.0)
+    );
 }
 
 #[test]
@@ -154,7 +165,9 @@ fn bad_values_are_rejected_with_a_useful_message() {
         (vec!["x.wav", "--panels", "none,psd"], "cannot be combined"),
         (vec!["x.wav", "--orientation", "sideways"], "horizontal"),
         (vec!["x.wav", "--reduce", "median"], "mean"),
-        (vec!["x.wav", "--ref", "loudest"], "peak"),
+        (vec!["x.wav", "-d", "default"], "positive number or auto"),
+        (vec!["x.wav", "-d", "0"], "positive number or auto"),
+        (vec!["x.wav", "-d", "-40"], "positive number or auto"),
         (vec!["x.wav", "-r", "fast"], "frequency"),
         (vec!["x.wav", "--start", "soon"], "time"),
         (vec!["x.wav", "--raw", "iq_i16@fast"], "frequency"),
@@ -165,6 +178,14 @@ fn bad_values_are_rejected_with_a_useful_message() {
             .to_string();
         assert!(err.contains(expected), "{args:?} said: {err}");
     }
+}
+
+#[test]
+fn the_removed_reference_option_is_rejected() {
+    let err = Args::try_parse_from(["aspec", "x.wav", "--ref", "peak"])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("unexpected argument '--ref'"), "{err}");
 }
 
 #[test]

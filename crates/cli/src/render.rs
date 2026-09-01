@@ -7,7 +7,7 @@
 //! pixel wide instead of a smear.
 
 use argand_core::{Colormap, Psd, SpectrogramImage, WaveformEnvelope};
-use argand_dsp::{Analysis, DbReference};
+use argand_dsp::{Analysis, DynamicRange};
 use image::{Rgb, RgbImage};
 
 use crate::text::{Anchor, TextRenderer, TextStyle};
@@ -307,6 +307,7 @@ impl Theme {
     const AXIS: Rgb<u8> = Rgb([72, 79, 94]);
     const GRID: Rgb<u8> = Rgb([38, 42, 52]);
     const TRACE: Rgb<u8> = Rgb([120, 200, 255]);
+    const WARNING: Rgb<u8> = Rgb([255, 204, 64]);
 }
 
 const PAD: i64 = 12;
@@ -344,6 +345,34 @@ const LABEL: TextStyle = TextStyle {
     size: FONT_SIZE,
     color: Theme::MUTED,
 };
+const WARNING: TextStyle = TextStyle {
+    size: FONT_SIZE,
+    color: Theme::WARNING,
+};
+
+fn fit_title(text: &str, max_width: f32, renderer: &TextRenderer) -> String {
+    if renderer.width(text, TITLE_SIZE) <= max_width {
+        return text.to_owned();
+    }
+    let ellipsis = "…";
+    if renderer.width(ellipsis, TITLE_SIZE) > max_width {
+        return String::new();
+    }
+
+    let mut fitted = String::new();
+    for character in text.chars() {
+        let before = fitted.len();
+        fitted.push(character);
+        fitted.push_str(ellipsis);
+        if renderer.width(&fitted, TITLE_SIZE) > max_width {
+            fitted.truncate(before);
+            break;
+        }
+        fitted.truncate(fitted.len() - ellipsis.len());
+    }
+    fitted.push_str(ellipsis);
+    fitted
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
@@ -389,10 +418,10 @@ impl Gutters {
     /// Measure the widest label each axis could print, in the font and at the
     /// size the plot will draw with.
     ///
-    /// `decibels` is the widest window the colour bar can be asked to show,
-    /// which `--dynamic-range` and `--ref` decide between them. The spectrum
-    /// panel's own scale follows its trace and answers to neither, so it keeps
-    /// [`DB_FLOOR`] whatever the colour bar was told to span.
+    /// `decibels` is the widest window the colour bar can be asked to show.
+    /// The spectrum panel's own scale follows its trace and answers to no
+    /// colour-range mode, so it keeps [`DB_FLOOR`] whatever the colour bar was
+    /// told to span.
     pub fn measure(time: (f64, f64), frequency: (f64, f64), decibels: (f64, f64)) -> Self {
         let text = TextRenderer::new();
         // Every candidate is measured, because which of two strings needs more
@@ -660,25 +689,28 @@ pub struct PlotInput<'a> {
     pub analysis: &'a Analysis,
     pub title: &'a str,
     pub footer: &'a str,
+    pub compact_footer: &'a str,
+    pub footer_warning: Option<&'a str>,
     pub colormap: Colormap,
     /// Sample value the edge of the waveform strip stands for.
     pub waveform_full_scale: f32,
 }
 
-/// The level the edge of the strip stands for, following `--ref`.
+/// The level the edge of the strip stands for under the requested range mode.
 ///
-/// The reference is read in the time domain: the loudest *sample* rather than
-/// the loudest bin, because a sample is what the strip actually draws.
+/// Peak-relative modes read their peak in the time domain: the loudest
+/// *sample* rather than the loudest bin, because a sample is what the strip
+/// actually draws.
 ///
 /// The scale is linear. A decibel strip was tried first, so that `-d` would
 /// size the strip and the colour bar alike, but a min/max span in decibels
 /// pins almost anything above the noise to the edges: a capture at -6 dBFS
 /// fills 90% of the half-height, and the shape the strip exists to show
 /// disappears into a solid band.
-pub fn waveform_full_scale(time_peak: f32, reference: DbReference) -> f32 {
-    match reference {
-        DbReference::FullScale => 1.0,
-        DbReference::Peak => time_peak.max(1e-6),
+pub fn waveform_full_scale(time_peak: f32, dynamic_range: DynamicRange) -> f32 {
+    match dynamic_range {
+        DynamicRange::Default => 1.0,
+        DynamicRange::Fixed(_) | DynamicRange::Auto => time_peak.max(1e-6),
     }
 }
 
@@ -949,18 +981,15 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
     let text = TextRenderer::new();
     let scene = Scene::new(layout, input, &text);
 
+    let title_width = (layout.width as f32 - 2.0 * PAD as f32).max(0.0);
+    let title = fit_title(input.title, title_width, &text);
     text.draw(
         &mut canvas,
-        input.title,
+        &title,
         Anchor::left(PAD as f32, (PAD + 15) as f32),
         TITLE,
     );
-    text.draw(
-        &mut canvas,
-        input.footer,
-        Anchor::left(PAD as f32, (i64::from(layout.height) - PAD + 2) as f32),
-        LABEL,
-    );
+    draw_footer(&mut canvas, layout, input, &text);
 
     if let Some(rect) = layout.spectrogram {
         draw_spectrogram(&mut canvas, &scene, rect);
@@ -976,6 +1005,58 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
     }
 
     canvas
+}
+
+fn draw_footer(canvas: &mut RgbImage, layout: &Layout, input: &PlotInput<'_>, text: &TextRenderer) {
+    let anchor_x = PAD as f32;
+    let baseline = (i64::from(layout.height) - PAD + 2) as f32;
+    let available = layout.width as f32 - 2.0 * PAD as f32;
+    let (footer, font_size) = footer_line(input, available, text);
+    let label = TextStyle {
+        size: font_size,
+        ..LABEL
+    };
+    let warning_style = TextStyle {
+        size: font_size,
+        ..WARNING
+    };
+    let Some(warning) = input.footer_warning else {
+        text.draw(canvas, footer, Anchor::left(anchor_x, baseline), label);
+        return;
+    };
+    let Some((before, after)) = footer.split_once(warning) else {
+        text.draw(canvas, footer, Anchor::left(anchor_x, baseline), label);
+        return;
+    };
+
+    text.draw(canvas, before, Anchor::left(anchor_x, baseline), label);
+    let warning_x = anchor_x + text.width(before, font_size);
+    text.draw(
+        canvas,
+        warning,
+        Anchor::left(warning_x, baseline),
+        warning_style,
+    );
+    let after_x = warning_x + text.width(warning, font_size);
+    text.draw(canvas, after, Anchor::left(after_x, baseline), label);
+}
+
+fn footer_line<'a>(
+    input: &'a PlotInput<'_>,
+    available: f32,
+    text: &TextRenderer,
+) -> (&'a str, f32) {
+    if text.width(input.footer, FONT_SIZE) <= available {
+        return (input.footer, FONT_SIZE);
+    }
+
+    let compact_width = text.width(input.compact_footer, FONT_SIZE);
+    let font_size = if compact_width <= available {
+        FONT_SIZE
+    } else {
+        FONT_SIZE * available.max(1.0) / compact_width.max(1.0)
+    };
+    (input.compact_footer, font_size)
 }
 
 fn draw_spectrogram(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
@@ -1143,7 +1224,7 @@ fn draw_psd_trace(
     }
 }
 
-/// The time-domain strip: a min/max span per column, scaled to the reference.
+/// The time-domain strip: a min/max span per column, scaled to its mode's edge.
 fn draw_waveform(
     canvas: &mut RgbImage,
     scene: &Scene<'_>,

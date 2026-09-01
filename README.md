@@ -74,7 +74,7 @@ cargo build --frozen
 ```sh
 aspec capture.iqw -o spec.png
 aspec dump.bin --raw iq_i16@24k --center 12.579M
-aspec quiet.wav --normalize auto --ref peak -d 40
+aspec quiet.wav --normalize auto -d auto
 aspec long.iqw --start 5m --duration 30s --orientation v
 aspec capture.iqw --panels waveform,psd,db
 aspec '*.iqw' --center 12.579M
@@ -136,8 +136,9 @@ Short flags match the sgvr CLI (`-f -w -c -i -d`) on purpose.
       --hop <N>             frame advance [fft-size / 4]
   -w, --window-type <W>     hann, hamming, blackman-harris, rect [hann]
   -c, --color-scheme <C>    oceanic, grayscale, inferno, viridis, synthwave, sunset
-  -d, --dynamic-range <DB>  range below the reference level [110]
-      --ref <R>             fs (format full scale) or peak (this file) [fs]
+  -d, --dynamic-range <DB|auto>
+                            range below the measured peak, or auto
+                            [default: absolute 0...-110 dBFS]
       --reduce <R>          max or mean, when frames share a column [max]
 
   -i, --image-size <WxH>    [2048x512]
@@ -158,6 +159,19 @@ Short flags match the sgvr CLI (`-f -w -c -i -d`) on purpose.
 The report goes to stderr, the output path to stdout, so `aspec x.iqw` can be
 piped. `--json` replaces the path with the full report, which is what the
 tests assert against.
+
+Without `-d`, colours keep the absolute `0...-110 dBFS` window, so captures
+remain directly comparable. A numeric value, such as `-d 40`, spans that many
+decibels below the measured spectral peak. `-d auto` measures the distance
+from the peak to the median spectral floor, adds 50% headroom, rounds upward
+to 10 dB, and clamps the result to `20...120 dB` before applying it.
+
+When a default or numeric range is at least 10 dB wider than that calculated
+range, the human report shows `sugg -d N`, while the image footer places it in
+parentheses immediately after its scale reference. Automatic mode already
+applies the recommendation and therefore does not repeat it as a suggestion.
+The JSON STFT block exposes `dynamic_range_mode`, the effective
+`dynamic_range_db`, and `recommended_dynamic_range_db` separately.
 
 A batch shrinks the report to one line per file, with a
 processed/succeeded/failed/elapsed summary after it:
@@ -190,10 +204,10 @@ The strip goes above the spectrogram when time runs across and to its right
 when time runs down, always covering the same span of the time axis, so a
 burst can be traced from one panel into the other. It is a min/max envelope
 rather than a decimated one: a burst shorter than a single pixel column still
-reaches the edge of the strip instead of averaging away. Its scale is linear
-against the `--ref` level -- full scale, or this file's loudest sample under
-`--ref peak`. A complex signal is one track, spanning whichever of I and Q
-reached further in that column.
+reaches the edge of the strip instead of averaging away. Its linear scale uses
+full scale when `-d` is omitted and the loudest sample when a numeric or
+automatic range is selected. A complex signal is one track, spanning whichever
+of I and Q reached further in that column.
 
 ### Axes
 

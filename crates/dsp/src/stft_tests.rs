@@ -75,7 +75,7 @@ fn real_tone(len: usize, freq_hz: f64, amplitude: f32) -> Vec<f32> {
 }
 
 fn run(src: &mut dyn SampleSource, width: usize, height: usize) -> Analysis {
-    run_with(src, width, height, Reduce::Max, DbReference::FullScale, 110.0)
+    run_with(src, width, height, Reduce::Max, DynamicRange::Default)
 }
 
 fn run_with(
@@ -83,16 +83,14 @@ fn run_with(
     width: usize,
     height: usize,
     reduce: Reduce,
-    reference: DbReference,
-    dynamic_range: f32,
+    dynamic_range: DynamicRange,
 ) -> Analysis {
     let range = SampleRange::new(0, src.meta().len_samples);
     analyze(
         src,
         &AnalysisRequest {
             reduce,
-            reference,
-            dynamic_range_db: dynamic_range,
+            dynamic_range,
             ..request(width, height, range)
         },
         &mut |_, _| {},
@@ -109,8 +107,7 @@ fn request(width: usize, height: usize, range: SampleRange) -> AnalysisRequest {
         height,
         reduce: Reduce::Max,
         colormap: Colormap::Grayscale,
-        dynamic_range_db: 110.0,
-        reference: DbReference::FullScale,
+        dynamic_range: DynamicRange::Default,
         waveform_columns: None,
     }
 }
@@ -289,15 +286,8 @@ fn mean_and_max_differ_on_a_burst() {
     let mut max_src = VecSource::new(Domain::Iq, data.clone(), 0.0);
     let mut mean_src = VecSource::new(Domain::Iq, data, 0.0);
 
-    let max = run_with(&mut max_src, 1, FFT, Reduce::Max, DbReference::FullScale, 110.0);
-    let mean = run_with(
-        &mut mean_src,
-        1,
-        FFT,
-        Reduce::Mean,
-        DbReference::FullScale,
-        110.0,
-    );
+    let max = run_with(&mut max_src, 1, FFT, Reduce::Max, DynamicRange::Default);
+    let mean = run_with(&mut mean_src, 1, FFT, Reduce::Mean, DynamicRange::Default);
 
     let brightest = |a: &Analysis| {
         (0..a.spectrogram.height)
@@ -314,19 +304,77 @@ fn mean_and_max_differ_on_a_burst() {
 }
 
 #[test]
-fn the_peak_reference_stretches_a_quiet_signal_to_full_brightness() {
+fn a_fixed_range_stretches_a_quiet_signal_to_full_brightness() {
     let mut fs_src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 0.001), 0.0);
     let mut peak_src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 0.001), 0.0);
 
-    let fs = run_with(&mut fs_src, 8, 64, Reduce::Max, DbReference::FullScale, 110.0);
-    let peak = run_with(&mut peak_src, 8, 64, Reduce::Max, DbReference::Peak, 110.0);
+    let fs = run_with(&mut fs_src, 8, 64, Reduce::Max, DynamicRange::Default);
+    let peak = run_with(
+        &mut peak_src,
+        8,
+        64,
+        Reduce::Max,
+        DynamicRange::Fixed(110.0),
+    );
 
     assert_eq!(fs.spectrogram.db_max, 0.0);
     assert!(peak.spectrogram.db_max < -50.0, "{}", peak.spectrogram.db_max);
 
     let brightest = |a: &Analysis| (0..a.spectrogram.height).map(|y| a.spectrogram.get(4, y)[0]).max().unwrap();
     assert!(brightest(&peak) > brightest(&fs));
-    assert_eq!(brightest(&peak), 255, "peak reference should reach the top");
+    assert_eq!(brightest(&peak), 255, "peak-relative range should reach the top");
+}
+
+#[test]
+fn dynamic_range_literals_accept_auto_and_positive_numbers_only() {
+    assert_eq!("auto".parse(), Ok(DynamicRange::Auto));
+    assert_eq!("AUTO".parse(), Ok(DynamicRange::Auto));
+    assert_eq!("40".parse(), Ok(DynamicRange::Fixed(40.0)));
+    for bad in ["default", "0", "-1", "NaN", "inf", "wide"] {
+        assert!(bad.parse::<DynamicRange>().is_err(), "accepted {bad}");
+    }
+}
+
+#[test]
+fn the_recommendation_adds_headroom_rounds_up_and_clamps() {
+    let range_for = |db: Vec<f32>| {
+        recommended_dynamic_range(&Psd {
+            freqs_hz: vec![0.0; db.len()],
+            db,
+            segments: 1,
+        })
+    };
+
+    assert_eq!(range_for(vec![-34.0, -34.0, -10.0]), 40.0);
+    assert_eq!(range_for(vec![-11.0, -11.0, -10.0]), 20.0);
+    assert_eq!(range_for(vec![-210.0, -210.0, -10.0]), 120.0);
+    assert_eq!(range_for(Vec::new()), 20.0);
+}
+
+#[test]
+fn every_mode_reports_and_applies_one_resolved_range() {
+    let psd = Psd {
+        freqs_hz: vec![0.0; 3],
+        db: vec![-100.0, -100.0, -80.0],
+        segments: 1,
+    };
+    let grid = [-95.0, -80.0];
+
+    let (default, min, max) = resolve_dynamic_range(DynamicRange::Default, &grid, &psd);
+    assert_eq!(default.requested.mode(), "default");
+    assert_eq!((default.effective_db, default.recommended_db), (110.0, 30.0));
+    assert_eq!((min, max), (-110.0, 0.0));
+
+    let (fixed, min, max) =
+        resolve_dynamic_range(DynamicRange::Fixed(40.0), &grid, &psd);
+    assert_eq!(fixed.requested.mode(), "fixed");
+    assert_eq!((fixed.effective_db, fixed.recommended_db), (40.0, 30.0));
+    assert_eq!((min, max), (-120.0, -80.0));
+
+    let (auto, min, max) = resolve_dynamic_range(DynamicRange::Auto, &grid, &psd);
+    assert_eq!(auto.requested.mode(), "auto");
+    assert_eq!((auto.effective_db, auto.recommended_db), (30.0, 30.0));
+    assert_eq!((min, max), (-110.0, -80.0));
 }
 
 #[test]
@@ -334,6 +382,26 @@ fn the_time_domain_peak_is_reported() {
     let mut src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 0.25), 0.0);
     let analysis = run(&mut src, 8, 8);
     assert!((analysis.time_peak - 0.25).abs() < 1e-3, "{}", analysis.time_peak);
+}
+
+#[test]
+fn the_time_peak_includes_samples_after_the_last_full_frame() {
+    let mut values = vec![0.1; BLOCK_SAMPLES + 1];
+    *values.last_mut().unwrap() = 0.9;
+    let mut src = VecSource::new(Domain::Real, values, 0.0);
+    let range = SampleRange::new(0, src.meta().len_samples);
+    let analysis = analyze(
+        &mut src,
+        &AnalysisRequest {
+            waveform_columns: None,
+            ..request(32, 32, range)
+        },
+        &mut |_, _| {},
+    )
+    .unwrap();
+
+    assert!((analysis.time_peak - 0.9).abs() < 1e-6);
+    assert!(analysis.waveform.is_none());
 }
 
 #[test]
@@ -491,4 +559,3 @@ fn the_published_decibel_floor_matches_the_floors_that_produce_it() {
     assert_eq!(20.0 * MAG_FLOOR.log10(), DB_FLOOR);
     assert!((10.0 * POWER_FLOOR.log10() - f64::from(DB_FLOOR)).abs() < 1e-9);
 }
-
