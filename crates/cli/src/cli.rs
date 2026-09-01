@@ -137,7 +137,7 @@ pub struct Args {
     #[arg(short = 'q', long, conflicts_with = "verbose")]
     pub quiet: bool,
 
-    /// Log more; repeat for trace level
+    /// Report more detail and log more; repeat for trace level
     #[arg(short = 'v', long, action = ArgAction::Count)]
     pub verbose: u8,
 }
@@ -156,9 +156,20 @@ fn extended_help() -> String {
             "    matches nothing is an error. Matches are sorted and de-duplicated.\n\n",
             "    With more than one file, -o is refused and each PNG is written beside\n",
             "    its input; the report shrinks to one line per file naming the render\n",
-            "    as *.png, or the full block under -v, and a summary follows on stderr.\n",
+            "    as *.png, or the full sections under -v, and a summary follows on\n",
+            "    stderr.\n\n",
+            "REPORT:\n    ",
+            "One section per file on stderr: a header naming the file, its facts\n",
+            "    indented under it. The input's section is what was measured in the\n",
+            "    signal; the render's is what the picture shows and the transform\n",
+            "    that drew it. Levels are dBFS.\n\n",
+            "    -v adds the sample count, the divisor, the scaling, the reduce mode,\n",
+            "    each level in the file's own units, and the render's whole path.\n",
+            "    --json prints the machine report on stdout in place of the paths,\n",
+            "    and leaves this one on stderr unless -q is given as well. -q alone\n",
+            "    says nothing but errors.\n\n",
             "    Output paths reach stdout only when stdout is a pipe or a file, since\n",
-            "    on a terminal the line above already says where the render went.\n\n",
+            "    on a terminal the report already says where each render went.\n\n",
             "PANELS:\n    ",
             "The spectrogram is always drawn; --panels selects what joins it.\n    ",
             "{panels}\n\n",

@@ -156,9 +156,34 @@ Short flags match the sgvr CLI (`-f -w -c -i -d`) on purpose.
   -g, --gain <DB>           applied after normalization
 ```
 
-The report goes to stderr, the output path to stdout, so `aspec x.iqw` can be
-piped. `--json` replaces the path with the full report, which is what the
-tests assert against.
+The report goes to stderr as one section per file: a header naming the file
+and its facts indented under it, comma-separated and each said once.
+
+```
+12.579000_25_08_26_06_41_10.iqw:
+  wav iq_i16, 24 kHz, 30m
+  peak -53.3, bin -94.1 @ -9.387 kHz, floor -120.6 dBFS
+12.579000_25_08_26_06_41_10.iqw.png:
+  fft 2048, hann, hop 512, 84372 frames, range 110 dB, try -d 40 to fit the drawn range
+  2048×512, 498.2 KiB, 1.246s
+```
+
+What was measured in the signal belongs to the input; what the picture shows,
+and the transform that drew it, belong to the render. The second line gains
+`, analysed <span>` when `--start` or `--duration` made the analysed span
+differ from the file. Levels are dBFS, which is the scale the range decision
+is made on. The render is written beside its input, so its own name locates
+it; `-o` pointing anywhere else makes the header the whole path.
+
+`-v` restores what the default drops -- the sample count, the divisor, the
+scaling the caller asked for, the reduce mode, each level in the file's own
+units, and the render's full path -- with the divisor named once, on the file
+it is a property of.
+
+The render's path also reaches stdout, one per line, whenever stdout is not a
+terminal, so `aspec '*.iqw' | xargs feh` works and a terminal is not told the
+same path twice. `--json` replaces that line with the full report, which is
+what the tests assert against.
 
 Without `-d`, colours keep the absolute `0...-110 dBFS` window, so captures
 remain directly comparable. A numeric value, such as `-d 40`, spans that many
@@ -167,27 +192,29 @@ from the peak to the median spectral floor, adds 50% headroom, rounds upward
 to 10 dB, and clamps the result to `20...120 dB` before applying it.
 
 When a default or numeric range is at least 10 dB wider than that calculated
-range, the human report shows `sugg -d N`, while the image footer places it in
-parentheses immediately after its scale reference. Automatic mode already
+range, the report ends the render's first line with `try -d N to fit the drawn
+range`, beside the range it argues with, while the image footer places
+`(sugg -d N)` immediately after its scale reference. Automatic mode already
 applies the recommendation and therefore does not repeat it as a suggestion.
 The JSON STFT block exposes `dynamic_range_mode`, the effective
 `dynamic_range_db`, and `recommended_dynamic_range_db` separately.
 
-A batch shrinks the report to one line per file, with a
-processed/succeeded/failed/elapsed summary after it:
+A batch shrinks the report to one line per file, using the same field names,
+order and units, with a processed/succeeded/failed/elapsed summary after it:
 
 ```
-[1/3] 12.579000_25_08_26_06_09_10.iqw  iq_i16 · 24 kHz · 30m · peak -99.8 dBFS  →  *.png  212.8 KiB  463ms
+[1/3] 12.579000_25_08_26_06_09_10.iqw: wav iq_i16, 24 kHz, 30m, peak -51.9, bin -99.8 dBFS, try -d 40 → *.png, 212.8 KiB, 463ms
 ```
 
-`*.png` is the render, named by what it adds to the input rather than by
-spelling the whole path out a second time. On a terminal that line is all a
-finished file prints; the paths reappear on stdout the moment stdout is a
-pipe or a file, one per line, so `aspec '*.iqw' | xargs feh` still works.
-`-v` brings the full block back for every file, `-q` says nothing but still
-names any file that failed, and `--json` prints one report object per file --
-a stream that `jq` and `serde_json::StreamDeserializer` both read as it
-arrives.
+What a listing has no room for is what the line drops: the bin's frequency,
+the floor, the whole transform -- fft size, window, hop, frames and range --
+and the render's pixel size, all of which a batch sets identically for every
+file. `*.png` is the render, named by what it adds to the input rather than by
+spelling the whole path out a second time. `-v` brings the sections back for
+every file, `-q` says nothing but still names any file that failed, and
+`--json` prints one report object per file it rendered -- a stream that `jq`
+and `serde_json::StreamDeserializer` both read as it arrives. A file that
+failed has no report, so it appears on stderr and not in that stream.
 
 ### Panels
 

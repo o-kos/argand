@@ -86,10 +86,42 @@ fn report(m: &SignalMeta, a: &Analysis) -> Report {
     )
 }
 
-fn human(r: &Report) -> String {
+fn block(r: &Report, detail: Detail) -> String {
     let mut out = Vec::new();
-    r.write_human(&mut out).unwrap();
+    r.write_block(&mut out, detail).unwrap();
     String::from_utf8(out).unwrap()
+}
+
+fn human(r: &Report) -> String {
+    block(r, Detail::Default)
+}
+
+fn verbose(r: &Report) -> String {
+    block(r, Detail::Verbose)
+}
+
+/// The same report with the render written beside its input, which is where a
+/// run without `-o` puts it.
+fn rendered(r: Report) -> Report {
+    r.with_output(
+        std::path::Path::new("/data/12.579000_capture.iqw.png"),
+        2048,
+        512,
+        253_952,
+        "waveform".to_string(),
+    )
+}
+
+/// A fixture path as the report resolves it.
+///
+/// The fixtures are POSIX-rooted, and Windows resolves such a path against the
+/// current drive, so an expectation spelled `/tmp/spec.png` describes no
+/// platform the tests run on.
+fn resolved_fixture(path: &str) -> String {
+    std::path::absolute(path)
+        .expect("a resolvable path")
+        .display()
+        .to_string()
 }
 
 fn compact(r: &Report, index: usize, total: usize) -> String {
@@ -102,19 +134,15 @@ fn compact(r: &Report, index: usize, total: usize) -> String {
 fn the_compact_line_folds_the_input_path_into_a_star() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.2692, 0.0);
-    let beside = report(&m, &a).with_output(
-        std::path::Path::new("/data/12.579000_capture.iqw.png"),
-        2048,
-        512,
-        253_952,
-        "waveform".to_string(),
-    );
+    let beside = rendered(report(&m, &a));
 
     let line = compact(&beside, 2, 7);
-    assert!(line.starts_with("[2/7] 12.579000_capture.iqw  iq_i16 · 24 kHz · 30m"), "{line}");
-    assert!(line.contains("peak -11.4 dBFS"), "{line}");
     assert!(
-        line.contains("→  *.png  248 KiB"),
+        line.starts_with("[2/7] 12.579000_capture.iqw: wav iq_i16, 24 kHz, 30m"),
+        "{line}"
+    );
+    assert!(
+        line.contains("→ *.png, 248 KiB"),
         "the render is named by what it adds to the input:\n{line}"
     );
     assert!(!line.contains("/data/12.579000_capture.iqw.png"), "{line}");
@@ -128,38 +156,126 @@ fn the_compact_line_folds_the_input_path_into_a_star() {
         253_952,
         "waveform".to_string(),
     );
-    assert!(compact(&elsewhere, 1, 1).contains("→  /tmp/spec.png"));
+    assert!(compact(&elsewhere, 1, 1).contains("→ /tmp/spec.png"));
 }
 
 #[test]
-fn levels_are_given_in_decibels_and_in_file_units() {
+fn a_compact_line_names_its_fields_as_the_block_does_and_drops_the_rest() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.2692, 0.0);
-    let text = human(&report(&m, &a));
+    let r = rendered(report(&m, &a));
 
-    assert!(text.contains("-11.4 dBFS"), "{text}");
-    // -11.4 dBFS is 0.2692 of full scale, or 8820 counts of 32768.
-    assert!(text.contains("8820/32768"), "{text}");
-    assert!(text.contains("peak spl"), "{text}");
+    // How the file was read, in the block's own words.
+    let line = compact(&r, 1, 2);
+    let block = human(&r);
+    assert!(line.contains("wav iq_i16, 24 kHz, 30m"), "{line}");
+    assert!(block.contains("wav iq_i16, 24 kHz, 30m"), "{block}");
+
+    // `peak` is the sample peak and `bin` the spectral one, on the line as in
+    // the block, so the two shapes cannot name the same level twice.
+    assert!(line.contains("peak -11.4, bin -11.4 dBFS"), "{line}");
+    assert!(block.contains("peak -11.4, bin -11.4 @ +2.404 kHz"), "{block}");
+
+    // Everything a listing has no room for, which is everything the block's
+    // remaining fields carry.
+    for dropped in [" @ ", "floor", "fft", "hann", "hop", "frames", "range", "512"] {
+        assert!(!line.contains(dropped), "{dropped} survived:\n{line}");
+        assert!(block.contains(dropped), "{dropped} left the block:\n{block}");
+    }
+}
+
+#[test]
+fn the_default_block_is_two_named_sections_of_two_facts() {
+    let m = meta(SampleFormat::I16, 32768.0);
+    let a = analysis(-11.4, -87.2, 0.2692, 0.0);
+    let text = human(&rendered(report(&m, &a)));
+
+    assert_eq!(
+        text,
+        "12.579000_capture.iqw:\n  \
+         wav iq_i16, 24 kHz, 30m\n  \
+         peak -11.4, bin -11.4 @ +2.404 kHz, floor -87.2 dBFS\n\
+         12.579000_capture.iqw.png:\n  \
+         fft 2048, hann, hop 512, 84372 frames, range 110 dB\n  \
+         2048×512, 248 KiB, 0ms\n"
+    );
+    assert_eq!(text.lines().count(), 6, "{text}");
+    assert!(!text.contains("\n\n"), "no blank line inside the report:\n{text}");
+}
+
+#[test]
+fn the_default_block_says_nothing_twice() {
+    let m = meta(SampleFormat::I16, 32768.0);
+    let dark = rendered(report(&m, &analysis(-99.8, -121.7, 0.0025, 0.0)));
+    let text = human(&dark);
+
+    // The input's name heads its own section and appears nowhere else; the
+    // render's name heads its own and is not the full path.
+    assert_eq!(text.matches("12.579000_capture.iqw:").count(), 1, "{text}");
+    assert_eq!(text.matches("12.579000_capture.iqw.png").count(), 1, "{text}");
+    assert!(!text.contains("/data/"), "{text}");
+    // The divisor belongs to the file, not to each of its levels.
+    assert!(!text.contains("32768"), "{text}");
+    // The recommendation is made once, beside the range it argues with.
+    assert_eq!(text.matches("-d 40").count(), 1, "{text}");
+    // Defaults the caller did not ask for stay out of the way.
+    assert!(!text.contains("normalize") && !text.contains("gain"), "{text}");
+    // No label gutter: a field costs its own width and nothing more.
+    assert!(!text.contains("  peak    "), "{text}");
+}
+
+#[test]
+fn verbose_restores_the_detail_the_default_drops() {
+    let m = meta(SampleFormat::I16, 32768.0);
+    let a = analysis(-11.4, -87.2, 0.2692, 0.0);
+    let text = verbose(&rendered(report(&m, &a)));
+
+    // The divisor is named once, on the file it is a property of.
+    assert!(text.contains("30m, 43.2 Mspl, full scale 32768"), "{text}");
+    assert_eq!(text.matches("32768").count(), 1, "{text}");
+    assert!(text.contains("normalize none, gain +0.0 dB"), "{text}");
+    // The bin sits at -11.4 dBFS, which is 8820 of the 32768 counts the
+    // format holds; the sample peak is the same level, rounded from 8820.8.
+    assert!(text.contains("peak -11.4 (8821), bin -11.4 (8820)"), "{text}");
+    assert!(text.contains("reduce max") && text.contains("range 110 dB (default)"), "{text}");
+    assert!(
+        text.contains(&format!(
+            "\n{}:\n",
+            resolved_fixture("/data/12.579000_capture.iqw.png")
+        )),
+        "{text}"
+    );
+    assert!(!text.contains("\n\n"), "no blank line inside the report:\n{text}");
 }
 
 #[test]
 fn a_weak_bin_keeps_its_decimals_instead_of_rounding_to_zero() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-99.8, -121.7, 0.0025, -77.8);
-    let text = human(&report(&m, &a));
+    let text = verbose(&report(&m, &a));
 
-    assert!(!text.contains("0/32768"), "a real level printed as zero:\n{text}");
-    assert!(text.contains("0.335/32768"), "{text}");
+    assert!(!text.contains("(0)"), "a real level printed as zero:\n{text}");
+    assert!(text.contains("bin -99.8 (0.335)"), "{text}");
 }
 
 #[test]
-fn float_formats_print_the_value_rather_than_a_count() {
+fn a_full_scale_is_named_only_when_the_divisor_is_a_count() {
+    // A float capture already on [-1, 1] has no count to divide by.
     let m = meta(SampleFormat::F32, 1.0);
     let a = analysis(-6.0, -60.0, 0.5, 0.0);
-    let text = human(&report(&m, &a));
-    assert!(!text.contains('/'), "float levels have no denominator:\n{text}");
-    assert!(text.contains("0.500"), "{text}");
+    let text = verbose(&report(&m, &a));
+    assert!(
+        !text.contains("full scale"),
+        "a unit-scaled float has no denominator:\n{text}"
+    );
+    assert!(text.contains("peak -6.0 (0.500)"), "{text}");
+
+    // A float capture at an arbitrary scale has one, measured by
+    // --normalize, and it is as worth naming as an integer format's own.
+    let measured = meta(SampleFormat::F16x8, 4200.0);
+    let text = verbose(&report(&measured, &a));
+    assert!(text.contains("full scale 4200"), "{text}");
+    assert!(text.contains("peak -6.0 (2100)"), "{text}");
 }
 
 #[test]
@@ -194,13 +310,16 @@ fn an_excessive_non_auto_range_suggests_the_measured_one() {
     let m = meta(SampleFormat::I16, 32768.0);
     let dark = report(&m, &analysis(-99.8, -121.7, 0.0025, 0.0));
     assert_eq!(dark.range_suggestion().as_deref(), Some("sugg -d 40"));
-    let text = human(&dark);
-    assert!(text.contains("  range     default · 110 dB effective · 40 dB recommended\n  sugg      -d 40\n\n  peak spl"), "{text}");
+    let text = human(&rendered(dark));
+    assert!(
+        text.contains("range 110 dB, try -d 40 to fit the drawn range\n"),
+        "{text}"
+    );
 
     // A range already close to the recommendation gets no lecture.
-    let bright = report(&m, &analysis(-11.4, -87.2, 0.5, 0.0));
+    let bright = rendered(report(&m, &analysis(-11.4, -87.2, 0.5, 0.0)));
     assert!(bright.range_suggestion().is_none());
-    assert!(!human(&bright).contains("  sugg"));
+    assert!(!human(&bright).contains("-d "), "{}", human(&bright));
 
     // Auto never suggests the value it already applied.
     let mut automatic = analysis(-99.8, -121.7, 0.0025, -77.8);
@@ -215,7 +334,7 @@ fn a_compact_batch_keeps_the_range_suggestion() {
     let m = meta(SampleFormat::I16, 32768.0);
     let dark = report(&m, &analysis(-99.8, -121.7, 0.0025, 0.0));
     let line = compact(&dark, 1, 2);
-    assert!(line.contains(" · sugg -d 40"), "{line}");
+    assert!(line.contains(", try -d 40"), "{line}");
     assert_eq!(line.lines().count(), 1);
 }
 
@@ -232,7 +351,7 @@ fn the_analysed_span_is_only_mentioned_when_it_differs() {
         &request(DynamicRange::Default, 30 * 24_000),
         unscaled(),
     );
-    assert!(human(&partial).contains("analysed  30s"), "{}", human(&partial));
+    assert!(human(&partial).contains("30m, analysed 30s"), "{}", human(&partial));
 }
 
 #[test]
@@ -316,16 +435,13 @@ fn human_report_names_requested_effective_and_recommended_ranges() {
     a.dynamic_range.requested = DynamicRange::Fixed(60.0);
     a.dynamic_range.effective_db = 60.0;
 
-    let text = human(&report(&m, &a));
-    assert!(
-        text.contains("range     fixed · 60 dB effective · 40 dB recommended"),
-        "{text}"
-    );
+    let text = verbose(&rendered(report(&m, &a)));
+    assert!(text.contains("range 60 dB (fixed), try -d 40"), "{text}");
 
     a.dynamic_range.requested = DynamicRange::Fixed(20.5);
     a.dynamic_range.effective_db = 20.5;
-    let text = human(&report(&m, &a));
-    assert!(text.contains("fixed · 20.5 dB effective"), "{text}");
+    let text = human(&rendered(report(&m, &a)));
+    assert!(text.contains("range 20.5 dB\n"), "{text}");
 }
 
 #[test]
@@ -341,7 +457,66 @@ fn an_empty_spectrum_leaves_the_optional_fields_out() {
 
     let value: serde_json::Value = serde_json::from_str(&r.to_json()).unwrap();
     assert!(value["peak_bin"].is_null() && value["floor"].is_null());
-    human(&r); // must not panic
+
+    // Only the sample peak survives, and the levels keep their unit.
+    assert!(human(&r).contains("\n  peak -6.0 dBFS\n"), "{}", human(&r));
+    assert_eq!(human(&r).lines().count(), 3, "{}", human(&r));
+    assert!(compact(&r, 1, 2).contains("peak -6.0 dBFS"));
+}
+
+#[test]
+fn a_render_sent_elsewhere_is_headed_by_its_whole_path() {
+    let m = meta(SampleFormat::I16, 32768.0);
+    let a = analysis(-11.4, -87.2, 0.2692, 0.0);
+    let elsewhere = report(&m, &a).with_output(
+        std::path::Path::new("/tmp/spec.png"),
+        2048,
+        512,
+        253_952,
+        "waveform".to_string(),
+    );
+    assert!(
+        human(&elsewhere).contains(&format!("\n{}:\n", resolved_fixture("/tmp/spec.png"))),
+        "{}",
+        human(&elsewhere)
+    );
+
+    // A relative -o resolves against the caller's directory, not against the
+    // input's, so a bare name would point at the wrong place.
+    let relative = report(&m, &a).with_output(
+        std::path::Path::new("spec.png"),
+        2048,
+        512,
+        253_952,
+        "waveform".to_string(),
+    );
+    assert!(
+        human(&relative).contains(&format!("\n{}:\n", resolved_fixture("spec.png"))),
+        "{}",
+        human(&relative)
+    );
+
+    // A render written beside its input is headed by its own name however
+    // the caller spelled the way there.
+    for spelling in ["./x.wav", "sub/../x.wav", "./sub/./../x.wav"] {
+        let mut here = meta(SampleFormat::I16, 32768.0);
+        here.source = PathBuf::from(spelling);
+        let beside = Report::new(
+            &here,
+            &a,
+            &request(DynamicRange::Default, FULL_SPAN),
+            unscaled(),
+        )
+        .with_output(
+            std::path::Path::new("spec.png"),
+            2048,
+            512,
+            253_952,
+            "waveform".to_string(),
+        );
+        let text = human(&beside);
+        assert!(text.contains("\nspec.png:\n"), "{spelling}:\n{text}");
+    }
 }
 
 #[test]
@@ -359,8 +534,37 @@ fn the_normalization_mode_is_reported_verbatim() {
             },
         )
     };
-    assert!(human(&build(Normalize::Auto)).contains("normalize auto"));
-    assert!(human(&build(Normalize::None)).contains("normalize none"));
-    assert!(human(&build(Normalize::Factor(2.5))).contains("normalize 2.5"));
-    assert!(human(&build(Normalize::Auto)).contains("gain -6.0 dB"));
+    assert!(verbose(&build(Normalize::Auto)).contains("normalize auto"));
+    assert!(verbose(&build(Normalize::None)).contains("normalize none"));
+    assert!(verbose(&build(Normalize::Factor(2.5))).contains("normalize 2.5"));
+    assert!(verbose(&build(Normalize::Auto)).contains("gain -6.0 dB"));
+
+    // A divisor the caller gave is theirs, so it is named where they gave it
+    // and not again as a full scale. `--normalize 4200` is what made the
+    // divisor 4200 in the first place.
+    let explicit = verbose(&build(Normalize::Factor(4200.0)));
+    assert!(explicit.contains("normalize 4200"), "{explicit}");
+    assert!(!explicit.contains("full scale"), "{explicit}");
+    assert_eq!(explicit.matches("4200").count(), 1, "{explicit}");
+
+    // A divisor the tool measured is not stated anywhere else.
+    assert!(
+        verbose(&build(Normalize::Auto)).contains("full scale 4200"),
+        "{}",
+        verbose(&build(Normalize::Auto))
+    );
+
+    // Its size does not enter into it: `auto` on a quiet float capture
+    // measures a small one, and that is the number `-v` promises.
+    let small = meta(SampleFormat::F16x8, 105.37);
+    let measured = verbose(&Report::new(
+        &small,
+        &a,
+        &request(DynamicRange::Default, FULL_SPAN),
+        Scaling {
+            normalize: Normalize::Auto,
+            gain_db: 0.0,
+        },
+    ));
+    assert!(measured.contains("full scale 105.4"), "{measured}");
 }

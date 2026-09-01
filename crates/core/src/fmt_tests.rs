@@ -2,17 +2,17 @@ use super::*;
 
 #[test]
 fn sample_counts_scale_and_trim() {
-    assert_eq!(format_samples(0), "0spl");
-    assert_eq!(format_samples(999), "999spl");
-    assert_eq!(format_samples(1_000), "1kspl");
-    assert_eq!(format_samples(43_200_000), "43.2Mspl");
-    assert_eq!(format_samples(1_500_000_000), "1.5Gspl");
-    assert_eq!(format_samples(2_000_000_000_000), "2Tspl");
+    assert_eq!(format_samples(0), "0 spl");
+    assert_eq!(format_samples(999), "999 spl");
+    assert_eq!(format_samples(1_000), "1 kspl");
+    assert_eq!(format_samples(43_200_000), "43.2 Mspl");
+    assert_eq!(format_samples(1_500_000_000), "1.5 Gspl");
+    assert_eq!(format_samples(2_000_000_000_000), "2 Tspl");
 }
 
 #[test]
 fn sample_counts_promote_instead_of_printing_1000k() {
-    assert_eq!(format_samples(999_990), "1Mspl");
+    assert_eq!(format_samples(999_990), "1 Mspl");
 }
 
 #[test]

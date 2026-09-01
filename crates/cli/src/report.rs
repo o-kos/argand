@@ -1,15 +1,33 @@
 //! What the run tells you afterwards.
 //!
-//! Levels are given twice: in dBFS, which is comparable between files, and in
-//! the file's own units, which is what you check a capture chain against.
+//! One section per file: a header naming it, its facts indented under it, and
+//! every value printed once. What was measured in the signal belongs to the
+//! input; what the picture shows, and the transform that drew it, belong to
+//! the render.
+//!
+//! Levels are dBFS, which is the scale the range decision is made on and the
+//! one that compares between files. The file's own units are what you check a
+//! capture chain against, so `-v` prints them beside the decibels.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use argand_core::{SignalMeta, format_bytes, format_duration, format_hz, format_samples};
 use argand_dsp::{Analysis, AnalysisRequest};
 use argand_io::Normalize;
 use serde::Serialize;
+
+/// How much of a file's report a run asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Detail {
+    /// One line for a file in a batch, so that a listing stays scannable.
+    Compact,
+    /// What was measured and what was drawn, each said once.
+    Default,
+    /// Everything the default leaves out: the settings that produced the
+    /// render, the file's own units, and the render's full path.
+    Verbose,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Level {
@@ -86,6 +104,11 @@ pub struct Report {
     pub analysed_seconds: f64,
     pub normalize: String,
     pub divisor: f32,
+    /// Whether `--normalize` named the divisor itself, in which case naming
+    /// it again as a full scale would only repeat the field above it. The
+    /// machine report has no use for it: `normalize` already carries the mode.
+    #[serde(skip)]
+    normalize_names_divisor: bool,
     pub gain_db: f32,
     pub stft: StftReport,
     pub peak_sample: Level,
@@ -141,6 +164,7 @@ impl Report {
             analysed_seconds,
             normalize: describe_normalize(scaling.normalize),
             divisor,
+            normalize_names_divisor: matches!(scaling.normalize, Normalize::Factor(_)),
             gain_db: scaling.gain_db,
             stft: StftReport {
                 fft_size: cfg.fft_size,
@@ -230,10 +254,7 @@ impl Report {
 
     /// The input's own name, which is what identifies it once it is drawn.
     fn file_name(&self) -> String {
-        Path::new(&self.file)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| self.file.clone())
+        file_name_of(&self.file)
     }
 
     /// Text the header of the image carries.
@@ -254,8 +275,9 @@ impl Report {
 
     /// One line per file, which is what a batch prints instead of the block.
     ///
-    /// It carries what tells two captures apart at a glance -- format, rate,
-    /// length and level -- and where the render went.
+    /// It names the same fields in the same order and units as the block and
+    /// drops what a listing cannot afford: the bin's frequency, the floor, and
+    /// the render's pixel size, which is the same for every file in the run.
     pub fn write_compact(
         &self,
         out: &mut impl Write,
@@ -264,27 +286,24 @@ impl Report {
     ) -> std::io::Result<()> {
         write!(
             out,
-            "[{index}/{total}] {}  {} · {} · {}",
+            "[{index}/{total}] {}: {}, {}",
             self.file_name(),
-            self.sample_type,
-            format_hz(self.sample_rate),
-            format_duration(self.analysed_seconds)
+            self.source_fields(Detail::Compact),
+            self.level_fields(Detail::Compact)
         )?;
-        if let Some(peak) = &self.peak_bin {
-            write!(out, " · peak {:+.1} dBFS", peak.level.dbfs)?;
+        if let Some(advice) = self.range_advice() {
+            write!(out, ", {advice}")?;
         }
-        if let Some(suggestion) = self.range_suggestion() {
-            write!(out, " · {suggestion}")?;
-        }
-        if let Some(output) = &self.output {
-            write!(
-                out,
-                "  →  {}  {}",
-                self.output_label(output),
-                format_bytes(output.bytes)
-            )?;
-        }
-        writeln!(out, "  {}", format_duration(self.elapsed_seconds))
+        let Some(output) = &self.output else {
+            return writeln!(out);
+        };
+        writeln!(
+            out,
+            " → {}, {}, {}",
+            self.output_label(output),
+            format_bytes(output.bytes),
+            format_duration(self.elapsed_seconds)
+        )
     }
 
     /// Where the render went, with the input's own path folded into a `*`.
@@ -299,116 +318,164 @@ impl Report {
     }
 
     /// The block printed to stderr when the run finishes.
-    pub fn write_human(&self, out: &mut impl Write) -> std::io::Result<()> {
-        let name = self.file_name();
+    ///
+    /// Two sections, each headed by the name of the file it describes: what
+    /// the signal measured, then what the picture shows.
+    pub fn write_block(&self, out: &mut impl Write, detail: Detail) -> std::io::Result<()> {
+        writeln!(out, "{}:", self.file_name())?;
+        writeln!(out, "  {}", self.source_fields(detail))?;
+        if detail == Detail::Verbose {
+            writeln!(
+                out,
+                "  normalize {}, gain {:+.1} dB",
+                self.normalize, self.gain_db
+            )?;
+        }
+        writeln!(out, "  {}", self.level_fields(detail))?;
 
-        writeln!(out, "  file      {name}")?;
+        let Some(output) = &self.output else {
+            return Ok(());
+        };
+        writeln!(out, "{}:", self.render_header(output, detail))?;
+        writeln!(out, "  {}", self.transform_fields(detail))?;
         writeln!(
             out,
-            "  format    {} · {} · {}",
-            self.container,
-            self.sample_type,
-            format_hz(self.sample_rate)
-        )?;
-        writeln!(
-            out,
-            "  length    {} ({})",
-            format_duration(self.duration_seconds),
-            format_samples(self.samples)
-        )?;
-        if (self.analysed_seconds - self.duration_seconds).abs() > 1e-6 {
-            writeln!(
-                out,
-                "  analysed  {}",
-                format_duration(self.analysed_seconds)
-            )?;
-        }
-        writeln!(
-            out,
-            "  level     normalize {} · gain {:+.1} dB",
-            self.normalize, self.gain_db
-        )?;
-        writeln!(
-            out,
-            "  stft      fft {} · {} · hop {} · {} frames",
-            self.stft.fft_size, self.stft.window, self.stft.hop, self.stft.frames
-        )?;
-        writeln!(
-            out,
-            "  range     {} · {} dB effective · {:.0} dB recommended",
-            self.stft.dynamic_range_mode,
-            self.stft.dynamic_range_db,
-            self.stft.recommended_dynamic_range_db
-        )?;
-        if let Some(range) = self.suggested_range_db() {
-            writeln!(out, "  sugg      -d {range:.0}")?;
-        }
-        writeln!(out)?;
-
-        writeln!(
-            out,
-            "  peak spl  {}  {:+.1} dBFS",
-            self.absolute(&self.peak_sample),
-            self.peak_sample.dbfs
-        )?;
-        if let Some(peak) = &self.peak_bin {
-            writeln!(
-                out,
-                "  peak bin  {}  {:+.1} dBFS  @ {}{}",
-                self.absolute(&peak.level),
-                peak.level.dbfs,
-                signed_hz(peak.offset_hz),
-                if self.center_freq != 0.0 {
-                    format!(" ({})", format_hz(peak.freq_hz))
-                } else {
-                    String::new()
-                }
-            )?;
-        }
-        if let Some(floor) = &self.floor {
-            writeln!(
-                out,
-                "  floor     {}  {:+.1} dBFS",
-                self.absolute(floor),
-                floor.dbfs
-            )?;
-        }
-        if let Some(output) = &self.output {
-            writeln!(
-                out,
-                "  wrote     {}  {}×{}  {}  in {}",
-                output.path,
-                output.width,
-                output.height,
-                format_bytes(output.bytes),
-                format_duration(self.elapsed_seconds)
-            )?;
-        }
-        Ok(())
+            "  {}×{}, {}, {}",
+            output.width,
+            output.height,
+            format_bytes(output.bytes),
+            format_duration(self.elapsed_seconds)
+        )
     }
 
-    /// Level in the units the file stores, sized to the format.
-    ///
-    /// A weak bin can be a fraction of one count, so the precision follows the
-    /// magnitude: printing `0/32768` for a real measurement is worse than
-    /// printing nothing.
-    fn absolute(&self, level: &Level) -> String {
-        let value = level.absolute.abs();
-        let digits = if value >= 1000.0 {
-            0
-        } else if value >= 10.0 {
-            1
-        } else if value >= 0.01 {
-            3
-        } else {
-            6
-        };
-        if self.divisor >= 128.0 {
-            // An integer format, or a normalization that measured one.
-            format!("{value:.digits$}/{:.0}", self.divisor)
-        } else {
-            format!("{value:.digits$}")
+    /// How the file was read.
+    fn source_fields(&self, detail: Detail) -> String {
+        let mut fields = format!(
+            "{} {}, {}, {}",
+            self.container,
+            self.sample_type,
+            format_hz(self.sample_rate),
+            format_duration(self.duration_seconds)
+        );
+        if (self.analysed_seconds - self.duration_seconds).abs() > 1e-6 {
+            fields.push_str(&format!(
+                ", analysed {}",
+                format_duration(self.analysed_seconds)
+            ));
         }
+        if detail != Detail::Verbose {
+            return fields;
+        }
+        fields.push_str(&format!(", {}", format_samples(self.samples)));
+        // The divisor is one property of the file, so it belongs here rather
+        // than hung off each of the levels below.
+        if let Some(scale) = self.full_scale() {
+            fields.push_str(&format!(", full scale {scale}"));
+        }
+        fields
+    }
+
+    /// What the signal measured, on the scale the range decision is made on.
+    fn level_fields(&self, detail: Detail) -> String {
+        let mut fields = format!("peak {}", self.level(&self.peak_sample, detail));
+        if let Some(peak) = &self.peak_bin {
+            fields.push_str(&format!(", bin {}", self.level(&peak.level, detail)));
+            fields.push_str(&self.bin_frequency(peak, detail));
+        }
+        if let Some(floor) = &self.floor
+            && detail != Detail::Compact
+        {
+            fields.push_str(&format!(", floor {}", self.level(floor, detail)));
+        }
+        fields.push_str(" dBFS");
+        fields
+    }
+
+    /// Where the peak bin sits, which a compact line has no room for.
+    fn bin_frequency(&self, peak: &PeakBin, detail: Detail) -> String {
+        if detail == Detail::Compact {
+            return String::new();
+        }
+        let offset = signed_hz(peak.offset_hz);
+        if self.center_freq == 0.0 {
+            return format!(" @ {offset}");
+        }
+        format!(" @ {offset} ({})", format_hz(peak.freq_hz))
+    }
+
+    /// A level as the report gives it: decibels, with the file's own units
+    /// beside them once `-v` asks for that detail.
+    fn level(&self, level: &Level, detail: Detail) -> String {
+        if detail != Detail::Verbose {
+            return format!("{:+.1}", level.dbfs);
+        }
+        format!("{:+.1} ({})", level.dbfs, absolute(level.absolute))
+    }
+
+    /// What one unit of level is worth in the file's own counts.
+    ///
+    /// The test is whether anything was divided by, not what the sample
+    /// format is: an integer format brings its own full scale, and
+    /// `--normalize auto` measures one for a float capture that was never
+    /// scaled to `[-1, 1]`, whatever its size. Either is worth naming.
+    ///
+    /// A divisor the caller gave to `--normalize` is left out: the line above
+    /// already prints that number, and repeating it is the defect this report
+    /// shape exists to remove.
+    fn full_scale(&self) -> Option<String> {
+        if self.normalize_names_divisor {
+            return None;
+        }
+        // A divisor of one divided nothing, so there is no scale to name.
+        ((self.divisor - 1.0).abs() > 1e-6).then(|| absolute(self.divisor))
+    }
+
+    /// The transform that drew the picture, and the window it drew it in.
+    ///
+    /// The two fields `-v` adds sit either side of the range, so the line is
+    /// built whole rather than appended to in four steps.
+    fn transform_fields(&self, detail: Detail) -> String {
+        let verbose = detail == Detail::Verbose;
+        let reduce = if verbose {
+            format!(", reduce {}", self.stft.reduce)
+        } else {
+            String::new()
+        };
+        let mode = if verbose {
+            format!(" ({})", self.stft.dynamic_range_mode)
+        } else {
+            String::new()
+        };
+        let advice = self.range_advice().map_or_else(String::new, |advice| {
+            format!(", {advice} to fit the drawn range")
+        });
+        format!(
+            "fft {}, {}, hop {}, {} frames{reduce}, range {} dB{mode}{advice}",
+            self.stft.fft_size,
+            self.stft.window,
+            self.stft.hop,
+            self.stft.frames,
+            self.stft.dynamic_range_db
+        )
+    }
+
+    /// What the render section is headed by.
+    ///
+    /// A render written beside its input is identified by its own name, which
+    /// lines the two headers up and can be copied whole. One sent elsewhere by
+    /// `-o` is findable only by its full path, and `-v` always spells it out.
+    ///
+    /// That path is made absolute rather than repeated as it was typed: a
+    /// relative `-o spec.png` against an input in another directory would
+    /// otherwise print a bare name, which reads exactly like the render that
+    /// does sit beside its input.
+    fn render_header(&self, output: &OutputReport, detail: Detail) -> String {
+        let render = resolved(&output.path);
+        let beside_input = render.parent() == resolved(&self.file).parent();
+        if detail != Detail::Verbose && beside_input {
+            return file_name_of(&output.path);
+        }
+        render.display().to_string()
     }
 }
 
@@ -425,10 +492,71 @@ impl Report {
 
     /// Suggest the measured range when the selected one is wider by at least
     /// one whole 10 dB recommendation step.
+    ///
+    /// This is the image footer's spelling, where the width is measured and
+    /// fitted; the console has room for a verb.
     pub fn range_suggestion(&self) -> Option<String> {
         self.suggested_range_db()
             .map(|range| format!("sugg -d {range:.0}"))
     }
+
+    /// The same suggestion as the console report spells it.
+    fn range_advice(&self) -> Option<String> {
+        self.suggested_range_db()
+            .map(|range| format!("try -d {range:.0}"))
+    }
+}
+
+/// Level in the units the file stores, sized to the format.
+///
+/// A weak bin can be a fraction of one count, so the precision follows the
+/// magnitude: printing `0` for a real measurement is worse than printing
+/// nothing.
+fn absolute(value: f32) -> String {
+    let value = value.abs();
+    let digits = if value >= 1000.0 {
+        0
+    } else if value >= 10.0 {
+        1
+    } else if value >= 0.01 {
+        3
+    } else {
+        6
+    };
+    format!("{value:.digits$}")
+}
+
+/// A path resolved against the caller's directory and folded, so that two
+/// spellings of one directory compare equal.
+///
+/// `./x.wav`, `sub/../x.wav` and `spec.png` all name the same directory and
+/// must be recognised as doing so; `std::path::absolute` keeps `.` and `..`
+/// on POSIX, so the folding is done here. It is lexical, which a symbolic
+/// link can defeat -- the answer is then the full path, which is correct if
+/// verbose. Falls back to the path as given when the current directory cannot
+/// be read, and the two then compare as they were typed.
+fn resolved(path: &str) -> PathBuf {
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path));
+    let mut folded = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                folded.pop();
+            }
+            named => folded.push(named),
+        }
+    }
+    folded
+}
+
+/// The name a section header carries, which is a file's own name and not the
+/// directory the caller happened to type.
+fn file_name_of(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
 }
 
 fn describe_normalize(mode: Normalize) -> String {

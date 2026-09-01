@@ -34,6 +34,33 @@ fn help_lists_the_canonical_panel_and_orientation_names() {
 }
 
 #[test]
+fn help_says_what_the_report_prints_and_what_v_adds_to_it() {
+    let help = Args::command().render_long_help().to_string();
+    assert!(help.contains("REPORT:"), "{help}");
+    assert!(
+        help.contains("One section per file on stderr"),
+        "{help}"
+    );
+    assert!(
+        help.contains("Report more detail and log more"),
+        "-v now restores the report's detail as well:\n{help}"
+    );
+    for restored in ["sample count", "divisor", "reduce mode", "whole path"] {
+        assert!(help.contains(restored), "-v does not mention {restored}:\n{help}");
+    }
+    // --json outranks -q on stdout and leaves stderr alone, which is the pair
+    // the help is easiest to get backwards.
+    assert!(
+        help.contains("--json prints the machine report on stdout in place of the paths"),
+        "{help}"
+    );
+    assert!(
+        help.contains("leaves this one on stderr unless -q is given as well"),
+        "{help}"
+    );
+}
+
+#[test]
 fn defaults_match_the_documented_ones() {
     let args = parse(&["capture.iqw"]);
     assert_eq!(args.image_size, (2048, 512));
