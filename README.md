@@ -219,16 +219,23 @@ and half of every colour-bar label to say the same thing a dozen times, and it
 is what used to put `999.999 Hz` and `1.000 kHz` on one axis -- two spellings
 of neighbouring values. One unit for the whole axis ends that too.
 
-The foot of the plot names the vertical scale as `dBFS, ENBW 17.578 Hz`. The
-level is referenced to full scale -- a full-scale tone reads 0 dBFS whatever
-the transform size, because the transform divides by the window's coherent
-gain and not by any bandwidth. Noise is the part that moves with the
-bandwidth, so the bandwidth is named beside it: the window makes a bin answer
-to noise across `ENBW` hertz, half again the raw `Fs / N` spacing under a Hann
-window. Two renders of one capture at different `--fft-size` therefore show
-the same carrier level and different noise floors, and the `ENBW` field is
-what makes those floors comparable -- subtract `10 log10(ENBW)` from either to
-reach a density per hertz.
+The foot of the plot names the vertical scale as `dBFS, ENBW 17.578 Hz`.
+Levels are referenced to full scale: a full-scale tone sitting on a bin centre
+reads 0 dBFS at any transform size, and one falling between bins reads under
+it by the window's scalloping loss -- up to 1.42 dB half a bin off centre
+under Hann. The transform divides by the window's coherent gain and not by any
+bandwidth, so a carrier's level does not drop by 3 dB every time the bin
+halves, the way a noise floor does.
+
+Noise is the part that moves with the bandwidth, so the bandwidth is named
+beside it. `ENBW` is the window's equivalent noise bandwidth, which is what a
+bin answers to noise across: 1.5 times the raw `Fs / N` spacing under Hann,
+1.0 under a rectangular window, 2.0 under Blackman-Harris. Subtracting
+`10 log10(ENBW)` from a level turns it into a density per hertz -- but only in
+the spectrum panel, which averages. A spectrogram pixel is the loudest bin of
+the rows folded into it and, under `--reduce max`, the loudest frame of its
+column, so it estimates a maximum rather than a mean and no single bandwidth
+converts it.
 
 Every label drawn has a grid line or tick mark at the same value, and a label
 that would not fit whole inside the canvas is dropped along with its line

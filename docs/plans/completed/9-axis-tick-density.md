@@ -131,9 +131,10 @@ tick, or the same value on a panel that shares the axis.
   costs no new mechanism.
 - ➕ The footer's account of the vertical scale is corrected in the same breath, at the
   owner's request, because it was two fields making one statement and both were wrong.
-  `dBFS/bin` claimed a per-bin normalisation the transform does not perform: it divides
-  by the window's coherent gain, so a tone reads its own amplitude at any transform size
-  and only noise moves with the bandwidth. `bin 17.578 Hz` named that bandwidth after the
+  `dBFS/bin` claimed a normalisation by bandwidth the transform does not perform: it
+  divides by the window's coherent gain, so a full-scale tone on a bin centre reads
+  0 dBFS at any transform size, one between bins loses only the window's scalloping, and
+  only noise moves with the bandwidth. `bin 17.578 Hz` named that bandwidth after the
   bin, when it is the window's equivalent noise bandwidth -- half again the `Fs / N`
   spacing of 11.719 Hz under Hann -- so a reader checking `Fs / N` found a different
   number. The two become one field, `dBFS, ENBW 17.578 Hz`, and the separator is left
