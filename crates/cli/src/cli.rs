@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use argand_core::{Colormap, SampleType};
-use argand_dsp::{DbReference, Reduce, Window};
+use argand_dsp::{DynamicRange, Reduce, Window};
 use argand_io::{Normalize, RawSpec, parse_hz, parse_time};
 use clap::{ArgAction, Parser};
 
@@ -125,17 +125,13 @@ pub struct Args {
     #[arg(short = 'c', long, value_name = "C", default_value = "oceanic")]
     pub color_scheme: Colormap,
 
-    /// Dynamic range below the reference level, in dB
-    #[arg(short = 'd', long, value_name = "DB", default_value_t = 110.0)]
-    pub dynamic_range: f32,
+    /// Range below the measured peak, in dB, or auto (default: absolute 0...-110 dBFS)
+    #[arg(short = 'd', long, value_name = "DB|auto", allow_hyphen_values = true)]
+    pub dynamic_range: Option<DynamicRange>,
 
     /// How frames sharing a column are combined
     #[arg(long, value_name = "R", default_value = "max")]
     pub reduce: Reduce,
-
-    /// What 0 dB means: fs (format full scale) or peak (this file's loudest bin)
-    #[arg(long = "ref", value_name = "R", default_value = "fs")]
-    pub reference: DbReference,
 
     /// Suppress the progress bar and report
     #[arg(short = 'q', long, conflicts_with = "verbose")]
@@ -166,7 +162,8 @@ fn extended_help() -> String {
             "PANELS:\n    ",
             "The spectrogram is always drawn; --panels selects what joins it.\n    ",
             "{panels}\n\n",
-            "    The waveform strip is a min/max envelope scaled to the --ref level,\n",
+            "    The waveform strip is a min/max envelope. It uses full scale when -d\n",
+            "    is omitted and the measured peak for numeric and automatic ranges,\n",
             "    so a burst shorter than one pixel column still shows.\n\n",
             "SAMPLE TYPES:\n    ",
             "rl_u8, rl_i16, rl_i32, rl_f32, rl_f16x8 (real)\n    ",
@@ -175,7 +172,7 @@ fn extended_help() -> String {
             "EXAMPLES:\n    ",
             "aspec capture.iqw -o spec.png\n    ",
             "aspec dump.bin --raw iq_i16@24k --center 12.579M\n    ",
-            "aspec quiet.wav --normalize auto --ref peak\n    ",
+            "aspec quiet.wav --normalize auto -d auto\n    ",
             "aspec long.iqw --start 5m --duration 30s --orientation {vertical}\n    ",
             "aspec capture.iqw --panels {all_panels}\n    ",
             "aspec '*.iqw' --center 12.579M\n    ",
@@ -188,6 +185,11 @@ fn extended_help() -> String {
 }
 
 impl Args {
+    /// Requested range after resolving omission to the absolute default.
+    pub fn requested_dynamic_range(&self) -> DynamicRange {
+        self.dynamic_range.unwrap_or_default()
+    }
+
     /// Where `input`'s PNG goes when `--output` was not given.
     pub fn output_path(&self, input: &Path) -> PathBuf {
         self.output.clone().unwrap_or_else(|| {

@@ -13,6 +13,13 @@ promise applies to.
 
 ### Changed
 
+- Dynamic-range selection now uses one option: omitting `-d` keeps the
+  absolute `0...-110 dBFS` scale, a numeric value selects that range below the
+  measured peak, and `-d auto` calculates and applies a peak-to-floor range.
+  The separate `--ref` option was removed. Excessive non-auto ranges now show
+  a yellow `Suggested: -d N` annotation on the image and the same suggestion
+  in the human report; JSON reports requested, effective and recommended
+  ranges separately.
 - Axis tick density now follows the length of the axis and the measured width
   of its labels rather than a count fixed per axis, so a large render carries
   many more coordinates and a small one no longer overlaps them. Labels that

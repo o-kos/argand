@@ -75,15 +75,15 @@ or the peak and floor estimators.
 - [x] Add the dynamic-range request/result model and recommendation resolution
   to `argand-dsp`, including default, fixed, automatic, rounding, and clamp
   tests.
-- [ ] Replace `--ref` and the numeric default in the CLI, wire the resolved
+- [x] Replace `--ref` and the numeric default in the CLI, wire the resolved
   mode through analysis, gutter measurement, and waveform scaling, and test
   parsing and removal of the old option.
-- [ ] Expose requested, effective, and recommended ranges in JSON and human
+- [x] Expose requested, effective, and recommended ranges in JSON and human
   reports, and render the conditional yellow recommendation independently of
   optional panels.
-- [ ] Update end-to-end coverage for default, fixed, automatic, warning, and
+- [x] Update end-to-end coverage for default, fixed, automatic, warning, and
   panel-independent behaviour.
-- [ ] Update CLI help, README, and the Unreleased changelog entry.
+- [x] Update CLI help, README, and the Unreleased changelog entry.
 - [ ] Complete validation and change-specific render checks.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

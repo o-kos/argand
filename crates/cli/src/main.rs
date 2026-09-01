@@ -20,7 +20,10 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use argand_core::{SampleRange, SignalMeta, format_duration};
-use argand_dsp::{AnalysisRequest, DbReference, StftConfig, analyze};
+use argand_dsp::{
+    AnalysisRequest, DEFAULT_DYNAMIC_RANGE_DB, DynamicRange, MAX_RECOMMENDED_RANGE_DB, StftConfig,
+    analyze,
+};
 use argand_io::{Normalize, OpenHints};
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -111,6 +114,7 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
         hop: args.hop.unwrap_or((args.fft_size / 4).max(1)),
         window: args.window_type,
     };
+    let dynamic_range = args.requested_dynamic_range();
 
     // The gutters come first: how much of the image the axis labels take
     // decides how many pixels are left for the transform to fill.
@@ -119,7 +123,7 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
     let gutters = Gutters::measure(
         (seconds(range.start), seconds(range.end())),
         meta.frequency_span(),
-        colorbar_window(args),
+        colorbar_window(dynamic_range),
     );
     let layout = Layout::compute(width, height, args.panels, args.orientation, gutters);
     let (transform_w, transform_h) = layout.transform_size();
@@ -136,8 +140,7 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
         height: transform_h,
         reduce: args.reduce,
         colormap: args.color_scheme,
-        dynamic_range_db: args.dynamic_range,
-        reference: args.reference,
+        dynamic_range,
         waveform_columns: layout.waveform_columns(),
     };
 
@@ -163,8 +166,9 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
             analysis: &analysis,
             title: &report.plot_title(),
             footer: &report.plot_footer(),
+            suggestion: report.range_suggestion().as_deref(),
             colormap: args.color_scheme,
-            waveform_full_scale: render::waveform_full_scale(analysis.time_peak, args.reference),
+            waveform_full_scale: render::waveform_full_scale(analysis.time_peak, dynamic_range),
         },
     );
 
@@ -179,19 +183,14 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
     Ok(report)
 }
 
-/// The widest decibel window the colour bar can be asked to show.
-///
-/// It runs `--dynamic-range` below its reference, and `--ref` decides where
-/// that reference sits. Full scale pins it at 0 dBFS, so `-d 60` can only ever
-/// print down to -60. This file's own peak does not: it is not known until the
-/// transform has run and can sit anywhere down to `f32`'s floor, so a quiet
-/// capture under `--ref peak` prints labels several digits wider.
-fn colorbar_window(args: &Args) -> (f64, f64) {
-    let reference = match args.reference {
-        DbReference::FullScale => 0.0,
-        DbReference::Peak => render::DB_FLOOR,
-    };
-    (reference - f64::from(args.dynamic_range), 0.0)
+/// The widest decibel window the colour bar can be asked to show before the
+/// spectral peak is known.
+fn colorbar_window(range: DynamicRange) -> (f64, f64) {
+    match range {
+        DynamicRange::Default => (-f64::from(DEFAULT_DYNAMIC_RANGE_DB), 0.0),
+        DynamicRange::Fixed(db) => (render::DB_FLOOR - f64::from(db), 0.0),
+        DynamicRange::Auto => (render::DB_FLOOR - f64::from(MAX_RECOMMENDED_RANGE_DB), 0.0),
+    }
 }
 
 /// What a finished file puts on stdout, which is the machine-readable stream.

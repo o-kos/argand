@@ -55,7 +55,113 @@ fn assert_png(path: &Path) {
 }
 
 fn fft_args() -> Vec<&'static str> {
-    vec!["-f", "256", "--ref", "peak", "-d", "60", "-i", "500x300"]
+    vec!["-f", "256", "-d", "60", "-i", "500x300"]
+}
+
+#[test]
+fn dynamic_range_modes_are_applied_reported_and_suggested() {
+    let dir = TempDir::new("e2e-range");
+    let mut values = real_tone(SAMPLES, RATE as f64, TONE_HZ, 0.001);
+    for (n, value) in values.iter_mut().enumerate() {
+        let noise = ((n * 17 % 251) as f32 / 125.0 - 1.0) * 0.0001;
+        *value += noise;
+    }
+    let sample_type = "rl_f32".parse().unwrap();
+    let input = write_wav(&dir.join("quiet.wav"), sample_type, RATE, &values, 1.0);
+    let input = input.to_str().unwrap();
+
+    let default_png = png(&dir, "default.png");
+    let default = run_json(&[
+        input,
+        "-f",
+        "256",
+        "-i",
+        "500x300",
+        "-o",
+        default_png.to_str().unwrap(),
+    ]);
+    assert_eq!(default["stft"]["dynamic_range_mode"], "default");
+    assert_eq!(default["stft"]["dynamic_range_db"], 110.0);
+    assert_eq!(default["stft"]["db_max"], 0.0);
+
+    let fixed_png = png(&dir, "fixed.png");
+    let fixed = run_json(&[
+        input,
+        "-f",
+        "256",
+        "-d",
+        "40",
+        "-o",
+        fixed_png.to_str().unwrap(),
+    ]);
+    assert_eq!(fixed["stft"]["dynamic_range_mode"], "fixed");
+    assert_eq!(fixed["stft"]["dynamic_range_db"], 40.0);
+    assert!(fixed["stft"]["db_max"].as_f64().unwrap() < -40.0);
+    assert!(
+        (fixed["stft"]["db_max"].as_f64().unwrap()
+            - fixed["stft"]["db_min"].as_f64().unwrap()
+            - 40.0)
+            .abs()
+            < 0.01
+    );
+
+    let auto_png = png(&dir, "auto.png");
+    let automatic = run_json(&[
+        input,
+        "-f",
+        "256",
+        "-d",
+        "auto",
+        "-o",
+        auto_png.to_str().unwrap(),
+    ]);
+    assert_eq!(automatic["stft"]["dynamic_range_mode"], "auto");
+    assert_eq!(
+        automatic["stft"]["dynamic_range_db"],
+        automatic["stft"]["recommended_dynamic_range_db"]
+    );
+
+    let recommended = default["stft"]["recommended_dynamic_range_db"]
+        .as_f64()
+        .unwrap();
+    assert!(
+        recommended <= 100.0,
+        "fixture recommendation was {recommended}"
+    );
+    let human = run(&[
+        input,
+        "-f",
+        "256",
+        "-i",
+        "500x300",
+        "-o",
+        default_png.to_str().unwrap(),
+    ]);
+    assert!(human.status.success());
+    let stderr = String::from_utf8_lossy(&human.stderr);
+    assert!(
+        stderr.contains(&format!("Suggested: -d {recommended:.0}")),
+        "{stderr}"
+    );
+
+    let image = image::open(&default_png).unwrap().to_rgb8();
+    let yellow = image
+        .rows()
+        .take(36)
+        .flatten()
+        .filter(|pixel| {
+            let [r, g, b] = pixel.0;
+            r > 220 && g > 150 && b < 100
+        })
+        .count();
+    assert!(
+        yellow > 20,
+        "suggestion did not reach the image: {yellow} pixels"
+    );
+
+    let removed = run(&[input, "--ref", "peak"]);
+    assert!(!removed.status.success());
+    assert!(String::from_utf8_lossy(&removed.stderr).contains("unexpected argument '--ref'"));
 }
 
 #[test]
@@ -519,8 +625,6 @@ fn real_captures_render_end_to_end() {
         let output = png(&dir, &format!("{name}.png"));
         let report = run_json(&[
             input.to_str().unwrap(),
-            "--ref",
-            "peak",
             "-d",
             "60",
             "-i",
@@ -556,8 +660,6 @@ fn the_half_hour_capture_renders_end_to_end() {
         input.to_str().unwrap(),
         "--center",
         "12.579M",
-        "--ref",
-        "peak",
         "-d",
         "40",
         "-i",

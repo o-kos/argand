@@ -7,7 +7,7 @@
 //! pixel wide instead of a smear.
 
 use argand_core::{Colormap, Psd, SpectrogramImage, WaveformEnvelope};
-use argand_dsp::{Analysis, DbReference};
+use argand_dsp::{Analysis, DynamicRange};
 use image::{Rgb, RgbImage};
 
 use crate::text::{Anchor, TextRenderer, TextStyle};
@@ -307,6 +307,7 @@ impl Theme {
     const AXIS: Rgb<u8> = Rgb([72, 79, 94]);
     const GRID: Rgb<u8> = Rgb([38, 42, 52]);
     const TRACE: Rgb<u8> = Rgb([120, 200, 255]);
+    const WARNING: Rgb<u8> = Rgb([255, 204, 64]);
 }
 
 const PAD: i64 = 12;
@@ -343,6 +344,10 @@ const TITLE: TextStyle = TextStyle {
 const LABEL: TextStyle = TextStyle {
     size: FONT_SIZE,
     color: Theme::MUTED,
+};
+const WARNING: TextStyle = TextStyle {
+    size: FONT_SIZE,
+    color: Theme::WARNING,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -389,10 +394,10 @@ impl Gutters {
     /// Measure the widest label each axis could print, in the font and at the
     /// size the plot will draw with.
     ///
-    /// `decibels` is the widest window the colour bar can be asked to show,
-    /// which `--dynamic-range` and `--ref` decide between them. The spectrum
-    /// panel's own scale follows its trace and answers to neither, so it keeps
-    /// [`DB_FLOOR`] whatever the colour bar was told to span.
+    /// `decibels` is the widest window the colour bar can be asked to show.
+    /// The spectrum panel's own scale follows its trace and answers to no
+    /// colour-range mode, so it keeps [`DB_FLOOR`] whatever the colour bar was
+    /// told to span.
     pub fn measure(time: (f64, f64), frequency: (f64, f64), decibels: (f64, f64)) -> Self {
         let text = TextRenderer::new();
         // Every candidate is measured, because which of two strings needs more
@@ -660,25 +665,27 @@ pub struct PlotInput<'a> {
     pub analysis: &'a Analysis,
     pub title: &'a str,
     pub footer: &'a str,
+    pub suggestion: Option<&'a str>,
     pub colormap: Colormap,
     /// Sample value the edge of the waveform strip stands for.
     pub waveform_full_scale: f32,
 }
 
-/// The level the edge of the strip stands for, following `--ref`.
+/// The level the edge of the strip stands for under the requested range mode.
 ///
-/// The reference is read in the time domain: the loudest *sample* rather than
-/// the loudest bin, because a sample is what the strip actually draws.
+/// Peak-relative modes read their peak in the time domain: the loudest
+/// *sample* rather than the loudest bin, because a sample is what the strip
+/// actually draws.
 ///
 /// The scale is linear. A decibel strip was tried first, so that `-d` would
 /// size the strip and the colour bar alike, but a min/max span in decibels
 /// pins almost anything above the noise to the edges: a capture at -6 dBFS
 /// fills 90% of the half-height, and the shape the strip exists to show
 /// disappears into a solid band.
-pub fn waveform_full_scale(time_peak: f32, reference: DbReference) -> f32 {
-    match reference {
-        DbReference::FullScale => 1.0,
-        DbReference::Peak => time_peak.max(1e-6),
+pub fn waveform_full_scale(time_peak: f32, dynamic_range: DynamicRange) -> f32 {
+    match dynamic_range {
+        DynamicRange::Default => 1.0,
+        DynamicRange::Fixed(_) | DynamicRange::Auto => time_peak.max(1e-6),
     }
 }
 
@@ -955,6 +962,14 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
         Anchor::left(PAD as f32, (PAD + 15) as f32),
         TITLE,
     );
+    if let Some(suggestion) = input.suggestion {
+        text.draw(
+            &mut canvas,
+            suggestion,
+            Anchor::right((i64::from(layout.width) - PAD) as f32, (PAD + 15) as f32),
+            WARNING,
+        );
+    }
     text.draw(
         &mut canvas,
         input.footer,
@@ -1143,7 +1158,7 @@ fn draw_psd_trace(
     }
 }
 
-/// The time-domain strip: a min/max span per column, scaled to the reference.
+/// The time-domain strip: a min/max span per column, scaled to its mode's edge.
 fn draw_waveform(
     canvas: &mut RgbImage,
     scene: &Scene<'_>,

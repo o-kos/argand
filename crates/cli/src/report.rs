@@ -57,8 +57,9 @@ pub struct StftReport {
     pub frames: u64,
     pub enbw_hz: f64,
     pub reduce: String,
-    pub reference: String,
+    pub dynamic_range_mode: String,
     pub dynamic_range_db: f32,
+    pub recommended_dynamic_range_db: f32,
     pub db_min: f32,
     pub db_max: f32,
 }
@@ -149,8 +150,9 @@ impl Report {
                 frames: analysis.frames,
                 enbw_hz: analysis.enbw_hz,
                 reduce: request.reduce.to_string(),
-                reference: request.reference.to_string(),
-                dynamic_range_db: request.dynamic_range_db,
+                dynamic_range_mode: analysis.dynamic_range.requested.mode().to_string(),
+                dynamic_range_db: analysis.dynamic_range.effective_db,
+                recommended_dynamic_range_db: analysis.dynamic_range.recommended_db,
                 db_min: image.db_min,
                 db_max: image.db_max,
             },
@@ -208,9 +210,9 @@ impl Report {
             self.stft.overlap_percent,
             self.stft.reduce,
             self.stft.dynamic_range_db,
-            match self.stft.reference.as_str() {
-                "fs" => "full scale".to_string(),
-                _ => format!("{:.1} dBFS", self.stft.db_max),
+            match self.stft.dynamic_range_mode.as_str() {
+                "default" => "full scale".to_string(),
+                _ => format!("peak ({:.1} dBFS)", self.stft.db_max),
             },
             format_hz(self.stft.enbw_hz),
         )
@@ -318,6 +320,13 @@ impl Report {
             "  stft      fft {} · {} · hop {} · {} frames",
             self.stft.fft_size, self.stft.window, self.stft.hop, self.stft.frames
         )?;
+        writeln!(
+            out,
+            "  range     {} · {:.0} dB effective · {:.0} dB recommended",
+            self.stft.dynamic_range_mode,
+            self.stft.dynamic_range_db,
+            self.stft.recommended_dynamic_range_db
+        )?;
         writeln!(out)?;
 
         writeln!(
@@ -348,8 +357,8 @@ impl Report {
                 floor.dbfs
             )?;
         }
-        if let Some(hint) = self.contrast_hint() {
-            writeln!(out, "  hint      {hint}")?;
+        if let Some(suggestion) = self.range_suggestion() {
+            writeln!(out, "  {suggestion}")?;
         }
         if let Some(output) = &self.output {
             writeln!(
@@ -391,26 +400,18 @@ impl Report {
 }
 
 impl Report {
-    /// Warn when everything interesting sits in the bottom of the colour ramp.
-    ///
-    /// With the full-scale reference a quiet capture is drawn almost entirely
-    /// in the darkest few colours, which looks like a broken render rather
-    /// than a correct one.
-    pub fn contrast_hint(&self) -> Option<String> {
-        if self.stft.reference != "fs" {
+    /// Suggest the measured range when the selected one is wider by at least
+    /// one whole 10 dB recommendation step.
+    pub fn range_suggestion(&self) -> Option<String> {
+        if self.stft.dynamic_range_mode == "auto" {
             return None;
         }
-        let peak = self.peak_bin.as_ref()?.level.dbfs;
-        let headroom = self.stft.db_max - peak;
-        if headroom <= self.stft.dynamic_range_db * 0.5 {
+        if self.stft.dynamic_range_db - self.stft.recommended_dynamic_range_db < 10.0 {
             return None;
         }
-        // The span worth colouring is peak to noise floor, with room to spare.
-        let floor = self.floor.as_ref().map(|f| f.dbfs).unwrap_or(peak - 40.0);
-        let useful = (((peak - floor) * 1.5 / 10.0).ceil() * 10.0).clamp(20.0, 120.0);
         Some(format!(
-            "peak sits {headroom:.0} dB below full scale, so nearly the whole colour range is \
-             unused; try --ref peak -d {useful:.0}"
+            "Suggested: -d {:.0}",
+            self.stft.recommended_dynamic_range_db
         ))
     }
 }

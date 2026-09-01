@@ -1,7 +1,9 @@
 use super::*;
 use argand_core::{Colormap, Domain, SampleFormat, SampleRange, SampleType, SpectrogramImage};
 use argand_core::{Psd, SignalMeta};
-use argand_dsp::{Analysis, AnalysisRequest, DbReference, Reduce, StftConfig, Window};
+use argand_dsp::{
+    Analysis, AnalysisRequest, DynamicRange, DynamicRangeResult, Reduce, StftConfig, Window,
+};
 use std::path::PathBuf;
 
 fn meta(format: SampleFormat, divisor: f32) -> SignalMeta {
@@ -32,6 +34,7 @@ fn analysis_at(
     let mut image = SpectrogramImage::new(4, 4);
     image.db_max = db_max;
     image.db_min = db_max - 110.0;
+    let recommended_db = (((peak_db - floor_db) * 1.5 / 10.0).ceil() * 10.0).clamp(20.0, 120.0);
     Analysis {
         spectrogram: image,
         psd: Psd {
@@ -43,13 +46,18 @@ fn analysis_at(
         time_peak,
         frames: 84_372,
         enbw_hz: 17.578125,
+        dynamic_range: DynamicRangeResult {
+            requested: DynamicRange::Default,
+            effective_db: 110.0,
+            recommended_db,
+        },
     }
 }
 
 /// The whole fixture capture: 43.2 M samples at 24 kHz, so 1800 seconds.
 const FULL_SPAN: u64 = 43_200_000;
 
-fn request(reference: DbReference, analysed_samples: u64) -> AnalysisRequest {
+fn request(dynamic_range: DynamicRange, analysed_samples: u64) -> AnalysisRequest {
     AnalysisRequest {
         cfg: StftConfig::new(2048, Window::Hann),
         range: SampleRange::new(0, analysed_samples),
@@ -57,8 +65,7 @@ fn request(reference: DbReference, analysed_samples: u64) -> AnalysisRequest {
         height: 4,
         reduce: Reduce::Max,
         colormap: Colormap::Oceanic,
-        dynamic_range_db: 110.0,
-        reference,
+        dynamic_range,
         waveform_columns: None,
     }
 }
@@ -70,8 +77,13 @@ fn unscaled() -> Scaling {
     }
 }
 
-fn report(m: &SignalMeta, a: &Analysis, reference: DbReference) -> Report {
-    Report::new(m, a, &request(reference, FULL_SPAN), unscaled())
+fn report(m: &SignalMeta, a: &Analysis) -> Report {
+    Report::new(
+        m,
+        a,
+        &request(a.dynamic_range.requested, FULL_SPAN),
+        unscaled(),
+    )
 }
 
 fn human(r: &Report) -> String {
@@ -90,7 +102,7 @@ fn compact(r: &Report, index: usize, total: usize) -> String {
 fn the_compact_line_folds_the_input_path_into_a_star() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.2692, 0.0);
-    let beside = report(&m, &a, DbReference::FullScale).with_output(
+    let beside = report(&m, &a).with_output(
         std::path::Path::new("/data/12.579000_capture.iqw.png"),
         2048,
         512,
@@ -109,7 +121,7 @@ fn the_compact_line_folds_the_input_path_into_a_star() {
     assert_eq!(line.lines().count(), 1, "one file, one line:\n{line}");
 
     // A render that is not the input's own name is spelled out in full.
-    let elsewhere = report(&m, &a, DbReference::FullScale).with_output(
+    let elsewhere = report(&m, &a).with_output(
         std::path::Path::new("/tmp/spec.png"),
         2048,
         512,
@@ -123,7 +135,7 @@ fn the_compact_line_folds_the_input_path_into_a_star() {
 fn levels_are_given_in_decibels_and_in_file_units() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.2692, 0.0);
-    let text = human(&report(&m, &a, DbReference::FullScale));
+    let text = human(&report(&m, &a));
 
     assert!(text.contains("-11.4 dBFS"), "{text}");
     // -11.4 dBFS is 0.2692 of full scale, or 8820 counts of 32768.
@@ -135,7 +147,7 @@ fn levels_are_given_in_decibels_and_in_file_units() {
 fn a_weak_bin_keeps_its_decimals_instead_of_rounding_to_zero() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-99.8, -121.7, 0.0025, -77.8);
-    let text = human(&report(&m, &a, DbReference::Peak));
+    let text = human(&report(&m, &a));
 
     assert!(!text.contains("0/32768"), "a real level printed as zero:\n{text}");
     assert!(text.contains("0.335/32768"), "{text}");
@@ -145,7 +157,7 @@ fn a_weak_bin_keeps_its_decimals_instead_of_rounding_to_zero() {
 fn float_formats_print_the_value_rather_than_a_count() {
     let m = meta(SampleFormat::F32, 1.0);
     let a = analysis(-6.0, -60.0, 0.5, 0.0);
-    let text = human(&report(&m, &a, DbReference::FullScale));
+    let text = human(&report(&m, &a));
     assert!(!text.contains('/'), "float levels have no denominator:\n{text}");
     assert!(text.contains("0.500"), "{text}");
 }
@@ -154,60 +166,60 @@ fn float_formats_print_the_value_rather_than_a_count() {
 fn the_offset_frequency_carries_its_sign() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.5, 0.0);
-    assert!(human(&report(&m, &a, DbReference::FullScale)).contains("+2.404 kHz"));
+    assert!(human(&report(&m, &a)).contains("+2.404 kHz"));
 
     let mut negative = analysis(-11.4, -87.2, 0.5, 0.0);
     negative.psd.db = vec![-11.4, -87.2, -87.2];
     assert_eq!(negative.psd.freqs_hz[0], -2404.0);
-    assert!(human(&report(&m, &negative, DbReference::FullScale)).contains("-2.404 kHz"));
+    assert!(human(&report(&m, &negative)).contains("-2.404 kHz"));
 }
 
 #[test]
 fn an_absolute_frequency_appears_only_when_a_centre_was_given() {
     let a = analysis(-11.4, -87.2, 0.5, 0.0);
 
-    let baseband = human(&report(&meta(SampleFormat::I16, 32768.0), &a, DbReference::FullScale));
+    let baseband = human(&report(&meta(SampleFormat::I16, 32768.0), &a));
     assert!(!baseband.contains("MHz"), "{baseband}");
 
     let mut tuned = meta(SampleFormat::I16, 32768.0);
     tuned.center_freq = 12_579_000.0;
     let tuned_analysis = analysis_at(12_579_000.0, -11.4, -87.2, 0.5, 0.0);
-    let text = human(&report(&tuned, &tuned_analysis, DbReference::FullScale));
+    let text = human(&report(&tuned, &tuned_analysis));
     assert!(text.contains("+2.404 kHz"), "offset stays relative: {text}");
     assert!(text.contains("12.581404 MHz"), "{text}");
 }
 
 #[test]
-fn a_dark_render_says_so_and_suggests_a_fix() {
+fn an_excessive_non_auto_range_suggests_the_measured_one() {
     let m = meta(SampleFormat::I16, 32768.0);
-    // Peak 100 dB below full scale: almost the whole ramp goes unused.
-    let dark = report(&m, &analysis(-99.8, -121.7, 0.0025, 0.0), DbReference::FullScale);
-    let hint = dark.contrast_hint().expect("should warn");
-    assert!(hint.contains("--ref peak"), "{hint}");
-    assert!(hint.contains("-d 40"), "range should fit peak to floor: {hint}");
-    assert!(human(&dark).contains("hint"), "the hint should be printed");
+    let dark = report(&m, &analysis(-99.8, -121.7, 0.0025, 0.0));
+    assert_eq!(dark.range_suggestion().as_deref(), Some("Suggested: -d 40"));
+    assert!(human(&dark).contains("Suggested: -d 40"));
 
-    // A healthy capture gets no lecture.
-    let bright = report(&m, &analysis(-11.4, -87.2, 0.5, 0.0), DbReference::FullScale);
-    assert!(bright.contrast_hint().is_none());
-    assert!(!human(&bright).contains("hint"));
+    // A range already close to the recommendation gets no lecture.
+    let bright = report(&m, &analysis(-11.4, -87.2, 0.5, 0.0));
+    assert!(bright.range_suggestion().is_none());
+    assert!(!human(&bright).contains("Suggested:"));
 
-    // Neither does one that already asked for the peak reference.
-    let peaked = report(&m, &analysis(-99.8, -121.7, 0.0025, -77.8), DbReference::Peak);
-    assert!(peaked.contrast_hint().is_none());
+    // Auto never suggests the value it already applied.
+    let mut automatic = analysis(-99.8, -121.7, 0.0025, -77.8);
+    automatic.dynamic_range.requested = DynamicRange::Auto;
+    automatic.dynamic_range.effective_db = automatic.dynamic_range.recommended_db;
+    let automatic = report(&m, &automatic);
+    assert!(automatic.range_suggestion().is_none());
 }
 
 #[test]
 fn the_analysed_span_is_only_mentioned_when_it_differs() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.5, 0.0);
-    assert!(!human(&report(&m, &a, DbReference::FullScale)).contains("analysed"));
+    assert!(!human(&report(&m, &a)).contains("analysed"));
 
     // 30 seconds of the 1800-second capture.
     let partial = Report::new(
         &m,
         &a,
-        &request(DbReference::FullScale, 30 * 24_000),
+        &request(DynamicRange::Default, 30 * 24_000),
         unscaled(),
     );
     assert!(human(&partial).contains("analysed  30s"), "{}", human(&partial));
@@ -217,7 +229,7 @@ fn the_analysed_span_is_only_mentioned_when_it_differs() {
 fn the_plot_title_and_footer_describe_the_run() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.5, 0.0);
-    let r = report(&m, &a, DbReference::FullScale);
+    let r = report(&m, &a);
 
     let title = r.plot_title();
     assert!(title.starts_with("12.579000_capture.iqw"), "{title}");
@@ -246,7 +258,7 @@ fn the_plot_title_and_footer_describe_the_run() {
 fn json_is_valid_and_carries_the_numbers() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.2692, 0.0);
-    let r = report(&m, &a, DbReference::FullScale)
+    let r = report(&m, &a)
         .with_output(
             std::path::Path::new("spec.png"),
             2048,
@@ -261,6 +273,9 @@ fn json_is_valid_and_carries_the_numbers() {
     assert_eq!(value["samples"], 43_200_000u64);
     assert_eq!(value["stft"]["fft_size"], 2048);
     assert_eq!(value["stft"]["frames"], 84_372u64);
+    assert_eq!(value["stft"]["dynamic_range_mode"], "default");
+    assert_eq!(value["stft"]["dynamic_range_db"], 110.0);
+    assert_eq!(value["stft"]["recommended_dynamic_range_db"], 120.0);
     assert_eq!(value["output"]["width"], 2048);
     assert_eq!(value["output"]["bytes"], 253_952u64);
 
@@ -272,15 +287,29 @@ fn json_is_valid_and_carries_the_numbers() {
 }
 
 #[test]
+fn human_report_names_requested_effective_and_recommended_ranges() {
+    let m = meta(SampleFormat::I16, 32768.0);
+    let mut a = analysis(-99.8, -121.7, 0.0025, -99.8);
+    a.dynamic_range.requested = DynamicRange::Fixed(60.0);
+    a.dynamic_range.effective_db = 60.0;
+
+    let text = human(&report(&m, &a));
+    assert!(
+        text.contains("range     fixed · 60 dB effective · 40 dB recommended"),
+        "{text}"
+    );
+}
+
+#[test]
 fn an_empty_spectrum_leaves_the_optional_fields_out() {
     let m = meta(SampleFormat::I16, 32768.0);
     let mut a = analysis(-11.4, -87.2, 0.5, 0.0);
     a.psd.db.clear();
     a.psd.freqs_hz.clear();
 
-    let r = report(&m, &a, DbReference::FullScale);
+    let r = report(&m, &a);
     assert!(r.peak_bin.is_none() && r.floor.is_none());
-    assert!(r.contrast_hint().is_none());
+    assert!(r.range_suggestion().is_none());
 
     let value: serde_json::Value = serde_json::from_str(&r.to_json()).unwrap();
     assert!(value["peak_bin"].is_null() && value["floor"].is_null());
@@ -295,7 +324,7 @@ fn the_normalization_mode_is_reported_verbatim() {
         Report::new(
             &m,
             &a,
-            &request(DbReference::FullScale, FULL_SPAN),
+            &request(DynamicRange::Default, FULL_SPAN),
             Scaling {
                 normalize: mode,
                 gain_db: -6.0,
