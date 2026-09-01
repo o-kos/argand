@@ -11,7 +11,7 @@ pub mod waveform;
 pub mod window;
 
 pub use stft::{
-    Analysis, AnalysisRequest, DB_REFERENCE_NAMES, DbReference, DspError, ParseEnumError,
+    Analysis, AnalysisRequest, DB_FLOOR, DB_REFERENCE_NAMES, DbReference, DspError, ParseEnumError,
     REDUCE_NAMES, Reduce, StftConfig, analyze,
 };
 pub use waveform::EnvelopeBuilder;

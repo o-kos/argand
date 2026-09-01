@@ -12,6 +12,7 @@ mod mask;
 mod render;
 mod report;
 mod text;
+mod ticks;
 
 use std::io::{IsTerminal, Write};
 use std::path::Path;
@@ -19,13 +20,13 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use argand_core::{SampleRange, SignalMeta, format_duration};
-use argand_dsp::{AnalysisRequest, StftConfig, analyze};
+use argand_dsp::{AnalysisRequest, DbReference, StftConfig, analyze};
 use argand_io::{Normalize, OpenHints};
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::cli::Args;
-use crate::render::{Layout, PlotInput};
+use crate::render::{Gutters, Layout, PlotInput};
 use crate::report::{Report, Scaling};
 
 fn main() -> Result<()> {
@@ -111,8 +112,16 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
         window: args.window_type,
     };
 
+    // The gutters come first: how much of the image the axis labels take
+    // decides how many pixels are left for the transform to fill.
     let (width, height) = args.image_size;
-    let layout = Layout::compute(width, height, args.panels, args.orientation);
+    let seconds = |sample: u64| sample as f64 / meta.sample_rate;
+    let gutters = Gutters::measure(
+        (seconds(range.start), seconds(range.end())),
+        meta.frequency_span(),
+        colorbar_window(args),
+    );
+    let layout = Layout::compute(width, height, args.panels, args.orientation, gutters);
     let (transform_w, transform_h) = layout.transform_size();
     if transform_w == 0 || transform_h == 0 {
         bail!("image {width}x{height} leaves no room for the plot; try a larger --image-size");
@@ -168,6 +177,21 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
     report = report.with_output(&output, width, height, bytes, args.panels.to_string());
     report.elapsed_seconds = started.elapsed().as_secs_f64();
     Ok(report)
+}
+
+/// The widest decibel window the colour bar can be asked to show.
+///
+/// It runs `--dynamic-range` below its reference, and `--ref` decides where
+/// that reference sits. Full scale pins it at 0 dBFS, so `-d 60` can only ever
+/// print down to -60. This file's own peak does not: it is not known until the
+/// transform has run and can sit anywhere down to `f32`'s floor, so a quiet
+/// capture under `--ref peak` prints labels several digits wider.
+fn colorbar_window(args: &Args) -> (f64, f64) {
+    let reference = match args.reference {
+        DbReference::FullScale => 0.0,
+        DbReference::Peak => render::DB_FLOOR,
+    };
+    (reference - f64::from(args.dynamic_range), 0.0)
 }
 
 /// What a finished file puts on stdout, which is the machine-readable stream.

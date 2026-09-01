@@ -11,6 +11,32 @@ promise applies to.
 
 ## [Unreleased]
 
+### Changed
+
+- Axis tick density now follows the length of the axis and the measured width
+  of its labels rather than a count fixed per axis, so a large render carries
+  many more coordinates and a small one no longer overlaps them. Labels that
+  would not fit whole inside the canvas are dropped with their grid lines
+  instead of being clipped.
+- Time axis labels read as a clock: `1:02:09` over a span of an hour or more
+  and `3.07` below that. Ticks never step finer than one second and labels no
+  longer carry fractional seconds.
+- Axis units are named once beside the axis instead of on every tick: `MHz` at
+  the head of the frequency labels and `dB` above the colour bar, with bare
+  numbers under them. One unit is chosen for the whole frequency axis, so
+  neighbouring values can no longer print as `999.999 Hz` and `1.000 kHz`.
+- The plot's footer names the vertical scale as `dBFS, ENBW <bandwidth>` in one
+  field, replacing `bin <bandwidth> · dBFS/bin`. The scale divides by the
+  window's coherent gain rather than by a bandwidth, so its levels are not a
+  density per hertz, and the bandwidth quoted is the window's equivalent noise
+  bandwidth rather than the raw `Fs / N` bin spacing.
+- Panels sharing an axis are given one set of tick values, so the waveform
+  strip's time grid and the spectrum panel's frequency grid line up with the
+  spectrogram's exactly. The spectrum panel gained frequency grid lines.
+- The gutters holding axis labels are measured from the widest label the axis
+  can print. Frequency labels on a tuned capture, such as `12.579887 MHz`, no
+  longer run off the left of the image.
+
 ## [0.0.1] - 2026-08-28
 
 ### Added

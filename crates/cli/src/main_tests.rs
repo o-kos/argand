@@ -47,3 +47,25 @@ fn the_two_streams_are_decided_independently() {
     assert_eq!(stdout_line(&json, true), StdoutLine::Json);
     assert_eq!(stderr_block(&json, false), StderrBlock::Human);
 }
+
+#[test]
+fn the_colour_bar_window_follows_the_reference_it_was_asked_for() {
+    // Full scale pins the top of the window at 0 dBFS, so `-d 60` can only
+    // ever print down to -60, whatever the gain does to the samples.
+    for flags in [
+        &["x.wav", "-d", "60"][..],
+        &["x.wav", "-d", "60", "--ref", "fs"][..],
+        &["x.wav", "-d", "60", "-g", "-40"][..],
+    ] {
+        assert_eq!(colorbar_window(&parse(flags)), (-60.0, 0.0), "{flags:?}");
+    }
+
+    // This file's own peak is not known until the transform has run, and the
+    // transform clamps silence at its own floor, so that is what bounds it.
+    let peak = parse(&["x.wav", "-d", "60", "--ref", "peak"]);
+    assert_eq!(colorbar_window(&peak), (render::DB_FLOOR - 60.0, 0.0));
+
+    // And the window widens with --dynamic-range under either reference.
+    let wide = parse(&["x.wav", "-d", "10000"]);
+    assert_eq!(colorbar_window(&wide), (-10_000.0, 0.0));
+}

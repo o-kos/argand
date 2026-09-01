@@ -195,6 +195,57 @@ against the `--ref` level -- full scale, or this file's loudest sample under
 `--ref peak`. A complex signal is one track, spanning whichever of I and Q
 reached further in that column.
 
+### Axes
+
+How many labels an axis carries is decided from how long it is and how wide
+its labels turn out to be, not from a count fixed in advance. Every candidate
+step is formatted and measured with the font the plot draws with, and the
+densest one whose labels still keep two digits of clear space wins. A wider
+image therefore gets more coordinates rather than the same few spread further
+apart, and a narrow one does not stack them on top of each other.
+
+Values stay round. Numeric axes step by 1, 2 or 5 times a power of ten, and
+zero is exact whenever it is on the axis. Time steps on a clock -- 1, 5, 15,
+30 seconds, a minute, five, an hour -- and never finer than one second, so a
+label never carries a fraction. Time reads as `1:02:09` over a span of an hour
+or more and `3.07` -- minutes and seconds -- below that, whatever point of the
+recording the span was taken from. A window shorter than a second shows the
+whole seconds inside it and nothing else.
+
+The unit is named once beside the axis rather than repeated on every tick:
+`MHz` at the head of the frequency labels and `dB` above the colour bar, with
+bare numbers under them. Repeating it costs a third of every frequency label
+and half of every colour-bar label to say the same thing a dozen times, and it
+is what used to put `999.999 Hz` and `1.000 kHz` on one axis -- two spellings
+of neighbouring values. One unit for the whole axis ends that too.
+
+The foot of the plot names the vertical scale as `dBFS, ENBW 17.578 Hz`.
+Levels are referenced to full scale: a full-scale tone sitting on a bin centre
+reads 0 dBFS at any transform size, and one falling between bins reads under
+it by the window's scalloping loss -- up to 1.42 dB half a bin off centre
+under Hann. The transform divides by the window's coherent gain and not by any
+bandwidth, so a carrier's level does not drop by 3 dB every time the bin
+halves, the way a noise floor does.
+
+Noise is the part that moves with the bandwidth, so the bandwidth is named
+beside it. `ENBW` is the window's equivalent noise bandwidth, which is what a
+bin answers to noise across: 1.5 times the raw `Fs / N` spacing under Hann,
+1.0 under a rectangular window, 2.0 under Blackman-Harris. Subtracting
+`10 log10(ENBW)` from a level turns it into a density per hertz -- but only in
+the spectrum panel, which averages. A spectrogram pixel is the loudest bin of
+the rows folded into it and, under `--reduce max`, the loudest frame of its
+column, so it estimates a maximum rather than a mean and no single bandwidth
+converts it.
+
+Every label drawn has a grid line or tick mark at the same value, and a label
+that would not fit whole inside the canvas is dropped along with its line
+rather than clipped. Coordinates stay inside the span being drawn, to within
+the pixel that separating a rounding artefact from a real value costs. Panels sharing an axis are given one set of values, so
+the waveform strip's grid lines fall on the spectrogram's, and the averaged
+spectrum's on the spectrogram's frequencies. The gutters holding the labels
+are sized by measuring the widest label the axis could print, which is why a
+capture tuned to 12.579 MHz gets a wider left margin than a baseband one.
+
 ### What it gets right
 
 Two things here differ from an ordinary audio spectrogram, and both matter for
@@ -210,8 +261,8 @@ I/Q:
   released back to the kernel. A 30-minute, 172 MB I/Q capture renders in
   about 0.8 s with the resident set flat at roughly 60 MB.
 
-A full-scale tone reads 0 dBFS in either domain, so the colour scale means the
-same thing for a real recording and a complex one.
+A full-scale tone on a bin centre reads 0 dBFS in either domain, so the colour
+scale means the same thing for a real recording and a complex one.
 
 ## Layout
 

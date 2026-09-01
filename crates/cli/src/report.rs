@@ -183,10 +183,25 @@ impl Report {
         self
     }
 
-    /// Text the footer of the image carries.
+    /// Text the foot of the image carries.
+    ///
+    /// The vertical scale is one field, not two. Its unit and the bandwidth
+    /// behind it are a single statement -- levels are referenced to full scale
+    /// and each point of the spectrum covers this much of it -- and splitting
+    /// them on the same separator as everything else made them read as two
+    /// unrelated facts.
+    ///
+    /// The unit is `dBFS`, without a `per bin`: the transform divides by the
+    /// window's coherent gain, not by any bandwidth. A full-scale tone on a bin
+    /// centre therefore reads 0 dBFS at any transform size, and one between
+    /// bins reads under it by the window's scalloping loss rather than by
+    /// anything to do with the bin's width. Only noise moves with the
+    /// bandwidth, which is why that bandwidth is named beside it -- and named
+    /// as `ENBW`, since how much noise a bin answers to is the window's to
+    /// decide and only a rectangular one leaves it at the bin spacing.
     pub fn plot_footer(&self) -> String {
         format!(
-            "fft {} · {} · hop {} ({:.0}% overlap) · {} · {} dB below {} · bin {} · dBFS/bin",
+            "fft {} · {} · hop {} ({:.0}% overlap) · {} · {} dB below {} · dBFS, ENBW {}",
             self.stft.fft_size,
             self.stft.window,
             self.stft.hop,

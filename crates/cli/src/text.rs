@@ -84,6 +84,20 @@ impl TextRenderer {
         width
     }
 
+    /// Height of the ink a numeric label puts on the canvas at `size`.
+    ///
+    /// Digits carry neither ascender nor descender, so the font's line height
+    /// reserves half again more room than a row of them occupies. An axis that
+    /// spaced its labels by line height would leave a third of itself empty for
+    /// strokes no label draws.
+    pub fn digit_height(&self, size: f32) -> f32 {
+        let scaled = self.font.as_scaled(PxScale::from(size));
+        let glyph = scaled.scaled_glyph('0');
+        self.font
+            .outline_glyph(glyph)
+            .map_or_else(|| scaled.height(), |o| o.px_bounds().height())
+    }
+
     /// Draw `text` with its baseline at `at.y`, positioned horizontally by
     /// `at.align` relative to `at.x`.
     pub fn draw(&self, canvas: &mut RgbImage, text: &str, at: Anchor, style: TextStyle) {

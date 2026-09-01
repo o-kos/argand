@@ -168,6 +168,34 @@ fn a_full_scale_tone_reads_zero_dbfs() {
 }
 
 #[test]
+fn a_tone_between_bins_loses_the_window_s_scalloping_and_no_more() {
+    // 0 dBFS is the reading for a tone on a bin centre. One that falls between
+    // bins reads under it, and the shortfall is the window's scalloping loss,
+    // not anything to do with the bin's width -- which is why the plot calls
+    // its scale dBFS rather than a per-hertz density.
+    let bin = RATE / FFT as f64;
+    let losses: Vec<f32> = [0.0, 0.25, 0.5]
+        .into_iter()
+        .map(|offset| {
+            let hz = (TONE_BIN as f64 + offset) * bin;
+            let mut src = VecSource::new(Domain::Iq, iq_tone(8192, hz, 1.0), 0.0);
+            run(&mut src, 64, 64).psd.peak(0.0).unwrap().db
+        })
+        .collect();
+
+    assert!(losses[0].abs() < 0.01, "on the bin centre: {losses:?}");
+    // Hann's worst case is half a bin off centre, at about 1.42 dB.
+    assert!(
+        (losses[2] + 1.42).abs() < 0.05,
+        "half a bin off centre: {losses:?}"
+    );
+    assert!(
+        losses[0] > losses[1] && losses[1] > losses[2],
+        "the loss has to grow with the offset: {losses:?}"
+    );
+}
+
+#[test]
 fn halving_the_amplitude_costs_six_decibels() {
     let mut loud = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 1.0), 0.0);
     let mut quiet = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 0.5), 0.0);
@@ -455,3 +483,12 @@ fn overlap_is_reported_from_the_hop() {
     };
     assert!((half.overlap_percent() - 50.0).abs() < 1e-9);
 }
+
+#[test]
+fn the_published_decibel_floor_matches_the_floors_that_produce_it() {
+    // Both clamps have to agree with the constant a renderer reserves from,
+    // or a label can come out wider than the room set aside for it.
+    assert_eq!(20.0 * MAG_FLOOR.log10(), DB_FLOOR);
+    assert!((10.0 * POWER_FLOOR.log10() - f64::from(DB_FLOOR)).abs() < 1e-9);
+}
+
