@@ -117,21 +117,28 @@ rendered image, or any option's meaning.
 - [x] ➕ Compare resolved directories, not the paths as typed, when deciding
   whether a render sits beside its input, folding `.` and `..` because
   `std::path::absolute` keeps both on POSIX.
-- [ ] Complete validation, including a real terminal and a pipe.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] ➕ Name a measured full scale of any size, and fold `.` and `..` when
+  deciding whether a render sits beside its input.
+- [x] Complete validation, including a real terminal and a pipe.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Run the release binary on a real capture with stdout on a terminal and
-  again through a pipe, and confirm the path appears only in the second case.
-- [ ] Compare the default, `-v`, batch and `-q` shapes against the issue's
-  acceptance criteria from that binary.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Run the release binary on a real capture with stdout on a terminal and
+  again through a pipe: six lines and no path on the terminal, the path alone
+  on stdout through the pipe.
+- [x] Compare the default, `-v`, batch and `-q` shapes against the issue's
+  acceptance criteria from that binary, together with the two cases only the
+  binary can show: a relative `-o` against an input in another directory is
+  headed by an absolute path, and `-n 4200 -v` names 4200 once.
+- [x] Five rounds of external review with `codex`; the fifth returned one
+  finding, on the strength of a test this branch added, and it was fixed.
 
 ## Post-completion
 

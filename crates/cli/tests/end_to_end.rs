@@ -991,19 +991,21 @@ fn a_batch_prints_the_full_report_per_file_under_verbose() {
             "-v dropped {added}:\n{stderr}"
         );
     }
-    assert_eq!(
-        stderr
-            .matches(&format!("\n{}", dir.path().display()))
-            .count(),
-        2,
-        "-v spells each render's path out in full:\n{stderr}"
-    );
-    // A level in the file's own units, beside its decibels.
-    assert_eq!(stderr.matches(" dBFS\n").count(), 2, "{stderr}");
-    assert!(
-        stderr.contains(" ("),
-        "absolute levels are missing:\n{stderr}"
-    );
+    for name in ["a.wav.png", "b.wav.png"] {
+        let path = dir.join(name).display().to_string();
+        assert_eq!(
+            stderr.matches(&format!("\n{path}:\n")).count(),
+            1,
+            "-v spells {name}'s own path out in full:\n{stderr}"
+        );
+    }
+    // A level line carries the file's own units beside its decibels. The
+    // parentheses alone prove nothing: `range 110 dB (default)` has a pair.
+    let absolute_levels = stderr
+        .lines()
+        .filter(|line| line.ends_with(" dBFS") && line.contains(" ("))
+        .count();
+    assert_eq!(absolute_levels, 2, "absolute levels are missing:\n{stderr}");
 }
 
 #[test]
