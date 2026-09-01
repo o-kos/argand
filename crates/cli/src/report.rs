@@ -217,8 +217,8 @@ impl Report {
             _ => format!("peak ({:.1} dBFS)", self.stft.db_max),
         };
         let suggestion = self
-            .range_suggestion()
-            .map_or_else(String::new, |value| format!(" · {value}"));
+            .plot_range_suggestion()
+            .map_or_else(String::new, |value| format!(" {value}"));
         format!(
             "{} dB below {}{} · dBFS, ENBW {}",
             self.stft.dynamic_range_db,
@@ -413,19 +413,27 @@ impl Report {
 }
 
 impl Report {
-    /// Suggest the measured range when the selected one is wider by at least
-    /// one whole 10 dB recommendation step.
-    pub fn range_suggestion(&self) -> Option<String> {
+    fn suggested_range_db(&self) -> Option<f32> {
         if self.stft.dynamic_range_mode == "auto" {
             return None;
         }
         if self.stft.dynamic_range_db - self.stft.recommended_dynamic_range_db < 10.0 {
             return None;
         }
-        Some(format!(
-            "Suggested: -d {:.0}",
-            self.stft.recommended_dynamic_range_db
-        ))
+        Some(self.stft.recommended_dynamic_range_db)
+    }
+
+    /// Suggest the measured range when the selected one is wider by at least
+    /// one whole 10 dB recommendation step.
+    pub fn range_suggestion(&self) -> Option<String> {
+        self.suggested_range_db()
+            .map(|range| format!("Suggested: -d {range:.0}"))
+    }
+
+    /// Short form used in the image metadata footer.
+    pub fn plot_range_suggestion(&self) -> Option<String> {
+        self.suggested_range_db()
+            .map(|range| format!("sugg -d {range:.0}"))
     }
 }
 

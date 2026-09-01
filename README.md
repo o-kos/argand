@@ -167,8 +167,9 @@ from the peak to the median spectral floor, adds 50% headroom, rounds upward
 to 10 dB, and clamps the result to `20...120 dB` before applying it.
 
 When a default or numeric range is at least 10 dB wider than that calculated
-range, the human report and the image footer show `Suggested: -d N`. Automatic
-mode already applies the recommendation and therefore does not repeat it as a
+range, the human report shows `Suggested: -d N` and the image footer places the
+short form `sugg -d N` immediately after its scale reference. Automatic mode
+already applies the recommendation and therefore does not repeat it as a
 suggestion. The JSON STFT block exposes `dynamic_range_mode`, the effective
 `dynamic_range_db`, and `recommended_dynamic_range_db` separately.
 

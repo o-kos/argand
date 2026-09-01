@@ -119,9 +119,9 @@ fn the_yellow_suggestion_is_drawn_in_the_footer_without_depending_on_a_panel() {
             &PlotInput {
                 analysis: &a,
                 title: "title",
-                footer: "60 dB below full scale · Suggested: -d 40 · dBFS",
-                compact_footer: "60 dB below full scale · Suggested: -d 40 · dBFS",
-                footer_warning: Some("Suggested: -d 40"),
+                footer: "60 dB below full scale sugg -d 40 · dBFS",
+                compact_footer: "60 dB below full scale sugg -d 40 · dBFS",
+                footer_warning: Some("sugg -d 40"),
                 colormap: Colormap::Grayscale,
                 waveform_full_scale: 1.0,
             },
@@ -150,10 +150,9 @@ fn a_narrow_footer_keeps_the_complete_warning_and_scale_metadata() {
     let dir = TempDir::new("render-narrow-suggestion");
     let layout = laid_out(500, 300, Panels::NONE, Orientation::Horizontal);
     let a = analysis(&dir, "narrow.wav", true, &layout);
-    let warning = "Suggested: -d 40";
-    let full = "fft 256 · hann · hop 64 (75% overlap) · max · 110 dB below full scale · Suggested: -d 40 · dBFS, ENBW 140.625 Hz";
-    let compact =
-        "110 dB below full scale · Suggested: -d 40 · dBFS, ENBW 140.625 Hz";
+    let warning = "sugg -d 40";
+    let full = "fft 256 · hann · hop 64 (75% overlap) · max · 110 dB below full scale sugg -d 40 · dBFS, ENBW 140.625 Hz";
+    let compact = "110 dB below full scale sugg -d 40 · dBFS, ENBW 140.625 Hz";
     let text = TextRenderer::new();
     let available = layout.width as f32 - 2.0 * PAD as f32;
     assert!(text.width(full, FONT_SIZE) > available);
@@ -178,7 +177,7 @@ fn a_narrow_footer_keeps_the_complete_warning_and_scale_metadata() {
         .map(|(x, _)| x)
         .collect::<Vec<_>>();
     let yellow_span = yellow_columns.iter().max().unwrap() - yellow_columns.iter().min().unwrap();
-    assert!(yellow_span > 90, "warning spans only {yellow_span} pixels");
+    assert!(yellow_span > 50, "warning spans only {yellow_span} pixels");
     let yellow_right = *yellow_columns.iter().max().unwrap();
     let trailing_label = ((layout.height - FOOTER_H as u32)..layout.height)
         .flat_map(|y| (yellow_right + 2..canvas.width()).map(move |x| (x, y)))

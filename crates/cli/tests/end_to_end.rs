@@ -197,7 +197,7 @@ fn dynamic_range_suggestion_reaches_human_reports_and_image() {
     );
     let yellow_span = yellow_columns.iter().max().unwrap() - yellow_columns.iter().min().unwrap();
     assert!(
-        yellow_span > 90,
+        yellow_span > 50,
         "suggestion spans only {yellow_span} pixels"
     );
     let yellow_right = *yellow_columns.iter().max().unwrap();

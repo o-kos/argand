@@ -194,6 +194,7 @@ fn an_excessive_non_auto_range_suggests_the_measured_one() {
     let m = meta(SampleFormat::I16, 32768.0);
     let dark = report(&m, &analysis(-99.8, -121.7, 0.0025, 0.0));
     assert_eq!(dark.range_suggestion().as_deref(), Some("Suggested: -d 40"));
+    assert_eq!(dark.plot_range_suggestion().as_deref(), Some("sugg -d 40"));
     assert!(human(&dark).contains("Suggested: -d 40"));
 
     // A range already close to the recommendation gets no lecture.
@@ -254,11 +255,11 @@ fn the_plot_title_and_footer_describe_the_run() {
     let suggested_footer = suggested.plot_footer();
     let suggested_scale_footer = suggested.plot_scale_footer();
     assert!(
-        suggested_footer.contains("full scale · Suggested: -d 100 · dBFS"),
+        suggested_footer.contains("full scale sugg -d 100 · dBFS"),
         "{suggested_footer}"
     );
     assert!(
-        suggested_scale_footer.starts_with("110 dB below full scale · Suggested: -d 100"),
+        suggested_scale_footer.starts_with("110 dB below full scale sugg -d 100"),
         "{suggested_scale_footer}"
     );
 

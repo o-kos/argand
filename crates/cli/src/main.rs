@@ -167,7 +167,7 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
             title: &report.plot_title(),
             footer: &report.plot_footer(),
             compact_footer: &report.plot_scale_footer(),
-            footer_warning: report.range_suggestion().as_deref(),
+            footer_warning: report.plot_range_suggestion().as_deref(),
             colormap: args.color_scheme,
             waveform_full_scale: render::waveform_full_scale(analysis.time_peak, dynamic_range),
         },
