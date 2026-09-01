@@ -119,8 +119,8 @@ fn the_yellow_suggestion_is_drawn_in_the_footer_without_depending_on_a_panel() {
             &PlotInput {
                 analysis: &a,
                 title: "title",
-                footer: "60 dB below full scale sugg -d 40 · dBFS",
-                compact_footer: "60 dB below full scale sugg -d 40 · dBFS",
+                footer: "60 dB below full scale (sugg -d 40) · dBFS",
+                compact_footer: "60 dB below full scale (sugg -d 40) · dBFS",
                 footer_warning: Some("sugg -d 40"),
                 colormap: Colormap::Grayscale,
                 waveform_full_scale: 1.0,
@@ -151,8 +151,8 @@ fn a_narrow_footer_keeps_the_complete_warning_and_scale_metadata() {
     let layout = laid_out(500, 300, Panels::NONE, Orientation::Horizontal);
     let a = analysis(&dir, "narrow.wav", true, &layout);
     let warning = "sugg -d 40";
-    let full = "fft 256 · hann · hop 64 (75% overlap) · max · 110 dB below full scale sugg -d 40 · dBFS, ENBW 140.625 Hz";
-    let compact = "110 dB below full scale sugg -d 40 · dBFS, ENBW 140.625 Hz";
+    let full = "fft 256 · hann · hop 64 (75% overlap) · max · 110 dB below full scale (sugg -d 40) · dBFS, ENBW 140.625 Hz";
+    let compact = "110 dB below full scale (sugg -d 40) · dBFS, ENBW 140.625 Hz";
     let text = TextRenderer::new();
     let available = layout.width as f32 - 2.0 * PAD as f32;
     assert!(text.width(full, FONT_SIZE) > available);

@@ -255,11 +255,11 @@ fn the_plot_title_and_footer_describe_the_run() {
     let suggested_footer = suggested.plot_footer();
     let suggested_scale_footer = suggested.plot_scale_footer();
     assert!(
-        suggested_footer.contains("full scale sugg -d 100 · dBFS"),
+        suggested_footer.contains("full scale (sugg -d 100) · dBFS"),
         "{suggested_footer}"
     );
     assert!(
-        suggested_scale_footer.starts_with("110 dB below full scale sugg -d 100"),
+        suggested_scale_footer.starts_with("110 dB below full scale (sugg -d 100)"),
         "{suggested_scale_footer}"
     );
 

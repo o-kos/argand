@@ -54,10 +54,10 @@ or the peak and floor estimators.
   and add `recommended_dynamic_range_db` to the machine-readable STFT report.
   This preserves the meaning of the existing numeric field while exposing all
   three requested values separately.
-- Draw `sugg -d N` in a named yellow warning colour in the image metadata
-  footer, immediately after the scale reference, and use the same concise form
-  as an aligned field in the human report. Footer placement keeps it
-  independent of every optional panel.
+- Draw `(sugg -d N)` immediately after the scale reference in the image
+  metadata footer, with the suggestion in a named yellow warning colour, and
+  use the unparenthesized concise form as an aligned field in the human report.
+  Footer placement keeps it independent of every optional panel.
 
 ## Rejected alternatives
 

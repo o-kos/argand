@@ -218,7 +218,7 @@ impl Report {
         };
         let suggestion = self
             .range_suggestion()
-            .map_or_else(String::new, |value| format!(" {value}"));
+            .map_or_else(String::new, |value| format!(" ({value})"));
         format!(
             "{} dB below {}{} · dBFS, ENBW {}",
             self.stft.dynamic_range_db,
