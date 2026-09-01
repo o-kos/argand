@@ -48,6 +48,16 @@ fn help_says_what_the_report_prints_and_what_v_adds_to_it() {
     for restored in ["sample count", "divisor", "reduce mode", "whole path"] {
         assert!(help.contains(restored), "-v does not mention {restored}:\n{help}");
     }
+    // --json outranks -q on stdout and leaves stderr alone, which is the pair
+    // the help is easiest to get backwards.
+    assert!(
+        help.contains("--json prints the machine report on stdout in place of the paths"),
+        "{help}"
+    );
+    assert!(
+        help.contains("leaves this one on stderr unless -q is given as well"),
+        "{help}"
+    );
 }
 
 #[test]

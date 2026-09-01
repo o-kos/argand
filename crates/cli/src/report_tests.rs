@@ -148,20 +148,28 @@ fn the_compact_line_folds_the_input_path_into_a_star() {
 }
 
 #[test]
-fn a_compact_line_names_the_same_fields_as_the_block() {
+fn a_compact_line_names_its_fields_as_the_block_does_and_drops_the_rest() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.2692, 0.0);
     let r = rendered(report(&m, &a));
 
-    // `peak` is the sample peak and `bin` the spectral one, in the block and
-    // on the line alike, so the two shapes cannot name the same level twice.
+    // How the file was read, in the block's own words.
     let line = compact(&r, 1, 2);
-    assert!(line.contains("peak -11.4, bin -11.4 dBFS"), "{line}");
-    assert!(human(&r).contains("peak -11.4, bin -11.4 @ +2.404 kHz"), "{r:?}");
+    let block = human(&r);
+    assert!(line.contains("wav iq_i16, 24 kHz, 30m"), "{line}");
+    assert!(block.contains("wav iq_i16, 24 kHz, 30m"), "{block}");
 
-    // What a listing has no room for: the bin's frequency and the floor.
-    assert!(!line.contains(" @ "), "{line}");
-    assert!(!line.contains("floor"), "{line}");
+    // `peak` is the sample peak and `bin` the spectral one, on the line as in
+    // the block, so the two shapes cannot name the same level twice.
+    assert!(line.contains("peak -11.4, bin -11.4 dBFS"), "{line}");
+    assert!(block.contains("peak -11.4, bin -11.4 @ +2.404 kHz"), "{block}");
+
+    // Everything a listing has no room for, which is everything the block's
+    // remaining fields carry.
+    for dropped in [" @ ", "floor", "fft", "hann", "hop", "frames", "range", "512"] {
+        assert!(!line.contains(dropped), "{dropped} survived:\n{line}");
+        assert!(block.contains(dropped), "{dropped} left the block:\n{block}");
+    }
 }
 
 #[test]
@@ -233,12 +241,23 @@ fn a_weak_bin_keeps_its_decimals_instead_of_rounding_to_zero() {
 }
 
 #[test]
-fn float_formats_print_the_value_rather_than_a_count() {
+fn a_full_scale_is_named_only_when_the_divisor_is_a_count() {
+    // A float capture already on [-1, 1] has no count to divide by.
     let m = meta(SampleFormat::F32, 1.0);
     let a = analysis(-6.0, -60.0, 0.5, 0.0);
     let text = verbose(&report(&m, &a));
-    assert!(!text.contains("full scale"), "float levels have no denominator:\n{text}");
+    assert!(
+        !text.contains("full scale"),
+        "a unit-scaled float has no denominator:\n{text}"
+    );
     assert!(text.contains("peak -6.0 (0.500)"), "{text}");
+
+    // A float capture at an arbitrary scale has one, measured by
+    // --normalize, and it is as worth naming as an integer format's own.
+    let measured = meta(SampleFormat::F16x8, 4200.0);
+    let text = verbose(&report(&measured, &a));
+    assert!(text.contains("full scale 4200"), "{text}");
+    assert!(text.contains("peak -6.0 (2100)"), "{text}");
 }
 
 #[test]
@@ -453,14 +472,11 @@ fn a_render_sent_elsewhere_is_headed_by_its_whole_path() {
         253_952,
         "waveform".to_string(),
     );
-    let header = human(&relative)
-        .lines()
-        .find(|line| line.ends_with("spec.png:"))
-        .map(str::to_string)
-        .expect("the render section is headed by its own file");
+    let resolved = std::path::absolute("spec.png").expect("a resolvable relative path");
     assert!(
-        std::path::Path::new(header.trim_end_matches(':')).is_absolute(),
-        "{header}"
+        human(&relative).contains(&format!("\n{}:\n", resolved.display())),
+        "{}",
+        human(&relative)
     );
 }
 

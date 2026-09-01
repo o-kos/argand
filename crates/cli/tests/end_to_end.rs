@@ -1002,6 +1002,30 @@ fn a_batch_prints_one_json_object_per_file_and_nothing_else_on_stdout() {
 }
 
 #[test]
+fn a_file_that_failed_leaves_no_object_in_the_json_stream() {
+    let dir = batch_fixture("e2e-batch-json-fail", &["a.wav", "c.wav"]);
+    std::fs::write(dir.join("b.wav"), [7u8; 4096]).unwrap();
+
+    let out = run(&[&mask(&dir, "*.wav"), "-f", "256", "-i", "400x200", "--json"]);
+    assert!(!out.status.success());
+
+    let reports: Vec<Value> = serde_json::Deserializer::from_slice(&out.stdout)
+        .into_iter::<Value>()
+        .collect::<Result<_, _>>()
+        .expect("the object stream should parse");
+    let files: Vec<&str> = reports
+        .iter()
+        .map(|r| r["file"].as_str().unwrap())
+        .collect();
+    assert_eq!(files.len(), 2, "one object per rendered file: {files:?}");
+    assert!(files.iter().all(|f| !f.ends_with("b.wav")), "{files:?}");
+
+    // The file that failed is named on stderr instead.
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("[2/3] b.wav: error:"), "{stderr}");
+}
+
+#[test]
 fn output_is_refused_once_more_than_one_file_resolves() {
     let dir = batch_fixture("e2e-batch-output", &["a.wav", "b.wav"]);
     let target = png(&dir, "one.png");

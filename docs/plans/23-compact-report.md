@@ -54,8 +54,11 @@ rendered image, or any option's meaning.
   beside the range it argues with; a compact line has no range field, and
   putting it after the render's size and timing hides the one actionable field.
 - Move the divisor to the input's own line as `full scale 32768` under `-v`,
-  since it is one property of the file rather than of each level, and omit it
-  for float formats exactly as the current per-level form does.
+  since it is one property of the file rather than of each level. Name it when
+  it is large enough to be a count, which is the predicate the per-level form
+  already used: an integer format brings its own full scale and `--normalize`
+  measures one for a float capture that was never scaled to `[-1, 1]`, and
+  both are worth naming. A divisor near one is not a count and is left out.
 - Keep `Report::range_suggestion` for the image footer and add a separate
   console phrasing. One `suggested_range_db` stays the single source of the
   number, so the two media cannot disagree about whether or what to suggest.
@@ -76,6 +79,14 @@ rendered image, or any option's meaning.
 - Change the image footer's `sugg -d N` to the console's wording. The footer is
   fitted against a measured width and is not part of the report this issue
   governs.
+- Cover `std::io::stdout().is_terminal()` itself with a pty test. External
+  review is right that `portable-pty` would make this portable to the Windows
+  job, so this is a dependency trade-off and not an impossibility: a dev
+  dependency and its transitive graph, for one boolean call whose two outcomes
+  are already unit-tested through `Reporting::for_stdout` and whose pipe side
+  every end-to-end test exercises. The terminal side is validated by hand from
+  the release binary instead. Worth revisiting if a second test ever needs a
+  pty.
 
 ## Implementation steps
 
@@ -92,8 +103,14 @@ rendered image, or any option's meaning.
 - [x] ➕ Correct the unreleased changelog entry for Issue #5, which described
   the report field this branch replaced before either had been released.
 - [x] ➕ Make the terminal-versus-pipe decision testable by passing the one
-  environment fact into `Reporting`, since a pty test would not run on the
-  Windows job.
+  environment fact into `Reporting`, and record the pty dependency trade-off
+  rather than covering the `is_terminal` call itself.
+- [x] ➕ Head a render sent outside its input's directory with an absolute
+  path, so a relative `-o` cannot read as a render written beside its input.
+- [x] ➕ Correct the `--help` sentence on `--json` and `-q`, which had `--json`
+  replacing the stderr report and `-q` silencing the JSON.
+- [x] ➕ Say in the README which fields the compact line drops and that
+  `--json` has an object only for a file that rendered.
 - [ ] Complete validation, including a real terminal and a pipe.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

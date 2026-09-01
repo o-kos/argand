@@ -406,8 +406,13 @@ impl Report {
         format!("{:+.1} ({})", level.dbfs, absolute(level.absolute))
     }
 
-    /// What one unit of level is worth in the file's own counts, for the
-    /// integer formats where that number means anything.
+    /// What one unit of level is worth in the file's own counts.
+    ///
+    /// The test is the divisor's size, not the sample format: an integer
+    /// format brings its own full scale, and `--normalize` measures one for a
+    /// float capture that was never scaled to `[-1, 1]`. Either is worth
+    /// naming. A divisor near one is not a count at all, and printing
+    /// `full scale 1` would say nothing.
     fn full_scale(&self) -> Option<String> {
         (self.divisor >= 128.0).then(|| format!("{:.0}", self.divisor))
     }

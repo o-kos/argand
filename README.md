@@ -207,12 +207,14 @@ order and units, with a processed/succeeded/failed/elapsed summary after it:
 ```
 
 What a listing has no room for is what the line drops: the bin's frequency,
-the floor, and the render's pixel size, which is the same for every file in
-the run. `*.png` is the render, named by what it adds to the input rather than
-by spelling the whole path out a second time. `-v` brings the sections back
-for every file, `-q` says nothing but still names any file that failed, and
-`--json` prints one report object per file -- a stream that `jq` and
-`serde_json::StreamDeserializer` both read as it arrives.
+the floor, the whole transform -- fft size, window, hop, frames and range --
+and the render's pixel size, all of which a batch sets identically for every
+file. `*.png` is the render, named by what it adds to the input rather than by
+spelling the whole path out a second time. `-v` brings the sections back for
+every file, `-q` says nothing but still names any file that failed, and
+`--json` prints one report object per file it rendered -- a stream that `jq`
+and `serde_json::StreamDeserializer` both read as it arrives. A file that
+failed has no report, so it appears on stderr and not in that stream.
 
 ### Panels
 
