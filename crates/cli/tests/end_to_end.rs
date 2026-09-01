@@ -163,7 +163,9 @@ fn dynamic_range_suggestion_reaches_human_reports_and_image() {
     assert!(human.status.success());
     let stderr = String::from_utf8_lossy(&human.stderr);
     assert!(
-        stderr.contains(&format!("  sugg      -d {recommended:.0}")),
+        stderr.contains(&format!(
+            ", try -d {recommended:.0} to fit the drawn range\n"
+        )),
         "{stderr}"
     );
 
@@ -172,7 +174,7 @@ fn dynamic_range_suggestion_reaches_human_reports_and_image() {
     let batch_stderr = String::from_utf8_lossy(&batch.stderr);
     assert_eq!(
         batch_stderr
-            .matches(&format!("sugg -d {recommended:.0}"))
+            .matches(&format!("try -d {recommended:.0}"))
             .count(),
         2,
         "{batch_stderr}"
@@ -611,10 +613,22 @@ fn the_report_reaches_stderr_and_the_path_reaches_stdout() {
         "stdout is the path alone"
     );
     assert!(
-        stderr.contains("peak bin"),
+        stderr.contains("\n  peak "),
         "the report goes to stderr:\n{stderr}"
     );
     assert!(stderr.contains("rl_i16"));
+    assert_eq!(
+        stderr.lines().count(),
+        6,
+        "two sections of a header and two facts:\n{stderr}"
+    );
+    // The render is written beside its input, so its own name locates it and
+    // the directory the caller typed is not spelled out a second time.
+    assert!(stderr.contains("\nout.png:\n"), "{stderr}");
+    assert!(
+        !stderr.contains(&dir.path().display().to_string()),
+        "the block should carry no path:\n{stderr}"
+    );
 
     // --quiet says nothing at all but still writes the file.
     let quiet = run(&[
@@ -628,6 +642,59 @@ fn the_report_reaches_stderr_and_the_path_reaches_stdout() {
     assert!(quiet.status.success());
     assert!(quiet.stdout.is_empty() && quiet.stderr.is_empty());
     assert_png(&output);
+}
+
+#[test]
+fn one_file_reports_two_sections_and_says_nothing_twice() {
+    let dir = TempDir::new("e2e-sections");
+    let sample_type = "rl_i16".parse().unwrap();
+    let values = real_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
+    let input = write_wav(&dir.join("x.wav"), sample_type, RATE, &values, 1.0);
+    let input = input.to_str().unwrap();
+
+    let out = run(&[input, "-f", "256", "-i", "400x200"]);
+    assert!(out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+
+    // A header ends in `:` and its facts are indented two spaces.
+    let lines: Vec<&str> = stderr.lines().collect();
+    assert_eq!(lines.len(), 6, "{stderr}");
+    for (i, line) in lines.iter().enumerate() {
+        let header = i % 3 == 0;
+        assert_eq!(line.ends_with(':'), header, "line {i}:\n{stderr}");
+        assert_eq!(line.starts_with("  "), !header, "line {i}:\n{stderr}");
+    }
+    assert_eq!(lines[0], "x.wav:", "{stderr}");
+    assert_eq!(lines[3], "x.wav.png:", "{stderr}");
+    assert!(
+        !stderr.contains("\n\n"),
+        "no blank line in the report:\n{stderr}"
+    );
+
+    // Every repeat the Issue lists is gone: the input is named once, the
+    // render once, the divisor and the defaults not at all.
+    assert_eq!(stderr.matches("x.wav:").count(), 1, "{stderr}");
+    assert!(!stderr.contains("32768"), "{stderr}");
+    assert!(
+        !stderr.contains("normalize") && !stderr.contains("gain"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("spl"), "{stderr}");
+    // Fields are separated by commas, not by the old middle dot.
+    assert!(!stderr.contains('\u{b7}'), "{stderr}");
+
+    // -v brings the dropped detail back, with the divisor named once.
+    let loud = run(&[input, "-f", "256", "-i", "400x200", "-v"]);
+    let stderr = String::from_utf8_lossy(&loud.stderr);
+    assert!(stderr.contains("normalize none, gain +0.0 dB"), "{stderr}");
+    assert!(stderr.contains("reduce max"), "{stderr}");
+    assert_eq!(stderr.matches("full scale 32768").count(), 1, "{stderr}");
+    // A sample count keeps a space before its unit.
+    assert!(stderr.contains("8.2 kspl"), "{stderr}");
+    assert!(
+        stderr.contains(&format!("\n{}:\n", dir.join("x.wav.png").display())),
+        "-v spells the render's path out in full:\n{stderr}"
+    );
 }
 
 #[test]
@@ -793,7 +860,7 @@ fn a_mask_renders_every_file_it_matches_in_sorted_order() {
         assert!(stderr.contains(line), "missing {line}:\n{stderr}");
     }
     assert_eq!(
-        stderr.matches("→  *.png").count(),
+        stderr.matches("→ *.png").count(),
         3,
         "the render is named by what it adds to the input:\n{stderr}"
     );
@@ -802,11 +869,11 @@ fn a_mask_renders_every_file_it_matches_in_sorted_order() {
         "the line should not spell the whole path out again:\n{stderr}"
     );
     assert!(
-        stderr.contains("processed 3 · 3 succeeded · 0 failed"),
+        stderr.contains("processed 3, 3 succeeded, 0 failed"),
         "no summary:\n{stderr}"
     );
-    // The block belongs to -v now, not to the default batch output.
-    assert!(!stderr.contains("peak spl"), "{stderr}");
+    // The sections belong to -v now, not to the default batch output.
+    assert!(!stderr.contains("\n  "), "{stderr}");
     assert_eq!(
         stderr.lines().count(),
         4,
@@ -846,7 +913,7 @@ fn exact_paths_and_masks_mix_and_the_same_file_is_processed_once() {
     ]);
     let stderr = String::from_utf8_lossy(&loud.stderr);
     assert!(
-        stderr.contains("processed 2 · 2 succeeded"),
+        stderr.contains("processed 2, 2 succeeded"),
         "duplicates should collapse:\n{stderr}"
     );
 }
@@ -860,13 +927,13 @@ fn a_batch_carries_on_past_a_failure_and_then_exits_non_zero() {
     assert!(!out.status.success(), "a failed file must fail the batch");
 
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("[2/3] b.wav  error:"), "{stderr}");
+    assert!(stderr.contains("[2/3] b.wav: error:"), "{stderr}");
     assert!(
         stderr.contains("--raw"),
         "the error points at the fix:\n{stderr}"
     );
     assert!(
-        stderr.contains("processed 3 · 2 succeeded · 1 failed"),
+        stderr.contains("processed 3, 2 succeeded, 1 failed"),
         "{stderr}"
     );
     // The files on either side of the failure were still rendered.
@@ -887,7 +954,7 @@ fn a_failure_is_reported_even_when_quiet() {
     let out = run(&[&mask(&dir, "*.wav"), "-f", "256", "-i", "400x200", "-q"]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("b.wav  error:"), "{stderr}");
+    assert!(stderr.contains("b.wav: error:"), "{stderr}");
     assert!(
         !stderr.contains("processed"),
         "no summary under -q:\n{stderr}"
@@ -901,10 +968,12 @@ fn a_batch_prints_the_full_report_per_file_under_verbose() {
     let out = run(&[&mask(&dir, "*.wav"), "-f", "256", "-i", "400x200", "-v"]);
     assert!(out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert_eq!(stderr.matches("peak spl").count(), 2, "{stderr}");
-    assert!(stderr.contains("  file      a.wav"), "{stderr}");
-    assert!(stderr.contains("  file      b.wav"), "{stderr}");
-    assert!(stderr.contains("processed 2 · 2 succeeded"), "{stderr}");
+    assert_eq!(stderr.matches("\n  peak ").count(), 2, "{stderr}");
+    assert!(stderr.contains("a.wav:\n"), "{stderr}");
+    assert!(stderr.contains("b.wav:\n"), "{stderr}");
+    // Sections separate the files, so nothing needs a blank line to do it.
+    assert!(!stderr.contains("\n\n"), "{stderr}");
+    assert!(stderr.contains("processed 2, 2 succeeded"), "{stderr}");
 }
 
 #[test]
@@ -929,7 +998,7 @@ fn a_batch_prints_one_json_object_per_file_and_nothing_else_on_stdout() {
 
     // The summary must not land in the object stream.
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("processed 2 · 2 succeeded"), "{stderr}");
+    assert!(stderr.contains("processed 2, 2 succeeded"), "{stderr}");
 }
 
 #[test]

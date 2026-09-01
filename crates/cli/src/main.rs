@@ -14,7 +14,7 @@ mod report;
 mod text;
 mod ticks;
 
-use std::io::{IsTerminal, Write};
+use std::io::IsTerminal;
 use std::path::Path;
 use std::time::Instant;
 
@@ -30,7 +30,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::cli::Args;
 use crate::render::{Gutters, Layout, PlotInput};
-use crate::report::{Report, Scaling};
+use crate::report::{Detail, Report, Scaling};
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -75,7 +75,7 @@ fn run(args: &Args) -> Result<usize> {
             Err(e) if batch => {
                 failed += 1;
                 // Errors survive --quiet: a silent failure is worse than noise.
-                eprintln!("[{index}/{total}] {}  error: {e:#}", name_of(file));
+                eprintln!("[{index}/{total}] {}: error: {e:#}", name_of(file));
             }
             Err(e) => return Err(e),
         }
@@ -83,7 +83,7 @@ fn run(args: &Args) -> Result<usize> {
 
     if batch && !args.quiet {
         eprintln!(
-            "  processed {total} · {} succeeded · {failed} failed · {}",
+            "processed {total}, {} succeeded, {failed} failed, {}",
             total - failed,
             format_duration(started.elapsed().as_secs_f64())
         );
@@ -209,15 +209,13 @@ enum StdoutLine {
 enum StderrBlock {
     /// One line per file, for a batch.
     Compact,
-    /// The full multi-line block.
-    Human,
+    /// The sections, at the detail level that was asked for.
+    Block(Detail),
     Nothing,
 }
 
 /// How the run reports itself, decided once and used for every file.
 struct Reporting {
-    /// More than one file resolved, so the block shrinks to a line.
-    batch: bool,
     total: usize,
     stdout: StdoutLine,
     stderr: StderrBlock,
@@ -240,16 +238,20 @@ fn stdout_line(args: &Args, echo_paths: bool) -> StdoutLine {
 
 /// Pick the stderr stream's content.
 ///
-/// `--quiet` silences it outright. A batch shrinks the block to one line per
-/// file unless `-v` asks for the block back.
+/// `--quiet` silences it outright and `-v` asks for every section in full, in
+/// a batch as much as for one file. What is left shrinks to one line per file
+/// once there is more than one.
 fn stderr_block(args: &Args, batch: bool) -> StderrBlock {
     if args.quiet {
         return StderrBlock::Nothing;
     }
-    if batch && args.verbose == 0 {
+    if args.verbose > 0 {
+        return StderrBlock::Block(Detail::Verbose);
+    }
+    if batch {
         return StderrBlock::Compact;
     }
-    StderrBlock::Human
+    StderrBlock::Block(Detail::Default)
 }
 
 impl Reporting {
@@ -260,15 +262,18 @@ impl Reporting {
     /// either rule out of interleaved conditions is what made the previous
     /// shape hard to trust.
     fn new(args: &Args, batch: bool, total: usize) -> Self {
-        // A batch on a terminal already says where every render went, so
-        // echoing the path on stdout only doubles the lines and reads like a
-        // file the mask swept up. Piped, those paths are the point of stdout.
-        let echo_paths = !batch || !std::io::stdout().is_terminal();
+        Self::for_stdout(args, batch, total, std::io::stdout().is_terminal())
+    }
 
+    /// The same decisions with the one environment fact passed in, so that
+    /// both sides of it can be tested.
+    ///
+    /// A terminal already names every render in the report, so echoing the
+    /// path there only doubles it. Piped, those paths are the point of stdout.
+    fn for_stdout(args: &Args, batch: bool, total: usize, stdout_is_terminal: bool) -> Self {
         Self {
-            batch,
             total,
-            stdout: stdout_line(args, echo_paths),
+            stdout: stdout_line(args, !stdout_is_terminal),
             stderr: stderr_block(args, batch),
         }
     }
@@ -293,12 +298,8 @@ fn write_report(report: &Report, reporting: &Reporting, index: usize) {
                 .write_compact(&mut stderr, index, reporting.total)
                 .ok();
         }
-        StderrBlock::Human => {
-            let follows_another_block = reporting.batch && index > 1;
-            if follows_another_block {
-                writeln!(stderr).ok();
-            }
-            report.write_human(&mut stderr).ok();
+        StderrBlock::Block(detail) => {
+            report.write_block(&mut stderr, detail).ok();
         }
         StderrBlock::Nothing => {}
     }

@@ -3,12 +3,12 @@
 //! Ported from the sgvr CLI so that both tools print lengths and counts the
 //! same way.
 
-/// Sample counts as `430spl`, `43.2kspl`, `1.2Mspl`, ...
+/// Sample counts as `430 spl`, `43.2 kspl`, `1.2 Mspl`, ...
 pub fn format_samples(count: u64) -> String {
     const UNITS: [(f64, &str); 4] = [(1e3, "kspl"), (1e6, "Mspl"), (1e9, "Gspl"), (1e12, "Tspl")];
 
     if count < 1000 {
-        return format!("{count}spl");
+        return format!("{count} spl");
     }
 
     let value = count as f64;
@@ -21,12 +21,12 @@ pub fn format_samples(count: u64) -> String {
         // Rounding can push 999.96k up to 1000k; promote it instead.
         if scaled >= 1000.0 {
             let (_, bigger) = UNITS.get(i + 1).copied().unwrap_or((1.0, "Tspl"));
-            return format!("1{bigger}");
+            return format!("1 {bigger}");
         }
-        return format!("{}{unit}", trim1(scaled));
+        return format!("{} {unit}", trim1(scaled));
     }
 
-    format!("{}Tspl", trim1(round1(value / 1e12)))
+    format!("{} Tspl", trim1(round1(value / 1e12)))
 }
 
 /// Durations as `250ms`, `12.5s`, `5m30`, `1h20m`, ...
