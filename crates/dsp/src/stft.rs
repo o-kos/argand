@@ -336,12 +336,12 @@ impl<'a> Block<'a> {
         self.start += consumed as u64;
     }
 
-    /// Read the rest of the range for the envelope alone.
+    /// Read the rest of the range after the final whole transform.
     ///
     /// The frame loop stops at the last whole transform, which can leave up to
-    /// one hop unread. The strip spans the same time axis as the spectrogram,
-    /// so those samples are read rather than left to a borrowed column.
-    fn drain_into(&mut self, builder: &mut EnvelopeBuilder) -> Result<(), DspError> {
+    /// one hop unread. Its peak belongs to the report under every panel set;
+    /// when a strip was requested, its envelope spans those samples too.
+    fn drain(&mut self, mut builder: Option<&mut EnvelopeBuilder>) -> Result<(), DspError> {
         while self.remaining > 0 {
             let want = self.remaining.min(self.capacity as u64) as usize;
             let got = self.src.read(&mut self.buf[..want * self.channels])?;
@@ -350,7 +350,9 @@ impl<'a> Block<'a> {
             }
             self.measure_peak(0, got);
             let samples = got / self.channels;
-            builder.fold(&self.buf[..samples * self.channels], self.folded);
+            if let Some(builder) = builder.as_deref_mut() {
+                builder.fold(&self.buf[..samples * self.channels], self.folded);
+            }
             self.folded += samples as u64;
             self.remaining -= samples as u64;
         }
@@ -552,9 +554,7 @@ pub fn analyze(
         }
     }
 
-    if let Some(builder) = envelope.as_mut() {
-        block.drain_into(builder)?;
-    }
+    block.drain(envelope.as_mut())?;
     time_peak = time_peak.max(block.peak);
 
     let frames = frame_base.max(1);
