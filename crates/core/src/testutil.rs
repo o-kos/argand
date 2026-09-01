@@ -50,9 +50,16 @@ impl DejaVuSans {
 
 impl LabelMeasure for DejaVuSans {
     fn width(&self, text: &str, size: f32) -> f32 {
+        // Scaled per glyph and then added, which is the order ab_glyph works
+        // in. Summing the font units first and scaling once is the same
+        // number in arithmetic and a slightly different one in `f32`, and a
+        // fixture that has to be held against the real renderer is worth
+        // nothing if it only nearly matches.
+        //
         // Digits, separators and the minus sign kern against nothing in this
-        // face, so the advances simply add up.
-        text.chars().map(Self::advance).sum::<f32>() * size / HEIGHT
+        // face, so nothing is added between them.
+        let factor = size / HEIGHT;
+        text.chars().map(|c| Self::advance(c) * factor).sum()
     }
 
     fn digit_height(&self, size: f32) -> f32 {

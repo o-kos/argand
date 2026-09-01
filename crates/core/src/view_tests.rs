@@ -79,7 +79,14 @@ fn a_grid_addresses_a_bin_within_a_column() {
         f0: -12_000.0,
         f1: 12_000.0,
     };
-    assert_eq!(grid.value(0, 0), -10.0);
-    assert_eq!(grid.value(0, 1), -20.0);
-    assert_eq!(grid.value(2, 1), -60.0);
+    assert_eq!(grid.value(0, 0), Some(-10.0));
+    assert_eq!(grid.value(0, 1), Some(-20.0));
+    assert_eq!(grid.value(2, 1), Some(-60.0));
+    assert_eq!(grid.column(1), Some([-30.0, -40.0].as_slice()));
+
+    // One bin past a column is a valid offset into the next one, so asking
+    // for it has to fail rather than answer with the neighbour's value.
+    assert_eq!(grid.value(0, 2), None);
+    assert_eq!(grid.value(3, 0), None);
+    assert_eq!(grid.column(3), None);
 }

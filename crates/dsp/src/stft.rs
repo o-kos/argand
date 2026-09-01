@@ -918,9 +918,15 @@ pub fn shade(grid: &DbGrid, shading: Shading) -> SpectrogramImage {
     let mut image = SpectrogramImage::new(width, height);
 
     for x in 0..width {
+        // A grid whose values do not cover the size it declares is a caller's
+        // mistake, not a signal; the columns it does hold are drawn and the
+        // rest are left transparent rather than bringing the process down.
+        let Some(column) = grid.column(x) else {
+            break;
+        };
         for y in 0..height {
             // Row 0 is the top of the image, which is the highest frequency.
-            let value = grid.value(x, height - 1 - y);
+            let value = column[height - 1 - y];
             let normalized = if value.is_finite() {
                 (value - db_min) / span
             } else {

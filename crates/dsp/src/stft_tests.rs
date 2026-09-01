@@ -578,7 +578,7 @@ fn the_grid_holds_the_numbers_the_picture_was_shaded_from() {
     let span = img.db_max - img.db_min;
     for x in 0..grid.width {
         for y in 0..grid.height {
-            let value = grid.value(x, grid.height - 1 - y);
+            let value = grid.value(x, grid.height - 1 - y).expect("a bin inside the grid");
             let expected = gradient[gradient_index((value - img.db_min) / span)];
             assert_eq!(img.get(x, y), [expected[0], expected[1], expected[2], 255]);
         }

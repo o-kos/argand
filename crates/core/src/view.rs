@@ -33,13 +33,30 @@ pub struct DbGrid {
 
 impl DbGrid {
     /// The value in column `x` at frequency bin `bin`, counting up from the
-    /// lowest.
+    /// lowest, or `None` outside the grid.
     ///
     /// Column-major is the layout the transform fills, one whole column per
     /// frame; naming the two dimensions here is what keeps that arithmetic out
-    /// of everything that reads the grid.
-    pub fn value(&self, x: usize, bin: usize) -> f32 {
-        self.values[x * self.height + bin]
+    /// of everything that reads the grid. Both are checked, because one index
+    /// past the end of a column is a valid offset into the next one, and a
+    /// caller that asked for a bin it does not have would get an answer that
+    /// looks like data.
+    pub fn value(&self, x: usize, bin: usize) -> Option<f32> {
+        if x >= self.width || bin >= self.height {
+            return None;
+        }
+        self.values.get(x * self.height + bin).copied()
+    }
+
+    /// Every bin of column `x`, lowest frequency first.
+    ///
+    /// This is how the grid is stored, so a reader working down a column gets
+    /// the slice rather than a multiplication per value.
+    pub fn column(&self, x: usize) -> Option<&[f32]> {
+        if x >= self.width {
+            return None;
+        }
+        self.values.get(x * self.height..(x + 1) * self.height)
     }
 }
 

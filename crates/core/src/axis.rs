@@ -19,6 +19,12 @@
 /// image or a toolkit, so the policy stays here and the font stays there.
 pub trait LabelMeasure {
     /// Width of `text` in pixels at `size`.
+    ///
+    /// Every digit must come back the same width, which is what a face with
+    /// tabular figures gives. [`widest_labels`] reserves a gutter before any
+    /// tick is chosen, and it can only do that by standing a row of zeros in
+    /// for a number nobody has picked yet; under proportional digits that
+    /// bound is not a bound, and a label runs into the plot beside it.
     fn width(&self, text: &str, size: f32) -> f32;
 
     /// Height of the ink a numeric label puts on the canvas at `size`.
@@ -156,8 +162,9 @@ pub fn caption(kind: AxisKind, min: f64, max: f64) -> Option<&'static str> {
 /// The widest label an axis of this kind could print over `min..max`.
 ///
 /// A gutter has to be reserved before any tick is chosen, so this bounds the
-/// label rather than predicting it. Digits are the same width in this font, so
-/// a bound built from zeros measures exactly like the value it stands in for.
+/// label rather than predicting it. The bound is built from zeros, which stand
+/// in exactly for the value they replace as long as the measure keeps its side
+/// of [`LabelMeasure::width`] and gives every digit one width.
 ///
 /// More than one candidate comes back where more than one could be the widest,
 /// because the caller has the font and this does not: which of two strings takes
@@ -399,8 +406,8 @@ fn format_clock(seconds: f64, clock: Clock) -> String {
 /// put `999.999 Hz` and `1.000 kHz` on one axis, two spellings of neighbouring
 /// values.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct HertzUnit {
-    pub name: &'static str,
+struct HertzUnit {
+    name: &'static str,
     scale: f64,
     /// Decimals that resolve to one hertz in this unit.
     decimals: usize,
