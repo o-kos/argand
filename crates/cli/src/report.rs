@@ -446,12 +446,21 @@ impl Report {
     /// A render written beside its input is identified by its own name, which
     /// lines the two headers up and can be copied whole. One sent elsewhere by
     /// `-o` is findable only by its full path, and `-v` always spells it out.
+    ///
+    /// That path is made absolute rather than repeated as it was typed: a
+    /// relative `-o spec.png` against an input in another directory would
+    /// otherwise print a bare name, which reads exactly like the render that
+    /// does sit beside its input.
     fn render_header(&self, output: &OutputReport, detail: Detail) -> String {
-        let beside_input = Path::new(&output.path).parent() == Path::new(&self.file).parent();
-        if detail == Detail::Verbose || !beside_input {
-            return output.path.clone();
+        let path = Path::new(&output.path);
+        let beside_input = path.parent() == Path::new(&self.file).parent();
+        if detail != Detail::Verbose && beside_input {
+            return file_name_of(&output.path);
         }
-        file_name_of(&output.path)
+        std::path::absolute(path).map_or_else(
+            |_| output.path.clone(),
+            |absolute| absolute.display().to_string(),
+        )
     }
 }
 

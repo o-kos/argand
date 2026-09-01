@@ -27,6 +27,12 @@ fn paths_reach_stdout_only_when_stdout_is_not_a_terminal() {
     // A terminal already names the render in the report above; piped, those
     // paths are what stdout is for. How many files there are does not enter
     // into it.
+    //
+    // The fact itself is passed in rather than read here: a pty test would
+    // not run on the Windows job, and a test that let the harness answer
+    // `is_terminal()` would pass under `cargo test` and fail for anyone
+    // running the test binary from a shell. That one call is checked by hand
+    // against the release binary instead.
     for (files, batch) in [(&["x.wav"][..], false), (&["a.wav", "b.wav"][..], true)] {
         let args = parse(files);
         let terminal = Reporting::for_stdout(&args, batch, files.len(), true);

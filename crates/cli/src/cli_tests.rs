@@ -34,6 +34,23 @@ fn help_lists_the_canonical_panel_and_orientation_names() {
 }
 
 #[test]
+fn help_says_what_the_report_prints_and_what_v_adds_to_it() {
+    let help = Args::command().render_long_help().to_string();
+    assert!(help.contains("REPORT:"), "{help}");
+    assert!(
+        help.contains("One section per file on stderr"),
+        "{help}"
+    );
+    assert!(
+        help.contains("Report every field and log more"),
+        "-v now restores the report's detail as well:\n{help}"
+    );
+    for restored in ["sample count", "divisor", "reduce mode", "whole path"] {
+        assert!(help.contains(restored), "-v does not mention {restored}:\n{help}");
+    }
+}
+
+#[test]
 fn defaults_match_the_documented_ones() {
     let args = parse(&["capture.iqw"]);
     assert_eq!(args.image_size, (2048, 512));

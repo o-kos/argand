@@ -438,7 +438,30 @@ fn a_render_sent_elsewhere_is_headed_by_its_whole_path() {
         253_952,
         "waveform".to_string(),
     );
-    assert!(human(&elsewhere).contains("\n/tmp/spec.png:\n"), "{}", human(&elsewhere));
+    assert!(
+        human(&elsewhere).contains("\n/tmp/spec.png:\n"),
+        "{}",
+        human(&elsewhere)
+    );
+
+    // A relative -o resolves against the caller's directory, not against the
+    // input's, so a bare name would point at the wrong place.
+    let relative = report(&m, &a).with_output(
+        std::path::Path::new("spec.png"),
+        2048,
+        512,
+        253_952,
+        "waveform".to_string(),
+    );
+    let header = human(&relative)
+        .lines()
+        .find(|line| line.ends_with("spec.png:"))
+        .map(str::to_string)
+        .expect("the render section is headed by its own file");
+    assert!(
+        std::path::Path::new(header.trim_end_matches(':')).is_absolute(),
+        "{header}"
+    );
 }
 
 #[test]
