@@ -11,6 +11,8 @@ promise applies to.
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-09-01
+
 ### Changed
 
 - The report is now one section per file: a header naming the file and its
@@ -85,5 +87,6 @@ promise applies to.
 - A workspace-wide lint policy: ten maintainability lints with explicit
   thresholds, enforced identically on a developer's machine and in CI.
 
-[Unreleased]: https://github.com/o-kos/argand/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/o-kos/argand/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/o-kos/argand/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/o-kos/argand/releases/tag/v0.0.1
