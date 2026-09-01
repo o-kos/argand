@@ -212,6 +212,13 @@ or more and `3.07` -- minutes and seconds -- below that, whatever point of the
 recording the span was taken from. A window shorter than a second shows the
 whole seconds inside it and nothing else.
 
+The unit is named once beside the axis rather than repeated on every tick:
+`MHz` at the head of the frequency labels and `dB` above the colour bar, with
+bare numbers under them. Repeating it costs a third of every frequency label
+and half of every colour-bar label to say the same thing a dozen times, and it
+is what used to put `999.999 Hz` and `1.000 kHz` on one axis -- two spellings
+of neighbouring values. One unit for the whole axis ends that too.
+
 Every label drawn has a grid line or tick mark at the same value, and a label
 that would not fit whole inside the canvas is dropped along with its line
 rather than clipped. Coordinates stay inside the span being drawn, to within

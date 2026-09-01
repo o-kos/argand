@@ -21,6 +21,10 @@ promise applies to.
 - Time axis labels read as a clock: `1:02:09` over a span of an hour or more
   and `3.07` below that. Ticks never step finer than one second and labels no
   longer carry fractional seconds.
+- Axis units are named once beside the axis instead of on every tick: `MHz` at
+  the head of the frequency labels and `dB` above the colour bar, with bare
+  numbers under them. One unit is chosen for the whole frequency axis, so
+  neighbouring values can no longer print as `999.999 Hz` and `1.000 kHz`.
 - Panels sharing an axis are given one set of tick values, so the waveform
   strip's time grid and the spectrum panel's frequency grid line up with the
   spectrogram's exactly. The spectrum panel gained frequency grid lines.

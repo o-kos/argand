@@ -11,8 +11,6 @@
 //! clear each other and the edge of the canvas. Only the accepted values come
 //! back, so a caller cannot draw a grid line that no label agreed to.
 
-use argand_core::format_hz;
-
 use crate::text::TextRenderer;
 
 /// A chosen tick: the value, the label measured for it, and where it lands.
@@ -39,17 +37,15 @@ pub struct Axis {
     pub trail: i64,
 }
 
-/// What an axis prints, which fixes both its ladder and its labels.
+/// What an axis prints, which fixes its ladder, its labels and its unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AxisKind {
     /// Seconds, on a clock ladder no finer than one second.
     Time,
-    /// Hertz.
+    /// Hertz, scaled to one unit chosen for the whole axis.
     Frequency,
-    /// Whole decibels, for the spectrum panel.
+    /// Whole decibels.
     Decibels,
-    /// Whole decibels with the unit, for the colour bar.
-    DecibelsWithUnit,
 }
 
 /// How labels sit on the axis, which decides what has to clear what.
@@ -134,6 +130,17 @@ pub fn ticks(kind: AxisKind, axis: Axis, labels: &LabelMetrics<'_>) -> Vec<Tick>
     Vec::new()
 }
 
+/// The unit this axis prints in, named once instead of on every tick.
+///
+/// `None` where the labels carry their own meaning: a clock reads as a clock.
+pub fn caption(kind: AxisKind, min: f64, max: f64) -> Option<&'static str> {
+    match kind {
+        AxisKind::Time => None,
+        AxisKind::Frequency => Some(hertz_unit(min, max).name),
+        AxisKind::Decibels => Some("dB"),
+    }
+}
+
 /// The widest label an axis of this kind could print over `min..max`.
 ///
 /// A gutter has to be reserved before any tick is chosen, so this bounds the
@@ -141,8 +148,8 @@ pub fn ticks(kind: AxisKind, axis: Axis, labels: &LabelMetrics<'_>) -> Vec<Tick>
 /// a bound built from zeros measures exactly like the value it stands in for.
 ///
 /// More than one candidate comes back where more than one could be the widest,
-/// because the caller has the font and this does not: which of `999.999 Hz` and
-/// `1.000 kHz` takes more room is a question about glyphs, not about characters.
+/// because the caller has the font and this does not: which of two strings takes
+/// more room is a question about glyphs, not about characters.
 pub fn widest_labels(kind: AxisKind, min: f64, max: f64) -> Vec<String> {
     let sign = if min < 0.0 { "-" } else { "" };
     let peak = min.abs().max(max.abs());
@@ -151,16 +158,17 @@ pub fn widest_labels(kind: AxisKind, min: f64, max: f64) -> Vec<String> {
             Clock::HoursMinutesSeconds => vec![format!("{sign}{}:00:00", (peak / 3600.0) as u64)],
             Clock::MinutesSeconds => vec![format!("{sign}{}.00", (peak / 60.0) as u64)],
         },
+        // One unit for the whole axis, so the widest label is simply the
+        // largest magnitude with every decimal that unit resolves to in use.
         AxisKind::Frequency => {
-            // A range straddling zero reaches every unit down to hertz.
-            let nearest = if min <= 0.0 && max >= 0.0 {
-                0.0
-            } else {
-                min.abs().min(max.abs())
-            };
-            widest_hz(sign, nearest, peak)
+            let unit = hertz_unit(min, max);
+            vec![format!(
+                "{sign}{}.{}",
+                (peak / unit.scale) as u64,
+                "0".repeat(unit.decimals)
+            )]
         }
-        AxisKind::Decibels | AxisKind::DecibelsWithUnit => vec![
+        AxisKind::Decibels => vec![
             format_label(kind, min, min, max),
             format_label(kind, max, min, max),
         ],
@@ -351,9 +359,8 @@ fn clock_of(min: f64, max: f64) -> Clock {
 fn format_label(kind: AxisKind, value: f64, min: f64, max: f64) -> String {
     match kind {
         AxisKind::Time => format_clock(value, clock_of(min, max)),
-        AxisKind::Frequency => format_hz(value),
+        AxisKind::Frequency => hertz_unit(min, max).format(value),
         AxisKind::Decibels => format!("{value:.0}"),
-        AxisKind::DecibelsWithUnit => format!("{value:.0} dB"),
     }
 }
 
@@ -371,34 +378,55 @@ fn format_clock(seconds: f64, clock: Clock) -> String {
     }
 }
 
-/// The widest frequency label an axis between `nearest` and `peak` can print.
+/// The unit a frequency axis prints in.
 ///
-/// `format_hz` picks its unit per value and trims trailing zeros, so an axis
-/// that straddles a unit threshold prints in more than one unit, and the widest
-/// label is not always the one at the largest magnitude: a range ending at
-/// 1000 Hz reserves `1.000 kHz` but can still print `999.999 Hz`. Every unit
-/// the range reaches contributes its own widest -- the value just short of the
-/// next threshold, with every decimal that unit resolves to still in use.
-fn widest_hz(sign: &str, nearest: f64, peak: f64) -> Vec<String> {
-    const UNITS: [(f64, &str, usize); 4] = [
-        (1.0, "Hz", 3),
-        (1e3, "kHz", 3),
-        (1e6, "MHz", 6),
-        (1e9, "GHz", 9),
-    ];
-    let mut labels = Vec::new();
-    for (i, (scale, unit, decimals)) in UNITS.iter().enumerate() {
-        let ceiling = UNITS.get(i + 1).map_or(f64::INFINITY, |(next, _, _)| *next);
-        if peak < *scale || nearest >= ceiling {
-            continue;
+/// One unit is chosen for the whole axis and named once beside it, rather than
+/// repeated on every tick. Repeating it costs a third of each label -- ` MHz`
+/// measures 27 pixels against the 60 the digits need -- to say the same thing
+/// a dozen times, and it is what puts `999.999 Hz` and `1.000 kHz` on the same
+/// axis, two spellings of neighbouring values.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HertzUnit {
+    pub name: &'static str,
+    scale: f64,
+    /// Decimals that resolve to one hertz in this unit.
+    decimals: usize,
+}
+
+impl HertzUnit {
+    /// The value in this unit, with trailing zeros trimmed.
+    fn format(self, hz: f64) -> String {
+        let text = format!("{:.*}", self.decimals, hz / self.scale);
+        let trimmed = text.trim_end_matches('0').trim_end_matches('.');
+        if trimmed.is_empty() || trimmed == "-" {
+            "0".to_string()
+        } else {
+            trimmed.to_string()
         }
-        let whole = (peak.min(ceiling - scale) / scale) as u64;
-        labels.push(format!("{sign}{whole}.{} {unit}", "0".repeat(*decimals)));
     }
-    if labels.is_empty() {
-        labels.push(format!("{sign}0.000 Hz"));
+}
+
+/// The unit that suits the whole of `min..max`.
+///
+/// It follows the largest magnitude on the axis, which is the one whose digits
+/// have to fit: a span of a few kilohertz around 12.5 MHz is a megahertz axis,
+/// not a kilohertz one.
+fn hertz_unit(min: f64, max: f64) -> HertzUnit {
+    let peak = min.abs().max(max.abs());
+    let (name, scale, decimals) = if peak >= 1e9 {
+        ("GHz", 1e9, 9)
+    } else if peak >= 1e6 {
+        ("MHz", 1e6, 6)
+    } else if peak >= 1e3 {
+        ("kHz", 1e3, 3)
+    } else {
+        ("Hz", 1.0, 3)
+    };
+    HertzUnit {
+        name,
+        scale,
+        decimals,
     }
-    labels
 }
 
 #[cfg(test)]

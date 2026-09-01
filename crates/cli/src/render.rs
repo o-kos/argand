@@ -397,9 +397,13 @@ impl Gutters {
         let text = TextRenderer::new();
         // Every candidate is measured, because which of `999.999 Hz` and
         // `1.000 kHz` needs more room is a question about glyphs.
+        // The caption counts too: on a narrow range `MHz` is wider than the
+        // digits it explains.
         let width = |kind: AxisKind, (min, max): (f64, f64)| -> i64 {
             ticks::widest_labels(kind, min, max)
                 .iter()
+                .map(String::as_str)
+                .chain(ticks::caption(kind, min, max))
                 .map(|label| text.width(label, FONT_SIZE).ceil() as i64)
                 .max()
                 .unwrap_or(0)
@@ -408,7 +412,7 @@ impl Gutters {
             frequency: width(AxisKind::Frequency, frequency),
             time: width(AxisKind::Time, time),
             decibels: width(AxisKind::Decibels, (DB_FLOOR, 0.0)),
-            colorbar: width(AxisKind::DecibelsWithUnit, decibels),
+            colorbar: width(AxisKind::Decibels, decibels),
         }
     }
 
@@ -739,6 +743,27 @@ impl<'a> Scene<'a> {
         (bottom + self.drop) as f32
     }
 
+    /// Name the unit once at the head of a stacked axis's label column.
+    ///
+    /// The axis is told to keep its labels clear of `caption_rows` at that end,
+    /// so this cannot land on one.
+    fn caption_above(&self, canvas: &mut RgbImage, at: Anchor, caption: &str) {
+        self.text.draw(canvas, caption, at, LABEL);
+    }
+
+    /// Name it once past the last label of an axis its labels run along.
+    fn caption_after(&self, canvas: &mut RgbImage, rect: Rect, marks: &[Tick], caption: &str) {
+        let last = marks.last().map_or(rect.x, |tick| {
+            rect.x + tick.offset + self.text.width(&tick.label, FONT_SIZE).ceil() as i64 / 2
+        });
+        self.text.draw(
+            canvas,
+            caption,
+            Anchor::left((last + LABEL_PAD) as f32, self.under(rect.bottom())),
+            LABEL,
+        );
+    }
+
     /// Ticks running left to right: a grid line each, and labels underneath.
     fn across(&self, canvas: &mut RgbImage, rect: Rect, ticks: &[Tick], labelled: Labelled) {
         for tick in ticks {
@@ -791,6 +816,22 @@ impl<'a> Scene<'a> {
             LABEL,
         );
     }
+}
+
+/// Rows a caption takes at the head of a stacked axis's label column.
+///
+/// The unit is named once there instead of on every tick, so the axis is told
+/// to keep its labels clear of that much of its own far end.
+const fn caption_rows(rise: i64) -> i64 {
+    2 * rise + LABEL_PAD
+}
+
+/// Pixels a caption takes past the end of an axis its labels run along.
+fn caption_run(text: &TextRenderer, caption: &str) -> i64 {
+    if caption.is_empty() {
+        return 0;
+    }
+    text.width(caption, FONT_SIZE).ceil() as i64 + LABEL_PAD
 }
 
 /// Pixels a label may take to the right of `edge`.
@@ -860,27 +901,30 @@ fn frequency_ticks(
     let Some(rect) = layout.spectrogram else {
         return Vec::new();
     };
+    // The unit is named once at the far end of the axis, so the labels are kept
+    // clear of the room it takes rather than drawn over it.
+    let caption = ticks::caption(AxisKind::Frequency, img.f0, img.f1).unwrap_or_default();
     let (axis, run) = match layout.orientation {
         // Upwards beside the plot: offset 0 is the lowest frequency, at the
-        // bottom, and the gutter was measured to hold the labels.
+        // bottom, and the caption heads the column at the top.
         Orientation::Horizontal => (
             Axis {
                 length: rect.h,
                 min: img.f0,
                 max: img.f1,
                 lead: rise,
-                trail: rise,
+                trail: -caption_rows(rise),
             },
             LabelRun::Down,
         ),
-        // Across, under the plot, sharing that row with nothing else.
+        // Across, under the plot, with the caption after the last label.
         Orientation::Vertical => (
             Axis {
                 length: rect.w,
                 min: img.f0,
                 max: img.f1,
                 lead: rect.x,
-                trail: i64::from(layout.width) - rect.right(),
+                trail: i64::from(layout.width) - rect.right() - caption_run(text, caption),
             },
             LabelRun::Across,
         ),
@@ -931,14 +975,22 @@ fn draw_spectrogram(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
     blit(canvas, rect, &scene.input.analysis.spectrogram, orientation);
     frame(canvas, rect);
 
+    let img = &scene.input.analysis.spectrogram;
+    let caption = ticks::caption(AxisKind::Frequency, img.f0, img.f1).unwrap_or_default();
     match orientation {
         Orientation::Horizontal => {
             scene.across(canvas, rect, &scene.time, Labelled::Yes);
             scene.up(canvas, rect, &scene.frequency, Labelled::Yes);
+            let at = Anchor::right(
+                (rect.x - LABEL_PAD) as f32,
+                scene.beside(rect.y + scene.rise),
+            );
+            scene.caption_above(canvas, at, caption);
         }
         Orientation::Vertical => {
             scene.down(canvas, rect, &scene.time, Labelled::Yes);
             scene.across(canvas, rect, &scene.frequency, Labelled::Yes);
+            scene.caption_after(canvas, rect, &scene.frequency, caption);
         }
     }
 }
@@ -1223,9 +1275,14 @@ fn draw_colorbar(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
         min: f64::from(img.db_min),
         max: f64::from(img.db_max),
         lead: scene.rise,
-        trail: scene.rise,
+        trail: -caption_rows(scene.rise),
     };
-    for tick in ticks::ticks(AxisKind::DecibelsWithUnit, axis, &scene.stacked()) {
+    let at = Anchor::left(
+        (rect.right() + LABEL_PAD) as f32,
+        scene.beside(rect.y + scene.rise),
+    );
+    scene.caption_above(canvas, at, "dB");
+    for tick in ticks::ticks(AxisKind::Decibels, axis, &scene.stacked()) {
         let y = rect.bottom() - 1 - tick.offset;
         hline(canvas, rect.right(), rect.right() + 3, y, Theme::AXIS);
         scene.text.draw(

@@ -94,7 +94,8 @@ fn zero_is_exact_when_the_range_holds_it() {
             .find(|t| t.value.abs() < 1e-12)
             .unwrap_or_else(|| panic!("no zero tick in {min}..{max}: {marks:?}"));
         assert_eq!(zero.value, 0.0, "zero drifted to {}", zero.value);
-        assert_eq!(zero.label, "0 Hz");
+        // The unit is the axis's, so the tick is a bare zero.
+        assert_eq!(zero.label, "0");
     }
 }
 
@@ -302,12 +303,12 @@ fn the_decibel_bound_covers_anything_f32_can_reach() {
     // The transform clamps silence at -300 dB rather than letting it reach
     // `-inf`, and `argand-dsp` publishes that floor.
     assert_eq!(f64::from(argand_dsp::DB_FLOOR), crate::render::DB_FLOOR);
-    assert!(widest_labels(AxisKind::Decibels, crate::render::DB_FLOOR, 0.0)
-        .contains(&"-300".to_string()));
     assert!(
-        widest_labels(AxisKind::DecibelsWithUnit, crate::render::DB_FLOOR, 0.0)
-            .contains(&"-300 dB".to_string())
+        widest_labels(AxisKind::Decibels, crate::render::DB_FLOOR, 0.0)
+            .contains(&"-300".to_string())
     );
+    // The unit is the axis's, not each tick's.
+    assert_eq!(caption(AxisKind::Decibels, -60.0, 0.0), Some("dB"));
 }
 
 #[test]
@@ -403,17 +404,13 @@ fn a_huge_decibel_window_still_gets_a_bound_that_holds_it() {
     let text = TextRenderer::new();
     // `--dynamic-range 10000` is not refused by the CLI, so the reserve has to
     // survive it: five digits and a sign, not the f32 floor's three.
-    let reserved = widest_labels(AxisKind::DecibelsWithUnit, -10_000.0, 0.0);
-    assert!(reserved.contains(&"-10000 dB".to_string()), "{reserved:?}");
+    let reserved = widest_labels(AxisKind::Decibels, -10_000.0, 0.0);
+    assert!(reserved.contains(&"-10000".to_string()), "{reserved:?}");
     let bound = reserved
         .iter()
         .map(|label| text.width(label, SIZE))
         .fold(0.0f32, f32::max);
-    for tick in ticks(
-        AxisKind::DecibelsWithUnit,
-        axis(900, -10_000.0, 0.0),
-        &down(&text),
-    ) {
+    for tick in ticks(AxisKind::Decibels, axis(900, -10_000.0, 0.0), &down(&text)) {
         assert!(
             text.width(&tick.label, SIZE) <= bound,
             "{:?} is wider than the reserved {reserved:?}",

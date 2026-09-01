@@ -689,12 +689,24 @@ fn a_megahertz_frequency_label_gets_a_gutter_that_holds_it() {
     let spec = layout.spectrogram.expect("spectrogram");
 
     let hertz = frequency_ticks(&layout, &extents(time, tuned), &ruler.text, ruler.rise);
-    assert!(hertz.iter().any(|t| t.label.ends_with(" MHz")), "{hertz:?}");
+    // One unit for the axis, named once beside it, and bare digits on the ticks.
+    assert_eq!(ticks::caption(AxisKind::Frequency, tuned.0, tuned.1), Some("MHz"));
+    assert!(hertz.iter().all(|t| !t.label.contains("Hz")), "{hertz:?}");
+    assert!(hertz.iter().any(|t| t.label.starts_with("12.5")), "{hertz:?}");
     ruler.check_stacked(&hertz, spec.x, "tuned to HF");
 
-    // The 78-pixel gutter this replaced could not hold them, and a baseband
-    // axis does not need anything like as much.
-    assert!(gutters.frequency + LABEL_PAD > 78, "{gutters:?}");
+    // The 78-pixel gutter this replaced could not hold `12.579887 MHz` at all.
+    // Naming the unit once means the same axis now fits in less than that.
+    assert!(gutters.frequency + LABEL_PAD < 78, "{gutters:?}");
+    let widest = ticks::widest_labels(AxisKind::Frequency, tuned.0, tuned.1);
+    for label in &widest {
+        assert!(
+            gutters.frequency >= ruler.text.width(label, FONT_SIZE).ceil() as i64,
+            "{gutters:?} does not hold {label:?}"
+        );
+    }
+
+    // A baseband axis still needs less: fewer digits to print.
     let baseband = Gutters::measure(time, (-12_000.0, 12_000.0), DECIBELS);
     assert!(
         gutters.frequency > baseband.frequency,
@@ -770,10 +782,10 @@ fn the_colour_bar_labels_its_own_scale_and_stays_on_the_canvas() {
         min: f64::from(a.spectrogram.db_min),
         max: f64::from(a.spectrogram.db_max),
         lead: ruler.rise,
-        trail: ruler.rise,
+        trail: -caption_rows(ruler.rise),
     };
     let marks = ticks::ticks(
-        AxisKind::DecibelsWithUnit,
+        AxisKind::Decibels,
         axis,
         &LabelMetrics::new(&ruler.text, FONT_SIZE, LabelRun::Down),
     );
@@ -781,8 +793,9 @@ fn the_colour_bar_labels_its_own_scale_and_stays_on_the_canvas() {
     // the height was; a 700-pixel image has room for a good many more.
     assert!(marks.len() > 8, "{marks:?}");
 
+    // The unit is named once above the column, not on every tick.
     for tick in &marks {
-        assert!(tick.label.ends_with(" dB"), "{:?}", tick.label);
+        assert!(!tick.label.contains("dB"), "{:?} repeats the unit", tick.label);
         let right = (bar.right() + LABEL_PAD) as f32 + ruler.text.width(&tick.label, FONT_SIZE);
         assert!(
             right <= canvas.width() as f32,
@@ -790,6 +803,14 @@ fn the_colour_bar_labels_its_own_scale_and_stays_on_the_canvas() {
             tick.label
         );
     }
+
+    // And the caption clears the topmost label rather than landing on it.
+    let caption_bottom = bar.y + 2 * ruler.rise;
+    let highest = marks.iter().map(|t| bar.bottom() - 1 - t.offset).min().unwrap();
+    assert!(
+        highest - ruler.rise > caption_bottom,
+        "the topmost label at {highest} runs into the caption ending at {caption_bottom}"
+    );
 }
 
 #[test]
@@ -805,7 +826,7 @@ fn the_colour_bar_gutter_follows_the_reference_it_was_given() {
     );
 
     let text = TextRenderer::new();
-    let widest = ticks::widest_labels(AxisKind::DecibelsWithUnit, DB_FLOOR - 60.0, 0.0);
+    let widest = ticks::widest_labels(AxisKind::Decibels, DB_FLOOR - 60.0, 0.0);
     for label in &widest {
         assert!(
             peak.colorbar >= text.width(label, FONT_SIZE).ceil() as i64,
