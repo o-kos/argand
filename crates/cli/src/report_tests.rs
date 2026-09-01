@@ -1,5 +1,7 @@
 use super::*;
-use argand_core::{Colormap, Domain, SampleFormat, SampleRange, SampleType, SpectrogramImage};
+use argand_core::{
+    Colormap, DbGrid, Domain, SampleFormat, SampleRange, SampleType, SpectrogramImage,
+};
 use argand_core::{Psd, SignalMeta};
 use argand_dsp::{
     Analysis, AnalysisRequest, DynamicRange, DynamicRangeResult, Reduce, StftConfig, Window,
@@ -37,6 +39,17 @@ fn analysis_at(
     let recommended_db = (((peak_db - floor_db) * 1.5 / 10.0).ceil() * 10.0).clamp(20.0, 120.0);
     Analysis {
         spectrogram: image,
+        // The report reads the picture and the spectrum, never the grid
+        // behind them, so this one only has to be the right shape.
+        db: DbGrid {
+            width: 4,
+            height: 4,
+            values: vec![db_max; 16],
+            t0: 0.0,
+            t1: 0.0,
+            f0: 0.0,
+            f1: 0.0,
+        },
         psd: Psd {
             freqs_hz: vec![center - 2404.0, center, center + 2404.0],
             db: vec![floor_db, floor_db, peak_db],

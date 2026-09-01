@@ -14,7 +14,7 @@
 //!   would cost more than the samples themselves.
 
 use argand_core::{
-    Colormap, Psd, SampleRange, SampleSource, SignalMeta, SourceError, SpectrogramImage,
+    Colormap, DbGrid, Psd, SampleRange, SampleSource, SignalMeta, SourceError, SpectrogramImage,
     WaveformEnvelope, gradient_index,
 };
 use rayon::prelude::*;
@@ -218,6 +218,10 @@ pub enum DspError {
 /// Everything one pass over the signal produces.
 pub struct Analysis {
     pub spectrogram: SpectrogramImage,
+    /// The decibels the spectrogram was shaded from, so that a front end
+    /// changing the colour scheme or the range recolours these rather than
+    /// running the transform again.
+    pub db: DbGrid,
     pub psd: Psd,
     /// Time-domain envelope, present only when one was asked for.
     pub waveform: Option<WaveformEnvelope>,
@@ -558,28 +562,30 @@ pub fn analyze(
     time_peak = time_peak.max(block.peak);
 
     let frames = frame_base.max(1);
-    let db = store.finish();
+    let (f0, f1) = meta.frequency_span();
+    let db = DbGrid {
+        width: out_width,
+        height: out_height,
+        values: store.finish(),
+        t0: range.start as f64 / meta.sample_rate,
+        t1: range.end() as f64 / meta.sample_rate,
+        f0,
+        f1,
+    };
     let psd = averaged_spectrum(&plan, &meta, &power, frames);
-    let (dynamic_range, db_min, db_max) = resolve_dynamic_range(dynamic_range, &db, &psd);
-
-    let spectrogram = render(
-        &DbGrid {
-            values: &db,
-            width: out_width,
-            height: out_height,
-        },
-        Shading {
-            colormap,
-            db_min,
-            db_max,
-        },
-        &meta,
-        &range,
-    );
+    let (dynamic_range, db_min, db_max) = resolve_dynamic_range(dynamic_range, &db.values, &psd);
 
     Ok(Analysis {
         waveform: finish_envelope(envelope, range, meta.sample_rate),
-        spectrogram,
+        spectrogram: shade(
+            &db,
+            Shading {
+                colormap,
+                db_min,
+                db_max,
+            },
+        ),
+        db,
         psd,
         time_peak,
         frames: frame_base,
@@ -885,41 +891,27 @@ fn fold_column(dst: &mut [f32], src: &[f32], reduce: Reduce) {
     }
 }
 
-/// Decibel values and the shape they are laid out in.
-///
-/// The slice is column-major: `values[x * height + bin]`. Carrying the two
-/// dimensions next to the slice is what keeps that readable at the one place
-/// it is indexed.
-struct DbGrid<'a> {
-    values: &'a [f32],
-    width: usize,
-    height: usize,
-}
-
 /// How a decibel value becomes a colour.
 #[derive(Clone, Copy)]
-struct Shading {
-    colormap: Colormap,
-    db_min: f32,
-    db_max: f32,
+pub struct Shading {
+    pub colormap: Colormap,
+    pub db_min: f32,
+    pub db_max: f32,
 }
 
-fn render(
-    grid: &DbGrid<'_>,
-    shading: Shading,
-    meta: &SignalMeta,
-    range: &SampleRange,
-) -> SpectrogramImage {
-    let DbGrid {
-        values,
-        width,
-        height,
-    } = *grid;
+/// Colour a grid of decibels, keeping the extents it was measured over.
+///
+/// This is the last step of [`analyze`], separated from it so that a caller
+/// already holding a grid can recolour it. Nothing here reads a sample source:
+/// changing the colour scheme or the dynamic range costs one pass over the
+/// values, not another pass over the file.
+pub fn shade(grid: &DbGrid, shading: Shading) -> SpectrogramImage {
     let Shading {
         colormap,
         db_min,
         db_max,
     } = shading;
+    let (width, height) = (grid.width, grid.height);
 
     let gradient = colormap.gradient();
     let span = (db_max - db_min).max(1e-6);
@@ -928,7 +920,7 @@ fn render(
     for x in 0..width {
         for y in 0..height {
             // Row 0 is the top of the image, which is the highest frequency.
-            let value = values[x * height + (height - 1 - y)];
+            let value = grid.value(x, height - 1 - y);
             let normalized = if value.is_finite() {
                 (value - db_min) / span
             } else {
@@ -938,11 +930,10 @@ fn render(
         }
     }
 
-    let (f0, f1) = meta.frequency_span();
-    image.t0 = range.start as f64 / meta.sample_rate;
-    image.t1 = range.end() as f64 / meta.sample_rate;
-    image.f0 = f0;
-    image.f1 = f1;
+    image.t0 = grid.t0;
+    image.t1 = grid.t1;
+    image.f0 = grid.f0;
+    image.f1 = grid.f1;
     image.db_min = db_min;
     image.db_max = db_max;
     image

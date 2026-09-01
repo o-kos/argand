@@ -5,6 +5,44 @@
 
 use serde::Serialize;
 
+/// Decibel values and the shape they are laid out in, before any colour is
+/// chosen for them.
+///
+/// This is what a transform actually produced. Shading it is a separate step,
+/// so a front end that changes the colour scheme or the dynamic range recolours
+/// a grid it already holds instead of running the transform again over numbers
+/// that did not change.
+///
+/// The extents travel with the values because they describe the same picture,
+/// and a caller holding the grid has no other way back to the signal it came
+/// from.
+#[derive(Debug, Clone)]
+pub struct DbGrid {
+    pub width: usize,
+    pub height: usize,
+    /// Column-major, `width * height` values: `values[x * height + bin]`, with
+    /// bin 0 the lowest frequency.
+    pub values: Vec<f32>,
+    /// Time extent in seconds, from the start of the file.
+    pub t0: f64,
+    pub t1: f64,
+    /// Frequency extent in Hz, already offset by the centre frequency.
+    pub f0: f64,
+    pub f1: f64,
+}
+
+impl DbGrid {
+    /// The value in column `x` at frequency bin `bin`, counting up from the
+    /// lowest.
+    ///
+    /// Column-major is the layout the transform fills, one whole column per
+    /// frame; naming the two dimensions here is what keeps that arithmetic out
+    /// of everything that reads the grid.
+    pub fn value(&self, x: usize, bin: usize) -> f32 {
+        self.values[x * self.height + bin]
+    }
+}
+
 /// A rendered spectrogram plus the axis extents it was drawn for.
 #[derive(Debug, Clone)]
 pub struct SpectrogramImage {

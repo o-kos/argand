@@ -84,12 +84,12 @@ change to the tick policy itself.
       `crates/cli/src/text_tests.rs`.
 - [x] Delete `crates/cli/src/ticks.rs`, implement `LabelMeasure` for
       `TextRenderer`, and port `render.rs` to the new locations.
-- [ ] Add `DbGrid` to `argand-core::view`: column-major `width * height` values
+- [x] Add `DbGrid` to `argand-core::view`: column-major `width * height` values
       with the time and frequency extents, and re-export it.
-- [ ] Make shading `argand_dsp::shade(&DbGrid, Shading) -> SpectrogramImage`,
+- [x] Make shading `argand_dsp::shade(&DbGrid, Shading) -> SpectrogramImage`,
       have `analyze` build the grid and call it last, and add the grid to
       `Analysis`.
-- [ ] Update `AGENTS.md` where it describes what each crate owns.
+- [x] Update `AGENTS.md` where it describes what each crate owns.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

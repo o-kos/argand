@@ -19,4 +19,4 @@ pub use colormap::{COLORMAP_NAMES, Colormap, GRADIENT_SIZE, Gradient, gradient_i
 pub use fmt::{format_bytes, format_duration, format_hz, format_samples};
 pub use sample::{Domain, ParseSampleTypeError, SAMPLE_TYPE_TOKENS, SampleFormat, SampleType};
 pub use signal::{SampleRange, SampleSource, SignalMeta, SourceError};
-pub use view::{Psd, SpectrogramImage, SpectrumPeak, WaveformEnvelope};
+pub use view::{DbGrid, Psd, SpectrogramImage, SpectrumPeak, WaveformEnvelope};

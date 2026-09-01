@@ -66,3 +66,20 @@ fn an_envelope_addresses_channels_within_a_column() {
     assert_eq!(env.column(3, 0), None, "no fourth column");
     assert_eq!(env.peak(), 0.9);
 }
+
+#[test]
+fn a_grid_addresses_a_bin_within_a_column() {
+    // Column-major: a whole column of bins, then the next column.
+    let grid = DbGrid {
+        width: 3,
+        height: 2,
+        values: vec![-10.0, -20.0, -30.0, -40.0, -50.0, -60.0],
+        t0: 0.0,
+        t1: 1.0,
+        f0: -12_000.0,
+        f1: 12_000.0,
+    };
+    assert_eq!(grid.value(0, 0), -10.0);
+    assert_eq!(grid.value(0, 1), -20.0);
+    assert_eq!(grid.value(2, 1), -60.0);
+}

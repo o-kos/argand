@@ -559,3 +559,83 @@ fn the_published_decibel_floor_matches_the_floors_that_produce_it() {
     assert_eq!(20.0 * MAG_FLOOR.log10(), DB_FLOOR);
     assert!((10.0 * POWER_FLOOR.log10() - f64::from(DB_FLOOR)).abs() < 1e-9);
 }
+
+#[test]
+fn the_grid_holds_the_numbers_the_picture_was_shaded_from() {
+    let mut src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 1.0), 12_579_000.0);
+    let analysis = run(&mut src, 32, 16);
+    let (grid, img) = (&analysis.db, &analysis.spectrogram);
+
+    assert_eq!((grid.width, grid.height), (img.width, img.height));
+    assert_eq!(grid.values.len(), grid.width * grid.height);
+    // The extents describe one picture, so both views of it carry the same.
+    assert_eq!((grid.t0, grid.t1), (img.t0, img.t1));
+    assert_eq!((grid.f0, grid.f1), (img.f0, img.f1));
+
+    // Row 0 of the image is the top, which is the highest frequency, so the
+    // grid's last bin is what shaded it.
+    let gradient = Colormap::Grayscale.gradient();
+    let span = img.db_max - img.db_min;
+    for x in 0..grid.width {
+        for y in 0..grid.height {
+            let value = grid.value(x, grid.height - 1 - y);
+            let expected = gradient[gradient_index((value - img.db_min) / span)];
+            assert_eq!(img.get(x, y), [expected[0], expected[1], expected[2], 255]);
+        }
+    }
+    assert!(
+        grid.values.iter().any(|v| *v > f32::from(-100i8)),
+        "a full-scale tone left nothing above -100 dB"
+    );
+}
+
+#[test]
+fn recolouring_a_grid_costs_no_second_pass_over_the_signal() {
+    // What the separation is for: the same numbers under a different scheme
+    // and a different window give exactly the picture the transform would
+    // have produced, without the transform running again.
+    let mut src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 1.0), 0.0);
+    let analysis = run(&mut src, 24, 16);
+
+    let mut again = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 1.0), 0.0);
+    let wanted = analyze(
+        &mut again,
+        &AnalysisRequest {
+            colormap: Colormap::Oceanic,
+            ..request(24, 16, SampleRange::new(0, 8192))
+        },
+        &mut |_, _| {},
+    )
+    .expect("analysis should succeed");
+
+    let recoloured = shade(
+        &analysis.db,
+        Shading {
+            colormap: Colormap::Oceanic,
+            db_min: wanted.spectrogram.db_min,
+            db_max: wanted.spectrogram.db_max,
+        },
+    );
+    assert_eq!(recoloured.rgba, wanted.spectrogram.rgba);
+    assert_eq!(recoloured.db_min, wanted.spectrogram.db_min);
+    assert_eq!(recoloured.db_max, wanted.spectrogram.db_max);
+    assert_eq!((recoloured.t0, recoloured.t1), (wanted.spectrogram.t0, wanted.spectrogram.t1));
+    assert_eq!((recoloured.f0, recoloured.f1), (wanted.spectrogram.f0, wanted.spectrogram.f1));
+
+    // And a different window over the same grid is a different picture. The
+    // window has to reach past the floor to show it: a tone against silence
+    // has both its levels pinned to the ends of any narrower one.
+    let wider = shade(
+        &analysis.db,
+        Shading {
+            colormap: Colormap::Oceanic,
+            db_min: DB_FLOOR - 200.0,
+            db_max: wanted.spectrogram.db_max,
+        },
+    );
+    assert_ne!(
+        wider.get(0, 0),
+        recoloured.get(0, 0),
+        "the floor kept its colour after the window moved past it"
+    );
+}

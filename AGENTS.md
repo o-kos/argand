@@ -37,8 +37,8 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 
 ## Cargo workspace architecture
 
-- **argand-core:** domain types such as `Signal`, real or complex sample metadata, `Selection`, and units. It also owns toolkit-independent render view models such as `WaveformEnvelope`, `SpectrogramTile`, and primitive lists. It must not depend on GUI or heavy DSP code.
-- **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, resampling helpers, and frequency shifting. It depends on rustfft and must not depend on GUI code.
+- **argand-core:** domain types such as `Signal`, real or complex sample metadata, `Selection`, and units. It also owns toolkit-independent render view models such as `WaveformEnvelope`, `DbGrid`, `SpectrogramTile`, and primitive lists, and the axis tick layout in `argand-core::axis`, which measures candidate labels through the `LabelMeasure` trait so that every front end places its marks by one policy. It must not depend on GUI or heavy DSP code.
+- **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, resampling helpers, and frequency shifting. Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
 - **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source. This is the future connection point for custom formats through the worker.
 - **argand-edit:** a planned editing engine using a piece table over the memory-mapped original and inserted buffers, a command stack for undo and redo, and a clipboard.
 - **argand-app:** the planned application binary using GPUI and gpui-component with skin support. It owns the main waveform and spectrogram window, cursors, selections, scrolling, status, transport, and the detailed spectrum window. It converts core view models into GPUI images, quads, and paths. This is the single shipped binary.
