@@ -80,16 +80,27 @@ tick, or the same value on a panel that shares the axis.
 - ➕ Grid lines in the spectrum panel are drawn before its trace rather than after. With
   the panel's frequency grid added, drawing the grid last cut the trace into dashes
   exactly where it is read.
-- ➕ The slack that keeps a tick landing exactly on an end of the range is measured in
-  multiples of the step, not in seconds or hertz, and is capped at a thousandth of a
-  multiple. Expressed in values it has to be wide enough to cover the division at one
-  end of the axis, and that is wide enough to reach past a narrow range at the other and
-  return a coordinate outside it -- a one-hertz window a terahertz up gained a tick a
-  whole hertz below its own minimum. The cap bounds what is left: an end tick may sit up
-  to `step / 1024` outside the range, which is under a pixel on any axis, and an index
-  can never move by a whole multiple and inflate the count the search rejects on. Both
-  ends are also checked against `2^53` before they are cast, since past that an index no
-  longer round-trips through `f64`.
+- ➕ Where a tick may land is checked on the finished value, not on the arithmetic that
+  found it. A slack keeps a range whose end sits on a multiple from losing that tick to
+  the last bit of a division, and it has to be measured in multiples rather than in
+  seconds or hertz -- expressed in values it must be wide enough to cover the division at
+  one end of a long axis, and that is wide enough to reach past a narrow range at the
+  other, which gave a one-hertz window a terahertz up a tick a whole hertz below its own
+  minimum. Capping the slack was tried next and is not a bound either: past roughly
+  `2^40 / step` the division's own error is already wider than any useful cap. So the
+  cap stays only to stop the slack growing into a whole multiple and pushing the index
+  count over the guard, and the promise is made where it can be kept -- a tick further
+  than one pixel outside the range it was given is dropped. Inside a pixel is a rounding
+  artefact of the endpoint, and keeping it is what stops a range ending at `0.3` with a
+  step of `0.1` losing its last tick to arithmetic nobody can see. Both ends are also
+  checked against `2^53` before they are cast, since past that an index no longer
+  round-trips through `f64`.
+- ➕ `widest_labels` returns every candidate rather than one, and the caller measures
+  them all. `format_hz` picks its unit per value, so an axis straddling a threshold
+  prints in two units and the widest label is not the one at the largest magnitude: a
+  range ending at 1000 Hz reserves `1.000 kHz` and then prints `999.995 Hz`, nine pixels
+  wider, off the left of the canvas. Which of two labels is wider is a question about
+  glyphs, so only the caller, which has the font, can answer it.
 - ➕ The decimal ladder holds its decade inside the normal range. Below it `powi`
   underflows to zero, and a decade of zero neither yields a step nor grows when it is
   multiplied, so a span too small to label at all sent the search spinning for ever.
@@ -104,9 +115,11 @@ tick, or the same value on a panel that shares the axis.
 - The gutters holding stacked labels are measured rather than assumed:
   `Gutters::measure` formats the widest label each axis could print over its range and
   measures it. `FREQ_LABEL_W`, `DB_LABEL_W` and `CBAR_LABEL_W` are removed.
-- The spectrum panel's decibel gutter is bounded as three digits and a sign, because its
-  scale follows its own trace and answers to no setting: `f32`'s smallest normal is about
-  `1e-38`, which is -760 dBFS. It is also reserved only when that panel is up.
+- The spectrum panel's decibel gutter is bounded rather than measured, because its scale
+  follows its own trace and answers to no setting. The bound is the transform's own
+  floor: it clamps silence rather than letting it reach `-inf`, so `argand-dsp` publishes
+  `DB_FLOOR` and a test there keeps it honest against the two clamps that produce it.
+  The gutter is also reserved only when that panel is up.
 - The colour bar's gutter is measured from the window it can be asked to show, which
   `--dynamic-range` and `--ref` decide between them. Full scale pins the top of that
   window at 0 dBFS; this file's own peak does not, and is not known until the transform
@@ -129,6 +142,17 @@ tick, or the same value on a panel that shares the axis.
   selection across the hour mark rewrites every label without any change of zoom, and it
   contradicts the Issue's acceptance criterion outright. A minutes field reading `60.00`
   is the smaller oddity.
+- ➕ Nudging the outermost label inward -- right-aligning it against the end of the axis
+  rather than centring it on its tick -- so that it fits where a centred one would not,
+  and dropping it only when even that fails. Review argued for this, because with a
+  spectrum panel beside the spectrogram the current rule costs the last time label, and
+  the grid line could still be drawn at the true coordinate. Declined for this change,
+  and worth the owner's opinion rather than mine: every other label on the axis sits
+  centred on the value it names, so an end label that does not is reading a different
+  contract from its neighbours, and the coordinate it would carry -- the end of the
+  capture -- is already in the title and the footer. The cost is bounded and visible
+  only when a panel shares the label row: without one, the trailing label fits and is
+  drawn.
 - Putting the tick policy in `argand-core` so a future GPUI front end inherits it. It
   measures glyphs with the CLI's font; the part worth sharing is the ladder, and that is
   a few lines. Moving it now would put a font dependency in a crate that must not have
@@ -167,7 +191,7 @@ tick, or the same value on a panel that shares the axis.
       what the colour bar was asked for and going unreserved without its panel, and the
       layout matrix proving it is not skipping the combinations it enumerates.
 - [x] Update `README.md` and `CHANGELOG.md`.
-- [ ] Complete validation.
+- [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.

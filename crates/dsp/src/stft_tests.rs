@@ -455,3 +455,11 @@ fn overlap_is_reported_from_the_hop() {
     };
     assert!((half.overlap_percent() - 50.0).abs() < 1e-9);
 }
+
+#[test]
+fn the_published_decibel_floor_matches_the_floors_that_produce_it() {
+    // Both clamps have to agree with the constant a renderer reserves from,
+    // or a label can come out wider than the room set aside for it.
+    assert_eq!(20.0 * MAG_FLOOR.log10(), DB_FLOOR);
+    assert!((10.0 * POWER_FLOOR.log10() - f64::from(DB_FLOOR)).abs() < 1e-9);
+}

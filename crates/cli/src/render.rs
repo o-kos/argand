@@ -322,15 +322,14 @@ const WAVEFORM_SPAN: i64 = 64;
 const FONT_SIZE: f32 = 13.0;
 const TITLE_SIZE: f32 = 14.0;
 
-/// The lowest decibel the spectrum panel's own scale can reach.
+/// The lowest decibel any axis here can show.
 ///
-/// That scale follows the trace rather than any setting, so it cannot be
-/// measured before the transform has run and is reserved from a bound instead:
-/// `f32`'s smallest normal is about `1e-38`, which is -760 dBFS, and nothing
-/// the transform computes goes below it. The colour bar is not bounded by this
-/// -- `--dynamic-range` opens its window as wide as it is asked to -- so its
-/// gutter is measured from the range the caller passes in.
-pub const DB_FLOOR: f64 = -760.0;
+/// The spectrum panel's scale follows its own trace rather than any setting, so
+/// it cannot be measured before the transform has run and is reserved from this
+/// bound instead. The transform clamps silence rather than letting it reach
+/// `-inf`, and `argand-dsp` publishes where: a test there keeps the two floors
+/// that produce it honest, so this cannot drift away from what is drawn.
+pub const DB_FLOOR: f64 = argand_dsp::DB_FLOOR as f64;
 
 /// The plot's heading.
 const TITLE: TextStyle = TextStyle {
@@ -393,9 +392,14 @@ impl Gutters {
     /// [`DB_FLOOR`] whatever the colour bar was told to span.
     pub fn measure(time: (f64, f64), frequency: (f64, f64), decibels: (f64, f64)) -> Self {
         let text = TextRenderer::new();
+        // Every candidate is measured, because which of `999.999 Hz` and
+        // `1.000 kHz` needs more room is a question about glyphs.
         let width = |kind: AxisKind, (min, max): (f64, f64)| -> i64 {
-            text.width(&ticks::widest_label(kind, min, max), FONT_SIZE)
-                .ceil() as i64
+            ticks::widest_labels(kind, min, max)
+                .iter()
+                .map(|label| text.width(label, FONT_SIZE).ceil() as i64)
+                .max()
+                .unwrap_or(0)
         };
         Self {
             frequency: width(AxisKind::Frequency, frequency),

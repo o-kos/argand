@@ -805,11 +805,13 @@ fn the_colour_bar_gutter_follows_the_reference_it_was_given() {
     );
 
     let text = TextRenderer::new();
-    let widest = ticks::widest_label(AxisKind::DecibelsWithUnit, DB_FLOOR - 60.0, 0.0);
-    assert!(
-        peak.colorbar >= text.width(&widest, FONT_SIZE).ceil() as i64,
-        "{peak:?} does not hold {widest:?}"
-    );
+    let widest = ticks::widest_labels(AxisKind::DecibelsWithUnit, DB_FLOOR - 60.0, 0.0);
+    for label in &widest {
+        assert!(
+            peak.colorbar >= text.width(label, FONT_SIZE).ceil() as i64,
+            "{peak:?} does not hold {label:?}"
+        );
+    }
 }
 
 #[test]
@@ -824,12 +826,24 @@ fn the_spectrum_gutter_ignores_what_the_colour_bar_was_asked_for() {
 
 #[test]
 fn a_vertical_plot_reserves_the_spectrum_gutter_only_when_it_has_one() {
-    let gutters = gutters();
+    // Built rather than measured, so the rule is tested and not whichever of
+    // the two labels happens to be wider today.
+    let gutters = Gutters {
+        time: 10,
+        decibels: 40,
+        ..gutters()
+    };
+    assert_eq!(gutters.down(Panels::NONE), 10 + LABEL_PAD);
+    assert_eq!(gutters.down(WAVEFORM), 10 + LABEL_PAD);
+    assert_eq!(gutters.down(PSD), 40 + LABEL_PAD);
+    assert_eq!(gutters.down(EVERYTHING), 40 + LABEL_PAD);
+
+    // Which reaches the layout: the waterfall keeps the room.
     let with = Layout::compute(700, 900, PSD, Orientation::Vertical, gutters);
     let without = Layout::compute(700, 900, Panels::NONE, Orientation::Vertical, gutters);
     let (with, without) = (with.spectrogram.unwrap(), without.spectrogram.unwrap());
     assert!(
-        without.x <= with.x,
+        without.x < with.x,
         "a waterfall with no spectrum panel still paid for its labels"
     );
 }

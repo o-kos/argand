@@ -265,33 +265,48 @@ fn real_and_complex_frequency_ranges_both_land_on_round_hertz() {
 #[test]
 fn the_widest_label_bounds_every_label_the_axis_prints() {
     let text = TextRenderer::new();
-    let cases: [(AxisKind, f64, f64); 5] = [
+    let reserved = |kind, min, max| {
+        widest_labels(kind, min, max)
+            .iter()
+            .map(|label| text.width(label, SIZE))
+            .fold(0.0f32, f32::max)
+    };
+    let cases: [(AxisKind, f64, f64); 8] = [
         (AxisKind::Frequency, 12_567_000.0, 12_591_000.0),
         (AxisKind::Frequency, -12_000.0, 12_000.0),
+        // Straddling a unit threshold: the reserve comes from `1.000 kHz` but
+        // the axis can still print the wider `999.995 Hz`.
+        (AxisKind::Frequency, 0.0, 1_000.0),
+        (AxisKind::Frequency, 900.0, 1_100.0),
+        (AxisKind::Frequency, 999_000.0, 1_001_000.0),
         (AxisKind::Time, 0.0, 4_000.0),
         (AxisKind::Time, 0.0, 200.0),
         (AxisKind::Decibels, -120.0, 0.0),
     ];
     for (kind, min, max) in cases {
-        let reserved = widest_label(kind, min, max);
-        let bound = text.width(&reserved, SIZE);
-        for tick in ticks(kind, axis(1600, min, max), &across(&text)) {
-            assert!(
-                text.width(&tick.label, SIZE) <= bound,
-                "{:?} is wider than the reserved {reserved:?}",
-                tick.label
-            );
+        let bound = reserved(kind, min, max);
+        for length in [300, 900, 1600] {
+            for tick in ticks(kind, axis(length, min, max), &across(&text)) {
+                assert!(
+                    text.width(&tick.label, SIZE) <= bound,
+                    "{kind:?} {min}..{max}: {:?} is wider than the {bound:.1}px reserved",
+                    tick.label
+                );
+            }
         }
     }
 }
 
 #[test]
 fn the_decibel_bound_covers_anything_f32_can_reach() {
-    // `f32`'s smallest normal is about 1e-38, which is -760 dBFS.
-    assert_eq!(widest_label(AxisKind::Decibels, -760.0, 0.0), "-760");
-    assert_eq!(
-        widest_label(AxisKind::DecibelsWithUnit, -760.0, 0.0),
-        "-760 dB"
+    // The transform clamps silence at -300 dB rather than letting it reach
+    // `-inf`, and `argand-dsp` publishes that floor.
+    assert_eq!(f64::from(argand_dsp::DB_FLOOR), crate::render::DB_FLOOR);
+    assert!(widest_labels(AxisKind::Decibels, crate::render::DB_FLOOR, 0.0)
+        .contains(&"-300".to_string()));
+    assert!(
+        widest_labels(AxisKind::DecibelsWithUnit, crate::render::DB_FLOOR, 0.0)
+            .contains(&"-300 dB".to_string())
     );
 }
 
@@ -388,9 +403,12 @@ fn a_huge_decibel_window_still_gets_a_bound_that_holds_it() {
     let text = TextRenderer::new();
     // `--dynamic-range 10000` is not refused by the CLI, so the reserve has to
     // survive it: five digits and a sign, not the f32 floor's three.
-    let reserved = widest_label(AxisKind::DecibelsWithUnit, -10_000.0, 0.0);
-    assert_eq!(reserved, "-10000 dB");
-    let bound = text.width(&reserved, SIZE);
+    let reserved = widest_labels(AxisKind::DecibelsWithUnit, -10_000.0, 0.0);
+    assert!(reserved.contains(&"-10000 dB".to_string()), "{reserved:?}");
+    let bound = reserved
+        .iter()
+        .map(|label| text.width(label, SIZE))
+        .fold(0.0f32, f32::max);
     for tick in ticks(
         AxisKind::DecibelsWithUnit,
         axis(900, -10_000.0, 0.0),
@@ -412,13 +430,33 @@ fn a_range_ending_one_ulp_short_of_a_multiple_stays_bounded() {
     // tell a rounded division from a range that genuinely stops just short.
     // What it must not do is drag the tick further out than the cap allows.
     let boundary = 1e12f64;
-    let axis = axis(600, boundary - 1.0, boundary.next_down());
-    for tick in ticks(AxisKind::Frequency, axis, &across(&text)) {
+    let wide = axis(600, boundary - 1.0, boundary.next_down());
+    let marks = ticks(AxisKind::Frequency, wide, &across(&text));
+    assert!(!marks.is_empty(), "nothing to check");
+    let pixel = (wide.max - wide.min) / (wide.length - 1) as f64;
+    for tick in &marks {
         assert!(
-            (axis.min..=axis.max + 1.0 / 1024.0).contains(&tick.value),
-            "{} is more than a thousandth of a step past {}",
+            (wide.min - pixel..=wide.max + pixel).contains(&tick.value),
+            "{} is more than a pixel past {}",
             tick.value,
-            axis.max
+            wide.max
+        );
+    }
+
+    // A span of one ulp at the same magnitude. The division's own error is far
+    // wider than the slack cap here, so only the check on the finished value
+    // keeps a tick from landing a whole span outside.
+    let boundary = 2f64.powi(40);
+    let ulp = boundary.next_up() - boundary;
+    let tight = axis(400, boundary - 2.0 * ulp, boundary - ulp);
+    for tick in ticks(AxisKind::Frequency, tight, &across(&text)) {
+        let pixel = (tight.max - tight.min) / (tight.length - 1) as f64;
+        assert!(
+            (tight.min - pixel..=tight.max + pixel).contains(&tick.value),
+            "{} is outside {}..{}",
+            tick.value,
+            tight.min,
+            tight.max
         );
     }
 }
@@ -432,6 +470,10 @@ fn a_quotient_too_large_to_index_is_refused_rather_than_saturated() {
     // arbitrary value.
     let (min, max) = (1e300, 1e300 + 1e285);
     assert!(max > min, "the range collapsed before the test began");
+    // Refusing outright is the right answer here -- no round step can label
+    // this -- so what is asserted is that nothing came back at some arbitrary
+    // value. Before the guard, a saturated index put a tick at `i64::MAX`
+    // times the step.
     let marks = ticks(AxisKind::Frequency, axis(600, min, max), &across(&text));
     for tick in &marks {
         assert!(
@@ -441,10 +483,15 @@ fn a_quotient_too_large_to_index_is_refused_rather_than_saturated() {
         );
     }
 
-    // A slack of a whole multiple would inflate the index count and get the
-    // step thrown out; the cap keeps the marks that fit.
+    // A quotient just inside the limit, where one ulp is already most of a
+    // multiple. The marks that belong here still come back, and none other.
     let base = 2f64.powi(49);
-    let marks = ticks(AxisKind::Frequency, axis(3, base, base + 2.0), &across(&text));
+    let marks = ticks(
+        AxisKind::Frequency,
+        axis(900, base, base + 2.0),
+        &across(&text),
+    );
+    assert!(!marks.is_empty(), "a workable axis came back empty");
     for tick in &marks {
         assert!((base..=base + 2.0).contains(&tick.value), "{marks:?}");
     }

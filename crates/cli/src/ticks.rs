@@ -139,22 +139,31 @@ pub fn ticks(kind: AxisKind, axis: Axis, labels: &LabelMetrics<'_>) -> Vec<Tick>
 /// A gutter has to be reserved before any tick is chosen, so this bounds the
 /// label rather than predicting it. Digits are the same width in this font, so
 /// a bound built from zeros measures exactly like the value it stands in for.
-pub fn widest_label(kind: AxisKind, min: f64, max: f64) -> String {
+///
+/// More than one candidate comes back where more than one could be the widest,
+/// because the caller has the font and this does not: which of `999.999 Hz` and
+/// `1.000 kHz` takes more room is a question about glyphs, not about characters.
+pub fn widest_labels(kind: AxisKind, min: f64, max: f64) -> Vec<String> {
     let sign = if min < 0.0 { "-" } else { "" };
     let peak = min.abs().max(max.abs());
     match kind {
         AxisKind::Time => match clock_of(min, max) {
-            Clock::HoursMinutesSeconds => format!("{sign}{}:00:00", (peak / 3600.0) as u64),
-            Clock::MinutesSeconds => format!("{sign}{}.00", (peak / 60.0) as u64),
+            Clock::HoursMinutesSeconds => vec![format!("{sign}{}:00:00", (peak / 3600.0) as u64)],
+            Clock::MinutesSeconds => vec![format!("{sign}{}.00", (peak / 60.0) as u64)],
         },
-        AxisKind::Frequency => widest_hz(sign, peak),
-        AxisKind::Decibels | AxisKind::DecibelsWithUnit => {
-            let ends = [
-                format_label(kind, min, min, max),
-                format_label(kind, max, min, max),
-            ];
-            ends.into_iter().max_by_key(String::len).unwrap_or_default()
+        AxisKind::Frequency => {
+            // A range straddling zero reaches every unit down to hertz.
+            let nearest = if min <= 0.0 && max >= 0.0 {
+                0.0
+            } else {
+                min.abs().min(max.abs())
+            };
+            widest_hz(sign, nearest, peak)
         }
+        AxisKind::Decibels | AxisKind::DecibelsWithUnit => vec![
+            format_label(kind, min, min, max),
+            format_label(kind, max, min, max),
+        ],
     }
 }
 
@@ -177,10 +186,12 @@ fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Ve
     // short of the whole number it should be. It is measured in multiples
     // rather than in seconds or hertz -- a slack in values wide enough to cover
     // the division at one end of a long axis reaches right past a narrow range
-    // at the other -- and it is capped at a thousandth of a multiple, which
-    // bounds what it can do: an end tick may sit up to `step / 1024` outside
-    // the range, always under a pixel, and an index can never move by a whole
-    // multiple and inflate the count below.
+    // at the other -- and capped, so that at a large quotient it cannot grow
+    // into a whole multiple and push the index count over the guard below.
+    //
+    // The cap is not itself a promise about where a tick lands: past about
+    // `2^40 / step` the division's own error is already wider than it. What a
+    // tick may not do is checked on the finished value, further down.
     let slack = |quotient: f64| (quotient.abs().max(1.0) * 8.0 * f64::EPSILON).min(1.0 / 1024.0);
     let (lower, upper) = (axis.min / step, axis.max / step);
     let low = (lower - slack(lower)).ceil();
@@ -215,6 +226,15 @@ fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Ve
             extent,
         });
     }
+
+    // Whatever the division, the addition and the multiplication did between
+    // them, the finished value has to land where the axis can show it. Inside a
+    // pixel of an end is a rounding artefact of that end, and keeping it is
+    // what stops a range stopping at 0.3 with a step of 0.1 losing its last
+    // tick to arithmetic nobody can see. Further out than a pixel is not an
+    // artefact: it is a coordinate the caller never asked for.
+    let pixel = span / (axis.length - 1) as f64;
+    placed.retain(|p| p.tick.value >= axis.min - pixel && p.tick.value <= axis.max + pixel);
 
     let lo = -(axis.lead as f64);
     let hi = (axis.length - 1 + axis.trail) as f64;
@@ -333,26 +353,34 @@ fn format_clock(seconds: f64, clock: Clock) -> String {
     }
 }
 
-/// The widest frequency label an axis reaching `peak` can print.
+/// The widest frequency label an axis between `nearest` and `peak` can print.
 ///
-/// `format_hz` picks its unit per value and trims trailing zeros, so the widest
-/// label is the one at the largest magnitude with every decimal that unit
-/// resolves to still in use.
-fn widest_hz(sign: &str, peak: f64) -> String {
-    let (scale, unit, decimals) = if peak >= 1e9 {
-        (1e9, "GHz", 9)
-    } else if peak >= 1e6 {
-        (1e6, "MHz", 6)
-    } else if peak >= 1e3 {
-        (1e3, "kHz", 3)
-    } else {
-        (1.0, "Hz", 3)
-    };
-    format!(
-        "{sign}{}.{} {unit}",
-        (peak / scale) as u64,
-        "0".repeat(decimals)
-    )
+/// `format_hz` picks its unit per value and trims trailing zeros, so an axis
+/// that straddles a unit threshold prints in more than one unit, and the widest
+/// label is not always the one at the largest magnitude: a range ending at
+/// 1000 Hz reserves `1.000 kHz` but can still print `999.999 Hz`. Every unit
+/// the range reaches contributes its own widest -- the value just short of the
+/// next threshold, with every decimal that unit resolves to still in use.
+fn widest_hz(sign: &str, nearest: f64, peak: f64) -> Vec<String> {
+    const UNITS: [(f64, &str, usize); 4] = [
+        (1.0, "Hz", 3),
+        (1e3, "kHz", 3),
+        (1e6, "MHz", 6),
+        (1e9, "GHz", 9),
+    ];
+    let mut labels = Vec::new();
+    for (i, (scale, unit, decimals)) in UNITS.iter().enumerate() {
+        let ceiling = UNITS.get(i + 1).map_or(f64::INFINITY, |(next, _, _)| *next);
+        if peak < *scale || nearest >= ceiling {
+            continue;
+        }
+        let whole = (peak.min(ceiling - scale) / scale) as u64;
+        labels.push(format!("{sign}{whole}.{} {unit}", "0".repeat(*decimals)));
+    }
+    if labels.is_empty() {
+        labels.push(format!("{sign}0.000 Hz"));
+    }
+    labels
 }
 
 #[cfg(test)]

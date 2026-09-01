@@ -34,8 +34,18 @@ const BLOCK_SAMPLES: usize = 1 << 20;
 #[cfg(test)]
 const BLOCK_SAMPLES: usize = 4096;
 
-/// Magnitude floor, about -300 dB, so that silence cannot reach `-inf`.
+/// Magnitude floor, so that silence cannot reach `-inf`.
 const MAG_FLOOR: f32 = 1e-15;
+/// Power floor for the averaged spectrum, which is the same floor in power.
+const POWER_FLOOR: f64 = 1e-30;
+
+/// The lowest decibel any transform here can produce.
+///
+/// Both floors above come out at this level: silence is clamped rather than
+/// left to reach `-inf`, so no axis this crate feeds can print a value below
+/// it. A renderer reserving room for decibel labels can bound them with this
+/// instead of guessing at one.
+pub const DB_FLOOR: f32 = -300.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StftConfig {
@@ -321,7 +331,7 @@ fn averaged_spectrum(plan: &Plan, meta: &SignalMeta, power: &[f64], frames: u64)
         freqs_hz: (0..plan.bins).map(|i| plan.bin_freq(i, meta)).collect(),
         db: power
             .iter()
-            .map(|p| 10.0 * (p / frames as f64).max(1e-30).log10() as f32)
+            .map(|p| 10.0 * (p / frames as f64).max(POWER_FLOOR).log10() as f32)
             .collect(),
         segments: frames,
     }
