@@ -14,15 +14,29 @@ const WAVEFORM: Panels = Panels {
     psd: false,
     db: false,
 };
+const PSD: Panels = Panels {
+    waveform: false,
+    psd: true,
+    db: false,
+};
+const DB: Panels = Panels {
+    waveform: false,
+    psd: false,
+    db: true,
+};
 const EVERYTHING: Panels = Panels {
     waveform: true,
     psd: true,
     db: true,
 };
 
+/// The decibel window `--dynamic-range 60` opens, which is what these tests
+/// render with.
+const DECIBELS: (f64, f64) = (-60.0, 0.0);
+
 /// The gutters the test captures need: 8192 samples at 24 kHz, at baseband.
 fn gutters() -> Gutters {
-    Gutters::measure((0.0, 8192.0 / RATE), (-RATE / 2.0, RATE / 2.0))
+    Gutters::measure((0.0, 8192.0 / RATE), (-RATE / 2.0, RATE / 2.0), DECIBELS)
 }
 
 fn laid_out(width: u32, height: u32, panels: Panels, orientation: Orientation) -> Layout {
@@ -519,34 +533,100 @@ impl Ruler {
     }
 }
 
-/// Every panel set and orientation a plot can be asked for.
-const SHAPES: [(Panels, Orientation); 6] = [
-    (Panels::NONE, Orientation::Horizontal),
-    (Panels::NONE, Orientation::Vertical),
-    (WAVEFORM, Orientation::Horizontal),
-    (WAVEFORM, Orientation::Vertical),
-    (EVERYTHING, Orientation::Horizontal),
-    (EVERYTHING, Orientation::Vertical),
+/// Every panel set there is. Which panels are up decides what neighbours an
+/// axis has, and so how much room its outermost labels can borrow, which is
+/// exactly what the three obvious sets would not have exercised.
+const PANEL_SETS: [Panels; 8] = [
+    Panels::NONE,
+    WAVEFORM,
+    PSD,
+    DB,
+    Panels {
+        waveform: true,
+        psd: true,
+        db: false,
+    },
+    Panels {
+        waveform: true,
+        psd: false,
+        db: true,
+    },
+    Panels {
+        waveform: false,
+        psd: true,
+        db: true,
+    },
+    EVERYTHING,
 ];
 
-/// Extents worth checking every shape against.
-const RANGES: [((f64, f64), (f64, f64)); 4] = [
-    ((0.0, 1800.0), (-12_000.0, 12_000.0)), // half an hour of complex baseband
-    ((0.0, 5.0), (0.0, 6_300.0)),           // five seconds of a real capture
-    ((0.0, 4_320.0), (12_567_000.0, 12_591_000.0)), // over an hour, tuned to HF
-    ((3_600.0, 3_600.2), (-8_000.0, 8_000.0)), // a subsecond window an hour in
+/// One plot to lay out and check: what its axes span, which way time runs, and
+/// how wide a decibel window the colour bar was asked for.
+struct Case {
+    time: (f64, f64),
+    frequency: (f64, f64),
+    decibels: (f64, f64),
+    orientation: Orientation,
+}
+
+impl Case {
+    fn lay_out(&self, width: u32, height: u32, panels: Panels) -> Layout {
+        let gutters = Gutters::measure(self.time, self.frequency, self.decibels);
+        Layout::compute(width, height, panels, self.orientation, gutters)
+    }
+}
+
+const fn case(
+    time: (f64, f64),
+    frequency: (f64, f64),
+    decibels: (f64, f64),
+    orientation: Orientation,
+) -> Case {
+    Case {
+        time,
+        frequency,
+        decibels,
+        orientation,
+    }
+}
+
+/// Extents worth checking every panel set against, in both orientations.
+const CASES: [Case; 10] = [
+    // Half an hour of complex baseband.
+    case((0.0, 1800.0), (-12_000.0, 12_000.0), DECIBELS, Orientation::Horizontal),
+    case((0.0, 1800.0), (-12_000.0, 12_000.0), DECIBELS, Orientation::Vertical),
+    // Five seconds of a real capture.
+    case((0.0, 5.0), (0.0, 6_300.0), DECIBELS, Orientation::Horizontal),
+    case((0.0, 5.0), (0.0, 6_300.0), DECIBELS, Orientation::Vertical),
+    // Over an hour, tuned to HF.
+    case((0.0, 4_320.0), (12_567_000.0, 12_591_000.0), DECIBELS, Orientation::Horizontal),
+    case((0.0, 4_320.0), (12_567_000.0, 12_591_000.0), DECIBELS, Orientation::Vertical),
+    // A subsecond window an hour into the recording.
+    case((3_600.0, 3_600.2), (-8_000.0, 8_000.0), DECIBELS, Orientation::Horizontal),
+    case((3_600.0, 3_600.2), (-8_000.0, 8_000.0), DECIBELS, Orientation::Vertical),
+    // A decibel window far wider than the default, which widens the colour
+    // bar's labels and narrows everything else.
+    case((0.0, 300.0), (-12_000.0, 12_000.0), (-10_000.0, 0.0), Orientation::Horizontal),
+    case((0.0, 300.0), (-12_000.0, 12_000.0), (-10_000.0, 0.0), Orientation::Vertical),
 ];
 
 #[test]
 fn no_two_labels_overlap_at_any_supported_size() {
     let ruler = Ruler::new();
-    for (w, h) in [(560, 300), (900, 320), (1600, 500), (2048, 512), (700, 900)] {
-        for (panels, orientation) in SHAPES {
-            for (time, frequency) in RANGES {
-                let gutters = Gutters::measure(time, frequency);
-                let layout = Layout::compute(w, h, panels, orientation, gutters);
-                let what = format!("{w}x{h} {panels} {orientation} {time:?}");
-                ruler.check_layout(&layout, (time, frequency), &what);
+    // From the smallest image that still leaves a plot up to the default.
+    for (w, h) in [
+        (240, 120),
+        (320, 160),
+        (560, 300),
+        (900, 320),
+        (1600, 500),
+        (2048, 512),
+        (700, 900),
+    ] {
+        for panels in PANEL_SETS {
+            for case in CASES {
+                let layout = case.lay_out(w, h, panels);
+                let what = format!("{w}x{h} {panels} {} {:?}", layout.orientation, case.time);
+                ruler.check_layout(&layout, (case.time, case.frequency), &what);
             }
         }
     }
@@ -560,7 +640,7 @@ fn a_wider_image_gets_more_time_labels() {
     let counts: Vec<usize> = [600, 1000, 1600, 2048]
         .into_iter()
         .map(|w| {
-            let gutters = Gutters::measure(time, frequency);
+            let gutters = Gutters::measure(time, frequency, DECIBELS);
             let layout = Layout::compute(w, 400, Panels::NONE, Orientation::Horizontal, gutters);
             time_ticks(&layout, &img, &ruler.text, ruler.rise).len()
         })
@@ -582,7 +662,7 @@ fn a_wider_image_gets_more_time_labels() {
 fn a_megahertz_frequency_label_gets_a_gutter_that_holds_it() {
     let ruler = Ruler::new();
     let (time, tuned) = ((0.0, 1800.0), (12_567_000.0, 12_591_000.0));
-    let gutters = Gutters::measure(time, tuned);
+    let gutters = Gutters::measure(time, tuned, DECIBELS);
     let layout = Layout::compute(2048, 512, Panels::NONE, Orientation::Horizontal, gutters);
     let spec = layout.spectrogram.expect("spectrogram");
 
@@ -593,7 +673,7 @@ fn a_megahertz_frequency_label_gets_a_gutter_that_holds_it() {
     // The 78-pixel gutter this replaced could not hold them, and a baseband
     // axis does not need anything like as much.
     assert!(gutters.frequency + LABEL_PAD > 78, "{gutters:?}");
-    let baseband = Gutters::measure(time, (-12_000.0, 12_000.0));
+    let baseband = Gutters::measure(time, (-12_000.0, 12_000.0), DECIBELS);
     assert!(
         gutters.frequency > baseband.frequency,
         "{gutters:?} against {baseband:?}"

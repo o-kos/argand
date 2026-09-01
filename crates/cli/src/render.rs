@@ -322,12 +322,15 @@ const WAVEFORM_SPAN: i64 = 64;
 const FONT_SIZE: f32 = 13.0;
 const TITLE_SIZE: f32 = 14.0;
 
-/// The lowest decibel the transform can put on an axis.
+/// The lowest decibel the spectrum panel's own scale can reach.
 ///
-/// `f32`'s smallest normal is about `1e-38`, which is -760 dBFS. A decibel
-/// range is not known until the transform has run, so the gutters that hold
-/// decibel labels are reserved from this bound rather than from a measurement.
-const DB_FLOOR: f64 = -760.0;
+/// That scale follows the trace rather than any setting, so it cannot be
+/// measured before the transform has run and is reserved from a bound instead:
+/// `f32`'s smallest normal is about `1e-38`, which is -760 dBFS, and nothing
+/// the transform computes goes below it. The colour bar is not bounded by this
+/// -- `--dynamic-range` opens its window as wide as it is asked to -- so its
+/// gutter is measured from the range the caller passes in.
+pub const DB_FLOOR: f64 = -760.0;
 
 /// The plot's heading.
 const TITLE: TextStyle = TextStyle {
@@ -383,7 +386,11 @@ pub struct Gutters {
 impl Gutters {
     /// Measure the widest label each axis could print, in the font and at the
     /// size the plot will draw with.
-    pub fn measure(time: (f64, f64), frequency: (f64, f64)) -> Self {
+    ///
+    /// `decibels` is the widest window the colour bar can be asked to show,
+    /// which `--dynamic-range` and `--gain` decide between them. The spectrum
+    /// panel's own scale answers to neither, so it keeps [`DB_FLOOR`].
+    pub fn measure(time: (f64, f64), frequency: (f64, f64), decibels: (f64, f64)) -> Self {
         let text = TextRenderer::new();
         let width = |kind: AxisKind, (min, max): (f64, f64)| -> i64 {
             text.width(&ticks::widest_label(kind, min, max), FONT_SIZE)
@@ -392,8 +399,8 @@ impl Gutters {
         Self {
             frequency: width(AxisKind::Frequency, frequency),
             time: width(AxisKind::Time, time),
-            decibels: width(AxisKind::Decibels, (DB_FLOOR, 0.0)),
-            colorbar: width(AxisKind::DecibelsWithUnit, (DB_FLOOR, 0.0)),
+            decibels: width(AxisKind::Decibels, (DB_FLOOR.min(decibels.0), decibels.1)),
+            colorbar: width(AxisKind::DecibelsWithUnit, decibels),
         }
     }
 

@@ -84,27 +84,29 @@ tick, or the same value on a panel that shares the axis.
 - ➕ Grid lines in the spectrum panel are drawn before its trace rather than after. With
   the panel's frequency grid added, drawing the grid last cut the trace into dashes
   exactly where it is read.
+- ➕ The slack that keeps a tick landing exactly on an end of the range is measured in
+  multiples of the step, not in seconds or hertz. Expressed in values it has to be wide
+  enough to cover the division at one end of the axis, and that is wide enough to reach
+  past a narrow range at the other and return a coordinate outside it -- a one-hertz
+  window a terahertz up gained a tick a whole hertz below its own minimum.
+- ➕ The decimal ladder holds its decade inside the normal range. Below it `powi`
+  underflows to zero, and a decade of zero neither yields a step nor grows when it is
+  multiplied, so a span too small to label at all sent the search spinning for ever.
+- ➕ The clock ladder keeps doubling days until it has passed the step it was asked to
+  start from, instead of falling back on its last written-down entry. A span longer than
+  the ladder reached otherwise got a step too small for it and came back empty.
 - Panels that share an axis are given one tick set computed once, from the spectrogram's
   geometry, rather than computing the same thing twice and hoping the two agree. The
   spectrum panel gains frequency grid lines at those values; it previously had none.
-- Time labels are `h:mm:ss` when the largest absolute time on the axis reaches an hour
-  and `m.ss` below that, with no fractional seconds and no step finer than one second.
+- Time labels are `h:mm:ss` when the span reaches an hour and `m.ss` below that, with no
+  fractional seconds and no step finer than one second.
 - The gutters holding stacked labels are measured rather than assumed:
   `Gutters::measure` formats the widest label each axis could print over its range and
   measures it. `FREQ_LABEL_W`, `DB_LABEL_W` and `CBAR_LABEL_W` are removed.
-- The widest decibel label is bounded as three digits and a sign. `f32`'s smallest
-  normal is about `1e-38`, which is -760 dBFS, so no decibel this plot can compute
-  prints wider than that.
-
-### Divergence from the Issue text
-
-The Issue asks for `h:mm:ss` "when the signal or selected time span is at least one hour
-long". Taken literally, a one-minute window of a two-hour capture would print
-`0:00:00`..`0:01:00`, and a one-minute window starting an hour in would print `60.00`
-under the other branch -- a minute count past 60. The format therefore follows the
-largest absolute time the axis prints rather than the length of the span: identical to
-the Issue's rule for a whole-file render, which is the common case, and correct for a
-selection in both directions.
+- The spectrum panel's decibel gutter is bounded as three digits and a sign, because its
+  scale follows the trace and answers to no setting: `f32`'s smallest normal is about
+  `1e-38`, which is -760 dBFS. The colour bar's is measured from the window
+  `--dynamic-range` and `--gain` open between them, which has no such bound.
 
 ## Rejected alternatives
 
@@ -117,6 +119,12 @@ selection in both directions.
 - Clamping an oversized gutter so the plot always renders. It trades a visible failure
   for clipped labels, which is the defect being fixed. An image too small for its labels
   already fails with a message naming `--image-size`.
+- ➕ Choosing the time format from the largest absolute time on the axis rather than from
+  the span, so that a minute count never passes sixty. Implemented, then dropped on
+  review: it makes the format depend on where a window sits, so panning a one-minute
+  selection across the hour mark rewrites every label without any change of zoom, and it
+  contradicts the Issue's acceptance criterion outright. A minutes field reading `60.00`
+  is the smaller oddity.
 - Putting the tick policy in `argand-core` so a future GPUI front end inherits it. It
   measures glyphs with the CLI's font; the part worth sharing is the ladder, and that is
   a few lines. Moving it now would put a font dependency in a crate that must not have
@@ -141,6 +149,14 @@ selection in both directions.
       ranges, boundary clipping, exact label formatting, the one-second floor,
       cross-panel alignment, non-overlap over a matrix of sizes and panels, and density
       growing with the axis.
+- [x] ➕ Widen that matrix to all eight panel sets rather than three, down to the
+      smallest image that still leaves a plot, and cover a decibel window far wider than
+      the default. Which panels are up decides what neighbours an axis has, and so how
+      much room its outermost labels can borrow, which the three obvious sets left
+      untested.
+- [x] ➕ Pin the defects review found: no tick outside the range it was given, a tick on
+      an exact end kept, a span no ladder was written for still terminating, and a
+      decibel window `--dynamic-range` opened wider than the f32 floor.
 - [x] Update `README.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.

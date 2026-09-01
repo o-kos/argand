@@ -207,9 +207,10 @@ apart, and a narrow one does not stack them on top of each other.
 Values stay round. Numeric axes step by 1, 2 or 5 times a power of ten, and
 zero is exact whenever it is on the axis. Time steps on a clock -- 1, 5, 15,
 30 seconds, a minute, five, an hour -- and never finer than one second, so a
-label never carries a fraction. Time reads as `1:02:09` on an axis that
-reaches an hour and `3.07` below that, minutes and seconds. A window shorter
-than a second shows the whole seconds inside it and nothing else.
+label never carries a fraction. Time reads as `1:02:09` over a span of an hour
+or more and `3.07` -- minutes and seconds -- below that, whatever point of the
+recording the span was taken from. A window shorter than a second shows the
+whole seconds inside it and nothing else.
 
 Every label drawn has a grid line or tick mark at the same value, and a label
 that would not fit whole inside the canvas is dropped along with its line

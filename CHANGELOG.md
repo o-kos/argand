@@ -18,8 +18,8 @@ promise applies to.
   many more coordinates and a small one no longer overlaps them. Labels that
   would not fit whole inside the canvas are dropped with their grid lines
   instead of being clipped.
-- Time axis labels read as a clock: `1:02:09` on an axis reaching an hour and
-  `3.07` below that. Ticks never step finer than one second and labels no
+- Time axis labels read as a clock: `1:02:09` over a span of an hour or more
+  and `3.07` below that. Ticks never step finer than one second and labels no
   longer carry fractional seconds.
 - Panels sharing an axis are given one set of tick values, so the waveform
   strip's time grid and the spectrum panel's frequency grid line up with the

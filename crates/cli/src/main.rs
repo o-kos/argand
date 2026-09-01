@@ -114,11 +114,17 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
 
     // The gutters come first: how much of the image the axis labels take
     // decides how many pixels are left for the transform to fill.
+    //
+    // The colour bar's window runs `--dynamic-range` below the reference level,
+    // and a negative `--gain` drags that level down with it, so both settings
+    // decide how wide its labels get. `-d 10000` really does print `-10000 dB`.
     let (width, height) = args.image_size;
     let seconds = |sample: u64| sample as f64 / meta.sample_rate;
+    let reference = f64::from(args.gain).min(0.0);
     let gutters = Gutters::measure(
         (seconds(range.start), seconds(range.end())),
         meta.frequency_span(),
+        (reference - f64::from(args.dynamic_range), 0.0),
     );
     let layout = Layout::compute(width, height, args.panels, args.orientation, gutters);
     let (transform_w, transform_h) = layout.transform_size();

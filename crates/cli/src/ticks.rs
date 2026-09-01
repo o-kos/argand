@@ -95,10 +95,13 @@ impl<'a> LabelMetrics<'a> {
 
 /// Steps to try, densest first, until one fits.
 ///
-/// The ladders are long enough to reach from the densest step an axis could
-/// hold to a step wider than any span, so the search always terminates on a
-/// candidate rather than on running out of them.
+/// Both ladders start at the densest step the axis could possibly hold and
+/// climb from there, so the search ends on a candidate rather than on running
+/// out of them.
 const CANDIDATES: usize = 40;
+
+/// A day, where the clock stops naming steps and starts doubling.
+const DAY: f64 = 86_400.0;
 
 /// Whole-second steps a clock actually uses.
 ///
@@ -108,7 +111,7 @@ const CLOCK_STEPS: [f64; 18] = [
     1.0, 2.0, 5.0, 10.0, 15.0, 30.0, // seconds
     60.0, 120.0, 300.0, 600.0, 900.0, 1800.0, // minutes
     3600.0, 7200.0, 10800.0, 21600.0, 43200.0, // hours
-    86400.0, // a day
+    DAY,
 ];
 
 /// The ticks this axis accepts: the densest round step whose labels still read.
@@ -169,13 +172,16 @@ struct Placed {
 fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Vec<Placed> {
     let span = axis.max - axis.min;
     let scale = (axis.length - 1) as f64 / span;
-    // A hair of tolerance, so a range that lands on a multiple keeps that tick
-    // instead of losing it to the last bit of the division. It is scaled to the
-    // values, not to the step: a step-sized tolerance grows without bound as the
-    // ladder climbs and ends up reaching right past a short range.
-    let tolerance = axis.min.abs().max(axis.max.abs()) * 1e-12;
-    let low = ((axis.min - tolerance) / step).ceil();
-    let high = ((axis.max + tolerance) / step).floor();
+    // The slack absorbs the last bit of the division, so a range whose end sits
+    // exactly on a multiple keeps that tick. It is measured in multiples rather
+    // than in seconds or hertz: a slack wide enough to cover the division at one
+    // end of the axis is, expressed in values, wide enough to reach right past a
+    // narrow range at the other and invent a coordinate outside it. A few ulps
+    // of the quotient can never reach the next whole multiple.
+    let slack = |quotient: f64| quotient.abs().max(1.0) * 8.0 * f64::EPSILON;
+    let (lower, upper) = (axis.min / step, axis.max / step);
+    let low = (lower - slack(lower)).ceil();
+    let high = (upper + slack(upper)).floor();
     // Counted before either end is cast, so a step small enough to overflow an
     // index is refused rather than saturated into a tick at some arbitrary
     // value. More marks than pixels is refused for the same reason.
@@ -227,27 +233,26 @@ fn readable(placed: &[Placed], gap: f64) -> bool {
 
 /// Round steps for this kind of axis, densest first, starting at `from`.
 fn ladder(kind: AxisKind, from: f64) -> Vec<f64> {
-    if kind != AxisKind::Time {
-        return decimal_ladder(from);
+    match kind {
+        AxisKind::Time => clock_ladder(from),
+        _ => decimal_ladder(from),
     }
-    let all = clock_ladder();
-    let start = all
-        .iter()
-        .position(|step| *step >= from)
-        .unwrap_or(all.len() - 1);
-    all[start..].to_vec()
 }
 
 /// `1`, `2` or `5` times a power of ten, from the first one at least `from`.
 fn decimal_ladder(from: f64) -> Vec<f64> {
-    let from = if from.is_finite() && from > 0.0 {
-        from
+    // The decade is held inside the normal range. Below it, `powi` underflows
+    // to zero, and a decade of zero neither produces a step nor grows when it
+    // is multiplied, so the search would spin for ever on a span too small to
+    // label at all.
+    let exponent = if from.is_finite() && from > 0.0 {
+        from.log10().floor().clamp(-300.0, 300.0)
     } else {
-        f64::MIN_POSITIVE
+        -300.0
     };
-    let mut decade = 10f64.powi(from.log10().floor() as i32);
+    let mut decade = 10f64.powi(exponent as i32);
     let mut steps = Vec::with_capacity(CANDIDATES);
-    while steps.len() < CANDIDATES {
+    while steps.len() < CANDIDATES && decade.is_finite() {
         for mantissa in [1.0, 2.0, 5.0] {
             let step = mantissa * decade;
             if step >= from * (1.0 - 1e-9) {
@@ -260,11 +265,16 @@ fn decimal_ladder(from: f64) -> Vec<f64> {
 }
 
 /// The clock ladder, extended past a day by doubling: nothing beyond that is
-/// rounder than another day.
-fn clock_ladder() -> Vec<f64> {
-    let mut steps = CLOCK_STEPS.to_vec();
-    while steps.len() < CANDIDATES {
-        steps.push(steps[steps.len() - 1] * 2.0);
+/// rounder than another day, and it keeps doubling until it has passed `from`,
+/// so a span of any length ends on a candidate.
+fn clock_ladder(from: f64) -> Vec<f64> {
+    let mut steps: Vec<f64> = CLOCK_STEPS.iter().copied().filter(|s| *s >= from).collect();
+    let mut step = DAY;
+    while steps.len() < CANDIDATES && step.is_finite() {
+        step *= 2.0;
+        if step >= from {
+            steps.push(step);
+        }
     }
     steps
 }
@@ -276,14 +286,16 @@ enum Clock {
     MinutesSeconds,
 }
 
-/// The format follows the largest time the axis prints, not the length of the
-/// span it covers.
+/// The format follows the span the axis covers, not where on the recording it
+/// starts.
 ///
-/// A whole-file render makes the two the same thing. A selection does not: one
-/// minute taken an hour in has a one-minute span, and printing it as `60.00`
-/// would put a minute count past sixty on a clock.
+/// Going by the largest time printed was tried first, to keep the minutes field
+/// under sixty. It makes the format depend on where the window sits: panning a
+/// one-minute selection across the hour mark changes every label without
+/// changing the zoom. A minutes field that counts past sixty is the smaller
+/// oddity, and tying the format to the zoom alone is what a reader can predict.
 fn clock_of(min: f64, max: f64) -> Clock {
-    if min.abs().max(max.abs()) >= 3600.0 {
+    if max - min >= 3600.0 {
         Clock::HoursMinutesSeconds
     } else {
         Clock::MinutesSeconds

@@ -160,14 +160,22 @@ fn an_hour_two_minutes_and_nine_seconds_prints_as_the_issue_asks() {
 }
 
 #[test]
-fn the_clock_format_follows_the_largest_time_on_the_axis() {
-    // A whole-file render of an hour-long capture: the Issue's rule and this
-    // one agree.
+fn the_clock_format_follows_the_span_and_not_the_offset() {
     assert_eq!(clock_of(0.0, 3600.0), Clock::HoursMinutesSeconds);
     assert_eq!(clock_of(0.0, 3599.0), Clock::MinutesSeconds);
-    // A one-minute window taken an hour in. Going by the span alone would
-    // print `60.00`, a minute count past sixty.
-    assert_eq!(clock_of(3600.0, 3660.0), Clock::HoursMinutesSeconds);
+
+    // A one-minute window keeps the one-minute format wherever it is taken
+    // from, so panning across the hour mark does not rewrite every label.
+    assert_eq!(clock_of(3600.0, 3660.0), Clock::MinutesSeconds);
+    assert_eq!(clock_of(86_400.0, 86_460.0), Clock::MinutesSeconds);
+    // And the minutes field carries the full count when it passes sixty.
+    let text = TextRenderer::new();
+    let marks = ticks(AxisKind::Time, axis(900, 3600.0, 3660.0), &across(&text));
+    assert_eq!(marks[0].label, "60.00");
+    assert_eq!(marks[marks.len() - 1].label, "61.00");
+
+    // An hour-long span keeps hours wherever it starts.
+    assert_eq!(clock_of(7200.0, 10_800.0), Clock::HoursMinutesSeconds);
 }
 
 #[test]
@@ -298,3 +306,100 @@ fn an_axis_with_nothing_to_show_produces_nothing() {
     assert!(ticks(AxisKind::Time, axis(600, 0.0, f64::INFINITY), &labels).is_empty());
 }
 
+
+#[test]
+fn no_tick_lands_outside_the_range_it_was_given() {
+    let text = TextRenderer::new();
+    let cases = [
+        // A one-hertz window a terahertz up: the slack that finds a tick on the
+        // boundary is far wider than the span if it is measured in hertz.
+        (1_000_000_000_123.0, 1_000_000_000_124.0),
+        (12_579_000.5, 12_579_001.5),
+        (-0.000_000_1, 0.000_000_1),
+        (0.3, 0.8),
+    ];
+    let strays = |kind, (min, max): (f64, f64), labels: &LabelMetrics<'_>| {
+        ticks(kind, axis(600, min, max), labels)
+            .into_iter()
+            .filter(|tick| tick.value < min || tick.value > max)
+            .collect::<Vec<_>>()
+    };
+    for (min, max) in cases {
+        for kind in [AxisKind::Frequency, AxisKind::Decibels] {
+            let outside = strays(kind, (min, max), &across(&text));
+            assert!(outside.is_empty(), "{kind:?} left {min}..{max}: {outside:?}");
+            let outside = strays(kind, (min, max), &down(&text));
+            assert!(outside.is_empty(), "{kind:?} left {min}..{max}: {outside:?}");
+        }
+    }
+}
+
+#[test]
+fn a_tick_sitting_exactly_on_an_end_of_the_range_is_kept() {
+    let text = TextRenderer::new();
+    // Both ends are whole multiples of the step the axis will pick, and the
+    // low end only reaches one after a division that cannot represent it.
+    let marks = ticks(AxisKind::Frequency, axis(900, 0.1 + 0.2, 0.9), &across(&text));
+    assert_eq!(marks.first().map(|t| t.value), Some(0.1 + 0.2));
+    assert_eq!(marks.last().map(|t| t.value), Some(0.9));
+
+    let marks = ticks(AxisKind::Time, axis(900, 0.0, 1800.0), &across(&text));
+    assert_eq!(marks.first().map(|t| t.value), Some(0.0));
+    assert_eq!(marks.last().map(|t| t.value), Some(1800.0));
+}
+
+#[test]
+fn a_span_no_ladder_was_written_for_still_terminates() {
+    let text = TextRenderer::new();
+    // A span smaller than the smallest normal. Reaching the end of this test
+    // is most of the point: the decimal ladder used to compute a decade of
+    // zero here, which neither produced a step nor grew when multiplied, so
+    // the search spun for ever.
+    let subnormal = f64::from_bits(1);
+    for length in [2, 600] {
+        let marks = ticks(
+            AxisKind::Frequency,
+            axis(length, 0.0, subnormal),
+            &across(&text),
+        );
+        assert!(marks.len() <= 1, "{length}px: {marks:?}");
+        for tick in &marks {
+            assert_eq!(tick.value, 0.0, "{length}px: {marks:?}");
+        }
+    }
+
+    // Three thousand years, which is past where the clock ladder stops naming
+    // its steps. It carries on in days rather than giving up.
+    let millennia = 1e12;
+    let marks = ticks(AxisKind::Time, axis(1200, 0.0, millennia), &across(&text));
+    assert!(!marks.is_empty(), "the clock ladder ran out");
+    assert_no_overlap(&marks, &across(&text), "three thousand years");
+    for pair in marks.windows(2) {
+        let step = pair[1].value - pair[0].value;
+        assert!(
+            (step / 86_400.0).fract().abs() < 1e-6,
+            "{step} is not a whole number of days"
+        );
+    }
+}
+
+#[test]
+fn a_huge_decibel_window_still_gets_a_bound_that_holds_it() {
+    let text = TextRenderer::new();
+    // `--dynamic-range 10000` is not refused by the CLI, so the reserve has to
+    // survive it: five digits and a sign, not the f32 floor's three.
+    let reserved = widest_label(AxisKind::DecibelsWithUnit, -10_000.0, 0.0);
+    assert_eq!(reserved, "-10000 dB");
+    let bound = text.width(&reserved, SIZE);
+    for tick in ticks(
+        AxisKind::DecibelsWithUnit,
+        axis(900, -10_000.0, 0.0),
+        &down(&text),
+    ) {
+        assert!(
+            text.width(&tick.label, SIZE) <= bound,
+            "{:?} is wider than the reserved {reserved:?}",
+            tick.label
+        );
+    }
+}
