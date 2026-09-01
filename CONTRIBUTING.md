@@ -18,6 +18,10 @@ Create a branch from an up-to-date `main`:
 
 Use `feature`, `fix`, `docs`, `refactor`, `test`, or `chore` as the type. For example, Issue `#42` could use `fix/42-iq-frequency-axis`.
 
+Use the repository's main working directory by default. Create an additional
+worktree outside it only when the project owner explicitly asks for one; do not
+infer that request from parallel work, isolation, or convenience.
+
 Create `docs/plans/<issue>-<short-description>.md` from `docs/plans/TEMPLATE.md` and commit it before implementation. The plan must link to the Issue and describe the implementation tasks and validation strategy.
 
 ## Pull Request lifecycle
@@ -183,7 +187,7 @@ Before marking the Pull Request ready for final review:
 4. update the Pull Request description if its scope or validation changed;
 5. mark the Pull Request ready for review.
 
-After all checks pass and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the branch after merge. The linked Issue closes through the Pull Request keyword.
+After all checks pass and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the merged feature branch both remotely and locally; a branch from an accepted Pull Request must not remain in the local repository. Remove or switch any worktree that still has it checked out before deleting it. The linked Issue closes through the Pull Request keyword.
 
 Actions that can only happen after merge belong in the plan's `Post-completion` section and are not represented as unfinished implementation checkboxes.
 
