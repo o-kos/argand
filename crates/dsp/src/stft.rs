@@ -268,6 +268,8 @@ struct Block<'a> {
     start: u64,
     /// How much of the range the envelope has already seen.
     folded: u64,
+    /// Largest absolute sample read anywhere in the selected range.
+    peak: f32,
 }
 
 impl<'a> Block<'a> {
@@ -283,7 +285,17 @@ impl<'a> Block<'a> {
             remaining: len,
             start: 0,
             folded: 0,
+            peak: 0.0,
         }
+    }
+
+    fn measure_peak(&mut self, from: usize, to: usize) {
+        self.peak = self.buf[from..to]
+            .iter()
+            .copied()
+            .filter(|sample| sample.is_finite())
+            .map(f32::abs)
+            .fold(self.peak, f32::max);
     }
 
     /// Top up the buffer, keeping whatever overlap the last pass left.
@@ -297,6 +309,7 @@ impl<'a> Block<'a> {
                 self.remaining = 0;
                 break;
             }
+            self.measure_peak(from, from + got);
             let samples = got / self.channels;
             self.filled += samples;
             self.remaining -= samples as u64;
@@ -335,6 +348,7 @@ impl<'a> Block<'a> {
             if got == 0 {
                 break;
             }
+            self.measure_peak(0, got);
             let samples = got / self.channels;
             builder.fold(&self.buf[..samples * self.channels], self.folded);
             self.folded += samples as u64;
@@ -541,6 +555,7 @@ pub fn analyze(
     if let Some(builder) = envelope.as_mut() {
         block.drain_into(builder)?;
     }
+    time_peak = time_peak.max(block.peak);
 
     let frames = frame_base.max(1);
     let db = store.finish();

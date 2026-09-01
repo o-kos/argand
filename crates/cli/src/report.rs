@@ -263,6 +263,9 @@ impl Report {
         if let Some(peak) = &self.peak_bin {
             write!(out, " · peak {:+.1} dBFS", peak.level.dbfs)?;
         }
+        if let Some(suggestion) = self.range_suggestion() {
+            write!(out, " · {suggestion}")?;
+        }
         if let Some(output) = &self.output {
             write!(
                 out,
@@ -322,7 +325,7 @@ impl Report {
         )?;
         writeln!(
             out,
-            "  range     {} · {:.0} dB effective · {:.0} dB recommended",
+            "  range     {} · {} dB effective · {:.0} dB recommended",
             self.stft.dynamic_range_mode,
             self.stft.dynamic_range_db,
             self.stft.recommended_dynamic_range_db

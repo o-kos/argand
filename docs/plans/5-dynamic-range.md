@@ -84,6 +84,11 @@ or the peak and floor estimators.
 - [x] Update end-to-end coverage for default, fixed, automatic, warning, and
   panel-independent behaviour.
 - [x] Update CLI help, README, and the Unreleased changelog entry.
+- [x] ➕ Include the same range suggestion in compact batch reports.
+- [x] ➕ Measure the time-domain peak over the complete selected span,
+  including samples after the last full STFT frame.
+- [x] ➕ Keep long image titles clear of the right-aligned suggestion.
+- [x] ➕ Preserve fractional fixed ranges in the human report.
 - [ ] Complete validation and change-specific render checks.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

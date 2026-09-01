@@ -136,6 +136,45 @@ fn the_yellow_suggestion_is_drawn_without_depending_on_a_panel() {
 }
 
 #[test]
+fn a_long_title_stays_clear_of_the_suggestion() {
+    let dir = TempDir::new("render-title-suggestion");
+    let layout = laid_out(420, 320, Panels::NONE, Orientation::Horizontal);
+    let a = analysis(&dir, "long-title.wav", true, &layout);
+    let suggestion = "Suggested: -d 40";
+    let canvas = render(
+        &layout,
+        &PlotInput {
+            analysis: &a,
+            title: "a-very-long-capture-name-with-format-rate-and-duration-metadata.iqw",
+            footer: "footer",
+            suggestion: Some(suggestion),
+            colormap: Colormap::Grayscale,
+            waveform_full_scale: 1.0,
+        },
+    );
+
+    let text = TextRenderer::new();
+    let suggestion_left = layout.width as f32 - PAD as f32 - text.width(suggestion, FONT_SIZE);
+    let title_right = (0..HEADER_H as u32)
+        .flat_map(|y| (0..canvas.width()).map(move |x| (x, y)))
+        .filter(|(x, y)| {
+            let [r, g, b] = canvas.get_pixel(*x, *y).0;
+            (180..=230).contains(&r) && (180..=230).contains(&g) && b >= 180
+        })
+        .map(|(x, _)| x)
+        .max()
+        .expect("the fitted title should remain visible");
+    assert!(
+        title_right as f32 + LABEL_PAD as f32 <= suggestion_left,
+        "title ends at {title_right}, suggestion starts at {suggestion_left}"
+    );
+
+    let fitted = fit_title("abcdefghijklmnopqrstuvwxyz", 80.0, &text);
+    assert!(fitted.ends_with('…'));
+    assert!(text.width(&fitted, TITLE_SIZE) <= 80.0);
+}
+
+#[test]
 fn the_spectrogram_is_drawn_whatever_the_panels_say() {
     for panels in [Panels::NONE, WAVEFORM, EVERYTHING] {
         let layout = laid_out(900, 500, panels, Orientation::Horizontal);

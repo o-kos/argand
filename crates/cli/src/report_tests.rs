@@ -210,6 +210,15 @@ fn an_excessive_non_auto_range_suggests_the_measured_one() {
 }
 
 #[test]
+fn a_compact_batch_keeps_the_range_suggestion() {
+    let m = meta(SampleFormat::I16, 32768.0);
+    let dark = report(&m, &analysis(-99.8, -121.7, 0.0025, 0.0));
+    let line = compact(&dark, 1, 2);
+    assert!(line.contains("Suggested: -d 40"), "{line}");
+    assert_eq!(line.lines().count(), 1);
+}
+
+#[test]
 fn the_analysed_span_is_only_mentioned_when_it_differs() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.5, 0.0);
@@ -298,6 +307,11 @@ fn human_report_names_requested_effective_and_recommended_ranges() {
         text.contains("range     fixed · 60 dB effective · 40 dB recommended"),
         "{text}"
     );
+
+    a.dynamic_range.requested = DynamicRange::Fixed(20.5);
+    a.dynamic_range.effective_db = 20.5;
+    let text = human(&report(&m, &a));
+    assert!(text.contains("fixed · 20.5 dB effective"), "{text}");
 }
 
 #[test]

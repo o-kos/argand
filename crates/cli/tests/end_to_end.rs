@@ -58,16 +58,20 @@ fn fft_args() -> Vec<&'static str> {
     vec!["-f", "256", "-d", "60", "-i", "500x300"]
 }
 
-#[test]
-fn dynamic_range_modes_are_applied_reported_and_suggested() {
-    let dir = TempDir::new("e2e-range");
+fn write_quiet_wav(dir: &TempDir, name: &str) -> PathBuf {
     let mut values = real_tone(SAMPLES, RATE as f64, TONE_HZ, 0.001);
     for (n, value) in values.iter_mut().enumerate() {
         let noise = ((n * 17 % 251) as f32 / 125.0 - 1.0) * 0.0001;
         *value += noise;
     }
     let sample_type = "rl_f32".parse().unwrap();
-    let input = write_wav(&dir.join("quiet.wav"), sample_type, RATE, &values, 1.0);
+    write_wav(&dir.join(name), sample_type, RATE, &values, 1.0)
+}
+
+#[test]
+fn dynamic_range_modes_are_applied_and_reported() {
+    let dir = TempDir::new("e2e-range-modes");
+    let input = write_quiet_wav(&dir, "quiet.wav");
     let input = input.to_str().unwrap();
 
     let default_png = png(&dir, "default.png");
@@ -120,6 +124,25 @@ fn dynamic_range_modes_are_applied_reported_and_suggested() {
         automatic["stft"]["dynamic_range_db"],
         automatic["stft"]["recommended_dynamic_range_db"]
     );
+}
+
+#[test]
+fn dynamic_range_suggestion_reaches_human_reports_and_image() {
+    let dir = TempDir::new("e2e-range-suggestion");
+    let input = write_quiet_wav(&dir, "quiet.wav");
+    let second = write_quiet_wav(&dir, "quiet-2.wav");
+    let input = input.to_str().unwrap();
+    let second = second.to_str().unwrap();
+    let default_png = png(&dir, "default.png");
+    let default = run_json(&[
+        input,
+        "-f",
+        "256",
+        "-i",
+        "500x300",
+        "-o",
+        default_png.to_str().unwrap(),
+    ]);
 
     let recommended = default["stft"]["recommended_dynamic_range_db"]
         .as_f64()
@@ -144,6 +167,17 @@ fn dynamic_range_modes_are_applied_reported_and_suggested() {
         "{stderr}"
     );
 
+    let batch = run(&[input, second, "-f", "256"]);
+    assert!(batch.status.success());
+    let batch_stderr = String::from_utf8_lossy(&batch.stderr);
+    assert_eq!(
+        batch_stderr
+            .matches(&format!("Suggested: -d {recommended:.0}"))
+            .count(),
+        2,
+        "{batch_stderr}"
+    );
+
     let image = image::open(&default_png).unwrap().to_rgb8();
     let yellow = image
         .rows()
@@ -158,7 +192,13 @@ fn dynamic_range_modes_are_applied_reported_and_suggested() {
         yellow > 20,
         "suggestion did not reach the image: {yellow} pixels"
     );
+}
 
+#[test]
+fn removed_reference_option_is_rejected() {
+    let dir = TempDir::new("e2e-removed-reference");
+    let input = write_quiet_wav(&dir, "quiet.wav");
+    let input = input.to_str().unwrap();
     let removed = run(&[input, "--ref", "peak"]);
     assert!(!removed.status.success());
     assert!(String::from_utf8_lossy(&removed.stderr).contains("unexpected argument '--ref'"));

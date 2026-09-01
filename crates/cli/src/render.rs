@@ -350,6 +350,30 @@ const WARNING: TextStyle = TextStyle {
     color: Theme::WARNING,
 };
 
+fn fit_title(text: &str, max_width: f32, renderer: &TextRenderer) -> String {
+    if renderer.width(text, TITLE_SIZE) <= max_width {
+        return text.to_owned();
+    }
+    let ellipsis = "…";
+    if renderer.width(ellipsis, TITLE_SIZE) > max_width {
+        return String::new();
+    }
+
+    let mut fitted = String::new();
+    for character in text.chars() {
+        let before = fitted.len();
+        fitted.push(character);
+        fitted.push_str(ellipsis);
+        if renderer.width(&fitted, TITLE_SIZE) > max_width {
+            fitted.truncate(before);
+            break;
+        }
+        fitted.truncate(fitted.len() - ellipsis.len());
+    }
+    fitted.push_str(ellipsis);
+    fitted
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
     pub x: i64,
@@ -956,9 +980,14 @@ pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
     let text = TextRenderer::new();
     let scene = Scene::new(layout, input, &text);
 
+    let suggestion_width = input.suggestion.map_or(0.0, |suggestion| {
+        text.width(suggestion, FONT_SIZE) + LABEL_PAD as f32
+    });
+    let title_width = (layout.width as f32 - 2.0 * PAD as f32 - suggestion_width).max(0.0);
+    let title = fit_title(input.title, title_width, &text);
     text.draw(
         &mut canvas,
-        input.title,
+        &title,
         Anchor::left(PAD as f32, (PAD + 15) as f32),
         TITLE,
     );

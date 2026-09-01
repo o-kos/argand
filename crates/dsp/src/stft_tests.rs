@@ -385,6 +385,26 @@ fn the_time_domain_peak_is_reported() {
 }
 
 #[test]
+fn the_time_peak_includes_samples_after_the_last_full_frame() {
+    let mut values = vec![0.1; FFT + FFT / 4 + 1];
+    *values.last_mut().unwrap() = 0.9;
+    let mut src = VecSource::new(Domain::Real, values, 0.0);
+    let range = SampleRange::new(0, src.meta().len_samples);
+    let analysis = analyze(
+        &mut src,
+        &AnalysisRequest {
+            waveform_columns: Some(32),
+            ..request(32, 32, range)
+        },
+        &mut |_, _| {},
+    )
+    .unwrap();
+
+    assert!((analysis.time_peak - 0.9).abs() < 1e-6);
+    assert!((analysis.waveform.unwrap().peak() - 0.9).abs() < 1e-6);
+}
+
+#[test]
 fn the_window_bandwidth_is_reported_in_hertz() {
     let mut src = VecSource::new(Domain::Iq, iq_tone(4096, TONE_HZ, 1.0), 0.0);
     let analysis = run(&mut src, 8, 8);
