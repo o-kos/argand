@@ -197,8 +197,8 @@ impl Report {
     /// bins reads under it by the window's scalloping loss rather than by
     /// anything to do with the bin's width. Only noise moves with the
     /// bandwidth, which is why that bandwidth is named beside it -- and named
-    /// as `ENBW`, since a window makes a bin answer to noise across more than
-    /// its own spacing, by a factor that is the window's own.
+    /// as `ENBW`, since how much noise a bin answers to is the window's to
+    /// decide and only a rectangular one leaves it at the bin spacing.
     pub fn plot_footer(&self) -> String {
         format!(
             "fft {} · {} · hop {} ({:.0}% overlap) · {} · {} dB below {} · dBFS, ENBW {}",

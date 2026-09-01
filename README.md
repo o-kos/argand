@@ -261,8 +261,8 @@ I/Q:
   released back to the kernel. A 30-minute, 172 MB I/Q capture renders in
   about 0.8 s with the resident set flat at roughly 60 MB.
 
-A full-scale tone reads 0 dBFS in either domain, so the colour scale means the
-same thing for a real recording and a complex one.
+A full-scale tone on a bin centre reads 0 dBFS in either domain, so the colour
+scale means the same thing for a real recording and a complex one.
 
 ## Layout
 

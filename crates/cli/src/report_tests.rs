@@ -233,7 +233,8 @@ fn the_plot_title_and_footer_describe_the_run() {
     // Six decimals would print 17.578125 Hz here.
     assert!(footer.ends_with("· dBFS, ENBW 17.578 Hz"), "{footer}");
     // The unit divides by the window's coherent gain, not by a bandwidth, so
-    // it is not a per-bin quantity and must not claim to be one.
+    // its levels are not a density per hertz and must not claim to be. One
+    // value per bin is exactly what they are.
     assert!(!footer.contains("/bin"), "{footer}");
     // And the bandwidth is the window's, not the raw bin spacing: `Fs / N` is
     // 11.719 Hz here, so calling it `bin` sent a reader to check a different
