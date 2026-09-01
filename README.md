@@ -219,6 +219,17 @@ and half of every colour-bar label to say the same thing a dozen times, and it
 is what used to put `999.999 Hz` and `1.000 kHz` on one axis -- two spellings
 of neighbouring values. One unit for the whole axis ends that too.
 
+The foot of the plot names the vertical scale as `dBFS, ENBW 17.578 Hz`. The
+level is referenced to full scale -- a full-scale tone reads 0 dBFS whatever
+the transform size, because the transform divides by the window's coherent
+gain and not by any bandwidth. Noise is the part that moves with the
+bandwidth, so the bandwidth is named beside it: the window makes a bin answer
+to noise across `ENBW` hertz, half again the raw `Fs / N` spacing under a Hann
+window. Two renders of one capture at different `--fft-size` therefore show
+the same carrier level and different noise floors, and the `ENBW` field is
+what makes those floors comparable -- subtract `10 log10(ENBW)` from either to
+reach a density per hertz.
+
 Every label drawn has a grid line or tick mark at the same value, and a label
 that would not fit whole inside the canvas is dropped along with its line
 rather than clipped. Coordinates stay inside the span being drawn, to within

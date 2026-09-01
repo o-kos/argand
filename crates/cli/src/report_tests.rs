@@ -227,8 +227,18 @@ fn the_plot_title_and_footer_describe_the_run() {
     assert!(footer.contains("fft 2048") && footer.contains("hann"));
     assert!(footer.contains("75% overlap"), "{footer}");
     assert!(footer.contains("full scale"), "{footer}");
+
+    // The vertical scale is one field: its unit and the bandwidth behind it
+    // are a single statement, so the separator does not come between them.
     // Six decimals would print 17.578125 Hz here.
-    assert!(footer.contains("17.578 Hz"), "{footer}");
+    assert!(footer.ends_with("· dBFS, ENBW 17.578 Hz"), "{footer}");
+    // The unit divides by the window's coherent gain, not by a bandwidth, so
+    // it is not a per-bin quantity and must not claim to be one.
+    assert!(!footer.contains("/bin"), "{footer}");
+    // And the bandwidth is the window's, not the raw bin spacing: `Fs / N` is
+    // 11.719 Hz here, so calling it `bin` sent a reader to check a different
+    // number.
+    assert!(!footer.contains("bin 17"), "{footer}");
 }
 
 #[test]

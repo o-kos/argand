@@ -25,6 +25,11 @@ promise applies to.
   the head of the frequency labels and `dB` above the colour bar, with bare
   numbers under them. One unit is chosen for the whole frequency axis, so
   neighbouring values can no longer print as `999.999 Hz` and `1.000 kHz`.
+- The plot's footer names the vertical scale as `dBFS, ENBW <bandwidth>` in one
+  field, replacing `bin <bandwidth> · dBFS/bin`. The scale divides by the
+  window's coherent gain rather than by a bandwidth, so it is not a per-bin
+  quantity, and the bandwidth quoted is the window's equivalent noise
+  bandwidth rather than the raw `Fs / N` bin spacing.
 - Panels sharing an axis are given one set of tick values, so the waveform
   strip's time grid and the spectrum panel's frequency grid line up with the
   spectrogram's exactly. The spectrum panel gained frequency grid lines.

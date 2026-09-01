@@ -129,6 +129,15 @@ tick, or the same value on a panel that shares the axis.
   axis reserves the rows at the head of its column, an axis whose labels run along it
   reserves the room past its last label. That is what `trail` already expresses, so it
   costs no new mechanism.
+- ➕ The footer's account of the vertical scale is corrected in the same breath, at the
+  owner's request, because it was two fields making one statement and both were wrong.
+  `dBFS/bin` claimed a per-bin normalisation the transform does not perform: it divides
+  by the window's coherent gain, so a tone reads its own amplitude at any transform size
+  and only noise moves with the bandwidth. `bin 17.578 Hz` named that bandwidth after the
+  bin, when it is the window's equivalent noise bandwidth -- half again the `Fs / N`
+  spacing of 11.719 Hz under Hann -- so a reader checking `Fs / N` found a different
+  number. The two become one field, `dBFS, ENBW 17.578 Hz`, and the separator is left
+  between facts rather than inside one.
 - The gutters holding stacked labels are measured rather than assumed:
   `Gutters::measure` measures every label `widest_labels` says the axis could print
   over its range. `FREQ_LABEL_W`, `DB_LABEL_W` and `CBAR_LABEL_W` are removed.
@@ -213,6 +222,8 @@ tick, or the same value on a panel that shares the axis.
       saturated, the colour-bar gutter following `--ref`, the spectrum gutter ignoring
       what the colour bar was asked for and going unreserved without its panel, and the
       layout matrix proving it is not skipping the combinations it enumerates.
+- [x] ➕ Correct the footer's account of the vertical scale, merging its unit and
+      bandwidth into one field.
 - [x] Update `README.md` and `CHANGELOG.md`.
 - [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
