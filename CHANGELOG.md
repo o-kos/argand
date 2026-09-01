@@ -13,14 +13,22 @@ promise applies to.
 
 ### Changed
 
+- The report is now one section per file: a header naming the file and its
+  facts indented under it, comma-separated and each printed once. A single
+  input takes six lines instead of twelve, and the batch line uses the same
+  field names, order and units. The render's path reaches stdout whenever
+  stdout is not a terminal, rather than only for a batch, and `-v` restores
+  the sample count, the divisor, the scaling, the reduce mode, the levels in
+  the file's own units and the render's full path.
+- The range recommendation reads `try -d N to fit the drawn range` in the
+  report, beside the range it argues with. The image footer keeps `sugg -d N`.
+- Sample counts put a space before their unit: `43.2 Mspl`, not `43.2Mspl`.
 - Dynamic-range selection now uses one option: omitting `-d` keeps the
   absolute `0...-110 dBFS` scale, a numeric value selects that range below the
   measured peak, and `-d auto` calculates and applies a peak-to-floor range.
-  The separate `--ref` option was removed. Excessive non-auto ranges now show
-  an aligned `sugg      -d N` field in the full report and `sugg -d N` in
-  compact reports and `(sugg -d N)` in the image footer, where the suggestion
-  is yellow; JSON reports requested, effective and recommended ranges
-  separately.
+  The separate `--ref` option was removed. Excessive non-auto ranges now carry
+  a recommendation in the report and a yellow `(sugg -d N)` in the image
+  footer; JSON reports requested, effective and recommended ranges separately.
 - Axis tick density now follows the length of the axis and the measured width
   of its labels rather than a count fixed per axis, so a large render carries
   many more coordinates and a small one no longer overlaps them. Labels that
