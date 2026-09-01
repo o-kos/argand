@@ -388,8 +388,9 @@ impl Gutters {
     /// size the plot will draw with.
     ///
     /// `decibels` is the widest window the colour bar can be asked to show,
-    /// which `--dynamic-range` and `--gain` decide between them. The spectrum
-    /// panel's own scale answers to neither, so it keeps [`DB_FLOOR`].
+    /// which `--dynamic-range` and `--ref` decide between them. The spectrum
+    /// panel's own scale follows its trace and answers to neither, so it keeps
+    /// [`DB_FLOOR`] whatever the colour bar was told to span.
     pub fn measure(time: (f64, f64), frequency: (f64, f64), decibels: (f64, f64)) -> Self {
         let text = TextRenderer::new();
         let width = |kind: AxisKind, (min, max): (f64, f64)| -> i64 {
@@ -399,7 +400,7 @@ impl Gutters {
         Self {
             frequency: width(AxisKind::Frequency, frequency),
             time: width(AxisKind::Time, time),
-            decibels: width(AxisKind::Decibels, (DB_FLOOR.min(decibels.0), decibels.1)),
+            decibels: width(AxisKind::Decibels, (DB_FLOOR, 0.0)),
             colorbar: width(AxisKind::DecibelsWithUnit, decibels),
         }
     }
@@ -409,9 +410,18 @@ impl Gutters {
         self.frequency + LABEL_PAD
     }
 
-    /// What the time and spectrum labels take out of the left of a vertical one.
-    fn down(self) -> i64 {
-        self.time.max(self.decibels) + LABEL_PAD
+    /// What the labels take out of the left of a vertical plot.
+    ///
+    /// The time labels are always there; the spectrum panel's decibels share
+    /// the same gutter, but only when the panel is up. Reserving for a panel
+    /// nobody asked for narrows the waterfall for nothing.
+    fn down(self, panels: Panels) -> i64 {
+        let stacked = if panels.psd {
+            self.time.max(self.decibels)
+        } else {
+            self.time
+        };
+        stacked + LABEL_PAD
     }
 
     /// What the colour bar and its labels take out of the right of either.
@@ -513,9 +523,9 @@ impl Layout {
     /// Time down the image: the strip sits to the spectrogram's right.
     fn place_time_down(&mut self, content: Rect, panels: Panels, gutters: Gutters, cbar_x: i64) {
         let plot = Rect {
-            x: content.x + gutters.down(),
+            x: content.x + gutters.down(panels),
             y: content.y,
-            w: content.w - gutters.down() - gutters.colorbar(panels),
+            w: content.w - gutters.down(panels) - gutters.colorbar(panels),
             h: content.h - TICK_LABEL_H,
         };
         if !plot.is_valid() {

@@ -173,18 +173,26 @@ fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Ve
     let span = axis.max - axis.min;
     let scale = (axis.length - 1) as f64 / span;
     // The slack absorbs the last bit of the division, so a range whose end sits
-    // exactly on a multiple keeps that tick. It is measured in multiples rather
-    // than in seconds or hertz: a slack wide enough to cover the division at one
-    // end of the axis is, expressed in values, wide enough to reach right past a
-    // narrow range at the other and invent a coordinate outside it. A few ulps
-    // of the quotient can never reach the next whole multiple.
-    let slack = |quotient: f64| quotient.abs().max(1.0) * 8.0 * f64::EPSILON;
+    // on a multiple keeps that tick even when the quotient comes back a hair
+    // short of the whole number it should be. It is measured in multiples
+    // rather than in seconds or hertz -- a slack in values wide enough to cover
+    // the division at one end of a long axis reaches right past a narrow range
+    // at the other -- and it is capped at a thousandth of a multiple, which
+    // bounds what it can do: an end tick may sit up to `step / 1024` outside
+    // the range, always under a pixel, and an index can never move by a whole
+    // multiple and inflate the count below.
+    let slack = |quotient: f64| (quotient.abs().max(1.0) * 8.0 * f64::EPSILON).min(1.0 / 1024.0);
     let (lower, upper) = (axis.min / step, axis.max / step);
     let low = (lower - slack(lower)).ceil();
     let high = (upper + slack(upper)).floor();
-    // Counted before either end is cast, so a step small enough to overflow an
-    // index is refused rather than saturated into a tick at some arbitrary
-    // value. More marks than pixels is refused for the same reason.
+    // Both ends are checked before either is cast. Past `2^53` an index no
+    // longer round-trips through `f64`, and past `i64` the cast saturates into
+    // a tick at some arbitrary value; more marks than pixels is refused for the
+    // same reason.
+    const INDEX_LIMIT: f64 = 9_007_199_254_740_992.0;
+    if low.abs() > INDEX_LIMIT || high.abs() > INDEX_LIMIT {
+        return Vec::new();
+    }
     if !(0.0..axis.length as f64).contains(&(high - low)) {
         return Vec::new();
     }

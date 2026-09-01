@@ -20,7 +20,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use argand_core::{SampleRange, SignalMeta, format_duration};
-use argand_dsp::{AnalysisRequest, StftConfig, analyze};
+use argand_dsp::{AnalysisRequest, DbReference, StftConfig, analyze};
 use argand_io::{Normalize, OpenHints};
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -114,17 +114,12 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
 
     // The gutters come first: how much of the image the axis labels take
     // decides how many pixels are left for the transform to fill.
-    //
-    // The colour bar's window runs `--dynamic-range` below the reference level,
-    // and a negative `--gain` drags that level down with it, so both settings
-    // decide how wide its labels get. `-d 10000` really does print `-10000 dB`.
     let (width, height) = args.image_size;
     let seconds = |sample: u64| sample as f64 / meta.sample_rate;
-    let reference = f64::from(args.gain).min(0.0);
     let gutters = Gutters::measure(
         (seconds(range.start), seconds(range.end())),
         meta.frequency_span(),
-        (reference - f64::from(args.dynamic_range), 0.0),
+        colorbar_window(args),
     );
     let layout = Layout::compute(width, height, args.panels, args.orientation, gutters);
     let (transform_w, transform_h) = layout.transform_size();
@@ -182,6 +177,21 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
     report = report.with_output(&output, width, height, bytes, args.panels.to_string());
     report.elapsed_seconds = started.elapsed().as_secs_f64();
     Ok(report)
+}
+
+/// The widest decibel window the colour bar can be asked to show.
+///
+/// It runs `--dynamic-range` below its reference, and `--ref` decides where
+/// that reference sits. Full scale pins it at 0 dBFS, so `-d 60` can only ever
+/// print down to -60. This file's own peak does not: it is not known until the
+/// transform has run and can sit anywhere down to `f32`'s floor, so a quiet
+/// capture under `--ref peak` prints labels several digits wider.
+fn colorbar_window(args: &Args) -> (f64, f64) {
+    let reference = match args.reference {
+        DbReference::FullScale => 0.0,
+        DbReference::Peak => render::DB_FLOOR,
+    };
+    (reference - f64::from(args.dynamic_range), 0.0)
 }
 
 /// What a finished file puts on stdout, which is the machine-readable stream.

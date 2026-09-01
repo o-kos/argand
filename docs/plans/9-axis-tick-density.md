@@ -77,18 +77,19 @@ tick, or the same value on a panel that shares the axis.
 - Labels whose ink would leave the canvas or its gutter are dropped, and their grid
   lines with them, rather than being clipped or nudged. A missing outermost label is
   legible; half a label is not.
-- ➕ The tolerance that keeps a tick landing exactly on the range's end is scaled to the
-  values, not to the step. Scaled to the step it grows without bound as the ladder
-  climbs, and a step of a few thousand seconds ends up reaching past a half-second range
-  and inventing a tick outside it.
 - ➕ Grid lines in the spectrum panel are drawn before its trace rather than after. With
   the panel's frequency grid added, drawing the grid last cut the trace into dashes
   exactly where it is read.
 - ➕ The slack that keeps a tick landing exactly on an end of the range is measured in
-  multiples of the step, not in seconds or hertz. Expressed in values it has to be wide
-  enough to cover the division at one end of the axis, and that is wide enough to reach
-  past a narrow range at the other and return a coordinate outside it -- a one-hertz
-  window a terahertz up gained a tick a whole hertz below its own minimum.
+  multiples of the step, not in seconds or hertz, and is capped at a thousandth of a
+  multiple. Expressed in values it has to be wide enough to cover the division at one
+  end of the axis, and that is wide enough to reach past a narrow range at the other and
+  return a coordinate outside it -- a one-hertz window a terahertz up gained a tick a
+  whole hertz below its own minimum. The cap bounds what is left: an end tick may sit up
+  to `step / 1024` outside the range, which is under a pixel on any axis, and an index
+  can never move by a whole multiple and inflate the count the search rejects on. Both
+  ends are also checked against `2^53` before they are cast, since past that an index no
+  longer round-trips through `f64`.
 - ➕ The decimal ladder holds its decade inside the normal range. Below it `powi`
   underflows to zero, and a decade of zero neither yields a step nor grows when it is
   multiplied, so a span too small to label at all sent the search spinning for ever.
@@ -104,9 +105,12 @@ tick, or the same value on a panel that shares the axis.
   `Gutters::measure` formats the widest label each axis could print over its range and
   measures it. `FREQ_LABEL_W`, `DB_LABEL_W` and `CBAR_LABEL_W` are removed.
 - The spectrum panel's decibel gutter is bounded as three digits and a sign, because its
-  scale follows the trace and answers to no setting: `f32`'s smallest normal is about
-  `1e-38`, which is -760 dBFS. The colour bar's is measured from the window
-  `--dynamic-range` and `--gain` open between them, which has no such bound.
+  scale follows its own trace and answers to no setting: `f32`'s smallest normal is about
+  `1e-38`, which is -760 dBFS. It is also reserved only when that panel is up.
+- The colour bar's gutter is measured from the window it can be asked to show, which
+  `--dynamic-range` and `--ref` decide between them. Full scale pins the top of that
+  window at 0 dBFS; this file's own peak does not, and is not known until the transform
+  has run, so `--ref peak` reserves from the `f32` floor instead.
 
 ## Rejected alternatives
 
@@ -157,6 +161,11 @@ tick, or the same value on a panel that shares the axis.
 - [x] ➕ Pin the defects review found: no tick outside the range it was given, a tick on
       an exact end kept, a span no ladder was written for still terminating, and a
       decibel window `--dynamic-range` opened wider than the f32 floor.
+- [x] ➕ Pin what the second round found: a range ending one ulp short of a multiple
+      staying inside the cap, a quotient too large to index refused rather than
+      saturated, the colour-bar gutter following `--ref`, the spectrum gutter ignoring
+      what the colour bar was asked for and going unreserved without its panel, and the
+      layout matrix proving it is not skipping the combinations it enumerates.
 - [x] Update `README.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
@@ -165,13 +174,15 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Render the captures in `tests/signals/` in both orientations and at several image
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Render the captures in `tests/signals/` in both orientations and at several image
       sizes, and check by eye that labels are dense, unclipped and aligned across
-      panels.
+      panels. Covered baseband, an HF centre frequency, a 2.4 GHz centre frequency,
+      hour-scale and sub-second spans, `-d 10000`, and images from 200x200 (which is
+      refused with a message naming `--image-size`) to 2048x512.
 
 ## Post-completion
 

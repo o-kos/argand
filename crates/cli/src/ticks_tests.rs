@@ -403,3 +403,49 @@ fn a_huge_decibel_window_still_gets_a_bound_that_holds_it() {
         );
     }
 }
+
+#[test]
+fn a_range_ending_one_ulp_short_of_a_multiple_stays_bounded() {
+    let text = TextRenderer::new();
+    // The quotient here is large enough that one of its ulps is wider than the
+    // distance from `max` up to the next whole multiple, so the slack cannot
+    // tell a rounded division from a range that genuinely stops just short.
+    // What it must not do is drag the tick further out than the cap allows.
+    let boundary = 1e12f64;
+    let axis = axis(600, boundary - 1.0, boundary.next_down());
+    for tick in ticks(AxisKind::Frequency, axis, &across(&text)) {
+        assert!(
+            (axis.min..=axis.max + 1.0 / 1024.0).contains(&tick.value),
+            "{} is more than a thousandth of a step past {}",
+            tick.value,
+            axis.max
+        );
+    }
+}
+
+#[test]
+fn a_quotient_too_large_to_index_is_refused_rather_than_saturated() {
+    let text = TextRenderer::new();
+    // A window fifteen orders of magnitude narrower than where it sits, which
+    // is what puts `min / step` past 2^53. There an index no longer round-trips
+    // through f64, and past i64 the cast saturates into a tick at some
+    // arbitrary value.
+    let (min, max) = (1e300, 1e300 + 1e285);
+    assert!(max > min, "the range collapsed before the test began");
+    let marks = ticks(AxisKind::Frequency, axis(600, min, max), &across(&text));
+    for tick in &marks {
+        assert!(
+            (min..=max).contains(&tick.value),
+            "{} is outside {min}..{max}: {marks:?}",
+            tick.value
+        );
+    }
+
+    // A slack of a whole multiple would inflate the index count and get the
+    // step thrown out; the cap keeps the marks that fit.
+    let base = 2f64.powi(49);
+    let marks = ticks(AxisKind::Frequency, axis(3, base, base + 2.0), &across(&text));
+    for tick in &marks {
+        assert!((base..=base + 2.0).contains(&tick.value), "{marks:?}");
+    }
+}

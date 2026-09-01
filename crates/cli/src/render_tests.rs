@@ -34,9 +34,13 @@ const EVERYTHING: Panels = Panels {
 /// render with.
 const DECIBELS: (f64, f64) = (-60.0, 0.0);
 
-/// The gutters the test captures need: 8192 samples at 24 kHz, at baseband.
+/// The extents the test captures cover: 8192 samples at 24 kHz, at baseband.
+const TIME: (f64, f64) = (0.0, 8192.0 / RATE);
+const BASEBAND: (f64, f64) = (-RATE / 2.0, RATE / 2.0);
+
+/// The gutters the test captures need.
 fn gutters() -> Gutters {
-    Gutters::measure((0.0, 8192.0 / RATE), (-RATE / 2.0, RATE / 2.0), DECIBELS)
+    Gutters::measure(TIME, BASEBAND, DECIBELS)
 }
 
 fn laid_out(width: u32, height: u32, panels: Panels, orientation: Orientation) -> Layout {
@@ -496,9 +500,12 @@ impl Ruler {
     }
 
     /// Both of a plot's axes, measured where the renderer would draw them.
-    fn check_layout(&self, layout: &Layout, ranges: ((f64, f64), (f64, f64)), what: &str) {
+    ///
+    /// Returns whether there was a plot to check at all, so the matrix below
+    /// can prove it is not quietly skipping the combinations it enumerates.
+    fn check_layout(&self, layout: &Layout, ranges: ((f64, f64), (f64, f64)), what: &str) -> bool {
         let Some(spec) = layout.spectrogram else {
-            return;
+            return false;
         };
         let img = extents(ranges.0, ranges.1);
         let clock = time_ticks(layout, &img, &self.text, self.rise);
@@ -513,6 +520,7 @@ impl Ruler {
                 self.check_along(&hertz, spec.x, layout.width, what);
             }
         }
+        true
     }
 
     /// Labels stacked in the gutter left of a plot whose edge is at `x`.
@@ -612,6 +620,7 @@ const CASES: [Case; 10] = [
 #[test]
 fn no_two_labels_overlap_at_any_supported_size() {
     let ruler = Ruler::new();
+    let mut checked = 0;
     // From the smallest image that still leaves a plot up to the default.
     for (w, h) in [
         (240, 120),
@@ -626,10 +635,23 @@ fn no_two_labels_overlap_at_any_supported_size() {
             for case in CASES {
                 let layout = case.lay_out(w, h, panels);
                 let what = format!("{w}x{h} {panels} {} {:?}", layout.orientation, case.time);
-                ruler.check_layout(&layout, (case.time, case.frequency), &what);
+                checked += usize::from(ruler.check_layout(
+                    &layout,
+                    (case.time, case.frequency),
+                    &what,
+                ));
             }
         }
     }
+
+    // A layout too small for a plot has nothing to measure and is skipped, so
+    // the count is asserted: without it a change that stopped producing plots
+    // would leave this test passing on an empty matrix.
+    let combinations = 7 * PANEL_SETS.len() * CASES.len();
+    assert!(
+        checked > combinations * 3 / 4,
+        "only {checked} of {combinations} layouts had a plot to check"
+    );
 }
 
 #[test]
@@ -768,4 +790,46 @@ fn the_colour_bar_labels_its_own_scale_and_stays_on_the_canvas() {
             tick.label
         );
     }
+}
+
+#[test]
+fn the_colour_bar_gutter_follows_the_reference_it_was_given() {
+    // Under `--ref fs` the window's top is 0 dBFS, so `-d 60` cannot print
+    // wider than `-60 dB`. Under `--ref peak` the top is this file's own peak,
+    // which is not known yet and can sit anywhere down to the f32 floor.
+    let full_scale = Gutters::measure(TIME, BASEBAND, (-60.0, 0.0));
+    let peak = Gutters::measure(TIME, BASEBAND, (DB_FLOOR - 60.0, 0.0));
+    assert!(
+        peak.colorbar > full_scale.colorbar,
+        "a peak reference needs the wider gutter: {peak:?} against {full_scale:?}"
+    );
+
+    let text = TextRenderer::new();
+    let widest = ticks::widest_label(AxisKind::DecibelsWithUnit, DB_FLOOR - 60.0, 0.0);
+    assert!(
+        peak.colorbar >= text.width(&widest, FONT_SIZE).ceil() as i64,
+        "{peak:?} does not hold {widest:?}"
+    );
+}
+
+#[test]
+fn the_spectrum_gutter_ignores_what_the_colour_bar_was_asked_for() {
+    // The spectrum panel's scale follows its own trace, so opening the colour
+    // bar's window must not widen the gutter beside the waterfall.
+    let default = Gutters::measure(TIME, BASEBAND, (-60.0, 0.0));
+    let wide = Gutters::measure(TIME, BASEBAND, (-10_000.0, 0.0));
+    assert_eq!(default.decibels, wide.decibels, "{default:?} vs {wide:?}");
+    assert!(wide.colorbar > default.colorbar, "{default:?} vs {wide:?}");
+}
+
+#[test]
+fn a_vertical_plot_reserves_the_spectrum_gutter_only_when_it_has_one() {
+    let gutters = gutters();
+    let with = Layout::compute(700, 900, PSD, Orientation::Vertical, gutters);
+    let without = Layout::compute(700, 900, Panels::NONE, Orientation::Vertical, gutters);
+    let (with, without) = (with.spectrogram.unwrap(), without.spectrogram.unwrap());
+    assert!(
+        without.x <= with.x,
+        "a waterfall with no spectrum panel still paid for its labels"
+    );
 }
