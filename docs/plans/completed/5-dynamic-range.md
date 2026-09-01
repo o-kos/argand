@@ -91,20 +91,20 @@ or the peak and floor estimators.
 - [x] ➕ Preserve fractional fixed ranges in the human report.
 - [x] ➕ Read the post-STFT tail for peak reporting even when no waveform
   panel is requested.
-- [ ] Complete validation and change-specific render checks.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation and change-specific render checks.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Verify `--ref` is rejected while omitted `-d`, numeric `-d`, and
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Verify `--ref` is rejected while omitted `-d`, numeric `-d`, and
   `-d auto` produce the documented JSON modes and effective windows.
-- [ ] Render warning and no-warning cases without optional panels and verify
+- [x] Render warning and no-warning cases without optional panels and verify
   the annotation colour and text placement from the current release binary.
 
 ## Post-completion
