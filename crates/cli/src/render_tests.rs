@@ -736,6 +736,36 @@ fn clear_of(from: i64, taken: &[i64]) -> i64 {
     (from + 2..).find(|at| !taken.contains(at)).unwrap_or(from + 2)
 }
 
+/// Which way an axis's grid lines cross the panel they are drawn on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Along {
+    Columns,
+    Rows,
+}
+
+/// A panel's grid lines for one axis, whichever way round they run.
+fn read_grid(canvas: &RgbImage, rect: Rect, along: Along, crossing: &[i64]) -> Vec<i64> {
+    match along {
+        Along::Columns => grid_columns(canvas, rect, clear_of(rect.y, crossing)),
+        Along::Rows => grid_rows(canvas, rect, clear_of(rect.x, crossing)),
+    }
+}
+
+/// Where a tick lands on `rect`, in the direction its grid lines cross it.
+fn positions(marks: &[Tick], rect: Rect, along: Along, rising: bool) -> Vec<i64> {
+    let mut at: Vec<i64> = marks
+        .iter()
+        .map(|tick| match (along, rising) {
+            (Along::Columns, _) => rect.x + tick.offset,
+            (Along::Rows, false) => rect.y + tick.offset,
+            // Frequency and decibels rise, so offset 0 is the bottom row.
+            (Along::Rows, true) => rect.bottom() - 1 - tick.offset,
+        })
+        .collect();
+    at.sort_unstable();
+    at
+}
+
 /// Every panel that shares an axis draws that axis's accepted values and no
 /// others, in whichever direction the orientation puts them.
 fn assert_shared_grid(orientation: Orientation) {
@@ -746,78 +776,71 @@ fn assert_shared_grid(orientation: Orientation) {
     // room to read the grid.
     let values = real_tone(5 * RATE as usize, RATE, TONE_HZ, 0.3);
     let a = analysis_of(&dir, "shared.wav", &values, false, &layout);
-    let canvas = render(
-        &layout,
-        &PlotInput {
-            analysis: &a,
-            title: "title",
-            footer: "footer",
-            colormap: Colormap::Grayscale,
-            waveform_full_scale: 1.0,
-        },
-    );
+    let input = PlotInput {
+        analysis: &a,
+        title: "title",
+        footer: "footer",
+        colormap: Colormap::Grayscale,
+        waveform_full_scale: 1.0,
+    };
+    let canvas = render(&layout, &input);
 
     let spec = layout.spectrogram.unwrap();
     let strip = layout.waveform.unwrap();
     let psd = layout.psd.unwrap();
-    let ruler = Ruler::new();
-    let clock = time_ticks(&layout, &a.spectrogram, &ruler.text, ruler.rise);
-    let hertz = frequency_ticks(&layout, &a.spectrogram, &ruler.text, ruler.rise);
-    assert!(clock.len() > 4 && hertz.len() > 4, "{clock:?} {hertz:?}");
+    let text = TextRenderer::new();
+    let scene = Scene::new(&layout, &input, &text);
+    assert!(
+        scene.time.len() > 4 && scene.frequency.len() > 4,
+        "{:?} {:?}",
+        scene.time,
+        scene.frequency
+    );
 
-    let (time_on_spectrogram, time_on_strip, frequency_expected, frequency_on_psd);
-    match orientation {
-        Orientation::Horizontal => {
-            // Time runs across, frequency up: read a row clear of the
-            // frequency lines, then a column clear of the time lines.
-            let freq_rows: Vec<i64> = hertz.iter().map(|t| spec.bottom() - 1 - t.offset).collect();
-            time_on_spectrogram = grid_columns(&canvas, spec, clear_of(spec.y, &freq_rows));
-            time_on_strip = grid_columns(&canvas, strip, strip.y + 2);
-            frequency_expected = freq_rows;
-            let time_columns: Vec<i64> = clock.iter().map(|t| psd.x + t.offset).collect();
-            frequency_on_psd = grid_rows(&canvas, psd, clear_of(psd.x, &time_columns));
-        }
-        Orientation::Vertical => {
-            // Time runs down, frequency across: the same read, turned.
-            let freq_columns: Vec<i64> = hertz.iter().map(|t| spec.x + t.offset).collect();
-            time_on_spectrogram = grid_rows(&canvas, spec, clear_of(spec.x, &freq_columns));
-            time_on_strip = grid_rows(&canvas, strip, strip.x + 2);
-            frequency_expected = freq_columns;
-            let time_rows: Vec<i64> = clock.iter().map(|t| psd.y + t.offset).collect();
-            frequency_on_psd = grid_columns(&canvas, psd, clear_of(psd.y, &time_rows));
-        }
-    }
+    // Time runs across a horizontal plot and down a vertical one; frequency
+    // takes whichever direction is left, and rises.
+    let (time_along, freq_along) = match orientation {
+        Orientation::Horizontal => (Along::Columns, Along::Rows),
+        Orientation::Vertical => (Along::Rows, Along::Columns),
+    };
+    let centre = match orientation {
+        Orientation::Horizontal => strip.y + strip.h / 2,
+        Orientation::Vertical => strip.x + strip.w / 2,
+    };
+    let decibels = psd_db_ticks(&scene, psd, psd_range(&a.psd.db));
+    let db_along = match freq_along {
+        Along::Columns => Along::Rows,
+        Along::Rows => Along::Columns,
+    };
+
+    let time_on = |rect: Rect, crossing: &[i64]| read_grid(&canvas, rect, time_along, crossing);
+    let freq_on = |rect: Rect, crossing: &[i64]| read_grid(&canvas, rect, freq_along, crossing);
+    let time_at = |rect| positions(&scene.time, rect, time_along, false);
+    let freq_at = |rect| positions(&scene.frequency, rect, freq_along, true);
 
     // One grid line per accepted time label, and the strip carries the same
     // ones and no others.
-    let labelled: Vec<i64> = clock
-        .iter()
-        .map(|t| match orientation {
-            Orientation::Horizontal => spec.x + t.offset,
-            Orientation::Vertical => spec.y + t.offset,
-        })
-        .collect();
     assert_eq!(
-        time_on_spectrogram, labelled,
+        time_on(spec, &freq_at(spec)),
+        time_at(spec),
         "{orientation}: a grid line without a label, or a label without one"
     );
-    let strip_start = match orientation {
-        Orientation::Horizontal => strip.x - spec.x,
-        Orientation::Vertical => strip.y - spec.y,
-    };
     assert_eq!(
-        time_on_strip,
-        labelled.iter().map(|at| at + strip_start).collect::<Vec<_>>(),
+        time_on(strip, &[centre]),
+        time_at(strip),
         "{orientation}: the strip's time grid drifted off the spectrogram's"
     );
 
-    // And the spectrum panel carries the spectrogram's frequencies.
-    // The panel shares the spectrogram's frequency extent exactly, so the same
-    // values land on the same pixels.
-    let mut expected = frequency_expected;
-    expected.sort_unstable();
+    // And the spectrum panel carries the spectrogram's frequencies, which the
+    // spectrogram has to be drawing in the first place.
     assert_eq!(
-        frequency_on_psd, expected,
+        freq_on(spec, &time_at(spec)),
+        freq_at(spec),
+        "{orientation}: the spectrogram lost its frequency grid"
+    );
+    assert_eq!(
+        freq_on(psd, &positions(&decibels, psd, db_along, true)),
+        freq_at(psd),
         "{orientation}: the spectrum panel's grid drifted"
     );
 }

@@ -26,7 +26,7 @@ tick, or the same value on a panel that shares the axis.
 - `crates/cli/src/render.rs` owns `Layout` and every drawing routine, including
   `nice_ticks`, `nice_time_ticks`, `ticks_from_step` and `time_label`. Nothing outside
   that file calls them.
-- Six axes are drawn: time (horizontal and vertical), frequency (horizontal and
+- Seven axes are drawn: time (horizontal and vertical), frequency (horizontal and
   vertical), the spectrum panel's decibels (horizontal and vertical) and the colour
   bar's decibels (vertical only).
 - `crates/cli/src/text.rs::TextRenderer::width` already measures a string with the
