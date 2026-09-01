@@ -478,6 +478,25 @@ fn a_render_sent_elsewhere_is_headed_by_its_whole_path() {
         "{}",
         human(&relative)
     );
+
+    // `./x.wav` and `spec.png` name one directory in two spellings, and a
+    // render written beside its input is still headed by its own name.
+    let mut here = meta(SampleFormat::I16, 32768.0);
+    here.source = PathBuf::from("./x.wav");
+    let beside = Report::new(
+        &here,
+        &a,
+        &request(DynamicRange::Default, FULL_SPAN),
+        unscaled(),
+    )
+    .with_output(
+        std::path::Path::new("spec.png"),
+        2048,
+        512,
+        253_952,
+        "waveform".to_string(),
+    );
+    assert!(human(&beside).contains("\nspec.png:\n"), "{}", human(&beside));
 }
 
 #[test]
@@ -499,4 +518,19 @@ fn the_normalization_mode_is_reported_verbatim() {
     assert!(verbose(&build(Normalize::None)).contains("normalize none"));
     assert!(verbose(&build(Normalize::Factor(2.5))).contains("normalize 2.5"));
     assert!(verbose(&build(Normalize::Auto)).contains("gain -6.0 dB"));
+
+    // A divisor the caller gave is theirs, so it is named where they gave it
+    // and not again as a full scale. `--normalize 4200` is what made the
+    // divisor 4200 in the first place.
+    let explicit = verbose(&build(Normalize::Factor(4200.0)));
+    assert!(explicit.contains("normalize 4200"), "{explicit}");
+    assert!(!explicit.contains("full scale"), "{explicit}");
+    assert_eq!(explicit.matches("4200").count(), 1, "{explicit}");
+
+    // A divisor the tool measured is not stated anywhere else.
+    assert!(
+        verbose(&build(Normalize::Auto)).contains("full scale 4200"),
+        "{}",
+        verbose(&build(Normalize::Auto))
+    );
 }

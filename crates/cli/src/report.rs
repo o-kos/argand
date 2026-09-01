@@ -10,7 +10,7 @@
 //! capture chain against, so `-v` prints them beside the decibels.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use argand_core::{SignalMeta, format_bytes, format_duration, format_hz, format_samples};
 use argand_dsp::{Analysis, AnalysisRequest};
@@ -104,6 +104,11 @@ pub struct Report {
     pub analysed_seconds: f64,
     pub normalize: String,
     pub divisor: f32,
+    /// Whether `--normalize` named the divisor itself, in which case naming
+    /// it again as a full scale would only repeat the field above it. The
+    /// machine report has no use for it: `normalize` already carries the mode.
+    #[serde(skip)]
+    normalize_names_divisor: bool,
     pub gain_db: f32,
     pub stft: StftReport,
     pub peak_sample: Level,
@@ -159,6 +164,7 @@ impl Report {
             analysed_seconds,
             normalize: describe_normalize(scaling.normalize),
             divisor,
+            normalize_names_divisor: matches!(scaling.normalize, Normalize::Factor(_)),
             gain_db: scaling.gain_db,
             stft: StftReport {
                 fft_size: cfg.fft_size,
@@ -409,11 +415,18 @@ impl Report {
     /// What one unit of level is worth in the file's own counts.
     ///
     /// The test is the divisor's size, not the sample format: an integer
-    /// format brings its own full scale, and `--normalize` measures one for a
-    /// float capture that was never scaled to `[-1, 1]`. Either is worth
+    /// format brings its own full scale, and `--normalize auto` measures one
+    /// for a float capture that was never scaled to `[-1, 1]`. Either is worth
     /// naming. A divisor near one is not a count at all, and printing
     /// `full scale 1` would say nothing.
+    ///
+    /// A divisor the caller gave to `--normalize` is left out: the line above
+    /// already prints that number, and repeating it is the defect this report
+    /// shape exists to remove.
     fn full_scale(&self) -> Option<String> {
+        if self.normalize_names_divisor {
+            return None;
+        }
         (self.divisor >= 128.0).then(|| format!("{:.0}", self.divisor))
     }
 
@@ -457,15 +470,12 @@ impl Report {
     /// otherwise print a bare name, which reads exactly like the render that
     /// does sit beside its input.
     fn render_header(&self, output: &OutputReport, detail: Detail) -> String {
-        let path = Path::new(&output.path);
-        let beside_input = path.parent() == Path::new(&self.file).parent();
+        let render = resolved(&output.path);
+        let beside_input = render.parent() == resolved(&self.file).parent();
         if detail != Detail::Verbose && beside_input {
             return file_name_of(&output.path);
         }
-        std::path::absolute(path).map_or_else(
-            |_| output.path.clone(),
-            |absolute| absolute.display().to_string(),
-        )
+        render.display().to_string()
     }
 }
 
@@ -514,6 +524,22 @@ fn absolute(value: f32) -> String {
         6
     };
     format!("{value:.digits$}")
+}
+
+/// A path resolved against the caller's directory, with `.` components
+/// dropped, so that two spellings of one directory compare equal.
+///
+/// `./x.wav` and `spec.png` name the same directory and must be recognised as
+/// doing so; without this they differ, and the render would be headed by a
+/// full path for no reason. Falls back to the path as given when the current
+/// directory cannot be read, which loses nothing: the two then compare as
+/// they were typed.
+fn resolved(path: &str) -> PathBuf {
+    std::path::absolute(path)
+        .unwrap_or_else(|_| PathBuf::from(path))
+        .components()
+        .filter(|component| !matches!(component, Component::CurDir))
+        .collect()
 }
 
 /// The name a section header carries, which is a file's own name and not the

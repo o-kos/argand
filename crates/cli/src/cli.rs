@@ -137,7 +137,7 @@ pub struct Args {
     #[arg(short = 'q', long, conflicts_with = "verbose")]
     pub quiet: bool,
 
-    /// Report every field and log more; repeat for trace level
+    /// Report more detail and log more; repeat for trace level
     #[arg(short = 'v', long, action = ArgAction::Count)]
     pub verbose: u8,
 }

@@ -42,7 +42,7 @@ fn help_says_what_the_report_prints_and_what_v_adds_to_it() {
         "{help}"
     );
     assert!(
-        help.contains("Report every field and log more"),
+        help.contains("Report more detail and log more"),
         "-v now restores the report's detail as well:\n{help}"
     );
     for restored in ["sample count", "divisor", "reduce mode", "whole path"] {

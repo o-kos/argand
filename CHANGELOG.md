@@ -16,8 +16,9 @@ promise applies to.
 - The report is now one section per file: a header naming the file and its
   facts indented under it, comma-separated and each printed once. A single
   input takes six lines instead of twelve, and the batch line uses the same
-  field names, order and units. The render's path reaches stdout whenever
-  stdout is not a terminal, rather than only for a batch, and `-v` restores
+  field names, order and units. The render's path now reaches stdout only
+  when stdout is not a terminal, where a single file used to echo it even on
+  a terminal that had just been told where the render went, and `-v` restores
   the sample count, the divisor, the scaling, the reduce mode, the levels in
   the file's own units and the render's full path.
 - The range recommendation reads `try -d N to fit the drawn range` in the
