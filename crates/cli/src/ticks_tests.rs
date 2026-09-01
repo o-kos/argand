@@ -275,8 +275,8 @@ fn the_widest_label_bounds_every_label_the_axis_prints() {
     let cases: [(AxisKind, f64, f64); 8] = [
         (AxisKind::Frequency, 12_567_000.0, 12_591_000.0),
         (AxisKind::Frequency, -12_000.0, 12_000.0),
-        // Straddling a unit threshold: the reserve comes from `1.000 kHz` but
-        // the axis can still print the wider `999.995 Hz`.
+        // Sitting on a unit threshold, where the unit chosen for the axis and
+        // the one its smallest values would pick on their own differ.
         (AxisKind::Frequency, 0.0, 1_000.0),
         (AxisKind::Frequency, 900.0, 1_100.0),
         (AxisKind::Frequency, 999_000.0, 1_001_000.0),
@@ -496,4 +496,31 @@ fn a_quotient_too_large_to_index_is_refused_rather_than_saturated() {
     for tick in &marks {
         assert!((base..=base + 2.0).contains(&tick.value), "{marks:?}");
     }
+}
+
+#[test]
+fn a_value_too_small_for_its_unit_prints_as_a_bare_zero() {
+    let text = TextRenderer::new();
+    // A sub-hertz window just below zero. Hertz resolve to a thousandth, so
+    // every tick here rounds to nothing, and nothing has no sign.
+    for (min, max) in [(-0.0004, -0.0001), (-0.0004, 0.0004), (-1e-9, 1e-9)] {
+        for tick in ticks(AxisKind::Frequency, axis(600, min, max), &across(&text)) {
+            assert!(
+                tick.label != "-0" && !tick.label.starts_with("-0."),
+                "{min}..{max} printed {:?}",
+                tick.label
+            );
+        }
+    }
+
+    // The unit still resolves what it can, at every scale and both signs.
+    let hz = hertz_unit(-500.0, 500.0);
+    assert_eq!(hz.format(0.0), "0");
+    assert_eq!(hz.format(-0.0), "0");
+    assert_eq!(hz.format(-0.0004), "0");
+    assert_eq!(hz.format(-250.5), "-250.5");
+    assert_eq!(hertz_unit(0.0, 24_000.0).format(12_000.0), "12");
+    assert_eq!(hertz_unit(0.0, 24_000.0).format(-1500.0), "-1.5");
+    assert_eq!(hertz_unit(0.0, 12.6e6).format(12_579_887.0), "12.579887");
+    assert_eq!(hertz_unit(0.0, 2.4e9).format(2_400_000_000.0), "2.4");
 }

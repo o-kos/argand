@@ -895,3 +895,45 @@ fn the_spectrum_gutter_holds_the_widest_scale_its_panel_can_produce() {
         }
     }
 }
+
+#[test]
+fn an_axis_with_no_labels_gets_no_caption_either() {
+    // The caption's room is reserved past the last label, so an axis with no
+    // labels has nowhere it is known to fit -- and a unit with nothing under
+    // it explains nothing anyway.
+    let dir = TempDir::new("render-caption");
+    let layout = laid_out(900, 320, Panels::NONE, Orientation::Vertical);
+    let spec = layout.spectrogram.expect("spectrogram");
+    let a = analysis(&dir, "caption.wav", true, &layout);
+    let text = TextRenderer::new();
+    let input = PlotInput {
+        analysis: &a,
+        title: "title",
+        footer: "footer",
+        colormap: Colormap::Grayscale,
+        waveform_full_scale: 1.0,
+    };
+    let scene = Scene::new(&layout, &input, &text);
+    let pixels = |canvas: &RgbImage| canvas.pixels().map(|p| p.0).collect::<Vec<_>>();
+
+    let mut canvas = RgbImage::from_pixel(layout.width, layout.height, Theme::BACKGROUND);
+    let blank = pixels(&canvas);
+    scene.caption_after(&mut canvas, spec, &[], "MHz");
+    assert_eq!(pixels(&canvas), blank, "a caption was drawn with nothing under it");
+    scene.caption_above(&mut canvas, Anchor::left(20.0, 20.0), &[], "MHz");
+    assert_eq!(pixels(&canvas), blank, "a stacked caption was drawn with nothing under it");
+
+    // With labels it draws, and lands where the axis reserved room for it.
+    assert!(!scene.frequency.is_empty(), "the fixture stopped producing labels");
+    scene.caption_after(&mut canvas, spec, &scene.frequency, "MHz");
+    assert_ne!(pixels(&canvas), blank, "the caption never appeared");
+
+    let last = scene.frequency.last().unwrap();
+    let end = spec.x + last.offset + text.width(&last.label, FONT_SIZE).ceil() as i64 / 2;
+    let right = end + LABEL_PAD + text.width("MHz", FONT_SIZE).ceil() as i64;
+    assert!(
+        right <= i64::from(layout.width),
+        "the caption ends at {right}, past the {}px canvas",
+        layout.width
+    );
+}

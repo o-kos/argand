@@ -96,11 +96,12 @@ tick, or the same value on a panel that shares the axis.
   checked against `2^53` before they are cast, since past that an index no longer
   round-trips through `f64`.
 - ➕ `widest_labels` returns every candidate rather than one, and the caller measures
-  them all. `format_hz` picks its unit per value, so an axis straddling a threshold
-  prints in two units and the widest label is not the one at the largest magnitude: a
-  range ending at 1000 Hz reserves `1.000 kHz` and then prints `999.995 Hz`, nine pixels
-  wider, off the left of the canvas. Which of two labels is wider is a question about
-  glyphs, so only the caller, which has the font, can answer it.
+  them all, because which of two strings is wider is a question about glyphs and only
+  the caller has the font. This began as a fix for `format_hz` picking its unit per
+  value -- a range ending at 1000 Hz reserved `1.000 kHz` and then printed `999.995 Hz`,
+  nine pixels wider, off the left of the canvas. Choosing one unit for the whole axis
+  later removed that case at the source; the several-candidates shape stays because the
+  decibel axis still bounds itself from both of its ends.
 - ➕ The decimal ladder holds its decade inside the normal range. Below it `powi`
   underflows to zero, and a decade of zero neither yields a step nor grows when it is
   multiplied, so a span too small to label at all sent the search spinning for ever.

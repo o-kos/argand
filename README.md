@@ -225,10 +225,8 @@ rather than clipped. Coordinates stay inside the span being drawn, to within
 the pixel that separating a rounding artefact from a real value costs. Panels sharing an axis are given one set of values, so
 the waveform strip's grid lines fall on the spectrogram's, and the averaged
 spectrum's on the spectrogram's frequencies. The gutters holding the labels
-are sized by measuring the widest label the axis could print -- including the
-ones on the far side of a unit change, since `999.999 Hz` takes more room than
-the `1.000 kHz` just above it -- which is why a capture tuned to 12.579 MHz
-gets a wider left margin than a baseband one.
+are sized by measuring the widest label the axis could print, which is why a
+capture tuned to 12.579 MHz gets a wider left margin than a baseband one.
 
 ### What it gets right
 

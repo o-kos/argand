@@ -383,8 +383,9 @@ fn format_clock(seconds: f64, clock: Clock) -> String {
 /// One unit is chosen for the whole axis and named once beside it, rather than
 /// repeated on every tick. Repeating it costs a third of each label -- ` MHz`
 /// measures 27 pixels against the 60 the digits need -- to say the same thing
-/// a dozen times, and it is what puts `999.999 Hz` and `1.000 kHz` on the same
-/// axis, two spellings of neighbouring values.
+/// a dozen times, and picking the unit per value the way `format_hz` does would
+/// put `999.999 Hz` and `1.000 kHz` on one axis, two spellings of neighbouring
+/// values.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HertzUnit {
     pub name: &'static str,
@@ -398,7 +399,10 @@ impl HertzUnit {
     fn format(self, hz: f64) -> String {
         let text = format!("{:.*}", self.decimals, hz / self.scale);
         let trimmed = text.trim_end_matches('0').trim_end_matches('.');
-        if trimmed.is_empty() || trimmed == "-" {
+        // A value too small for this unit to resolve is zero, and zero has no
+        // sign: without this an axis just below zero labels a tick `-0`.
+        let bare = trimmed.trim_start_matches('-');
+        if bare.is_empty() || bare.chars().all(|c| c == '0') {
             "0".to_string()
         } else {
             trimmed.to_string()

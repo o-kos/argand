@@ -395,10 +395,10 @@ impl Gutters {
     /// [`DB_FLOOR`] whatever the colour bar was told to span.
     pub fn measure(time: (f64, f64), frequency: (f64, f64), decibels: (f64, f64)) -> Self {
         let text = TextRenderer::new();
-        // Every candidate is measured, because which of `999.999 Hz` and
-        // `1.000 kHz` needs more room is a question about glyphs.
+        // Every candidate is measured, because which of two strings needs more
+        // room is a question about glyphs, not about characters.
         // The caption counts too: on a narrow range `MHz` is wider than the
-        // digits it explains.
+        // digits it heads.
         let width = |kind: AxisKind, (min, max): (f64, f64)| -> i64 {
             ticks::widest_labels(kind, min, max)
                 .iter()
@@ -746,20 +746,28 @@ impl<'a> Scene<'a> {
     /// Name the unit once at the head of a stacked axis's label column.
     ///
     /// The axis is told to keep its labels clear of `caption_rows` at that end,
-    /// so this cannot land on one.
-    fn caption_above(&self, canvas: &mut RgbImage, at: Anchor, caption: &str) {
+    /// so this cannot land on one. An axis that produced no labels is left
+    /// alone: a unit with nothing under it explains nothing.
+    fn caption_above(&self, canvas: &mut RgbImage, at: Anchor, marks: &[Tick], caption: &str) {
+        if marks.is_empty() {
+            return;
+        }
         self.text.draw(canvas, caption, at, LABEL);
     }
 
     /// Name it once past the last label of an axis its labels run along.
+    ///
+    /// The room past that label is what the axis reserved, so an axis with no
+    /// labels has nowhere the caption is known to fit, and gets none.
     fn caption_after(&self, canvas: &mut RgbImage, rect: Rect, marks: &[Tick], caption: &str) {
-        let last = marks.last().map_or(rect.x, |tick| {
-            rect.x + tick.offset + self.text.width(&tick.label, FONT_SIZE).ceil() as i64 / 2
-        });
+        let Some(last) = marks.last() else {
+            return;
+        };
+        let end = rect.x + last.offset + self.text.width(&last.label, FONT_SIZE).ceil() as i64 / 2;
         self.text.draw(
             canvas,
             caption,
-            Anchor::left((last + LABEL_PAD) as f32, self.under(rect.bottom())),
+            Anchor::left((end + LABEL_PAD) as f32, self.under(rect.bottom())),
             LABEL,
         );
     }
@@ -985,7 +993,7 @@ fn draw_spectrogram(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
                 (rect.x - LABEL_PAD) as f32,
                 scene.beside(rect.y + scene.rise),
             );
-            scene.caption_above(canvas, at, caption);
+            scene.caption_above(canvas, at, &scene.frequency, caption);
         }
         Orientation::Vertical => {
             scene.down(canvas, rect, &scene.time, Labelled::Yes);
@@ -1281,8 +1289,9 @@ fn draw_colorbar(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
         (rect.right() + LABEL_PAD) as f32,
         scene.beside(rect.y + scene.rise),
     );
-    scene.caption_above(canvas, at, "dB");
-    for tick in ticks::ticks(AxisKind::Decibels, axis, &scene.stacked()) {
+    let marks = ticks::ticks(AxisKind::Decibels, axis, &scene.stacked());
+    scene.caption_above(canvas, at, &marks, "dB");
+    for tick in &marks {
         let y = rect.bottom() - 1 - tick.offset;
         hline(canvas, rect.right(), rect.right() + 3, y, Theme::AXIS);
         scene.text.draw(
