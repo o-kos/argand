@@ -215,7 +215,7 @@ tick, or the same value on a panel that shares the axis.
       layout matrix proving it is not skipping the combinations it enumerates.
 - [x] Update `README.md` and `CHANGELOG.md`.
 - [x] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
