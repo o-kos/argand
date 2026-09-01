@@ -58,9 +58,10 @@ rendered image, or any option's meaning.
   it is large enough to be a count, which is the predicate the per-level form
   already used: an integer format brings its own full scale and `--normalize`
   measures one for a float capture that was never scaled to `[-1, 1]`, and
-  both are worth naming. A divisor near one is not a count and is left out,
-  and so is one the caller gave to `--normalize`: that line already prints
-  the number, and repeating it is the defect this shape exists to remove.
+  both are worth naming, whatever their size. A divisor of one divided
+  nothing and is left out, and so is one the caller gave to `--normalize`:
+  that line already prints the number, and repeating it is the defect this
+  shape exists to remove.
 - Keep `Report::range_suggestion` for the image footer and add a separate
   console phrasing. One `suggested_range_db` stays the single source of the
   number, so the two media cannot disagree about whether or what to suggest.
@@ -114,7 +115,8 @@ rendered image, or any option's meaning.
 - [x] ➕ Say in the README which fields the compact line drops and that
   `--json` has an object only for a file that rendered.
 - [x] ➕ Compare resolved directories, not the paths as typed, when deciding
-  whether a render sits beside its input.
+  whether a render sits beside its input, folding `.` and `..` because
+  `std::path::absolute` keeps both on POSIX.
 - [ ] Complete validation, including a real terminal and a pipe.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

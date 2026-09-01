@@ -974,6 +974,36 @@ fn a_batch_prints_the_full_report_per_file_under_verbose() {
     // Sections separate the files, so nothing needs a blank line to do it.
     assert!(!stderr.contains("\n\n"), "{stderr}");
     assert!(stderr.contains("processed 2, 2 succeeded"), "{stderr}");
+
+    // What -v adds, for each of the two files: the sample count, the scaling,
+    // the divisor, the reduce mode, a level in the file's own units and the
+    // render's whole path. Without these the batch is only the default block.
+    for added in [
+        "8.2 kspl",
+        "normalize none, gain +0.0 dB",
+        "full scale 32768",
+        "reduce max",
+        "range 110 dB (default)",
+    ] {
+        assert_eq!(
+            stderr.matches(added).count(),
+            2,
+            "-v dropped {added}:\n{stderr}"
+        );
+    }
+    assert_eq!(
+        stderr
+            .matches(&format!("\n{}", dir.path().display()))
+            .count(),
+        2,
+        "-v spells each render's path out in full:\n{stderr}"
+    );
+    // A level in the file's own units, beside its decibels.
+    assert_eq!(stderr.matches(" dBFS\n").count(), 2, "{stderr}");
+    assert!(
+        stderr.contains(" ("),
+        "absolute levels are missing:\n{stderr}"
+    );
 }
 
 #[test]

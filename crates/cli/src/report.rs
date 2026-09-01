@@ -414,11 +414,10 @@ impl Report {
 
     /// What one unit of level is worth in the file's own counts.
     ///
-    /// The test is the divisor's size, not the sample format: an integer
-    /// format brings its own full scale, and `--normalize auto` measures one
-    /// for a float capture that was never scaled to `[-1, 1]`. Either is worth
-    /// naming. A divisor near one is not a count at all, and printing
-    /// `full scale 1` would say nothing.
+    /// The test is whether anything was divided by, not what the sample
+    /// format is: an integer format brings its own full scale, and
+    /// `--normalize auto` measures one for a float capture that was never
+    /// scaled to `[-1, 1]`, whatever its size. Either is worth naming.
     ///
     /// A divisor the caller gave to `--normalize` is left out: the line above
     /// already prints that number, and repeating it is the defect this report
@@ -427,7 +426,8 @@ impl Report {
         if self.normalize_names_divisor {
             return None;
         }
-        (self.divisor >= 128.0).then(|| format!("{:.0}", self.divisor))
+        // A divisor of one divided nothing, so there is no scale to name.
+        ((self.divisor - 1.0).abs() > 1e-6).then(|| absolute(self.divisor))
     }
 
     /// The transform that drew the picture, and the window it drew it in.
@@ -526,20 +526,28 @@ fn absolute(value: f32) -> String {
     format!("{value:.digits$}")
 }
 
-/// A path resolved against the caller's directory, with `.` components
-/// dropped, so that two spellings of one directory compare equal.
+/// A path resolved against the caller's directory and folded, so that two
+/// spellings of one directory compare equal.
 ///
-/// `./x.wav` and `spec.png` name the same directory and must be recognised as
-/// doing so; without this they differ, and the render would be headed by a
-/// full path for no reason. Falls back to the path as given when the current
-/// directory cannot be read, which loses nothing: the two then compare as
-/// they were typed.
+/// `./x.wav`, `sub/../x.wav` and `spec.png` all name the same directory and
+/// must be recognised as doing so; `std::path::absolute` keeps `.` and `..`
+/// on POSIX, so the folding is done here. It is lexical, which a symbolic
+/// link can defeat -- the answer is then the full path, which is correct if
+/// verbose. Falls back to the path as given when the current directory cannot
+/// be read, and the two then compare as they were typed.
 fn resolved(path: &str) -> PathBuf {
-    std::path::absolute(path)
-        .unwrap_or_else(|_| PathBuf::from(path))
-        .components()
-        .filter(|component| !matches!(component, Component::CurDir))
-        .collect()
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path));
+    let mut folded = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                folded.pop();
+            }
+            named => folded.push(named),
+        }
+    }
+    folded
 }
 
 /// The name a section header carries, which is a file's own name and not the

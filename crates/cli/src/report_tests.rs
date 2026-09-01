@@ -479,24 +479,27 @@ fn a_render_sent_elsewhere_is_headed_by_its_whole_path() {
         human(&relative)
     );
 
-    // `./x.wav` and `spec.png` name one directory in two spellings, and a
-    // render written beside its input is still headed by its own name.
-    let mut here = meta(SampleFormat::I16, 32768.0);
-    here.source = PathBuf::from("./x.wav");
-    let beside = Report::new(
-        &here,
-        &a,
-        &request(DynamicRange::Default, FULL_SPAN),
-        unscaled(),
-    )
-    .with_output(
-        std::path::Path::new("spec.png"),
-        2048,
-        512,
-        253_952,
-        "waveform".to_string(),
-    );
-    assert!(human(&beside).contains("\nspec.png:\n"), "{}", human(&beside));
+    // A render written beside its input is headed by its own name however
+    // the caller spelled the way there.
+    for spelling in ["./x.wav", "sub/../x.wav", "./sub/./../x.wav"] {
+        let mut here = meta(SampleFormat::I16, 32768.0);
+        here.source = PathBuf::from(spelling);
+        let beside = Report::new(
+            &here,
+            &a,
+            &request(DynamicRange::Default, FULL_SPAN),
+            unscaled(),
+        )
+        .with_output(
+            std::path::Path::new("spec.png"),
+            2048,
+            512,
+            253_952,
+            "waveform".to_string(),
+        );
+        let text = human(&beside);
+        assert!(text.contains("\nspec.png:\n"), "{spelling}:\n{text}");
+    }
 }
 
 #[test]
@@ -533,4 +536,18 @@ fn the_normalization_mode_is_reported_verbatim() {
         "{}",
         verbose(&build(Normalize::Auto))
     );
+
+    // Its size does not enter into it: `auto` on a quiet float capture
+    // measures a small one, and that is the number `-v` promises.
+    let small = meta(SampleFormat::F16x8, 105.37);
+    let measured = verbose(&Report::new(
+        &small,
+        &a,
+        &request(DynamicRange::Default, FULL_SPAN),
+        Scaling {
+            normalize: Normalize::Auto,
+            gain_db: 0.0,
+        },
+    ));
+    assert!(measured.contains("full scale 105.4"), "{measured}");
 }
