@@ -714,13 +714,36 @@ fn a_megahertz_frequency_label_gets_a_gutter_that_holds_it() {
     );
 }
 
-#[test]
-fn panels_that_share_an_axis_draw_the_same_grid() {
+/// Grid pixels along `rect`'s width, read at row `y`.
+fn grid_columns(canvas: &RgbImage, rect: Rect, y: i64) -> Vec<i64> {
+    (rect.x..rect.right())
+        .filter(|x| canvas.get_pixel(*x as u32, y as u32).0 == Theme::GRID.0)
+        .collect()
+}
+
+/// Grid pixels down `rect`'s height, read at column `x`.
+fn grid_rows(canvas: &RgbImage, rect: Rect, x: i64) -> Vec<i64> {
+    (rect.y..rect.bottom())
+        .filter(|y| canvas.get_pixel(x as u32, *y as u32).0 == Theme::GRID.0)
+        .collect()
+}
+
+/// A position a few pixels into `from`, clear of the lines crossing it.
+///
+/// Reading a grid means scanning across the lines that run the other way, and
+/// landing on one of those turns the whole scan into a single line.
+fn clear_of(from: i64, taken: &[i64]) -> i64 {
+    (from + 2..).find(|at| !taken.contains(at)).unwrap_or(from + 2)
+}
+
+/// Every panel that shares an axis draws that axis's accepted values and no
+/// others, in whichever direction the orientation puts them.
+fn assert_shared_grid(orientation: Orientation) {
     let dir = TempDir::new("render-shared");
-    let layout = laid_out(1600, 500, EVERYTHING, Orientation::Horizontal);
+    let layout = laid_out(1600, 700, EVERYTHING, orientation);
     // Five seconds, so the clock has whole seconds to mark, and quiet against
     // full scale, so the strip's trace stays near its centre line and leaves
-    // the grid at the top of the panel to read.
+    // room to read the grid.
     let values = real_tone(5 * RATE as usize, RATE, TONE_HZ, 0.3);
     let a = analysis_of(&dir, "shared.wav", &values, false, &layout);
     let canvas = render(
@@ -737,37 +760,73 @@ fn panels_that_share_an_axis_draw_the_same_grid() {
     let spec = layout.spectrogram.unwrap();
     let strip = layout.waveform.unwrap();
     let psd = layout.psd.unwrap();
-    let is_grid = |x: i64, y: i64| canvas.get_pixel(x as u32, y as u32).0 == Theme::GRID.0;
-    let columns = |rect: Rect, y: i64| -> Vec<i64> {
-        (rect.x..rect.right()).filter(|x| is_grid(*x, y)).collect()
-    };
-
-    // Time: one grid column per accepted label, and the strip carries the
-    // same columns and no others.
     let ruler = Ruler::new();
     let clock = time_ticks(&layout, &a.spectrogram, &ruler.text, ruler.rise);
-    let labelled: Vec<i64> = clock.iter().map(|t| spec.x + t.offset).collect();
-    assert!(labelled.len() > 4, "{labelled:?}");
-    let on_spectrogram = columns(spec, spec.y + 2);
+    let hertz = frequency_ticks(&layout, &a.spectrogram, &ruler.text, ruler.rise);
+    assert!(clock.len() > 4 && hertz.len() > 4, "{clock:?} {hertz:?}");
+
+    let (time_on_spectrogram, time_on_strip, frequency_expected, frequency_on_psd);
+    match orientation {
+        Orientation::Horizontal => {
+            // Time runs across, frequency up: read a row clear of the
+            // frequency lines, then a column clear of the time lines.
+            let freq_rows: Vec<i64> = hertz.iter().map(|t| spec.bottom() - 1 - t.offset).collect();
+            time_on_spectrogram = grid_columns(&canvas, spec, clear_of(spec.y, &freq_rows));
+            time_on_strip = grid_columns(&canvas, strip, strip.y + 2);
+            frequency_expected = freq_rows;
+            let time_columns: Vec<i64> = clock.iter().map(|t| psd.x + t.offset).collect();
+            frequency_on_psd = grid_rows(&canvas, psd, clear_of(psd.x, &time_columns));
+        }
+        Orientation::Vertical => {
+            // Time runs down, frequency across: the same read, turned.
+            let freq_columns: Vec<i64> = hertz.iter().map(|t| spec.x + t.offset).collect();
+            time_on_spectrogram = grid_rows(&canvas, spec, clear_of(spec.x, &freq_columns));
+            time_on_strip = grid_rows(&canvas, strip, strip.x + 2);
+            frequency_expected = freq_columns;
+            let time_rows: Vec<i64> = clock.iter().map(|t| psd.y + t.offset).collect();
+            frequency_on_psd = grid_columns(&canvas, psd, clear_of(psd.y, &time_rows));
+        }
+    }
+
+    // One grid line per accepted time label, and the strip carries the same
+    // ones and no others.
+    let labelled: Vec<i64> = clock
+        .iter()
+        .map(|t| match orientation {
+            Orientation::Horizontal => spec.x + t.offset,
+            Orientation::Vertical => spec.y + t.offset,
+        })
+        .collect();
     assert_eq!(
-        on_spectrogram, labelled,
-        "a grid line without a label, or a label without one"
+        time_on_spectrogram, labelled,
+        "{orientation}: a grid line without a label, or a label without one"
     );
+    let strip_start = match orientation {
+        Orientation::Horizontal => strip.x - spec.x,
+        Orientation::Vertical => strip.y - spec.y,
+    };
     assert_eq!(
-        columns(strip, strip.y + 2),
-        on_spectrogram,
-        "the strip's time grid drifted off the spectrogram's"
+        time_on_strip,
+        labelled.iter().map(|at| at + strip_start).collect::<Vec<_>>(),
+        "{orientation}: the strip's time grid drifted off the spectrogram's"
     );
 
-    // Frequency: the spectrum panel carries the same rows, at the same values.
-    let hertz = frequency_ticks(&layout, &a.spectrogram, &ruler.text, ruler.rise);
-    let mut expected: Vec<i64> = hertz.iter().map(|t| spec.bottom() - 1 - t.offset).collect();
+    // And the spectrum panel carries the spectrogram's frequencies.
+    // The panel shares the spectrogram's frequency extent exactly, so the same
+    // values land on the same pixels.
+    let mut expected = frequency_expected;
     expected.sort_unstable();
-    assert!(expected.len() > 4, "{expected:?}");
-    let on_psd: Vec<i64> = (psd.y..psd.bottom()).filter(|y| is_grid(psd.x, *y)).collect();
-    assert_eq!(on_psd, expected, "the spectrum panel's grid drifted");
+    assert_eq!(
+        frequency_on_psd, expected,
+        "{orientation}: the spectrum panel's grid drifted"
+    );
 }
 
+#[test]
+fn panels_that_share_an_axis_draw_the_same_grid() {
+    assert_shared_grid(Orientation::Horizontal);
+    assert_shared_grid(Orientation::Vertical);
+}
 #[test]
 fn the_colour_bar_labels_its_own_scale_and_stays_on_the_canvas() {
     let dir = TempDir::new("render-colorbar");
@@ -923,17 +982,46 @@ fn an_axis_with_no_labels_gets_no_caption_either() {
     scene.caption_above(&mut canvas, Anchor::left(20.0, 20.0), &[], "MHz");
     assert_eq!(pixels(&canvas), blank, "a stacked caption was drawn with nothing under it");
 
-    // With labels it draws, and lands where the axis reserved room for it.
+    // With labels it draws, and the ink itself says where: recomputing the
+    // position from the same formula the drawing used would agree with any
+    // mistake it made.
     assert!(!scene.frequency.is_empty(), "the fixture stopped producing labels");
     scene.caption_after(&mut canvas, spec, &scene.frequency, "MHz");
-    assert_ne!(pixels(&canvas), blank, "the caption never appeared");
+    let ink = ink_bounds(&canvas).expect("the caption never appeared");
 
     let last = scene.frequency.last().unwrap();
     let end = spec.x + last.offset + text.width(&last.label, FONT_SIZE).ceil() as i64 / 2;
-    let right = end + LABEL_PAD + text.width("MHz", FONT_SIZE).ceil() as i64;
     assert!(
-        right <= i64::from(layout.width),
-        "the caption ends at {right}, past the {}px canvas",
+        ink.x > end,
+        "the caption starts at {}, over the last label ending at {end}",
+        ink.x
+    );
+    assert!(
+        ink.right() <= i64::from(layout.width),
+        "the caption reaches {}, past the {}px canvas",
+        ink.right(),
         layout.width
     );
+    assert!(
+        ink.bottom() <= i64::from(layout.height) && ink.y > spec.bottom(),
+        "the caption sits at rows {}..{}, not in the label row under the plot",
+        ink.y,
+        ink.bottom()
+    );
+}
+
+/// The box the drawn pixels actually occupy, or `None` on an untouched canvas.
+fn ink_bounds(canvas: &RgbImage) -> Option<Rect> {
+    let lit: Vec<(i64, i64)> = (0..canvas.height() as i64)
+        .flat_map(|y| (0..canvas.width() as i64).map(move |x| (x, y)))
+        .filter(|(x, y)| canvas.get_pixel(*x as u32, *y as u32).0 != Theme::BACKGROUND.0)
+        .collect();
+    let x = lit.iter().map(|(x, _)| *x).min()?;
+    let y = lit.iter().map(|(_, y)| *y).min()?;
+    Some(Rect {
+        x,
+        y,
+        w: lit.iter().map(|(x, _)| *x).max()? - x + 1,
+        h: lit.iter().map(|(_, y)| *y).max()? - y + 1,
+    })
 }

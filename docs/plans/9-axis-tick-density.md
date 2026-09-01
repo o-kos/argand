@@ -113,8 +113,11 @@ tick, or the same value on a panel that shares the axis.
   spectrum panel gains frequency grid lines at those values; it previously had none.
 - Time labels are `h:mm:ss` when the span reaches an hour and `m.ss` below that, with no
   fractional seconds and no step finer than one second.
-- ➕ The unit is named once beside the axis, not repeated on every tick, and one unit is
-  chosen for the whole frequency axis. Raised by the owner on seeing the result: ` MHz`
+- ➕ The frequency axis and the colour bar name their unit once beside them instead of
+  repeating it on every tick, and the frequency axis chooses one unit for its whole
+  range. The spectrum panel's own decibel scale stays bare: it printed no unit before,
+  it is the narrowest panel on the plot, and the footer already says what its numbers
+  are. Raised by the owner on seeing the result: ` MHz`
   measures 27 pixels against the 60 the digits need, and ` dB` is half the width of a
   colour-bar label, spent a dozen times over to say the same thing. Every convention
   worth copying does this -- matplotlib, gnuplot and Origin put the unit in the axis
@@ -202,8 +205,9 @@ tick, or the same value on a panel that shares the axis.
       was given, a tick on an exact end kept, a span no ladder was written for still
       terminating, and a decibel window `--dynamic-range` opened wider than the
       transform's floor.
-- [x] ➕ Name the unit once beside each axis, choose one unit for the whole frequency
-      axis, and reserve the room the caption takes so no label is drawn under it.
+- [x] ➕ Name the unit once beside the frequency axis and the colour bar, choose one unit
+      for the whole frequency axis, and reserve the room the caption takes so no label
+      is drawn under it.
 - [x] ➕ Pin what the second round found: a range ending one ulp short of a multiple
       staying inside the cap, a quotient too large to index refused rather than
       saturated, the colour-bar gutter following `--ref`, the spectrum gutter ignoring
