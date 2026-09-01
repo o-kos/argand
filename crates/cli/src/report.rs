@@ -376,7 +376,9 @@ impl Report {
             fields.push_str(&format!(", bin {}", self.level(&peak.level, detail)));
             fields.push_str(&self.bin_frequency(peak, detail));
         }
-        if let Some(floor) = self.floor.as_ref().filter(|_| detail != Detail::Compact) {
+        if let Some(floor) = &self.floor
+            && detail != Detail::Compact
+        {
             fields.push_str(&format!(", floor {}", self.level(floor, detail)));
         }
         fields.push_str(" dBFS");
@@ -411,22 +413,32 @@ impl Report {
     }
 
     /// The transform that drew the picture, and the window it drew it in.
+    ///
+    /// The two fields `-v` adds sit either side of the range, so the line is
+    /// built whole rather than appended to in four steps.
     fn transform_fields(&self, detail: Detail) -> String {
-        let mut fields = format!(
-            "fft {}, {}, hop {}, {} frames",
-            self.stft.fft_size, self.stft.window, self.stft.hop, self.stft.frames
-        );
-        if detail == Detail::Verbose {
-            fields.push_str(&format!(", reduce {}", self.stft.reduce));
-        }
-        fields.push_str(&format!(", range {} dB", self.stft.dynamic_range_db));
-        if detail == Detail::Verbose {
-            fields.push_str(&format!(" ({})", self.stft.dynamic_range_mode));
-        }
-        if let Some(advice) = self.range_advice() {
-            fields.push_str(&format!(", {advice} to fit the drawn range"));
-        }
-        fields
+        let verbose = detail == Detail::Verbose;
+        let reduce = if verbose {
+            format!(", reduce {}", self.stft.reduce)
+        } else {
+            String::new()
+        };
+        let mode = if verbose {
+            format!(" ({})", self.stft.dynamic_range_mode)
+        } else {
+            String::new()
+        };
+        let advice = self.range_advice().map_or_else(String::new, |advice| {
+            format!(", {advice} to fit the drawn range")
+        });
+        format!(
+            "fft {}, {}, hop {}, {} frames{reduce}, range {} dB{mode}{advice}",
+            self.stft.fft_size,
+            self.stft.window,
+            self.stft.hop,
+            self.stft.frames,
+            self.stft.dynamic_range_db
+        )
     }
 
     /// What the render section is headed by.
