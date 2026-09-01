@@ -193,14 +193,14 @@ fn an_absolute_frequency_appears_only_when_a_centre_was_given() {
 fn an_excessive_non_auto_range_suggests_the_measured_one() {
     let m = meta(SampleFormat::I16, 32768.0);
     let dark = report(&m, &analysis(-99.8, -121.7, 0.0025, 0.0));
-    assert_eq!(dark.range_suggestion().as_deref(), Some("Suggested: -d 40"));
-    assert_eq!(dark.plot_range_suggestion().as_deref(), Some("sugg -d 40"));
-    assert!(human(&dark).contains("Suggested: -d 40"));
+    assert_eq!(dark.range_suggestion().as_deref(), Some("sugg -d 40"));
+    let text = human(&dark);
+    assert!(text.contains("  range     default · 110 dB effective · 40 dB recommended\n  sugg      -d 40\n\n  peak spl"), "{text}");
 
     // A range already close to the recommendation gets no lecture.
     let bright = report(&m, &analysis(-11.4, -87.2, 0.5, 0.0));
     assert!(bright.range_suggestion().is_none());
-    assert!(!human(&bright).contains("Suggested:"));
+    assert!(!human(&bright).contains("  sugg"));
 
     // Auto never suggests the value it already applied.
     let mut automatic = analysis(-99.8, -121.7, 0.0025, -77.8);
@@ -215,7 +215,7 @@ fn a_compact_batch_keeps_the_range_suggestion() {
     let m = meta(SampleFormat::I16, 32768.0);
     let dark = report(&m, &analysis(-99.8, -121.7, 0.0025, 0.0));
     let line = compact(&dark, 1, 2);
-    assert!(line.contains("Suggested: -d 40"), "{line}");
+    assert!(line.contains(" · sugg -d 40"), "{line}");
     assert_eq!(line.lines().count(), 1);
 }
 

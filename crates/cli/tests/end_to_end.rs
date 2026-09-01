@@ -163,7 +163,7 @@ fn dynamic_range_suggestion_reaches_human_reports_and_image() {
     assert!(human.status.success());
     let stderr = String::from_utf8_lossy(&human.stderr);
     assert!(
-        stderr.contains(&format!("Suggested: -d {recommended:.0}")),
+        stderr.contains(&format!("  sugg      -d {recommended:.0}")),
         "{stderr}"
     );
 
@@ -172,7 +172,7 @@ fn dynamic_range_suggestion_reaches_human_reports_and_image() {
     let batch_stderr = String::from_utf8_lossy(&batch.stderr);
     assert_eq!(
         batch_stderr
-            .matches(&format!("Suggested: -d {recommended:.0}"))
+            .matches(&format!("sugg -d {recommended:.0}"))
             .count(),
         2,
         "{batch_stderr}"
