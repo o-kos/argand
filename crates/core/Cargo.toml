@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "Domain types and render view-models for argand"
 
+[features]
+# Fixture helpers, shared with the cli test suite.
+testutil = []
+
 [lints]
 workspace = true
 

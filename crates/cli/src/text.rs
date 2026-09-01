@@ -5,6 +5,7 @@
 //! is not the same plot on Linux, Windows and macOS.
 
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
+use argand_core::LabelMeasure;
 use image::{Rgb, RgbImage};
 
 const FONT_DATA: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
@@ -68,36 +69,6 @@ impl TextRenderer {
         }
     }
 
-    /// Width of `text` in pixels at `size`.
-    pub fn width(&self, text: &str, size: f32) -> f32 {
-        let scaled = self.font.as_scaled(PxScale::from(size));
-        let mut width = 0.0;
-        let mut previous = None;
-        for c in text.chars() {
-            let id = scaled.glyph_id(c);
-            if let Some(prev) = previous {
-                width += scaled.kern(prev, id);
-            }
-            width += scaled.h_advance(id);
-            previous = Some(id);
-        }
-        width
-    }
-
-    /// Height of the ink a numeric label puts on the canvas at `size`.
-    ///
-    /// Digits carry neither ascender nor descender, so the font's line height
-    /// reserves half again more room than a row of them occupies. An axis that
-    /// spaced its labels by line height would leave a third of itself empty for
-    /// strokes no label draws.
-    pub fn digit_height(&self, size: f32) -> f32 {
-        let scaled = self.font.as_scaled(PxScale::from(size));
-        let glyph = scaled.scaled_glyph('0');
-        self.font
-            .outline_glyph(glyph)
-            .map_or_else(|| scaled.height(), |o| o.px_bounds().height())
-    }
-
     /// Draw `text` with its baseline at `at.y`, positioned horizontally by
     /// `at.align` relative to `at.x`.
     pub fn draw(&self, canvas: &mut RgbImage, text: &str, at: Anchor, style: TextStyle) {
@@ -138,6 +109,36 @@ impl TextRenderer {
                 }
             });
         }
+    }
+}
+
+/// The measurements axis layout asks for, answered from the embedded font.
+impl LabelMeasure for TextRenderer {
+    fn width(&self, text: &str, size: f32) -> f32 {
+        let scaled = self.font.as_scaled(PxScale::from(size));
+        let mut width = 0.0;
+        let mut previous = None;
+        for c in text.chars() {
+            let id = scaled.glyph_id(c);
+            if let Some(prev) = previous {
+                width += scaled.kern(prev, id);
+            }
+            width += scaled.h_advance(id);
+            previous = Some(id);
+        }
+        width
+    }
+
+    /// Digits carry neither ascender nor descender, so the font's line height
+    /// reserves half again more room than a row of them occupies. An axis that
+    /// spaced its labels by line height would leave a third of itself empty for
+    /// strokes no label draws.
+    fn digit_height(&self, size: f32) -> f32 {
+        let scaled = self.font.as_scaled(PxScale::from(size));
+        let glyph = scaled.scaled_glyph('0');
+        self.font
+            .outline_glyph(glyph)
+            .map_or_else(|| scaled.height(), |o| o.px_bounds().height())
     }
 }
 

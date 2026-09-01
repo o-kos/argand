@@ -76,13 +76,13 @@ change to the tick policy itself.
 
 ## Implementation steps
 
-- [ ] Add `argand-core::axis` with `Axis`, `AxisKind`, `LabelRun`, `Tick`, the
+- [x] Add `argand-core::axis` with `Axis`, `AxisKind`, `LabelRun`, `Tick`, the
       `LabelMeasure` trait and `LabelMetrics` over it, carrying `ticks`,
       `caption` and `widest_labels` unchanged; re-export from the crate root.
-- [ ] Move the tick tests to `crates/core/src/axis_tests.rs` over a DejaVu Sans
+- [x] Move the tick tests to `crates/core/src/axis_tests.rs` over a DejaVu Sans
       `LabelMeasure`, and pin those figures against the real font in
       `crates/cli/src/text_tests.rs`.
-- [ ] Delete `crates/cli/src/ticks.rs`, implement `LabelMeasure` for
+- [x] Delete `crates/cli/src/ticks.rs`, implement `LabelMeasure` for
       `TextRenderer`, and port `render.rs` to the new locations.
 - [ ] Add `DbGrid` to `argand-core::view`: column-major `width * height` values
       with the time and frequency extents, and re-export it.
