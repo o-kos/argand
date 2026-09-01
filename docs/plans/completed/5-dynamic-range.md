@@ -110,4 +110,5 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 ## Post-completion
 
 After owner acceptance and green required checks, squash-merge the Pull Request,
-delete `feature/5-dynamic-range`, and remove `/tmp/argand-issue-5`.
+switch the main working directory to `main`, and delete
+`feature/5-dynamic-range` remotely and locally after the required safety checks.

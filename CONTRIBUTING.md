@@ -187,7 +187,7 @@ Before marking the Pull Request ready for final review:
 4. update the Pull Request description if its scope or validation changed;
 5. mark the Pull Request ready for review.
 
-After all checks pass and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the accepted Pull Request branch both remotely and locally, regardless of its type. First verify that every worktree using it is clean and that the branch has no unpushed commits; preserve any data, then switch or remove those worktrees. A squash merge does not make the branch commits ancestors of `main`, so local deletion may require `-D` after those checks. The linked Issue closes through the Pull Request keyword.
+After all checks pass and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the accepted Pull Request branch both remotely and locally, regardless of its type. First verify that its tip still matches the accepted Pull Request head, every worktree using it is clean, and it has no unpushed commits; preserve any data, then switch or remove those worktrees. A squash merge does not make the branch commits ancestors of `main`, so local deletion may require `-D` after those checks. The linked Issue closes through the Pull Request keyword.
 
 Actions that can only happen after merge belong in the plan's `Post-completion` section and are not represented as unfinished implementation checkboxes.
 
