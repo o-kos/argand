@@ -112,6 +112,18 @@ fn rendered(r: Report) -> Report {
     )
 }
 
+/// A fixture path as the report resolves it.
+///
+/// The fixtures are POSIX-rooted, and Windows resolves such a path against the
+/// current drive, so an expectation spelled `/tmp/spec.png` describes no
+/// platform the tests run on.
+fn resolved_fixture(path: &str) -> String {
+    std::path::absolute(path)
+        .expect("a resolvable path")
+        .display()
+        .to_string()
+}
+
 fn compact(r: &Report, index: usize, total: usize) -> String {
     let mut out = Vec::new();
     r.write_compact(&mut out, index, total).unwrap();
@@ -226,7 +238,13 @@ fn verbose_restores_the_detail_the_default_drops() {
     // format holds; the sample peak is the same level, rounded from 8820.8.
     assert!(text.contains("peak -11.4 (8821), bin -11.4 (8820)"), "{text}");
     assert!(text.contains("reduce max") && text.contains("range 110 dB (default)"), "{text}");
-    assert!(text.contains("/data/12.579000_capture.iqw.png:"), "{text}");
+    assert!(
+        text.contains(&format!(
+            "\n{}:\n",
+            resolved_fixture("/data/12.579000_capture.iqw.png")
+        )),
+        "{text}"
+    );
     assert!(!text.contains("\n\n"), "no blank line inside the report:\n{text}");
 }
 
@@ -458,7 +476,7 @@ fn a_render_sent_elsewhere_is_headed_by_its_whole_path() {
         "waveform".to_string(),
     );
     assert!(
-        human(&elsewhere).contains("\n/tmp/spec.png:\n"),
+        human(&elsewhere).contains(&format!("\n{}:\n", resolved_fixture("/tmp/spec.png"))),
         "{}",
         human(&elsewhere)
     );
@@ -472,9 +490,8 @@ fn a_render_sent_elsewhere_is_headed_by_its_whole_path() {
         253_952,
         "waveform".to_string(),
     );
-    let resolved = std::path::absolute("spec.png").expect("a resolvable relative path");
     assert!(
-        human(&relative).contains(&format!("\n{}:\n", resolved.display())),
+        human(&relative).contains(&format!("\n{}:\n", resolved_fixture("spec.png"))),
         "{}",
         human(&relative)
     );

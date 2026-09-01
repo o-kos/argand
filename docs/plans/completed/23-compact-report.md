@@ -119,6 +119,9 @@ rendered image, or any option's meaning.
   `std::path::absolute` keeps both on POSIX.
 - [x] ➕ Name a measured full scale of any size, and fold `.` and `..` when
   deciding whether a render sits beside its input.
+- [x] ➕ Resolve the POSIX-rooted fixture paths in the report tests the way the
+  report resolves them, since Windows resolves such a path against the current
+  drive and the local gate cannot see that.
 - [x] Complete validation, including a real terminal and a pipe.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
