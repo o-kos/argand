@@ -105,8 +105,20 @@ fn a_grid_whose_shape_does_not_fit_its_values_answers_nothing() {
         f0: 0.0,
         f1: 1.0,
     };
+    assert_eq!(broken.shape(), None);
     assert_eq!(broken.value(1, 1), None);
     assert_eq!(broken.column(1), None);
     // And the first column is refused too: the grid does not hold it.
     assert_eq!(broken.column(0), None);
+
+    // A shape that multiplies without overflowing but the values still fall
+    // short of is refused on the same ground.
+    let short = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 8],
+        ..broken
+    };
+    assert_eq!(short.shape(), None);
+    assert_eq!(short.column(3), None);
 }

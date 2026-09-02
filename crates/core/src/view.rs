@@ -32,6 +32,17 @@ pub struct DbGrid {
 }
 
 impl DbGrid {
+    /// The shape the values actually cover, or `None` when they do not cover
+    /// the one the grid declares.
+    ///
+    /// The fields are a caller's to set, so anything sizing a buffer from
+    /// `width` and `height` has to ask here rather than multiply them: a
+    /// height near `usize::MAX` makes that product an overflow, not a picture.
+    pub fn shape(&self) -> Option<(usize, usize)> {
+        let cells = self.width.checked_mul(self.height)?;
+        (cells == self.values.len()).then_some((self.width, self.height))
+    }
+
     /// The value in column `x` at frequency bin `bin`, counting up from the
     /// lowest, or `None` outside the grid.
     ///

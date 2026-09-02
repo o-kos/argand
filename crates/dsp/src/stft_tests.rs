@@ -639,3 +639,49 @@ fn recolouring_a_grid_costs_no_second_pass_over_the_signal() {
         "the floor kept its colour after the window moved past it"
     );
 }
+
+#[test]
+fn shading_a_grid_that_does_not_cover_its_shape_draws_nothing() {
+    // The shape is what sizes the buffer, so a width and height the values
+    // cannot fill must be settled before the allocation rather than after it:
+    // `2 * usize::MAX` is an overflow, not a picture.
+    let broken = DbGrid {
+        width: 2,
+        height: usize::MAX,
+        values: vec![-10.0],
+        t0: 0.0,
+        t1: 1.0,
+        f0: -12_000.0,
+        f1: 12_000.0,
+    };
+    let shading = Shading {
+        colormap: Colormap::Grayscale,
+        db_min: -110.0,
+        db_max: 0.0,
+    };
+    let image = shade(&broken, shading);
+    assert_eq!((image.width, image.height), (0, 0));
+    assert!(image.rgba.is_empty());
+
+    // And a shape that multiplies without overflowing but the values fall
+    // short of, which used to draw the columns it had and leave the rest.
+    let short = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 8],
+        ..broken
+    };
+    let image = shade(&short, shading);
+    assert_eq!((image.width, image.height), (0, 0));
+
+    // A grid that does cover its shape still draws all of it.
+    let whole = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 16],
+        ..short
+    };
+    let image = shade(&whole, shading);
+    assert_eq!((image.width, image.height), (4, 4));
+    assert!(image.rgba.chunks_exact(4).all(|p| p[3] == 255));
+}

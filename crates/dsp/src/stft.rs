@@ -905,25 +905,30 @@ pub struct Shading {
 /// already holding a grid can recolour it. Nothing here reads a sample source:
 /// changing the colour scheme or the dynamic range costs one pass over the
 /// values, not another pass over the file.
+///
+/// A grid whose values do not cover the shape it declares is a caller's
+/// mistake rather than a signal, and that shape is what sizes the buffer, so
+/// it is settled before anything is allocated from it: such a grid produces an
+/// empty image. [`analyze`] cannot build one, because it sets the shape and
+/// the values together.
 pub fn shade(grid: &DbGrid, shading: Shading) -> SpectrogramImage {
     let Shading {
         colormap,
         db_min,
         db_max,
     } = shading;
-    let (width, height) = (grid.width, grid.height);
+    let Some((width, height)) = grid.shape() else {
+        return SpectrogramImage::new(0, 0);
+    };
 
     let gradient = colormap.gradient();
     let span = (db_max - db_min).max(1e-6);
     let mut image = SpectrogramImage::new(width, height);
 
     for x in 0..width {
-        // A grid whose values do not cover the size it declares is a caller's
-        // mistake, not a signal; the columns it does hold are drawn and the
-        // rest are left transparent rather than bringing the process down.
-        let Some(column) = grid.column(x) else {
-            break;
-        };
+        // The shape holds, so the values cover `width * height` and this
+        // column is inside them.
+        let column = &grid.values[x * height..(x + 1) * height];
         for y in 0..height {
             // Row 0 is the top of the image, which is the highest frequency.
             let value = column[height - 1 - y];
