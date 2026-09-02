@@ -13,7 +13,7 @@ use gpui::{
     Subscription, TitlebarOptions, Window, WindowBounds, WindowOptions, div, point, px, relative,
     size,
 };
-use gpui_component::{ActiveTheme, Root, ThemeMode, TitleBar, window_border};
+use gpui_component::{ActiveTheme, Root, ThemeMode, TitleBar};
 
 use crate::config::{Config, Theme};
 use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
@@ -48,6 +48,10 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>) {
             );
 
             let opened = cx.open_window(options, |window, cx| {
+                tracing::debug!(
+                    decorations = ?window.window_decorations(),
+                    "the window is decorated by this side"
+                );
                 let shell = cx.new(|cx| Shell::new(config, writer, saved.geometry, window, cx));
                 cx.new(|cx| Root::new(shell, window, cx))
             });
@@ -216,57 +220,53 @@ impl Drop for Shell {
 
 impl Render for Shell {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Where the window manager does not draw a frame, the application must:
-        // on Linux the window is decorated client-side, so the border, the
-        // shadow and the edges a person drags to resize are all ours to put
-        // there. `window_border` is a no-op under server-side decorations, so
-        // it costs nothing on the platforms that do it themselves.
-        window_border().child(
-            div()
-                .size_full()
-                .flex()
-                .flex_col()
-                .bg(cx.theme().background)
-                .text_color(cx.theme().foreground)
-                .child(TitleBar::new().child(div().text_sm().child(TITLE)))
-                .child(
-                    // Where the waveform, the spectrogram and the panels go, split
-                    // in the proportion the configuration asks for. The milestones
-                    // after this one fill these two; until then they are what shows
-                    // that the split is read from the file and reaches the layout.
-                    div()
-                        .flex_1()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .h(relative(self.config.panels.waveform_fraction))
-                                .border_b_1()
-                                .border_color(cx.theme().border),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("no signal loaded"),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .px_2()
-                        .h(px(24.0))
-                        .border_t_1()
-                        .border_color(cx.theme().border)
-                        .bg(cx.theme().secondary)
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("ready"),
-                ),
-        )
+        // No window border here: `Root` already wraps what it is given in one,
+        // and a second would stack two shadows, two frames and two sets of
+        // resize edges on the platforms that decorate client-side.
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .child(TitleBar::new().child(div().text_sm().child(TITLE)))
+            .child(
+                // Where the waveform, the spectrogram and the panels go, split
+                // in the proportion the configuration asks for. The milestones
+                // after this one fill these two; until then they are what shows
+                // that the split is read from the file and reaches the layout.
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .h(relative(self.config.panels.waveform_fraction))
+                            .border_b_1()
+                            .border_color(cx.theme().border),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("no signal loaded"),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .px_2()
+                    .h(px(24.0))
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().secondary)
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("ready"),
+            )
     }
 }

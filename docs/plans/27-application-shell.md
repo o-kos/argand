@@ -38,8 +38,9 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
 
 - ➕ **The toolkit comes from crates.io, not from Git.** `gpui = "0.2.2"` and
   `gpui-component = "0.5.1"`, with `Cargo.lock` committed as always. This
-  reverses what `AGENTS.md` and this Issue both ask for, on evidence gathered
-  before any of the shell was written, and was agreed with the project owner.
+  reversed what `AGENTS.md` and this Issue asked for at the time, on evidence
+  gathered before any of the shell was written, and was agreed with the project
+  owner. Both have since been corrected to say what is true.
   Three things decided it:
 
   - **Pinning both to fixed revisions does not build.** A spike pinning `gpui`
@@ -339,12 +340,20 @@ A ninth round found three more, all accepted, none of them in the code:
 - **The Pull Request's review summary was two rounds out of date.**
 
 ➕ Separately, and not from the review: the project owner noticed that the window
-had no border and could not be resized. `is_resizable` was never the problem --
-it is true by default -- but on Linux the window is decorated client-side, so
-the border, the shadow and the edges a person drags are the application's to
-draw, and `gpui_component::window_border` exists for exactly that. The shell now
-uses it. It is a no-op under server-side decorations, so nothing changes on the
-platforms that draw their own frame.
+had no border and could not be resized. The first attempt at this was wrong and
+the tenth round caught it. `is_resizable` was never the problem -- it is true by
+default -- and `Root` already wraps what it is given in
+`gpui_component::window_border`, so adding another put two shadows, two frames
+and two sets of resize edges on the platforms that decorate client-side. It is
+reverted.
+
+What the attempt did establish is that this cannot be diagnosed in the nested
+compositor used for everything else here: sway negotiates *server-side*
+decorations, so `window_border` correctly draws nothing there and the frame is
+the compositor's, which the test configuration had told it not to draw. The
+window now logs which side decorates it, because that is the first thing to know
+when neither a frame nor a resize edge appears, and the owner's own session has
+to answer it.
 
 ## Validation
 
