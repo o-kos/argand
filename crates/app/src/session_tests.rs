@@ -474,3 +474,45 @@ something_this_version_never_heard_of = true
         "reading a newer session changed it"
     );
 }
+
+#[test]
+fn a_screen_sized_report_is_not_taken_for_the_size_to_come_back_to() {
+    let ordinary = Geometry::new(100.0, 80.0, 1000.0, 700.0);
+    assert_eq!(
+        restore_rectangle(ordinary, WindowState::Normal, &[PRIMARY]),
+        Some(ordinary)
+    );
+
+    // X11 reports a minimized maximized window as ordinary, at the size it was
+    // maximized to. Believing that would restore it to the whole screen.
+    let maximized = Geometry::new(0.0, 0.0, PRIMARY.width, PRIMARY.height);
+    assert_eq!(
+        restore_rectangle(maximized, WindowState::Normal, &[PRIMARY]),
+        None
+    );
+    // And so does macOS while a maximize animation is finishing, a few pixels
+    // short of the display.
+    let nearly = Geometry::new(0.0, 0.0, PRIMARY.width - 4.0, PRIMARY.height - 4.0);
+    assert_eq!(
+        restore_rectangle(nearly, WindowState::Normal, &[PRIMARY]),
+        None
+    );
+
+    // A window that is not ordinary says nothing about it either way.
+    for state in [WindowState::Maximized, WindowState::Fullscreen] {
+        assert_eq!(restore_rectangle(ordinary, state, &[PRIMARY]), None);
+    }
+
+    // On the second display, its size is the one that matters.
+    let wide = Geometry::new(1920.0, 0.0, SECONDARY.width, SECONDARY.height);
+    assert_eq!(
+        restore_rectangle(wide, WindowState::Normal, &[PRIMARY, SECONDARY]),
+        None
+    );
+    // With no display known there is nothing to compare against, so an
+    // ordinary report is taken at its word.
+    assert_eq!(
+        restore_rectangle(maximized, WindowState::Normal, &[]),
+        Some(maximized)
+    );
+}

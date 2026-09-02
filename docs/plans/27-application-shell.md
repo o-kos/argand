@@ -273,6 +273,18 @@ A fourth round found three more, all accepted:
   reaches the version field. The version is read on its own now, and a file
   this version cannot read is not written to.
 
+A fifth round found one more, accepted:
+
+- **A rectangle reported as ordinary is not always an ordinary one.** gpui tells
+  a client nothing about minimizing or about a transition, and two backends
+  report a screen-sized window as ordinary because of it: X11 answers
+  `is_maximized()` with false while a maximized window is minimized, and macOS
+  calls a window maximized only once its size matches the visible frame exactly,
+  so the frames of a maximize animation arrive as ordinary. `restore_rectangle`
+  refuses a report that covers a whole display, which is the only signal
+  available. A window a person genuinely sized to their screen is refused too,
+  and loses nothing: restoring it maximized is what they asked for.
+
 ## Validation
 
 - [x] `cargo fmt --all -- --check`

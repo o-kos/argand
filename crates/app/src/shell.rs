@@ -16,7 +16,7 @@ use gpui::{
 use gpui_component::{ActiveTheme, Root, ThemeMode, TitleBar};
 
 use crate::config::{Config, Theme};
-use crate::session::{Geometry, Session, WindowState, Writer, place};
+use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
 
 /// What the window is called, in its title bar and to the desktop environment.
 const TITLE: &str = "argand";
@@ -134,8 +134,8 @@ struct Shell {
     /// bounds its last configure event set, and macOS reads the live window
     /// frame. Both are the screen while the window covers it. Saving that would
     /// restore a maximized window correctly and then un-maximize it to the size
-    /// of the display, so the last rectangle seen in the ordinary state is kept
-    /// instead.
+    /// of the display, so the last rectangle worth believing is kept instead --
+    /// see [`restore_rectangle`] for which those are.
     last_normal: Option<Geometry>,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
@@ -152,7 +152,14 @@ impl Shell {
         // The toolkit says when the window has moved or resized, so nothing
         // here has to ask on every frame. It still says it once per step of a
         // drag, which is what [`Writer`] is for.
-        let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
+        let bounds = cx.observe_window_bounds(window, |shell, window, cx| {
+            let displays: Vec<Geometry> = cx
+                .displays()
+                .iter()
+                .map(|display| from_bounds(display.bounds()))
+                .collect();
+            shell.remember(window, &displays);
+        });
         Self {
             config,
             writer,
@@ -162,7 +169,7 @@ impl Shell {
     }
 
     /// Record where the window is and what state it is in.
-    fn remember(&mut self, window: &Window) {
+    fn remember(&mut self, window: &Window, displays: &[Geometry]) {
         if self.writer.is_none() {
             return;
         }
@@ -186,9 +193,12 @@ impl Shell {
             } else {
                 WindowState::Normal
             };
-        // Only an ordinary window reports the rectangle worth coming back to.
-        if window_state == WindowState::Normal {
-            self.last_normal = Some(from_bounds(bounds.get_bounds()));
+        // Only some reports say anything about the rectangle to come back to;
+        // the rest leave the last one that did.
+        if let Some(rectangle) =
+            restore_rectangle(from_bounds(bounds.get_bounds()), window_state, displays)
+        {
+            self.last_normal = Some(rectangle);
         }
         let Some(writer) = self.writer.as_mut() else {
             return;
