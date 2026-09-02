@@ -41,7 +41,7 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 - **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, resampling helpers, and frequency shifting. Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
 - **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source. This is the future connection point for custom formats through the worker.
 - **argand-edit:** a planned editing engine using a piece table over the memory-mapped original and inserted buffers, a command stack for undo and redo, and a clipboard.
-- **argand-app:** the planned application binary using GPUI and gpui-component with skin support. It owns the main waveform and spectrogram window, cursors, selections, scrolling, status, transport, and the detailed spectrum window. It converts core view models into GPUI images, quads, and paths. This is the single shipped binary.
+- **argand-app:** the application binary, `argand`, using GPUI and gpui-component. It exists as a shell: a themed window, `argand.toml` for what a person configures and `session.toml` for what the application remembers. It will own the main waveform and spectrogram window, cursors, selections, scrolling, status, transport, and the detailed spectrum window, and converts core view models into GPUI images, quads, and paths. This is the single shipped binary alongside `aspec`.
 - **argand-worker:** a planned processing worker binary that loads C ABI libraries and communicates through a stdio protocol. It is deferred.
 - **argand-abi:** planned C ABI contract and protocol types. It is deferred.
 
@@ -129,6 +129,8 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
 ## Current status
 
-- The name and icon assets are currently in `icons/`; move them to the appropriate asset directory when the application scaffold is added. The set includes `argand.svg`, `argand.ico`, `argand.icns`, PNG sizes, and a monochrome glyph.
+- The name and icon assets are currently in `icons/`; move them to the appropriate asset directory when the application starts using them. The set includes `argand.svg`, `argand.ico`, `argand.icns`, PNG sizes, and a monochrome glyph.
+- `crates/app` opens a window and remembers itself, and nothing more: no signal, no analysis, no real panels. Its configuration and geometry logic is deliberately free of GPUI, because CI has no GPU and cannot run the application; only `shell.rs` names a toolkit type.
+- The window's position is restored where the platform supplies one. On Wayland it is not: gpui zeroes the window origin, and the protocol written for this is not implemented there. See backlog Issue #37.
 - The current implementation focus is display, editing, and spectrum analysis: phases 0 through 6 in `docs/plans/IMPLEMENTATION_PLAN.md`.
 - The plugin and worker design is deferred to the final section of `docs/plans/IMPLEMENTATION_PLAN.md`.
