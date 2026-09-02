@@ -20,11 +20,16 @@
 pub trait LabelMeasure {
     /// Width of `text` in pixels at `size`.
     ///
-    /// Every digit must come back the same width, which is what a face with
-    /// tabular figures gives. [`widest_labels`] reserves a gutter before any
-    /// tick is chosen, and it can only do that by standing a row of zeros in
-    /// for a number nobody has picked yet; under proportional digits that
-    /// bound is not a bound, and a label runs into the plot beside it.
+    /// Putting any digit where any other digit stands must leave this
+    /// unchanged, kerning and shaping included -- not merely equal advances
+    /// glyph by glyph, since a pair kerned one way and not another moves the
+    /// width of the string without moving the width of either glyph. A face
+    /// with tabular figures and no digit kerning gives it.
+    ///
+    /// [`widest_labels`] reserves a gutter before any tick is chosen, and it
+    /// can only do that by standing a row of zeros in for a number nobody has
+    /// picked yet. Where the substitution moves the measurement, that bound is
+    /// not a bound, and a label runs into the plot beside it.
     fn width(&self, text: &str, size: f32) -> f32;
 
     /// Height of the ink a numeric label puts on the canvas at `size`.
@@ -164,7 +169,7 @@ pub fn caption(kind: AxisKind, min: f64, max: f64) -> Option<&'static str> {
 /// A gutter has to be reserved before any tick is chosen, so this bounds the
 /// label rather than predicting it. The bound is built from zeros, which stand
 /// in exactly for the value they replace as long as the measure keeps its side
-/// of [`LabelMeasure::width`] and gives every digit one width.
+/// of [`LabelMeasure::width`] and measures one digit like any other.
 ///
 /// More than one candidate comes back where more than one could be the widest,
 /// because the caller has the font and this does not: which of two strings takes

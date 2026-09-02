@@ -90,3 +90,23 @@ fn a_grid_addresses_a_bin_within_a_column() {
     assert_eq!(grid.value(3, 0), None);
     assert_eq!(grid.column(3), None);
 }
+
+#[test]
+fn a_grid_whose_shape_does_not_fit_its_values_answers_nothing() {
+    // The fields are the caller's to set, so a shape the values cannot hold
+    // reaches these accessors, and a height this size overflows the offset
+    // before any comparison against the length could catch it.
+    let broken = DbGrid {
+        width: 2,
+        height: usize::MAX,
+        values: vec![-10.0],
+        t0: 0.0,
+        t1: 1.0,
+        f0: 0.0,
+        f1: 1.0,
+    };
+    assert_eq!(broken.value(1, 1), None);
+    assert_eq!(broken.column(1), None);
+    // And the first column is refused too: the grid does not hold it.
+    assert_eq!(broken.column(0), None);
+}

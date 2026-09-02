@@ -42,21 +42,22 @@ impl DbGrid {
     /// caller that asked for a bin it does not have would get an answer that
     /// looks like data.
     pub fn value(&self, x: usize, bin: usize) -> Option<f32> {
-        if x >= self.width || bin >= self.height {
-            return None;
-        }
-        self.values.get(x * self.height + bin).copied()
+        self.column(x)?.get(bin).copied()
     }
 
     /// Every bin of column `x`, lowest frequency first.
     ///
     /// This is how the grid is stored, so a reader working down a column gets
-    /// the slice rather than a multiplication per value.
+    /// the slice rather than a multiplication per value. It is also the one
+    /// place the offset is worked out, which is why the arithmetic is checked
+    /// here: the fields are a caller's to set, and a height near `usize::MAX`
+    /// would otherwise overflow past the bounds test rather than fail it.
     pub fn column(&self, x: usize) -> Option<&[f32]> {
         if x >= self.width {
             return None;
         }
-        self.values.get(x * self.height..(x + 1) * self.height)
+        let start = x.checked_mul(self.height)?;
+        self.values.get(start..start.checked_add(self.height)?)
     }
 }
 
