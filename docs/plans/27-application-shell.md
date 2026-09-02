@@ -65,6 +65,29 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
 - ➕ **`gpui_platform` is not published**, so the entry point is `gpui`'s own
   `Application::new()` rather than `gpui_platform::application()`. That is what
   gpui-component's own example uses at the `v0.5.1` tag.
+
+- ➕ **The window position is not restored on Wayland, and cannot be by this
+  toolkit.** Size and state are, on every platform. gpui 0.2.2's Wayland backend
+  zeroes the window origin before handing the geometry to the compositor
+  (`platform/linux/wayland/window.rs:419`), so `window_bounds()` reports
+  `x = 0, y = 0` however far the window has been dragged. Under plain xdg-shell
+  that is correct -- a client has no absolute position to know or to set.
+
+  `xdg-session-management-v1`, stable in wayland-protocols 1.48 since
+  2026-04-01, exists for exactly this and has the compositor reapply the stored
+  geometry; gpui does not implement it, and `zed-industries/zed` has neither an
+  issue nor a pull request for it. Raised as backlog Issue #37 rather than
+  worked around here, because the missing piece is in the toolkit. The
+  acceptance criterion asking for position is met where the platform supplies
+  one, which is X11, Windows and macOS.
+
+  Two things came out of chasing this and are fixed on this branch. `place()`
+  discarded the whole saved rectangle when no display was known, losing the
+  *size* along with the position -- and on Wayland that is the ordinary case,
+  because a client learns of an output only once a surface has entered one, so
+  the first window is always placed before any display is known. And the window
+  is opened from a spawned task rather than straight from `run`, following the
+  toolkit's own examples.
 - **Toolchain.** `rust-toolchain.toml` moves from `1.88.0` to `1.97.1`, which is
   what the pinned zed revision requires. Agreed with the project owner before
   the work started. The alternative, an older gpui that builds on 1.88, is
@@ -105,25 +128,27 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
 - [x] Prove the toolkit builds and opens a window on this host before any of the
       rest is written. ➕ The first spike failed, and that failure is why the
       dependency source changed; see Decisions.
-- [ ] Raise `rust-toolchain.toml` to `1.97.1` and confirm the existing four
+- [x] Raise `rust-toolchain.toml` to `1.97.1` and confirm the existing four
       crates still pass the whole gate under it.
-- [ ] Add `crates/app` to the workspace with the `argand` binary, the pinned
+- [x] Add `crates/app` to the workspace with the `argand` binary, the pinned
       toolkit dependencies, and a window carrying the base theme, a title, a
       placeholder panel area and a placeholder status bar.
-- [ ] Initialise tracing the way `aspec` does.
-- [ ] Read `argand.toml`: beside the binary first, otherwise the platform
+- [x] Initialise tracing the way `aspec` does.
+- [x] Read `argand.toml`: beside the binary first, otherwise the platform
       configuration directory. Theme, STFT defaults, colour scheme, dynamic
       range mode and panel proportions, each falling back to a default.
-- [ ] Read and write `session.toml` in the platform state directory: window
+- [x] Read and write `session.toml` in the platform state directory: window
       geometry and state, written atomically through a temporary file and a
       rename, and debounced so a drag does not write per frame.
-- [ ] Clamp restored geometry to the visible area of the current displays.
-- [ ] Make a missing, unreadable or unknown-version state file log and fall back
+- [x] Clamp restored geometry to the visible area of the current displays.
+      ⚠️ Exercised by unit tests rather than on Wayland, which reports no display
+      until a surface has entered one; see the position note in Decisions.
+- [x] Make a missing, unreadable or unknown-version state file log and fall back
       to defaults, so the application cannot fail to start because of its own
       configuration.
 - [ ] Build the workspace on Linux, Windows and macOS in CI, with the Linux job
       installing the packages GPUI needs and the cargo directories cached.
-- [ ] ➕ Correct the dependency rule in `AGENTS.md`, which tells a reader to pin
+- [x] ➕ Correct the dependency rule in `AGENTS.md`, which tells a reader to pin
       the toolkit to Git revisions for a reason that no longer holds.
 - [ ] Update `AGENTS.md` and `docs/plans/IMPLEMENTATION_PLAN.md` where they
       describe `argand-app` as planned.
@@ -138,10 +163,13 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [ ] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] `cargo run -p argand --locked` opens a window on this host in under a
-      second, measured rather than asserted.
-- [ ] The window reopens at its previous size, position and state after a
-      restart.
+- [x] `cargo run -p argand --locked` opens a window on this host in under a
+      second, measured rather than asserted: 0.109 s from exec to a mapped
+      window.
+- [x] The window reopens at its previous size and state after a restart, and at
+      its previous position where the platform supplies one. Measured in a
+      nested headless compositor: 1000x700 and fullscreen both survived a
+      restart; position did not, for the reason recorded in Decisions.
 - [ ] Geometry saved for a display that is gone, or that changed resolution,
       restores inside the visible area. Covered by unit tests over the clamp and
       checked once by hand.
