@@ -90,22 +90,63 @@ change to the tick policy itself.
       have `analyze` build the grid and call it last, and add the grid to
       `Analysis`.
 - [x] Update `AGENTS.md` where it describes what each crate owns.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
+
+➕ Harden what the move made public, after external review: the digit-width
+rule the gutter reserve depends on is stated on `LabelMeasure::width` as a
+substitution invariant rather than as a property of the cli's font; `DbGrid`
+works its offsets out in one checked place; `shade` settles the grid's shape
+before it allocates from it; `HertzUnit`, public only because the module it sat
+in was private, is private again.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
+## Review
+
+Four rounds with `codex exec -s read-only`. Round one raised four findings and
+round two kept two of them in narrowed form; round three raised one more and
+round four was clean.
+
+- **`widest_labels` assumed digits of one width.** Accepted as a documentation
+  fix, sharpened in round two to name the substitution the reserve actually
+  depends on -- any digit for any other, kerning and shaping included -- since
+  equal advances glyph by glyph do not imply equal strings. The alternative
+  remedy, deriving the bound from the measure, was declined: the function
+  returns candidates and the caller takes the widest, so covering proportional
+  digits means one candidate per digit, which is a policy change in a refactor
+  whose contract is that no output moves. The reviewer accepted that.
+- **`DbGrid` indexing.** Accepted over two rounds: `value` checked neither
+  dimension and answered one bin past a column with the neighbour's value, then
+  the checks still multiplied unchecked coordinates. Both accessors now go
+  through `column`, which does the arithmetic once with `checked_mul`.
+- **`shade` allocated from an unchecked product.** Accepted: `DbGrid::shape`
+  settles the shape before `SpectrogramImage::new` is called, and an
+  inconsistent grid produces an empty image.
+- **The fixture font was not bit-exact.** Accepted: it summed advances before
+  scaling where ab_glyph scales each first. It now matches exactly, and the cli
+  test asserts `f32` equality over every label glyph and every ordered pair
+  rather than a tolerance.
+- **`HertzUnit` accidentally public.** Accepted; private again.
+
+Considered and not raised: `SpectrogramImage::get` and `put` compute
+`y * width + x` without checking `x`, so an out-of-range column silently
+addresses another row. It predates this branch, cannot be reached from any
+caller in the repository -- every index comes from a loop over the image's own
+size -- and is the ordinary shape of an image accessor, so it is neither a
+branch regression nor material enough for its own Issue.
+
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Every capture in `tests/signals/`, rendered in both orientations and each
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Every capture in `tests/signals/`, rendered in both orientations and each
       of the eight panel combinations, is byte-identical to the same render from
       `main`. The baseline comes from a release binary built at `main` before the
       first commit on this branch, and the comparison is over `sha256sum`.
-- [ ] `argand-core`'s dependency list is unchanged: no font, image, toolkit,
+- [x] `argand-core`'s dependency list is unchanged: no font, image, toolkit,
       `argand-dsp` or `argand-io` entry.
 
 ## Post-completion
