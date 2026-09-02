@@ -295,8 +295,17 @@ correctly:
   This is the one finding whose remedy is deferred rather than applied. Doing it
   properly means holding a candidate across a burst of reports and taking the
   previous maximized state into account, and doing it *correctly* wants gpui to
-  expose the work area and the minimized state. Recorded in Issue #37 with the
-  analysis, including why the geometry filter cannot work.
+  expose the work area and the minimized state.
+
+  A seventh round then rejected the *route* rather than the reasoning, and was
+  right to: the milestone's own contract said size and state come back on every
+  platform, so leaving this in the backlog would have left that claim false, and
+  `CONTRIBUTING.md` reserves the backlog for findings that touch no acceptance
+  criterion. So the contract is narrowed instead -- here, in `AGENTS.md`, in the
+  changelog and in the Pull Request -- to say that size and state come back
+  where the backend reports the state reliably, and the defect is Issue #38, a
+  normal Issue rather than a backlog one, carrying the analysis and the reason
+  the geometry filter cannot work.
 
 ## Validation
 
@@ -307,10 +316,13 @@ correctly:
 - [x] `cargo run -p argand --locked` opens a window on this host in under a
       second, measured rather than asserted: 0.109 s from exec to a mapped
       window.
-- [x] The window reopens at its previous size and state after a restart, and at
-      its previous position where the platform supplies one. Measured in a
-      nested headless compositor: 1000x700 and fullscreen both survived a
-      restart; position did not, for the reason recorded in Decisions.
+- [x] The window reopens at its previous size and state after a restart, where
+      the backend reports the window state reliably, and at its previous
+      position where the platform supplies one. Measured in a nested headless
+      compositor: 1000x700 and fullscreen both survived a restart, and going
+      fullscreen left the size to return to intact; position did not survive,
+      for the reason recorded in Decisions. X11 and macOS report a window as
+      ordinary while it is not, which is Issue #38.
 - [x] Geometry saved for a display that is gone, or that changed resolution,
       restores inside the visible area. Covered by unit tests over the clamp and
       checked once by hand.

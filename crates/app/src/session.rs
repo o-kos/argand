@@ -405,7 +405,7 @@ pub fn place(saved: Option<Geometry>, displays: &[Geometry]) -> Option<Geometry>
 /// exposes neither a minimized nor a transitional predicate, and filtering on
 /// geometry instead was tried and withdrawn: a window merely the size of some
 /// other display is not a maximized one, and refusing it loses an ordinary
-/// resize outright. Recorded as Issue #37 rather than guessed at.
+/// resize outright. Issue #38 carries the analysis and what would work.
 pub fn restore_rectangle(reported: Geometry, state: WindowState) -> Option<Geometry> {
     (state == WindowState::Normal).then_some(reported)
 }
