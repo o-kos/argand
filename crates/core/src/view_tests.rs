@@ -66,3 +66,59 @@ fn an_envelope_addresses_channels_within_a_column() {
     assert_eq!(env.column(3, 0), None, "no fourth column");
     assert_eq!(env.peak(), 0.9);
 }
+
+#[test]
+fn a_grid_addresses_a_bin_within_a_column() {
+    // Column-major: a whole column of bins, then the next column.
+    let grid = DbGrid {
+        width: 3,
+        height: 2,
+        values: vec![-10.0, -20.0, -30.0, -40.0, -50.0, -60.0],
+        t0: 0.0,
+        t1: 1.0,
+        f0: -12_000.0,
+        f1: 12_000.0,
+    };
+    assert_eq!(grid.value(0, 0), Some(-10.0));
+    assert_eq!(grid.value(0, 1), Some(-20.0));
+    assert_eq!(grid.value(2, 1), Some(-60.0));
+    assert_eq!(grid.column(1), Some([-30.0, -40.0].as_slice()));
+
+    // One bin past a column is a valid offset into the next one, so asking
+    // for it has to fail rather than answer with the neighbour's value.
+    assert_eq!(grid.value(0, 2), None);
+    assert_eq!(grid.value(3, 0), None);
+    assert_eq!(grid.column(3), None);
+}
+
+#[test]
+fn a_grid_whose_shape_does_not_fit_its_values_answers_nothing() {
+    // The fields are the caller's to set, so a shape the values cannot hold
+    // reaches these accessors, and a height this size overflows the offset
+    // before any comparison against the length could catch it.
+    let broken = DbGrid {
+        width: 2,
+        height: usize::MAX,
+        values: vec![-10.0],
+        t0: 0.0,
+        t1: 1.0,
+        f0: 0.0,
+        f1: 1.0,
+    };
+    assert_eq!(broken.shape(), None);
+    assert_eq!(broken.value(1, 1), None);
+    assert_eq!(broken.column(1), None);
+    // And the first column is refused too: the grid does not hold it.
+    assert_eq!(broken.column(0), None);
+
+    // A shape that multiplies without overflowing but the values still fall
+    // short of is refused on the same ground.
+    let short = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 8],
+        ..broken
+    };
+    assert_eq!(short.shape(), None);
+    assert_eq!(short.column(3), None);
+}

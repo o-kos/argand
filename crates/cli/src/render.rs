@@ -6,12 +6,12 @@
 //! one. Nothing is resampled, which is what keeps a single-frame carrier one
 //! pixel wide instead of a smear.
 
+use argand_core::axis::{self, Axis, AxisKind, LabelMeasure, LabelMetrics, LabelRun, Tick};
 use argand_core::{Colormap, Psd, SpectrogramImage, WaveformEnvelope};
 use argand_dsp::{Analysis, DynamicRange};
 use image::{Rgb, RgbImage};
 
 use crate::text::{Anchor, TextRenderer, TextStyle};
-use crate::ticks::{self, Axis, AxisKind, LabelMetrics, LabelRun, Tick};
 
 const EMPTY_PANELS_NAME: &str = "none";
 
@@ -429,10 +429,10 @@ impl Gutters {
         // The caption counts too: on a narrow range `MHz` is wider than the
         // digits it heads.
         let width = |kind: AxisKind, (min, max): (f64, f64)| -> i64 {
-            ticks::widest_labels(kind, min, max)
+            axis::widest_labels(kind, min, max)
                 .iter()
                 .map(String::as_str)
-                .chain(ticks::caption(kind, min, max))
+                .chain(axis::caption(kind, min, max))
                 .map(|label| text.width(label, FONT_SIZE).ceil() as i64)
                 .max()
                 .unwrap_or(0)
@@ -898,7 +898,7 @@ fn time_ticks(
     let Some(rect) = layout.spectrogram else {
         return Vec::new();
     };
-    let (axis, run) = match layout.orientation {
+    let (scale, run) = match layout.orientation {
         // Labels sit in a row under the plot. The canvas bounds them on the
         // left; on the right they meet the spectrum panel's decibel labels,
         // which share that row.
@@ -924,9 +924,9 @@ fn time_ticks(
             LabelRun::Down,
         ),
     };
-    ticks::ticks(
+    axis::ticks(
         AxisKind::Time,
-        axis,
+        scale,
         &LabelMetrics::new(text, FONT_SIZE, run),
     )
 }
@@ -943,8 +943,8 @@ fn frequency_ticks(
     };
     // The unit is named once at the far end of the axis, so the labels are kept
     // clear of the room it takes rather than drawn over it.
-    let caption = ticks::caption(AxisKind::Frequency, img.f0, img.f1).unwrap_or_default();
-    let (axis, run) = match layout.orientation {
+    let caption = axis::caption(AxisKind::Frequency, img.f0, img.f1).unwrap_or_default();
+    let (scale, run) = match layout.orientation {
         // Upwards beside the plot: offset 0 is the lowest frequency, at the
         // bottom, and the caption heads the column at the top.
         Orientation::Horizontal => (
@@ -969,9 +969,9 @@ fn frequency_ticks(
             LabelRun::Across,
         ),
     };
-    ticks::ticks(
+    axis::ticks(
         AxisKind::Frequency,
-        axis,
+        scale,
         &LabelMetrics::new(text, FONT_SIZE, run),
     )
 }
@@ -1065,7 +1065,7 @@ fn draw_spectrogram(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
     frame(canvas, rect);
 
     let img = &scene.input.analysis.spectrogram;
-    let caption = ticks::caption(AxisKind::Frequency, img.f0, img.f1).unwrap_or_default();
+    let caption = axis::caption(AxisKind::Frequency, img.f0, img.f1).unwrap_or_default();
     match orientation {
         Orientation::Horizontal => {
             scene.across(canvas, rect, &scene.time, Labelled::Yes);
@@ -1143,7 +1143,7 @@ fn psd_db_ticks(scene: &Scene<'_>, rect: Rect, range: (f32, f32)) -> Vec<Tick> {
         // Across the panel, labelled underneath, sharing that row with the
         // spectrogram's time labels on the other side of the gap.
         Orientation::Horizontal => {
-            let axis = Axis {
+            let scale = Axis {
                 length: rect.w,
                 min,
                 max,
@@ -1154,18 +1154,18 @@ fn psd_db_ticks(scene: &Scene<'_>, rect: Rect, range: (f32, f32)) -> Vec<Tick> {
                     scene.layout.width,
                 ),
             };
-            ticks::ticks(AxisKind::Decibels, axis, &scene.along())
+            axis::ticks(AxisKind::Decibels, scale, &scene.along())
         }
         // Stacked in the left gutter, which was measured to hold them.
         Orientation::Vertical => {
-            let axis = Axis {
+            let scale = Axis {
                 length: rect.h,
                 min,
                 max,
                 lead: scene.rise,
                 trail: scene.rise,
             };
-            ticks::ticks(AxisKind::Decibels, axis, &scene.stacked())
+            axis::ticks(AxisKind::Decibels, scale, &scene.stacked())
         }
     }
 }
@@ -1359,7 +1359,7 @@ fn draw_colorbar(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
     }
     frame(canvas, rect);
 
-    let axis = Axis {
+    let scale = Axis {
         length: rect.h,
         min: f64::from(img.db_min),
         max: f64::from(img.db_max),
@@ -1370,7 +1370,7 @@ fn draw_colorbar(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
         (rect.right() + LABEL_PAD) as f32,
         scene.beside(rect.y + scene.rise),
     );
-    let marks = ticks::ticks(AxisKind::Decibels, axis, &scene.stacked());
+    let marks = axis::ticks(AxisKind::Decibels, scale, &scene.stacked());
     scene.caption_above(canvas, at, &marks, "dB");
     for tick in &marks {
         let y = rect.bottom() - 1 - tick.offset;

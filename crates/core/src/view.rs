@@ -5,6 +5,73 @@
 
 use serde::Serialize;
 
+/// Decibel values and the shape they are laid out in, before any colour is
+/// chosen for them.
+///
+/// This is what a transform actually produced. Shading it is a separate step,
+/// so a front end that changes the colour scheme or the dynamic range recolours
+/// a grid it already holds instead of running the transform again over numbers
+/// that did not change.
+///
+/// The extents travel with the values because they describe the same picture,
+/// and a caller holding the grid has no other way back to the signal it came
+/// from.
+#[derive(Debug, Clone)]
+pub struct DbGrid {
+    pub width: usize,
+    pub height: usize,
+    /// Column-major, `width * height` values: `values[x * height + bin]`, with
+    /// bin 0 the lowest frequency.
+    pub values: Vec<f32>,
+    /// Time extent in seconds, from the start of the file.
+    pub t0: f64,
+    pub t1: f64,
+    /// Frequency extent in Hz, already offset by the centre frequency.
+    pub f0: f64,
+    pub f1: f64,
+}
+
+impl DbGrid {
+    /// The shape the values actually cover, or `None` when they do not cover
+    /// the one the grid declares.
+    ///
+    /// The fields are a caller's to set, so anything sizing a buffer from
+    /// `width` and `height` has to ask here rather than multiply them: a
+    /// height near `usize::MAX` makes that product an overflow, not a picture.
+    pub fn shape(&self) -> Option<(usize, usize)> {
+        let cells = self.width.checked_mul(self.height)?;
+        (cells == self.values.len()).then_some((self.width, self.height))
+    }
+
+    /// The value in column `x` at frequency bin `bin`, counting up from the
+    /// lowest, or `None` outside the grid.
+    ///
+    /// Column-major is the layout the transform fills, one whole column per
+    /// frame; naming the two dimensions here is what keeps that arithmetic out
+    /// of everything that reads the grid. Both are checked, because one index
+    /// past the end of a column is a valid offset into the next one, and a
+    /// caller that asked for a bin it does not have would get an answer that
+    /// looks like data.
+    pub fn value(&self, x: usize, bin: usize) -> Option<f32> {
+        self.column(x)?.get(bin).copied()
+    }
+
+    /// Every bin of column `x`, lowest frequency first.
+    ///
+    /// This is how the grid is stored, so a reader working down a column gets
+    /// the slice rather than a multiplication per value. It is also the one
+    /// place the offset is worked out, which is why the arithmetic is checked
+    /// here: the fields are a caller's to set, and a height near `usize::MAX`
+    /// would otherwise overflow past the bounds test rather than fail it.
+    pub fn column(&self, x: usize) -> Option<&[f32]> {
+        if x >= self.width {
+            return None;
+        }
+        let start = x.checked_mul(self.height)?;
+        self.values.get(start..start.checked_add(self.height)?)
+    }
+}
+
 /// A rendered spectrogram plus the axis extents it was drawn for.
 #[derive(Debug, Clone)]
 pub struct SpectrogramImage {

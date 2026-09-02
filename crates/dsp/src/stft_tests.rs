@@ -559,3 +559,129 @@ fn the_published_decibel_floor_matches_the_floors_that_produce_it() {
     assert_eq!(20.0 * MAG_FLOOR.log10(), DB_FLOOR);
     assert!((10.0 * POWER_FLOOR.log10() - f64::from(DB_FLOOR)).abs() < 1e-9);
 }
+
+#[test]
+fn the_grid_holds_the_numbers_the_picture_was_shaded_from() {
+    let mut src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 1.0), 12_579_000.0);
+    let analysis = run(&mut src, 32, 16);
+    let (grid, img) = (&analysis.db, &analysis.spectrogram);
+
+    assert_eq!((grid.width, grid.height), (img.width, img.height));
+    assert_eq!(grid.values.len(), grid.width * grid.height);
+    // The extents describe one picture, so both views of it carry the same.
+    assert_eq!((grid.t0, grid.t1), (img.t0, img.t1));
+    assert_eq!((grid.f0, grid.f1), (img.f0, img.f1));
+
+    // Row 0 of the image is the top, which is the highest frequency, so the
+    // grid's last bin is what shaded it.
+    let gradient = Colormap::Grayscale.gradient();
+    let span = img.db_max - img.db_min;
+    for x in 0..grid.width {
+        for y in 0..grid.height {
+            let value = grid.value(x, grid.height - 1 - y).expect("a bin inside the grid");
+            let expected = gradient[gradient_index((value - img.db_min) / span)];
+            assert_eq!(img.get(x, y), [expected[0], expected[1], expected[2], 255]);
+        }
+    }
+    assert!(
+        grid.values.iter().any(|v| *v > f32::from(-100i8)),
+        "a full-scale tone left nothing above -100 dB"
+    );
+}
+
+#[test]
+fn recolouring_a_grid_costs_no_second_pass_over_the_signal() {
+    // What the separation is for: the same numbers under a different scheme
+    // and a different window give exactly the picture the transform would
+    // have produced, without the transform running again.
+    let mut src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 1.0), 0.0);
+    let analysis = run(&mut src, 24, 16);
+
+    let mut again = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 1.0), 0.0);
+    let wanted = analyze(
+        &mut again,
+        &AnalysisRequest {
+            colormap: Colormap::Oceanic,
+            ..request(24, 16, SampleRange::new(0, 8192))
+        },
+        &mut |_, _| {},
+    )
+    .expect("analysis should succeed");
+
+    let recoloured = shade(
+        &analysis.db,
+        Shading {
+            colormap: Colormap::Oceanic,
+            db_min: wanted.spectrogram.db_min,
+            db_max: wanted.spectrogram.db_max,
+        },
+    );
+    assert_eq!(recoloured.rgba, wanted.spectrogram.rgba);
+    assert_eq!(recoloured.db_min, wanted.spectrogram.db_min);
+    assert_eq!(recoloured.db_max, wanted.spectrogram.db_max);
+    assert_eq!((recoloured.t0, recoloured.t1), (wanted.spectrogram.t0, wanted.spectrogram.t1));
+    assert_eq!((recoloured.f0, recoloured.f1), (wanted.spectrogram.f0, wanted.spectrogram.f1));
+
+    // And a different window over the same grid is a different picture. The
+    // window has to reach past the floor to show it: a tone against silence
+    // has both its levels pinned to the ends of any narrower one.
+    let wider = shade(
+        &analysis.db,
+        Shading {
+            colormap: Colormap::Oceanic,
+            db_min: DB_FLOOR - 200.0,
+            db_max: wanted.spectrogram.db_max,
+        },
+    );
+    assert_ne!(
+        wider.get(0, 0),
+        recoloured.get(0, 0),
+        "the floor kept its colour after the window moved past it"
+    );
+}
+
+#[test]
+fn shading_a_grid_that_does_not_cover_its_shape_draws_nothing() {
+    // The shape is what sizes the buffer, so a width and height the values
+    // cannot fill must be settled before the allocation rather than after it:
+    // `2 * usize::MAX` is an overflow, not a picture.
+    let broken = DbGrid {
+        width: 2,
+        height: usize::MAX,
+        values: vec![-10.0],
+        t0: 0.0,
+        t1: 1.0,
+        f0: -12_000.0,
+        f1: 12_000.0,
+    };
+    let shading = Shading {
+        colormap: Colormap::Grayscale,
+        db_min: -110.0,
+        db_max: 0.0,
+    };
+    let image = shade(&broken, shading);
+    assert_eq!((image.width, image.height), (0, 0));
+    assert!(image.rgba.is_empty());
+
+    // And a shape that multiplies without overflowing but the values fall
+    // short of, which used to draw the columns it had and leave the rest.
+    let short = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 8],
+        ..broken
+    };
+    let image = shade(&short, shading);
+    assert_eq!((image.width, image.height), (0, 0));
+
+    // A grid that does cover its shape still draws all of it.
+    let whole = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 16],
+        ..short
+    };
+    let image = shade(&whole, shading);
+    assert_eq!((image.width, image.height), (4, 4));
+    assert!(image.rgba.chunks_exact(4).all(|p| p[3] == 255));
+}

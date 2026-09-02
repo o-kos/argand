@@ -1,13 +1,14 @@
 use super::*;
+use crate::testutil::DejaVuSans;
 
 /// The size the plot labels its axes at.
 const SIZE: f32 = 13.0;
 
-fn across(text: &TextRenderer) -> LabelMetrics<'_> {
+fn across(text: &DejaVuSans) -> LabelMetrics<'_> {
     LabelMetrics::new(text, SIZE, LabelRun::Across)
 }
 
-fn down(text: &TextRenderer) -> LabelMetrics<'_> {
+fn down(text: &DejaVuSans) -> LabelMetrics<'_> {
     LabelMetrics::new(text, SIZE, LabelRun::Down)
 }
 
@@ -41,7 +42,7 @@ fn assert_no_overlap(marks: &[Tick], labels: &LabelMetrics<'_>, what: &str) {
 
 #[test]
 fn a_longer_axis_carries_more_labels() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     let counts: Vec<usize> = [200, 400, 900, 2000]
         .into_iter()
         .map(|length| {
@@ -66,7 +67,7 @@ fn a_longer_axis_carries_more_labels() {
 
 #[test]
 fn decimal_steps_stay_on_one_two_or_five() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     for length in [150, 300, 640, 1280, 2048] {
         let marks = ticks(
             AxisKind::Frequency,
@@ -86,7 +87,7 @@ fn decimal_steps_stay_on_one_two_or_five() {
 
 #[test]
 fn zero_is_exact_when_the_range_holds_it() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     for (min, max) in [(-12_000.0, 12_000.0), (-3.0, 7.0), (-0.5, 0.25)] {
         let marks = ticks(AxisKind::Frequency, axis(600, min, max), &across(&text));
         let zero = marks
@@ -101,7 +102,7 @@ fn zero_is_exact_when_the_range_holds_it() {
 
 #[test]
 fn labels_that_would_leave_the_canvas_are_dropped_with_their_grid_lines() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     let labels = across(&text);
     // Nothing to overhang into: a label centred on either end has half of
     // itself outside the canvas, so both ends have to go.
@@ -132,7 +133,7 @@ fn labels_that_would_leave_the_canvas_are_dropped_with_their_grid_lines() {
 
 #[test]
 fn time_labels_read_as_a_clock() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // Under an hour: minutes and seconds, the seconds zero-padded.
     let marks = ticks(AxisKind::Time, axis(900, 0.0, 200.0), &across(&text));
     assert_eq!(marks[0].label, "0.00");
@@ -170,7 +171,7 @@ fn the_clock_format_follows_the_span_and_not_the_offset() {
     assert_eq!(clock_of(3600.0, 3660.0), Clock::MinutesSeconds);
     assert_eq!(clock_of(86_400.0, 86_460.0), Clock::MinutesSeconds);
     // And the minutes field carries the full count when it passes sixty.
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     let marks = ticks(AxisKind::Time, axis(900, 3600.0, 3660.0), &across(&text));
     assert_eq!(marks[0].label, "60.00");
     assert_eq!(marks[marks.len() - 1].label, "61.00");
@@ -181,7 +182,7 @@ fn the_clock_format_follows_the_span_and_not_the_offset() {
 
 #[test]
 fn time_ticks_never_step_finer_than_a_second() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // Room for far more marks; the clock does not offer any.
     let marks = ticks(AxisKind::Time, axis(2000, 0.0, 4.0), &across(&text));
     assert_eq!(
@@ -195,7 +196,7 @@ fn time_ticks_never_step_finer_than_a_second() {
 
 #[test]
 fn a_span_shorter_than_a_second_shows_only_the_whole_seconds_in_it() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     let marks = ticks(AxisKind::Time, axis(1200, 0.0, 0.2), &across(&text));
     assert_eq!(marks.len(), 1, "{marks:?}");
     assert_eq!(marks[0].value, 0.0);
@@ -210,7 +211,7 @@ fn a_span_shorter_than_a_second_shows_only_the_whole_seconds_in_it() {
 
 #[test]
 fn a_step_that_would_print_the_same_number_twice_is_refused() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // A ten-decibel span across 900 pixels has room for half-decibel marks,
     // but the labels are whole decibels, so half of them would repeat.
     let marks = ticks(AxisKind::Decibels, axis(900, -70.0, -60.0), &down(&text));
@@ -226,7 +227,7 @@ fn a_step_that_would_print_the_same_number_twice_is_refused() {
 
 #[test]
 fn stacked_labels_are_spaced_by_their_ink_not_by_their_width() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // `12.579887 MHz` is wide and short, so stacking the same axis fits many
     // more marks than laying its labels out end to end.
     let (min, max) = (12_567_000.0, 12_591_000.0);
@@ -244,7 +245,7 @@ fn stacked_labels_are_spaced_by_their_ink_not_by_their_width() {
 
 #[test]
 fn real_and_complex_frequency_ranges_both_land_on_round_hertz() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     for (min, max) in [
         (0.0, 12_000.0),              // real baseband
         (-12_000.0, 12_000.0),        // complex baseband
@@ -265,7 +266,7 @@ fn real_and_complex_frequency_ranges_both_land_on_round_hertz() {
 
 #[test]
 fn the_widest_label_bounds_every_label_the_axis_prints() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     let reserved = |kind, min, max| {
         widest_labels(kind, min, max)
             .iter()
@@ -301,19 +302,16 @@ fn the_widest_label_bounds_every_label_the_axis_prints() {
 #[test]
 fn the_decibel_bound_covers_anything_f32_can_reach() {
     // The transform clamps silence at -300 dB rather than letting it reach
-    // `-inf`, and `argand-dsp` publishes that floor.
-    assert_eq!(f64::from(argand_dsp::DB_FLOOR), crate::render::DB_FLOOR);
-    assert!(
-        widest_labels(AxisKind::Decibels, crate::render::DB_FLOOR, 0.0)
-            .contains(&"-300".to_string())
-    );
+    // `-inf`. That the floor a caller reserves for is the floor `argand-dsp`
+    // publishes is checked where both are visible, in the cli's render tests.
+    assert!(widest_labels(AxisKind::Decibels, -300.0, 0.0).contains(&"-300".to_string()));
     // The unit is the axis's, not each tick's.
     assert_eq!(caption(AxisKind::Decibels, -60.0, 0.0), Some("dB"));
 }
 
 #[test]
 fn an_axis_with_nothing_to_show_produces_nothing() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     let labels = across(&text);
     assert!(ticks(AxisKind::Frequency, axis(600, 5.0, 5.0), &labels).is_empty());
     assert!(ticks(AxisKind::Frequency, axis(600, 10.0, 1.0), &labels).is_empty());
@@ -325,7 +323,7 @@ fn an_axis_with_nothing_to_show_produces_nothing() {
 
 #[test]
 fn no_tick_lands_outside_the_range_it_was_given() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     let cases = [
         // A one-hertz window a terahertz up: the slack that finds a tick on the
         // boundary is far wider than the span if it is measured in hertz.
@@ -352,7 +350,7 @@ fn no_tick_lands_outside_the_range_it_was_given() {
 
 #[test]
 fn a_tick_sitting_exactly_on_an_end_of_the_range_is_kept() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // Both ends are whole multiples of the step the axis will pick, and the
     // low end only reaches one after a division that cannot represent it.
     let marks = ticks(AxisKind::Frequency, axis(900, 0.1 + 0.2, 0.9), &across(&text));
@@ -366,7 +364,7 @@ fn a_tick_sitting_exactly_on_an_end_of_the_range_is_kept() {
 
 #[test]
 fn a_span_no_ladder_was_written_for_still_terminates() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // A span smaller than the smallest normal. Reaching the end of this test
     // is most of the point: the decimal ladder used to compute a decade of
     // zero here, which neither produced a step nor grew when multiplied, so
@@ -401,7 +399,7 @@ fn a_span_no_ladder_was_written_for_still_terminates() {
 
 #[test]
 fn a_huge_decibel_window_still_gets_a_bound_that_holds_it() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // `--dynamic-range 10000` is not refused by the CLI, so the reserve has to
     // survive it: five digits and a sign, not the f32 floor's three.
     let reserved = widest_labels(AxisKind::Decibels, -10_000.0, 0.0);
@@ -421,7 +419,7 @@ fn a_huge_decibel_window_still_gets_a_bound_that_holds_it() {
 
 #[test]
 fn a_range_ending_one_ulp_short_of_a_multiple_stays_bounded() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // The quotient here is large enough that one of its ulps is wider than the
     // distance from `max` up to the next whole multiple, so the slack cannot
     // tell a rounded division from a range that genuinely stops just short.
@@ -464,7 +462,7 @@ fn a_range_ending_one_ulp_short_of_a_multiple_stays_bounded() {
 
 #[test]
 fn a_quotient_too_large_to_index_is_refused_rather_than_saturated() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // A window fifteen orders of magnitude narrower than where it sits, which
     // is what puts `min / step` past 2^53. There an index no longer round-trips
     // through f64, and past i64 the cast saturates into a tick at some
@@ -500,7 +498,7 @@ fn a_quotient_too_large_to_index_is_refused_rather_than_saturated() {
 
 #[test]
 fn a_value_too_small_for_its_unit_prints_as_a_bare_zero() {
-    let text = TextRenderer::new();
+    let text = DejaVuSans;
     // A sub-hertz window just below zero. Hertz resolve to a thousandth, so
     // every tick here rounds to nothing, and nothing has no sign.
     for (min, max) in [(-0.0004, -0.0001), (-0.0004, 0.0004), (-1e-9, 1e-9)] {

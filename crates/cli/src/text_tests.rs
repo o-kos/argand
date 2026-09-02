@@ -1,4 +1,5 @@
 use super::*;
+use argand_core::testutil::DejaVuSans;
 
 fn blank(w: u32, h: u32) -> RgbImage {
     RgbImage::from_pixel(w, h, Rgb([0, 0, 0]))
@@ -85,4 +86,44 @@ fn glyphs_blend_rather_than_overwrite() {
         .pixels()
         .any(|p| p.0[0] > 20 && p.0[0] < 255);
     assert!(blended, "expected partially covered pixels");
+}
+
+/// Every character an axis label can be built from.
+const LABEL_ALPHABET: [char; 13] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', '-',
+];
+
+#[test]
+fn the_fixture_font_measures_what_the_real_one_does() {
+    // `argand-core` lays its axes out against `testutil::DejaVuSans`, a table
+    // of this font's advances rather than the font itself, because the core
+    // may not open one. That table is only worth anything while it agrees
+    // with the face this binary embeds, and it is stated at the size the plot
+    // labels with, so that is where they are held against each other.
+    let real = TextRenderer::new();
+    let fixture = DejaVuSans;
+    const SIZE: f32 = 13.0;
+
+    let same = |label: &str| {
+        let (want, got) = (real.width(label, SIZE), fixture.width(label, SIZE));
+        assert_eq!(
+            want, got,
+            "{label:?} measures {want} in the font and {got} in the fixture"
+        );
+    };
+
+    // Every glyph, then every ordered pair of them: the table records an
+    // advance each and no kerning, so a pair is where a kerning class the
+    // table does not know about would show up.
+    for a in LABEL_ALPHABET {
+        same(&a.to_string());
+        for b in LABEL_ALPHABET {
+            same(&format!("{a}{b}"));
+        }
+    }
+    // And whole labels, including the pair the tick spacing is derived from.
+    for label in ["00", "-300", "-10000", "12.579887", "3.07", "-1.30", "1:02:09", "60.00"] {
+        same(label);
+    }
+    assert_eq!(real.digit_height(SIZE), fixture.digit_height(SIZE));
 }

@@ -795,7 +795,7 @@ fn a_megahertz_frequency_label_gets_a_gutter_that_holds_it() {
 
     let hertz = frequency_ticks(&layout, &extents(time, tuned), &ruler.text, ruler.rise);
     // One unit for the axis, named once beside it, and bare digits on the ticks.
-    assert_eq!(ticks::caption(AxisKind::Frequency, tuned.0, tuned.1), Some("MHz"));
+    assert_eq!(axis::caption(AxisKind::Frequency, tuned.0, tuned.1), Some("MHz"));
     assert!(hertz.iter().all(|t| !t.label.contains("Hz")), "{hertz:?}");
     assert!(hertz.iter().any(|t| t.label.starts_with("12.5")), "{hertz:?}");
     ruler.check_stacked(&hertz, spec.x, "tuned to HF");
@@ -803,7 +803,7 @@ fn a_megahertz_frequency_label_gets_a_gutter_that_holds_it() {
     // The 78-pixel gutter this replaced could not hold `12.579887 MHz` at all.
     // Naming the unit once means the same axis now fits in less than that.
     assert!(gutters.frequency + LABEL_PAD < 78, "{gutters:?}");
-    let widest = ticks::widest_labels(AxisKind::Frequency, tuned.0, tuned.1);
+    let widest = axis::widest_labels(AxisKind::Frequency, tuned.0, tuned.1);
     for label in &widest {
         assert!(
             gutters.frequency >= ruler.text.width(label, FONT_SIZE).ceil() as i64,
@@ -966,16 +966,16 @@ fn the_colour_bar_labels_its_own_scale_and_stays_on_the_canvas() {
     let bar = layout.colorbar.expect("colorbar");
 
     let ruler = Ruler::new();
-    let axis = Axis {
+    let scale = Axis {
         length: bar.h,
         min: f64::from(a.spectrogram.db_min),
         max: f64::from(a.spectrogram.db_max),
         lead: ruler.rise,
         trail: -caption_rows(ruler.rise),
     };
-    let marks = ticks::ticks(
+    let marks = axis::ticks(
         AxisKind::Decibels,
-        axis,
+        scale,
         &LabelMetrics::new(&ruler.text, FONT_SIZE, LabelRun::Down),
     );
     // The fixed five-tick target this replaced gave the same count whatever
@@ -1015,13 +1015,23 @@ fn the_colour_bar_gutter_reserves_for_an_unknown_peak() {
     );
 
     let text = TextRenderer::new();
-    let widest = ticks::widest_labels(AxisKind::Decibels, DB_FLOOR - 60.0, 0.0);
+    let widest = axis::widest_labels(AxisKind::Decibels, DB_FLOOR - 60.0, 0.0);
     for label in &widest {
         assert!(
             peak.colorbar >= text.width(label, FONT_SIZE).ceil() as i64,
             "{peak:?} does not hold {label:?}"
         );
     }
+}
+
+#[test]
+fn the_reserved_decibel_floor_is_the_one_the_transform_can_reach() {
+    // The transform clamps silence rather than letting it reach `-inf`, and
+    // the gutter is sized for whatever it can produce. `argand-core` lays the
+    // axis out and `argand-dsp` sets the floor; neither can see the other, so
+    // the two are held together here, where both are in scope.
+    assert_eq!(f64::from(argand_dsp::DB_FLOOR), DB_FLOOR);
+    assert!(axis::widest_labels(AxisKind::Decibels, DB_FLOOR, 0.0).contains(&"-300".to_string()));
 }
 
 #[test]

@@ -12,7 +12,6 @@ mod mask;
 mod render;
 mod report;
 mod text;
-mod ticks;
 
 use std::io::IsTerminal;
 use std::path::Path;
