@@ -15,6 +15,7 @@ workspace = true
 
 [dependencies]
 argand-core.workspace = true
+argand-dsp.workspace = true
 anyhow.workspace = true
 dirs.workspace = true
 gpui.workspace = true

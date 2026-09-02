@@ -1,4 +1,5 @@
 use super::*;
+use argand_dsp::Window;
 
 /// A scratch directory removed when it goes out of scope.
 struct TempDir {
@@ -101,4 +102,96 @@ fn the_application_never_writes_the_file_a_person_owns() {
         text,
         "loading the configuration rewrote it"
     );
+}
+
+#[test]
+fn every_setting_the_file_offers_is_read_by_the_name_the_cli_uses() {
+    let dir = TempDir::new("full");
+    let path = dir.write(
+        "argand.toml",
+        r#"
+theme = "light"
+color_scheme = "viridis"
+dynamic_range = "auto"
+
+[stft]
+fft_size = 4096
+window = "blackman-harris"
+
+[panels]
+waveform_fraction = 0.35
+"#,
+    );
+
+    let config = Config::load(std::slice::from_ref(&path));
+    assert_eq!(config.theme, Theme::Light);
+    assert_eq!(config.color_scheme, Colormap::Viridis);
+    assert_eq!(config.dynamic_range, DynamicRange::Auto);
+    assert_eq!(config.stft.fft_size, 4096);
+    assert_eq!(config.stft.window, Window::BlackmanHarris);
+    assert!((config.panels.waveform_fraction - 0.35).abs() < 1e-6);
+}
+
+#[test]
+fn the_colour_range_takes_the_word_the_report_prints() {
+    let dir = TempDir::new("range");
+    // `default` is what the report shows and what the command line spells by
+    // leaving `-d` out, so a file may say it.
+    let path = dir.write("argand.toml", "dynamic_range = \"default\"\n");
+    assert_eq!(Config::load(&[path]).dynamic_range, DynamicRange::Default);
+
+    let path = dir.write("numeric.toml", "dynamic_range = \"60\"\n");
+    assert_eq!(
+        Config::load(&[path]).dynamic_range,
+        DynamicRange::Fixed(60.0)
+    );
+}
+
+#[test]
+fn a_value_that_parses_but_cannot_be_used_costs_only_itself() {
+    let dir = TempDir::new("repair");
+    // A transform size the FFT would refuse, beside a setting that is fine.
+    let path = dir.write(
+        "argand.toml",
+        "theme = \"light\"\n\n[stft]\nfft_size = 1000\n",
+    );
+
+    let config = Config::load(&[path]);
+    assert_eq!(config.stft.fft_size, Config::default().stft.fft_size);
+    // The rest of the file survived: one bad value is not a bad file.
+    assert_eq!(config.theme, Theme::Light);
+}
+
+#[test]
+fn a_waveform_share_that_leaves_no_plot_is_refused() {
+    let dir = TempDir::new("fraction");
+    let default = Config::default().panels.waveform_fraction;
+    for value in ["0.0", "1.0", "-0.5", "2.0", "nan", "inf"] {
+        let path = dir.write(
+            "argand.toml",
+            &format!("[panels]\nwaveform_fraction = {value}\n"),
+        );
+        let got = Config::load(&[path]).panels.waveform_fraction;
+        assert!(
+            (got - default).abs() < 1e-6,
+            "{value} was accepted as {got}"
+        );
+    }
+}
+
+#[test]
+fn a_name_the_cli_would_reject_is_rejected_here_too() {
+    let dir = TempDir::new("names");
+    for text in [
+        "color_scheme = \"chartreuse\"",
+        "dynamic_range = \"loud\"",
+        "[stft]\nwindow = \"triangular\"",
+    ] {
+        let path = dir.write("argand.toml", text);
+        assert_eq!(
+            Config::load(&[path]),
+            Config::default(),
+            "{text} was accepted"
+        );
+    }
 }

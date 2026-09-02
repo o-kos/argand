@@ -48,9 +48,17 @@ pub fn run(config: Config, saved: Session, state_path: Option<PathBuf>) {
             );
 
             let writer = state_path.map(|path| Writer::new(path, saved.clone()));
-            cx.open_window(options, |window, cx| {
+            let opened = cx.open_window(options, |window, cx| {
                 cx.new(|cx| Root::new(cx.new(|_| Shell::new(writer)), window, cx))
-            })?;
+            });
+
+            // A window that will not open is the end of the run, and a task
+            // whose error nobody reads would end it silently: there is nothing
+            // else this program does.
+            if let Err(error) = opened {
+                tracing::error!(%error, "cannot open a window");
+                cx.update(|cx| cx.quit())?;
+            }
             Ok::<_, anyhow::Error>(())
         })
         .detach();

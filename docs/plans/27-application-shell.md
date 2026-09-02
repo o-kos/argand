@@ -4,12 +4,13 @@ Resolves #27.
 
 ## Overview
 
-There is no application binary. `argand-app` does not exist, GPUI is not in the
-dependency tree, and nothing reads `argand.toml`. Every later GUI milestone
-rests on a toolkit pinned to a Git revision whose graphics backend is migrating
-from Blade to wgpu, so whether it builds and runs on Linux, Windows and macOS is
-the largest unproven assumption in the project. This milestone answers that
-question and nothing else.
+Before this branch there was no application binary. `argand-app` did not exist,
+GPUI was not in the dependency tree, and nothing read `argand.toml`. Every later
+GUI milestone rests on a toolkit whose graphics backend is migrating from Blade
+to wgpu, so whether it builds and runs on Linux, Windows and macOS was the
+largest unproven assumption in the project. This milestone answers that question
+and nothing else. It is answered: the window opens on this host in 0.109 s and
+the workspace builds on all three platforms in CI.
 
 Add `crates/app` with the `argand` binary: a shell that opens, is configured,
 and remembers itself. A window with the base theme, a placeholder panel area and
@@ -67,30 +68,43 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
   gpui-component's own example uses at the `v0.5.1` tag.
 
 - ➕ **The window position is not restored on Wayland, and cannot be by this
-  toolkit.** Size and state are, on every platform. gpui 0.2.2's Wayland backend
-  zeroes the window origin before handing the geometry to the compositor
-  (`platform/linux/wayland/window.rs:419`), so `window_bounds()` reports
-  `x = 0, y = 0` however far the window has been dragged. Under plain xdg-shell
-  that is correct -- a client has no absolute position to know or to set.
+  toolkit.** Size and state are, on every platform. Measured here:
+  `window_bounds()` reports `x = 0, y = 0` however far the window has been
+  dragged, while the compositor reports it at `(200, 150)`. Under plain
+  xdg-shell that is correct -- a client has no absolute position to know or to
+  set.
 
-  `xdg-session-management-v1`, stable in wayland-protocols 1.48 since
-  2026-04-01, exists for exactly this and has the compositor reapply the stored
-  geometry; gpui does not implement it, and `zed-industries/zed` has neither an
-  issue nor a pull request for it. Raised as backlog Issue #37 rather than
-  worked around here, because the missing piece is in the toolkit. The
-  acceptance criterion asking for position is met where the platform supplies
-  one, which is X11, Windows and macOS.
+  `xdg-session-management-v1` exists for exactly this and has the compositor
+  reapply the stored geometry. It entered wayland-protocols 1.48 on 2026-04-01
+  as a **staging** protocol, not a stable one, and gpui does not implement it;
+  `zed-industries/zed` has neither an issue nor a pull request for it. Raised as
+  backlog Issue #37 rather than worked around here, because the missing piece is
+  in the toolkit. The acceptance criterion asking for position is met where the
+  platform supplies one, which is X11, Windows and macOS.
+
+  Two claims made while chasing this were wrong and are recorded so they are not
+  made again. `wayland/window.rs:419` zeroes the *surface-local* geometry passed
+  to `set_window_geometry`; it is not where the screen origin is discarded. And
+  `wl_output` is a registry global advertised at connection, not something a
+  client learns only once a surface has entered an output -- the empty early
+  `cx.displays()` is gpui's event ordering, not a protocol rule.
 
   Two things came out of chasing this and are fixed on this branch. `place()`
   discarded the whole saved rectangle when no display was known, losing the
   *size* along with the position -- and on Wayland that is the ordinary case,
-  because a client learns of an output only once a surface has entered one, so
-  the first window is always placed before any display is known. And the window
-  is opened from a spawned task rather than straight from `run`, following the
-  toolkit's own examples.
+  because gpui has not processed the display globals by the time the placement is
+  decided, so the first window is always placed before any display is known. And
+  the window is opened from a spawned task rather than straight from `run`,
+  following the toolkit's own examples.
 - **Toolchain.** `rust-toolchain.toml` moves from `1.88.0` to `1.97.1`, which is
-  what the pinned zed revision requires. Agreed with the project owner before
-  the work started. The alternative, an older gpui that builds on 1.88, is
+  what the toolkit requires -- the zed revision `gpui-component` builds against
+  pins that channel. Agreed with the project owner before the work started, and
+  the declared `rust-version` follows it, because a lower minimum than the
+  pinned toolchain is a claim nothing here builds or tests. Two lints that did
+  not exist in 1.88 fire on existing code and are fixed rather than suppressed.
+  The renders are unchanged: every capture in `tests/signals/`, in both
+  orientations and all eight panel combinations, is byte-identical to what
+  1.88.0 produced. The alternative, an older gpui that builds on 1.88, is
   recorded below.
 - **Where the logic lives.** Configuration and session state are parsing,
   clamping and atomic writes -- no toolkit is involved, and CI cannot run a GPU
@@ -141,21 +155,48 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
       geometry and state, written atomically through a temporary file and a
       rename, and debounced so a drag does not write per frame.
 - [x] Clamp restored geometry to the visible area of the current displays.
-      ⚠️ Exercised by unit tests rather than on Wayland, which reports no display
-      until a surface has entered one; see the position note in Decisions.
+      ⚠️ Exercised by unit tests rather than on Wayland, where the displays are
+      not known yet when the first window is placed; see Decisions.
 - [x] Make a missing, unreadable or unknown-version state file log and fall back
       to defaults, so the application cannot fail to start because of its own
       configuration.
-- [ ] Build the workspace on Linux, Windows and macOS in CI, with the Linux job
+- [x] Build the workspace on Linux, Windows and macOS in CI, with the Linux job
       installing the packages GPUI needs and the cargo directories cached.
 - [x] ➕ Correct the dependency rule in `AGENTS.md`, which tells a reader to pin
       the toolkit to Git revisions for a reason that no longer holds.
-- [ ] Update `AGENTS.md` and `docs/plans/IMPLEMENTATION_PLAN.md` where they
+- [x] Update `AGENTS.md` and `docs/plans/IMPLEMENTATION_PLAN.md` where they
       describe `argand-app` as planned.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
+
+## Review
+
+One round with `codex exec -s read-only` so far, six findings, all accepted:
+
+- **A corrupt session could leave the application without a window.** A finite,
+  positive, absurd size passed the usability check and, with no display to clamp
+  against, reached the toolkit; and the spawned task's error was dropped by
+  `detach()`, so a failed `open_window` ended the run silently. Geometry is now
+  bounded, and the task reports and quits.
+- **The configuration surface was smaller than the Issue promised** and the plan
+  had already ticked it. Colour scheme, dynamic range and the transform defaults
+  are now read, by the same names the CLI parses, through the same `FromStr`.
+  Values that parse but cannot be used -- a transform size that is not a power
+  of two, a waveform share of zero or one -- are replaced individually with a
+  log line, so one bad value does not cost the rest of the file.
+- **A failed write was recorded as a successful one.** `Session::save` swallowed
+  its error while `Writer` cleared what it had not written, so a transient
+  failure lost the update for good. The result is answered and the value stays
+  pending.
+- **Three pieces of evidence about Wayland were misstated.** All three are
+  corrected above and in Issue #37; the conclusion they were offered for is
+  unchanged.
+- **The last offer did not always win.** A window dragged away and back inside
+  one interval left the position it had already left pending, and that is what
+  the next write recorded.
+- **The plan contradicted its own branch.** Synchronised.
 
 ## Validation
 

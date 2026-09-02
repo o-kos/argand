@@ -18,6 +18,12 @@ use serde::{Deserialize, Serialize};
 /// The name the application writes under, in the platform state directory.
 pub const FILE_NAME: &str = "session.toml";
 
+/// Largest window edge any restored geometry may ask for, in logical pixels.
+///
+/// Comfortably past the largest display anyone plausibly has, and far short of
+/// what a graphics backend refuses to allocate.
+const MAX_DIMENSION: f32 = 32_768.0;
+
 /// The layout this program knows how to read.
 ///
 /// A file from a future version is left alone rather than guessed at: the
@@ -52,16 +58,21 @@ impl Geometry {
         self.y + self.height
     }
 
-    /// Whether every number is finite and the rectangle has area.
+    /// Whether this rectangle is worth handing back to a window system.
     ///
-    /// A zero-width window cannot be shown and a NaN one cannot be compared, so
-    /// neither is worth restoring.
+    /// A zero-width window cannot be shown and a NaN one cannot be compared.
+    /// The upper bound is the one that matters for a file a person can edit or
+    /// a disk can corrupt: where no display is known there is nothing to clamp
+    /// against, and a width of `1e30` would otherwise reach the toolkit and ask
+    /// it for a surface no GPU can allocate. It is a guard against nonsense,
+    /// not a policy about window sizes -- a real display clamps far tighter
+    /// than this, in [`fit`].
     fn is_usable(self) -> bool {
         [self.x, self.y, self.width, self.height]
             .iter()
             .all(|v| v.is_finite())
-            && self.width > 0.0
-            && self.height > 0.0
+            && (1.0..=MAX_DIMENSION).contains(&self.width)
+            && (1.0..=MAX_DIMENSION).contains(&self.height)
     }
 
     /// Area shared with `other`.
@@ -143,11 +154,17 @@ impl Session {
     /// to. Killing the process mid-write therefore leaves either the previous
     /// session or the new one, and never half of either.
     ///
-    /// A failure to save is reported and swallowed: losing a window position is
-    /// not worth interrupting whatever the person was doing.
-    pub fn save(&self, path: &Path) {
-        if let Err(error) = self.write_atomically(path) {
-            tracing::warn!(path = %path.display(), %error, "cannot save session");
+    /// A failure to save is reported rather than raised: losing a window
+    /// position is not worth interrupting whatever the person was doing. It is
+    /// still answered, because a caller that keeps track of what reached the
+    /// disk has to know that this did not.
+    pub fn save(&self, path: &Path) -> bool {
+        match self.write_atomically(path) {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "cannot save session");
+                false
+            }
         }
     }
 
@@ -208,12 +225,15 @@ impl Writer {
 
     /// Record where the window is now, and write if enough time has passed.
     pub fn offer(&mut self, session: Session, now: Instant) {
-        if session == self.stored && self.pending.is_none() {
+        // A window that has come back to where the file already has it leaves
+        // nothing to write -- including anything offered in between, which the
+        // window has since moved off.
+        if session == self.stored {
+            self.pending = None;
             return;
         }
-        if session != self.stored {
-            self.pending = Some(session);
-        }
+        self.pending = Some(session);
+
         let due = self
             .last_write
             .is_none_or(|last| now.duration_since(last) >= Self::INTERVAL);
@@ -230,10 +250,16 @@ impl Writer {
     }
 
     fn write(&mut self, now: Instant) {
-        let Some(session) = self.pending.take() else {
+        let Some(session) = self.pending.clone() else {
             return;
         };
-        session.save(&self.path);
+        // A write that did not happen is not a write. Keeping it pending is
+        // what gives a transient failure -- a full disk, a permission that
+        // comes back -- another chance at the next interval or at the flush.
+        if !session.save(&self.path) {
+            return;
+        }
+        self.pending = None;
         self.stored = session;
         self.last_write = Some(now);
     }
@@ -251,13 +277,13 @@ impl Writer {
 pub fn place(saved: Option<Geometry>, displays: &[Geometry]) -> Option<Geometry> {
     let saved = saved.filter(|g| g.is_usable())?;
     if displays.is_empty() {
-        // Nothing to clamp against. This is the ordinary case on Wayland, where
-        // a client learns of an output only once a surface has entered one, so
-        // the first window is placed before any display is known. Discarding
-        // the rectangle here would throw away the size along with the position,
-        // and the size is the half that can still be honoured -- placement is
-        // the compositor's business there, and it puts the window somewhere
-        // visible by construction.
+        // Nothing to clamp against, which is what the first window sees on
+        // Wayland: gpui learns the outputs from the display globals, and this
+        // runs before it has processed them. Discarding the rectangle here
+        // would throw away the size along with the position, and the size is
+        // the half that can still be honoured -- placement is the compositor's
+        // business on that platform, and it puts the window somewhere visible
+        // by construction.
         tracing::debug!(
             "no displays known yet; restoring the size and leaving placement to the platform"
         );

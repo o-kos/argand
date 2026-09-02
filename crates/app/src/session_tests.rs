@@ -102,10 +102,10 @@ fn a_rectangle_worth_nothing_hands_the_placement_back_to_the_platform() {
 
 #[test]
 fn a_platform_that_names_no_displays_still_restores_the_size() {
-    // On Wayland a client learns of an output only once a surface has entered
-    // one, so the first window is placed with no display known. Throwing the
-    // saved rectangle away over that would lose the size as well as the
-    // position, and the size is the half that can still be honoured.
+    // The first window on Wayland sees this: gpui has not processed the display
+    // globals by the time the placement is decided. Throwing the saved
+    // rectangle away over that would lose the size as well as the position, and
+    // the size is the half that can still be honoured.
     let saved = Geometry::new(0.0, 0.0, 1000.0, 700.0);
     assert_eq!(place(Some(saved), &[]), Some(saved));
     // A rectangle that is not worth restoring is still refused.
@@ -273,4 +273,77 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
     // Closing the window is what makes it land.
     writer.flush(start + Duration::from_millis(2));
     assert_eq!(Session::load(&path).geometry.expect("a position").x, 2.0);
+}
+
+#[test]
+fn a_window_that_comes_back_to_where_it_started_writes_nothing() {
+    let dir = TempDir::new("returned");
+    let path = dir.join("session.toml");
+    let at = |x: f32| Session {
+        version: VERSION,
+        geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
+        window_state: WindowState::Normal,
+    };
+
+    let mut writer = Writer::new(path.clone(), at(0.0));
+    let start = Instant::now();
+    // Settle a write first, so the schedule is holding the next one back.
+    writer.offer(at(100.0), start);
+    assert_eq!(Session::load(&path), at(100.0));
+
+    // Dragged away and back again before the interval is up. The offer in
+    // between is one the window has already left, so what finally lands has to
+    // be where it actually is.
+    writer.offer(at(400.0), start + Duration::from_millis(1));
+    writer.offer(at(100.0), start + Duration::from_millis(2));
+    writer.flush(start + Duration::from_secs(1));
+
+    assert_eq!(
+        Session::load(&path),
+        at(100.0),
+        "a position the window had already left was written over the real one"
+    );
+}
+
+#[test]
+fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
+    let dir = TempDir::new("retry");
+    // The parent is a file, so every write fails until it is not.
+    let blocked = dir.join("blocked");
+    std::fs::write(&blocked, "not a directory").expect("write blocker");
+    let path = blocked.join("session.toml");
+
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let moved = Session {
+        version: VERSION,
+        geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
+        window_state: WindowState::Normal,
+    };
+    let start = Instant::now();
+    writer.offer(moved.clone(), start);
+    assert!(!path.exists(), "the fixture did not actually block the write");
+
+    // Clear the obstruction, as a full disk or a permission might clear, and
+    // the value the window is still at has to reach the file.
+    std::fs::remove_file(&blocked).expect("remove blocker");
+    writer.flush(start + Duration::from_secs(1));
+    assert_eq!(
+        Session::load(&path),
+        moved,
+        "the position was lost to a failure that had passed"
+    );
+}
+
+#[test]
+fn a_size_no_surface_could_hold_is_not_restored() {
+    // A corrupt or hand-edited file can hold a finite, positive, absurd size.
+    // With no display to clamp against it would otherwise reach the toolkit.
+    for saved in [
+        Geometry::new(0.0, 0.0, 1e30, 800.0),
+        Geometry::new(0.0, 0.0, 1280.0, 1e30),
+        Geometry::new(0.0, 0.0, 0.4, 800.0),
+    ] {
+        assert_eq!(place(Some(saved), &[]), None, "{saved:?} was restored");
+        assert_eq!(place(Some(saved), &[PRIMARY]), None, "{saved:?} was restored");
+    }
 }
