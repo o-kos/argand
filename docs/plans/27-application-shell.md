@@ -324,6 +324,28 @@ An eighth round found the narrowing incomplete, and it was:
   and the Issue no longer contradicts itself about how many platforms it
   concerns.
 
+A ninth round found three more, all accepted, none of them in the code:
+
+- **Issue #27 still asked for fixed Git revisions**, which is the deviation the
+  owner agreed to before any of this was written and the one place the narrowing
+  had not reached. Its problem statement, its proposed solution and that
+  criterion are corrected in the Issue, with the reason.
+- **The Wayland and macOS halves of Issue #37 were still described as one.** Its
+  proposed solution said nothing in `crates/app` has to change and that gpui has
+  to be waited for, which is true of Wayland and false of macOS, and one
+  criterion asked for macOS behaviour to be unchanged while another asked for it
+  to change. `AGENTS.md` also still called it a backlog Issue, and the module
+  documentation of `main.rs` promised a window that "remembers where it was".
+- **The Pull Request's review summary was two rounds out of date.**
+
+➕ Separately, and not from the review: the project owner noticed that the window
+had no border and could not be resized. `is_resizable` was never the problem --
+it is true by default -- but on Linux the window is decorated client-side, so
+the border, the shadow and the edges a person drags are the application's to
+draw, and `gpui_component::window_border` exists for exactly that. The shell now
+uses it. It is a no-op under server-side decorations, so nothing changes on the
+platforms that draw their own frame.
+
 ## Validation
 
 - [x] `cargo fmt --all -- --check`

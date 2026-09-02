@@ -1,8 +1,8 @@
 //! `argand`: the application binary.
 //!
 //! This milestone is the shell only -- a window that opens, is configured, and
-//! remembers where it was. Signals, analysis and the real panels arrive with
-//! the milestones after it.
+//! remembers as much of itself as the toolkit reports. Signals, analysis and
+//! the real panels arrive with the milestones after it.
 //!
 //! Two files back it, and each has exactly one writer. `argand.toml` is a
 //! person's and is only ever read; `session.toml` is the program's and is
