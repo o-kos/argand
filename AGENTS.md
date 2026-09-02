@@ -20,7 +20,7 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 ## Core requirements and invariants
 
 1. Support Linux, Windows, and macOS.
-2. Ship one binary plus configuration with minimal external dependencies. Pin GPUI and gpui-component to fixed Git revisions because their crates.io releases lag behind development.
+2. Ship one binary plus configuration with minimal external dependencies. Take GPUI and gpui-component from crates.io and let `Cargo.lock` fix the graph.
 3. Keep cold startup and the first waveform or spectrogram frame fast.
 4. Provide the core display and editing operations available in ocenaudio.
 5. Provide a separate detailed spectrum window.
@@ -62,7 +62,11 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 ## Build and run
 
 - After the GUI scaffold exists, run it with `cargo run -p argand --locked`; build releases with `cargo build --release --locked`.
-- Pin GPUI and gpui-component to fixed Git revisions in `Cargo.toml`.
+- Take GPUI and gpui-component from crates.io, as version requirements in `Cargo.toml`, and let the committed `Cargo.lock` fix the exact graph.
+
+  This rule used to say the opposite: pin both to fixed Git revisions, because their crates.io releases lagged behind development. They no longer do, and the Git route turned out not to work as written. `gpui` has no repository of its own -- it lives in the zed monorepo, so a Git dependency clones over 400 MB of unrelated history -- and gpui-component declares its own `gpui` dependency with no revision, floating on zed's default branch. Pinning a revision here therefore puts *two* copies of `gpui` in the tree, and a type from one is not that type from the other.
+
+  Going back to Git means either matching gpui-component's floating source, which pins nothing in the manifest, or a `[patch]` on the zed source. Do neither without a reason that names what is only available at tip.
 - Commit the complete dependency graph in `Cargo.lock`; do not commit `vendor/`. Run `cargo fetch --locked` before an offline build, then use `cargo build --frozen`.
 - Run rustfmt and Clippy for every change: `cargo fmt --all -- --check` and `cargo clippy --all-targets --locked`.
 - Clippy warnings are errors, and that is a property of the repository, not of the command line. `[workspace.lints]` sets `warnings = "deny"`, so a plain `cargo clippy` fails locally exactly as it fails in CI. Never rely on a `-D warnings` flag to make a check strict; a check that is strict only when someone remembers a flag is not a check.

@@ -35,13 +35,36 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
 
 ## Decisions
 
-- **Pins.** `gpui`, `gpui_platform` and `gpui_macros` at `zed-industries/zed`
-  rev `f66ed399cdde86092af8af3dc7b418abf45f37f8`, and `gpui-component` at
-  `longbridge/gpui-component` rev `f001d800867d941edce529cfb8e80b9b38ec5cb0`.
-  The gpui revision is not chosen independently: it is the one that
-  gpui-component's own `Cargo.lock` resolves to, so the pair is known to build
-  together. gpui-component declares no `[patch]` section, so nothing has to be
-  mirrored into this workspace.
+- ➕ **The toolkit comes from crates.io, not from Git.** `gpui = "0.2.2"` and
+  `gpui-component = "0.5.1"`, with `Cargo.lock` committed as always. This
+  reverses what `AGENTS.md` and this Issue both ask for, on evidence gathered
+  before any of the shell was written, and was agreed with the project owner.
+  Three things decided it:
+
+  - **Pinning both to fixed revisions does not build.** A spike pinning `gpui`
+    to zed rev `f66ed39` alongside `gpui-component` from Git produced two copies
+    of `gpui` in the tree -- `f66ed39` from this workspace and `97b1e64` from
+    gpui-component -- because gpui-component declares
+    `gpui = { git = ".../zed" }` with no revision and so floats on the default
+    branch. Cargo treats Git sources at different revisions as different
+    packages, and the build failed on `Styled` from one not being `Styled` from
+    the other. The Issue's wording cannot be satisfied literally.
+  - **`gpui` has no repository of its own.** It lives in the zed monorepo, so a
+    Git dependency clones all of zed: over 400 MB, on which cargo's own Git
+    transport already timed out here and needed `net.git-fetch-with-cli`. That
+    is a fragile fetch in front of every clone and every CI job, for a
+    dependency whose exact version `Cargo.lock` pins either way.
+  - **The rule's premise has expired.** `AGENTS.md` pins to Git *because*
+    "their crates.io releases lag behind development". Both are published now:
+    `gpui` at 0.2.2 and `gpui-component` at 0.5.1, which requires `gpui ^0.2.2`
+    from the same registry, so one source resolves the whole graph.
+
+  `AGENTS.md` is corrected in this branch to say what is now true and why.
+  Moving to Git later, if a fix lands only at tip, is an edit to one manifest.
+
+- ➕ **`gpui_platform` is not published**, so the entry point is `gpui`'s own
+  `Application::new()` rather than `gpui_platform::application()`. That is what
+  gpui-component's own example uses at the `v0.5.1` tag.
 - **Toolchain.** `rust-toolchain.toml` moves from `1.88.0` to `1.97.1`, which is
   what the pinned zed revision requires. Agreed with the project owner before
   the work started. The alternative, an older gpui that builds on 1.88, is
@@ -63,6 +86,14 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
   where it is, but the milestone exists to find out whether *current* GPUI
   works; proving it about a revision a year old answers a question nobody asked,
   and the bump only moves to the next milestone.
+- **Git sources with no revision in the manifest**, declared exactly as
+  gpui-component declares them, so that Cargo unifies the source and
+  `Cargo.lock` holds the revisions. It builds and it tracks tip, but it keeps
+  the 400 MB zed fetch in front of every clone and every CI job, and a manifest
+  that pins nothing is a worse record of intent than a version requirement.
+- **Git sources plus `[patch]`** to force a single `gpui`. It satisfies the
+  letter of the Issue, at the cost of resolution machinery that is itself a
+  source of surprises, and it still clones zed.
 - **A separate chore Pull Request for the toolchain bump.** Cleaner history and
   its own revert point, at the cost of a review cycle for a one-line change that
   nothing but this branch needs. Put to the owner, who chose to carry it here.
@@ -71,8 +102,9 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
 
 ## Implementation steps
 
-- [ ] Prove the pinned toolkit builds and opens a window on this host before any
-      of the rest is written; record what the spike needed.
+- [x] Prove the toolkit builds and opens a window on this host before any of the
+      rest is written. ➕ The first spike failed, and that failure is why the
+      dependency source changed; see Decisions.
 - [ ] Raise `rust-toolchain.toml` to `1.97.1` and confirm the existing four
       crates still pass the whole gate under it.
 - [ ] Add `crates/app` to the workspace with the `argand` binary, the pinned
@@ -91,6 +123,8 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
       configuration.
 - [ ] Build the workspace on Linux, Windows and macOS in CI, with the Linux job
       installing the packages GPUI needs and the cargo directories cached.
+- [ ] ➕ Correct the dependency rule in `AGENTS.md`, which tells a reader to pin
+      the toolkit to Git revisions for a reason that no longer holds.
 - [ ] Update `AGENTS.md` and `docs/plans/IMPLEMENTATION_PLAN.md` where they
       describe `argand-app` as planned.
 - [ ] Complete validation.
