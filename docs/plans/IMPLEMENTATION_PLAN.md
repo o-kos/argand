@@ -16,7 +16,7 @@ The following work is complete:
 - **Phase 3:** configurable STFT size, window, and overlap; frames folded into image columns as they are computed so memory follows output size rather than input duration; six color schemes; and callback-based progress reporting.
 - **Phase 4:** a two-sided spectrum from `-Fs/2` to `+Fs/2` with `fftshift` for complex signals, a one-sided spectrum for real signals, physical frequency axes through `center_frequency`, and consistent 0 dBFS readings for full-scale tones in both domains.
 
-Phase 0 is now complete: `crates/app` holds the `argand` binary, a GPUI window with configuration and session state behind it. The GUI still needs the waveform and min/max pyramid from Phase 2, editing from Phase 5, and the detailed spectrum window from Phase 6. The `argand-edit` crate does not exist yet.
+Phase 0 is now complete: `crates/app` holds the `argand` binary, a GPUI window with configuration and session state behind it, restoring what the toolkit reports. The GUI still needs the waveform and min/max pyramid from Phase 2, editing from Phase 5, and the detailed spectrum window from Phase 6. The `argand-edit` crate does not exist yet.
 
 Dependencies are pinned in `Cargo.lock`. The repository does not track `vendor/`. For local offline builds, fetch dependencies in advance with `cargo fetch --locked`, then build with `cargo build --frozen`.
 
@@ -39,7 +39,7 @@ Goal: launch an empty GPUI window on Linux, Windows, and macOS and read configur
 
 - Add the Cargo workspace crates described in `AGENTS.md`, initially as empty scaffolds.
 - Add the `argand` application with a GPUI and gpui-component window, a base theme, and dock placeholders for waveform, spectrogram, and panels.
-- Persist window size and position between sessions.
+- Persist window size and position between sessions, as far as the toolkit reports them: see Issues #37 and #38 for where it does not.
 - Take GPUI and gpui-component from crates.io and let `Cargo.lock` fix the graph; see `AGENTS.md` for why this is not the Git pinning it used to be.
 - Load `argand.toml` through serde and TOML and initialize tracing logs.
 - Add CI builds for Linux, Windows, and macOS.

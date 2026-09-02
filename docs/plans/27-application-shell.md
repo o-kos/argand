@@ -67,9 +67,10 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
   `Application::new()` rather than `gpui_platform::application()`. That is what
   gpui-component's own example uses at the `v0.5.1` tag.
 
-- ➕ **The window position is not restored on Wayland, and cannot be by this
-  toolkit, nor across displays on macOS.** Size and state are, on every
-  platform. Measured here:
+- ➕ **The window position is not restored on Wayland, and not across displays
+  on macOS.** Size and state are, wherever the backend reports the window state
+  reliably -- which is not everywhere either; see the review section and Issue
+  #38. Measured here:
   `window_bounds()` reports `x = 0, y = 0` however far the window has been
   dragged, while the compositor reports it at `(200, 150)`. Under plain
   xdg-shell that is correct -- a client has no absolute position to know or to
@@ -79,9 +80,10 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
   reapply the stored geometry. It entered wayland-protocols 1.48 on 2026-04-01
   as a **staging** protocol, not a stable one, and gpui does not implement it;
   `zed-industries/zed` has neither an issue nor a pull request for it. Raised as
-  backlog Issue #37 rather than worked around here, because the missing piece is
-  in the toolkit. The acceptance criterion asking for position is met where the
-  platform supplies one, which is X11, Windows and macOS.
+  Issue #37 rather than worked around here. The acceptance criterion asking for
+  position is narrowed in the Issue itself to where the toolkit reports enough
+  to restore one, rather than left unmet with the Pull Request claiming
+  otherwise.
 
   Two claims made while chasing this were wrong and are recorded so they are not
   made again. `wayland/window.rs:419` zeroes the *surface-local* geometry passed
@@ -306,6 +308,21 @@ correctly:
   where the backend reports the state reliably, and the defect is Issue #38, a
   normal Issue rather than a backlog one, carrying the analysis and the reason
   the geometry filter cannot work.
+
+An eighth round found the narrowing incomplete, and it was:
+
+- **Issue #27 itself still asked for the unqualified behaviour**, so narrowing
+  only the repository left the milestone's own contract claiming it. Its
+  acceptance criteria are narrowed in the Issue, with both gaps named and
+  pointed at their Issues. The roadmap and the early half of this plan are
+  qualified too.
+- **Issue #37 should not carry the `backlog` label either.** Its Wayland half is
+  blocked on the toolkit, but its macOS half is not: gpui 0.2.2 already exposes
+  `Window::display(cx)`, `PlatformDisplay::uuid()` -- documented as a stable
+  identifier to persist across restarts -- and `WindowOptions::display_id`, so
+  that half is work in `crates/app` that anyone can pick up. The label is gone
+  and the Issue no longer contradicts itself about how many platforms it
+  concerns.
 
 ## Validation
 
