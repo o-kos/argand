@@ -40,7 +40,7 @@ Goal: launch an empty GPUI window on Linux, Windows, and macOS and read configur
 - Add the Cargo workspace crates described in `AGENTS.md`, initially as empty scaffolds.
 - Add the `argand` application with a GPUI and gpui-component window, a base theme, and dock placeholders for waveform, spectrogram, and panels.
 - Persist window size and position between sessions.
-- Pin GPUI and gpui-component to fixed Git revisions.
+- Take GPUI and gpui-component from crates.io and let `Cargo.lock` fix the graph; see `AGENTS.md` for why this is not the Git pinning it used to be.
 - Load `argand.toml` through serde and TOML and initialize tracing logs.
 - Add CI builds for Linux, Windows, and macOS.
 
@@ -119,7 +119,7 @@ Goal: provide deep analysis of a selected region.
 
 ## Risks and mitigations
 
-- GPUI is a moving target whose backend is migrating from Blade to wgpu. Pin revisions and preserve the rendering boundary so egui with wgpu remains a viable fallback.
+- GPUI is a moving target whose backend is migrating from Blade to wgpu. Take fixed versions and preserve the rendering boundary so egui with wgpu remains a viable fallback.
 - GPUI limits custom GPU canvases to its exposed primitives. Render spectrograms as textures and waveforms as paths or quads. If dense rendering becomes a bottleneck, rasterize the waveform into a texture or replace the toolkit.
 - A real GPU is required. Account for degraded behavior in virtual machines and headless environments.
 

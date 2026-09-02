@@ -166,8 +166,8 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
       the toolkit to Git revisions for a reason that no longer holds.
 - [x] Update `AGENTS.md` and `docs/plans/IMPLEMENTATION_PLAN.md` where they
       describe `argand-app` as planned.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -198,12 +198,34 @@ One round with `codex exec -s read-only` so far, six findings, all accepted:
   the next write recorded.
 - **The plan contradicted its own branch.** Synchronised.
 
+A second round found six more, all accepted:
+
+- **The geometry guard was still too loose to prevent a crash.** The graphics
+  backend does not refuse an oversized surface with an error: it logs that the
+  request is outside the surface capabilities and then unwraps the swapchain it
+  could not create, so the panic happens inside the call that opens the window.
+  The edge bound came down to 8192 and the origin is bounded too.
+- **The wider configuration was parsed and then dropped.** It is carried on the
+  shell now, and the panel split is applied to the layout, so what has somewhere
+  to act is applied and what has not is retained rather than lost. The plan says
+  which is which instead of claiming both.
+- **A failure that persisted retried on every frame.** The interval ran from the
+  last success, which a failing write never updates. It runs from the last
+  attempt.
+- **Window state and restore geometry were read from two places** that can
+  disagree, since `is_maximized` and a separately fetched rectangle are not
+  updated together on every platform. Both now come from the one `WindowBounds`,
+  which already pairs the state with the rectangle to restore to.
+- **The roadmap still told a reader to pin the toolkit to Git**, and the
+  validation checkboxes were unticked. Both synchronised.
+- **No changelog entry**, for a Pull Request that adds a whole binary.
+
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [x] `cargo run -p argand --locked` opens a window on this host in under a
       second, measured rather than asserted: 0.109 s from exec to a mapped
       window.
@@ -211,16 +233,19 @@ One round with `codex exec -s read-only` so far, six findings, all accepted:
       its previous position where the platform supplies one. Measured in a
       nested headless compositor: 1000x700 and fullscreen both survived a
       restart; position did not, for the reason recorded in Decisions.
-- [ ] Geometry saved for a display that is gone, or that changed resolution,
+- [x] Geometry saved for a display that is gone, or that changed resolution,
       restores inside the visible area. Covered by unit tests over the clamp and
       checked once by hand.
-- [ ] A deleted and a corrupted `session.toml` both start the application with
+- [x] A deleted and a corrupted `session.toml` both start the application with
       defaults and log the reason.
-- [ ] Values set in `argand.toml` are applied, and the file is unchanged after a
-      run that saves session state.
-- [ ] Killing the process during a window drag leaves a readable `session.toml`.
-- [ ] `aspec` still renders a capture from `tests/signals/` byte-identically to
-      `main`, so the toolchain bump moved no output.
+- [x] Values set in `argand.toml` are read, the theme and the panel split are
+      applied, and the file is unchanged after a run that saves session state.
+      The settings with nothing yet to act on are carried on the shell rather
+      than dropped; see the review note.
+- [x] Killing the process during a window drag leaves a readable `session.toml`.
+- [x] `aspec` still renders every capture in `tests/signals/` byte-identically to
+      `main`, in both orientations and all eight panel combinations, so the
+      toolchain bump moved no output.
 
 ## Post-completion
 

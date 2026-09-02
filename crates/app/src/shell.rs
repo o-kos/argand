@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use gpui::{
     AppContext, Application, Bounds, Context, IntoElement, ParentElement, Pixels, Render, Styled,
-    TitlebarOptions, Window, WindowBounds, WindowOptions, div, point, px, size,
+    TitlebarOptions, Window, WindowBounds, WindowOptions, div, point, px, relative, size,
 };
 use gpui_component::{ActiveTheme, Root, ThemeMode, TitleBar};
 
@@ -49,7 +49,7 @@ pub fn run(config: Config, saved: Session, state_path: Option<PathBuf>) {
 
             let writer = state_path.map(|path| Writer::new(path, saved.clone()));
             let opened = cx.open_window(options, |window, cx| {
-                cx.new(|cx| Root::new(cx.new(|_| Shell::new(writer)), window, cx))
+                cx.new(|cx| Root::new(cx.new(|_| Shell::new(config, writer)), window, cx))
             });
 
             // A window that will not open is the end of the run, and a task
@@ -114,14 +114,22 @@ fn to_bounds(geometry: Geometry) -> Bounds<Pixels> {
 /// The window's content: a title bar, the area the panels will fill, and the
 /// status bar under it.
 struct Shell {
+    /// What the person configured.
+    ///
+    /// The panel proportions are used below. The colour scheme, the range mode
+    /// and the transform defaults have nothing to act on until a signal is
+    /// loaded, so they are carried rather than applied: this milestone settles
+    /// where they are read from and what they mean, and the milestones that
+    /// draw with them take them from here.
+    config: Config,
     /// Absent when the platform offers nowhere to keep state, in which case
     /// the window simply does not remember itself.
     writer: Option<Writer>,
 }
 
 impl Shell {
-    const fn new(writer: Option<Writer>) -> Self {
-        Self { writer }
+    const fn new(config: Config, writer: Option<Writer>) -> Self {
+        Self { config, writer }
     }
 
     /// Record where the window is, on the frame that draws it there.
@@ -134,25 +142,25 @@ impl Shell {
         let Some(writer) = self.writer.as_mut() else {
             return;
         };
-        let bounds = window.window_bounds();
+        // Both halves come from the one answer. `WindowBounds` already pairs
+        // the state with the rectangle to restore *to* -- for a maximized or
+        // fullscreen window that is the size it will return to, not the screen
+        // it currently covers. Asking separately, with `is_maximized` beside a
+        // rectangle fetched on its own, lets the two disagree on the platforms
+        // where they are not updated together.
+        let (window_state, bounds) = match window.window_bounds() {
+            WindowBounds::Windowed(bounds) => (WindowState::Normal, bounds),
+            WindowBounds::Maximized(bounds) => (WindowState::Maximized, bounds),
+            WindowBounds::Fullscreen(bounds) => (WindowState::Fullscreen, bounds),
+        };
         writer.offer(
             Session {
                 version: crate::session::VERSION,
-                geometry: Some(from_bounds(bounds.get_bounds())),
-                window_state: state_of(window),
+                geometry: Some(from_bounds(bounds)),
+                window_state,
             },
             Instant::now(),
         );
-    }
-}
-
-fn state_of(window: &Window) -> WindowState {
-    if window.is_fullscreen() {
-        WindowState::Fullscreen
-    } else if window.is_maximized() {
-        WindowState::Maximized
-    } else {
-        WindowState::Normal
     }
 }
 
@@ -176,16 +184,29 @@ impl Render for Shell {
             .text_color(cx.theme().foreground)
             .child(TitleBar::new().child(div().text_sm().child(TITLE)))
             .child(
-                // Where the waveform, the spectrogram and the panels go. The
-                // milestones after this one replace it; until then it is what
-                // proves the window has a body the theme reaches.
+                // Where the waveform, the spectrogram and the panels go, split
+                // in the proportion the configuration asks for. The milestones
+                // after this one fill these two; until then they are what shows
+                // that the split is read from the file and reaches the layout.
                 div()
                     .flex_1()
                     .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("no signal loaded"),
+                    .flex_col()
+                    .child(
+                        div()
+                            .h(relative(self.config.panels.waveform_fraction))
+                            .border_b_1()
+                            .border_color(cx.theme().border),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("no signal loaded"),
+                    ),
             )
             .child(
                 div()

@@ -20,9 +20,23 @@ pub const FILE_NAME: &str = "session.toml";
 
 /// Largest window edge any restored geometry may ask for, in logical pixels.
 ///
-/// Comfortably past the largest display anyone plausibly has, and far short of
-/// what a graphics backend refuses to allocate.
-const MAX_DIMENSION: f32 = 32_768.0;
+/// Past an 8K display and well under the surface limit any desktop driver
+/// offers. The bound has to be conservative because the failure it prevents is
+/// not an error return: the graphics backend logs that the requested size is
+/// outside the surface capabilities and then unwraps the swapchain it could not
+/// create, so an impossible size panics inside the call that opens the window
+/// rather than coming back as something to handle.
+///
+/// A window genuinely spanning more than this -- three 4K displays side by side
+/// -- opens smaller once instead. That is a far better outcome than a crash,
+/// and far rarer than a corrupt file.
+const MAX_DIMENSION: f32 = 8_192.0;
+
+/// Furthest a restored window may be placed from the origin, in logical pixels.
+///
+/// Enough for any arrangement of displays; a saved corner beyond it is a
+/// corrupt file rather than somewhere a window has been.
+const MAX_ORIGIN: f32 = 65_536.0;
 
 /// The layout this program knows how to read.
 ///
@@ -68,11 +82,10 @@ impl Geometry {
     /// not a policy about window sizes -- a real display clamps far tighter
     /// than this, in [`fit`].
     fn is_usable(self) -> bool {
-        [self.x, self.y, self.width, self.height]
-            .iter()
-            .all(|v| v.is_finite())
-            && (1.0..=MAX_DIMENSION).contains(&self.width)
+        (1.0..=MAX_DIMENSION).contains(&self.width)
             && (1.0..=MAX_DIMENSION).contains(&self.height)
+            && self.x.abs() <= MAX_ORIGIN
+            && self.y.abs() <= MAX_ORIGIN
     }
 
     /// Area shared with `other`.
@@ -204,7 +217,13 @@ pub struct Writer {
     stored: Session,
     /// An offer newer than `stored` that has not been written yet.
     pending: Option<Session>,
-    last_write: Option<Instant>,
+    /// When a write was last *attempted*, which is what the interval runs from.
+    ///
+    /// Timing the successes instead would turn a failure that persists -- a
+    /// permission that is not coming back, a disk that stays full -- into an
+    /// attempt and a warning on every frame, because the last success would
+    /// never move.
+    last_attempt: Option<Instant>,
 }
 
 impl Writer {
@@ -219,7 +238,7 @@ impl Writer {
             path,
             stored,
             pending: None,
-            last_write: None,
+            last_attempt: None,
         }
     }
 
@@ -235,7 +254,7 @@ impl Writer {
         self.pending = Some(session);
 
         let due = self
-            .last_write
+            .last_attempt
             .is_none_or(|last| now.duration_since(last) >= Self::INTERVAL);
         if due {
             self.write(now);
@@ -253,6 +272,9 @@ impl Writer {
         let Some(session) = self.pending.clone() else {
             return;
         };
+        // The attempt counts whatever came of it, so a failure waits its turn
+        // like a success does.
+        self.last_attempt = Some(now);
         // A write that did not happen is not a write. Keeping it pending is
         // what gives a transient failure -- a full disk, a permission that
         // comes back -- another chance at the next interval or at the flush.
@@ -261,7 +283,6 @@ impl Writer {
         }
         self.pending = None;
         self.stored = session;
-        self.last_write = Some(now);
     }
 }
 

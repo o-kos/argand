@@ -11,6 +11,27 @@ promise applies to.
 
 ## [Unreleased]
 
+### Added
+
+- A second binary, `argand`: the graphical application. This release opens its
+  window and nothing more -- no signal, no analysis, no panels -- so that the
+  toolkit is proven on Linux, Windows and macOS before the views are built on
+  it. `aspec` is unchanged.
+- `argand.toml`, read from beside the binary or from the platform configuration
+  directory, sets the theme, the colour scheme, the dynamic-range mode, the
+  transform defaults and the panel proportions. Names are spelled as `aspec`
+  spells them. The application only ever reads this file.
+- The window remembers its size and state between runs, in `session.toml` in the
+  platform state directory. Its position is remembered where the platform
+  supplies one, which does not include Wayland. Neither file can prevent the
+  application starting: a missing, unreadable, malformed or future-versioned one
+  is logged and replaced by the defaults.
+
+### Changed
+
+- The Rust toolchain is now 1.97.1, which the GUI toolkit requires. `aspec`
+  renders identically.
+
 ## [0.0.2] - 2026-09-01
 
 ### Changed

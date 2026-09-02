@@ -347,3 +347,57 @@ fn a_size_no_surface_could_hold_is_not_restored() {
         assert_eq!(place(Some(saved), &[PRIMARY]), None, "{saved:?} was restored");
     }
 }
+
+#[test]
+fn a_failure_that_persists_does_not_retry_on_every_frame() {
+    let dir = TempDir::new("storm");
+    // The parent is a file, so the write fails for as long as it is there.
+    let blocked = dir.join("blocked");
+    std::fs::write(&blocked, "not a directory").expect("write blocker");
+    let path = blocked.join("session.toml");
+
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let start = Instant::now();
+    let at = |x: f32| Session {
+        version: VERSION,
+        geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
+        window_state: WindowState::Normal,
+    };
+
+    // One attempt, which fails.
+    writer.offer(at(1.0), start);
+    assert!(!path.exists(), "the fixture did not actually block the write");
+
+    // The obstruction is gone, so the next attempt would succeed -- but the
+    // schedule has to hold it back exactly as it holds a success back. If the
+    // failure had not counted as an attempt, this frame would write, and a
+    // permission that never comes back would be retried on every one of them.
+    std::fs::remove_file(&blocked).expect("remove blocker");
+    writer.offer(at(2.0), start + Duration::from_millis(8));
+    assert!(
+        !path.exists(),
+        "a failed write left the schedule open, so the next frame wrote"
+    );
+
+    // And once the interval has passed, it does write.
+    writer.offer(at(3.0), start + Writer::INTERVAL);
+    assert_eq!(Session::load(&path), at(3.0));
+}
+
+#[test]
+fn a_window_edge_no_surface_could_hold_is_not_restored() {
+    // The graphics backend does not return an error for a size beyond what the
+    // surface allows: it warns and then unwraps the swapchain it could not
+    // create, so this has to be caught before the window is opened.
+    for saved in [
+        Geometry::new(0.0, 0.0, 16_384.0, 800.0),
+        Geometry::new(0.0, 0.0, 1280.0, 16_384.0),
+        Geometry::new(1.0e6, 0.0, 1280.0, 800.0),
+        Geometry::new(0.0, -1.0e6, 1280.0, 800.0),
+    ] {
+        assert_eq!(place(Some(saved), &[]), None, "{saved:?} was restored");
+    }
+    // A window spanning two 4K displays is still a window.
+    let wide = Geometry::new(0.0, 0.0, 7680.0, 2160.0);
+    assert_eq!(place(Some(wide), &[]), Some(wide));
+}
