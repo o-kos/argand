@@ -352,8 +352,25 @@ compositor used for everything else here: sway negotiates *server-side*
 decorations, so `window_border` correctly draws nothing there and the frame is
 the compositor's, which the test configuration had told it not to draw. The
 window now logs which side decorates it, because that is the first thing to know
-when neither a frame nor a resize edge appears, and the owner's own session has
-to answer it.
+when neither a frame nor a resize edge appears.
+
+Running it on the owner's own session answered the rest. Both there and under
+X11 the compositor decorates (`decorations=Server`), so the frame is GNOME's and
+`window_border` is right to draw nothing; `xwininfo` shows `mutter-x11-frames`
+wrapping the window with a 14px border and a 49px title bar. What *was* broken is
+the window controls: `IconName` resolves to a path such as
+`icons/window-close.svg`, loaded through an asset source, and none was
+registered, so the buttons rendered as blank space that still answered a click.
+That is the "close button you would not notice". `gpui-component-assets` is
+registered now and they draw.
+
+➕ Left for the owner to decide, not fixed here: under server-side decorations
+the compositor draws a title bar and the shell draws another inside it, with its
+own minimize, maximize and close. Requesting client-side decorations instead
+would give one title bar and the same appearance on every platform, which is
+what Zed does with this toolkit; keeping server-side decorations integrates with
+the desktop. It is a question about how the application should look, so it is
+the owner's.
 
 ## Validation
 

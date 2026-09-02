@@ -25,48 +25,53 @@ const APP_ID: &str = "io.github.o_kos.argand";
 
 /// Open the window and run until it closes.
 pub fn run(config: Config, saved: Session, writer: Option<Writer>) {
-    Application::new().run(move |cx| {
-        gpui_component::init(cx);
-        gpui_component::theme::Theme::change(theme_mode(config.theme), None, cx);
+    // The toolkit's own icons -- the window controls among them -- are loaded
+    // by path through an asset source. Without one they resolve to nothing and
+    // the buttons render as blank space that still responds to a click.
+    Application::new()
+        .with_assets(gpui_component_assets::Assets)
+        .run(move |cx| {
+            gpui_component::init(cx);
+            gpui_component::theme::Theme::change(theme_mode(config.theme), None, cx);
 
-        // Opening from a spawned task rather than straight from `run` follows
-        // the toolkit's own examples and gives the platform a turn of its event
-        // loop first.
-        cx.spawn(async move |cx| {
-            let displays: Vec<Geometry> = cx.update(|cx| {
-                cx.displays()
-                    .iter()
-                    .map(|display| from_bounds(display.bounds()))
-                    .collect()
-            })?;
-            let options = window_options(&saved, &displays);
-            tracing::debug!(
-                displays = displays.len(),
-                saved = ?saved.geometry,
-                opening_at = ?options.window_bounds,
-                "placing the window"
-            );
-
-            let opened = cx.open_window(options, |window, cx| {
+            // Opening from a spawned task rather than straight from `run` follows
+            // the toolkit's own examples and gives the platform a turn of its event
+            // loop first.
+            cx.spawn(async move |cx| {
+                let displays: Vec<Geometry> = cx.update(|cx| {
+                    cx.displays()
+                        .iter()
+                        .map(|display| from_bounds(display.bounds()))
+                        .collect()
+                })?;
+                let options = window_options(&saved, &displays);
                 tracing::debug!(
-                    decorations = ?window.window_decorations(),
-                    "the window is decorated by this side"
+                    displays = displays.len(),
+                    saved = ?saved.geometry,
+                    opening_at = ?options.window_bounds,
+                    "placing the window"
                 );
-                let shell = cx.new(|cx| Shell::new(config, writer, saved.geometry, window, cx));
-                cx.new(|cx| Root::new(shell, window, cx))
-            });
 
-            // A window that will not open is the end of the run, and a task
-            // whose error nobody reads would end it silently: there is nothing
-            // else this program does.
-            if let Err(error) = opened {
-                tracing::error!(%error, "cannot open a window");
-                cx.update(|cx| cx.quit())?;
-            }
-            Ok::<_, anyhow::Error>(())
-        })
-        .detach();
-    });
+                let opened = cx.open_window(options, |window, cx| {
+                    tracing::debug!(
+                        decorations = ?window.window_decorations(),
+                        "the window is decorated by this side"
+                    );
+                    let shell = cx.new(|cx| Shell::new(config, writer, saved.geometry, window, cx));
+                    cx.new(|cx| Root::new(shell, window, cx))
+                });
+
+                // A window that will not open is the end of the run, and a task
+                // whose error nobody reads would end it silently: there is nothing
+                // else this program does.
+                if let Err(error) = opened {
+                    tracing::error!(%error, "cannot open a window");
+                    cx.update(|cx| cx.quit())?;
+                }
+                Ok::<_, anyhow::Error>(())
+            })
+            .detach();
+        });
 }
 
 /// Where and how the window opens.
