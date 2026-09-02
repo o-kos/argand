@@ -248,6 +248,31 @@ A third round found six more, all accepted:
   The window's geometry is read from `observe_window_bounds` now instead of from
   every frame that is drawn.
 
+A fourth round found three more, all accepted:
+
+- **The saved rectangle became the screen once the window was maximized.**
+  `WindowBounds` documents its payload as the size to restore to, but the
+  backends that omit a variant have none to give: X11 hands back the bounds its
+  last configure event set and macOS reads the live window frame, both of which
+  are the screen while the window covers it. The shell keeps the last rectangle
+  seen in the ordinary state instead, so leaving a maximized window no longer
+  costs the size it would return to.
+- **No logical size is provably safe.** The scale factor between logical and
+  device pixels has no upper bound in any protocol -- Windows offers 500%,
+  Wayland requires only that a scale be positive -- and Vulkan guarantees only
+  4096 device pixels per edge. The guard is now a cap rather than a refusal, so
+  a large window loses only what it must, and it binds only where no display is
+  known, since a real display's own size is supportable by construction. The
+  constant is 2048 and is described as a floor on the damage rather than a
+  proof.
+- **A session from a newer version was overwritten anyway.** It was read as
+  defaults, and then a writer was built for the same path and the first
+  notification wrote version 1 over it. Two things were wrong: the caller was
+  never told, and the version could not be read at all, because a single parse
+  of a newer layout fails on the fields this version does not know before it
+  reaches the version field. The version is read on its own now, and a file
+  this version cannot read is not written to.
+
 ## Validation
 
 - [x] `cargo fmt --all -- --check`

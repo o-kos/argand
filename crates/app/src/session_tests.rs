@@ -123,7 +123,7 @@ fn a_session_survives_the_round_trip() {
     };
 
     session.save(&path);
-    assert_eq!(Session::load(&path), session);
+    assert_eq!(Session::load(&path).session, session);
 }
 
 #[test]
@@ -145,10 +145,18 @@ fn nothing_in_the_file_can_stop_the_application_starting() {
         if let Some(text) = text {
             std::fs::write(&path, text).expect("write fixture");
         }
+        let restored = Session::load(&path);
         assert_eq!(
-            Session::load(&path),
+            restored.session,
             Session::default(),
             "{name} did not fall back to defaults"
+        );
+        // Everything here but a newer version is a file with nothing worth
+        // keeping, so the next run is free to write over it.
+        assert_eq!(
+            restored.writable,
+            name != "from-the-future.toml",
+            "{name} was given the wrong permission to overwrite"
         );
     }
 }
@@ -171,7 +179,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
     std::fs::write(&staging, "version = 1\ngeometry = { x =").expect("write partial");
 
     assert_eq!(
-        Session::load(&path),
+        Session::load(&path).session,
         first,
         "the previous session was not intact after an interrupted write"
     );
@@ -186,7 +194,7 @@ fn a_directory_that_does_not_exist_yet_is_created_to_save_into() {
 
     session.save(&path);
     assert!(path.exists(), "the state directory was not created");
-    assert_eq!(Session::load(&path), session);
+    assert_eq!(Session::load(&path).session, session);
 }
 
 #[test]
@@ -223,7 +231,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
     // nothing has been written yet.
     let start = at(0);
     writer.offer(moved(0.0), start);
-    assert_eq!(Session::load(&path).geometry.expect("a position").x, 0.0);
+    assert_eq!(Session::load(&path).session.geometry.expect("a position").x, 0.0);
 
     // Every frame inside the interval must leave the file alone. This is what
     // separates a debounce from a write per frame: an implementation that
@@ -232,7 +240,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
     for frame in 1..60u64 {
         writer.offer(moved(frame as f32), start + Duration::from_millis(frame * 8));
         assert_eq!(
-            Session::load(&path).geometry.expect("a position").x,
+            Session::load(&path).session.geometry.expect("a position").x,
             0.0,
             "frame {frame} was written before the interval had passed"
         );
@@ -241,12 +249,12 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
     // Once it has passed, the next offer lands, and it is the current one
     // rather than any of the frames it skipped.
     writer.offer(moved(60.0), start + Writer::INTERVAL);
-    assert_eq!(Session::load(&path).geometry.expect("a position").x, 60.0);
+    assert_eq!(Session::load(&path).session.geometry.expect("a position").x, 60.0);
 
     // And the last position wins whatever the schedule was about to allow.
     writer.offer(moved(124.0), start + Writer::INTERVAL + Duration::from_millis(8));
     writer.flush(start + Duration::from_secs(2));
-    assert_eq!(Session::load(&path).geometry.expect("a position").x, 124.0);
+    assert_eq!(Session::load(&path).session.geometry.expect("a position").x, 124.0);
 }
 
 #[test]
@@ -289,11 +297,11 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
     writer.offer(moved(1.0), start);
     // Immediately after a write, so the schedule holds this one back.
     writer.offer(moved(2.0), start + Duration::from_millis(1));
-    assert_eq!(Session::load(&path).geometry.expect("a position").x, 1.0);
+    assert_eq!(Session::load(&path).session.geometry.expect("a position").x, 1.0);
 
     // Closing the window is what makes it land.
     writer.flush(start + Duration::from_millis(2));
-    assert_eq!(Session::load(&path).geometry.expect("a position").x, 2.0);
+    assert_eq!(Session::load(&path).session.geometry.expect("a position").x, 2.0);
 }
 
 #[test]
@@ -310,7 +318,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let start = Instant::now();
     // Settle a write first, so the schedule is holding the next one back.
     writer.offer(at(100.0), start);
-    assert_eq!(Session::load(&path), at(100.0));
+    assert_eq!(Session::load(&path).session, at(100.0));
 
     // Dragged away and back again before the interval is up. The offer in
     // between is one the window has already left, so what finally lands has to
@@ -320,7 +328,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     writer.flush(start + Duration::from_secs(1));
 
     assert_eq!(
-        Session::load(&path),
+        Session::load(&path).session,
         at(100.0),
         "a position the window had already left was written over the real one"
     );
@@ -349,7 +357,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
     std::fs::remove_file(&blocked).expect("remove blocker");
     writer.flush(start + Duration::from_secs(1));
     assert_eq!(
-        Session::load(&path),
+        Session::load(&path).session,
         moved,
         "the position was lost to a failure that had passed"
     );
@@ -402,17 +410,18 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
 
     // And once the interval has passed, it does write.
     writer.offer(at(3.0), start + Writer::INTERVAL);
-    assert_eq!(Session::load(&path), at(3.0));
+    assert_eq!(Session::load(&path).session, at(3.0));
 }
 
 #[test]
-fn a_window_edge_no_surface_could_hold_is_not_restored() {
-    // The graphics backend does not return an error for a size beyond what the
-    // surface allows: it warns and then unwraps the swapchain it could not
-    // create, so this has to be caught before the window is opened.
+fn a_rectangle_no_window_ever_had_is_not_restored() {
+    // Past this, a file has been corrupted or hand-edited into something that
+    // was never a window, and there is nothing in it to restore. A size merely
+    // larger than the guard can vouch for is capped instead; that is the test
+    // above.
     for saved in [
-        Geometry::new(0.0, 0.0, 8192.0, 800.0),
-        Geometry::new(0.0, 0.0, 1280.0, 8192.0),
+        Geometry::new(0.0, 0.0, ABSURD * 2.0, 800.0),
+        Geometry::new(0.0, 0.0, 1280.0, ABSURD * 2.0),
         Geometry::new(1.0e6, 0.0, 1280.0, 800.0),
         Geometry::new(0.0, -1.0e6, 1280.0, 800.0),
     ] {
@@ -421,6 +430,47 @@ fn a_window_edge_no_surface_could_hold_is_not_restored() {
     // The bound is in logical pixels and the driver compares device pixels, so
     // it has to leave room for the scale factor: what is allowed here must
     // still be allowed after a display at scale 3 multiplies it.
-    let widest = Geometry::new(0.0, 0.0, MAX_DIMENSION, MAX_DIMENSION);
+    let widest = Geometry::new(0.0, 0.0, UNVERIFIED_MAX_DIMENSION, UNVERIFIED_MAX_DIMENSION);
     assert_eq!(place(Some(widest), &[]), Some(widest));
+}
+
+#[test]
+fn a_size_no_display_vouches_for_is_cut_down_rather_than_thrown_away() {
+    // With nothing to clamp against, the size is capped instead of refused: a
+    // window that was genuinely this large keeps everything up to the cap,
+    // rather than losing its size entirely to a guard.
+    let large = Geometry::new(0.0, 0.0, 3840.0, 2160.0);
+    let placed = place(Some(large), &[]).expect("a size worth restoring");
+    assert_eq!(placed.width, UNVERIFIED_MAX_DIMENSION);
+    assert_eq!(placed.height, UNVERIFIED_MAX_DIMENSION);
+
+    // Under the cap, nothing is touched.
+    let modest = Geometry::new(0.0, 0.0, 1280.0, 800.0);
+    assert_eq!(place(Some(modest), &[]), Some(modest));
+
+    // A real display vouches for its own size, so nothing is capped there.
+    let wide = Geometry::new(0.0, 0.0, 3840.0, 2160.0);
+    assert_eq!(place(Some(wide), &[wide]), Some(wide));
+}
+
+#[test]
+fn a_session_from_a_newer_version_is_read_as_defaults_and_left_alone() {
+    let dir = TempDir::new("future");
+    let path = dir.join("session.toml");
+    let text = "version = 9999
+something_this_version_never_heard_of = true
+";
+    std::fs::write(&path, text).expect("write fixture");
+
+    let restored = Session::load(&path);
+    assert_eq!(restored.session, Session::default());
+    assert!(
+        !restored.writable,
+        "a file from a newer version was cleared for overwriting"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("still there"),
+        text,
+        "reading a newer session changed it"
+    );
 }

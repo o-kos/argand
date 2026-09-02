@@ -6,7 +6,6 @@
 //! without one. This module converts between those answers and GPUI, and holds
 //! the placeholders the later milestones replace with real panels.
 
-use std::path::PathBuf;
 use std::time::Instant;
 
 use gpui::{
@@ -25,7 +24,7 @@ const TITLE: &str = "argand";
 const APP_ID: &str = "io.github.o_kos.argand";
 
 /// Open the window and run until it closes.
-pub fn run(config: Config, saved: Session, state_path: Option<PathBuf>) {
+pub fn run(config: Config, saved: Session, writer: Option<Writer>) {
     Application::new().run(move |cx| {
         gpui_component::init(cx);
         gpui_component::theme::Theme::change(theme_mode(config.theme), None, cx);
@@ -48,9 +47,8 @@ pub fn run(config: Config, saved: Session, state_path: Option<PathBuf>) {
                 "placing the window"
             );
 
-            let writer = state_path.map(|path| Writer::new(path, saved.clone()));
             let opened = cx.open_window(options, |window, cx| {
-                let shell = cx.new(|cx| Shell::new(config, writer, window, cx));
+                let shell = cx.new(|cx| Shell::new(config, writer, saved.geometry, window, cx));
                 cx.new(|cx| Root::new(shell, window, cx))
             });
 
@@ -124,9 +122,21 @@ struct Shell {
     /// where they are read from and what they mean, and the milestones that
     /// draw with them take them from here.
     config: Config,
-    /// Absent when the platform offers nowhere to keep state, in which case
+    /// Absent when the platform offers nowhere to keep state, or when the file
+    /// there was written by a version this one must not overwrite. Either way
     /// the window simply does not remember itself.
     writer: Option<Writer>,
+    /// The rectangle to come back to, which is not what a maximized or
+    /// fullscreen window reports.
+    ///
+    /// `WindowBounds` documents its payload as the restore size, but the
+    /// backends that omit a variant do not have one to give: X11 hands back the
+    /// bounds its last configure event set, and macOS reads the live window
+    /// frame. Both are the screen while the window covers it. Saving that would
+    /// restore a maximized window correctly and then un-maximize it to the size
+    /// of the display, so the last rectangle seen in the ordinary state is kept
+    /// instead.
+    last_normal: Option<Geometry>,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
 }
@@ -135,6 +145,7 @@ impl Shell {
     fn new(
         config: Config,
         writer: Option<Writer>,
+        last_normal: Option<Geometry>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -145,15 +156,16 @@ impl Shell {
         Self {
             config,
             writer,
+            last_normal,
             _bounds: bounds,
         }
     }
 
     /// Record where the window is and what state it is in.
     fn remember(&mut self, window: &Window) {
-        let Some(writer) = self.writer.as_mut() else {
+        if self.writer.is_none() {
             return;
-        };
+        }
         // The rectangle comes from `WindowBounds`, which is the one that
         // carries the size to restore *to* rather than the screen a maximized
         // window currently covers.
@@ -174,11 +186,17 @@ impl Shell {
             } else {
                 WindowState::Normal
             };
-        let bounds = bounds.get_bounds();
+        // Only an ordinary window reports the rectangle worth coming back to.
+        if window_state == WindowState::Normal {
+            self.last_normal = Some(from_bounds(bounds.get_bounds()));
+        }
+        let Some(writer) = self.writer.as_mut() else {
+            return;
+        };
         writer.offer(
             Session {
                 version: crate::session::VERSION,
-                geometry: Some(from_bounds(bounds)),
+                geometry: self.last_normal,
                 window_state,
             },
             Instant::now(),

@@ -14,7 +14,7 @@ mod session;
 mod shell;
 
 use config::Config;
-use session::Session;
+use session::{Session, Writer};
 
 fn main() {
     init_tracing();
@@ -22,12 +22,22 @@ fn main() {
     // Both files are read before the window is created, and nothing expensive
     // shares that path: what the window opens as depends on them.
     let config = Config::load(&Config::search_path());
-    let state_path = Session::path();
-    let saved = state_path
-        .as_deref()
-        .map_or_else(Session::default, Session::load);
 
-    shell::run(config, saved, state_path);
+    // A session is only written back when there is somewhere to write and the
+    // file there is not from a version this one would be overwriting.
+    let state_path = Session::path();
+    let restored = state_path.as_deref().map_or_else(
+        || session::Restored {
+            session: Session::default(),
+            writable: true,
+        },
+        Session::load,
+    );
+    let writer = state_path
+        .filter(|_| restored.writable)
+        .map(|path| Writer::new(path, restored.session.clone()));
+
+    shell::run(config, restored.session, writer);
 }
 
 /// The subscriber, set up as `aspec` sets its own up.

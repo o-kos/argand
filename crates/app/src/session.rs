@@ -18,41 +18,35 @@ use serde::{Deserialize, Serialize};
 /// The name the application writes under, in the platform state directory.
 pub const FILE_NAME: &str = "session.toml";
 
-/// Largest window edge any restored geometry may ask for, in logical pixels.
+/// Largest window edge to ask for when nothing better is known, in logical
+/// pixels.
 ///
-/// The failure this prevents is not an error return: the graphics backend logs
-/// that the requested size is outside the surface capabilities and then unwraps
-/// the swapchain it could not create, so an impossible size panics inside the
-/// call that opens the window rather than coming back as something to handle.
+/// The failure this guards against is not an error return: the graphics backend
+/// logs that the requested size is outside the surface capabilities and then
+/// unwraps the swapchain it could not create, so an impossible size panics
+/// inside the call that opens the window rather than coming back as something
+/// to handle.
 ///
-/// It is deliberately far below any surface limit, because what the driver
-/// compares against is *device* pixels and this is a *logical* size: a window
-/// on a display at scale 3 asks for three times this. At 4096 that is 12288
-/// device pixels, inside what desktop drivers offer, and a HiDPI display makes
-/// logical sizes smaller rather than larger, so a real window rarely comes
-/// near it.
+/// No logical size is provably safe, because what the driver compares against
+/// is *device* pixels and the scale factor between them has no upper bound in
+/// any of the protocols: Windows offers 500%, and Wayland requires only that a
+/// scale be positive. So this is a floor on the damage rather than a proof:
+/// even at 500% it asks for 10240 device pixels, inside what any desktop driver
+/// offers.
 ///
-/// It only ever binds where no display is known, since [`fit`] otherwise clamps
-/// to one display; and where no display is known -- Wayland's first window --
-/// the compositor settles the size anyway. A genuine window spanning more than
-/// this opens smaller once. That is a far better outcome than a crash, and far
-/// rarer than a corrupt file.
-const MAX_DIMENSION: f32 = 4_096.0;
+/// It binds only where no display is known, because [`fit`] otherwise clamps to
+/// a real display, whose own size that display's driver supports by
+/// construction. And where no display is known -- Wayland's first window -- the
+/// compositor settles the size anyway, so a window clamped here loses nothing
+/// it would have kept.
+const UNVERIFIED_MAX_DIMENSION: f32 = 2_048.0;
 
-/// The headroom above is a property of the constant, so it is checked where the
-/// constant is, and raising it without room for the scale factor stops the
-/// build rather than a window.
-const _: () = assert!(MAX_DIMENSION * HIDPI_SCALE <= CONSERVATIVE_SURFACE_LIMIT);
-/// A scale factor no desktop exceeds.
-const HIDPI_SCALE: f32 = 3.0;
-/// Device pixels a desktop graphics driver can be relied on to allow per edge.
-const CONSERVATIVE_SURFACE_LIMIT: f32 = 16_384.0;
-
-/// Furthest a restored window may be placed from the origin, in logical pixels.
+/// Largest edge or offset a saved rectangle may hold at all, in logical pixels.
 ///
-/// Enough for any arrangement of displays; a saved corner beyond it is a
-/// corrupt file rather than somewhere a window has been.
-const MAX_ORIGIN: f32 = 65_536.0;
+/// This one is about nonsense rather than about surfaces: past it, a file has
+/// been corrupted or hand-edited into something no window ever was, and there
+/// is nothing to restore.
+const ABSURD: f32 = 65_536.0;
 
 /// The layout this program knows how to read.
 ///
@@ -98,10 +92,19 @@ impl Geometry {
     /// not a policy about window sizes -- a real display clamps far tighter
     /// than this, in [`fit`].
     fn is_usable(self) -> bool {
-        (1.0..=MAX_DIMENSION).contains(&self.width)
-            && (1.0..=MAX_DIMENSION).contains(&self.height)
-            && self.x.abs() <= MAX_ORIGIN
-            && self.y.abs() <= MAX_ORIGIN
+        (1.0..=ABSURD).contains(&self.width)
+            && (1.0..=ABSURD).contains(&self.height)
+            && self.x.abs() <= ABSURD
+            && self.y.abs() <= ABSURD
+    }
+
+    /// The same rectangle with neither edge past `limit`.
+    fn capped(self, limit: f32) -> Self {
+        Self {
+            width: self.width.min(limit),
+            height: self.height.min(limit),
+            ..self
+        }
     }
 
     /// Area shared with `other`.
@@ -120,6 +123,17 @@ pub enum WindowState {
     Normal,
     Maximized,
     Fullscreen,
+}
+
+/// A session read from disk, and whether it may be written back over.
+///
+/// The two travel together because a file this version cannot read is also a
+/// file it must not overwrite: reading it as defaults costs a window position,
+/// and writing over it costs whatever the version that wrote it was recording.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Restored {
+    pub session: Session,
+    pub writable: bool,
 }
 
 /// Everything one run hands to the next.
@@ -143,37 +157,68 @@ impl Default for Session {
 
 impl Session {
     /// Read the session, falling back to defaults for every failure.
-    pub fn load(path: &Path) -> Self {
+    ///
+    /// Every failure but one leaves the file writable: a missing, unreadable or
+    /// corrupt session has nothing worth keeping. A session from a newer
+    /// version does, so that one is read as defaults *and* closed to writing.
+    pub fn load(path: &Path) -> Restored {
+        let fresh = Restored {
+            session: Self::default(),
+            writable: true,
+        };
+
         let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 tracing::debug!(path = %path.display(), "no session yet, starting fresh");
-                return Self::default();
+                return fresh;
             }
             Err(error) => {
                 tracing::warn!(path = %path.display(), %error, "cannot read session, starting fresh");
-                return Self::default();
+                return fresh;
             }
         };
 
-        let session: Self = match toml::from_str(&text) {
-            Ok(session) => session,
+        // The version is read on its own, before anything else is asked of the
+        // text. A file from a newer layout is exactly the file whose *other*
+        // fields this version cannot parse, so a single parse would fail on
+        // them and report a corrupt session -- and then overwrite it, which is
+        // the one thing that must not happen to a file another version wrote.
+        #[derive(Deserialize)]
+        struct Versioned {
+            version: u32,
+        }
+
+        match toml::from_str::<Versioned>(&text) {
+            Ok(Versioned { version }) if version == VERSION => {}
+            Ok(Versioned { version }) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    found = version,
+                    expected = VERSION,
+                    "session written by another version; starting fresh and leaving it alone"
+                );
+                return Restored {
+                    session: Self::default(),
+                    writable: false,
+                };
+            }
             Err(error) => {
                 tracing::warn!(path = %path.display(), %error, "corrupt session, starting fresh");
-                return Self::default();
+                return fresh;
             }
-        };
-
-        if session.version != VERSION {
-            tracing::warn!(
-                path = %path.display(),
-                found = session.version,
-                expected = VERSION,
-                "session written by another version, starting fresh"
-            );
-            return Self::default();
         }
-        session
+
+        match toml::from_str(&text) {
+            Ok(session) => Restored {
+                session,
+                writable: true,
+            },
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "corrupt session, starting fresh");
+                fresh
+            }
+        }
     }
 
     /// Write the session so that no reader ever sees a partial file.
@@ -324,7 +369,7 @@ pub fn place(saved: Option<Geometry>, displays: &[Geometry]) -> Option<Geometry>
         tracing::debug!(
             "no displays known yet; restoring the size and leaving placement to the platform"
         );
-        return Some(saved);
+        return Some(saved.capped(UNVERIFIED_MAX_DIMENSION));
     }
 
     // The display it belongs to is the one it covers most of. Overlap rather
