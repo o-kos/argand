@@ -68,7 +68,8 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
   gpui-component's own example uses at the `v0.5.1` tag.
 
 - ➕ **The window position is not restored on Wayland, and cannot be by this
-  toolkit.** Size and state are, on every platform. Measured here:
+  toolkit, nor across displays on macOS.** Size and state are, on every
+  platform. Measured here:
   `window_bounds()` reports `x = 0, y = 0` however far the window has been
   dragged, while the compositor reports it at `(200, 150)`. Under plain
   xdg-shell that is correct -- a client has no absolute position to know or to
@@ -167,7 +168,7 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
 - [x] Update `AGENTS.md` and `docs/plans/IMPLEMENTATION_PLAN.md` where they
       describe `argand-app` as planned.
 - [x] Complete validation.
-- [x] Move this plan to `docs/plans/completed/` before final review.
+- [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -219,6 +220,33 @@ A second round found six more, all accepted:
 - **The roadmap still told a reader to pin the toolkit to Git**, and the
   validation checkboxes were unticked. Both synchronised.
 - **No changelog entry**, for a Pull Request that adds a whole binary.
+
+A third round found six more, all accepted:
+
+- **Reading the state from the `WindowBounds` variant alone is wrong on two
+  backends.** Each answers with only the variants it tracks: X11 returns
+  `Maximized` or `Windowed` and never `Fullscreen`, macOS returns `Fullscreen`
+  or `Windowed` and never `Maximized`. The rectangle still comes from there,
+  since that is what carries the size to restore to, but the state asks
+  `is_fullscreen` and `is_maximized` as well.
+- **The 8192 bound was in the wrong unit.** The driver compares device pixels
+  and the saved size is logical, so a display at scale 3 asks for three times
+  it. 4096 leaves that room.
+- **The position is not restored across displays on macOS either.** gpui reports
+  every display's origin as zero there and opens on the primary display unless
+  told otherwise, so a window saved on a second display comes back on the first.
+  The claims in `AGENTS.md` and the changelog are corrected, and Issue #37 now
+  covers both platforms.
+- **Four tests proved less than their names claimed.** The drag test now asserts
+  that nothing is written inside the interval, rather than only checking what
+  the file ends up holding; the failed-save test asserts what `save` answers;
+  the search-order test checks the order `search_path` actually produces; and
+  one test is renamed to what it checks.
+- **The plan claimed to have been moved** to `completed/` while still sitting in
+  `docs/plans/`.
+- **A comment said gpui has no observer for a move or a resize.** It has one.
+  The window's geometry is read from `observe_window_bounds` now instead of from
+  every frame that is drawn.
 
 ## Validation
 

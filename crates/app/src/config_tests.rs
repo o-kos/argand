@@ -83,11 +83,20 @@ fn the_copy_beside_the_binary_wins_over_the_one_on_the_host() {
     let beside = dir.write("beside.toml", "theme = \"light\"\n");
     let host = dir.write("host.toml", "theme = \"dark\"\n");
 
-    // Whichever comes first in the search path decides, and `search_path`
-    // puts the executable's own directory there.
+    // Whichever comes first in the search path decides.
     assert_eq!(Config::load(&[beside, host]).theme, Theme::Light);
+
+    // And what `search_path` puts first is the executable's own directory,
+    // which is what makes a copy carried beside the binary win.
     let ordered = Config::search_path();
-    assert!(!ordered.is_empty(), "nothing to read a configuration from");
+    let first = ordered.first().expect("nowhere to read a configuration from");
+    let exe = std::env::current_exe().expect("this test is running from somewhere");
+    assert_eq!(
+        first.parent(),
+        exe.parent(),
+        "the first candidate is not the one beside the binary"
+    );
+    assert_eq!(first.file_name(), Some(FILE_NAME.as_ref()));
 }
 
 #[test]

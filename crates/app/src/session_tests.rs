@@ -197,9 +197,13 @@ fn a_save_that_cannot_happen_is_reported_rather_than_fatal() {
     let blocker = dir.join("a-file");
     std::fs::write(&blocker, "not a directory").expect("write blocker");
 
-    // Reaching the end of this test is the assertion: losing a window position
-    // must not take the application down with it.
-    Session::default().save(&blocker.join("session.toml"));
+    // Reaching the end of this test is half the assertion: losing a window
+    // position must not take the application down with it. The other half is
+    // that the caller is told, so that it can keep the value and try again.
+    assert!(
+        !Session::default().save(&blocker.join("session.toml")),
+        "a write that could not happen was reported as done"
+    );
 }
 
 #[test]
@@ -215,17 +219,34 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
         window_state: WindowState::Normal,
     };
 
-    // A frame every 8ms for a second, as a drag produces.
+    // A frame every 8ms, as a drag produces. The first offer writes, because
+    // nothing has been written yet.
     let start = at(0);
     writer.offer(moved(0.0), start);
-    for frame in 1..125u64 {
-        writer.offer(moved(frame as f32), start + Duration::from_millis(frame * 8));
-    }
-    writer.flush(start + Duration::from_secs(1));
+    assert_eq!(Session::load(&path).geometry.expect("a position").x, 0.0);
 
-    // The file holds where the drag ended, not where it passed through.
-    let restored = Session::load(&path);
-    assert_eq!(restored.geometry.expect("a position").x, 124.0);
+    // Every frame inside the interval must leave the file alone. This is what
+    // separates a debounce from a write per frame: an implementation that
+    // wrote each offer would advance the file here, and the assertion below
+    // would see the frame it had reached rather than the one it started at.
+    for frame in 1..60u64 {
+        writer.offer(moved(frame as f32), start + Duration::from_millis(frame * 8));
+        assert_eq!(
+            Session::load(&path).geometry.expect("a position").x,
+            0.0,
+            "frame {frame} was written before the interval had passed"
+        );
+    }
+
+    // Once it has passed, the next offer lands, and it is the current one
+    // rather than any of the frames it skipped.
+    writer.offer(moved(60.0), start + Writer::INTERVAL);
+    assert_eq!(Session::load(&path).geometry.expect("a position").x, 60.0);
+
+    // And the last position wins whatever the schedule was about to allow.
+    writer.offer(moved(124.0), start + Writer::INTERVAL + Duration::from_millis(8));
+    writer.flush(start + Duration::from_secs(2));
+    assert_eq!(Session::load(&path).geometry.expect("a position").x, 124.0);
 }
 
 #[test]
@@ -276,7 +297,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
 }
 
 #[test]
-fn a_window_that_comes_back_to_where_it_started_writes_nothing() {
+fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let dir = TempDir::new("returned");
     let path = dir.join("session.toml");
     let at = |x: f32| Session {
@@ -390,14 +411,16 @@ fn a_window_edge_no_surface_could_hold_is_not_restored() {
     // surface allows: it warns and then unwraps the swapchain it could not
     // create, so this has to be caught before the window is opened.
     for saved in [
-        Geometry::new(0.0, 0.0, 16_384.0, 800.0),
-        Geometry::new(0.0, 0.0, 1280.0, 16_384.0),
+        Geometry::new(0.0, 0.0, 8192.0, 800.0),
+        Geometry::new(0.0, 0.0, 1280.0, 8192.0),
         Geometry::new(1.0e6, 0.0, 1280.0, 800.0),
         Geometry::new(0.0, -1.0e6, 1280.0, 800.0),
     ] {
         assert_eq!(place(Some(saved), &[]), None, "{saved:?} was restored");
     }
-    // A window spanning two 4K displays is still a window.
-    let wide = Geometry::new(0.0, 0.0, 7680.0, 2160.0);
-    assert_eq!(place(Some(wide), &[]), Some(wide));
+    // The bound is in logical pixels and the driver compares device pixels, so
+    // it has to leave room for the scale factor: what is allowed here must
+    // still be allowed after a display at scale 3 multiplies it.
+    let widest = Geometry::new(0.0, 0.0, MAX_DIMENSION, MAX_DIMENSION);
+    assert_eq!(place(Some(widest), &[]), Some(widest));
 }

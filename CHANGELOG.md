@@ -22,10 +22,11 @@ promise applies to.
   transform defaults and the panel proportions. Names are spelled as `aspec`
   spells them. The application only ever reads this file.
 - The window remembers its size and state between runs, in `session.toml` in the
-  platform state directory. Its position is remembered where the platform
-  supplies one, which does not include Wayland. Neither file can prevent the
-  application starting: a missing, unreadable, malformed or future-versioned one
-  is logged and replaced by the defaults.
+  platform state directory. Its position is remembered only where the toolkit
+  reports enough to restore it, which excludes Wayland and excludes a second
+  display on macOS. Neither file can prevent the application starting: a
+  missing, unreadable, malformed or future-versioned one is logged and replaced
+  by the defaults.
 
 ### Changed
 

@@ -20,17 +20,33 @@ pub const FILE_NAME: &str = "session.toml";
 
 /// Largest window edge any restored geometry may ask for, in logical pixels.
 ///
-/// Past an 8K display and well under the surface limit any desktop driver
-/// offers. The bound has to be conservative because the failure it prevents is
-/// not an error return: the graphics backend logs that the requested size is
-/// outside the surface capabilities and then unwraps the swapchain it could not
-/// create, so an impossible size panics inside the call that opens the window
-/// rather than coming back as something to handle.
+/// The failure this prevents is not an error return: the graphics backend logs
+/// that the requested size is outside the surface capabilities and then unwraps
+/// the swapchain it could not create, so an impossible size panics inside the
+/// call that opens the window rather than coming back as something to handle.
 ///
-/// A window genuinely spanning more than this -- three 4K displays side by side
-/// -- opens smaller once instead. That is a far better outcome than a crash,
-/// and far rarer than a corrupt file.
-const MAX_DIMENSION: f32 = 8_192.0;
+/// It is deliberately far below any surface limit, because what the driver
+/// compares against is *device* pixels and this is a *logical* size: a window
+/// on a display at scale 3 asks for three times this. At 4096 that is 12288
+/// device pixels, inside what desktop drivers offer, and a HiDPI display makes
+/// logical sizes smaller rather than larger, so a real window rarely comes
+/// near it.
+///
+/// It only ever binds where no display is known, since [`fit`] otherwise clamps
+/// to one display; and where no display is known -- Wayland's first window --
+/// the compositor settles the size anyway. A genuine window spanning more than
+/// this opens smaller once. That is a far better outcome than a crash, and far
+/// rarer than a corrupt file.
+const MAX_DIMENSION: f32 = 4_096.0;
+
+/// The headroom above is a property of the constant, so it is checked where the
+/// constant is, and raising it without room for the scale factor stops the
+/// build rather than a window.
+const _: () = assert!(MAX_DIMENSION * HIDPI_SCALE <= CONSERVATIVE_SURFACE_LIMIT);
+/// A scale factor no desktop exceeds.
+const HIDPI_SCALE: f32 = 3.0;
+/// Device pixels a desktop graphics driver can be relied on to allow per edge.
+const CONSERVATIVE_SURFACE_LIMIT: f32 = 16_384.0;
 
 /// Furthest a restored window may be placed from the origin, in logical pixels.
 ///

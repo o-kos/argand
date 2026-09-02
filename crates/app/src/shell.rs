@@ -11,7 +11,8 @@ use std::time::Instant;
 
 use gpui::{
     AppContext, Application, Bounds, Context, IntoElement, ParentElement, Pixels, Render, Styled,
-    TitlebarOptions, Window, WindowBounds, WindowOptions, div, point, px, relative, size,
+    Subscription, TitlebarOptions, Window, WindowBounds, WindowOptions, div, point, px, relative,
+    size,
 };
 use gpui_component::{ActiveTheme, Root, ThemeMode, TitleBar};
 
@@ -49,7 +50,8 @@ pub fn run(config: Config, saved: Session, state_path: Option<PathBuf>) {
 
             let writer = state_path.map(|path| Writer::new(path, saved.clone()));
             let opened = cx.open_window(options, |window, cx| {
-                cx.new(|cx| Root::new(cx.new(|_| Shell::new(config, writer)), window, cx))
+                let shell = cx.new(|cx| Shell::new(config, writer, window, cx));
+                cx.new(|cx| Root::new(shell, window, cx))
             });
 
             // A window that will not open is the end of the run, and a task
@@ -125,34 +127,54 @@ struct Shell {
     /// Absent when the platform offers nowhere to keep state, in which case
     /// the window simply does not remember itself.
     writer: Option<Writer>,
+    /// Kept because dropping it stops the notifications.
+    _bounds: Subscription,
 }
 
 impl Shell {
-    const fn new(config: Config, writer: Option<Writer>) -> Self {
-        Self { config, writer }
+    fn new(
+        config: Config,
+        writer: Option<Writer>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        // The toolkit says when the window has moved or resized, so nothing
+        // here has to ask on every frame. It still says it once per step of a
+        // drag, which is what [`Writer`] is for.
+        let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
+        Self {
+            config,
+            writer,
+            _bounds: bounds,
+        }
     }
 
-    /// Record where the window is, on the frame that draws it there.
-    ///
-    /// gpui 0.2 has no observer for a move or a resize, and the render path is
-    /// the one thing that certainly runs while a window is being dragged. The
-    /// cost of asking on every frame is one comparison: [`Writer`] decides
-    /// whether anything reaches the disk.
+    /// Record where the window is and what state it is in.
     fn remember(&mut self, window: &Window) {
         let Some(writer) = self.writer.as_mut() else {
             return;
         };
-        // Both halves come from the one answer. `WindowBounds` already pairs
-        // the state with the rectangle to restore *to* -- for a maximized or
-        // fullscreen window that is the size it will return to, not the screen
-        // it currently covers. Asking separately, with `is_maximized` beside a
-        // rectangle fetched on its own, lets the two disagree on the platforms
-        // where they are not updated together.
-        let (window_state, bounds) = match window.window_bounds() {
-            WindowBounds::Windowed(bounds) => (WindowState::Normal, bounds),
-            WindowBounds::Maximized(bounds) => (WindowState::Maximized, bounds),
-            WindowBounds::Fullscreen(bounds) => (WindowState::Fullscreen, bounds),
-        };
+        // The rectangle comes from `WindowBounds`, which is the one that
+        // carries the size to restore *to* rather than the screen a maximized
+        // window currently covers.
+        //
+        // The state cannot come from that variant alone. Each backend answers
+        // with only the variants it tracks: X11 returns `Maximized` or
+        // `Windowed` and never `Fullscreen`, macOS returns `Fullscreen` or
+        // `Windowed` and never `Maximized`. Reading the variant alone would
+        // record a fullscreen X11 window, or a maximized macOS one, as
+        // ordinary. Every backend reports what it omits through one of the two
+        // predicates, so both are asked.
+        let bounds = window.window_bounds();
+        let window_state =
+            if window.is_fullscreen() || matches!(bounds, WindowBounds::Fullscreen(_)) {
+                WindowState::Fullscreen
+            } else if window.is_maximized() || matches!(bounds, WindowBounds::Maximized(_)) {
+                WindowState::Maximized
+            } else {
+                WindowState::Normal
+            };
+        let bounds = bounds.get_bounds();
         writer.offer(
             Session {
                 version: crate::session::VERSION,
@@ -173,9 +195,7 @@ impl Drop for Shell {
 }
 
 impl Render for Shell {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.remember(window);
-
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
             .flex()

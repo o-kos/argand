@@ -131,6 +131,6 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
 - The name and icon assets are currently in `icons/`; move them to the appropriate asset directory when the application starts using them. The set includes `argand.svg`, `argand.ico`, `argand.icns`, PNG sizes, and a monochrome glyph.
 - `crates/app` opens a window and remembers itself, and nothing more: no signal, no analysis, no real panels. Its configuration and geometry logic is deliberately free of GPUI, because CI has no GPU and cannot run the application; only `shell.rs` names a toolkit type.
-- The window's position is restored where the platform supplies one. On Wayland it is not: plain xdg-shell gives a client no absolute position, and the staging protocol written for this is not implemented in gpui. See backlog Issue #37.
+- The window's size and state are restored on every platform. Its position is restored only where the toolkit reports enough to restore it: not on Wayland, where plain xdg-shell gives a client no absolute position, and not across displays on macOS, where gpui reports every display's origin as zero and opens on the primary one. See backlog Issue #37.
 - The current implementation focus is display, editing, and spectrum analysis: phases 0 through 6 in `docs/plans/IMPLEMENTATION_PLAN.md`.
 - The plugin and worker design is deferred to the final section of `docs/plans/IMPLEMENTATION_PLAN.md`.
