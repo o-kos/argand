@@ -392,45 +392,22 @@ pub fn place(saved: Option<Geometry>, displays: &[Geometry]) -> Option<Geometry>
     Some(fit(saved, fallback))
 }
 
-/// Whether a rectangle reported as ordinary can be taken for one.
-///
-/// A window covering a whole display is either maximized or on its way to it,
-/// whatever the toolkit says about its state at that instant, and the size to
-/// return to is never the size of the screen. Two reports need this filter and
-/// neither can be recognised any other way, because gpui tells a client nothing
-/// about minimizing or about a transition:
-///
-/// * X11 answers `is_maximized()` with false while a maximized window is
-///   minimized, so it is reported as ordinary at its maximized size;
-/// * macOS calls the window maximized only once its size matches the visible
-///   frame exactly, so the frames of a maximize animation arrive as ordinary.
-///
-/// The tolerance covers the border a window manager may keep around a maximized
-/// window. A window a person genuinely sized to their whole screen is refused
-/// too, and loses nothing by it: restoring it maximized is what they asked for.
-fn covers_a_display(window: Geometry, displays: &[Geometry]) -> bool {
-    /// Logical pixels a maximized window may fall short of its display by.
-    const SLACK: f32 = 16.0;
-
-    displays.iter().any(|display| {
-        window.width >= display.width - SLACK && window.height >= display.height - SLACK
-    })
-}
-
 /// The rectangle to come back to, given what the window reports now.
 ///
-/// `None` where this report says nothing about it, which is any report that is
-/// not of an ordinary window at an ordinary size. The caller keeps whatever it
-/// had.
-pub fn restore_rectangle(
-    reported: Geometry,
-    state: WindowState,
-    displays: &[Geometry],
-) -> Option<Geometry> {
-    if state != WindowState::Normal || covers_a_display(reported, displays) {
-        return None;
-    }
-    Some(reported)
+/// `None` where this report says nothing about it -- a maximized or fullscreen
+/// window reports the screen it covers, not the size it would return to -- and
+/// the caller keeps whatever it had.
+///
+/// A backend that misreports the state defeats this, and two do: X11 answers
+/// `is_maximized()` with false while a maximized window is minimized, and macOS
+/// calls a window maximized only once its size matches the visible frame
+/// exactly, so the frames of a maximize animation arrive as ordinary. gpui
+/// exposes neither a minimized nor a transitional predicate, and filtering on
+/// geometry instead was tried and withdrawn: a window merely the size of some
+/// other display is not a maximized one, and refusing it loses an ordinary
+/// resize outright. Recorded as Issue #37 rather than guessed at.
+pub fn restore_rectangle(reported: Geometry, state: WindowState) -> Option<Geometry> {
+    (state == WindowState::Normal).then_some(reported)
 }
 
 /// Shrink and shift a rectangle until it lies inside `display`.

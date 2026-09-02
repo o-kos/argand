@@ -134,8 +134,9 @@ struct Shell {
     /// bounds its last configure event set, and macOS reads the live window
     /// frame. Both are the screen while the window covers it. Saving that would
     /// restore a maximized window correctly and then un-maximize it to the size
-    /// of the display, so the last rectangle worth believing is kept instead --
-    /// see [`restore_rectangle`] for which those are.
+    /// of the display, so the last rectangle reported by an ordinary window is
+    /// kept instead. [`restore_rectangle`] says which those are, and what a
+    /// backend that misreports the state costs.
     last_normal: Option<Geometry>,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
@@ -152,14 +153,7 @@ impl Shell {
         // The toolkit says when the window has moved or resized, so nothing
         // here has to ask on every frame. It still says it once per step of a
         // drag, which is what [`Writer`] is for.
-        let bounds = cx.observe_window_bounds(window, |shell, window, cx| {
-            let displays: Vec<Geometry> = cx
-                .displays()
-                .iter()
-                .map(|display| from_bounds(display.bounds()))
-                .collect();
-            shell.remember(window, &displays);
-        });
+        let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
         Self {
             config,
             writer,
@@ -169,7 +163,7 @@ impl Shell {
     }
 
     /// Record where the window is and what state it is in.
-    fn remember(&mut self, window: &Window, displays: &[Geometry]) {
+    fn remember(&mut self, window: &Window) {
         if self.writer.is_none() {
             return;
         }
@@ -195,9 +189,7 @@ impl Shell {
             };
         // Only some reports say anything about the rectangle to come back to;
         // the rest leave the last one that did.
-        if let Some(rectangle) =
-            restore_rectangle(from_bounds(bounds.get_bounds()), window_state, displays)
-        {
+        if let Some(rectangle) = restore_rectangle(from_bounds(bounds.get_bounds()), window_state) {
             self.last_normal = Some(rectangle);
         }
         let Some(writer) = self.writer.as_mut() else {

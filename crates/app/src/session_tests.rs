@@ -476,43 +476,25 @@ something_this_version_never_heard_of = true
 }
 
 #[test]
-fn a_screen_sized_report_is_not_taken_for_the_size_to_come_back_to() {
+fn only_an_ordinary_window_says_what_size_to_come_back_to() {
     let ordinary = Geometry::new(100.0, 80.0, 1000.0, 700.0);
     assert_eq!(
-        restore_rectangle(ordinary, WindowState::Normal, &[PRIMARY]),
+        restore_rectangle(ordinary, WindowState::Normal),
         Some(ordinary)
     );
 
-    // X11 reports a minimized maximized window as ordinary, at the size it was
-    // maximized to. Believing that would restore it to the whole screen.
-    let maximized = Geometry::new(0.0, 0.0, PRIMARY.width, PRIMARY.height);
-    assert_eq!(
-        restore_rectangle(maximized, WindowState::Normal, &[PRIMARY]),
-        None
-    );
-    // And so does macOS while a maximize animation is finishing, a few pixels
-    // short of the display.
-    let nearly = Geometry::new(0.0, 0.0, PRIMARY.width - 4.0, PRIMARY.height - 4.0);
-    assert_eq!(
-        restore_rectangle(nearly, WindowState::Normal, &[PRIMARY]),
-        None
-    );
-
-    // A window that is not ordinary says nothing about it either way.
+    // A maximized or fullscreen window reports the screen it covers, which is
+    // not the size it would return to, so it says nothing here.
     for state in [WindowState::Maximized, WindowState::Fullscreen] {
-        assert_eq!(restore_rectangle(ordinary, state, &[PRIMARY]), None);
+        assert_eq!(restore_rectangle(ordinary, state), None);
     }
 
-    // On the second display, its size is the one that matters.
-    let wide = Geometry::new(1920.0, 0.0, SECONDARY.width, SECONDARY.height);
+    // A window that is genuinely the size of a display is still an ordinary
+    // window. Refusing it on its size alone was tried and withdrawn: a display
+    // it does not sit on is no evidence about it, and the resize would be lost.
+    let large = Geometry::new(0.0, 0.0, PRIMARY.width, PRIMARY.height);
     assert_eq!(
-        restore_rectangle(wide, WindowState::Normal, &[PRIMARY, SECONDARY]),
-        None
-    );
-    // With no display known there is nothing to compare against, so an
-    // ordinary report is taken at its word.
-    assert_eq!(
-        restore_rectangle(maximized, WindowState::Normal, &[]),
-        Some(maximized)
+        restore_rectangle(large, WindowState::Normal),
+        Some(large)
     );
 }

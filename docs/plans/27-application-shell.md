@@ -273,17 +273,30 @@ A fourth round found three more, all accepted:
   reaches the version field. The version is read on its own now, and a file
   this version cannot read is not written to.
 
-A fifth round found one more, accepted:
+A fifth round found one more, accepted; a sixth held it and rejected the fix,
+correctly:
 
 - **A rectangle reported as ordinary is not always an ordinary one.** gpui tells
   a client nothing about minimizing or about a transition, and two backends
   report a screen-sized window as ordinary because of it: X11 answers
   `is_maximized()` with false while a maximized window is minimized, and macOS
   calls a window maximized only once its size matches the visible frame exactly,
-  so the frames of a maximize animation arrive as ordinary. `restore_rectangle`
-  refuses a report that covers a whole display, which is the only signal
-  available. A window a person genuinely sized to their screen is refused too,
-  and loses nothing: restoring it maximized is what they asked for.
+  so the frames of a maximize animation arrive as ordinary.
+
+  Filtering on geometry -- refusing a report that covers a display -- was
+  written, and then withdrawn on the sixth round's evidence. It misses both
+  cases it was written for, because `Display::bounds()` is the full display on
+  macOS while a maximized window is measured against `visibleFrame`, and on X11
+  it is the whole root screen across every monitor. And it refuses an ordinary
+  window whose size merely matches some *other* display -- a 1920x1080 window
+  beside a 4K screen -- losing that resize outright. It was a worse answer than
+  the problem, and the code is back to the plain state check.
+
+  This is the one finding whose remedy is deferred rather than applied. Doing it
+  properly means holding a candidate across a burst of reports and taking the
+  previous maximized state into account, and doing it *correctly* wants gpui to
+  expose the work area and the minimized state. Recorded in Issue #37 with the
+  analysis, including why the geometry filter cannot work.
 
 ## Validation
 
