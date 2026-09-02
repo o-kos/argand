@@ -251,14 +251,15 @@ impl Writer {
 pub fn place(saved: Option<Geometry>, displays: &[Geometry]) -> Option<Geometry> {
     let saved = saved.filter(|g| g.is_usable())?;
     if displays.is_empty() {
-        // A platform that will not tell a client where its screens are cannot
-        // be clamped against, and Wayland is one: it reports no displays and
-        // no window position, because placement is the compositor's business
-        // and not the client's. The size is still the size the person left, so
-        // it is restored, and the compositor puts the window somewhere visible
-        // by construction.
+        // Nothing to clamp against. This is the ordinary case on Wayland, where
+        // a client learns of an output only once a surface has entered one, so
+        // the first window is placed before any display is known. Discarding
+        // the rectangle here would throw away the size along with the position,
+        // and the size is the half that can still be honoured -- placement is
+        // the compositor's business there, and it puts the window somewhere
+        // visible by construction.
         tracing::debug!(
-            "no displays reported; restoring the size and leaving placement to the platform"
+            "no displays known yet; restoring the size and leaving placement to the platform"
         );
         return Some(saved);
     }

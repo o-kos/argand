@@ -102,10 +102,10 @@ fn a_rectangle_worth_nothing_hands_the_placement_back_to_the_platform() {
 
 #[test]
 fn a_platform_that_names_no_displays_still_restores_the_size() {
-    // Wayland tells a client neither where its screens are nor where its own
-    // window sits, so there is nothing to clamp against. Throwing the saved
-    // rectangle away over that would lose the size as well as the position,
-    // and the size is the half that can still be honoured.
+    // On Wayland a client learns of an output only once a surface has entered
+    // one, so the first window is placed with no display known. Throwing the
+    // saved rectangle away over that would lose the size as well as the
+    // position, and the size is the half that can still be honoured.
     let saved = Geometry::new(0.0, 0.0, 1000.0, 700.0);
     assert_eq!(place(Some(saved), &[]), Some(saved));
     // A rectangle that is not worth restoring is still refused.

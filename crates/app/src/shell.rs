@@ -29,32 +29,31 @@ pub fn run(config: Config, saved: Session, state_path: Option<PathBuf>) {
         gpui_component::init(cx);
         gpui_component::theme::Theme::change(theme_mode(config.theme), None, cx);
 
-        let displays: Vec<Geometry> = cx
-            .displays()
-            .iter()
-            .map(|display| from_bounds(display.bounds()))
-            .collect();
-        let options = window_options(&saved, &displays);
-        tracing::debug!(
-            displays = displays.len(),
-            saved = ?saved.geometry,
-            opening_at = ?options.window_bounds,
-            "placing the window"
-        );
+        // Opening from a spawned task rather than straight from `run` follows
+        // the toolkit's own examples and gives the platform a turn of its event
+        // loop first.
+        cx.spawn(async move |cx| {
+            let displays: Vec<Geometry> = cx.update(|cx| {
+                cx.displays()
+                    .iter()
+                    .map(|display| from_bounds(display.bounds()))
+                    .collect()
+            })?;
+            let options = window_options(&saved, &displays);
+            tracing::debug!(
+                displays = displays.len(),
+                saved = ?saved.geometry,
+                opening_at = ?options.window_bounds,
+                "placing the window"
+            );
 
-        let opened = cx.open_window(options, |window, cx| {
-            let writer = state_path
-                .clone()
-                .map(|path| Writer::new(path, saved.clone()));
-            cx.new(|cx| Root::new(cx.new(|_| Shell::new(writer)), window, cx))
-        });
-
-        // A window that will not open is the end of the run, not something to
-        // carry on without: there is nothing else this program does.
-        if let Err(error) = opened {
-            tracing::error!(%error, "cannot open a window");
-            cx.quit();
-        }
+            let writer = state_path.map(|path| Writer::new(path, saved.clone()));
+            cx.open_window(options, |window, cx| {
+                cx.new(|cx| Root::new(cx.new(|_| Shell::new(writer)), window, cx))
+            })?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .detach();
     });
 }
 
