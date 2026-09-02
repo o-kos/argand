@@ -89,9 +89,10 @@ pub enum Reduce {
 pub const REDUCE_NAMES: [&str; 2] = ["max", "mean"];
 
 /// How the colour scale's decibel window is selected.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum DynamicRange {
     /// Keep the absolute 0 to -110 dBFS scale.
+    #[default]
     Default,
     /// Put a caller-selected range below the measured spectral peak.
     Fixed(f32),
@@ -106,12 +107,6 @@ impl DynamicRange {
             Self::Fixed(_) => "fixed",
             Self::Auto => "auto",
         }
-    }
-}
-
-impl Default for DynamicRange {
-    fn default() -> Self {
-        Self::Default
     }
 }
 

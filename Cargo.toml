@@ -5,7 +5,7 @@ members = ["crates/core", "crates/io", "crates/dsp", "crates/cli"]
 [workspace.package]
 version = "0.0.2"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.97"
 license = "MIT"
 
 # Warnings are errors here rather than on the command line, so a plain

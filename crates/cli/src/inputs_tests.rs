@@ -32,7 +32,7 @@ fn error(dir: &TempDir, arg: &str) -> ResolveError {
 fn an_exact_path_passes_through_without_touching_the_disk() {
     let dir = TempDir::new("resolve-exact");
     let missing = dir.join("nope.wav");
-    let files = resolve(&[missing.clone()]).expect("an exact path always resolves");
+    let files = resolve(std::slice::from_ref(&missing)).expect("an exact path always resolves");
     assert_eq!(files, vec![missing]);
 }
 
