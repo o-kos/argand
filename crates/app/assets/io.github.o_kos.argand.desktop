@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Argand
+GenericName=Signal Analyzer
+Comment=View, edit and analyse I/Q and real signal captures
+Exec=argand %f
+Icon=io.github.o_kos.argand
+Terminal=false
+Categories=Science;Engineering;
+Keywords=signal;spectrum;spectrogram;waveform;iq;sdr;radio;
+MimeType=audio/x-wav;audio/flac;
+StartupNotify=true
+StartupWMClass=io.github.o_kos.argand

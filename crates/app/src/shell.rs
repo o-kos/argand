@@ -10,8 +10,8 @@ use std::time::Instant;
 
 use gpui::{
     AppContext, Application, Bounds, Context, IntoElement, ParentElement, Pixels, Render, Styled,
-    Subscription, TitlebarOptions, Window, WindowBounds, WindowOptions, div, point, px, relative,
-    size,
+    Subscription, TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowOptions, div,
+    point, px, relative, size,
 };
 use gpui_component::{ActiveTheme, Root, ThemeMode, TitleBar};
 
@@ -87,9 +87,18 @@ fn window_options(saved: &Session, displays: &[Geometry]) -> WindowOptions {
         // `None` leaves the placement to the platform, which is what a first
         // run and a rectangle with nowhere to go both want.
         window_bounds,
+        // The application draws its own title bar, so it asks to draw the rest
+        // of the frame too. Left unset, gpui requests *server-side*
+        // decorations, and the desktop then draws a title bar of its own above
+        // ours -- two of them, with the outer one owning the window controls.
+        // This is also what puts the frame, the shadow and the resize edges in
+        // `Root`'s hands, which is where the toolkit expects them.
+        window_decorations: Some(WindowDecorations::Client),
         titlebar: Some(TitlebarOptions {
             title: Some(TITLE.into()),
-            ..Default::default()
+            // macOS keeps its traffic lights and hands us the rest of the bar.
+            appears_transparent: true,
+            traffic_light_position: Some(point(px(9.0), px(9.0))),
         }),
         app_id: Some(APP_ID.into()),
         window_min_size: Some(size(px(640.0), px(400.0))),
