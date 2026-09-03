@@ -171,7 +171,7 @@ Out of scope: signal handling, analysis, real panels, docking, menus.
 - [x] Update `AGENTS.md` and `docs/plans/IMPLEMENTATION_PLAN.md` where they
       describe `argand-app` as planned.
 - [x] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -369,8 +369,21 @@ the compositor draws a title bar and the shell draws another inside it, with its
 own minimize, maximize and close. Requesting client-side decorations instead
 would give one title bar and the same appearance on every platform, which is
 what Zed does with this toolkit; keeping server-side decorations integrates with
-the desktop. It is a question about how the application should look, so it is
-the owner's.
+the desktop. It is a question about how the application should look, so it was
+the owner's, and they chose the client-side frame: one title bar, ours, with room
+for the controls a later milestone puts in it.
+
+➕ Using the application turned up three more things, all outside this milestone
+and all raised as their own Issues rather than folded in: window controls that
+respond to the pointer (#39), packaging for Windows and macOS as the desktop
+entry now does for Linux (#40), and the icon (#41). The first was diagnosed here:
+the toolkit's `Icon` resolves its colour when it is built, from the window rather
+than from the computed style of the element around it, so a hover refinement
+reaches the background and stops there.
+
+➕ Three replacement icons were drawn and rejected. What the owner wants is the
+current mark with its spectrum moved into the lower part; the parameters are in
+#41.
 
 ## Validation
 
