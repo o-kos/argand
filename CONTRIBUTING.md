@@ -134,7 +134,9 @@ An unexplained suppression that nobody re-reads turns the whole gate into a form
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every Pull Request and on every push to `main`. Its `linux` job runs the four commands above, in that order; its `windows` job runs the test suite and the release build. Both are required checks on protected `main`.
+`.github/workflows/ci.yml` runs on every Pull Request and on every push to `main`. Its `linux` job runs the four commands above, in that order, after installing the system libraries GPUI links against; its `windows` and `macos` jobs run the test suite and the release build. All three are required checks on protected `main`.
+
+No runner has a GPU, so no job opens a window. What the three of them cover is that the workspace builds on every supported platform and that everything not needing a window passes; the application's own configuration and geometry logic is written to be testable without one.
 
 The commands are not restated in the workflow with different flags. Formatting and lint configuration lives in the repository, where `cargo` finds it on its own, so what runs locally and what blocks the merge cannot drift apart. Tighten a rule by changing that configuration, not the workflow.
 

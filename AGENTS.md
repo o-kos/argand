@@ -20,7 +20,7 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 ## Core requirements and invariants
 
 1. Support Linux, Windows, and macOS.
-2. Ship one binary plus configuration with minimal external dependencies. Pin GPUI and gpui-component to fixed Git revisions because their crates.io releases lag behind development.
+2. Ship one binary plus configuration with minimal external dependencies. Take GPUI and gpui-component from crates.io and let `Cargo.lock` fix the graph.
 3. Keep cold startup and the first waveform or spectrogram frame fast.
 4. Provide the core display and editing operations available in ocenaudio.
 5. Provide a separate detailed spectrum window.
@@ -41,7 +41,7 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 - **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, resampling helpers, and frequency shifting. Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
 - **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source. This is the future connection point for custom formats through the worker.
 - **argand-edit:** a planned editing engine using a piece table over the memory-mapped original and inserted buffers, a command stack for undo and redo, and a clipboard.
-- **argand-app:** the planned application binary using GPUI and gpui-component with skin support. It owns the main waveform and spectrogram window, cursors, selections, scrolling, status, transport, and the detailed spectrum window. It converts core view models into GPUI images, quads, and paths. This is the single shipped binary.
+- **argand-app:** the application binary, `argand`, using GPUI and gpui-component. It exists as a shell: a themed window, `argand.toml` for what a person configures and `session.toml` for what the application remembers. It will own the main waveform and spectrogram window, cursors, selections, scrolling, status, transport, and the detailed spectrum window, and converts core view models into GPUI images, quads, and paths. This is the single shipped binary alongside `aspec`.
 - **argand-worker:** a planned processing worker binary that loads C ABI libraries and communicates through a stdio protocol. It is deferred.
 - **argand-abi:** planned C ABI contract and protocol types. It is deferred.
 
@@ -62,7 +62,11 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 ## Build and run
 
 - After the GUI scaffold exists, run it with `cargo run -p argand --locked`; build releases with `cargo build --release --locked`.
-- Pin GPUI and gpui-component to fixed Git revisions in `Cargo.toml`.
+- Take GPUI and gpui-component from crates.io, as version requirements in `Cargo.toml`, and let the committed `Cargo.lock` fix the exact graph.
+
+  This rule used to say the opposite: pin both to fixed Git revisions, because their crates.io releases lagged behind development. They no longer do, and the Git route turned out not to work as written. `gpui` has no repository of its own -- it lives in the zed monorepo, so a Git dependency clones over 400 MB of unrelated history -- and gpui-component declares its own `gpui` dependency with no revision, floating on zed's default branch. Pinning a revision here therefore puts *two* copies of `gpui` in the tree, and a type from one is not that type from the other.
+
+  Going back to Git means either matching gpui-component's floating source, which pins nothing in the manifest, or a `[patch]` on the zed source. Do neither without a reason that names what is only available at tip.
 - Commit the complete dependency graph in `Cargo.lock`; do not commit `vendor/`. Run `cargo fetch --locked` before an offline build, then use `cargo build --frozen`.
 - Run rustfmt and Clippy for every change: `cargo fmt --all -- --check` and `cargo clippy --all-targets --locked`.
 - Clippy warnings are errors, and that is a property of the repository, not of the command line. `[workspace.lints]` sets `warnings = "deny"`, so a plain `cargo clippy` fails locally exactly as it fails in CI. Never rely on a `-D warnings` flag to make a check strict; a check that is strict only when someone remembers a flag is not a check.
@@ -125,6 +129,8 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
 ## Current status
 
-- The name and icon assets are currently in `icons/`; move them to the appropriate asset directory when the application scaffold is added. The set includes `argand.svg`, `argand.ico`, `argand.icns`, PNG sizes, and a monochrome glyph.
+- The name and icon assets live in `crates/app/assets/icons/`, beside the desktop entry that names them. The set includes `argand.svg`, `argand.ico`, `argand.icns`, PNG sizes, and a monochrome glyph. A desktop environment learns the application's name and icon from `crates/app/assets/io.github.o_kos.argand.desktop`, matched against the window's application id; `install-desktop-entry.sh` beside it installs both into the user's own directories for a development build.
+- `crates/app` opens a window and remembers itself, and nothing more: no signal, no analysis, no real panels. Its configuration and geometry logic is deliberately free of GPUI, because CI has no GPU and cannot run the application; only `shell.rs` names a toolkit type.
+- The window's size and state are restored wherever the toolkit reports the window state reliably; X11 and macOS both report a window as ordinary while it is not, which can cost the size a maximized window returns to (Issue #38). Its position is restored only where the toolkit reports enough to restore it: not on Wayland, where plain xdg-shell gives a client no absolute position, and not across displays on macOS, where gpui reports every display's origin as zero and opens on the primary one (Issue #37; its macOS half needs nothing gpui does not already provide).
 - The current implementation focus is display, editing, and spectrum analysis: phases 0 through 6 in `docs/plans/IMPLEMENTATION_PLAN.md`.
 - The plugin and worker design is deferred to the final section of `docs/plans/IMPLEMENTATION_PLAN.md`.

@@ -29,6 +29,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # What GPUI links against. The runner has no GPU and cannot run the
+      # application, but it still has to build it.
+      - name: Install the system libraries GPUI needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libasound2-dev \
+            libfontconfig-dev \
+            libvulkan-dev \
+            libwayland-dev \
+            libxcb1-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev
+
       - name: Install the toolchain pinned by rust-toolchain.toml
         run: |
           rustup toolchain install --no-self-update
@@ -51,9 +65,31 @@ jobs:
       - name: Build release
         run: cargo build --release --locked
 
+  # The application is the reason these two exist. A runner has no GPU, so
+  # nothing here opens a window: what is covered is that the workspace builds
+  # and that everything not needing one still passes.
   windows:
     name: windows
     runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the toolchain pinned by rust-toolchain.toml
+        run: |
+          rustup toolchain install --no-self-update
+          rustup show active-toolchain
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build release
+        run: cargo build --release --locked
+
+  macos:
+    name: macos
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

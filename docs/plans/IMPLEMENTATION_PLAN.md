@@ -16,7 +16,7 @@ The following work is complete:
 - **Phase 3:** configurable STFT size, window, and overlap; frames folded into image columns as they are computed so memory follows output size rather than input duration; six color schemes; and callback-based progress reporting.
 - **Phase 4:** a two-sided spectrum from `-Fs/2` to `+Fs/2` with `fftshift` for complex signals, a one-sided spectrum for real signals, physical frequency axes through `center_frequency`, and consistent 0 dBFS readings for full-scale tones in both domains.
 
-The GUI still needs the waveform and min/max pyramid from Phase 2, editing from Phase 5, the detailed spectrum window from Phase 6, and the application shell and configuration from Phase 0. The `argand-edit` and `argand-app` crates do not exist yet, and GPUI is not part of the dependency tree.
+Phase 0 is now complete: `crates/app` holds the `argand` binary, a GPUI window with configuration and session state behind it, restoring what the toolkit reports. The GUI still needs the waveform and min/max pyramid from Phase 2, editing from Phase 5, and the detailed spectrum window from Phase 6. The `argand-edit` crate does not exist yet.
 
 Dependencies are pinned in `Cargo.lock`. The repository does not track `vendor/`. For local offline builds, fetch dependencies in advance with `cargo fetch --locked`, then build with `cargo build --frozen`.
 
@@ -24,7 +24,7 @@ Dependencies are pinned in `Cargo.lock`. The repository does not track `vendor/`
 
 | # | Phase | Outcome |
 |---|---|---|
-| 0 | Scaffold and application shell | An empty window runs on all three operating systems and reads configuration |
+| 0 | Scaffold and application shell | ✅ An empty window runs and reads configuration; built on all three operating systems |
 | 1 | Data model and file loading | ✅ Complete in `argand-core` and `argand-io` |
 | 2 | Waveform | Fast time-domain navigation and zooming |
 | 3 | Spectrogram | ✅ Complete in `argand-dsp`; GUI integration remains |
@@ -39,8 +39,8 @@ Goal: launch an empty GPUI window on Linux, Windows, and macOS and read configur
 
 - Add the Cargo workspace crates described in `AGENTS.md`, initially as empty scaffolds.
 - Add the `argand` application with a GPUI and gpui-component window, a base theme, and dock placeholders for waveform, spectrogram, and panels.
-- Persist window size and position between sessions.
-- Pin GPUI and gpui-component to fixed Git revisions.
+- Persist window size and position between sessions, as far as the toolkit reports them: see Issues #37 and #38 for where it does not.
+- Take GPUI and gpui-component from crates.io and let `Cargo.lock` fix the graph; see `AGENTS.md` for why this is not the Git pinning it used to be.
 - Load `argand.toml` through serde and TOML and initialize tracing logs.
 - Add CI builds for Linux, Windows, and macOS.
 
@@ -119,7 +119,7 @@ Goal: provide deep analysis of a selected region.
 
 ## Risks and mitigations
 
-- GPUI is a moving target whose backend is migrating from Blade to wgpu. Pin revisions and preserve the rendering boundary so egui with wgpu remains a viable fallback.
+- GPUI is a moving target whose backend is migrating from Blade to wgpu. Take fixed versions and preserve the rendering boundary so egui with wgpu remains a viable fallback.
 - GPUI limits custom GPU canvases to its exposed primitives. Render spectrograms as textures and waveforms as paths or quads. If dense rendering becomes a bottleneck, rasterize the waveform into a texture or replace the toolkit.
 - A real GPU is required. Account for degraded behavior in virtual machines and headless environments.
 
