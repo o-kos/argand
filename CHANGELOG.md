@@ -13,10 +13,21 @@ promise applies to.
 
 ### Added
 
-- A second binary, `argand`: the graphical application. This release opens its
-  window and nothing more -- no signal, no analysis, no panels -- so that the
-  toolkit is proven on Linux, Windows and macOS before the views are built on
-  it. `aspec` is unchanged.
+- A second binary, `argand`: the graphical application. It opens a signal file
+  and shows its spectrogram, with time and frequency axes placed by the same
+  tick policy `aspec` uses -- two-sided around the centre frequency for an I/Q
+  capture, one-sided for a real one. `aspec` is unchanged.
+- `argand <file>` takes the same seven options `aspec` takes for reading a
+  capture: `--raw`, `--type`, `--rate`, `--center`, `--offset`, `--normalize`
+  and `--gain`. Started with no file, it opens an empty window.
+- The transform runs on a thread of its own, so the window stays usable while a
+  long capture is analysed and the status bar reports how far it has got. A
+  large capture is still slow to appear: making the first frame fast comes
+  next.
+- The status bar names the container, the sample type, the sample rate, the
+  duration and the centre frequency. A file that cannot be read is reported in
+  the window, with the same message `aspec` would print, and leaves the
+  application working.
 - `argand.toml`, read from beside the binary or from the platform configuration
   directory, sets the theme, the colour scheme, the dynamic-range mode, the
   transform defaults and the panel proportions. Names are spelled as `aspec`

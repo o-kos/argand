@@ -34,15 +34,24 @@ const DIGIT_INK: f32 = 10.0;
 impl DejaVuSans {
     /// Advance of one label glyph, in font units.
     ///
-    /// Every character an axis label can hold is here. A new one has to be
-    /// added deliberately rather than guessed at, so an unknown glyph is a
-    /// failure and not a plausible width.
+    /// Every character an axis label can hold is here, and so is every letter
+    /// of the unit an axis names itself with -- `Hz`, `kHz`, `MHz`, `GHz`,
+    /// `dB` -- because the gutter has to hold the caption as well as the
+    /// digits it heads. A new one has to be added deliberately rather than
+    /// guessed at, so an unknown glyph is a failure and not a plausible width.
     fn advance(c: char) -> f32 {
         match c {
             '0'..='9' => 1303.0,
             '.' => 651.0,
             ':' => 690.0,
             '-' => 739.0,
+            'H' => 1540.0,
+            'z' => 1075.0,
+            'k' => 1186.0,
+            'M' => 1767.0,
+            'G' => 1587.0,
+            'd' => 1300.0,
+            'B' => 1405.0,
             other => panic!("no advance recorded for {other:?}"),
         }
     }
@@ -56,8 +65,11 @@ impl LabelMeasure for DejaVuSans {
         // fixture that has to be held against the real renderer is worth
         // nothing if it only nearly matches.
         //
-        // Digits, separators and the minus sign kern against nothing in this
-        // face, so nothing is added between them.
+        // Nothing is added between glyphs. Digits, separators and the minus
+        // sign kern against nothing in this face, and neither does any pair
+        // inside one of the captions above. Pairs that occur in neither --
+        // `-G` and `BG` among them -- do kern, which is why the cross-check
+        // holds the captions as whole strings rather than glyph by glyph.
         let factor = size / HEIGHT;
         text.chars().map(|c| Self::advance(c) * factor).sum()
     }

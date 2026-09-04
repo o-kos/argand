@@ -1,22 +1,31 @@
-//! The window itself: the one place GPUI types appear.
+//! The window itself: where GPUI meets everything decided without it.
 //!
-//! Everything the window needs to decide -- what the configuration says, where
-//! the window may open, when to write the session -- is settled in [`crate::config`]
-//! and [`crate::session`], which know nothing about a toolkit and are tested
-//! without one. This module converts between those answers and GPUI, and holds
-//! the placeholders the later milestones replace with real panels.
+//! What the configuration says, where the window may open, when to write the
+//! session, what a file is doing and what the status bar says about it are all
+//! settled in [`crate::config`], [`crate::session`], [`crate::document`] and
+//! [`crate::analysis`], none of which know about a toolkit and all of which are
+//! tested without one. This module converts between those answers and GPUI.
 
+use std::sync::Arc;
 use std::time::Instant;
 
+use gpui::Corners;
 use gpui::{
-    AppContext, Application, Bounds, Context, IntoElement, ParentElement, Pixels, Render, Styled,
-    Subscription, TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowOptions, div,
-    point, px, relative, size,
+    AppContext, Application, Bounds, Context, IntoElement, ParentElement, Pixels, Render,
+    RenderImage, Styled, Subscription, Task, TitlebarOptions, Window, WindowBounds,
+    WindowDecorations, WindowOptions, canvas, div, point, px, relative, size,
 };
 use gpui_component::{ActiveTheme, Root, ThemeMode, TitleBar};
 
+use argand_core::SampleRange;
+use argand_dsp::{AnalysisRequest, Reduce, StftConfig};
+
+use crate::analysis::{Analyst, Update};
+use crate::axes;
 use crate::config::{Config, Theme};
+use crate::document::{Document, Effect, Origin, Status};
 use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
+use crate::spectrogram;
 
 /// What the window is called, in its title bar and to the desktop environment.
 const TITLE: &str = "argand";
@@ -24,7 +33,7 @@ const TITLE: &str = "argand";
 const APP_ID: &str = "io.github.o_kos.argand";
 
 /// Open the window and run until it closes.
-pub fn run(config: Config, saved: Session, writer: Option<Writer>) {
+pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Option<Origin>) {
     // The toolkit's own icons -- the window controls among them -- are loaded
     // by path through an asset source. Without one they resolve to nothing and
     // the buttons render as blank space that still responds to a click.
@@ -58,6 +67,11 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>) {
                         "the window is decorated by this side"
                     );
                     let shell = cx.new(|cx| Shell::new(config, writer, saved.geometry, window, cx));
+                    // After the entity exists, so the task draining its
+                    // updates has something to deliver them to.
+                    if let Some(origin) = opening {
+                        shell.update(cx, |shell, cx| shell.open(origin, cx));
+                    }
                     cx.new(|cx| Root::new(shell, window, cx))
                 });
 
@@ -129,16 +143,40 @@ fn to_bounds(geometry: Geometry) -> Bounds<Pixels> {
     }
 }
 
-/// The window's content: a title bar, the area the panels will fill, and the
-/// status bar under it.
+/// One open file, with the thread analysing it and the task delivering what
+/// that thread says.
+///
+/// The three live and die together. The thread stops when both the request
+/// sender in [`Analyst`] and the update receiver inside the task are gone, so
+/// keeping them in one struct is what makes closing a document a single drop
+/// rather than three that have to happen in the right order.
+struct OpenFile {
+    document: Document,
+    analyst: Analyst,
+    _updates: Task<()>,
+}
+
+/// The size of the plot in device pixels, which is the size the transform is
+/// asked to fill.
+///
+/// The plot, not the panel: the axis labels take a gutter out of the panel,
+/// and a transform sized to the whole of it would be squeezed into what is
+/// left. Device pixels rather than logical ones, so one column of the
+/// transform is one column of the screen on a scaled display as well as on an
+/// unscaled one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PlotSize {
+    width: usize,
+    height: usize,
+}
+
+/// The window's content: a title bar, the spectrogram, and the status bar.
 struct Shell {
     /// What the person configured.
     ///
-    /// The panel proportions are used below. The colour scheme, the range mode
-    /// and the transform defaults have nothing to act on until a signal is
-    /// loaded, so they are carried rather than applied: this milestone settles
-    /// where they are read from and what they mean, and the milestones that
-    /// draw with them take them from here.
+    /// The panel proportions lay the window out; the colour scheme, the range
+    /// mode and the transform defaults go into every analysis request built
+    /// below.
     config: Config,
     /// Absent when the platform offers nowhere to keep state, or when the file
     /// there was written by a version this one must not overwrite. Either way
@@ -156,6 +194,21 @@ struct Shell {
     /// kept instead. [`restore_rectangle`] says which those are, and what a
     /// backend that misreports the state costs.
     last_normal: Option<Geometry>,
+    /// The file on screen, or `None` for a window nobody has opened anything
+    /// in yet.
+    file: Option<OpenFile>,
+    /// The size the plot was last laid out at.
+    ///
+    /// It arrives from the layout rather than being computed here, and it is
+    /// what a request is sized to, so a window resized to twice the width is
+    /// answered with twice the columns rather than with the same picture
+    /// stretched.
+    plot: Option<PlotSize>,
+    /// The picture currently on the GPU.
+    ///
+    /// Held so that the one it replaces can be released: gpui keeps an
+    /// uploaded image in the window's texture atlas until it is told to let go.
+    texture: Option<Arc<RenderImage>>,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
 }
@@ -176,7 +229,151 @@ impl Shell {
             config,
             writer,
             last_normal,
+            file: None,
+            plot: None,
+            texture: None,
             _bounds: bounds,
+        }
+    }
+
+    /// Open a file, replacing whatever was open before it.
+    ///
+    /// Nothing is read here. [`crate::analysis::open`] starts a thread that
+    /// does the opening as well as the transforms, because a capture asked to
+    /// normalize is scanned for its peak before the first sample reaches a
+    /// transform, and that is a pass over the file that must not happen on the
+    /// thread drawing the window.
+    fn open(&mut self, origin: Origin, cx: &mut Context<Self>) {
+        tracing::info!(path = %origin.path.display(), "opening");
+        let (analyst, updates) = crate::analysis::open(origin.path.clone(), origin.hints.clone());
+
+        // Dropping this task drops the receiver, which is half of what tells
+        // the thread that nobody is waiting for it any more.
+        let pump = cx.spawn(async move |shell, cx| {
+            while let Ok(update) = updates.recv().await {
+                if shell
+                    .update(cx, |shell, cx| shell.receive(update, cx))
+                    .is_err()
+                {
+                    // The window has gone; so has anything to tell.
+                    break;
+                }
+            }
+        });
+
+        // Replacing the previous file drops its thread's handles, which is
+        // what stops it: an analysis nobody will look at should not go on
+        // holding a mapped file and a core.
+        self.file = Some(OpenFile {
+            document: Document::opening(origin),
+            analyst,
+            _updates: pump,
+        });
+        cx.notify();
+    }
+
+    /// Fold one update from the analysis thread into the document, and do
+    /// whatever it asks for.
+    fn receive(&mut self, update: Update, cx: &mut Context<Self>) {
+        let Some(effect) = self.file.as_mut().map(|file| file.document.apply(update)) else {
+            return;
+        };
+        match effect {
+            // The span to analyse is the length the file has just reported, so
+            // this is the first moment a request can be built at all.
+            Effect::Opened => self.ask_for_a_picture(),
+            Effect::Analysis => self.upload(cx),
+            Effect::Status => {}
+        }
+        cx.notify();
+    }
+
+    /// Note the size the plot was laid out at, and ask for a picture that
+    /// size.
+    ///
+    /// Called only when the size actually changed, so a window merely being
+    /// redrawn asks for nothing.
+    fn resize(&mut self, plot: PlotSize, cx: &mut Context<Self>) {
+        self.plot = Some(plot);
+        self.ask_for_a_picture();
+        cx.notify();
+    }
+
+    /// What the axes span, which is what the file says it holds.
+    ///
+    /// `None` until the file has been opened. The extents come from the file
+    /// rather than from a finished analysis so that the labels can be measured,
+    /// and the plot sized, before the first transform runs.
+    fn extents(&self) -> Option<axes::Extents> {
+        let meta = self.file.as_ref()?.document.meta()?;
+        Some(axes::Extents {
+            seconds: (0.0, meta.duration_seconds()),
+            hertz: meta.frequency_span(),
+        })
+    }
+
+    /// Ask the analysis thread for the picture the window can currently show.
+    ///
+    /// Silent when the file has not opened yet or the panel has not been laid
+    /// out: both arrive on their own, and each one calls back here.
+    fn ask_for_a_picture(&self) {
+        let Some(file) = self.file.as_ref() else {
+            return;
+        };
+        let Some(request) = self.request(&file.document) else {
+            return;
+        };
+        if !file.analyst.request(request) {
+            tracing::warn!("the analysis thread has stopped; nothing more will be drawn");
+        }
+    }
+
+    /// What to ask for: this file, at this size, with the settings from
+    /// `argand.toml`.
+    fn request(&self, document: &Document) -> Option<AnalysisRequest> {
+        let meta = document.meta()?;
+        let plot = self.plot?;
+        let fft_size = self.config.stft.fft_size;
+        Some(AnalysisRequest {
+            cfg: StftConfig {
+                fft_size,
+                // Three quarters of each transform overlaps the one before it,
+                // which is the same default `aspec` applies when `--hop` is
+                // left out.
+                hop: (fft_size / 4).max(1),
+                window: self.config.stft.window,
+            },
+            // The whole file. Selections and zoom arrive with the milestones
+            // after this one, and each narrows this span.
+            range: SampleRange::new(0, meta.len_samples),
+            width: plot.width,
+            height: plot.height,
+            // The loudest frame in a column rather than the average of them: a
+            // burst shorter than a pixel is what a capture is usually being
+            // looked at for, and averaging is what loses it.
+            reduce: Reduce::Max,
+            colormap: self.config.color_scheme,
+            dynamic_range: self.config.dynamic_range,
+            // No waveform panel yet.
+            waveform_columns: None,
+        })
+    }
+
+    /// Put the newest picture on the GPU and release the one it replaces.
+    fn upload(&mut self, cx: &mut Context<Self>) {
+        let fresh = self
+            .file
+            .as_ref()
+            .and_then(|file| file.document.analysis())
+            .and_then(|analysis| spectrogram::texture(&analysis.spectrogram));
+        let stale = std::mem::replace(&mut self.texture, fresh);
+
+        // An uploaded image stays in the window's texture atlas until gpui is
+        // told to let go of it. A spectrogram is the size of the panel and a
+        // resize produces one per step, so saying nothing here fills the atlas
+        // with pictures nobody can see any more.
+        if let Some(stale) = stale {
+            cx.drop_image(stale, None);
         }
     }
 
@@ -232,8 +429,146 @@ impl Drop for Shell {
     }
 }
 
+impl Shell {
+    /// The window's title: the application, and the file if there is one.
+    fn title(&self) -> String {
+        match self.file.as_ref() {
+            Some(file) => format!("{} - {TITLE}", file.document.origin().name()),
+            None => TITLE.to_owned(),
+        }
+    }
+
+    /// The spectrogram panel: the picture, and the axes around it.
+    ///
+    /// One canvas does the measuring and the drawing, because the two are the
+    /// same question. How wide the frequency labels are decides how much of
+    /// the panel is left for the picture, and that leftover is exactly what the
+    /// transform is asked to fill -- so the size reported back from here is the
+    /// plot's and not the panel's. Only the window has a font to measure the
+    /// labels with, which is why this cannot be settled anywhere earlier.
+    ///
+    /// The measurement is deferred rather than applied on the spot: prepaint is
+    /// not a moment at which the entity being painted can be borrowed again.
+    fn spectrogram(&self, extents: axes::Extents, cx: &mut Context<Self>) -> impl IntoElement {
+        let texture = self.texture.clone();
+        let known = self.plot;
+        let view = cx.entity().downgrade();
+        let colors = axes::Colors {
+            // Over the picture rather than beside it, so it is drawn to be
+            // read through: an opaque line hides a column of the spectrogram,
+            // and a column is what a person is looking at.
+            grid: cx.theme().border.opacity(0.55),
+            tick: cx.theme().muted_foreground,
+            label: cx.theme().muted_foreground,
+        };
+
+        canvas(
+            move |bounds, window, cx| {
+                let labels = axes::Labels::new(window);
+                let frame = axes::Frame::measure(bounds.size, extents, &labels)?;
+                let measured = device_size(frame.plot, window.scale_factor());
+                if known != Some(measured) {
+                    cx.defer(move |cx| {
+                        let _ = view.update(cx, |shell, cx| shell.resize(measured, cx));
+                    });
+                }
+                Some((frame, labels))
+            },
+            move |bounds, prepainted, window, cx| {
+                let Some((frame, labels)) = prepainted else {
+                    return;
+                };
+                // The picture first, then the marks over it: a grid line is
+                // there to be read against the spectrogram, not under it.
+                if let Some(texture) = texture {
+                    let plot = Bounds {
+                        origin: bounds.origin + point(px(frame.plot.x), px(frame.plot.y)),
+                        size: size(px(frame.plot.width), px(frame.plot.height)),
+                    };
+                    if let Err(error) =
+                        window.paint_image(plot, Corners::default(), texture, 0, false)
+                    {
+                        tracing::warn!(%error, "cannot draw the spectrogram");
+                    }
+                }
+                axes::paint(&frame, bounds.origin, &labels, colors, window, cx);
+            },
+        )
+        .size_full()
+    }
+
+    /// What fills the middle of the window.
+    ///
+    /// Decided in one place and drawn in another, so that neither has to hold
+    /// the other's conditions: four states, and each of them one element.
+    fn middle(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let notice = |text: String, color| {
+            div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .px_4()
+                .text_color(color)
+                .child(text)
+                .into_any_element()
+        };
+
+        match self.showing() {
+            Showing::Plot(extents) => div()
+                .flex_1()
+                .child(self.spectrogram(extents, cx))
+                .into_any_element(),
+            // A file that has not said what it is yet has no axes to draw and
+            // no picture to draw them around; the status bar reports it.
+            Showing::Opening => div().flex_1().into_any_element(),
+            Showing::Nothing => notice(
+                "open a signal file to begin".to_owned(),
+                cx.theme().muted_foreground,
+            ),
+            Showing::Failed(reason) => notice(reason, cx.theme().danger),
+        }
+    }
+
+    /// Which of the four the window is in.
+    fn showing(&self) -> Showing {
+        let Some(file) = self.file.as_ref() else {
+            return Showing::Nothing;
+        };
+        if let Status::Failed(reason) = file.document.status() {
+            return Showing::Failed(reason.clone());
+        }
+        match self.extents() {
+            Some(extents) => Showing::Plot(extents),
+            None => Showing::Opening,
+        }
+    }
+}
+
+/// What the middle of the window has to show.
+enum Showing {
+    /// No file has been opened.
+    Nothing,
+    /// A file is being opened and has not described itself yet.
+    Opening,
+    /// A file that could not be read, and why.
+    Failed(String),
+    /// The picture and the axes around it.
+    Plot(axes::Extents),
+}
+
 impl Render for Shell {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let summary = self
+            .file
+            .as_ref()
+            .and_then(|file| file.document.summary())
+            .unwrap_or_default();
+        let status = self.file.as_ref().map_or_else(
+            || "ready".to_owned(),
+            |file| file.document.status().message(),
+        );
+
         // No window border here: `Root` already wraps what it is given in one,
         // and a second would stack two shadows, two frames and two sets of
         // resize edges on the platforms that decorate client-side.
@@ -243,12 +578,11 @@ impl Render for Shell {
             .flex_col()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            .child(TitleBar::new().child(div().text_sm().child(TITLE)))
+            .child(TitleBar::new().child(div().text_sm().child(self.title())))
             .child(
-                // Where the waveform, the spectrogram and the panels go, split
-                // in the proportion the configuration asks for. The milestones
-                // after this one fill these two; until then they are what shows
-                // that the split is read from the file and reaches the layout.
+                // The window splits in the proportion the configuration asks
+                // for. The waveform strip belongs to a later milestone; until
+                // then it is what shows that the split reaches the layout.
                 div()
                     .flex_1()
                     .flex()
@@ -259,20 +593,14 @@ impl Render for Shell {
                             .border_b_1()
                             .border_color(cx.theme().border),
                     )
-                    .child(
-                        div()
-                            .flex_1()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("no signal loaded"),
-                    ),
+                    .child(self.middle(cx)),
             )
             .child(
                 div()
                     .flex()
                     .items_center()
+                    .justify_between()
+                    .gap_2()
                     .px_2()
                     .h(px(24.0))
                     .border_t_1()
@@ -280,7 +608,22 @@ impl Render for Shell {
                     .bg(cx.theme().secondary)
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child("ready"),
+                    .child(summary)
+                    .child(status),
             )
+    }
+}
+
+/// A laid-out rectangle in the pixels the display actually has.
+///
+/// The transform is sized in these rather than in logical pixels, so a column
+/// of the spectrogram is a column of the screen whatever the display is scaled
+/// to. Rounded up, because a plot half a pixel wider than the picture shows a
+/// seam and one half a pixel narrower shows nothing at all.
+fn device_size(plot: axes::Rect, scale: f32) -> PlotSize {
+    let edge = |logical: f32| (logical * scale).ceil().max(0.0) as usize;
+    PlotSize {
+        width: edge(plot.width),
+        height: edge(plot.height),
     }
 }
