@@ -71,7 +71,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     // After the entity exists, so the task draining its
                     // updates has something to deliver them to.
                     if let Some(origin) = opening {
-                        shell.update(cx, |shell, cx| shell.open(origin, cx));
+                        shell.update(cx, |shell, cx| shell.open(origin, window, cx));
                     }
                     cx.new(|cx| Root::new(shell, window, cx))
                 });
@@ -250,21 +250,20 @@ impl Shell {
     /// normalize is scanned for its peak before the first sample reaches a
     /// transform, and that is a pass over the file that must not happen on the
     /// thread drawing the window.
-    fn open(&mut self, origin: Origin, cx: &mut Context<Self>) {
+    fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         tracing::info!(path = %origin.path.display(), "opening");
-        // Recorded on the way in rather than once it has opened: a capture
-        // that failed for want of a `--rate` is exactly the one whose hints
-        // are worth having in the list, so that the next attempt can start
-        // from them.
-        self.remember_file(&origin);
         let (analyst, updates) = crate::analysis::open(origin.path.clone(), origin.hints.clone());
 
         // Dropping this task drops the receiver, which is half of what tells
         // the thread that nobody is waiting for it any more.
-        let pump = cx.spawn(async move |shell, cx| {
+        // Spawned against the window rather than the application, because
+        // letting go of a texture needs one: gpui takes the window being
+        // updated out of its own list, so an image released without naming it
+        // stays in that window's atlas.
+        let pump = cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 if shell
-                    .update(cx, |shell, cx| shell.receive(update, cx))
+                    .update_in(cx, |shell, window, cx| shell.receive(update, window, cx))
                     .is_err()
                 {
                     // The window has gone; so has anything to tell.
@@ -277,7 +276,7 @@ impl Shell {
         // otherwise be drawn under this one's axes until the first transform
         // lands, and its plot size would send the first request at a width
         // this file's labels may not leave.
-        self.release(cx);
+        self.release(window, cx);
         self.plot = None;
 
         // Replacing the previous file drops both ends of its queue, which is
@@ -306,15 +305,30 @@ impl Shell {
 
     /// Fold one update from the analysis thread into the document, and do
     /// whatever it asks for.
-    fn receive(&mut self, update: Update, cx: &mut Context<Self>) {
+    fn receive(&mut self, update: Update, window: &mut Window, cx: &mut Context<Self>) {
         let Some(effect) = self.file.as_mut().map(|file| file.document.apply(update)) else {
             return;
         };
         match effect {
-            // The span to analyse is the length the file has just reported, so
-            // this is the first moment a request can be built at all.
-            Effect::Opened => self.ask_for_a_picture(),
-            Effect::Analysis => self.upload(cx),
+            Effect::Opened => {
+                // Remembered now rather than when it was asked for. A file
+                // that will not open must not overwrite the hints of the entry
+                // that did: a raw capture first opened with `--raw iq_i16@2M`
+                // and later picked from a dialog with nothing would lose the
+                // one spelling that reads it.
+                if let Some(origin) = self
+                    .file
+                    .as_ref()
+                    .map(|file| file.document.origin().clone())
+                {
+                    self.remember_file(&origin);
+                }
+                // The span to analyse is the length the file has just
+                // reported, so this is the first moment a request can be built
+                // at all.
+                self.ask_for_a_picture();
+            }
+            Effect::Analysis => self.upload(window, cx),
             Effect::Status => {}
         }
         cx.notify();
@@ -374,19 +388,19 @@ impl Shell {
     }
 
     /// Put the newest picture on the GPU and release the one it replaces.
-    fn upload(&mut self, cx: &mut Context<Self>) {
+    fn upload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let fresh = self
             .file
             .as_ref()
             .and_then(|file| file.document.analysis())
             .and_then(|analysis| spectrogram::texture(&analysis.spectrogram));
         let stale = std::mem::replace(&mut self.texture, fresh);
-        release(stale, cx);
+        release(stale, window, cx);
     }
 
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
-    fn release(&mut self, cx: &mut Context<Self>) {
-        release(self.texture.take(), cx);
+    fn release(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        release(self.texture.take(), window, cx);
     }
 
     /// Record where the window is and what state it is in.
@@ -442,7 +456,7 @@ impl Shell {
     /// A file chosen this way is opened on what it says about itself. A
     /// headerless capture has nothing to say, so it fails and says how; the
     /// recent list is what carries hints back for the next time.
-    fn choose(view: &WeakEntity<Self>, cx: &mut gpui::App) {
+    fn choose(view: &WeakEntity<Self>, window: &mut Window, cx: &mut gpui::App) {
         let chosen = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
@@ -450,18 +464,21 @@ impl Shell {
             prompt: None,
         });
         let view = view.clone();
-        cx.spawn(async move |cx| {
-            // A cancelled dialog, a platform without one, and a dialog that
-            // failed all mean the same thing here: no file was chosen.
-            let Ok(Ok(Some(paths))) = chosen.await else {
-                return;
-            };
-            let Some(path) = paths.into_iter().next() else {
-                return;
-            };
-            let _ = view.update(cx, |shell, cx| shell.open(Origin::new(path), cx));
-        })
-        .detach();
+        window
+            .spawn(cx, async move |cx| {
+                // A cancelled dialog, a platform without one, and a dialog that
+                // failed all mean the same thing here: no file was chosen.
+                let Ok(Ok(Some(paths))) = chosen.await else {
+                    return;
+                };
+                let Some(path) = paths.into_iter().next() else {
+                    return;
+                };
+                let _ = view.update_in(cx, |shell, window, cx| {
+                    shell.open(Origin::new(path), window, cx);
+                });
+            })
+            .detach();
     }
 
     /// The menu in the title bar.
@@ -482,7 +499,7 @@ impl Shell {
                 let opener = view.clone();
                 menu = menu.item(
                     PopupMenuItem::new("Open file...")
-                        .on_click(move |_, _, cx| Self::choose(&opener, cx)),
+                        .on_click(move |_, window, cx| Self::choose(&opener, window, cx)),
                 );
                 if recent.is_empty() {
                     return menu;
@@ -491,11 +508,12 @@ impl Shell {
                 for (label, origin) in &recent {
                     let view = view.clone();
                     let origin = origin.clone();
-                    menu =
-                        menu.item(PopupMenuItem::new(label.clone()).on_click(move |_, _, cx| {
+                    menu = menu.item(PopupMenuItem::new(label.clone()).on_click(
+                        move |_, window, cx| {
                             let origin = origin.clone();
-                            let _ = view.update(cx, |shell, cx| shell.open(origin, cx));
-                        }));
+                            let _ = view.update(cx, |shell, cx| shell.open(origin, window, cx));
+                        },
+                    ));
                 }
                 menu
             })
@@ -675,9 +693,9 @@ impl Render for Shell {
             .id("shell")
             // A capture dropped anywhere on the window opens, which is where a
             // person aims when the window is showing the wrong file.
-            .on_drop(cx.listener(|shell, dropped: &ExternalPaths, _, cx| {
+            .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
                 if let Some(path) = dropped.paths().first() {
-                    shell.open(Origin::new(path.clone()), cx);
+                    shell.open(Origin::new(path.clone()), window, cx);
                 }
             }))
             .child(
@@ -734,9 +752,12 @@ impl Render for Shell {
 /// let go of it. A spectrogram is the size of the plot and a resize produces
 /// one per step, so saying nothing fills the atlas with pictures nobody can
 /// see any more.
-fn release(texture: Option<Arc<RenderImage>>, cx: &mut Context<Shell>) {
+fn release(texture: Option<Arc<RenderImage>>, window: &mut Window, cx: &mut Context<Shell>) {
     if let Some(texture) = texture {
-        cx.drop_image(texture, None);
+        // The window is named rather than left to the sweep over `App`'s own
+        // list: gpui takes the window being updated out of that list, and
+        // every path that releases a picture here runs inside one.
+        cx.drop_image(texture, Some(window));
     }
 }
 

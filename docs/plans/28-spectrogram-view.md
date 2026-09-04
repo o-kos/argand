@@ -59,16 +59,26 @@ waveform panel, editing.
   in `shell.rs`.
 - **A request is sized to the plot, not to the panel.** The frequency labels take
   a gutter out of the panel, so the transform is asked for exactly the rectangle
-  the picture ends up in and one transform column is one screen column.
+  the picture ends up in, and its edges are snapped to whole device pixels: a
+  settled window then draws one transform column to one screen column. A window
+  being resized is the exception, and deliberately so -- the previous picture is
+  stretched into the new rectangle until the transform for it finishes, because
+  a window that blanks itself on every drag is harder to use than one showing a
+  slightly stale spectrogram.
 - **A resize re-analyses, and the thread keeps only the last request.** A drag
   offers one request per step; `newest` discards those overtaken while a
   transform ran, so the window ends a drag one analysis behind rather than
   dozens.
-- **Every digit is measured as the widest digit the font has.**
+- **Tabular figures are asked for, and every digit is measured as the widest.**
   `LabelMeasure::width` has to answer the same for any digit in any place,
-  because the gutter is reserved from a row of zeros before a tick is chosen.
-  A desktop font is not obliged to have tabular figures, so the substitution is
-  made in the measure rather than assumed of the face.
+  because the gutter is reserved from a row of zeros before a tick is chosen. A
+  desktop font is not obliged to have tabular figures, so the `tnum` feature is
+  requested and the substitution is made in the measure as well, rather than
+  either being assumed of the face. What neither covers is contextual shaping
+  between two digits in a face that has no `tnum` and no uniform advance;
+  bounding that would mean measuring every number the axis could print. The
+  residue is a label a pixel or two past its gutter, and it is named in
+  `axes.rs` rather than hidden.
 - **The uploaded picture is released when it is replaced.** gpui keeps a
   `RenderImage` in the window's texture atlas until it is told to let go, and a
   resize produces one per step.
@@ -86,12 +96,24 @@ waveform panel, editing.
   the lever the transform does expose. The level scan a `--normalize auto`
   capture runs is still not interruptible: it happens before there is a source
   to wrap.
+- **A file enters the recent list when it opens, not when it is asked for.**
+  Recording it on the way in looked better -- a capture that failed for want of
+  a `--rate` is exactly the one whose hints are worth keeping -- and is wrong:
+  a raw capture first opened with `--raw iq_i16@2M` and later picked from a
+  dialog with nothing would have had the one spelling that reads it replaced by
+  nothing, and could never be opened from the list again.
+- **A released texture names its window.** gpui takes the window being updated
+  out of `App`'s own list, so an image dropped without naming it stays in that
+  window's atlas -- and every path here that releases one runs inside a window
+  update.
 - **`session.toml` is version 2, and version 1 is read into it.** The version
   exists so a binary that cannot read a file leaves it alone. Adding the recent
   list under the old number would have let an older binary read the file,
   ignore the list and rewrite without it; under a new one it starts fresh and
   leaves the file. A version 1 file is still read, since every field the new
-  layout added has a default.
+  layout added has a default. What the number does not guard is two instances
+  running at once, which lose each other's writes whatever the layout: Issue
+  #43 carries that, and `session.rs` says so where the version is defined.
 - **The menu is drawn in the title bar, not handed to a platform menu bar.**
   gpui's `set_menus` builds a real menu bar on macOS and stores the list
   unused on Linux and Windows. The window already draws its own title bar on
@@ -124,6 +146,16 @@ waveform panel, editing.
   a file a transform is reading.
 - **Debouncing resize on the window's side.** A timer to add and a delay to
   tune, for what `newest` already achieves by discarding overtaken requests.
+- **A lock around `session.toml`.** Two instances running at once lose each
+  other's writes, which the recent list made worth noticing. It is a window
+  rectangle and a list of paths, nothing a person authored, and serializing
+  processes over it is a change to a mechanism this milestone only added a
+  field to. Raised as Issue #43 instead.
+- **Refusing to draw a picture whose size does not match the plot.** It would
+  make "one transform column is one screen column" true at every instant, at
+  the cost of a window that blanks itself for the length of a full transform
+  every time it is resized. The stale picture is stretched instead, and the
+  claim is stated for a settled window.
 - **serde derives on `argand-io`'s hint types.** It would make `session.toml`
   shorter to write and would tie the file's format to the shape of types that
   exist to be parsed from a command line. The spellings are the stable surface;
@@ -183,7 +215,10 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       identical, and every one of the 52,807 that differ lies on one of the 30
       grid columns or 23 grid rows the window draws over the picture. Outside
       the grid the difference is exactly zero, so nothing is resampled,
-      recoloured or shifted between the transform and the screen.
+      recoloured or shifted between the transform and the screen. That holds
+      for a settled window; while a resize's new picture is being computed the
+      previous one is stretched into the new rectangle, which is deliberate and
+      recorded above.
 - [x] A real and a complex capture both display correctly, with the frequency
       axis one-sided and two-sided respectively. `rl_f16x8-hfdl.wav` labels
       0 to 4 kHz; `12.579000_25_08_26_06_09_10.iqw` labels 12.567 to 12.591 MHz

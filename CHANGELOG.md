@@ -18,8 +18,8 @@ promise applies to.
   tick policy `aspec` uses -- two-sided around the centre frequency for an I/Q
   capture, one-sided for a real one. `aspec` is unchanged.
 - `argand <file>` takes the same seven options `aspec` takes for reading a
-  capture: `--raw`, `--type`, `--rate`, `--center`, `--offset`, `--normalize`
-  and `--gain`. Started with no file, it opens an empty window.
+  capture: `--raw`, `--sample-type`, `--rate`, `--center`, `--offset`,
+  `--normalize` and `--gain`. Started with no file, it opens an empty window.
 - The transform runs on a thread of its own, so the window stays usable while a
   long capture is analysed and the status bar reports how far it has got. A
   large capture is still slow to appear: making the first frame fast comes

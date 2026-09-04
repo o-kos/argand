@@ -158,7 +158,7 @@ pub struct Restored {
 /// The strings are deliberate. `OpenHints` is `argand-io`'s and carries a
 /// sample type, a raw layout and a normalize mode, none of which this file
 /// needs to know the shape of -- only how a person writes them, which is what
-/// `--raw`, `--type` and `--normalize` already answer. Storing the spelling
+/// `--raw`, `--sample-type` and `--normalize` already answer. Storing the spelling
 /// means one grammar for the command line, the report and this file, and it
 /// means a session written by a version that learned a new sample type is
 /// still readable rather than merely unparseable.

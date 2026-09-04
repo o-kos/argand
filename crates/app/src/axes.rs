@@ -173,10 +173,21 @@ impl Frame {
 /// any place, because the gutter is reserved from a row of zeros before a
 /// single tick has been chosen. Most faces give that, and none is obliged to:
 /// a font with proportional figures would make that reservation a guess, and a
-/// label would then run into the plot beside it. So every digit is measured as
-/// the widest digit the face has, which holds whatever font a desktop hands
-/// this window, and errs towards a gutter a pixel wide rather than a label a
-/// pixel short.
+/// label would then run into the plot beside it.
+///
+/// Two things are done about it, and neither is a proof. Tabular figures are
+/// asked for through the `tnum` feature, which every face that has one uses to
+/// give its digits a single advance and no kerning between them. And every
+/// digit is then measured as the widest digit the face reports, so a face
+/// without the feature is still measured on its widest rather than on whichever
+/// digits the value happened to have.
+///
+/// What is left is contextual shaping between a pair of digits in a face that
+/// has neither `tnum` nor uniform advances. Bounding that would mean measuring
+/// every number the axis could print, and no measure can. The residue is a
+/// label a pixel or two wider than the gutter allowed for, on a desktop font
+/// chosen for a user interface, which is why it is named here rather than
+/// solved.
 pub struct Labels {
     text: std::sync::Arc<gpui::WindowTextSystem>,
     font: Font,
@@ -186,10 +197,12 @@ pub struct Labels {
 }
 
 impl Labels {
-    /// Take the font the window is drawing with.
+    /// Take the font the window is drawing with, asking it for tabular
+    /// figures.
     pub fn new(window: &Window) -> Self {
         let text = window.text_system().clone();
-        let font = window.text_style().font();
+        let mut font = window.text_style().font();
+        font.features = tabular(&font.features);
         let font_id = text.resolve_font(&font);
         let widest = ('0'..='9')
             .max_by(|a, b| advance(&text, font_id, *a).total_cmp(&advance(&text, font_id, *b)))
@@ -234,6 +247,22 @@ impl Labels {
 
 /// The box a single label is laid out in.
 const LINE_HEIGHT: f32 = LABEL_SIZE * 1.4;
+
+/// The window's own font features with `tnum` added.
+///
+/// Whatever the theme asked for is kept: this adds one feature rather than
+/// replacing the set, so a face configured with ligatures off stays that way.
+fn tabular(features: &gpui::FontFeatures) -> gpui::FontFeatures {
+    const TABULAR: &str = "tnum";
+    let mut tags: Vec<(String, u32)> = features
+        .tag_value_list()
+        .iter()
+        .filter(|(tag, _)| tag != TABULAR)
+        .cloned()
+        .collect();
+    tags.push((TABULAR.to_owned(), 1));
+    gpui::FontFeatures(std::sync::Arc::new(tags))
+}
 
 fn advance(text: &gpui::WindowTextSystem, font_id: FontId, digit: char) -> f32 {
     text.advance(font_id, px(LABEL_SIZE), digit)

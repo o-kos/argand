@@ -97,3 +97,29 @@ fn the_options_are_spelled_the_way_aspec_spells_them() {
     assert_eq!(hints.normalize, Some(Normalize::None));
     assert_eq!(hints.gain_db, 3.0);
 }
+
+#[test]
+fn every_long_flag_is_spelled_the_way_the_documents_spell_it() {
+    // A flag's name is derived from a field name, so a field renamed for
+    // Rust's sake renames the flag with it, and nothing but this notices.
+    // These are the spellings `aspec` takes and the README prints.
+    let spelled: Vec<String> = Args::command()
+        .get_arguments()
+        .filter_map(|arg| arg.get_long().map(|name| format!("--{name}")))
+        .collect();
+
+    for flag in [
+        "--raw",
+        "--sample-type",
+        "--rate",
+        "--center",
+        "--offset",
+        "--normalize",
+        "--gain",
+    ] {
+        assert!(
+            spelled.iter().any(|name| name == flag),
+            "{flag} is not a flag: {spelled:?}"
+        );
+    }
+}

@@ -319,9 +319,9 @@ argand capture.iqw
 argand dump.bin --raw iq_i16@24k --center 12.579M
 ```
 
-The seven options that say how to read a capture -- `--raw`, `--type`,
-`--rate`, `--center`, `--offset`, `--normalize`, `--gain` -- are `aspec`'s own,
-spelled the same way. Everything that decides how the picture looks comes from
+The seven options that say how to read a capture -- `--raw`, `--sample-type`,
+`--rate`, `--center`, `--offset`, `--normalize` and `--gain` -- are `aspec`'s
+own, spelled the same way. Everything that decides how the picture looks comes from
 `argand.toml` instead: the theme, the colour scheme, the dynamic range, the
 transform size and window, and the panel proportions. It is read from beside
 the binary first and from the platform configuration directory second, and a
