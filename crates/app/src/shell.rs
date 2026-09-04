@@ -319,6 +319,11 @@ impl Shell {
     /// Called only when the size actually changed, so a window merely being
     /// redrawn asks for nothing.
     fn resize(&mut self, plot: PlotSize, cx: &mut Context<Self>) {
+        tracing::debug!(
+            width = plot.width,
+            height = plot.height,
+            "the plot was laid out"
+        );
         self.plot = Some(plot);
         self.ask_for_a_picture();
         cx.notify();

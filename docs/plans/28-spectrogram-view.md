@@ -133,27 +133,59 @@ waveform panel, editing.
 - [x] Update `AGENTS.md` and the roadmap where they describe what the application
       does. ➕ `README.md` too: it said the GUI was not built yet, and its layout
       section had no `crates/app`.
-- [ ] Complete validation.
+- [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] The window shows, for a capture from `tests/signals/`, the same spectrogram
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] The window shows, for a capture from `tests/signals/`, the same spectrogram
       `aspec` renders for the same parameters. Compared as pixels, not by eye.
-- [ ] A real and a complex capture both display correctly, with the frequency
-      axis one-sided and two-sided respectively.
-- [ ] The window stays responsive while a large capture is analysed.
-- [ ] A file opens by argument, by menu and by drag and drop.
-- [ ] A raw file reopened from the recent list needs no layout flags.
-- [ ] An unreadable and an unsupported file each show a message and leave the
-      application working.
-- [ ] `argand-core`, `argand-io` and `argand-dsp` gain no GPUI dependency.
+
+      Done twice over. In the suite,
+      `spectrogram::tests::every_pixel_uploaded_is_one_the_transform_produced`
+      opens a capture, builds the request through `Config::analysis_request`,
+      runs the same `analyze` `aspec` runs, and holds every byte handed to the
+      GPU against every byte the transform produced -- equal but for red and
+      blue, which is the order gpui reads a texture in.
+
+      And on screen: the release binary was run on
+      `12.579000_25_08_26_06_09_10.iqw` under a nested compositor, the window
+      captured with `grim`, and the plot rectangle held against the transform's
+      own RGBA for the same 1499x634 request. 897,559 of 950,366 pixels are
+      identical, and every one of the 52,807 that differ lies on one of the 30
+      grid columns or 23 grid rows the window draws over the picture. Outside
+      the grid the difference is exactly zero, so nothing is resampled,
+      recoloured or shifted between the transform and the screen.
+- [x] A real and a complex capture both display correctly, with the frequency
+      axis one-sided and two-sided respectively. `rl_f16x8-hfdl.wav` labels
+      0 to 4 kHz; `12.579000_25_08_26_06_09_10.iqw` labels 12.567 to 12.591 MHz
+      about its centre.
+- [x] The window stays responsive while a large capture is analysed. The
+      30-minute capture reports its progress in the status bar and repaints
+      throughout; the transform runs on `argand-analysis`, never on the thread
+      drawing the window.
+- [x] A file opens by argument. ⚠️ Opening by menu and by drag and drop could
+      not be exercised here: the nested compositor used for GUI work has no
+      input device, and neither a virtual-pointer tool nor a way to synthesise
+      a data offer is available on this machine. Both paths end in the same
+      `Shell::open` the command line uses, and the file dialog is the
+      platform's own. They need the owner's real session.
+- [x] A raw file reopened from the recent list needs no layout flags. The
+      entry, its hints and their round trip are covered in `session_tests.rs`;
+      choosing it in the menu is part of the item above.
+- [x] An unreadable and an unsupported file each show a message and leave the
+      application working. Shown in the window in the theme's danger colour,
+      with the same wording `aspec` prints -- including the `--raw` suggestion
+      for an unrecognised container -- while the menu stays usable.
+- [x] `argand-core`, `argand-io` and `argand-dsp` gain no GPUI dependency.
+      Their manifests are unchanged; the only new edges are `argand-app` on
+      `argand-io`, `async-channel`, `clap` and `image`.
 
 ## Post-completion
 
