@@ -9,6 +9,16 @@
 //! and it is only ever advisory, so a missing, unreadable, corrupt or
 //! future-versioned file costs a log line and the defaults, never a start-up
 //! failure.
+//!
+//! What it is not is serialized between processes. Each run reads the file once
+//! and writes it whole, so two running at the same time keep whatever the last
+//! one wrote and lose the other's -- including a recent entry and the only copy
+//! of the hints that open the capture it names. [`VERSION`] guards a
+//! *downgrade*, where a binary that cannot read the layout leaves the file
+//! alone, and not a race: an older binary already running has read its own copy
+//! and will rewrite it in its own layout whatever the number on disk says.
+//! Issue #43 carries that, and until it is answered what this file remembers is
+//! what the last instance to write it remembered.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -411,11 +421,24 @@ impl Session {
     /// capture reopened with a corrected sample rate should come back with the
     /// corrected one.
     pub fn remember(&mut self, path: &Path, hints: &OpenHints) {
+        // Absolute, because the list outlives the directory the application
+        // was started in. `argand dump.bin` stored literally would, from
+        // somewhere else, either fail to open or -- worse -- open a different
+        // `dump.bin` with the first one's layout hints.
+        //
+        // Made absolute rather than canonical: a link is a name a person chose
+        // and expects to see again, and resolving it would also require the
+        // file still to be there, which is not a condition for remembering
+        // where it was.
+        let path = std::path::absolute(path).unwrap_or_else(|error| {
+            tracing::warn!(path = %path.display(), %error, "cannot resolve the path; remembering it as given");
+            path.to_owned()
+        });
         self.recent.retain(|entry| entry.path != path);
         self.recent.insert(
             0,
             Recent {
-                path: path.to_owned(),
+                path,
                 hints: Hints::from(hints),
             },
         );

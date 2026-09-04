@@ -96,6 +96,13 @@ waveform panel, editing.
   the lever the transform does expose. The level scan a `--normalize auto`
   capture runs is still not interruptible: it happens before there is a source
   to wrap.
+- **A remembered path is absolute.** The list outlives the directory the
+  application was started in, so `argand dump.bin` stored as written would,
+  from anywhere else, either fail to open or open a different `dump.bin` with
+  the first one's layout hints. Made absolute rather than canonical: a link is
+  a name a person chose and expects to see again, and resolving one would also
+  demand the file still be there, which is not a condition for remembering
+  where it was.
 - **A file enters the recent list when it opens, not when it is asked for.**
   Recording it on the way in looked better -- a capture that failed for want of
   a `--rate` is exactly the one whose hints are worth keeping -- and is wrong:
@@ -113,7 +120,7 @@ waveform panel, editing.
   leaves the file. A version 1 file is still read, since every field the new
   layout added has a default. What the number does not guard is two instances
   running at once, which lose each other's writes whatever the layout: Issue
-  #43 carries that, and `session.rs` says so where the version is defined.
+  #43 carries that, and the module documentation in `session.rs` says so.
 - **The menu is drawn in the title bar, not handed to a platform menu bar.**
   gpui's `set_menus` builds a real menu bar on macOS and stores the list
   unused on Linux and Windows. The window already draws its own title bar on
@@ -147,10 +154,13 @@ waveform panel, editing.
 - **Debouncing resize on the window's side.** A timer to add and a delay to
   tune, for what `newest` already achieves by discarding overtaken requests.
 - **A lock around `session.toml`.** Two instances running at once lose each
-  other's writes, which the recent list made worth noticing. It is a window
-  rectangle and a list of paths, nothing a person authored, and serializing
-  processes over it is a change to a mechanism this milestone only added a
-  field to. Raised as Issue #43 instead.
+  other's writes, and the recent list is the first thing in that file whose
+  loss costs a person something: the hints it holds are the only record of how
+  a headerless capture opens. That is why it is a normal Issue, #43, and not a
+  backlog one. Serializing processes over that file is still a change to a
+  mechanism this milestone only added a field to, so it is answered there
+  rather than here; until it is, what the file remembers is what the last
+  instance to write it remembered, which `session.rs` says at the top.
 - **Refusing to draw a picture whose size does not match the plot.** It would
   make "one transform column is one screen column" true at every instant, at
   the cost of a window that blanks itself for the length of a full transform

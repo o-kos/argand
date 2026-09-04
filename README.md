@@ -331,7 +331,9 @@ Files also open from the File menu, by dropping a capture on the window, and
 from the list of files opened before. That list keeps the options each file was
 opened with, so a headerless capture opened once as `iq_i16@24k` does not need
 those flags a second time. It lives in `session.toml` in the platform state
-directory, along with the window's size and state.
+directory, along with the window's size and state. That file is written whole
+by whichever instance writes it last, so what it remembers is what the last one
+to close remembered.
 
 ## Layout
 

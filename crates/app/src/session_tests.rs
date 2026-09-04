@@ -551,19 +551,19 @@ fn the_recent_list_survives_the_round_trip_through_the_file() {
 #[test]
 fn a_file_opened_again_moves_to_the_head_rather_than_appearing_twice() {
     let mut session = Session::default();
-    for name in ["a.wav", "b.wav", "c.wav"] {
+    for name in ["/c/a.wav", "/c/b.wav", "/c/c.wav"] {
         session.remember(Path::new(name), &OpenHints::default());
     }
     // And with different hints the second time, which are the ones worth
     // keeping: they are the ones that worked.
-    session.remember(Path::new("a.wav"), &raw_hints());
+    session.remember(Path::new("/c/a.wav"), &raw_hints());
 
     let names: Vec<_> = session
         .recent
         .iter()
         .map(|entry| entry.path.to_string_lossy().into_owned())
         .collect();
-    assert_eq!(names, ["a.wav", "c.wav", "b.wav"]);
+    assert_eq!(names, ["/c/a.wav", "/c/c.wav", "/c/b.wav"]);
     assert_eq!(
         session.recent[0].hints.to_open_hints().byte_offset,
         44,
@@ -572,14 +572,31 @@ fn a_file_opened_again_moves_to_the_head_rather_than_appearing_twice() {
 }
 
 #[test]
+fn a_file_named_from_the_current_directory_is_remembered_from_the_root() {
+    // The list outlives the directory the application was started in. A bare
+    // `dump.bin` kept as written would, from somewhere else, either fail to
+    // open or open a different file with this one's layout hints.
+    let mut session = Session::default();
+    session.remember(Path::new("dump.bin"), &raw_hints());
+
+    let stored = &session.recent[0].path;
+    assert!(stored.is_absolute(), "{} is not absolute", stored.display());
+    assert!(stored.ends_with("dump.bin"), "{}", stored.display());
+
+    // And the same file named the same way twice is still one entry.
+    session.remember(Path::new("dump.bin"), &raw_hints());
+    assert_eq!(session.recent.len(), 1);
+}
+
+#[test]
 fn the_recent_list_does_not_grow_without_end() {
     let mut session = Session::default();
     for i in 0..RECENT_LIMIT * 2 {
-        session.remember(Path::new(&format!("{i}.wav")), &OpenHints::default());
+        session.remember(Path::new(&format!("/c/{i}.wav")), &OpenHints::default());
     }
     assert_eq!(session.recent.len(), RECENT_LIMIT);
     // The newest is at the head and the oldest have gone.
-    assert_eq!(session.recent[0].path, PathBuf::from("19.wav"));
+    assert_eq!(session.recent[0].path, PathBuf::from("/c/19.wav"));
 }
 
 #[test]
