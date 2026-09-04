@@ -24,10 +24,10 @@ promise applies to.
   long capture is analysed and the status bar reports how far it has got. A
   large capture is still slow to appear: making the first frame fast comes
   next.
-- The status bar names the container, the sample type, the sample rate, the
-  duration and the centre frequency. A file that cannot be read is reported in
-  the window, with the same message `aspec` would print, and leaves the
-  application working.
+- The status bar names the container, the sample type, the sample rate and the
+  duration, and the centre frequency of a capture that was tuned to one. A file
+  that cannot be read is reported in the window, with the same message `aspec`
+  would print, and leaves the application working.
 - `argand.toml`, read from beside the binary or from the platform configuration
   directory, sets the theme, the colour scheme, the dynamic-range mode, the
   transform defaults and the panel proportions. Names are spelled as `aspec`

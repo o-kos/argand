@@ -33,11 +33,12 @@ waveform panel, editing.
   the `LabelMeasure` trait. `aspec` implements it over ab_glyph; this milestone
   implements it over GPUI's text system, which is the second implementation the
   trait was extracted for.
-- `crates/app` holds `config.rs` (a person's settings), `session.rs` (the
-  application's own state, atomically written and version-checked) and `shell.rs`
-  (the only place a GPUI type appears). The session already stores window
-  geometry and state; this milestone adds to that mechanism rather than building
-  another.
+- `crates/app` held, when this plan was written, `config.rs` (a person's
+  settings), `session.rs` (the application's own state, atomically written and
+  version-checked) and `shell.rs`, which was then the only place a GPUI type
+  appeared. The session already stored window geometry and state; this milestone
+  adds to that mechanism rather than building another. `AGENTS.md` describes the
+  division as it stands after this milestone.
 - `aspec`'s `main.rs` shows the working sequence: build `OpenHints` from
   arguments, `argand_io::open`, `analyze` with a progress callback.
 
@@ -96,11 +97,14 @@ waveform panel, editing.
   the lever the transform does expose. The level scan a `--normalize auto`
   capture runs is still not interruptible: it happens before there is a source
   to wrap.
-- **The recent list is a list of names, not of files.** Two spellings of one
-  capture -- a link and its target, or a path through `..` -- are two entries.
-  Making it a list of files would mean asking the filesystem about every stored
-  entry on every open, and would still be wrong for one that has since moved;
-  `recent_labels` already tells apart the entries that would read alike.
+- **The recent list is a list of names, not of files.** Entries are compared as
+  absolute paths and nothing asks the filesystem what one points at, so a link
+  and its target are two entries. How much else two spellings share is the
+  platform's business -- `std::path::absolute` drops a `.` everywhere and folds
+  a `..` on Windows -- and this does not try to say which. Making it a list of
+  files would mean a filesystem call for every stored entry on every open, and
+  would still be wrong for one that has since moved; `recent_labels` already
+  tells apart the entries that would read alike.
 - **A path that cannot be written is not remembered.** TOML is UTF-8 and a
   filename on Linux is any bytes at all, so such a path fails to serialize.
   Refusing it costs the entry; letting it in would cost every later save,
@@ -198,7 +202,8 @@ waveform panel, editing.
 - [x] Open a file from the command line, accepting the same hints as `aspec`.
 - [x] Open a file from a menu and by drag and drop.
 - [x] Show container, sample type, sample rate, duration and centre frequency in
-      the status bar.
+      the status bar. The centre frequency only where there is one: baseband is
+      the default, and `centre 0 Hz` says nothing a reader did not assume.
 - [x] Remember recent files and the hints each was opened with, so a headerless
       capture opened once as `iq_i16@2M` does not need those flags again.
 - [x] Report a file that cannot be opened in the window, leaving the application

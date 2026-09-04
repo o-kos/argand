@@ -185,7 +185,8 @@ impl Document {
     }
 
     /// What the status bar says about the file itself, in the wording `aspec`
-    /// uses for the same fields.
+    /// uses for the same fields: the container, the sample type, the sample
+    /// rate, the duration, and the centre frequency of a capture that has one.
     ///
     /// `None` until the file has been opened, because until then nothing here
     /// is known -- not even whether the file is a signal.

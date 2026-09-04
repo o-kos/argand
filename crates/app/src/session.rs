@@ -421,13 +421,18 @@ impl Session {
     /// time: a capture reopened with a corrected sample rate should come back
     /// with the corrected one.
     ///
-    /// Written the same way, not the same file. `/x/dir/../capture` and
-    /// `/x/capture` are two entries, and so are a link and its target. This is
-    /// a list of the names a person opened things by, and two names for one
-    /// capture are two names -- [`recent_labels`] already distinguishes them
-    /// where they would read alike. Making it a list of files instead would
-    /// mean asking the filesystem about every stored entry on every open, and
-    /// would still be wrong for one that has since moved.
+    /// Written the same way, not the same file: the comparison is between the
+    /// absolute paths, and a link and its target are two of those. How much
+    /// else two spellings share depends on the platform -- `std::path::absolute`
+    /// drops a `.` everywhere and folds a `..` on Windows -- so this merges
+    /// some pairs and not others, and does not try to say which.
+    ///
+    /// It does not ask the filesystem what a path points at. This is a list of
+    /// the names a person opened things by, and two names for one capture are
+    /// two names; [`recent_labels`] already tells apart the ones that would
+    /// read alike. A list of files instead would mean a filesystem call for
+    /// every stored entry on every open, and would still be wrong for one that
+    /// has since moved.
     pub fn remember(&mut self, path: &Path, hints: &OpenHints) {
         // Absolute, because the list outlives the directory the application
         // was started in. `argand dump.bin` stored literally would, from

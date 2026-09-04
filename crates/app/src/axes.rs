@@ -7,9 +7,11 @@
 //! through [`LabelMeasure`] -- this is the second implementation of that trait,
 //! and the reason it exists. The other is the drawing.
 //!
-//! The layout half takes the measure as a trait object and knows nothing about
-//! a window, so where the picture ends up inside a panel is settled and tested
-//! without a toolkit; only [`Labels`] and [`paint`] name GPUI.
+//! The layout half decides everything through `argand_core::axis` and a
+//! [`LabelMeasure`] it is handed, so where the picture ends up inside a panel
+//! is settled and tested with the fixture font and no window in sight. It does
+//! name one toolkit type, the panel's [`Size`]; what it does not need is a
+//! running one. [`Labels`] and [`paint`] need both.
 
 use argand_core::axis::{self, Axis, AxisKind, LabelMeasure, LabelMetrics, LabelRun, Tick};
 use gpui::{App, Bounds, Font, FontId, Hsla, Pixels, Point, Size, Window, fill, point, px, size};
