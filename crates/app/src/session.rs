@@ -416,10 +416,18 @@ impl Session {
 
     /// Put a file at the head of the recent list.
     ///
-    /// The same file opened again moves to the head rather than appearing
-    /// twice, and it moves with the hints it was opened with this time: a
-    /// capture reopened with a corrected sample rate should come back with the
-    /// corrected one.
+    /// The same path written the same way moves to the head rather than
+    /// appearing twice, and it moves with the hints it was opened with this
+    /// time: a capture reopened with a corrected sample rate should come back
+    /// with the corrected one.
+    ///
+    /// Written the same way, not the same file. `/x/dir/../capture` and
+    /// `/x/capture` are two entries, and so are a link and its target. This is
+    /// a list of the names a person opened things by, and two names for one
+    /// capture are two names -- [`recent_labels`] already distinguishes them
+    /// where they would read alike. Making it a list of files instead would
+    /// mean asking the filesystem about every stored entry on every open, and
+    /// would still be wrong for one that has since moved.
     pub fn remember(&mut self, path: &Path, hints: &OpenHints) {
         // Absolute, because the list outlives the directory the application
         // was started in. `argand dump.bin` stored literally would, from
@@ -434,6 +442,17 @@ impl Session {
             tracing::warn!(path = %path.display(), %error, "cannot resolve the path; remembering it as given");
             path.to_owned()
         });
+        // TOML is UTF-8 by definition and a filename on Linux is any bytes, so
+        // a path that is not one cannot be written. Refusing it here costs the
+        // entry; letting it into the list would cost every later save,
+        // including the window's own geometry, for as long as it stayed there.
+        if path.to_str().is_none() {
+            tracing::warn!(
+                path = %path.display(),
+                "not a UTF-8 path; it cannot be written to the session and is not remembered"
+            );
+            return;
+        }
         self.recent.retain(|entry| entry.path != path);
         self.recent.insert(
             0,

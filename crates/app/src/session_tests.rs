@@ -676,3 +676,29 @@ fn two_captures_with_the_same_name_are_told_apart_in_the_menu() {
         "only the colliding names should carry a directory"
     );
 }
+
+#[test]
+fn a_path_that_cannot_be_written_costs_its_entry_and_nothing_else() {
+    // TOML is UTF-8 and a filename on Linux is any bytes at all. Letting such
+    // a path into the list would fail every later save -- the window's own
+    // geometry included -- for as long as it stayed there.
+    let mut session = Session::default();
+    session.remember(Path::new("/captures/good.wav"), &OpenHints::default());
+
+    #[cfg(unix)]
+    {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        let awkward = PathBuf::from(OsStr::from_bytes(b"/captures/\xff\xfe.iqw"));
+        session.remember(&awkward, &OpenHints::default());
+    }
+
+    let dir = TempDir::new("awkward");
+    let path = dir.join(FILE_NAME);
+    assert!(session.save(&path), "the session should still be writable");
+    assert_eq!(
+        Session::load(&path).session.recent.len(),
+        1,
+        "the readable entry survives and the other was never added"
+    );
+}
