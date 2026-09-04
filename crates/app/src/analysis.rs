@@ -21,7 +21,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use argand_core::SignalMeta;
+use argand_core::{SampleSource, SignalMeta, SourceError};
 use argand_dsp::{Analysis, AnalysisRequest, analyze};
 use argand_io::OpenHints;
 
@@ -60,11 +60,10 @@ pub enum Update {
 
 /// The window's end of one file's analysis thread.
 ///
-/// Dropping it closes the request channel, which the thread reads as the end
-/// of its work. It is not joined: a transform already running cannot be
-/// interrupted, and a window that will not close until a half-hour capture has
-/// finished being analysed is worse than a thread that outlives its handle by
-/// a few seconds. The process exiting ends it either way.
+/// Dropping it closes the request channel, which an idle thread reads as the
+/// end of its work. A thread in the middle of a transform is stopped by
+/// [`Stopping`] instead, and neither is joined: what a caller waits for here
+/// it waits for on the thread drawing the window.
 pub struct Analyst {
     requests: async_channel::Sender<AnalysisRequest>,
 }
@@ -145,9 +144,46 @@ fn serve(
     }
 }
 
+/// A source that reports the end of the signal once nobody is waiting.
+///
+/// [`analyze`] is one blocking call with no way to interrupt it, so a document
+/// closed halfway through a half-hour capture would otherwise hold a thread, a
+/// core and a mapping until the transform finished on its own -- and opening
+/// several large files in a row would leave one such thread behind for each.
+///
+/// A read answered with "no more samples" is the one lever the transform does
+/// expose: it closes over what it has and returns within a block. What it
+/// returns goes nowhere, because the channel that would have carried it is the
+/// very thing whose closing stopped it.
+///
+/// This does not reach the level scan a capture opened with `--normalize auto`
+/// runs before the first transform: that happens inside `argand_io::open`,
+/// before there is a source to wrap.
+struct Stopping<'a> {
+    inner: &'a mut dyn SampleSource,
+    updates: &'a async_channel::Sender<Update>,
+}
+
+impl SampleSource for Stopping<'_> {
+    fn meta(&self) -> &SignalMeta {
+        self.inner.meta()
+    }
+
+    fn seek(&mut self, sample: u64) -> Result<(), SourceError> {
+        self.inner.seek(sample)
+    }
+
+    fn read(&mut self, buf: &mut [f32]) -> Result<usize, SourceError> {
+        if self.updates.is_closed() {
+            return Ok(0);
+        }
+        self.inner.read(buf)
+    }
+}
+
 /// One transform, reporting progress no oftener than the window can use it.
 fn run(
-    source: &mut dyn argand_core::SampleSource,
+    source: &mut dyn SampleSource,
     request: &AnalysisRequest,
     updates: &async_channel::Sender<Update>,
 ) -> Result<Analysis, anyhow::Error> {
@@ -155,7 +191,11 @@ fn run(
     // that starts at the machine's boot is not guaranteed to have anywhere to
     // go, and the first report should be sent anyway.
     let mut last: Option<Instant> = None;
-    analyze(source, request, &mut |done, total| {
+    let mut source = Stopping {
+        inner: source,
+        updates,
+    };
+    analyze(&mut source, request, &mut |done, total| {
         let now = Instant::now();
         if last.is_some_and(|last| now.duration_since(last) < PROGRESS_INTERVAL) {
             return;

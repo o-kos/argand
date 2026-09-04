@@ -601,7 +601,7 @@ fn a_hint_this_version_cannot_read_costs_the_flag_and_not_the_entry() {
 }
 
 #[test]
-fn a_session_from_before_the_recent_list_still_reads() {
+fn a_session_from_before_the_recent_list_is_read_and_brought_forward() {
     let dir = TempDir::new("recent-absent");
     let path = dir.join(FILE_NAME);
     std::fs::write(
@@ -612,8 +612,34 @@ fn a_session_from_before_the_recent_list_still_reads() {
 
     let restored = Session::load(&path);
     assert!(restored.writable);
-    assert_eq!(restored.session.geometry, Some(Geometry::new(10.0, 20.0, 800.0, 600.0)));
+    assert_eq!(
+        restored.session.geometry,
+        Some(Geometry::new(10.0, 20.0, 800.0, 600.0)),
+        "a window left by the previous layout should still come back"
+    );
     assert!(restored.session.recent.is_empty());
+    assert_eq!(
+        restored.session.version, VERSION,
+        "it is written back at the version this binary writes"
+    );
+}
+
+#[test]
+fn the_version_goes_up_when_the_layout_gains_something() {
+    // The point of the number: an older binary must see one it does not know
+    // and leave the file, rather than reading what it understands and
+    // rewriting without the rest. The recent list is what it would have lost.
+    let dir = TempDir::new("downgrade");
+    let path = dir.join(FILE_NAME);
+    let mut session = Session::default();
+    session.remember(Path::new("/captures/dump.bin"), &raw_hints());
+    assert!(session.save(&path));
+
+    let text = std::fs::read_to_string(&path).expect("read back");
+    assert!(
+        text.contains("version = 2"),
+        "a file with a recent list is version 2: {text}"
+    );
 }
 
 #[test]

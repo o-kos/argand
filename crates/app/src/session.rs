@@ -55,12 +55,22 @@ const ABSURD: f32 = 65_536.0;
 /// still a list rather than a search.
 pub const RECENT_LIMIT: usize = 10;
 
-/// The layout this program knows how to read.
+/// The layout this program writes.
 ///
-/// A file from a future version is left alone rather than guessed at: the
-/// defaults cost a window position, and a wrong guess costs whatever that
-/// version was recording.
-pub const VERSION: u32 = 1;
+/// A file from a version this one does not know is left alone rather than
+/// guessed at: the defaults cost a window position, and a wrong guess costs
+/// whatever that version was recording. The number goes up whenever the layout
+/// gains something, so that an older binary sees a number it does not know and
+/// leaves the file rather than quietly rewriting it without what it could not
+/// read. Version 2 added the recent list.
+pub const VERSION: u32 = 2;
+
+/// Every layout this program can read, oldest first.
+///
+/// An older file is read into the current shape and written back at
+/// [`VERSION`]: each version so far only added fields, so what is missing has
+/// a default and nothing has to be converted.
+const READABLE: [u32; 2] = [1, VERSION];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -323,7 +333,7 @@ impl Session {
         }
 
         match toml::from_str::<Versioned>(&text) {
-            Ok(Versioned { version }) if version == VERSION => {}
+            Ok(Versioned { version }) if READABLE.contains(&version) => {}
             Ok(Versioned { version }) => {
                 tracing::warn!(
                     path = %path.display(),
@@ -342,9 +352,15 @@ impl Session {
             }
         }
 
-        match toml::from_str(&text) {
+        match toml::from_str::<Self>(&text) {
+            // Read at whatever version wrote it, written back at this one:
+            // anything an older layout did not have is at its default, which
+            // is what an absent field means.
             Ok(session) => Restored {
-                session,
+                session: Self {
+                    version: VERSION,
+                    ..session
+                },
                 writable: true,
             },
             Err(error) => {

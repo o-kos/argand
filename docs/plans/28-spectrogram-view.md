@@ -72,6 +72,26 @@ waveform panel, editing.
 - **The uploaded picture is released when it is replaced.** gpui keeps a
   `RenderImage` in the window's texture atlas until it is told to let go, and a
   resize produces one per step.
+- **The document holds what the thread reports, not the source itself.** The
+  step above asks for the source in the document; putting it there would mean
+  either sharing it with the thread transforming it or moving it back and
+  forth. The thread owns it outright and the document owns everything it says,
+  which is what makes it impossible for the window to touch a file a transform
+  is reading.
+- **A transform is stopped by telling it the signal ended.** `analyze` is one
+  blocking call with no way to interrupt it, so a closed document would hold a
+  thread and a mapping until it finished on its own -- and opening several
+  large captures in a row would leave one behind for each. A source that
+  answers a read with "no more samples" once the update channel has closed is
+  the lever the transform does expose. The level scan a `--normalize auto`
+  capture runs is still not interruptible: it happens before there is a source
+  to wrap.
+- **`session.toml` is version 2, and version 1 is read into it.** The version
+  exists so a binary that cannot read a file leaves it alone. Adding the recent
+  list under the old number would have let an older binary read the file,
+  ignore the list and rewrite without it; under a new one it starts fresh and
+  leaves the file. A version 1 file is still read, since every field the new
+  layout added has a default.
 - **The menu is drawn in the title bar, not handed to a platform menu bar.**
   gpui's `set_menus` builds a real menu bar on macOS and stores the list
   unused on Linux and Windows. The window already draws its own title bar on
@@ -113,6 +133,8 @@ waveform panel, editing.
 
 - [x] Add a document: a path, its open hints, the source, and the analysis last
       produced for it. Everything below hangs off this rather than off the shell.
+      The source itself is the one part that is not in the document: it belongs
+      to the thread reading it, and the document holds what that thread reports.
 - [x] Run the analysis on its own thread, owning the `Box<dyn SampleSource>`,
       with requests and results over channels and results applied to the view
       from GPUI's async context. No frame is drawn on a thread that is also

@@ -273,9 +273,16 @@ impl Shell {
             }
         });
 
-        // Replacing the previous file drops its thread's handles, which is
-        // what stops it: an analysis nobody will look at should not go on
-        // holding a mapped file and a core.
+        // Nothing of the previous file is left standing. Its picture would
+        // otherwise be drawn under this one's axes until the first transform
+        // lands, and its plot size would send the first request at a width
+        // this file's labels may not leave.
+        self.release(cx);
+        self.plot = None;
+
+        // Replacing the previous file drops both ends of its queue, which is
+        // what stops its thread: a transform nobody will look at should not go
+        // on holding a mapped file and a core.
         self.file = Some(OpenFile {
             document: Document::opening(origin),
             analyst,
@@ -374,14 +381,12 @@ impl Shell {
             .and_then(|file| file.document.analysis())
             .and_then(|analysis| spectrogram::texture(&analysis.spectrogram));
         let stale = std::mem::replace(&mut self.texture, fresh);
+        release(stale, cx);
+    }
 
-        // An uploaded image stays in the window's texture atlas until gpui is
-        // told to let go of it. A spectrogram is the size of the panel and a
-        // resize produces one per step, so saying nothing here fills the atlas
-        // with pictures nobody can see any more.
-        if let Some(stale) = stale {
-            cx.drop_image(stale, None);
-        }
+    /// Let go of whatever picture is on the GPU, leaving nothing to draw.
+    fn release(&mut self, cx: &mut Context<Self>) {
+        release(self.texture.take(), cx);
     }
 
     /// Record where the window is and what state it is in.
@@ -720,6 +725,18 @@ impl Render for Shell {
                     .child(summary)
                     .child(status),
             )
+    }
+}
+
+/// Hand one uploaded picture back to the toolkit.
+///
+/// An uploaded image stays in the window's texture atlas until gpui is told to
+/// let go of it. A spectrogram is the size of the plot and a resize produces
+/// one per step, so saying nothing fills the atlas with pictures nobody can
+/// see any more.
+fn release(texture: Option<Arc<RenderImage>>, cx: &mut Context<Shell>) {
+    if let Some(texture) = texture {
+        cx.drop_image(texture, None);
     }
 }
 
