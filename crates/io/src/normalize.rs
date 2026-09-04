@@ -64,6 +64,18 @@ impl std::str::FromStr for Normalize {
     }
 }
 
+/// Spelled the way `--normalize` takes it, so that a mode written down can be
+/// read back by the same parser that read the command line.
+impl std::fmt::Display for Normalize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => f.write_str("none"),
+            Self::Auto => f.write_str("auto"),
+            Self::Factor(divisor) => write!(f, "{divisor}"),
+        }
+    }
+}
+
 /// The divisor that brings raw values onto the unit scale.
 ///
 /// `Auto` measures the file; anything else is a constant, so the scan is

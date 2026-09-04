@@ -120,6 +120,7 @@ fn a_session_survives_the_round_trip() {
         version: VERSION,
         geometry: Some(Geometry::new(12.0, 34.0, 1280.0, 800.0)),
         window_state: WindowState::Maximized,
+        recent: Vec::new(),
     };
 
     session.save(&path);
@@ -170,6 +171,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
         version: VERSION,
         geometry: Some(Geometry::new(0.0, 0.0, 800.0, 600.0)),
         window_state: WindowState::Normal,
+        recent: Vec::new(),
     };
     first.save(&path);
 
@@ -225,6 +227,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
         version: VERSION,
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
+        recent: Vec::new(),
     };
 
     // A frame every 8ms, as a drag produces. The first offer writes, because
@@ -265,6 +268,7 @@ fn a_position_that_has_not_changed_is_not_written_again() {
         version: VERSION,
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
+        recent: Vec::new(),
     };
 
     let mut writer = Writer::new(path.clone(), held.clone());
@@ -292,6 +296,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
         version: VERSION,
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
+        recent: Vec::new(),
     };
 
     writer.offer(moved(1.0), start);
@@ -312,6 +317,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
         version: VERSION,
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
+        recent: Vec::new(),
     };
 
     let mut writer = Writer::new(path.clone(), at(0.0));
@@ -347,6 +353,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
         version: VERSION,
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
+        recent: Vec::new(),
     };
     let start = Instant::now();
     writer.offer(moved.clone(), start);
@@ -391,6 +398,7 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
         version: VERSION,
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
+        recent: Vec::new(),
     };
 
     // One attempt, which fails.
@@ -496,5 +504,132 @@ fn only_an_ordinary_window_says_what_size_to_come_back_to() {
     assert_eq!(
         restore_rectangle(large, WindowState::Normal),
         Some(large)
+    );
+}
+
+/// The hints a headerless capture needs, as the command line would give them.
+fn raw_hints() -> OpenHints {
+    OpenHints {
+        raw: Some("iq_i16@2M".parse().expect("a raw spec")),
+        sample_type: None,
+        sample_rate: None,
+        center_freq: 12_579_000.0,
+        byte_offset: 44,
+        normalize: Some(argand_io::Normalize::Auto),
+        gain_db: -6.0,
+    }
+}
+
+#[test]
+fn a_headerless_capture_comes_back_with_the_layout_it_was_opened_with() {
+    let mut session = Session::default();
+    session.remember(Path::new("/captures/dump.bin"), &raw_hints());
+
+    let stored = session.recent.first().expect("one entry");
+    let hints = stored.hints.to_open_hints();
+    let raw = hints.raw.expect("the layout that made it readable");
+    assert_eq!(raw.to_string(), "iq_i16@2000000");
+    assert_eq!(hints.center_freq, 12_579_000.0);
+    assert_eq!(hints.byte_offset, 44);
+    assert_eq!(hints.normalize, Some(argand_io::Normalize::Auto));
+    assert_eq!(hints.gain_db, -6.0);
+}
+
+#[test]
+fn the_recent_list_survives_the_round_trip_through_the_file() {
+    let dir = TempDir::new("recent");
+    let path = dir.join(FILE_NAME);
+    let mut session = Session::default();
+    session.remember(Path::new("/captures/dump.bin"), &raw_hints());
+
+    assert!(session.save(&path));
+    let restored = Session::load(&path);
+    assert!(restored.writable);
+    assert_eq!(restored.session.recent, session.recent);
+}
+
+#[test]
+fn a_file_opened_again_moves_to_the_head_rather_than_appearing_twice() {
+    let mut session = Session::default();
+    for name in ["a.wav", "b.wav", "c.wav"] {
+        session.remember(Path::new(name), &OpenHints::default());
+    }
+    // And with different hints the second time, which are the ones worth
+    // keeping: they are the ones that worked.
+    session.remember(Path::new("a.wav"), &raw_hints());
+
+    let names: Vec<_> = session
+        .recent
+        .iter()
+        .map(|entry| entry.path.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, ["a.wav", "c.wav", "b.wav"]);
+    assert_eq!(
+        session.recent[0].hints.to_open_hints().byte_offset,
+        44,
+        "the newer hints should replace the older ones"
+    );
+}
+
+#[test]
+fn the_recent_list_does_not_grow_without_end() {
+    let mut session = Session::default();
+    for i in 0..RECENT_LIMIT * 2 {
+        session.remember(Path::new(&format!("{i}.wav")), &OpenHints::default());
+    }
+    assert_eq!(session.recent.len(), RECENT_LIMIT);
+    // The newest is at the head and the oldest have gone.
+    assert_eq!(session.recent[0].path, PathBuf::from("19.wav"));
+}
+
+#[test]
+fn a_hint_this_version_cannot_read_costs_the_flag_and_not_the_entry() {
+    // A session written by a version that knew a sample type this one does
+    // not. The entry is still worth offering: the path is the half that makes
+    // it an entry at all.
+    let stored = Hints {
+        raw: Some("iq_q7@2M".to_owned()),
+        sample_type: Some("not-a-type".to_owned()),
+        center_freq: 12_579_000.0,
+        ..Hints::default()
+    };
+    let hints = stored.to_open_hints();
+
+    assert!(hints.raw.is_none());
+    assert!(hints.sample_type.is_none());
+    assert_eq!(hints.center_freq, 12_579_000.0);
+}
+
+#[test]
+fn a_session_from_before_the_recent_list_still_reads() {
+    let dir = TempDir::new("recent-absent");
+    let path = dir.join(FILE_NAME);
+    std::fs::write(
+        &path,
+        "version = 1\nwindow_state = \"normal\"\n\n[geometry]\nx = 10.0\ny = 20.0\nwidth = 800.0\nheight = 600.0\n",
+    )
+    .expect("write session");
+
+    let restored = Session::load(&path);
+    assert!(restored.writable);
+    assert_eq!(restored.session.geometry, Some(Geometry::new(10.0, 20.0, 800.0, 600.0)));
+    assert!(restored.session.recent.is_empty());
+}
+
+#[test]
+fn two_captures_with_the_same_name_are_told_apart_in_the_menu() {
+    let mut session = Session::default();
+    for path in ["/b/12.579.iqw", "/a/12.579.iqw", "/a/other.iqw"] {
+        session.remember(Path::new(path), &OpenHints::default());
+    }
+
+    assert_eq!(
+        recent_labels(&session.recent),
+        [
+            "other.iqw",
+            "12.579.iqw - /a",
+            "12.579.iqw - /b",
+        ],
+        "only the colliding names should carry a directory"
     );
 }

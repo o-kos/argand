@@ -13,8 +13,8 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use argand_core::Colormap;
-use argand_dsp::{DynamicRange, Window};
+use argand_core::{Colormap, SampleRange, SignalMeta};
+use argand_dsp::{AnalysisRequest, DynamicRange, Reduce, StftConfig, Window};
 use serde::{Deserialize, Deserializer};
 
 /// The name a person looks for, beside the binary or in the configuration
@@ -203,6 +203,44 @@ impl Config {
             self.panels.waveform_fraction = default.panels.waveform_fraction;
         }
         self
+    }
+
+    /// The transform this configuration asks for: the whole of `meta`, drawn
+    /// at `width` by `height` pixels.
+    ///
+    /// Everything a picture depends on is decided here rather than in the
+    /// window, which is what lets `aspec` and this application be given the
+    /// same request and produce the same picture from it. The size is the
+    /// plot's, in device pixels, so one transform column is one screen column.
+    pub fn analysis_request(
+        &self,
+        meta: &SignalMeta,
+        width: usize,
+        height: usize,
+    ) -> AnalysisRequest {
+        let fft_size = self.stft.fft_size;
+        AnalysisRequest {
+            cfg: StftConfig {
+                fft_size,
+                // Three quarters of each transform overlaps the one before it,
+                // which is what `aspec` applies when `--hop` is left out.
+                hop: (fft_size / 4).max(1),
+                window: self.stft.window,
+            },
+            // Selections and zoom arrive with the milestones after this one,
+            // and each of them narrows this span.
+            range: SampleRange::new(0, meta.len_samples),
+            width,
+            height,
+            // The loudest frame in a column rather than the average of them: a
+            // burst shorter than a pixel is what a capture is usually being
+            // looked at for, and averaging is what loses it.
+            reduce: Reduce::Max,
+            colormap: self.color_scheme,
+            dynamic_range: self.dynamic_range,
+            // No waveform panel yet.
+            waveform_columns: None,
+        }
     }
 
     /// Where `argand.toml` is looked for, in the order it is looked for.

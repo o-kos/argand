@@ -9,16 +9,17 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use gpui::Corners;
 use gpui::{
-    AppContext, Application, Bounds, Context, IntoElement, ParentElement, Pixels, Render,
-    RenderImage, Styled, Subscription, Task, TitlebarOptions, Window, WindowBounds,
-    WindowDecorations, WindowOptions, canvas, div, point, px, relative, size,
+    AppContext, Application, Bounds, Context, Corners, ExternalPaths, InteractiveElement,
+    IntoElement, ParentElement, PathPromptOptions, Pixels, Render, RenderImage, Styled,
+    Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
+    WindowOptions, canvas, div, point, px, relative, size,
 };
-use gpui_component::{ActiveTheme, Root, ThemeMode, TitleBar};
+use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::menu::{DropdownMenu, PopupMenuItem};
+use gpui_component::{ActiveTheme, Root, Sizable, ThemeMode, TitleBar};
 
-use argand_core::SampleRange;
-use argand_dsp::{AnalysisRequest, Reduce, StftConfig};
+use argand_dsp::AnalysisRequest;
 
 use crate::analysis::{Analyst, Update};
 use crate::axes;
@@ -66,7 +67,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                         decorations = ?window.window_decorations(),
                         "the window is decorated by this side"
                     );
-                    let shell = cx.new(|cx| Shell::new(config, writer, saved.geometry, window, cx));
+                    let shell = cx.new(|cx| Shell::new(config, writer, saved, window, cx));
                     // After the entity exists, so the task draining its
                     // updates has something to deliver them to.
                     if let Some(origin) = opening {
@@ -182,18 +183,24 @@ struct Shell {
     /// there was written by a version this one must not overwrite. Either way
     /// the window simply does not remember itself.
     writer: Option<Writer>,
-    /// The rectangle to come back to, which is not what a maximized or
-    /// fullscreen window reports.
+    /// What the next run should get back.
     ///
-    /// `WindowBounds` documents its payload as the restore size, but the
-    /// backends that omit a variant do not have one to give: X11 hands back the
-    /// bounds its last configure event set, and macOS reads the live window
-    /// frame. Both are the screen while the window covers it. Saving that would
-    /// restore a maximized window correctly and then un-maximize it to the size
-    /// of the display, so the last rectangle reported by an ordinary window is
-    /// kept instead. [`restore_rectangle`] says which those are, and what a
-    /// backend that misreports the state costs.
-    last_normal: Option<Geometry>,
+    /// Held whole rather than assembled at each offer, because two unrelated
+    /// things write to it: the toolkit reports the window moving, and a person
+    /// opens a file. Building a `Session` from whichever of the two happened
+    /// last would have it guess at the other.
+    ///
+    /// Its `geometry` is the rectangle to come back to, which is not what a
+    /// maximized or fullscreen window reports. `WindowBounds` documents its
+    /// payload as the restore size, but the backends that omit a variant do
+    /// not have one to give: X11 hands back the bounds its last configure
+    /// event set, and macOS reads the live window frame. Both are the screen
+    /// while the window covers it. Saving that would restore a maximized
+    /// window correctly and then un-maximize it to the size of the display, so
+    /// the last rectangle reported by an ordinary window is kept instead.
+    /// [`restore_rectangle`] says which those are, and what a backend that
+    /// misreports the state costs.
+    session: Session,
     /// The file on screen, or `None` for a window nobody has opened anything
     /// in yet.
     file: Option<OpenFile>,
@@ -217,7 +224,7 @@ impl Shell {
     fn new(
         config: Config,
         writer: Option<Writer>,
-        last_normal: Option<Geometry>,
+        saved: Session,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -228,7 +235,7 @@ impl Shell {
         Self {
             config,
             writer,
-            last_normal,
+            session: saved,
             file: None,
             plot: None,
             texture: None,
@@ -245,6 +252,11 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, cx: &mut Context<Self>) {
         tracing::info!(path = %origin.path.display(), "opening");
+        // Recorded on the way in rather than once it has opened: a capture
+        // that failed for want of a `--rate` is exactly the one whose hints
+        // are worth having in the list, so that the next attempt can start
+        // from them.
+        self.remember_file(&origin);
         let (analyst, updates) = crate::analysis::open(origin.path.clone(), origin.hints.clone());
 
         // Dropping this task drops the receiver, which is half of what tells
@@ -270,6 +282,19 @@ impl Shell {
             _updates: pump,
         });
         cx.notify();
+    }
+
+    /// Put a file at the head of the recent list, and write the session out.
+    fn remember_file(&mut self, origin: &Origin) {
+        self.session.remember(&origin.path, &origin.hints);
+        self.save();
+    }
+
+    /// Offer the session as it now stands.
+    fn save(&mut self) {
+        if let Some(writer) = self.writer.as_mut() {
+            writer.offer(self.session.clone(), Instant::now());
+        }
     }
 
     /// Fold one update from the analysis thread into the document, and do
@@ -333,30 +358,7 @@ impl Shell {
     fn request(&self, document: &Document) -> Option<AnalysisRequest> {
         let meta = document.meta()?;
         let plot = self.plot?;
-        let fft_size = self.config.stft.fft_size;
-        Some(AnalysisRequest {
-            cfg: StftConfig {
-                fft_size,
-                // Three quarters of each transform overlaps the one before it,
-                // which is the same default `aspec` applies when `--hop` is
-                // left out.
-                hop: (fft_size / 4).max(1),
-                window: self.config.stft.window,
-            },
-            // The whole file. Selections and zoom arrive with the milestones
-            // after this one, and each narrows this span.
-            range: SampleRange::new(0, meta.len_samples),
-            width: plot.width,
-            height: plot.height,
-            // The loudest frame in a column rather than the average of them: a
-            // burst shorter than a pixel is what a capture is usually being
-            // looked at for, and averaging is what loses it.
-            reduce: Reduce::Max,
-            colormap: self.config.color_scheme,
-            dynamic_range: self.config.dynamic_range,
-            // No waveform panel yet.
-            waveform_columns: None,
-        })
+        Some(self.config.analysis_request(meta, plot.width, plot.height))
     }
 
     /// Put the newest picture on the GPU and release the one it replaces.
@@ -402,22 +404,13 @@ impl Shell {
             } else {
                 WindowState::Normal
             };
+        self.session.window_state = window_state;
         // Only some reports say anything about the rectangle to come back to;
         // the rest leave the last one that did.
         if let Some(rectangle) = restore_rectangle(from_bounds(bounds.get_bounds()), window_state) {
-            self.last_normal = Some(rectangle);
+            self.session.geometry = Some(rectangle);
         }
-        let Some(writer) = self.writer.as_mut() else {
-            return;
-        };
-        writer.offer(
-            Session {
-                version: crate::session::VERSION,
-                geometry: self.last_normal,
-                window_state,
-            },
-            Instant::now(),
-        );
+        self.save();
     }
 }
 
@@ -430,6 +423,96 @@ impl Drop for Shell {
 }
 
 impl Shell {
+    /// Ask the desktop for a file, and open whatever comes back.
+    ///
+    /// The dialog is the platform's own -- the file chooser portal on Linux,
+    /// the native panel on Windows and macOS -- so it looks and behaves like
+    /// every other one on the desktop, and nothing here has to be drawn.
+    ///
+    /// A file chosen this way is opened on what it says about itself. A
+    /// headerless capture has nothing to say, so it fails and says how; the
+    /// recent list is what carries hints back for the next time.
+    fn choose(view: &WeakEntity<Self>, cx: &mut gpui::App) {
+        let chosen = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: None,
+        });
+        let view = view.clone();
+        cx.spawn(async move |cx| {
+            // A cancelled dialog, a platform without one, and a dialog that
+            // failed all mean the same thing here: no file was chosen.
+            let Ok(Ok(Some(paths))) = chosen.await else {
+                return;
+            };
+            let Some(path) = paths.into_iter().next() else {
+                return;
+            };
+            let _ = view.update(cx, |shell, cx| shell.open(Origin::new(path), cx));
+        })
+        .detach();
+    }
+
+    /// The menu in the title bar.
+    ///
+    /// The window draws its own title bar on every platform, so the menu is
+    /// drawn there too rather than handed to a platform menu bar that only one
+    /// of the three has.
+    fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity().downgrade();
+        // Rebuilt from what the session holds when the menu is opened, so an
+        // entry added since the last time it was shown is in it.
+        let recent = self.recent_entries();
+        Button::new("file-menu")
+            .ghost()
+            .xsmall()
+            .label("File")
+            .dropdown_menu(move |mut menu, _, _| {
+                let opener = view.clone();
+                menu = menu.item(
+                    PopupMenuItem::new("Open file...")
+                        .on_click(move |_, _, cx| Self::choose(&opener, cx)),
+                );
+                if recent.is_empty() {
+                    return menu;
+                }
+                menu = menu.separator().label("Recent");
+                for (label, origin) in &recent {
+                    let view = view.clone();
+                    let origin = origin.clone();
+                    menu =
+                        menu.item(PopupMenuItem::new(label.clone()).on_click(move |_, _, cx| {
+                            let origin = origin.clone();
+                            let _ = view.update(cx, |shell, cx| shell.open(origin, cx));
+                        }));
+                }
+                menu
+            })
+    }
+
+    /// The recent list as a menu shows it: a name to read, and everything it
+    /// takes to open the file again.
+    ///
+    /// The hints are what make the entry worth storing. A headerless capture
+    /// opened once as `iq_i16@2M` cannot be reopened from its path alone, so
+    /// choosing it here does not ask for those flags a second time.
+    fn recent_entries(&self) -> Vec<(String, Origin)> {
+        let labels = crate::session::recent_labels(&self.session.recent);
+        self.session
+            .recent
+            .iter()
+            .zip(labels)
+            .map(|(entry, label)| {
+                let origin = Origin {
+                    path: entry.path.clone(),
+                    hints: entry.hints.to_open_hints(),
+                };
+                (label, origin)
+            })
+            .collect()
+    }
+
     /// The window's title: the application, and the file if there is one.
     fn title(&self) -> String {
         match self.file.as_ref() {
@@ -578,7 +661,27 @@ impl Render for Shell {
             .flex_col()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            .child(TitleBar::new().child(div().text_sm().child(self.title())))
+            .id("shell")
+            // A capture dropped anywhere on the window opens, which is where a
+            // person aims when the window is showing the wrong file.
+            .on_drop(cx.listener(|shell, dropped: &ExternalPaths, _, cx| {
+                if let Some(path) = dropped.paths().first() {
+                    shell.open(Origin::new(path.clone()), cx);
+                }
+            }))
+            .child(
+                // One child rather than two: the bar spaces its children
+                // apart, which would put the title against the window
+                // controls at the other end.
+                TitleBar::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .child(self.menu(cx))
+                        .child(div().text_sm().child(self.title())),
+                ),
+            )
             .child(
                 // The window splits in the proportion the configuration asks
                 // for. The waveform strip belongs to a later milestone; until

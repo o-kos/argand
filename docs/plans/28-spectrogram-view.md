@@ -72,6 +72,19 @@ waveform panel, editing.
 - **The uploaded picture is released when it is replaced.** gpui keeps a
   `RenderImage` in the window's texture atlas until it is told to let go, and a
   resize produces one per step.
+- **The menu is drawn in the title bar, not handed to a platform menu bar.**
+  gpui's `set_menus` builds a real menu bar on macOS and stores the list
+  unused on Linux and Windows. The window already draws its own title bar on
+  all three, so the menu goes there and behaves the same everywhere.
+- **The recent list stores hints as the strings the command line uses.**
+  `session.toml` then needs to know nothing about `RawSpec`, `SampleType` or
+  `Normalize` beyond how a person writes them, one grammar covers the command
+  line, the report and the file, and a hint a newer version wrote is dropped
+  with a log line rather than making the whole entry unreadable.
+- **The shell holds the whole `Session` rather than assembling one per write.**
+  Two unrelated things write to it -- the toolkit reporting a window move, and
+  a person opening a file -- and a session built from whichever happened last
+  would guess at the other.
 
 ## Rejected alternatives
 
@@ -91,6 +104,10 @@ waveform panel, editing.
   a file a transform is reading.
 - **Debouncing resize on the window's side.** A timer to add and a delay to
   tune, for what `newest` already achieves by discarding overtaken requests.
+- **serde derives on `argand-io`'s hint types.** It would make `session.toml`
+  shorter to write and would tie the file's format to the shape of types that
+  exist to be parsed from a command line. The spellings are the stable surface;
+  the structs are not.
 
 ## Implementation steps
 
@@ -106,10 +123,10 @@ waveform panel, editing.
       frequency axes through `argand-core::axis`, two-sided around the centre
       frequency for I/Q and one-sided for real.
 - [x] Open a file from the command line, accepting the same hints as `aspec`.
-- [ ] Open a file from a menu and by drag and drop.
+- [x] Open a file from a menu and by drag and drop.
 - [x] Show container, sample type, sample rate, duration and centre frequency in
       the status bar.
-- [ ] Remember recent files and the hints each was opened with, so a headerless
+- [x] Remember recent files and the hints each was opened with, so a headerless
       capture opened once as `iq_i16@2M` does not need those flags again.
 - [x] Report a file that cannot be opened in the window, leaving the application
       usable.

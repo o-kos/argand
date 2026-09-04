@@ -29,6 +29,18 @@ pub struct Origin {
 }
 
 impl Origin {
+    /// A file opened on whatever it says about itself.
+    ///
+    /// What a menu and a drop can offer: a path and nothing else. A headerless
+    /// capture opened this way fails and says what it needs, which is why the
+    /// recent list remembers hints.
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            hints: OpenHints::default(),
+        }
+    }
+
     /// The name to put in a title bar or a recent list.
     ///
     /// The whole path is what identifies the file, and the whole path is also

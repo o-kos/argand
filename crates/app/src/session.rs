@@ -13,6 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use argand_io::OpenHints;
 use serde::{Deserialize, Serialize};
 
 /// The name the application writes under, in the platform state directory.
@@ -47,6 +48,12 @@ const UNVERIFIED_MAX_DIMENSION: f32 = 2_048.0;
 /// been corrupted or hand-edited into something no window ever was, and there
 /// is nothing to restore.
 const ABSURD: f32 = 65_536.0;
+
+/// Files kept in the recent list.
+///
+/// Long enough to reach back past a day's work, short enough that the menu is
+/// still a list rather than a search.
+pub const RECENT_LIMIT: usize = 10;
 
 /// The layout this program knows how to read.
 ///
@@ -136,6 +143,128 @@ pub struct Restored {
     pub writable: bool,
 }
 
+/// How a file was opened, written the way the command line spells it.
+///
+/// The strings are deliberate. `OpenHints` is `argand-io`'s and carries a
+/// sample type, a raw layout and a normalize mode, none of which this file
+/// needs to know the shape of -- only how a person writes them, which is what
+/// `--raw`, `--type` and `--normalize` already answer. Storing the spelling
+/// means one grammar for the command line, the report and this file, and it
+/// means a session written by a version that learned a new sample type is
+/// still readable rather than merely unparseable.
+///
+/// A value that no longer parses is dropped with a log line, because a hint
+/// that cannot be read is worth less than the rest of the entry it sits in.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Hints {
+    /// `--raw`, as `<type>[@<rate>]`.
+    pub raw: Option<String>,
+    pub sample_type: Option<String>,
+    pub sample_rate: Option<f64>,
+    pub center_freq: f64,
+    pub byte_offset: u64,
+    pub normalize: Option<String>,
+    pub gain_db: f32,
+}
+
+impl From<&OpenHints> for Hints {
+    fn from(hints: &OpenHints) -> Self {
+        Self {
+            raw: hints.raw.map(|spec| spec.to_string()),
+            sample_type: hints.sample_type.map(|kind| kind.to_string()),
+            sample_rate: hints.sample_rate,
+            center_freq: hints.center_freq,
+            byte_offset: hints.byte_offset,
+            normalize: hints.normalize.map(|mode| mode.to_string()),
+            gain_db: hints.gain_db,
+        }
+    }
+}
+
+impl Hints {
+    /// Read the spellings back, dropping any this version cannot parse.
+    pub fn to_open_hints(&self) -> OpenHints {
+        OpenHints {
+            raw: parsed("raw", &self.raw),
+            sample_type: parsed("sample_type", &self.sample_type),
+            sample_rate: self.sample_rate,
+            center_freq: self.center_freq,
+            byte_offset: self.byte_offset,
+            normalize: parsed("normalize", &self.normalize),
+            gain_db: self.gain_db,
+        }
+    }
+}
+
+/// One stored spelling, read by the parser that reads the command line.
+///
+/// A hint that will not parse is dropped rather than raised: it costs the flag
+/// it stood for, where the alternative is a recent list that refuses to open a
+/// file over a single word it does not recognise.
+fn parsed<T: std::str::FromStr>(field: &'static str, text: &Option<String>) -> Option<T> {
+    let text = text.as_deref()?;
+    match text.parse() {
+        Ok(value) => Some(value),
+        Err(_) => {
+            tracing::warn!(field, value = text, "unreadable hint in the recent list");
+            None
+        }
+    }
+}
+
+/// A file that was opened, and what it took to open it.
+///
+/// The hints are the point. A headerless capture is not openable at all
+/// without the layout it was first opened with, so a recent list that stored
+/// only paths would offer entries that fail every time they are chosen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Recent {
+    pub path: PathBuf,
+    #[serde(default)]
+    pub hints: Hints,
+}
+
+/// What a menu calls each entry of the recent list.
+///
+/// The file name, which is what a person recognises, unless two entries share
+/// one -- captures are named by frequency and timestamp, so a directory full
+/// of them and its copy elsewhere collide easily. Where they do, the directory
+/// holding the file is what tells them apart, and only those entries carry it:
+/// a list where every line is a path is a list nobody reads.
+pub fn recent_labels(recent: &[Recent]) -> Vec<String> {
+    let name = |entry: &Recent| {
+        entry
+            .path
+            .file_name()
+            .unwrap_or(entry.path.as_os_str())
+            .to_string_lossy()
+            .into_owned()
+    };
+    let names: Vec<String> = recent.iter().map(name).collect();
+    names
+        .iter()
+        .enumerate()
+        .map(|(i, label)| {
+            let unique = names
+                .iter()
+                .enumerate()
+                .all(|(j, other)| j == i || other != label);
+            if unique {
+                return label.clone();
+            }
+            match recent[i]
+                .path
+                .parent()
+                .filter(|dir| !dir.as_os_str().is_empty())
+            {
+                Some(dir) => format!("{label} - {}", dir.display()),
+                None => label.clone(),
+            }
+        })
+        .collect()
+}
+
 /// Everything one run hands to the next.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
@@ -143,6 +272,9 @@ pub struct Session {
     pub version: u32,
     pub geometry: Option<Geometry>,
     pub window_state: WindowState,
+    /// Most recently opened first, at most [`RECENT_LIMIT`] of them.
+    #[serde(default)]
+    pub recent: Vec<Recent>,
 }
 
 impl Default for Session {
@@ -151,6 +283,7 @@ impl Default for Session {
             version: VERSION,
             geometry: None,
             window_state: WindowState::default(),
+            recent: Vec::new(),
         }
     }
 }
@@ -253,6 +386,24 @@ impl Session {
         let staging = path.with_extension(format!("toml.{}.tmp", std::process::id()));
         std::fs::write(&staging, text)?;
         std::fs::rename(&staging, path)
+    }
+
+    /// Put a file at the head of the recent list.
+    ///
+    /// The same file opened again moves to the head rather than appearing
+    /// twice, and it moves with the hints it was opened with this time: a
+    /// capture reopened with a corrected sample rate should come back with the
+    /// corrected one.
+    pub fn remember(&mut self, path: &Path, hints: &OpenHints) {
+        self.recent.retain(|entry| entry.path != path);
+        self.recent.insert(
+            0,
+            Recent {
+                path: path.to_owned(),
+                hints: Hints::from(hints),
+            },
+        );
+        self.recent.truncate(RECENT_LIMIT);
     }
 
     /// Where `session.toml` lives.

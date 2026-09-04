@@ -105,3 +105,22 @@ fn gain_converts_decibels_to_a_multiplier() {
     assert!((gain_factor(6.0) - 1.9953).abs() < 1e-3);
     assert!((gain_factor(-20.0) - 0.1).abs() < 1e-6);
 }
+
+#[test]
+fn a_mode_written_down_is_read_back_as_itself() {
+    // The report prints these and the recent list stores them, so what one
+    // writes the command-line parser has to accept.
+    for mode in [
+        Normalize::None,
+        Normalize::Auto,
+        Normalize::Factor(1.5),
+        Normalize::Factor(32768.0),
+    ] {
+        let text = mode.to_string();
+        assert_eq!(
+            Normalize::from_str(&text),
+            Ok(mode),
+            "{text:?} did not survive the round trip"
+        );
+    }
+}

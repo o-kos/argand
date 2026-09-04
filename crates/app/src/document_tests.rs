@@ -46,10 +46,7 @@ fn analysis(width: usize) -> Box<Analysis> {
 }
 
 fn origin(path: &str) -> Origin {
-    Origin {
-        path: PathBuf::from(path),
-        hints: argand_io::OpenHints::default(),
-    }
+    Origin::new(PathBuf::from(path))
 }
 
 fn opening() -> Document {
