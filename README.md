@@ -16,12 +16,18 @@ A cross-platform editor and analyzer of recorded signals in both real and I/Q fo
 [implementation roadmap](docs/plans/IMPLEMENTATION_PLAN.md). See
 [CONTRIBUTING.md](CONTRIBUTING.md) before starting a change.
 
-The GUI is not built yet. What exists today is `aspec`, a command line tool
-that renders a signal file's spectrogram to a PNG, with a waveform strip above
-it. It is not a throwaway: the domain model, the readers and the transforms
-live in
-`argand-core`, `argand-io` and `argand-dsp`, which the GPUI front end will use
-unchanged. `aspec` only turns their output into an image.
+Two binaries share one core. `aspec` is a command line tool that renders a
+signal file's spectrogram to a PNG, with a waveform strip above it. `argand` is
+the graphical application: it opens a capture -- by argument, from its menu, by
+drag and drop, or from the files it remembers -- analyses it on a thread of its
+own, and shows the spectrogram with time and frequency axes. It is early: no
+waveform panel, no zoom, no selection, no editing yet, and the transform is a
+single pass over the whole file, so a large capture takes a while to appear.
+
+Neither binary is a throwaway. The domain model, the readers and the transforms
+live in `argand-core`, `argand-io` and `argand-dsp`; both front ends call the
+same `analyze`, place their axis marks with the same policy, and differ only in
+what they turn the result into.
 
 ## Why Argand?
 
@@ -52,7 +58,7 @@ sha256sum --check --ignore-missing SHA256SUMS
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked
 cargo test --locked
-cargo build --release --locked        # target/release/aspec
+cargo build --release --locked        # target/release/{aspec,argand}
 ```
 
 Those four commands, in that order, are what CI runs on Linux; Windows runs
@@ -305,6 +311,28 @@ I/Q:
 A full-scale tone on a bin centre reads 0 dBFS in either domain, so the colour
 scale means the same thing for a real recording and a complex one.
 
+## argand
+
+```sh
+argand                                              # an empty window
+argand capture.iqw
+argand dump.bin --raw iq_i16@24k --center 12.579M
+```
+
+The seven options that say how to read a capture -- `--raw`, `--type`,
+`--rate`, `--center`, `--offset`, `--normalize`, `--gain` -- are `aspec`'s own,
+spelled the same way. Everything that decides how the picture looks comes from
+`argand.toml` instead: the theme, the colour scheme, the dynamic range, the
+transform size and window, and the panel proportions. It is read from beside
+the binary first and from the platform configuration directory second, and a
+missing or malformed one costs a log line rather than the application.
+
+Files also open from the File menu, by dropping a capture on the window, and
+from the list of files opened before. That list keeps the options each file was
+opened with, so a headerless capture opened once as `iq_i16@24k` does not need
+those flags a second time. It lives in `session.toml` in the platform state
+directory, along with the window's size and state.
+
 ## Layout
 
 ```
@@ -312,13 +340,15 @@ crates/core   domain types, render view-models. No IO, no DSP, no toolkit.
 crates/io     container detection and readers. Implements core's SampleSource.
 crates/dsp    windows, STFT, averaged spectrum. Consumes SampleSource.
 crates/cli    the aspec binary: arguments, report, PNG composition.
+crates/app    the argand binary: window, document, analysis thread, axes.
 ```
 
-Dependencies run one way: `core <- io`, `core <- dsp`, and all three into
-`cli`. There is no edge between `io` and `dsp` -- the transform does not know
-what a file is, and the readers do not know what a transform is. Keeping that
-seam is what lets the GPUI front end replace `cli` without touching anything
-below it.
+Dependencies run one way: `core <- io`, `core <- dsp`, and all three into each
+front end. There is no edge between `io` and `dsp` -- the transform does not
+know what a file is, and the readers do not know what a transform is -- and no
+GPUI type appears below `crates/app`. That seam is what lets either front end
+change without touching anything under it, and what would let the toolkit be
+replaced.
 
 ## Tests
 

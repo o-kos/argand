@@ -14,8 +14,11 @@ const HFDL: Extents = Extents {
     hertz: (12_567_000.0, 12_591_000.0),
 };
 
+/// An unscaled display, which is what every test here but one describes.
+const UNSCALED: f32 = 1.0;
+
 fn measure(panel: Size<Pixels>, extents: Extents) -> Frame {
-    Frame::measure(panel, extents, &DejaVuSans).expect("a panel this size holds a plot")
+    Frame::measure(panel, UNSCALED, extents, &DejaVuSans).expect("a panel this size holds a plot")
 }
 
 #[test]
@@ -104,8 +107,8 @@ fn a_real_capture_is_labelled_from_zero_up_and_a_complex_one_either_side() {
 fn a_panel_with_no_room_left_for_a_picture_is_not_one() {
     // Narrower than the gutter the frequency labels need, and shorter than the
     // two label rows: there is no rectangle to draw into.
-    assert!(Frame::measure(panel(20.0, 400.0), HFDL, &DejaVuSans).is_none());
-    assert!(Frame::measure(panel(1200.0, 8.0), HFDL, &DejaVuSans).is_none());
+    assert!(Frame::measure(panel(20.0, 400.0), UNSCALED, HFDL, &DejaVuSans).is_none());
+    assert!(Frame::measure(panel(1200.0, 8.0), UNSCALED, HFDL, &DejaVuSans).is_none());
 }
 
 #[test]
@@ -120,6 +123,28 @@ fn a_gutter_reserved_from_zeros_holds_whatever_digits_turn_up_in_it() {
             "{:?} measures {width} in a {} pixel gutter",
             tick.label,
             frame.plot.x
+        );
+    }
+}
+
+#[test]
+fn the_plot_lands_on_whole_device_pixels_so_the_picture_is_not_resampled() {
+    // A fractional panel on a 1.5x display, which is what a tiled window on a
+    // scaled desktop hands over.
+    let scale = 1.5;
+    let frame = Frame::measure(panel(1237.0, 803.5), scale, HFDL, &DejaVuSans)
+        .expect("a panel this size holds a plot");
+
+    for (name, edge) in [
+        ("left", frame.plot.x),
+        ("top", frame.plot.y),
+        ("right", frame.plot.x + frame.plot.width),
+        ("bottom", frame.plot.y + frame.plot.height),
+    ] {
+        let device = edge * scale;
+        assert!(
+            (device - device.round()).abs() < 1e-3,
+            "the {name} edge is at device pixel {device}"
         );
     }
 }

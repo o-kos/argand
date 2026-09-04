@@ -130,8 +130,9 @@ waveform panel, editing.
       capture opened once as `iq_i16@2M` does not need those flags again.
 - [x] Report a file that cannot be opened in the window, leaving the application
       usable.
-- [ ] Update `AGENTS.md` and the roadmap where they describe what the application
-      does.
+- [x] Update `AGENTS.md` and the roadmap where they describe what the application
+      does. ➕ `README.md` too: it said the GUI was not built yet, and its layout
+      section had no `crates/app`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

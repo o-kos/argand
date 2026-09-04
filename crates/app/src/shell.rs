@@ -547,9 +547,10 @@ impl Shell {
 
         canvas(
             move |bounds, window, cx| {
+                let scale = window.scale_factor();
                 let labels = axes::Labels::new(window);
-                let frame = axes::Frame::measure(bounds.size, extents, &labels)?;
-                let measured = device_size(frame.plot, window.scale_factor());
+                let frame = axes::Frame::measure(bounds.size, scale, extents, &labels)?;
+                let measured = device_size(frame.plot, scale);
                 if known != Some(measured) {
                     cx.defer(move |cx| {
                         let _ = view.update(cx, |shell, cx| shell.resize(measured, cx));
@@ -721,10 +722,11 @@ impl Render for Shell {
 ///
 /// The transform is sized in these rather than in logical pixels, so a column
 /// of the spectrogram is a column of the screen whatever the display is scaled
-/// to. Rounded up, because a plot half a pixel wider than the picture shows a
-/// seam and one half a pixel narrower shows nothing at all.
+/// to. [`axes::Frame::measure`] has already put both edges of the plot on
+/// device pixels, so this rounding lands on a whole number rather than
+/// choosing one.
 fn device_size(plot: axes::Rect, scale: f32) -> PlotSize {
-    let edge = |logical: f32| (logical * scale).ceil().max(0.0) as usize;
+    let edge = |logical: f32| (logical * scale).round().max(0.0) as usize;
     PlotSize {
         width: edge(plot.width),
         height: edge(plot.height),
