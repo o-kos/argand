@@ -212,7 +212,7 @@ waveform panel, editing.
       does. ➕ `README.md` too: it said the GUI was not built yet, and its layout
       section had no `crates/app`.
 - [x] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -267,6 +267,31 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [x] `argand-core`, `argand-io` and `argand-dsp` gain no GPUI dependency.
       Their manifests are unchanged; the only new edges are `argand-app` on
       `argand-io`, `async-channel`, `clap` and `image`.
+
+## External review
+
+Seven rounds with `codex exec -s read-only`, sixteen findings, the last round
+clean. Fifteen were accepted; one was declined and answered.
+
+Accepted, in the order they were raised: a transform kept running for a
+document nobody was waiting for; a new file inherited the previous one's
+texture and plot size; the recent list changed `session.toml` without moving
+its version; a failed open destroyed the working hints of the entry that did
+open; `drop_image` was never reaching the window being updated, so every
+replaced spectrogram stayed in its atlas; the digit measure did not ask for
+tabular figures; `--type` does not exist and three documents promised it; a
+recent entry stored the path as given, so it could open a different file from
+another directory; Issue #43 was mis-routed as `backlog`; a non-UTF-8 path
+would have failed every later session write; and five claims the code did not
+support -- in the README, the changelog, `AGENTS.md`, `axes.rs` and this plan.
+
+Declined: deduplicating the recent list by file identity rather than by path.
+The list is of the names a person opened things by, `recent_labels` already
+tells apart the ones that would read alike, and identity would mean a
+filesystem call for every stored entry on every open while still being wrong
+for a file that has since moved. The reviewer agreed with the decline and
+corrected the reasoning behind it, which is where the fifth round's first
+finding came from.
 
 ## Post-completion
 
