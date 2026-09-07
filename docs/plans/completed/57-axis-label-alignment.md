@@ -28,7 +28,7 @@ Move the frequency scale to the right, align numeric ink vertically with ticks, 
 - [x] Cover label bounds and spacing, preserving existing CLI behavior
 - [x] Validate native rendering at normal and scaled DPI
 - [x] Complete local gate and release build
-- [ ] Complete external review
+- [x] Complete external review
 - [x] Move the plan to completed
 
 ## Validation
@@ -38,7 +38,7 @@ Move the frequency scale to the right, align numeric ink vertically with ticks, 
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the gate
 - [x] Native GPU screenshots at 1x and 2x, with narrow panels
-- [ ] External review with the required model
+- [x] External review with the required model
 
 ## Validation evidence
 
@@ -52,4 +52,5 @@ Move the frequency scale to the right, align numeric ink vertically with ticks, 
 - Accepted a fractional-DPI gutter finding: rounding the plot edge outward could reduce reserved label space
 - Added a regression test that first reproduced a frequency label extending beyond a 640px panel at 125% DPI
 - Round the right plot edge inward to retain the complete label bounds at fractional scales
-- No findings declined; focused follow-up review pending
+- No findings declined; focused follow-up review confirmed the fix with no substantive findings
+- Fresh release also checked at 125% DPI with six-decimal frequency labels and hour-scale time labels
