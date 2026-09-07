@@ -1,0 +1,375 @@
+# Issue #28: Show a spectrogram in the application window
+
+Resolves #28.
+
+## Overview
+
+Milestone 1 left a window that shows nothing. This one proves the whole data
+path end to end: open a file, run the transform off the UI thread, get an RGBA
+buffer onto the GPU, and draw axes around it with the tick policy `aspec`
+already uses.
+
+Deliberately the simple version. `analyze()` is called blocking over the whole
+file on a background thread and the result is displayed when it arrives. Making
+the first frame fast is #29; this milestone is about the path, not the speed, and
+a large capture will be slow to appear.
+
+Out of scope: progressive or tiled analysis, zoom and pan, selection, the
+waveform panel, editing.
+
+## Context
+
+- `argand_io::open(path, &OpenHints) -> Result<Box<dyn SampleSource>, IoError>`
+  is the whole opening surface, and `OpenHints` already carries exactly the seven
+  things the command line offers: `raw`, `sample_type`, `sample_rate`,
+  `center_freq`, `byte_offset`, `normalize`, `gain_db`. Remembering how a file
+  was opened is therefore remembering one existing struct.
+- `argand_dsp::analyze(&mut dyn SampleSource, &AnalysisRequest, &mut dyn FnMut(u64, u64))`
+  is blocking and reports progress through the callback. It returns `Analysis`,
+  which holds `spectrogram: SpectrogramImage` -- RGBA plus the time and frequency
+  extents -- and, since #26, `db: DbGrid`, which #32 will recolour without
+  recomputing.
+- `argand_core::axis` decides where ticks go, measuring candidate labels through
+  the `LabelMeasure` trait. `aspec` implements it over ab_glyph; this milestone
+  implements it over GPUI's text system, which is the second implementation the
+  trait was extracted for.
+- `crates/app` held, when this plan was written, `config.rs` (a person's
+  settings), `session.rs` (the application's own state, atomically written and
+  version-checked) and `shell.rs`, which was then the only place a GPUI type
+  appeared. The session already stored window geometry and state; this milestone
+  adds to that mechanism rather than building another. `AGENTS.md` describes the
+  division as it stands after this milestone.
+- `aspec`'s `main.rs` shows the working sequence: build `OpenHints` from
+  arguments, `argand_io::open`, `analyze` with a progress callback.
+
+## Decisions
+
+- **The analysis thread opens the file as well as transforming it.** Opening
+  looks cheap and is not: a capture read with `--normalize auto` is scanned for
+  its peak before the first sample reaches a transform, and that is a pass over
+  the file. So `analysis::open` starts the thread and the thread does both,
+  reporting what the file turned out to be as its first update.
+- **`async-channel` for the queue between the two threads.** Its receiver can be
+  awaited from a GPUI task and its sender pushed to from a plain `std` thread,
+  which is what lets `analysis` and `document` stay free of any toolkit and be
+  tested without an executor or a window. It is already in the graph under gpui,
+  so this adds an edge rather than a dependency.
+- **The document is a state machine, not a bundle of fields.** `Document::apply`
+  folds one update in and answers with what the window must do about it, so the
+  sequence a file goes through is decided in one tested place and merely drawn
+  in `shell.rs`.
+- **A request is sized to the plot, not to the panel.** The frequency labels take
+  a gutter out of the panel, so the transform is asked for exactly the rectangle
+  the picture ends up in, and its edges are snapped to whole device pixels: a
+  settled window then draws one transform column to one screen column. A window
+  being resized is the exception, and deliberately so -- the previous picture is
+  stretched into the new rectangle until the transform for it finishes, because
+  a window that blanks itself on every drag is harder to use than one showing a
+  slightly stale spectrogram.
+- **A resize re-analyses, and the thread keeps only the last request.** A drag
+  offers one request per step; `newest` discards those overtaken while a
+  transform ran, so the window ends a drag one analysis behind rather than
+  dozens.
+- **Tabular figures are asked for, and every digit is measured as the widest.**
+  `LabelMeasure::width` has to answer the same for any digit in any place,
+  because the gutter is reserved from a row of zeros before a tick is chosen. A
+  desktop font is not obliged to have tabular figures, so the `tnum` feature is
+  requested and the substitution is made in the measure as well, rather than
+  either being assumed of the face. What neither covers is contextual shaping
+  between two digits in a face that has no `tnum` and no uniform advance;
+  bounding that would mean measuring every number the axis could print. The
+  residue is a label a pixel or two past its gutter, and it is named in
+  `axes.rs` rather than hidden.
+- **Retire a replaced picture after an intervening draw.** gpui keeps an image
+  in its texture atlas until explicitly released. Blade destroys an empty
+  atlas texture immediately, even if the last GPU frame still samples it.
+  The first `on_next_frame` callback forces a redraw of the replacement; the
+  second releases the old image. That intervening Blade draw waits for the
+  previous frame before returning. Release still names the current window,
+  and pending callbacks belong to that window, so closing it drops them with
+  its renderer.
+- **The document holds what the thread reports, not the source itself.** The
+  step above asks for the source in the document; putting it there would mean
+  either sharing it with the thread transforming it or moving it back and
+  forth. The thread owns it outright and the document owns everything it says,
+  which is what makes it impossible for the window to touch a file a transform
+  is reading.
+- **A transform is stopped by telling it the signal ended.** `analyze` is one
+  blocking call with no way to interrupt it, so a closed document would hold a
+  thread and a mapping until it finished on its own -- and opening several
+  large captures in a row would leave one behind for each. A source that
+  answers a read with "no more samples" once the update channel has closed is
+  the lever the transform does expose. The level scan a `--normalize auto`
+  capture runs is still not interruptible: it happens before there is a source
+  to wrap.
+- **The recent list is a list of names, not of files.** Entries are compared as
+  absolute paths and nothing asks the filesystem what one points at, so a link
+  and its target are two entries. How much else two spellings share is the
+  platform's business -- `std::path::absolute` drops a `.` everywhere and folds
+  a `..` on Windows -- and this does not try to say which. Making it a list of
+  files would mean a filesystem call for every stored entry on every open, and
+  would still be wrong for one that has since moved; `recent_labels` already
+  tells apart the entries that would read alike.
+- **A path that cannot be written is not remembered.** TOML is UTF-8 and a
+  filename on Linux is any bytes at all, so such a path fails to serialize.
+  Refusing it costs the entry; letting it in would cost every later save,
+  the window's own geometry included, for as long as it stayed in the list.
+- **A remembered path is absolute.** The list outlives the directory the
+  application was started in, so `argand dump.bin` stored as written would,
+  from anywhere else, either fail to open or open a different `dump.bin` with
+  the first one's layout hints. Made absolute rather than canonical: a link is
+  a name a person chose and expects to see again, and resolving one would also
+  demand the file still be there, which is not a condition for remembering
+  where it was.
+- **A file enters the recent list when it opens, not when it is asked for.**
+  Recording it on the way in looked better -- a capture that failed for want of
+  a `--rate` is exactly the one whose hints are worth keeping -- and is wrong:
+  a raw capture first opened with `--raw iq_i16@2M` and later picked from a
+  dialog with nothing would have had the one spelling that reads it replaced by
+  nothing, and could never be opened from the list again.
+- **A released texture names its window.** gpui takes the window being updated
+  out of `App`'s own list, so an image dropped without naming it stays in that
+  window's atlas -- and every path here that releases one runs inside a window
+  update.
+- **`session.toml` is version 2, and version 1 is read into it.** The version
+  exists so a binary that cannot read a file leaves it alone. Adding the recent
+  list under the old number would have let an older binary read the file,
+  ignore the list and rewrite without it; under a new one it starts fresh and
+  leaves the file. A version 1 file is still read, since every field the new
+  layout added has a default. What the number does not guard is two instances
+  running at once, which lose each other's writes whatever the layout: Issue
+  #43 carries that, and the module documentation in `session.rs` says so.
+- **The menu is drawn in the title bar, not handed to a platform menu bar.**
+  gpui's `set_menus` builds a real menu bar on macOS and stores the list
+  unused on Linux and Windows. The window already draws its own title bar on
+  all three, so the menu goes there and behaves the same everywhere.
+- **The recent list stores hints as the strings the command line uses.**
+  `session.toml` then needs to know nothing about `RawSpec`, `SampleType` or
+  `Normalize` beyond how a person writes them, one grammar covers the command
+  line, the report and the file, and a hint a newer version wrote is dropped
+  with a log line rather than making the whole entry unreadable.
+- **The shell holds the whole `Session` rather than assembling one per write.**
+  Two unrelated things write to it -- the toolkit reporting a window move, and
+  a person opening a file -- and a session built from whichever happened last
+  would guess at the other.
+
+## Rejected alternatives
+
+- **A `[patch]` or Git revision for gpui.** `gpui-component` declares its own
+  `gpui` with no revision, so pinning one puts two incompatible copies in the
+  tree. crates.io releases (gpui 0.2.2, gpui-component 0.5.1) are current
+  enough; `AGENTS.md` now records why.
+- **Embedding DejaVu Sans for the axis labels, as `aspec` does.** It would make
+  the marks identical on every platform, and it would also make them the only
+  text in the window not drawn in the desktop's own font. The window already
+  depends on host fonts for everything else, so the labels use the window's
+  font and the measure is made robust instead.
+- **`cx.background_spawn` instead of a thread per document.** It is the shorter
+  route, but the background executor is a shared pool and a half-hour capture
+  would hold one of its threads for the whole transform. A thread that owns the
+  `SampleSource` also makes it structurally impossible for the window to touch
+  a file a transform is reading.
+- **Debouncing resize or reducing Rayon threads as the freeze fix.** Request
+  coalescing already bounds queued work. The later CPU-starvation diagnosis
+  was a hypothesis, not a measurement: the reproduced hang is in Blade's GPU
+  fence wait, with analysis threads idle. The original binary still hangs with
+  `RAYON_NUM_THREADS=11`. Delaying image destruction fixes the observed failure
+  without changing the DSP pool, transform output or request policy.
+- **A lock around `session.toml`.** Two instances running at once lose each
+  other's writes, and the recent list is the first thing in that file whose
+  loss costs a person something: the hints it holds are the only record of how
+  a headerless capture opens. That is why it is a normal Issue, #43, and not a
+  backlog one. Serializing processes over that file is still a change to a
+  mechanism this milestone only added a field to, so it is answered there
+  rather than here; until it is, what the file remembers is what the last
+  instance to write it remembered, which `session.rs` says at the top.
+- **Refusing to draw a picture whose size does not match the plot.** It would
+  make "one transform column is one screen column" true at every instant, at
+  the cost of a window that blanks itself for the length of a full transform
+  every time it is resized. The stale picture is stretched instead, and the
+  claim is stated for a settled window.
+- **serde derives on `argand-io`'s hint types.** It would make `session.toml`
+  shorter to write and would tie the file's format to the shape of types that
+  exist to be parsed from a command line. The spellings are the stable surface;
+  the structs are not.
+
+## Implementation steps
+
+- [x] Add a document: a path, its open hints, the source, and the analysis last
+      produced for it. Everything below hangs off this rather than off the shell.
+      The source itself is the one part that is not in the document: it belongs
+      to the thread reading it, and the document holds what that thread reports.
+- [x] Run the analysis on its own thread, owning the `Box<dyn SampleSource>`,
+      with requests and results over channels and results applied to the view
+      from GPUI's async context. No frame is drawn on a thread that is also
+      transforming.
+- [x] Turn `SpectrogramImage` into a GPU image and draw it, settling the channel
+      order and the image API that the later milestones build on.
+- [x] Implement `LabelMeasure` over GPUI's text system and draw the time and
+      frequency axes through `argand-core::axis`, two-sided around the centre
+      frequency for I/Q and one-sided for real.
+- [x] Open a file from the command line, accepting the same hints as `aspec`.
+- [x] Open a file from a menu and by drag and drop.
+- [x] Show container, sample type, sample rate, duration and centre frequency in
+      the status bar. The centre frequency only where there is one: baseband is
+      the default, and `centre 0 Hz` says nothing a reader did not assume.
+- [x] Remember recent files and the hints each was opened with, so a headerless
+      capture opened once as `iq_i16@2M` does not need those flags again.
+- [x] Report a file that cannot be opened in the window, leaving the application
+      usable.
+- [x] Update `AGENTS.md` and the roadmap where they describe what the application
+      does. ➕ `README.md` too: it said the GUI was not built yet, and its layout
+      section had no `crates/app`.
+- [x] Complete validation.
+- [x] ➕ Keep the window responsive during resize. Reproduced a GPU hang with
+      the release binary on Intel Iris Xe / Mesa, then delayed image retirement
+      until after a replacement draw. The proposed Rayon pool was not applied:
+      the 11-thread control still hangs. See the GPU validation below.
+- [x] ➕ Report each successful analysis duration in `Update::Ready` and
+      `Status::Ready`, formatted as `ready in 1.25s`. The timer covers the
+      transform and shading for that request, excluding file opening, queue
+      wait, texture upload and display. A subsequent result replaces the time.
+- [x] ➕ Compare Double Commander and native file-manager drops on an isolated
+      Wayland session; document the observed interoperability limitation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
+
+Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
+
+## Validation
+
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`. ➕ CI on Windows caught three of the new recent-list
+      tests spelling their paths `/c/a.wav` and comparing the stored value
+      against the same string: `std::path::absolute` prepends the current drive
+      there. The tests build their paths from a scratch directory now. The code
+      was right; the tests assumed a platform.
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] The window shows, for a capture from `tests/signals/`, the same spectrogram
+      `aspec` renders for the same parameters. Compared as pixels, not by eye.
+
+      Done twice over. In the suite,
+      `spectrogram::tests::every_pixel_uploaded_is_one_the_transform_produced`
+      opens a capture, builds the request through `Config::analysis_request`,
+      runs the same `analyze` `aspec` runs, and holds every byte handed to the
+      GPU against every byte the transform produced -- equal but for red and
+      blue, which is the order gpui reads a texture in.
+
+      And on screen: the release binary was run on
+      `12.579000_25_08_26_06_09_10.iqw` under a nested compositor, the window
+      captured with `grim`, and the plot rectangle held against the transform's
+      own RGBA for the same 1499x634 request. 897,559 of 950,366 pixels are
+      identical, and every one of the 52,807 that differ lies on one of the 30
+      grid columns or 23 grid rows the window draws over the picture. Outside
+      the grid the difference is exactly zero, so nothing is resampled,
+      recoloured or shifted between the transform and the screen. That holds
+      for a settled window; while a resize's new picture is being computed the
+      previous one is stretched into the new rectangle, which is deliberate and
+      recorded above.
+- [x] A real and a complex capture both display correctly, with the frequency
+      axis one-sided and two-sided respectively. `rl_f16x8-hfdl.wav` labels
+      0 to 4 kHz; `12.579000_25_08_26_06_09_10.iqw` labels 12.567 to 12.591 MHz
+      about its centre.
+- [x] Resize while a large capture is analysed: 900 compositor resize commands
+      at 30 Hz, with virtual-pointer motion, on a hardware-backed Sway headless
+      output (1600x1000) and a 30-minute, 172,800,056-byte I/Q capture. Each
+      instance used its own state/configuration directories. For step `i` in
+      `0..900`, width was `1536 - 7 * abs((i % 120) - 60)`, height 864,
+      and pointer position `(850 + i % 40, 500)`.
+
+      Baseline controls: the original binary produced `GPU hung` with the main
+      thread in `BladeRenderer::draw -> wait_for_gpu -> wait_for`; analysis
+      threads were waiting. A separate `RAYON_NUM_THREADS=11` run also hung,
+      after 28 layout updates. This refutes the proposed CPU-pool remedy for
+      the reproduced failure.
+
+      With deferred release: 771 layout updates, 4,225 Wayland surface commits,
+      no GPU hang; maximum gap between commits 52.229 ms, p99 36.954 ms. The
+      event loop continued emitting commits after the resize sequence. These
+      are protocol-level responsiveness measurements, not presentation-latency
+      measurements. This exercised compositor configure events and pointer
+      motion, not a physical edge drag in the owner's GNOME session.
+
+      Hardware: Intel Iris Xe (ADL GT2), Intel Mesa 25.2.8. Tests used a current
+      release build after the local gate (362 tests). No software renderer was
+      used for these measurements.
+- [x] A file opens by argument, and -- checked by the owner on a live session --
+      from the File menu and by dropping a capture from the desktop's own file
+      manager. A later isolated Sway session also exercised a native Nautilus
+      drop using a small virtual-pointer client; the capture opened and was
+      analysed. Double Commander is limited as described below.
+- [x] A raw file reopened from the recent list needs no layout flags. The
+      entry, its hints and their round trip are covered in `session_tests.rs`;
+      choosing it in the menu is part of the item above.
+- [x] An unreadable and an unsupported file each show a message and leave the
+      application working. Shown in the window in the theme's danger colour,
+      with the same wording `aspec` prints -- including the `--raw` suggestion
+      for an unrecognised container -- while the menu stays usable.
+- [x] `argand-core`, `argand-io` and `argand-dsp` gain no GPUI dependency.
+      Their manifests are unchanged; the only new edges are `argand-app` on
+      `argand-io`, `async-channel`, `clap` and `image`.
+
+## External review
+
+The initial implementation had seven rounds with `codex exec -s read-only`,
+sixteen findings, the last round clean. Fifteen were accepted; one was declined
+and answered. The subsequent live-session resize failure required the follow-up
+below despite that clean round.
+
+Accepted, in the order they were raised: a transform kept running for a
+document nobody was waiting for; a new file inherited the previous one's
+texture and plot size; the recent list changed `session.toml` without moving
+its version; a failed open destroyed the working hints of the entry that did
+open; `drop_image` was never reaching the window being updated, so every
+replaced spectrogram stayed in its atlas; the digit measure did not ask for
+tabular figures; `--type` does not exist and three documents promised it; a
+recent entry stored the path as given, so it could open a different file from
+another directory; Issue #43 was mis-routed as `backlog`; a non-UTF-8 path
+would have failed every later session write; and five claims the code did not
+support -- in the README, the changelog, `AGENTS.md`, `axes.rs` and this plan.
+
+Declined: deduplicating the recent list by file identity rather than by path.
+The list is of the names a person opened things by, `recent_labels` already
+tells apart the ones that would read alike, and identity would mean a
+filesystem call for every stored entry on every open while still being wrong
+for a file that has since moved. The reviewer agreed with the decline and
+corrected the reasoning behind it, which is where the fifth round's first
+finding came from.
+
+### Follow-up review after the live-session failure
+
+GPT-5.6 Sol at High reasoning effort reviewed the GPU-retirement and elapsed-time
+changes read-only through the `codex` CLI. The code round returned no substantive
+findings. It checked the actual GPUI/Blade callback and GPU-wait ordering rather
+than treating the successful resize experiment as proof, including replacement,
+hidden windows and renderer teardown. No finding was declined in this round.
+
+The documentation round raised two findings. Its formatting objection was
+rejected after both `cargo fmt --all -- --check` and an explicit
+`rustfmt --edition 2024 --check` of the two included test files returned zero.
+The scope finding was accepted: the separately requested reviewer-model policy
+remains a local change and is excluded from this PR. The final round independently
+ran both formatting checks, withdrew that finding, confirmed the scope change,
+and returned no substantive findings.
+
+## Known limitation: Double Commander on Wayland
+
+On the isolated Sway session, Double Commander 1.2.8 (XWayland), with fresh
+configuration and a single test WAV, did not deliver any `wl_data_offer` or
+`wl_data_device.enter` event to Argand in two drag attempts. The file was
+selected and the pointer crossed into Argand, so this is before the
+application's drop handler. It is not evidence that a particular MIME type or
+action was refused; none reached the target.
+
+Control: native Nautilus offered `text/uri-list` and source actions 7;
+gpui selected `Copy` (1), received the drop, and `Shell::open` opened the same
+WAV. The owner had already confirmed a native desktop-file-manager drop in the
+live session. The exact Double Commander/XWayland cause remains unassigned;
+Issue #46 tracks the source/bridge investigation; README names the limitation
+and the File-menu alternative. No toolkit fork or
+unsupported workaround is introduced in this Issue.
+
+## Post-completion
+
+- #29 makes the first frame fast on a large capture; this milestone's analysis
+  thread and view are what it replaces the inside of.

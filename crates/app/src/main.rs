@@ -1,22 +1,31 @@
 //! `argand`: the application binary.
 //!
-//! This milestone is the shell only -- a window that opens, is configured, and
-//! remembers as much of itself as the toolkit reports. Signals, analysis and
-//! the real panels arrive with the milestones after it.
+//! The window opens a signal file, analyses it on a thread of its own and
+//! shows the spectrogram that comes back. Editing, selections and the waveform
+//! panel arrive with the milestones after it.
 //!
 //! Two files back it, and each has exactly one writer. `argand.toml` is a
 //! person's and is only ever read; `session.toml` is the program's and is
 //! rewritten as the window moves. Both are read before the window exists, and
 //! neither can stop it appearing: see [`config`] and [`session`].
 
+mod analysis;
+mod axes;
+mod cli;
 mod config;
+mod document;
 mod session;
 mod shell;
+mod spectrogram;
 
+use clap::Parser;
+
+use cli::Args;
 use config::Config;
 use session::{Session, Writer};
 
 fn main() {
+    let args = Args::parse();
     init_tracing();
 
     // Both files are read before the window is created, and nothing expensive
@@ -37,7 +46,7 @@ fn main() {
         .filter(|_| restored.writable)
         .map(|path| Writer::new(path, restored.session.clone()));
 
-    shell::run(config, restored.session, writer);
+    shell::run(config, restored.session, writer, args.origin());
 }
 
 /// The subscriber, set up as `aspec` sets its own up.

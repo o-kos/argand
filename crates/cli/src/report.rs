@@ -162,7 +162,7 @@ impl Report {
             samples: meta.len_samples,
             duration_seconds: meta.duration_seconds(),
             analysed_seconds,
-            normalize: describe_normalize(scaling.normalize),
+            normalize: scaling.normalize.to_string(),
             divisor,
             normalize_names_divisor: matches!(scaling.normalize, Normalize::Factor(_)),
             gain_db: scaling.gain_db,
@@ -557,14 +557,6 @@ fn file_name_of(path: &str) -> String {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string())
-}
-
-fn describe_normalize(mode: Normalize) -> String {
-    match mode {
-        Normalize::None => "none".to_string(),
-        Normalize::Auto => "auto".to_string(),
-        Normalize::Factor(v) => format!("{v}"),
-    }
 }
 
 fn signed_hz(hz: f64) -> String {

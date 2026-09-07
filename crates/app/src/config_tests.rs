@@ -204,3 +204,67 @@ fn a_name_the_cli_would_reject_is_rejected_here_too() {
         );
     }
 }
+
+#[test]
+fn the_transform_a_picture_is_drawn_from_is_the_one_the_file_asked_for() {
+    let text = "\
+color_scheme = \"viridis\"
+dynamic_range = \"60\"
+
+[stft]
+fft_size = 512
+window = \"blackman-harris\"
+";
+    let config = Config::parse(text, Path::new("argand.toml"));
+    let meta = argand_core::SignalMeta {
+        sample_rate: 24_000.0,
+        center_freq: 0.0,
+        sample_type: argand_core::SampleType::new(
+            argand_core::Domain::Iq,
+            argand_core::SampleFormat::I16,
+        ),
+        len_samples: 96_000,
+        container: "wav",
+        divisor: 32_768.0,
+        source: PathBuf::from("capture.wav"),
+    };
+
+    let request = config.analysis_request(&meta, 1024, 480);
+
+    assert_eq!(request.cfg.fft_size, 512);
+    assert_eq!(request.cfg.window, argand_dsp::Window::BlackmanHarris);
+    // Three quarters of overlap, which is what `aspec` uses without `--hop`.
+    assert_eq!(request.cfg.hop, 128);
+    assert_eq!(request.colormap, argand_core::Colormap::Viridis);
+    assert_eq!(request.dynamic_range, DynamicRange::Fixed(60.0));
+    assert_eq!(request.width, 1024);
+    assert_eq!(request.height, 480);
+    // The whole file, since nothing narrows it yet.
+    assert_eq!(request.range, argand_core::SampleRange::new(0, 96_000));
+    assert_eq!(request.waveform_columns, None);
+}
+
+#[test]
+fn a_transform_size_of_two_still_leaves_a_hop_of_at_least_one() {
+    let config = Config {
+        stft: Stft {
+            fft_size: 2,
+            ..Stft::default()
+        },
+        ..Config::default()
+    };
+    let meta = argand_core::SignalMeta {
+        sample_rate: 8_000.0,
+        center_freq: 0.0,
+        sample_type: argand_core::SampleType::new(
+            argand_core::Domain::Real,
+            argand_core::SampleFormat::F32,
+        ),
+        len_samples: 8_000,
+        container: "wav",
+        divisor: 1.0,
+        source: PathBuf::from("capture.wav"),
+    };
+
+    assert_eq!(config.analysis_request(&meta, 64, 32).cfg.hop, 1);
+}

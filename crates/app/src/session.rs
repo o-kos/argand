@@ -9,10 +9,21 @@
 //! and it is only ever advisory, so a missing, unreadable, corrupt or
 //! future-versioned file costs a log line and the defaults, never a start-up
 //! failure.
+//!
+//! What it is not is serialized between processes. Each run reads the file once
+//! and writes it whole, so two running at the same time keep whatever the last
+//! one wrote and lose the other's -- including a recent entry and the only copy
+//! of the hints that open the capture it names. [`VERSION`] guards a
+//! *downgrade*, where a binary that cannot read the layout leaves the file
+//! alone, and not a race: an older binary already running has read its own copy
+//! and will rewrite it in its own layout whatever the number on disk says.
+//! Issue #43 carries that, and until it is answered what this file remembers is
+//! what the last instance to write it remembered.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use argand_io::OpenHints;
 use serde::{Deserialize, Serialize};
 
 /// The name the application writes under, in the platform state directory.
@@ -48,12 +59,28 @@ const UNVERIFIED_MAX_DIMENSION: f32 = 2_048.0;
 /// is nothing to restore.
 const ABSURD: f32 = 65_536.0;
 
-/// The layout this program knows how to read.
+/// Files kept in the recent list.
 ///
-/// A file from a future version is left alone rather than guessed at: the
-/// defaults cost a window position, and a wrong guess costs whatever that
-/// version was recording.
-pub const VERSION: u32 = 1;
+/// Long enough to reach back past a day's work, short enough that the menu is
+/// still a list rather than a search.
+pub const RECENT_LIMIT: usize = 10;
+
+/// The layout this program writes.
+///
+/// A file from a version this one does not know is left alone rather than
+/// guessed at: the defaults cost a window position, and a wrong guess costs
+/// whatever that version was recording. The number goes up whenever the layout
+/// gains something, so that an older binary sees a number it does not know and
+/// leaves the file rather than quietly rewriting it without what it could not
+/// read. Version 2 added the recent list.
+pub const VERSION: u32 = 2;
+
+/// Every layout this program can read, oldest first.
+///
+/// An older file is read into the current shape and written back at
+/// [`VERSION`]: each version so far only added fields, so what is missing has
+/// a default and nothing has to be converted.
+const READABLE: [u32; 2] = [1, VERSION];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -136,6 +163,128 @@ pub struct Restored {
     pub writable: bool,
 }
 
+/// How a file was opened, written the way the command line spells it.
+///
+/// The strings are deliberate. `OpenHints` is `argand-io`'s and carries a
+/// sample type, a raw layout and a normalize mode, none of which this file
+/// needs to know the shape of -- only how a person writes them, which is what
+/// `--raw`, `--sample-type` and `--normalize` already answer. Storing the spelling
+/// means one grammar for the command line, the report and this file, and it
+/// means a session written by a version that learned a new sample type is
+/// still readable rather than merely unparseable.
+///
+/// A value that no longer parses is dropped with a log line, because a hint
+/// that cannot be read is worth less than the rest of the entry it sits in.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Hints {
+    /// `--raw`, as `<type>[@<rate>]`.
+    pub raw: Option<String>,
+    pub sample_type: Option<String>,
+    pub sample_rate: Option<f64>,
+    pub center_freq: f64,
+    pub byte_offset: u64,
+    pub normalize: Option<String>,
+    pub gain_db: f32,
+}
+
+impl From<&OpenHints> for Hints {
+    fn from(hints: &OpenHints) -> Self {
+        Self {
+            raw: hints.raw.map(|spec| spec.to_string()),
+            sample_type: hints.sample_type.map(|kind| kind.to_string()),
+            sample_rate: hints.sample_rate,
+            center_freq: hints.center_freq,
+            byte_offset: hints.byte_offset,
+            normalize: hints.normalize.map(|mode| mode.to_string()),
+            gain_db: hints.gain_db,
+        }
+    }
+}
+
+impl Hints {
+    /// Read the spellings back, dropping any this version cannot parse.
+    pub fn to_open_hints(&self) -> OpenHints {
+        OpenHints {
+            raw: parsed("raw", &self.raw),
+            sample_type: parsed("sample_type", &self.sample_type),
+            sample_rate: self.sample_rate,
+            center_freq: self.center_freq,
+            byte_offset: self.byte_offset,
+            normalize: parsed("normalize", &self.normalize),
+            gain_db: self.gain_db,
+        }
+    }
+}
+
+/// One stored spelling, read by the parser that reads the command line.
+///
+/// A hint that will not parse is dropped rather than raised: it costs the flag
+/// it stood for, where the alternative is a recent list that refuses to open a
+/// file over a single word it does not recognise.
+fn parsed<T: std::str::FromStr>(field: &'static str, text: &Option<String>) -> Option<T> {
+    let text = text.as_deref()?;
+    match text.parse() {
+        Ok(value) => Some(value),
+        Err(_) => {
+            tracing::warn!(field, value = text, "unreadable hint in the recent list");
+            None
+        }
+    }
+}
+
+/// A file that was opened, and what it took to open it.
+///
+/// The hints are the point. A headerless capture is not openable at all
+/// without the layout it was first opened with, so a recent list that stored
+/// only paths would offer entries that fail every time they are chosen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Recent {
+    pub path: PathBuf,
+    #[serde(default)]
+    pub hints: Hints,
+}
+
+/// What a menu calls each entry of the recent list.
+///
+/// The file name, which is what a person recognises, unless two entries share
+/// one -- captures are named by frequency and timestamp, so a directory full
+/// of them and its copy elsewhere collide easily. Where they do, the directory
+/// holding the file is what tells them apart, and only those entries carry it:
+/// a list where every line is a path is a list nobody reads.
+pub fn recent_labels(recent: &[Recent]) -> Vec<String> {
+    let name = |entry: &Recent| {
+        entry
+            .path
+            .file_name()
+            .unwrap_or(entry.path.as_os_str())
+            .to_string_lossy()
+            .into_owned()
+    };
+    let names: Vec<String> = recent.iter().map(name).collect();
+    names
+        .iter()
+        .enumerate()
+        .map(|(i, label)| {
+            let unique = names
+                .iter()
+                .enumerate()
+                .all(|(j, other)| j == i || other != label);
+            if unique {
+                return label.clone();
+            }
+            match recent[i]
+                .path
+                .parent()
+                .filter(|dir| !dir.as_os_str().is_empty())
+            {
+                Some(dir) => format!("{label} - {}", dir.display()),
+                None => label.clone(),
+            }
+        })
+        .collect()
+}
+
 /// Everything one run hands to the next.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
@@ -143,6 +292,9 @@ pub struct Session {
     pub version: u32,
     pub geometry: Option<Geometry>,
     pub window_state: WindowState,
+    /// Most recently opened first, at most [`RECENT_LIMIT`] of them.
+    #[serde(default)]
+    pub recent: Vec<Recent>,
 }
 
 impl Default for Session {
@@ -151,6 +303,7 @@ impl Default for Session {
             version: VERSION,
             geometry: None,
             window_state: WindowState::default(),
+            recent: Vec::new(),
         }
     }
 }
@@ -190,7 +343,7 @@ impl Session {
         }
 
         match toml::from_str::<Versioned>(&text) {
-            Ok(Versioned { version }) if version == VERSION => {}
+            Ok(Versioned { version }) if READABLE.contains(&version) => {}
             Ok(Versioned { version }) => {
                 tracing::warn!(
                     path = %path.display(),
@@ -209,9 +362,15 @@ impl Session {
             }
         }
 
-        match toml::from_str(&text) {
+        match toml::from_str::<Self>(&text) {
+            // Read at whatever version wrote it, written back at this one:
+            // anything an older layout did not have is at its default, which
+            // is what an absent field means.
             Ok(session) => Restored {
-                session,
+                session: Self {
+                    version: VERSION,
+                    ..session
+                },
                 writable: true,
             },
             Err(error) => {
@@ -253,6 +412,61 @@ impl Session {
         let staging = path.with_extension(format!("toml.{}.tmp", std::process::id()));
         std::fs::write(&staging, text)?;
         std::fs::rename(&staging, path)
+    }
+
+    /// Put a file at the head of the recent list.
+    ///
+    /// The same path written the same way moves to the head rather than
+    /// appearing twice, and it moves with the hints it was opened with this
+    /// time: a capture reopened with a corrected sample rate should come back
+    /// with the corrected one.
+    ///
+    /// Written the same way, not the same file: the comparison is between the
+    /// absolute paths, and a link and its target are two of those. How much
+    /// else two spellings share depends on the platform -- `std::path::absolute`
+    /// drops a `.` everywhere and folds a `..` on Windows -- so this merges
+    /// some pairs and not others, and does not try to say which.
+    ///
+    /// It does not ask the filesystem what a path points at. This is a list of
+    /// the names a person opened things by, and two names for one capture are
+    /// two names; [`recent_labels`] already tells apart the ones that would
+    /// read alike. A list of files instead would mean a filesystem call for
+    /// every stored entry on every open, and would still be wrong for one that
+    /// has since moved.
+    pub fn remember(&mut self, path: &Path, hints: &OpenHints) {
+        // Absolute, because the list outlives the directory the application
+        // was started in. `argand dump.bin` stored literally would, from
+        // somewhere else, either fail to open or -- worse -- open a different
+        // `dump.bin` with the first one's layout hints.
+        //
+        // Made absolute rather than canonical: a link is a name a person chose
+        // and expects to see again, and resolving it would also require the
+        // file still to be there, which is not a condition for remembering
+        // where it was.
+        let path = std::path::absolute(path).unwrap_or_else(|error| {
+            tracing::warn!(path = %path.display(), %error, "cannot resolve the path; remembering it as given");
+            path.to_owned()
+        });
+        // TOML is UTF-8 by definition and a filename on Linux is any bytes, so
+        // a path that is not one cannot be written. Refusing it here costs the
+        // entry; letting it into the list would cost every later save,
+        // including the window's own geometry, for as long as it stayed there.
+        if path.to_str().is_none() {
+            tracing::warn!(
+                path = %path.display(),
+                "not a UTF-8 path; it cannot be written to the session and is not remembered"
+            );
+            return;
+        }
+        self.recent.retain(|entry| entry.path != path);
+        self.recent.insert(
+            0,
+            Recent {
+                path,
+                hints: Hints::from(hints),
+            },
+        );
+        self.recent.truncate(RECENT_LIMIT);
     }
 
     /// Where `session.toml` lives.
