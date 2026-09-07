@@ -55,3 +55,10 @@ Require full remote CI for final acceptance, then squash-merge after approval.
   file opening, GPU upload or first visible frame time.
 - Runtime validation is Linux Wayland; Windows/macOS runtime was not exercised.
 - External review returned no substantive findings; none were declined.
+
+## Owner feedback: one-sentence explanations
+
+- [ ] Express each explanatory hint as one concise sentence without a terminal
+  period or forced line break; retain separate heading/value and `hms.ms` notation.
+- [ ] Preserve format and timing semantics, run the local gate, rebuild release
+  and obtain focused external review before presenting the result.
