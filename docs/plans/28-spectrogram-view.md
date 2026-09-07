@@ -166,6 +166,13 @@ waveform panel, editing.
   a file a transform is reading.
 - **Debouncing resize on the window's side.** A timer to add and a delay to
   tune, for what `newest` already achieves by discarding overtaken requests.
+
+  Rejected too early, and half wrong. `newest` does keep the *queue* from
+  growing, and that was the whole of the reasoning; what it cannot do is stop
+  the transform already running from taking every core. The freeze the owner
+  saw is that, and the ➕ item above answers it by leaving a core free rather
+  than by adding a timer. A debounce remains unnecessary; the reason given
+  here for not needing it was not the reason.
 - **A lock around `session.toml`.** Two instances running at once lose each
   other's writes, and the recent list is the first thing in that file whose
   loss costs a person something: the hints it holds are the only record of how
@@ -212,7 +219,34 @@ waveform panel, editing.
       does. ➕ `README.md` too: it said the GUI was not built yet, and its layout
       section had no `crates/app`.
 - [x] Complete validation.
-- [x] Move this plan to `docs/plans/completed/` before final review.
+- [ ] ➕ Keep the window responsive during an active resize. Found by the owner
+      on a live session: dragging a window edge freezes it for seconds at a
+      time while the status bar shows `analysing... 92%`. The acceptance
+      criterion "the window stays responsive while a large capture is analysed"
+      is therefore not met, so this stays in this Issue rather than becoming
+      another.
+
+      Diagnosed, not yet fixed. `Plan::transform_block` in
+      `crates/dsp/src/stft.rs` runs `into_par_iter()` on rayon's *global* pool,
+      which is every logical core -- twelve on the owner's machine -- and
+      `argand_io`'s level scan does the same. The analysis thread therefore has
+      no core left to spare, and the thread drawing the window needs one per
+      motion event of a drag. Coalescing requests does not help: the starvation
+      is from the transform already running, not from the ones queued behind it,
+      which is where "Debouncing resize on the window's side" below was wrong.
+
+      The fix is to build a rayon pool in `analysis.rs` with
+      `available_parallelism() - 1` threads and run the whole of `serve` inside
+      `pool.install(..)`, which also covers the level scan, since a nested
+      `par_iter` uses the installed pool. That leaves a core for the window
+      whatever the transform is doing, costs one twelfth of the analysis rate,
+      and needs no change to `argand-dsp` or `argand-io`. Worth measuring both
+      ways before and after.
+- [ ] ➕ Report how long an analysis took, which the owner asked for and `aspec`
+      already prints. The worker knows it exactly, so the duration belongs on
+      `Update::Ready` and then in `Status::Ready`, shown through
+      `format_duration` as `ready in 12.5s`.
+- [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -255,12 +289,12 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       30-minute capture reports its progress in the status bar and repaints
       throughout; the transform runs on `argand-analysis`, never on the thread
       drawing the window.
-- [x] A file opens by argument. ⚠️ Opening by menu and by drag and drop could
-      not be exercised here: the nested compositor used for GUI work has no
-      input device, and neither a virtual-pointer tool nor a way to synthesise
-      a data offer is available on this machine. Both paths end in the same
-      `Shell::open` the command line uses, and the file dialog is the
-      platform's own. They need the owner's real session.
+- [x] A file opens by argument, and -- checked by the owner on a live session --
+      from the File menu and by dropping a capture from the desktop's own file
+      manager. ⚠️ Dropping from Double Commander does nothing; see the note
+      below. Neither could be exercised here: the nested compositor used for
+      GUI work has no input device, and neither a virtual-pointer tool nor a
+      way to synthesise a data offer is available on this machine.
 - [x] A raw file reopened from the recent list needs no layout flags. The
       entry, its hints and their round trip are covered in `session_tests.rs`;
       choosing it in the menu is part of the item above.
@@ -296,6 +330,23 @@ filesystem call for every stored entry on every open while still being wrong
 for a file that has since moved. The reviewer agreed with the decline and
 corrected the reasoning behind it, which is where the fifth round's first
 finding came from.
+
+## Open questions
+
+- **Dropping from Double Commander does nothing, while dropping from the
+  desktop's own file manager works.** Not yet diagnosed, and it may not be ours
+  to fix. gpui's Wayland client accepts exactly one type,
+  `text/uri-list` (`platform/linux/wayland/client.rs`), and negotiates exactly
+  one action, `DndAction::Copy`. A source that offers neither -- a different
+  type, or `Move` alone -- is refused before any of this code sees it, and
+  Double Commander is an X11 toolkit reaching us through XWayland.
+
+  What to do first: run the application under `WAYLAND_DEBUG=1` and drag from
+  each of the two file managers, then compare the `wl_data_offer.offer` lines.
+  If Double Commander never offers `text/uri-list`, this is gpui's to widen or
+  the source's to fix, and the honest answer here is to narrow what the README
+  and the Pull Request claim. If it does offer it, the fault is nearer and
+  worth chasing.
 
 ## Post-completion
 
