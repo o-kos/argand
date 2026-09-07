@@ -145,3 +145,10 @@ Status metadata hint and duration redesign remains deferred.
   label does. The chooser works with empty history, and the tenth entry still
   opens by mouse after scrolling.
 - Focused external review returned no substantive findings; none were declined.
+
+## Owner feedback: align the chooser with the filename column
+
+- [ ] Align `or` with the left edge of `Recent files` and the chooser text with
+  the filename column, retaining content-sized hover backgrounds and hints.
+- [ ] Keep the empty-history chooser centered; validate both states in a fresh
+  release after the local gate and complete focused external review.
