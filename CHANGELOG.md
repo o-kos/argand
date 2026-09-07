@@ -21,7 +21,8 @@ promise applies to.
   capture: `--raw`, `--sample-type`, `--rate`, `--center`, `--offset`,
   `--normalize` and `--gain`. Started with no file, it opens an empty window.
 - The transform runs on a thread of its own, so the window stays usable while a
-  long capture is analysed and the status bar reports how far it has got. A
+  long capture is analysed and the status bar reports progress and the elapsed
+  analysis time on completion. A
   large capture is still slow to appear: making the first frame fast comes
   next.
 - The status bar names the container, the sample type, the sample rate and the
@@ -38,6 +39,11 @@ promise applies to.
   restore it, which excludes Wayland and excludes a second display on macOS.
   Neither file can prevent the application starting: a missing, unreadable,
   malformed or future-versioned one is logged and replaced by the defaults.
+
+### Fixed
+
+- Replacing a spectrogram during resize no longer destroys its GPU texture
+  while a preceding frame can still be using it, which could freeze the window.
 
 ### Changed
 

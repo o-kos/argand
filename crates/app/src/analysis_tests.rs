@@ -74,9 +74,10 @@ fn a_request_comes_back_as_a_picture_of_the_size_it_asked_for() {
     assert!(matches!(next(&updates), Some(Update::Opened(_))));
     assert!(analyst.request(request()), "the thread should be listening");
 
-    let Some(Update::Ready(analysis)) = next_result(&updates) else {
+    let Some(Update::Ready { analysis, elapsed }) = next_result(&updates) else {
         panic!("a picture should come back");
     };
+    assert!(!elapsed.is_zero(), "the worker should time the analysis");
     assert_eq!(analysis.spectrogram.width, 64);
     assert_eq!(analysis.spectrogram.height, 32);
     // A complex capture is two-sided about its centre frequency.
@@ -124,7 +125,7 @@ fn a_request_the_transform_will_not_run_leaves_the_file_open_for_the_next_one() 
     // The thread is still there, and a request it can run still works.
     assert!(analyst.request(request()));
     assert!(
-        matches!(next_result(&updates), Some(Update::Ready(_))),
+        matches!(next_result(&updates), Some(Update::Ready { .. })),
         "a workable request after a refused one should still produce a picture"
     );
 }

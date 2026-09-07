@@ -10,6 +10,7 @@
 //! [`crate::analysis`], which is the only thing that ever touches them.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use argand_core::{SignalMeta, format_duration, format_hz};
 use argand_dsp::Analysis;
@@ -67,7 +68,7 @@ pub enum Status {
     /// A transform is running. `total` is zero until the first report.
     Analyzing { done: u64, total: u64 },
     /// What is on screen is current.
-    Ready,
+    Ready { elapsed: Duration },
     /// Nothing came of it, and this is what to tell the person.
     Failed(String),
 }
@@ -86,7 +87,9 @@ impl Status {
                 Some(percent) => format!("analysing... {percent}%"),
                 None => "analysing...".to_owned(),
             },
-            Self::Ready => "ready".to_owned(),
+            Self::Ready { elapsed } => {
+                format!("ready in {}", format_duration(elapsed.as_secs_f64()))
+            }
             Self::Failed(_) => "cannot be read".to_owned(),
         }
     }
@@ -170,9 +173,9 @@ impl Document {
                 self.status = Status::Analyzing { done, total };
                 Effect::Status
             }
-            Update::Ready(analysis) => {
+            Update::Ready { analysis, elapsed } => {
                 self.analysis = Some(analysis);
-                self.status = Status::Ready;
+                self.status = Status::Ready { elapsed };
                 Effect::Analysis
             }
             Update::Failed(error) => {

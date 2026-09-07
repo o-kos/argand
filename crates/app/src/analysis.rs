@@ -53,7 +53,10 @@ pub enum Update {
     ///
     /// Boxed because it is far the largest thing this enum carries, and every
     /// other variant would otherwise be moved around at its size.
-    Ready(Box<Analysis>),
+    Ready {
+        analysis: Box<Analysis>,
+        elapsed: Duration,
+    },
     /// Nothing came of a request, and this is why.
     Failed(anyhow::Error),
 }
@@ -134,8 +137,16 @@ fn serve(
 
     while let Ok(request) = requests.recv_blocking() {
         let request = newest(request, requests);
+        let started = Instant::now();
         let update = match run(source.as_mut(), &request, updates) {
-            Ok(analysis) => Update::Ready(Box::new(analysis)),
+            Ok(analysis) => {
+                let elapsed = started.elapsed();
+                tracing::debug!(?elapsed, "analysis completed");
+                Update::Ready {
+                    analysis: Box::new(analysis),
+                    elapsed,
+                }
+            }
             Err(error) => Update::Failed(error),
         };
         if updates.send_blocking(update).is_err() {

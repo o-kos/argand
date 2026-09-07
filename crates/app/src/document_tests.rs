@@ -79,18 +79,37 @@ fn a_finished_analysis_is_what_the_window_draws_from() {
     let mut document = opening();
     document.apply(Update::Opened(meta()));
     assert_eq!(
-        document.apply(Update::Ready(analysis(64))),
+        document.apply(Update::Ready {
+            analysis: analysis(64),
+            elapsed: Duration::from_millis(1250)
+        }),
         Effect::Analysis
     );
-    assert_eq!(document.status(), &Status::Ready);
+    assert_eq!(
+        document.status(),
+        &Status::Ready {
+            elapsed: Duration::from_millis(1250)
+        }
+    );
+    assert_eq!(document.status().message(), "ready in 1.25s");
     assert_eq!(document.analysis().map(|a| a.spectrogram.width), Some(64));
+
+    document.apply(Update::Ready {
+        analysis: analysis(128),
+        elapsed: Duration::from_millis(2500),
+    });
+    assert_eq!(document.status().message(), "ready in 2.5s");
+    assert_eq!(document.analysis().map(|a| a.spectrogram.width), Some(128));
 }
 
 #[test]
 fn a_new_transform_leaves_the_previous_picture_up_while_it_runs() {
     let mut document = opening();
     document.apply(Update::Opened(meta()));
-    document.apply(Update::Ready(analysis(64)));
+    document.apply(Update::Ready {
+        analysis: analysis(64),
+        elapsed: Duration::from_millis(1250),
+    });
 
     // A resize asks for a wider picture. Blanking the window until it arrives
     // would be a worse answer than a slightly stale spectrogram.
@@ -134,10 +153,7 @@ fn a_transform_that_has_not_reported_yet_has_no_fraction_to_show() {
     document.apply(Update::Opened(meta()));
     assert_eq!(document.status().message(), "analysing...");
 
-    document.apply(Update::Progress {
-        done: 1,
-        total: 40,
-    });
+    document.apply(Update::Progress { done: 1, total: 40 });
     assert_eq!(document.status().message(), "analysing... 2%");
 }
 

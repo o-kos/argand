@@ -257,7 +257,7 @@ impl Shell {
         // otherwise be drawn under this one's axes until the first transform
         // lands, and its plot size would send the first request at a width
         // this file's labels may not leave.
-        self.release(window, cx);
+        self.release(window);
         self.plot = None;
 
         let (analyst, updates) = crate::analysis::open(origin.path.clone(), origin.hints.clone());
@@ -330,7 +330,7 @@ impl Shell {
                 // at all.
                 self.ask_for_a_picture();
             }
-            Effect::Analysis => self.upload(window, cx),
+            Effect::Analysis => self.upload(window),
             Effect::Status => {}
         }
         cx.notify();
@@ -390,19 +390,19 @@ impl Shell {
     }
 
     /// Put the newest picture on the GPU and release the one it replaces.
-    fn upload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn upload(&mut self, window: &mut Window) {
         let fresh = self
             .file
             .as_ref()
             .and_then(|file| file.document.analysis())
             .and_then(|analysis| spectrogram::texture(&analysis.spectrogram));
         let stale = std::mem::replace(&mut self.texture, fresh);
-        release(stale, window, cx);
+        release(stale, window);
     }
 
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
-    fn release(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        release(self.texture.take(), window, cx);
+    fn release(&mut self, window: &mut Window) {
+        release(self.texture.take(), window);
     }
 
     /// Record where the window is and what state it is in.
@@ -754,12 +754,17 @@ impl Render for Shell {
 /// let go of it. A spectrogram is the size of the plot and a resize produces
 /// one per step, so saying nothing fills the atlas with pictures nobody can
 /// see any more.
-fn release(texture: Option<Arc<RenderImage>>, window: &mut Window, cx: &mut Context<Shell>) {
+fn release(texture: Option<Arc<RenderImage>>, window: &mut Window) {
     if let Some(texture) = texture {
-        // The window is named rather than left to the sweep over `App`'s own
-        // list: gpui takes the window being updated out of that list, and
-        // every path that releases a picture here runs inside one.
-        cx.drop_image(texture, Some(window));
+        // Blade's atlas destroys an unreferenced texture immediately, while
+        // the last submitted frame can still be sampling it. Draw its
+        // replacement first: that draw waits for the preceding GPU frame.
+        window.on_next_frame(move |window, _| {
+            window.refresh();
+            window.on_next_frame(move |window, cx| {
+                cx.drop_image(texture, Some(window));
+            });
+        });
     }
 }
 

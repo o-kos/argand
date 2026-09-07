@@ -335,6 +335,11 @@ directory, along with the window's size and state. That file is written whole
 by whichever instance writes it last, so what it remembers is what the last
 instance to write it remembered.
 
+On Wayland, dropping from a native desktop file manager is supported. Drops
+from Double Commander through XWayland currently do not open a file
+([#46](https://github.com/o-kos/argand/issues/46)); use the File menu instead. The status bar shows analysis progress and, on completion,
+the time spent analysing the capture.
+
 ## Layout
 
 ```

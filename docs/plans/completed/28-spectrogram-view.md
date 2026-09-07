@@ -80,9 +80,14 @@ waveform panel, editing.
   bounding that would mean measuring every number the axis could print. The
   residue is a label a pixel or two past its gutter, and it is named in
   `axes.rs` rather than hidden.
-- **The uploaded picture is released when it is replaced.** gpui keeps a
-  `RenderImage` in the window's texture atlas until it is told to let go, and a
-  resize produces one per step.
+- **Retire a replaced picture after an intervening draw.** gpui keeps an image
+  in its texture atlas until explicitly released. Blade destroys an empty
+  atlas texture immediately, even if the last GPU frame still samples it.
+  The first `on_next_frame` callback forces a redraw of the replacement; the
+  second releases the old image. That intervening Blade draw waits for the
+  previous frame before returning. Release still names the current window,
+  and pending callbacks belong to that window, so closing it drops them with
+  its renderer.
 - **The document holds what the thread reports, not the source itself.** The
   step above asks for the source in the document; putting it there would mean
   either sharing it with the thread transforming it or moving it back and
@@ -164,15 +169,12 @@ waveform panel, editing.
   would hold one of its threads for the whole transform. A thread that owns the
   `SampleSource` also makes it structurally impossible for the window to touch
   a file a transform is reading.
-- **Debouncing resize on the window's side.** A timer to add and a delay to
-  tune, for what `newest` already achieves by discarding overtaken requests.
-
-  Rejected too early, and half wrong. `newest` does keep the *queue* from
-  growing, and that was the whole of the reasoning; what it cannot do is stop
-  the transform already running from taking every core. The freeze the owner
-  saw is that, and the ➕ item above answers it by leaving a core free rather
-  than by adding a timer. A debounce remains unnecessary; the reason given
-  here for not needing it was not the reason.
+- **Debouncing resize or reducing Rayon threads as the freeze fix.** Request
+  coalescing already bounds queued work. The later CPU-starvation diagnosis
+  was a hypothesis, not a measurement: the reproduced hang is in Blade's GPU
+  fence wait, with analysis threads idle. The original binary still hangs with
+  `RAYON_NUM_THREADS=11`. Delaying image destruction fixes the observed failure
+  without changing the DSP pool, transform output or request policy.
 - **A lock around `session.toml`.** Two instances running at once lose each
   other's writes, and the recent list is the first thing in that file whose
   loss costs a person something: the hints it holds are the only record of how
@@ -219,34 +221,17 @@ waveform panel, editing.
       does. ➕ `README.md` too: it said the GUI was not built yet, and its layout
       section had no `crates/app`.
 - [x] Complete validation.
-- [ ] ➕ Keep the window responsive during an active resize. Found by the owner
-      on a live session: dragging a window edge freezes it for seconds at a
-      time while the status bar shows `analysing... 92%`. The acceptance
-      criterion "the window stays responsive while a large capture is analysed"
-      is therefore not met, so this stays in this Issue rather than becoming
-      another.
-
-      Diagnosed, not yet fixed. `Plan::transform_block` in
-      `crates/dsp/src/stft.rs` runs `into_par_iter()` on rayon's *global* pool,
-      which is every logical core -- twelve on the owner's machine -- and
-      `argand_io`'s level scan does the same. The analysis thread therefore has
-      no core left to spare, and the thread drawing the window needs one per
-      motion event of a drag. Coalescing requests does not help: the starvation
-      is from the transform already running, not from the ones queued behind it,
-      which is where "Debouncing resize on the window's side" below was wrong.
-
-      The fix is to build a rayon pool in `analysis.rs` with
-      `available_parallelism() - 1` threads and run the whole of `serve` inside
-      `pool.install(..)`, which also covers the level scan, since a nested
-      `par_iter` uses the installed pool. That leaves a core for the window
-      whatever the transform is doing, costs one twelfth of the analysis rate,
-      and needs no change to `argand-dsp` or `argand-io`. Worth measuring both
-      ways before and after.
-- [ ] ➕ Report how long an analysis took, which the owner asked for and `aspec`
-      already prints. The worker knows it exactly, so the duration belongs on
-      `Update::Ready` and then in `Status::Ready`, shown through
-      `format_duration` as `ready in 12.5s`.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] ➕ Keep the window responsive during resize. Reproduced a GPU hang with
+      the release binary on Intel Iris Xe / Mesa, then delayed image retirement
+      until after a replacement draw. The proposed Rayon pool was not applied:
+      the 11-thread control still hangs. See the GPU validation below.
+- [x] ➕ Report each successful analysis duration in `Update::Ready` and
+      `Status::Ready`, formatted as `ready in 1.25s`. The timer covers the
+      transform and shading for that request, excluding file opening, queue
+      wait, texture upload and display. A subsequent result replaces the time.
+- [x] ➕ Compare Double Commander and native file-manager drops on an isolated
+      Wayland session; document the observed interoperability limitation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -285,16 +270,34 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       axis one-sided and two-sided respectively. `rl_f16x8-hfdl.wav` labels
       0 to 4 kHz; `12.579000_25_08_26_06_09_10.iqw` labels 12.567 to 12.591 MHz
       about its centre.
-- [x] The window stays responsive while a large capture is analysed. The
-      30-minute capture reports its progress in the status bar and repaints
-      throughout; the transform runs on `argand-analysis`, never on the thread
-      drawing the window.
+- [x] Resize while a large capture is analysed: 900 compositor resize commands
+      at 30 Hz, with virtual-pointer motion, on a hardware-backed Sway headless
+      output (1600x1000) and a 30-minute, 172,800,056-byte I/Q capture. Each
+      instance used its own state/configuration directories. For step `i` in
+      `0..900`, width was `1536 - 7 * abs((i % 120) - 60)`, height 864,
+      and pointer position `(850 + i % 40, 500)`.
+
+      Baseline controls: the original binary produced `GPU hung` with the main
+      thread in `BladeRenderer::draw -> wait_for_gpu -> wait_for`; analysis
+      threads were waiting. A separate `RAYON_NUM_THREADS=11` run also hung,
+      after 28 layout updates. This refutes the proposed CPU-pool remedy for
+      the reproduced failure.
+
+      With deferred release: 771 layout updates, 4,225 Wayland surface commits,
+      no GPU hang; maximum gap between commits 52.229 ms, p99 36.954 ms. The
+      event loop continued emitting commits after the resize sequence. These
+      are protocol-level responsiveness measurements, not presentation-latency
+      measurements. This exercised compositor configure events and pointer
+      motion, not a physical edge drag in the owner's GNOME session.
+
+      Hardware: Intel Iris Xe (ADL GT2), Intel Mesa 25.2.8. Tests used a current
+      release build after the local gate (362 tests). No software renderer was
+      used for these measurements.
 - [x] A file opens by argument, and -- checked by the owner on a live session --
       from the File menu and by dropping a capture from the desktop's own file
-      manager. ⚠️ Dropping from Double Commander does nothing; see the note
-      below. Neither could be exercised here: the nested compositor used for
-      GUI work has no input device, and neither a virtual-pointer tool nor a
-      way to synthesise a data offer is available on this machine.
+      manager. A later isolated Sway session also exercised a native Nautilus
+      drop using a small virtual-pointer client; the capture opened and was
+      analysed. Double Commander is limited as described below.
 - [x] A raw file reopened from the recent list needs no layout flags. The
       entry, its hints and their round trip are covered in `session_tests.rs`;
       choosing it in the menu is part of the item above.
@@ -308,8 +311,10 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 ## External review
 
-Seven rounds with `codex exec -s read-only`, sixteen findings, the last round
-clean. Fifteen were accepted; one was declined and answered.
+The initial implementation had seven rounds with `codex exec -s read-only`,
+sixteen findings, the last round clean. Fifteen were accepted; one was declined
+and answered. The subsequent live-session resize failure required the follow-up
+below despite that clean round.
 
 Accepted, in the order they were raised: a transform kept running for a
 document nobody was waiting for; a new file inherited the previous one's
@@ -331,22 +336,38 @@ for a file that has since moved. The reviewer agreed with the decline and
 corrected the reasoning behind it, which is where the fifth round's first
 finding came from.
 
-## Open questions
+### Follow-up review after the live-session failure
 
-- **Dropping from Double Commander does nothing, while dropping from the
-  desktop's own file manager works.** Not yet diagnosed, and it may not be ours
-  to fix. gpui's Wayland client accepts exactly one type,
-  `text/uri-list` (`platform/linux/wayland/client.rs`), and negotiates exactly
-  one action, `DndAction::Copy`. A source that offers neither -- a different
-  type, or `Move` alone -- is refused before any of this code sees it, and
-  Double Commander is an X11 toolkit reaching us through XWayland.
+GPT-5.6 Sol at High reasoning effort reviewed the GPU-retirement and elapsed-time
+changes read-only through the `codex` CLI. The code round returned no substantive
+findings. It checked the actual GPUI/Blade callback and GPU-wait ordering rather
+than treating the successful resize experiment as proof, including replacement,
+hidden windows and renderer teardown. No finding was declined in this round.
 
-  What to do first: run the application under `WAYLAND_DEBUG=1` and drag from
-  each of the two file managers, then compare the `wl_data_offer.offer` lines.
-  If Double Commander never offers `text/uri-list`, this is gpui's to widen or
-  the source's to fix, and the honest answer here is to narrow what the README
-  and the Pull Request claim. If it does offer it, the fault is nearer and
-  worth chasing.
+The documentation round raised two findings. Its formatting objection was
+rejected after both `cargo fmt --all -- --check` and an explicit
+`rustfmt --edition 2024 --check` of the two included test files returned zero.
+The scope finding was accepted: the separately requested reviewer-model policy
+remains a local change and is excluded from this PR. The final round independently
+ran both formatting checks, withdrew that finding, confirmed the scope change,
+and returned no substantive findings.
+
+## Known limitation: Double Commander on Wayland
+
+On the isolated Sway session, Double Commander 1.2.8 (XWayland), with fresh
+configuration and a single test WAV, did not deliver any `wl_data_offer` or
+`wl_data_device.enter` event to Argand in two drag attempts. The file was
+selected and the pointer crossed into Argand, so this is before the
+application's drop handler. It is not evidence that a particular MIME type or
+action was refused; none reached the target.
+
+Control: native Nautilus offered `text/uri-list` and source actions 7;
+gpui selected `Copy` (1), received the drop, and `Shell::open` opened the same
+WAV. The owner had already confirmed a native desktop-file-manager drop in the
+live session. The exact Double Commander/XWayland cause remains unassigned;
+Issue #46 tracks the source/bridge investigation; README names the limitation
+and the File-menu alternative. No toolkit fork or
+unsupported workaround is introduced in this Issue.
 
 ## Post-completion
 
