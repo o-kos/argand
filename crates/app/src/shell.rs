@@ -841,13 +841,13 @@ impl Shell {
             .ghost()
             .small()
             .h_6()
-            .w(width)
+            .max_w(width)
             .px_2()
             .justify_start()
             .cursor_pointer()
             .child(
                 div()
-                    .w(width - px(24.))
+                    .max_w(width - px(24.))
                     .flex()
                     .gap_2()
                     .child(
@@ -861,14 +861,7 @@ impl Shell {
                                 String::new()
                             }),
                     )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .line_clamp(1)
-                            .text_ellipsis()
-                            .child(label),
-                    ),
+                    .child(div().min_w_0().line_clamp(1).text_ellipsis().child(label)),
             )
             .on_click(cx.listener(move |shell, _, window, cx| {
                 shell.open(
@@ -901,7 +894,7 @@ impl Shell {
             .ghost()
             .small()
             .h_6()
-            .w(width)
+            .max_w(width)
             .justify_start()
             .cursor_pointer()
             .label("Open a signal file…")
@@ -942,6 +935,7 @@ impl Shell {
                         .overflow_y_scroll()
                         .flex()
                         .flex_col()
+                        .items_start()
                         .gap_1()
                         .children(recent.into_iter().zip(labels).enumerate().map(
                             |(index, (entry, label))| {
@@ -952,7 +946,7 @@ impl Shell {
                 .child(
                     div()
                         .w(width)
-                        .px_3()
+                        .text_center()
                         .text_sm()
                         .text_color(cx.theme().muted_foreground)
                         .child("or"),
@@ -1097,11 +1091,11 @@ fn shortcut_tooltip(
             cx.theme().blue.darken(0.2)
         };
         div()
-            .w(width.min(window.viewport_size().width - px(48.)))
+            .max_w(width.min(window.viewport_size().width - px(48.)))
             .flex()
             .items_start()
             .gap_3()
-            .child(div().flex_1().min_w_0().child(text.clone()))
+            .child(div().min_w_0().child(text.clone()))
             .when_some(shortcut, |hint, shortcut| {
                 hint.child(
                     div()

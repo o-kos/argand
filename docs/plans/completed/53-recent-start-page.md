@@ -124,12 +124,24 @@ until the owner asks to proceed with them.
 
 ## Owner feedback: content-sized highlights and hints
 
-- [ ] Center `or` above the chooser within the start-page block.
-- [ ] Size each recent row and the chooser to its text, keeping long rows
+- [x] Center `or` above the chooser within the start-page block.
+- [x] Size each recent row and the chooser to its text, keeping long rows
   constrained and ellipsized within the list width.
-- [ ] Size shortcut hints to their content, with a viewport-aware maximum;
+- [x] Size shortcut hints to their content, with a viewport-aware maximum;
   preserve the coloured shortcut on the right and wrapping for long paths.
-- [ ] Run the local gate, rebuild release, inspect both themes and narrow/long
+- [x] Run the local gate, rebuild release, inspect both themes and narrow/long
   content, and complete the required focused external review.
 
 Status metadata hint and duration redesign remains deferred.
+
+### Content sizing validation evidence
+
+- Formatting, strict Clippy and all 374 local tests pass; the release was rebuilt
+  after the gate.
+- GPU-backed Wayland inspection at 640x400 in both themes covers short rows,
+  long ellipsized rows, content-sized short hints and wrapped long-path hints.
+  The centered separator and chooser stay directly below the list.
+- Clicking beyond a short row's right edge does not open a file; clicking its
+  label does. The chooser works with empty history, and the tenth entry still
+  opens by mouse after scrolling.
+- Focused external review returned no substantive findings; none were declined.
