@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -50,8 +52,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      # The command list from CONTRIBUTING.md, in order. What a contributor
-      # runs locally and what blocks the merge must stay the same four lines.
+      - name: Test CI result policy
+        run: python3 .github/scripts/test-ci-result.py
+
+      # Draft feedback stops after linting; Ready and main retain the full gate.
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -60,15 +64,18 @@ jobs:
         run: cargo clippy --all-targets --locked
 
       - name: Test
+        if: github.event_name != 'pull_request' || !github.event.pull_request.draft
         run: cargo test --locked
 
       - name: Build release
+        if: github.event_name != 'pull_request' || !github.event.pull_request.draft
         run: cargo build --release --locked
 
   # The application is the reason these two exist. A runner has no GPU, so
   # nothing here opens a window: what is covered is that the workspace builds
   # and that everything not needing one still passes.
   windows:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: windows
     runs-on: windows-latest
     steps:
@@ -88,6 +95,7 @@ jobs:
         run: cargo build --release --locked
 
   macos:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: macos
     runs-on: macos-latest
     steps:
@@ -105,3 +113,19 @@ jobs:
 
       - name: Build release
         run: cargo build --release --locked
+
+  result:
+    # Draft success must not satisfy the required full-validation context.
+    name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'ci/quick' || 'ci/full' }}
+    needs: [linux, windows, macos]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require the results for this mode
+        env:
+          FULL: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+          LINUX_RESULT: ${{ needs.linux.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          MACOS_RESULT: ${{ needs.macos.result }}
+        run: bash .github/scripts/ci-result.sh "$FULL" "$LINUX_RESULT" "$WINDOWS_RESULT" "$MACOS_RESULT"

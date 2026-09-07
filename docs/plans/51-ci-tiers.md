@@ -29,20 +29,20 @@ Preserve local validation and require a full result on the revision being merged
 
 ## Implementation steps
 
-- [ ] Split quick and full job execution and add an explicit aggregate result.
-- [ ] Test aggregation success/failure/skip/cancellation cases and lint workflows.
-- [ ] Update contribution and agent rules for Draft feedback and final validation.
+- [x] Split quick and full job execution and add an explicit aggregate result.
+- [x] Test aggregation success/failure/skip/cancellation cases and lint workflows.
+- [x] Update contribution and agent rules for Draft feedback and final validation.
 - [ ] Run the local gate, rebuild release and obtain clean external review.
 - [ ] Verify Draft and Ready runs on GitHub before migrating required checks.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked` after checks
-- [ ] Workflow syntax and result-aggregation tests
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked` after checks
+- [x] Workflow syntax and result-aggregation tests
 - [ ] Draft runs omit tests/release and do not publish `ci/full`
 - [ ] Ready transition runs tests/releases on all three platforms and publishes `ci/full`
 - [ ] External review with the prescribed model returns no substantive findings
