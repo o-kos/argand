@@ -187,28 +187,58 @@ impl Document {
         }
     }
 
-    /// What the status bar says about the file itself, in the wording `aspec`
-    /// uses for the same fields: the container, the sample type, the sample
-    /// rate, the duration, and the centre frequency of a capture that has one.
-    ///
-    /// `None` until the file has been opened, because until then nothing here
-    /// is known -- not even whether the file is a signal.
-    pub fn summary(&self) -> Option<String> {
+    /// Separate status fields, available once the header has been read.
+    pub fn summary(&self) -> Option<Vec<MetadataField>> {
         let meta = self.meta.as_ref()?;
-        let mut fields = format!(
-            "{} {}, {}, {}",
-            meta.container,
-            meta.sample_type,
-            format_hz(meta.sample_rate),
-            format_duration(meta.duration_seconds())
-        );
-        // Baseband is the default and says nothing; a tuned capture is the
-        // whole reason the frequency axis reads in megahertz.
+        let domain = if meta.is_iq() { "iq" } else { "real" };
+        let mut fields = vec![
+            MetadataField::new(meta.container, "Container"),
+            MetadataField::new(
+                format!("{domain} {}", meta.sample_type.format.as_str()),
+                if meta.is_iq() {
+                    "Sample format (complex I/Q)"
+                } else {
+                    "Sample format (real)"
+                },
+            ),
+            MetadataField::new(format_hz(meta.sample_rate), "Sample rate"),
+            MetadataField::new(
+                capture_duration(meta.duration_seconds()),
+                "Duration (minutes:seconds.milliseconds)",
+            ),
+        ];
         if meta.center_freq != 0.0 {
-            fields.push_str(&format!(", centre {}", format_hz(meta.center_freq)));
+            fields.push(MetadataField::new(
+                format_hz(meta.center_freq),
+                "Centre frequency",
+            ));
         }
         Some(fields)
     }
+}
+
+pub struct MetadataField {
+    pub value: String,
+    pub hint: &'static str,
+}
+
+impl MetadataField {
+    fn new(value: impl Into<String>, hint: &'static str) -> Self {
+        Self {
+            value: value.into(),
+            hint,
+        }
+    }
+}
+
+fn capture_duration(seconds: f64) -> String {
+    let millis = (seconds * 1000.0).round() as u64;
+    format!(
+        "{}:{:02}.{:03}",
+        millis / 60_000,
+        millis / 1000 % 60,
+        millis % 1000
+    )
 }
 
 #[cfg(test)]

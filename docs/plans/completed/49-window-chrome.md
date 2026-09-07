@@ -5,7 +5,7 @@ Resolves [#49](https://github.com/o-kos/argand/issues/49).
 ## Overview
 
 Fix resize cursors, centre the title, round normal window corners, reserve a
-64-pixel waveform strip, and restore double-click handling across the title bar.
+3-rem waveform strip, and restore double-click handling across the title bar.
 
 ## Context
 
@@ -21,7 +21,7 @@ Related work: #39 owns button hover/press restyling; #31 owns the future wavefor
 - Use subtle 8-pixel corners for ordinary client-decorated windows, respecting
   maximized, fullscreen and tiled edges.
 - Keep toolkit types inside `argand-app` and preserve native platform controls.
-- Keep the current placeholder exactly 64 pixels high; record the same starting
+- Keep the current placeholder 3 rem high (48 logical pixels at the default 16-pixel font size); record the same starting
   height in #31 without implementing waveform rendering or a splitter here.
 
 - `Shell` replaces the toolkit `Root` as the root entity; it preserves theme font
@@ -44,7 +44,7 @@ Related work: #39 owns button hover/press restyling; #31 owns the future wavefor
 - [x] Reproduce the frame cursor and title-bar double-click failures.
 - [x] Fix cursor regions and rounded frame geometry without duplicate decoration.
 - [x] Centre and constrain the title; preserve dragging, double clicks and controls.
-- [x] Set the waveform placeholder height to 64 pixels and align #31's requirements.
+- [x] Set the waveform placeholder height to 3 rem and align #31's requirements.
 - [x] Update configuration documentation, changelog and architectural instructions.
 - [x] Complete validation and external review.
 - [x] Move this plan to `docs/plans/completed/` before final review.
@@ -54,14 +54,14 @@ Related work: #39 owns button hover/press restyling; #31 owns the future wavefor
 - [x] Targeted tests for any extracted frame/layout policy.
 - [x] Fresh-binary interaction checks: each resize edge/corner, entering content,
   File menu, title-bar dragging, double-clicks on both halves, and window controls.
-- [x] Visual checks: normal/maximized geometry, both themes, long title, 64-pixel strip.
+- [x] Visual checks: normal/maximized geometry, both themes, long title, 3-rem strip.
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] External review with the required model and effort returns no substantive findings.
 
-## Validation evidence
+## Initial validation evidence
 
 Formatting, strict Clippy, all 367 local tests and the subsequent release build pass.
 
@@ -90,6 +90,47 @@ Formatting, strict Clippy, all 367 local tests and the subsequent release build 
   offset. That finding was accepted and fixed by moving the title out of the
   toolkit's asymmetric child region into a whole-bar sibling overlay. No finding
   was declined. The final review round returned no substantive findings.
+
+## Owner refinements
+
+- [x] Use `h_12` for the waveform strip: 3 rem, twice the `h_6` status row.
+  This is 48 logical pixels at the default font size and follows UI/DPI scaling.
+- [x] Paint the Linux Close hover/press background with the frame's top-right radius.
+  Keep Windows/macOS toolkit controls and the whole-bar title overlay.
+- [x] Raise File from extra-small (12) to small (14), matching popup menu text.
+- [x] Split metadata into bordered fields with tooltips; spell `iq i16` and show
+  duration as minutes:seconds.milliseconds. Preserve optional centre frequency.
+- [x] Validate refinements at normal/high DPI.
+- [x] Repeat external review of the refinements.
+
+## Refinement validation evidence
+
+- Formatting, strict Clippy and all 369 tests pass; the release binary was rebuilt
+  afterwards. Duration tests cover I/Q frame counts, real samples, millisecond
+  precision and rounding across minute/hour boundaries.
+- At scale 1, separators are at y=134 and y=182 (48 physical/logical pixels).
+  At scale 2, they are at y=268 and y=364 (96 physical, 48 logical pixels).
+  Both 1000x700 and 640x400 logical windows keep this height.
+- All eight resize directions and return-to-content Arrow cursors pass at both
+  scales. File opens at the left edge with text matching the popup, while the
+  title remains centred. An initial missing flex container moved File to the
+  centre during development; the fresh-binary check caught it and it was fixed.
+- Weston checks perform three maximize/restore pairs: left/centre/right title
+  double clicks and the maximize button. Each restores the original rectangle,
+  none emits a resize request, and Minimize emits its expected request.
+- A 24 kHz I/Q WAV with 5,312,160 frames shows `3:41.340`. In the light theme,
+  all five fields including `12.579 MHz` fit at the minimum width. Tooltips show
+  each field's meaning/value at both scales and in both themes. Close hover and
+  pressed backgrounds follow the
+  rounded normal-window corner; maximized controls have square corners.
+- External review found that right-clicks on window controls opened the system
+  menu. The finding was accepted: the handler now belongs only to the left
+  title-bar region, whose height spans the bar. Protocol checks reproduce one
+  menu request from each control before the fix and zero afterwards; left, centre
+  and right title areas still send one request each. No finding was declined.
+  The final review round returned no substantive findings.
+- Windows/macOS interactions remain untested locally; their existing toolkit
+  controls are retained. Cross-platform compilation is covered by CI.
 
 ## Post-completion
 

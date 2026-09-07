@@ -2,15 +2,71 @@
 
 use gpui::{
     App, Bounds, BoxShadow, Corners, CursorStyle, Decorations, Edges, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Pixels, ResizeEdge, Size, Styled, Tiling, Window, div,
-    point, prelude::FluentBuilder, px, size,
+    IntoElement, MouseButton, ParentElement, Pixels, ResizeEdge, Size, StatefulInteractiveElement,
+    Styled, Tiling, Window, div, point, prelude::FluentBuilder, px, size,
 };
-use gpui_component::ActiveTheme;
+use gpui_component::{ActiveTheme, Icon, IconName, Sizable};
 
 const SHADOW: Pixels = px(12.0);
 const RESIZE_GRIP: Pixels = px(6.0);
 const RADIUS: Pixels = px(8.0);
-pub const WAVEFORM_HEIGHT: Pixels = px(64.0);
+
+/// Linux controls paint their own corners; GPUI only clips children rectangularly.
+pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
+    let maximize_icon = if window.is_maximized() {
+        IconName::WindowRestore
+    } else {
+        IconName::WindowMaximize
+    };
+    div().flex().h_full().flex_shrink_0().children(
+        [
+            IconName::WindowMinimize,
+            maximize_icon,
+            IconName::WindowClose,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, icon)| {
+            let close = index == 2;
+            let (hover, active, foreground) = if close {
+                (
+                    cx.theme().danger,
+                    cx.theme().danger_active,
+                    cx.theme().danger_foreground,
+                )
+            } else {
+                (
+                    cx.theme().secondary_hover,
+                    cx.theme().secondary_active,
+                    cx.theme().secondary_foreground,
+                )
+            };
+            div()
+                .id(("window-control", index))
+                .w(gpui_component::TITLE_BAR_HEIGHT)
+                .h_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .when(close, |button| button.rounded_tr(corner))
+                .hover(move |style| style.bg(hover).text_color(foreground))
+                .active(move |style| style.bg(active).text_color(foreground))
+                .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                })
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    match index {
+                        0 => window.minimize_window(),
+                        1 => window.zoom_window(),
+                        _ => window.remove_window(),
+                    }
+                })
+                .child(Icon::new(icon).small())
+        }),
+    )
+}
 
 pub struct Frame {
     padding: Edges<Pixels>,

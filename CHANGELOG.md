@@ -50,8 +50,11 @@ promise applies to.
 ### Changed
 
 - The window title is centred, normal client-decorated windows have subtle rounded
-  corners, and the waveform placeholder stays 64 logical pixels high. The legacy
+  corners, and the waveform placeholder stays 3 rem (normally 48 logical pixels) high. The legacy
   `panels.waveform_fraction` setting is still accepted but no longer controls it.
+- File menu text matches the popup menu size. The Close hover/press background
+  follows the window corner, and status metadata has separate fields with tooltips
+  and a duration in minutes:seconds.milliseconds.
 - The Rust toolchain is now 1.97.1, which the GUI toolkit requires. `aspec`
   renders identically.
 

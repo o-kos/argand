@@ -46,7 +46,7 @@ pub struct Config {
     pub dynamic_range: DynamicRange,
     pub stft: Stft,
     /// Legacy panel proportions, accepted for configuration compatibility.
-    /// The current waveform placeholder has a fixed height of 64 pixels.
+    /// The current waveform placeholder has a fixed height of 3 rem (normally 48 logical pixels).
     pub panels: Panels,
 }
 

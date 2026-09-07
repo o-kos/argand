@@ -11,13 +11,15 @@ use std::time::Instant;
 
 use gpui::{
     AppContext, Application, Bounds, Context, Corners, ExternalPaths, InteractiveElement,
-    IntoElement, KeyBinding, ParentElement, PathPromptOptions, Pixels, Render, RenderImage, Styled,
-    Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
-    WindowOptions, actions, canvas, div, point, px, size,
+    IntoElement, KeyBinding, MouseButton, ParentElement, PathPromptOptions, Pixels, Render,
+    RenderImage, StatefulInteractiveElement, Styled, Subscription, Task, TitlebarOptions,
+    WeakEntity, Window, WindowBounds, WindowDecorations, WindowOptions, actions, canvas, div,
+    point, prelude::FluentBuilder, px, size,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::menu::{DropdownMenu, PopupMenuItem};
-use gpui_component::{ActiveTheme, Sizable, ThemeMode, TitleBar};
+use gpui_component::tooltip::Tooltip;
+use gpui_component::{ActiveTheme, InteractiveElementExt, Sizable, ThemeMode, TitleBar};
 
 use argand_dsp::AnalysisRequest;
 
@@ -221,6 +223,7 @@ struct Shell {
     /// Held so that the one it replaces can be released: gpui keeps an
     /// uploaded image in the window's texture atlas until it is told to let go.
     texture: Option<Arc<RenderImage>>,
+    title_drag_pending: bool,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
 }
@@ -244,6 +247,7 @@ impl Shell {
             file: None,
             plot: None,
             texture: None,
+            title_drag_pending: false,
             _bounds: bounds,
         }
     }
@@ -500,7 +504,7 @@ impl Shell {
         let recent = self.recent_entries();
         Button::new("file-menu")
             .ghost()
-            .xsmall()
+            .small()
             .label("File")
             .dropdown_menu(move |mut menu, _, _| {
                 let opener = view.clone();
@@ -556,43 +560,79 @@ impl Shell {
         }
     }
 
-    fn title_bar(&self, corners: Corners<Pixels>, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .relative()
-            .flex_shrink_0()
-            .child(
-                TitleBar::new()
-                    .rounded_tl(corners.top_left)
-                    .rounded_tr(corners.top_right)
-                    // GPUI's rectangular overflow mask cannot clip a control's
-                    // hover background at the rounded corner.
-                    .pr(corners.top_right)
-                    .child(self.menu(cx)),
-            )
-            .child(
-                // This non-interactive overlay spans the whole bar, including
-                // the controls, and leaves its drag/double-click hitbox intact.
-                div()
-                    .absolute()
-                    .left(px(128.0))
-                    .right(px(128.0))
-                    .top_0()
-                    .h_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .overflow_hidden()
-                    .text_sm()
-                    .child(
-                        div()
-                            .w_full()
-                            .min_w_0()
-                            .text_center()
-                            .line_clamp(1)
-                            .text_ellipsis()
-                            .child(self.title()),
-                    ),
-            )
+    fn title_bar(
+        &self,
+        corners: Corners<Pixels>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let bar = if cfg!(target_os = "linux") {
+            div()
+                .id("title-bar")
+                .flex()
+                .items_center()
+                .h(gpui_component::TITLE_BAR_HEIGHT)
+                .pl_3()
+                .rounded_tl(corners.top_left)
+                .rounded_tr(corners.top_right)
+                .border_b_1()
+                .border_color(cx.theme().title_bar_border)
+                .bg(cx.theme().title_bar)
+                .on_double_click(|_, window, _| window.zoom_window())
+                .on_mouse_down_out(cx.listener(|shell, _, _, _| shell.title_drag_pending = false))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|shell, _, _, _| shell.title_drag_pending = true),
+                )
+                .on_mouse_up(
+                    MouseButton::Left,
+                    cx.listener(|shell, _, _, _| shell.title_drag_pending = false),
+                )
+                .on_mouse_move(cx.listener(|shell, _, window, _| {
+                    if std::mem::take(&mut shell.title_drag_pending) {
+                        window.start_window_move();
+                    }
+                }))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .flex_1()
+                        .h_full()
+                        .on_mouse_down(MouseButton::Right, |event, window, _| {
+                            window.show_window_menu(event.position)
+                        })
+                        .child(self.menu(cx)),
+                )
+                .child(chrome::controls(corners.top_right, window, cx))
+                .into_any_element()
+        } else {
+            TitleBar::new().child(self.menu(cx)).into_any_element()
+        };
+        div().relative().flex_shrink_0().child(bar).child(
+            // This non-interactive overlay spans the whole bar, including
+            // the controls, and leaves its drag/double-click hitbox intact.
+            div()
+                .absolute()
+                .left(px(128.0))
+                .right(px(128.0))
+                .top_0()
+                .h_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .overflow_hidden()
+                .text_sm()
+                .child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .text_center()
+                        .line_clamp(1)
+                        .text_ellipsis()
+                        .child(self.title()),
+                ),
+        )
     }
 
     /// The spectrogram panel: the picture, and the axes around it.
@@ -747,16 +787,17 @@ impl Render for Shell {
                     shell.open(Origin::new(path.clone()), window, cx);
                 }
             }))
-            .child(self.title_bar(corners, cx))
+            .child(self.title_bar(corners, window, cx))
             .child(
-                // The waveform arrives in #31; its reserved height is fixed.
+                // Two status-row heights: 3 rem, or 48 logical pixels with the default font.
+                // The waveform itself arrives in #31.
                 div()
                     .flex_1()
                     .flex()
                     .flex_col()
                     .child(
                         div()
-                            .h(chrome::WAVEFORM_HEIGHT)
+                            .h_12()
                             .flex_shrink_0()
                             .border_b_1()
                             .border_color(cx.theme().border),
@@ -770,7 +811,7 @@ impl Render for Shell {
                     .justify_between()
                     .gap_2()
                     .px_2()
-                    .h(px(24.0))
+                    .h_6()
                     .flex_shrink_0()
                     .rounded_bl(corners.bottom_left)
                     .rounded_br(corners.bottom_right)
@@ -779,8 +820,23 @@ impl Render for Shell {
                     .bg(cx.theme().secondary)
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(summary)
-                    .child(status),
+                    .child(div().flex().min_w_0().overflow_hidden().children(
+                        summary.into_iter().enumerate().map(|(index, field)| {
+                            let hint = format!("{}: {}", field.hint, field.value);
+                            div()
+                                .id(("metadata", index))
+                                .px_2()
+                                .flex_shrink_0()
+                                .when(index > 0, |field| {
+                                    field.border_l_1().border_color(cx.theme().border)
+                                })
+                                .tooltip(move |window, cx| {
+                                    Tooltip::new(hint.clone()).build(window, cx)
+                                })
+                                .child(field.value)
+                        }),
+                    ))
+                    .child(div().flex_shrink_0().child(status)),
             );
         frame.render(content, cx)
     }

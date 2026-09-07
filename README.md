@@ -328,9 +328,12 @@ the binary first and from the platform configuration directory second, and a
 missing or malformed one costs a log line rather than the application.
 
 The title is centred between the window edges. Normal client-decorated windows
-have subtly rounded corners, and the reserved waveform strip stays 64 logical
-pixels high, including its separator. The older `panels.waveform_fraction`
+have subtly rounded corners, and the reserved waveform strip stays 3 rem
+(normally 48 logical pixels) high, including its separator. The older `panels.waveform_fraction`
 setting is still accepted so existing files load, but no longer sizes this strip.
+The status bar separates container, sample format, sample rate and duration with
+vertical rules; each field has a tooltip. Duration uses minutes:seconds.milliseconds
+(for example, `3:41.340`). Captures with a centre frequency show that in another field.
 
 Files also open from the File menu, by dropping a capture on the window, and
 from the list of files opened before. That list keeps the options each file was
