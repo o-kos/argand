@@ -8,7 +8,7 @@ Move the frequency scale to the right, align numeric ink vertically with ticks, 
 
 ## Context
 
-`crates/app/src/axes.rs` owns GUI drawing; `argand-core::axis` chooses readable ticks for both GUI and CLI. This branch starts on accepted PR #56 while its parent chain completes full CI, and will be rebased onto main after those merges.
+`crates/app/src/axes.rs` owns GUI drawing; `argand-core::axis` chooses readable ticks for both GUI and CLI. The branch was reconciled onto main after accepted parent PRs #50, #54 and #56 merged; file-tree comparisons confirmed that reconciliation changed no implementation.
 
 ## Decisions
 
