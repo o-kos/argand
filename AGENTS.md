@@ -119,7 +119,8 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
 - Follow the complete process in `CONTRIBUTING.md`.
 - Every implementation must have a GitHub Issue, a focused branch, and a versioned plan in `docs/plans/`.
-- Open a Draft Pull Request early and link it to the Issue with a closing keyword.
+- Open a Draft Pull Request early and link it to the Issue with a closing keyword. Keep it Draft during iterative owner feedback, including small UI changes; present locally validated work without waiting for remote CI. Ready requests the final full gate, and every subsequent push to a Ready PR repeats it. Return to Draft before another iteration.
+- Draft CI runs Linux formatting and Clippy plus CI-policy tests, publishing `ci/quick`. Ready PRs, main pushes and manual runs run the full three-platform matrix. Require `ci/full` on the current PR revision before merge; it must reflect explicit success from Linux, Windows and macOS, never skipped jobs. Preserve strict up-to-date branch protection.
 - Update plan checkboxes in the commits that complete the corresponding work. Do not record commit hashes in plans.
 - Route findings discovered during implementation or review in this order, as detailed in `CONTRIBUTING.md`: first keep branch regressions and anything required by the active Issue in the current work; otherwise raise material or urgent unrelated problems as normal Issues; only otherwise create a separate Issue labelled `backlog` for a minor-impact, pre-existing, non-urgent problem that is unrelated to the active objective and does not affect current functionality or acceptance criteria. Link the source Issue or Pull Request, and never use backlog to defer security, correctness, or data-safety work.
 - Move a finished plan to `docs/plans/completed/` before final review.
