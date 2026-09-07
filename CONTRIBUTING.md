@@ -31,7 +31,12 @@ Push the branch and open a Draft Pull Request as soon as the initial plan is ava
 - explain the problem and solution;
 - link the active plan;
 - close the Issue with `Closes #<issue>` or an equivalent GitHub keyword;
-- remain Draft while implementation is incomplete.
+- remain Draft throughout implementation and iterative owner feedback, including UI wording and appearance refinements.
+
+A Draft is reviewable: share the locally validated result without moving it to Ready
+or waiting for remote CI after every adjustment. Move to Ready only when the agreed
+implementation is complete and the full pre-merge check is wanted. Return to Draft
+before another round of small changes. After Ready, every push requests full CI again.
 
 Keep the branch focused on one Issue. If new work is independent of the Issue or materially expands its scope, create a separate Issue instead of silently adding it.
 
@@ -103,6 +108,33 @@ git config core.hooksPath .githooks
 
 `git push --no-verify` skips it. If you use that, say why in the Pull Request.
 
+## Remote CI tiers
+
+The local pre-push gate is unchanged. Remote CI is a separate feedback schedule:
+
+| Trigger | GitHub validation | Aggregate status |
+| --- | --- | --- |
+| Open/update/reopen a Draft PR; return to Draft | Linux formatting and Clippy, plus the small CI-policy test | `ci/quick` |
+| Move to Ready; update/reopen a Ready PR | Formatting/Clippy on Linux; tests and release builds on Linux, Windows and macOS | `ci/full` |
+| Push to `main`; manual workflow dispatch | Full validation | `ci/full` |
+
+Returning to Draft cancels the superseded PR run. In-progress main runs are not
+cancelled by later pushes. Manual dispatch validates the selected ref; use the Ready PR run as
+the merge-validation path so the current base is included.
+
+Do not wait for GitHub CI between small iterations. Report local validation and
+whether remote CI is pending; inspect failures when reported. Before merge, wait
+for `ci/full` on the current PR revision, resolve review conversations and ensure
+the branch is up to date. An earlier green revision is not evidence for a new one.
+
+The full result requires explicit success from all three platforms; failure,
+cancellation or a skipped platform fails it. Drafts publish `ci/quick`, never a
+successful `ci/full`. Keep `ci/full` required on `main`, tied to GitHub Actions,
+with strict up-to-date checking. Migrate protection in stages: after a full PR run
+proves the new status, add it alongside the old required checks before merging the workflow. Remove the old
+contexts only after the workflow reaches `main`; preserve the remaining protection.
+Older open branches must incorporate the new `main` before using the new checks.
+
 ## Lint policy
 
 `[workspace.lints]` in the root `Cargo.toml` names every lint this project enforces
@@ -134,7 +166,9 @@ An unexplained suppression that nobody re-reads turns the whole gate into a form
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every Pull Request and on every push to `main`. Its `linux` job runs the four commands above, in that order, after installing the system libraries GPUI links against; its `windows` and `macos` jobs run the test suite and the release build. All three are required checks on protected `main`.
+`.github/workflows/ci.yml` implements the [remote CI tiers](#remote-ci-tiers).
+Drafts receive quick Linux feedback; full runs include all three platforms.
+The aggregate `ci/full` is the required check after the staged protection migration.
 
 No runner has a GPU, so no job opens a window. What the three of them cover is that the workspace builds on every supported platform and that everything not needing a window passes; the application's own configuration and geometry logic is written to be testable without one.
 
@@ -154,7 +188,8 @@ Choose the external reviewer based on who implements the Issue:
 Select the required model and reasoning effort explicitly when invoking the `codex`
 CLI, and use them for every subsequent review round.
 
-Before the owner is asked to review, the Pull Request goes through a review by a second
+Before presenting implementation results for owner review, including Draft feedback,
+the Pull Request goes through a review by a second
 agent. Run it read-only so that the changes stay deliberate and this repository's own
 rules -- in particular that suppressions need the owner's agreement -- are not bypassed
 by an agent that has not read them:
@@ -201,9 +236,12 @@ Before marking the Pull Request ready for final review:
 2. rebuild the release binary so it matches the final state of the branch;
 3. move the plan to `docs/plans/completed/` in a final commit;
 4. update the Pull Request description if its scope or validation changed;
-5. mark the Pull Request ready for review.
+5. mark the Pull Request Ready to request full remote validation.
 
-After all checks pass and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the accepted Pull Request branch both remotely and locally, regardless of its type. First verify that its tip still matches the accepted Pull Request head, every worktree using it is clean, and it has no unpushed commits; preserve any data, then switch or remove those worktrees. Delete the remote ref conditionally with a lease bound to the accepted Pull Request head. Delete the local ref conditionally with that same head as its expected old value, because a squash merge does not make the branch commits ancestors of `main`. Abort cleanup if either ref moved. The linked Issue closes through the Pull Request keyword.
+Earlier UI feedback stays in Draft after local validation and external review;
+it does not require waiting for the remote matrix.
+
+After `ci/full` passes on the current revision and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the accepted Pull Request branch both remotely and locally, regardless of its type. First verify that its tip still matches the accepted Pull Request head, every worktree using it is clean, and it has no unpushed commits; preserve any data, then switch or remove those worktrees. Delete the remote ref conditionally with a lease bound to the accepted Pull Request head. Delete the local ref conditionally with that same head as its expected old value, because a squash merge does not make the branch commits ancestors of `main`. Abort cleanup if either ref moved. The linked Issue closes through the Pull Request keyword.
 
 Actions that can only happen after merge belong in the plan's `Post-completion` section and are not represented as unfinished implementation checkboxes.
 

@@ -61,8 +61,10 @@ cargo test --locked
 cargo build --release --locked        # target/release/{aspec,argand}
 ```
 
-Those four commands, in that order, are what CI runs on Linux; Windows runs
-the test and the release build. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+Full CI runs those four commands on Linux, and tests plus release builds on
+Windows and macOS. Draft PRs run only formatting and Clippy on Linux, plus the
+small CI-policy test. Ready PRs request full validation before merge.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for
 the full validation and release procedure, and [CHANGELOG.md](CHANGELOG.md)
 for what changed when.
 
