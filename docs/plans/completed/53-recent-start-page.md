@@ -121,3 +121,15 @@ until the owner asks to proceed with them.
 - The initial focused feedback review and the follow-up covering global
   action dispatch, deferred window update, popup dismissal and shortcut lookup
   both returned no substantive findings. No review findings were declined.
+
+## Owner feedback: content-sized highlights and hints
+
+- [ ] Center `or` above the chooser within the start-page block.
+- [ ] Size each recent row and the chooser to its text, keeping long rows
+  constrained and ellipsized within the list width.
+- [ ] Size shortcut hints to their content, with a viewport-aware maximum;
+  preserve the coloured shortcut on the right and wrapping for long paths.
+- [ ] Run the local gate, rebuild release, inspect both themes and narrow/long
+  content, and complete the required focused external review.
+
+Status metadata hint and duration redesign remains deferred.
