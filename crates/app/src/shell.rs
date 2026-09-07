@@ -1006,6 +1006,11 @@ impl Render for Shell {
             |file| file.document.status().message(),
         );
 
+        let status_hint = self
+            .file
+            .as_ref()
+            .and_then(|file| file.document.status().hint());
+
         let content = div()
             .size_full()
             .flex()
@@ -1078,7 +1083,17 @@ impl Render for Shell {
                                 .child(field.value)
                         }),
                     ))
-                    .child(div().flex_shrink_0().child(status)),
+                    .child(
+                        div()
+                            .id("analysis-status")
+                            .flex_shrink_0()
+                            .when_some(status_hint, |status, hint| {
+                                status.tooltip(move |window, cx| {
+                                    metadata_tooltip(hint.clone()).build(window, cx)
+                                })
+                            })
+                            .child(status),
+                    ),
             );
         frame.render(content, cx)
     }
@@ -1118,32 +1133,26 @@ fn shortcut_tooltip(
 
 fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
     Tooltip::element(move |window, cx| {
-        let term_color = if cx.theme().is_dark() {
-            cx.theme().blue_light
-        } else {
-            cx.theme().blue.darken(0.2)
-        };
         div()
-            .w(px(288.))
-            .max_w(window.viewport_size().width - px(32.))
+            .max_w(px(320.).min(window.viewport_size().width - px(48.)))
             .py_1()
             .flex()
             .flex_col()
-            .gap_2()
+            .gap_1()
             .child(div().font_weight(FontWeight::SEMIBOLD).child(hint.title))
-            .children(hint.sections.iter().map(|&(term, explanation)| {
+            .child(
                 div()
-                    .flex()
-                    .flex_col()
-                    .child(div().text_color(term_color).child(term))
-                    .when(!explanation.is_empty(), |section| {
-                        section.child(
-                            div()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(explanation),
-                        )
-                    })
-            }))
+                    .text_color(cx.theme().muted_foreground)
+                    .child(hint.value.clone()),
+            )
+            .when(!hint.explanation.is_empty(), |tooltip| {
+                tooltip.child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(hint.explanation.clone()),
+                )
+            })
     })
 }
 

@@ -334,8 +334,12 @@ have subtly rounded corners, and the reserved waveform strip stays 3 rem
 (normally 48 logical pixels) high, including its separator. The older `panels.waveform_fraction`
 setting is still accepted so existing files load, but no longer sizes this strip.
 The status bar separates container, sample format, sample rate and duration with
-vertical rules; each field has a tooltip. Duration uses minutes:seconds.milliseconds
-(for example, `3:41.340`). Captures with a centre frequency show that in another field.
+vertical rules. Hints show a heading, current value and optional smaller explanation
+without terminal periods. Values and explanations use muted text. Duration is compact
+in the bar (`30m`, `1h12m30s`, `30.456s`, `20.2s`); its hint shows an hours:minutes:seconds
+clock with three millisecond digits and `hms.ms`. Captures with a centre frequency show
+that in another field. The `ready in` hint explains the latest analysis time, including
+sample reading and excluding file opening and display.
 
 Files also open from the File menu, by dropping a capture on the window, and
 from the list of files opened before. When launched without a file argument, the

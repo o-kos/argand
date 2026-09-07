@@ -74,6 +74,17 @@ pub enum Status {
 }
 
 impl Status {
+    pub fn hint(&self) -> Option<MetadataHint> {
+        let Self::Ready { elapsed } = self else {
+            return None;
+        };
+        Some(MetadataHint::new(
+            "Analysis time",
+            format!("{:.3} s", elapsed.as_secs_f64()),
+            "Reading samples and calculating the latest analysis\nExcludes file opening and display",
+        ))
+    }
+
     /// What the status bar says about the work, as opposed to the file.
     ///
     /// A failure is named rather than quoted here: the reason can be a
@@ -201,25 +212,20 @@ impl Document {
                 format_hz(meta.sample_rate),
                 MetadataHint::new(
                     "Signal sample rate",
-                    vec![(
-                        "Samples per second",
-                        if meta.is_iq() {
-                            "Each I/Q pair counts as one complex sample."
-                        } else {
-                            "Each value counts as one real sample."
-                        },
-                    )],
+                    format_hz(meta.sample_rate),
+                    if meta.is_iq() {
+                        "Complex samples per second\nEach I/Q pair counts as one sample"
+                    } else {
+                        "Real samples per second"
+                    },
                 ),
             ),
             MetadataField::new(
-                capture_duration(meta.duration_seconds()),
+                compact_capture_duration(meta.duration_seconds()),
                 MetadataHint::new(
                     "Signal duration",
-                    vec![
-                        ("m", "Minutes"),
-                        ("ss", "Seconds"),
-                        ("ms", "Milliseconds (three digits)"),
-                    ],
+                    capture_duration(meta.duration_seconds()),
+                    "hms.ms",
                 ),
             ),
         ];
@@ -228,10 +234,8 @@ impl Document {
                 format_hz(meta.center_freq),
                 MetadataHint::new(
                     "Signal centre frequency",
-                    vec![(
-                        "Tuning reference",
-                        "The frequency represented by zero in the baseband signal.",
-                    )],
+                    format_hz(meta.center_freq),
+                    "Frequency represented by zero in the baseband signal",
                 ),
             ));
         }
@@ -256,78 +260,96 @@ impl MetadataField {
 #[derive(Clone)]
 pub struct MetadataHint {
     pub title: &'static str,
-    pub sections: Vec<(&'static str, &'static str)>,
+    pub value: String,
+    pub explanation: String,
 }
 
 impl MetadataHint {
-    fn new(title: &'static str, sections: Vec<(&'static str, &'static str)>) -> Self {
-        Self { title, sections }
+    fn new(title: &'static str, value: impl Into<String>, explanation: impl Into<String>) -> Self {
+        Self {
+            title,
+            value: value.into(),
+            explanation: explanation.into(),
+        }
     }
 
     fn container(container: &str) -> Self {
-        let section = match container {
-            "wav" => (
-                "WAVE container",
-                "Stores samples with a header describing their format.",
-            ),
-            "rf64" => (
-                "RF64 container",
-                "A WAVE extension for captures larger than 4 GiB.",
-            ),
-            "bw64" => (
-                "BW64 container",
-                "A broadcast WAVE extension for captures larger than 4 GiB.",
-            ),
-            "flac" => (
-                "Free Lossless Audio Codec",
-                "Stores samples with lossless compression and a format header.",
-            ),
-            "raw" => (
-                "Headerless samples",
-                "The sample format and rate are supplied when opening the file.",
-            ),
-            _ => (
-                "File container",
-                "Describes how samples and metadata are stored in the file.",
-            ),
+        let explanation = match container {
+            "wav" => "WAVE container with sample format metadata",
+            "rf64" => "WAVE extension for captures larger than 4 GiB",
+            "bw64" => "Broadcast WAVE extension for captures larger than 4 GiB",
+            "flac" => "Lossless compression with sample format metadata",
+            "raw" => {
+                "Headerless samples\nFormat and sample rate are supplied when opening the file"
+            }
+            _ => "How samples and metadata are stored in the file",
         };
-        Self::new("File container type", vec![section])
+        Self::new("File container type", container, explanation)
     }
 
     fn samples(sample_type: SampleType) -> Self {
-        let domain = if sample_type.is_iq() {
-            (
-                "Complex I/Q",
-                "Interleaved in-phase and quadrature components.",
-            )
+        let (domain, explanation) = if sample_type.is_iq() {
+            ("iq", "Complex samples with interleaved I and Q components")
         } else {
-            ("Real signal", "One scalar value per sample.")
+            ("real", "One scalar value per sample")
         };
         let storage = match sample_type.format {
-            SampleFormat::U8 => (
-                "Unsigned 8-bit integer",
-                "Zero is stored as 128 (offset binary).",
-            ),
-            SampleFormat::I16 => ("Signed 16-bit integer", ""),
-            SampleFormat::I32 => ("Signed 32-bit integer", ""),
-            SampleFormat::F32 => ("32-bit floating point", "Nominal full scale is -1 to +1."),
-            SampleFormat::F16x8 => (
-                "CoolEdit 16x8",
-                "32-bit floating-point samples with arbitrary scale, not 16-bit integers.",
-            ),
+            SampleFormat::U8 => "Unsigned 8-bit integers, with zero stored as 128",
+            SampleFormat::I16 => "Signed 16-bit integers",
+            SampleFormat::I32 => "Signed 32-bit integers",
+            SampleFormat::F32 => "32-bit floating point, nominal full scale -1 to +1",
+            SampleFormat::F16x8 => "CoolEdit 16x8: 32-bit floating point with arbitrary scale",
         };
-        Self::new("Samples format", vec![domain, storage])
+        Self::new(
+            "Samples format",
+            format!("{domain} · {}", sample_type.format.as_str()),
+            format!("{explanation}\n{storage}"),
+        )
     }
 }
 
+fn duration_millis(seconds: f64) -> u64 {
+    (seconds * 1000.0).round() as u64
+}
+
 fn capture_duration(seconds: f64) -> String {
-    let millis = (seconds * 1000.0).round() as u64;
+    let millis = duration_millis(seconds);
     format!(
-        "{}:{:02}.{:03}",
-        millis / 60_000,
+        "{}:{:02}:{:02}.{:03}",
+        millis / 3_600_000,
+        millis / 60_000 % 60,
         millis / 1000 % 60,
         millis % 1000
     )
+}
+
+fn compact_capture_duration(seconds: f64) -> String {
+    let millis = duration_millis(seconds);
+    let hours = millis / 3_600_000;
+    let minutes = millis / 60_000 % 60;
+    let seconds = millis / 1000 % 60;
+    let fraction = millis % 1000;
+    let hours = if hours > 0 {
+        format!("{hours}h")
+    } else {
+        String::new()
+    };
+    let minutes = if minutes > 0 {
+        format!("{minutes}m")
+    } else {
+        String::new()
+    };
+    let seconds = match (seconds, fraction) {
+        (_, 1..) => {
+            format!("{seconds}.{fraction:03}")
+                .trim_end_matches('0')
+                .to_owned()
+                + "s"
+        }
+        (0, 0) if millis > 0 => String::new(),
+        _ => format!("{seconds}s"),
+    };
+    format!("{hours}{minutes}{seconds}")
 }
 
 #[cfg(test)]
