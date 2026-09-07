@@ -47,6 +47,10 @@ pub struct Rect {
 }
 
 impl Rect {
+    fn right(self) -> f32 {
+        self.x + self.width
+    }
+
     fn bottom(self) -> f32 {
         self.y + self.height
     }
@@ -119,12 +123,12 @@ impl Frame {
                 value.round()
             }
         };
-        let left = snap(gutter);
+        let right = snap(f32::from(panel.width) - gutter);
         let top = snap(head);
         let plot = Rect {
-            x: left,
+            x: 0.0,
             y: top,
-            width: snap(f32::from(panel.width)) - left,
+            width: right,
             height: snap(f32::from(panel.height) - foot) - top,
         };
         if plot.width < 1.0 || plot.height < 1.0 {
@@ -133,19 +137,17 @@ impl Frame {
 
         Some(Self {
             plot,
-            // Across, under the plot. The gutter is room a first label may
-            // borrow to its left; there is nothing to its right but the edge
-            // of the panel.
+            // Time labels stay under the plot, clear of the frequency gutter.
             time: axis::ticks(
                 AxisKind::Time,
                 Axis {
                     length: plot.width as i64,
                     min: t0,
                     max: t1,
-                    lead: gutter as i64,
+                    lead: 0,
                     trail: 0,
                 },
-                &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across),
+                &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).after_tick(LABEL_PAD),
             ),
             // Stacked in the gutter, running upwards: offset 0 is the lowest
             // frequency, at the bottom. Below it is the time-label row, which
@@ -236,13 +238,12 @@ impl Labels {
     /// A label is placed by the ink a digit puts on the canvas, which is
     /// neither the line box nor the em: a row of figures carries no descender
     /// and no ascender, so centring the box would sit every label low.
-    fn line_top(&self, y: f32) -> f32 {
+    fn line_top(&self, y: f32, line: &gpui::ShapedLine) -> f32 {
         let size = px(LABEL_SIZE);
         let cap = f32::from(self.text.cap_height(self.font_id, size));
-        let baseline = f32::from(
-            self.text
-                .baseline_offset(self.font_id, size, px(LINE_HEIGHT)),
-        );
+        // Painting uses the shaped line's metrics, which can differ from the
+        // font metrics (notably on Linux).
+        let baseline = (LINE_HEIGHT + f32::from(line.ascent) - f32::from(line.descent)) / 2.0;
         y + cap / 2.0 - baseline
     }
 }
@@ -344,8 +345,8 @@ pub fn paint(
         line(window, x, plot.bottom(), 1.0, TICK_LEN, colors.tick);
 
         let shaped = labels.shape(&tick.label, colors.label);
-        let left = x - f32::from(shaped.width) / 2.0;
-        let top = labels.line_top(frame.time_row);
+        let left = x + LABEL_PAD;
+        let top = labels.line_top(frame.time_row, &shaped);
         let _ = shaped.paint(at(left, top), px(LINE_HEIGHT), window, cx);
     }
 
@@ -353,19 +354,24 @@ pub fn paint(
         // Offset 0 is the lowest frequency, which is the bottom of the plot.
         let y = plot.bottom() - tick.offset as f32;
         line(window, plot.x, y, plot.width, 1.0, colors.grid);
-        line(window, plot.x - TICK_LEN, y, TICK_LEN, 1.0, colors.tick);
+        line(window, plot.right(), y, TICK_LEN, 1.0, colors.tick);
 
         let shaped = labels.shape(&tick.label, colors.label);
-        let left = plot.x - LABEL_PAD - f32::from(shaped.width);
-        let _ = shaped.paint(at(left, labels.line_top(y)), px(LINE_HEIGHT), window, cx);
+        let left = plot.right() + LABEL_PAD;
+        let _ = shaped.paint(
+            at(left, labels.line_top(y + 0.5, &shaped)),
+            px(LINE_HEIGHT),
+            window,
+            cx,
+        );
     }
 
     // The unit, once, above the labels it belongs to. An axis that placed no
     // label has nothing for it to head.
     if let Some(caption) = frame.caption.filter(|_| !frame.frequency.is_empty()) {
         let shaped = labels.shape(caption, colors.label);
-        let left = plot.x - LABEL_PAD - f32::from(shaped.width);
-        let top = labels.line_top(frame.caption_row);
+        let left = plot.right() + LABEL_PAD;
+        let top = labels.line_top(frame.caption_row, &shaped);
         let _ = shaped.paint(at(left, top), px(LINE_HEIGHT), window, cx);
     }
 }

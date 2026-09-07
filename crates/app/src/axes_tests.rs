@@ -29,11 +29,12 @@ fn the_picture_gets_what_the_labels_leave() {
     // which at these frequencies is six digits and a point.
     let widest = DejaVuSans.width("12.591000", 11.0);
     assert!(
-        frame.plot.x >= widest,
+        1200.0 - frame.plot.right() >= widest + LABEL_PAD,
         "a {widest} pixel label does not fit in a {} pixel gutter",
-        frame.plot.x
+        1200.0 - frame.plot.right()
     );
-    assert!(frame.plot.x + frame.plot.width <= 1200.0);
+    assert_eq!(frame.plot.x, 0.0);
+    assert!(frame.plot.right() < 1200.0);
     assert!(
         frame.plot.y + frame.plot.height < 800.0,
         "the time labels need a row"
@@ -119,10 +120,10 @@ fn a_gutter_reserved_from_zeros_holds_whatever_digits_turn_up_in_it() {
     for tick in &frame.frequency {
         let width = DejaVuSans.width(&tick.label, 11.0);
         assert!(
-            width <= frame.plot.x,
+            width + LABEL_PAD <= 1600.0 - frame.plot.right(),
             "{:?} measures {width} in a {} pixel gutter",
             tick.label,
-            frame.plot.x
+            1600.0 - frame.plot.right()
         );
     }
 }
@@ -146,5 +147,33 @@ fn the_plot_lands_on_whole_device_pixels_so_the_picture_is_not_resampled() {
             (device - device.round()).abs() < 1e-3,
             "the {name} edge is at device pixel {device}"
         );
+    }
+}
+
+#[test]
+fn time_labels_follow_ticks_without_overlapping_or_entering_the_right_gutter() {
+    for width in [100.0, 180.0, 640.0, 1200.0] {
+        for seconds in [(0.0, 30.456), (590.0, 650.0), (0.0, 4350.0)] {
+            let frame = measure(panel(width, 400.0), Extents { seconds, ..HFDL });
+            assert_time_labels_fit(&frame);
+            assert!(width < 180.0 || !frame.time.is_empty());
+            if width >= 180.0 && seconds.0 == 0.0 {
+                assert_eq!(frame.time[0].offset, 0, "the first label needs no left gutter");
+            }
+        }
+    }
+}
+
+fn assert_time_labels_fit(frame: &Frame) {
+    for tick in &frame.time {
+        let start = frame.plot.x + tick.offset as f32 + LABEL_PAD;
+        let end = start + DejaVuSans.width(&tick.label, LABEL_SIZE);
+        assert!(start > frame.plot.x + tick.offset as f32);
+        assert!(end <= frame.plot.right(), "{tick:?}");
+    }
+    for pair in frame.time.windows(2) {
+        let clear = (pair[1].offset - pair[0].offset) as f32
+            - DejaVuSans.width(&pair[0].label, LABEL_SIZE);
+        assert!(clear >= DejaVuSans.width("00", LABEL_SIZE));
     }
 }

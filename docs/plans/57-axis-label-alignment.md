@@ -24,8 +24,8 @@ Move the frequency scale to the right, align numeric ink vertically with ticks, 
 
 ## Implementation steps
 
-- [ ] Update shared label placement and GUI geometry
-- [ ] Cover label bounds and spacing, preserving existing CLI behavior
+- [x] Update shared label placement and GUI geometry
+- [x] Cover label bounds and spacing, preserving existing CLI behavior
 - [ ] Validate native rendering at normal and scaled DPI
 - [ ] Complete local gate, release build and external review
 - [ ] Move the plan to completed
