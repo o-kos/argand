@@ -13,7 +13,8 @@ Alt+9 to those entries while the start page is visible.
 The session retains ten recent captures and their opening hints. `shell.rs`
 already owns the platform chooser and background file opening. This branch builds
 on Draft PR #50; its PR targets that branch until #50 is accepted and merged.
-#45 retains Ctrl/Cmd+O and #33 retains automatic session restoration.
+#45 is completed by the owner-requested chooser shortcut refinement below;
+#33 retains automatic session restoration.
 
 ## Decisions
 
@@ -90,17 +91,33 @@ and clean the branch after acceptance and required checks.
 
 ## Owner feedback: recent rows and shortcut hints
 
-- [ ] Replace underlined links with compact ghost rows, a separate muted number
+- [x] Replace underlined links with compact ghost rows, a separate muted number
   column and hover background. Keep file opening and numbering unchanged.
-- [ ] Fit the recent list to its contents until it needs to scroll; put `or`
+- [x] Fit the recent list to its contents until it needs to scroll; put `or`
   and the chooser immediately below it instead of pinning the chooser at the bottom.
-- [ ] Add a shared tooltip layout with the action's registered keybinding in a
+- [x] Add a shared tooltip layout with the action's registered keybinding in a
   distinct theme colour at the right edge, without a punctuation separator.
-- [ ] Give the chooser a working Ctrl+O / macOS Cmd+O action and tooltip; route
+- [x] Give the chooser a working Ctrl+O / macOS Cmd+O action and tooltip; route
   File's Open item through the same action and show its accelerator. This owner
   request also completes the existing [#45](https://github.com/o-kos/argand/issues/45).
-- [ ] Validate layout, hover, shortcuts, chooser and menu focus in a fresh release;
+- [x] Validate layout, hover, shortcuts, chooser and menu focus in a fresh release;
   complete the local gate and focused external review.
 
 Status metadata tooltip and compact duration changes are explicitly deferred
 until the owner asks to proceed with them.
+
+### Feedback validation evidence
+
+- Formatting, strict Clippy and all 374 local tests pass on the refined code;
+  the release binary was rebuilt after these checks.
+- Fresh-release GPU-backed Wayland checks cover both themes with two, ten and
+  zero recent files at 640x400, hover backgrounds, nearby chooser placement,
+  right-aligned coloured shortcuts and long-path wrapping.
+- Ctrl+O opens the real GTK chooser with empty history, recent files, an open
+  document and an open File popup. The start-page button and File item also
+  open it. Cancelling returns focus so Alt+2 opens its matching saved entry.
+- All nine Alt shortcuts and mouse opening of the first and scrolled tenth
+  entries pass again. File displays the registered Open accelerator.
+- The initial focused feedback review and the follow-up covering global
+  action dispatch, deferred window update, popup dismissal and shortcut lookup
+  both returned no substantive findings. No review findings were declined.

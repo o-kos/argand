@@ -16,7 +16,10 @@ promise applies to.
 - Starting without a file shows links to existing recent captures, with Alt+1
   through Alt+9 for the first nine. Availability checks run in the background,
   independently for each path, so offline network locations do not block startup.
-  The empty-state instruction is also a link to the file chooser.
+  Recent rows highlight on hover without underlines; `or` and the file chooser
+  follow the list. Shortcut hints show the binding separately at the right edge.
+- Ctrl+O (Cmd+O on macOS) opens the file chooser. The File menu and start-page
+  button use the same action and show its registered shortcut.
 
 - A second binary, `argand`: the graphical application. It opens a signal file
   and shows its spectrogram, with time and frequency axes placed by the same
