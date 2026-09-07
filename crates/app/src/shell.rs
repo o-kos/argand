@@ -10,14 +10,15 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use gpui::{
-    AppContext, Application, Bounds, Context, Corners, ExternalPaths, FontWeight,
-    InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement, PathPromptOptions,
-    Pixels, Render, RenderImage, StatefulInteractiveElement, Styled, Subscription, Task,
-    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations, WindowOptions, actions,
-    canvas, div, point, prelude::FluentBuilder, px, size,
+    Action, AppContext, Application, Bounds, Context, Corners, ExternalPaths, FocusHandle,
+    FontWeight, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
+    PathPromptOptions, Pixels, Render, RenderImage, StatefulInteractiveElement, Styled,
+    Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
+    WindowOptions, actions, canvas, div, point, prelude::FluentBuilder, px, size,
 };
 use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::menu::{DropdownMenu, PopupMenuItem};
+use gpui_component::kbd::Kbd;
+use gpui_component::menu::{DropdownMenu, PopupMenu, PopupMenuItem};
 use gpui_component::tooltip::Tooltip;
 use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, ThemeMode, TitleBar};
 
@@ -28,6 +29,7 @@ use crate::axes;
 use crate::chrome;
 use crate::config::{Config, Theme};
 use crate::document::{Document, Effect, MetadataHint, Origin, Status};
+use crate::recent::RecentFiles;
 use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
 use crate::spectrogram;
 
@@ -36,7 +38,13 @@ const TITLE: &str = "argand";
 /// Reverse-DNS identifier desktop environments group windows by.
 const APP_ID: &str = "io.github.o_kos.argand";
 
-actions!(shell, [FocusNext, FocusPrevious]);
+actions!(shell, [FocusNext, FocusPrevious, ChooseFile]);
+
+#[derive(Clone, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = shell, no_json)]
+struct OpenRecent {
+    index: usize,
+}
 
 /// Open the window and run until it closes.
 pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Option<Origin>) {
@@ -50,7 +58,23 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
             cx.bind_keys([
                 KeyBinding::new("tab", FocusNext, Some("Shell")),
                 KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
+                KeyBinding::new(
+                    if cfg!(target_os = "macos") {
+                        "cmd-o"
+                    } else {
+                        "ctrl-o"
+                    },
+                    ChooseFile,
+                    None,
+                ),
             ]);
+            cx.bind_keys((0..9).map(|index| {
+                KeyBinding::new(
+                    &format!("alt-{}", index + 1),
+                    OpenRecent { index },
+                    Some("StartPage"),
+                )
+            }));
             gpui_component::theme::Theme::change(theme_mode(config.theme), None, cx);
 
             // Opening from a spawned task rather than straight from `run` follows
@@ -81,6 +105,8 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     // updates has something to deliver them to.
                     if let Some(origin) = opening {
                         shell.update(cx, |shell, cx| shell.open(origin, window, cx));
+                    } else {
+                        shell.update(cx, |shell, cx| shell.check_recent(window, cx));
                     }
                     shell
                 });
@@ -88,9 +114,12 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                 // A window that will not open is the end of the run, and a task
                 // whose error nobody reads would end it silently: there is nothing
                 // else this program does.
-                if let Err(error) = opened {
-                    tracing::error!(%error, "cannot open a window");
-                    cx.update(|cx| cx.quit())?;
+                match opened {
+                    Ok(window) => cx.update(|cx| Shell::bind_choose_file(window, cx))?,
+                    Err(error) => {
+                        tracing::error!(%error, "cannot open a window");
+                        cx.update(|cx| cx.quit())?;
+                    }
                 }
                 Ok::<_, anyhow::Error>(())
             })
@@ -224,6 +253,10 @@ struct Shell {
     /// uploaded image in the window's texture atlas until it is told to let go.
     texture: Option<Arc<RenderImage>>,
     title_drag_pending: bool,
+    focus: FocusHandle,
+    file_menu: Option<WeakEntity<PopupMenu>>,
+    startup_recent: Option<RecentFiles>,
+    recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
 }
@@ -239,6 +272,8 @@ impl Shell {
         // The toolkit says when the window has moved or resized, so nothing
         // here has to ask on every frame. It still says it once per step of a
         // drag, which is what [`Writer`] is for.
+        let focus = cx.focus_handle();
+        window.focus(&focus);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
         Self {
             config,
@@ -248,6 +283,10 @@ impl Shell {
             plot: None,
             texture: None,
             title_drag_pending: false,
+            focus,
+            file_menu: None,
+            startup_recent: None,
+            recent_updates: None,
             _bounds: bounds,
         }
     }
@@ -261,6 +300,8 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         tracing::info!(path = %origin.path.display(), "opening");
+        self.recent_updates = None;
+        self.startup_recent = None;
 
         // Nothing of the previous file is left standing. Its picture would
         // otherwise be drawn under this one's axes until the first transform
@@ -299,6 +340,51 @@ impl Shell {
             _updates: pump,
         });
         cx.notify();
+    }
+
+    fn check_recent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let recent = RecentFiles::new(&self.session.recent);
+        let updates = recent.check();
+        self.startup_recent = Some(recent);
+        self.recent_updates = Some(cx.spawn_in(window, async move |shell, cx| {
+            while let Ok((index, exists)) = updates.recv().await {
+                if shell
+                    .update_in(cx, |shell, _, cx| {
+                        shell.receive_recent(index, exists, cx);
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        }));
+    }
+
+    fn receive_recent(&mut self, index: usize, exists: bool, cx: &mut Context<Self>) {
+        if let Some(recent) = self.startup_recent.as_mut() {
+            recent.apply(index, exists);
+            cx.notify();
+        }
+    }
+
+    fn open_recent(&mut self, action: &OpenRecent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.file.is_some() {
+            return;
+        }
+        let entry = self
+            .startup_recent
+            .as_ref()
+            .and_then(|recent| recent.shortcut(action.index));
+        if let Some(entry) = entry {
+            self.open(
+                Origin {
+                    path: entry.path,
+                    hints: entry.hints.to_open_hints(),
+                },
+                window,
+                cx,
+            );
+        }
     }
 
     /// Put a file at the head of the recent list, and write the session out.
@@ -458,6 +544,23 @@ impl Drop for Shell {
 }
 
 impl Shell {
+    fn bind_choose_file(window: gpui::WindowHandle<Self>, cx: &mut gpui::App) {
+        // Popup focus sits outside the shell subtree; defer until dispatch releases the window.
+        cx.on_action(move |_: &ChooseFile, cx| {
+            cx.defer(move |cx| {
+                let _ = window.update(cx, Self::choose_file);
+            });
+        });
+    }
+
+    fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(menu) = self.file_menu.take() {
+            let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
+            window.focus(&self.focus);
+        }
+        Self::choose(&cx.entity().downgrade(), window, cx);
+    }
+
     /// Ask the desktop for a file, and open whatever comes back.
     ///
     /// The dialog is the platform's own -- the file chooser portal on Linux,
@@ -499,6 +602,7 @@ impl Shell {
     /// of the three has.
     fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().downgrade();
+        let focus = self.focus.clone();
         // Rebuilt from what the session holds when the menu is opened, so an
         // entry added since the last time it was shown is in it.
         let recent = self.recent_entries();
@@ -506,12 +610,12 @@ impl Shell {
             .ghost()
             .small()
             .label("File")
-            .dropdown_menu(move |mut menu, _, _| {
-                let opener = view.clone();
-                menu = menu.item(
-                    PopupMenuItem::new("Open file...")
-                        .on_click(move |_, window, cx| Self::choose(&opener, window, cx)),
-                );
+            .dropdown_menu(move |mut menu, _, cx| {
+                let menu_view = cx.entity().downgrade();
+                let _ = view.update(cx, |shell, _| shell.file_menu = Some(menu_view));
+                menu = menu
+                    .action_context(focus.clone())
+                    .item(PopupMenuItem::new("Open file...").action(Box::new(ChooseFile)));
                 if recent.is_empty() {
                     return menu;
                 }
@@ -699,7 +803,7 @@ impl Shell {
     ///
     /// Decided in one place and drawn in another, so that neither has to hold
     /// the other's conditions: four states, and each of them one element.
-    fn middle(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn middle(&self, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         let notice = |text: String, color| {
             div()
                 .flex_1()
@@ -720,12 +824,144 @@ impl Shell {
             // A file that has not said what it is yet has no axes to draw and
             // no picture to draw them around; the status bar reports it.
             Showing::Opening => div().flex_1().into_any_element(),
-            Showing::Nothing => notice(
-                "open a signal file to begin".to_owned(),
-                cx.theme().muted_foreground,
-            ),
+            Showing::Nothing => self.start_page(window, cx).into_any_element(),
             Showing::Failed(reason) => notice(reason, cx.theme().danger),
         }
+    }
+
+    fn recent_button(
+        entry: crate::session::Recent,
+        label: String,
+        index: usize,
+        width: Pixels,
+        cx: &mut Context<Self>,
+    ) -> Button {
+        let tooltip = entry.path.display().to_string();
+        let mut button = Button::new(("start-recent", index))
+            .ghost()
+            .small()
+            .h_6()
+            .max_w(width)
+            .px_2()
+            .justify_start()
+            .cursor_pointer()
+            .child(
+                div()
+                    .max_w(width - px(24.))
+                    .flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .w_6()
+                            .flex_shrink_0()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(if index < 9 {
+                                (index + 1).to_string()
+                            } else {
+                                String::new()
+                            }),
+                    )
+                    .child(div().min_w_0().line_clamp(1).text_ellipsis().child(label)),
+            )
+            .on_click(cx.listener(move |shell, _, window, cx| {
+                shell.open(
+                    Origin {
+                        path: entry.path.clone(),
+                        hints: entry.hints.to_open_hints(),
+                    },
+                    window,
+                    cx,
+                );
+            }));
+        button.interactivity().tooltip(move |window, cx| {
+            let action = (index < 9).then(|| Box::new(OpenRecent { index }) as Box<dyn Action>);
+            shortcut_tooltip(tooltip.clone(), action, "StartPage", width).build(window, cx)
+        });
+        button
+    }
+
+    fn start_page(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let recent = self
+            .startup_recent
+            .as_ref()
+            .map(RecentFiles::visible)
+            .unwrap_or_default();
+        let labels = crate::session::recent_labels(&recent);
+        let width = (window.viewport_size().width - px(96.)).min(px(560.));
+        let empty = recent.is_empty();
+        let list_height = cx.theme().font_size * (recent.len() as f32 * 1.75 - 0.25).max(0.);
+        let mut chooser = Button::new("start-open")
+            .ghost()
+            .small()
+            .h_6()
+            .px_2()
+            .max_w(width)
+            .justify_start()
+            .cursor_pointer()
+            .label("Open a signal file…")
+            .on_click(|_, window, cx| window.dispatch_action(Box::new(ChooseFile), cx));
+        chooser.interactivity().tooltip(move |window, cx| {
+            shortcut_tooltip(
+                "Open a signal file".to_owned(),
+                Some(Box::new(ChooseFile)),
+                "Shell",
+                width,
+            )
+            .build(window, cx)
+        });
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .p_4()
+            .gap_2()
+            .when(empty, |page| page.justify_center())
+            .when(!empty, |page| {
+                page.child(
+                    div()
+                        .w(width)
+                        .flex_shrink_0()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Recent files"),
+                )
+                .child(
+                    div()
+                        .id("start-links")
+                        .w(width)
+                        .h(list_height)
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .flex()
+                        .flex_col()
+                        .items_start()
+                        .gap_1()
+                        .children(recent.into_iter().zip(labels).enumerate().map(
+                            |(index, (entry, label))| {
+                                Self::recent_button(entry, label, index, width, cx)
+                            },
+                        )),
+                )
+                .child(
+                    div()
+                        .w(width)
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("or"),
+                )
+            })
+            .child(
+                div()
+                    .w(width)
+                    .flex()
+                    .flex_shrink_0()
+                    .when(empty, |row| row.justify_center())
+                    // Match the recent row's number column and gap; button padding is shared.
+                    .when(!empty, |row| row.pl_8())
+                    .child(chooser),
+            )
     }
 
     /// Which of the four the window is in.
@@ -777,7 +1013,13 @@ impl Render for Shell {
             .font_family(cx.theme().font_family.clone())
             .text_color(cx.theme().foreground)
             .id("shell")
-            .key_context("Shell")
+            .track_focus(&self.focus)
+            .key_context(if self.file.is_none() {
+                "Shell StartPage"
+            } else {
+                "Shell"
+            })
+            .on_action(cx.listener(Self::open_recent))
             .on_action(|_: &FocusNext, window, _| window.focus_next())
             .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
             // A capture dropped anywhere on the window opens, which is where a
@@ -793,6 +1035,7 @@ impl Render for Shell {
                 // The waveform itself arrives in #31.
                 div()
                     .flex_1()
+                    .min_h_0()
                     .flex()
                     .flex_col()
                     .child(
@@ -802,7 +1045,7 @@ impl Render for Shell {
                             .border_b_1()
                             .border_color(cx.theme().border),
                     )
-                    .child(self.middle(cx)),
+                    .child(self.middle(window, cx)),
             )
             .child(
                 div()
@@ -839,6 +1082,38 @@ impl Render for Shell {
             );
         frame.render(content, cx)
     }
+}
+
+fn shortcut_tooltip(
+    text: String,
+    action: Option<Box<dyn Action>>,
+    context: &'static str,
+    width: Pixels,
+) -> Tooltip {
+    Tooltip::element(move |window, cx| {
+        let shortcut = action
+            .as_deref()
+            .and_then(|action| Kbd::binding_for_action(action, Some(context), window));
+        let color = if cx.theme().is_dark() {
+            cx.theme().blue_light
+        } else {
+            cx.theme().blue.darken(0.2)
+        };
+        div()
+            .max_w(width.min(window.viewport_size().width - px(48.)))
+            .flex()
+            .items_start()
+            .gap_3()
+            .child(div().min_w_0().child(text.clone()))
+            .when_some(shortcut, |hint, shortcut| {
+                hint.child(
+                    div()
+                        .flex_shrink_0()
+                        .text_color(color)
+                        .child(shortcut.appearance(false)),
+                )
+            })
+    })
 }
 
 fn metadata_tooltip(hint: MetadataHint) -> Tooltip {

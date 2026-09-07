@@ -338,7 +338,17 @@ vertical rules; each field has a tooltip. Duration uses minutes:seconds.millisec
 (for example, `3:41.340`). Captures with a centre frequency show that in another field.
 
 Files also open from the File menu, by dropping a capture on the window, and
-from the list of files opened before. That list keeps the options each file was
+from the list of files opened before. When launched without a file argument, the
+start page lists only recent paths verified as existing files. All checks run in
+independent background workers, so an unavailable network location cannot block
+the window or other entries. Alt+1 through Alt+9 open the first nine displayed
+links; other entries remain clickable. The compact rows highlight only their
+text-sized area on hover, without underlines. Below the list, `or` aligns with
+the heading and `Open a signal file…` aligns with the filenames. This action opens
+the platform chooser and stays centered when no recent file is available. Ctrl+O (Cmd+O on macOS) opens the same chooser anywhere in the
+window. Shortcut hints show the registered binding in a distinct colour at the
+right edge. Hints fit their contents and wrap long paths within the window; the File menu also shows the Open accelerator.
+Unavailable paths remain in history for later launches. The list keeps the options each file was
 opened with, so a headerless capture opened once as `iq_i16@24k` does not need
 those flags a second time. It lives in `session.toml` in the platform state
 directory, along with the window's size and state. That file is written whole
