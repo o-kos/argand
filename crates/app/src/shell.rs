@@ -10,11 +10,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use gpui::{
-    AppContext, Application, Bounds, Context, Corners, ExternalPaths, FontWeight,
-    InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement, PathPromptOptions,
-    Pixels, Render, RenderImage, StatefulInteractiveElement, Styled, Subscription, Task,
-    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations, WindowOptions, actions,
-    canvas, div, point, prelude::FluentBuilder, px, size,
+    Action, AppContext, Application, Bounds, Context, Corners, ExternalPaths, FocusHandle,
+    FontWeight, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
+    PathPromptOptions, Pixels, Render, RenderImage, StatefulInteractiveElement, Styled,
+    Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
+    WindowOptions, actions, canvas, div, point, prelude::FluentBuilder, px, size,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::menu::{DropdownMenu, PopupMenuItem};
@@ -28,6 +28,7 @@ use crate::axes;
 use crate::chrome;
 use crate::config::{Config, Theme};
 use crate::document::{Document, Effect, MetadataHint, Origin, Status};
+use crate::recent::RecentFiles;
 use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
 use crate::spectrogram;
 
@@ -37,6 +38,12 @@ const TITLE: &str = "argand";
 const APP_ID: &str = "io.github.o_kos.argand";
 
 actions!(shell, [FocusNext, FocusPrevious]);
+
+#[derive(Clone, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = shell, no_json)]
+struct OpenRecent {
+    index: usize,
+}
 
 /// Open the window and run until it closes.
 pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Option<Origin>) {
@@ -51,6 +58,13 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                 KeyBinding::new("tab", FocusNext, Some("Shell")),
                 KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
             ]);
+            cx.bind_keys((0..9).map(|index| {
+                KeyBinding::new(
+                    &format!("alt-{}", index + 1),
+                    OpenRecent { index },
+                    Some("StartPage"),
+                )
+            }));
             gpui_component::theme::Theme::change(theme_mode(config.theme), None, cx);
 
             // Opening from a spawned task rather than straight from `run` follows
@@ -81,6 +95,8 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     // updates has something to deliver them to.
                     if let Some(origin) = opening {
                         shell.update(cx, |shell, cx| shell.open(origin, window, cx));
+                    } else {
+                        shell.update(cx, |shell, cx| shell.check_recent(window, cx));
                     }
                     shell
                 });
@@ -224,6 +240,9 @@ struct Shell {
     /// uploaded image in the window's texture atlas until it is told to let go.
     texture: Option<Arc<RenderImage>>,
     title_drag_pending: bool,
+    focus: FocusHandle,
+    startup_recent: Option<RecentFiles>,
+    recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
 }
@@ -239,6 +258,8 @@ impl Shell {
         // The toolkit says when the window has moved or resized, so nothing
         // here has to ask on every frame. It still says it once per step of a
         // drag, which is what [`Writer`] is for.
+        let focus = cx.focus_handle();
+        window.focus(&focus);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
         Self {
             config,
@@ -248,6 +269,9 @@ impl Shell {
             plot: None,
             texture: None,
             title_drag_pending: false,
+            focus,
+            startup_recent: None,
+            recent_updates: None,
             _bounds: bounds,
         }
     }
@@ -261,6 +285,8 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         tracing::info!(path = %origin.path.display(), "opening");
+        self.recent_updates = None;
+        self.startup_recent = None;
 
         // Nothing of the previous file is left standing. Its picture would
         // otherwise be drawn under this one's axes until the first transform
@@ -299,6 +325,51 @@ impl Shell {
             _updates: pump,
         });
         cx.notify();
+    }
+
+    fn check_recent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let recent = RecentFiles::new(&self.session.recent);
+        let updates = recent.check();
+        self.startup_recent = Some(recent);
+        self.recent_updates = Some(cx.spawn_in(window, async move |shell, cx| {
+            while let Ok((index, exists)) = updates.recv().await {
+                if shell
+                    .update_in(cx, |shell, _, cx| {
+                        shell.receive_recent(index, exists, cx);
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        }));
+    }
+
+    fn receive_recent(&mut self, index: usize, exists: bool, cx: &mut Context<Self>) {
+        if let Some(recent) = self.startup_recent.as_mut() {
+            recent.apply(index, exists);
+            cx.notify();
+        }
+    }
+
+    fn open_recent(&mut self, action: &OpenRecent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.file.is_some() {
+            return;
+        }
+        let entry = self
+            .startup_recent
+            .as_ref()
+            .and_then(|recent| recent.shortcut(action.index));
+        if let Some(entry) = entry {
+            self.open(
+                Origin {
+                    path: entry.path,
+                    hints: entry.hints.to_open_hints(),
+                },
+                window,
+                cx,
+            );
+        }
     }
 
     /// Put a file at the head of the recent list, and write the session out.
@@ -499,6 +570,7 @@ impl Shell {
     /// of the three has.
     fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().downgrade();
+        let focus = self.focus.clone();
         // Rebuilt from what the session holds when the menu is opened, so an
         // entry added since the last time it was shown is in it.
         let recent = self.recent_entries();
@@ -508,7 +580,7 @@ impl Shell {
             .label("File")
             .dropdown_menu(move |mut menu, _, _| {
                 let opener = view.clone();
-                menu = menu.item(
+                menu = menu.action_context(focus.clone()).item(
                     PopupMenuItem::new("Open file...")
                         .on_click(move |_, window, cx| Self::choose(&opener, window, cx)),
                 );
@@ -699,7 +771,7 @@ impl Shell {
     ///
     /// Decided in one place and drawn in another, so that neither has to hold
     /// the other's conditions: four states, and each of them one element.
-    fn middle(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn middle(&self, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         let notice = |text: String, color| {
             div()
                 .flex_1()
@@ -720,12 +792,104 @@ impl Shell {
             // A file that has not said what it is yet has no axes to draw and
             // no picture to draw them around; the status bar reports it.
             Showing::Opening => div().flex_1().into_any_element(),
-            Showing::Nothing => notice(
-                "open a signal file to begin".to_owned(),
-                cx.theme().muted_foreground,
-            ),
+            Showing::Nothing => self.start_page(window, cx).into_any_element(),
             Showing::Failed(reason) => notice(reason, cx.theme().danger),
         }
+    }
+
+    fn start_page(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let recent = self
+            .startup_recent
+            .as_ref()
+            .map(RecentFiles::visible)
+            .unwrap_or_default();
+        let labels = crate::session::recent_labels(&recent);
+        let width = (window.viewport_size().width - px(96.)).min(px(560.));
+        let chooser = cx.entity().downgrade();
+        let empty = recent.is_empty();
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .p_4()
+            .gap_2()
+            .when(empty, |page| page.justify_center())
+            .when(!empty, |page| {
+                page.child(
+                    div()
+                        .w(width)
+                        .flex_shrink_0()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Recent files"),
+                )
+                .child(
+                    div()
+                        .id("start-links")
+                        .w(width)
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .children(recent.into_iter().zip(labels).enumerate().map(
+                            |(index, (entry, label))| {
+                                let label = if index < 9 {
+                                    format!("{}. {label}", index + 1)
+                                } else {
+                                    label
+                                };
+                                let tooltip = if index < 9 {
+                                    format!("{} — Alt+{}", entry.path.display(), index + 1)
+                                } else {
+                                    entry.path.display().to_string()
+                                };
+                                let mut button = Button::new(("start-recent", index))
+                                    .link()
+                                    .small()
+                                    .h_6()
+                                    .w(width)
+                                    .justify_start()
+                                    .child(
+                                        div()
+                                            .w(width - px(32.))
+                                            .line_clamp(1)
+                                            .text_ellipsis()
+                                            .child(label),
+                                    )
+                                    .on_click(cx.listener(move |shell, _, window, cx| {
+                                        shell.open(
+                                            Origin {
+                                                path: entry.path.clone(),
+                                                hints: entry.hints.to_open_hints(),
+                                            },
+                                            window,
+                                            cx,
+                                        );
+                                    }));
+                                button.interactivity().tooltip(move |window, cx| {
+                                    let text = tooltip.clone();
+                                    Tooltip::element(move |_, _| div().w(width).child(text.clone()))
+                                        .build(window, cx)
+                                });
+                                button
+                            },
+                        )),
+                )
+            })
+            .child(
+                Button::new("start-open")
+                    .link()
+                    .small()
+                    .h_6()
+                    .w(width)
+                    .justify_start()
+                    .label("open a signal file to begin")
+                    .on_click(move |_, window, cx| Self::choose(&chooser, window, cx)),
+            )
     }
 
     /// Which of the four the window is in.
@@ -777,7 +941,13 @@ impl Render for Shell {
             .font_family(cx.theme().font_family.clone())
             .text_color(cx.theme().foreground)
             .id("shell")
-            .key_context("Shell")
+            .track_focus(&self.focus)
+            .key_context(if self.file.is_none() {
+                "Shell StartPage"
+            } else {
+                "Shell"
+            })
+            .on_action(cx.listener(Self::open_recent))
             .on_action(|_: &FocusNext, window, _| window.focus_next())
             .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
             // A capture dropped anywhere on the window opens, which is where a
@@ -793,6 +963,7 @@ impl Render for Shell {
                 // The waveform itself arrives in #31.
                 div()
                     .flex_1()
+                    .min_h_0()
                     .flex()
                     .flex_col()
                     .child(
@@ -802,7 +973,7 @@ impl Render for Shell {
                             .border_b_1()
                             .border_color(cx.theme().border),
                     )
-                    .child(self.middle(cx)),
+                    .child(self.middle(window, cx)),
             )
             .child(
                 div()

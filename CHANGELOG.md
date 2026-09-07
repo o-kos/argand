@@ -13,6 +13,11 @@ promise applies to.
 
 ### Added
 
+- Starting without a file shows links to existing recent captures, with Alt+1
+  through Alt+9 for the first nine. Availability checks run in the background,
+  independently for each path, so offline network locations do not block startup.
+  The empty-state instruction is also a link to the file chooser.
+
 - A second binary, `argand`: the graphical application. It opens a signal file
   and shows its spectrogram, with time and frequency axes placed by the same
   tick policy `aspec` uses -- two-sided around the centre frequency for an I/Q

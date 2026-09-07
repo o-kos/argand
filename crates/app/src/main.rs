@@ -15,6 +15,7 @@ mod chrome;
 mod cli;
 mod config;
 mod document;
+mod recent;
 mod session;
 mod shell;
 mod spectrogram;
