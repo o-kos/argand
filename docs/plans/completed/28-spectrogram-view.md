@@ -220,7 +220,11 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [x] `cargo test --locked`
+- [x] `cargo test --locked`. ➕ CI on Windows caught three of the new recent-list
+      tests spelling their paths `/c/a.wav` and comparing the stored value
+      against the same string: `std::path::absolute` prepends the current drive
+      there. The tests build their paths from a scratch directory now. The code
+      was right; the tests assumed a platform.
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] The window shows, for a capture from `tests/signals/`, the same spectrogram
       `aspec` renders for the same parameters. Compared as pixels, not by eye.
