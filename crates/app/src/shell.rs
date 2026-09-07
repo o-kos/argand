@@ -252,11 +252,20 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         tracing::info!(path = %origin.path.display(), "opening");
+
+        // Nothing of the previous file is left standing. Its picture would
+        // otherwise be drawn under this one's axes until the first transform
+        // lands, and its plot size would send the first request at a width
+        // this file's labels may not leave.
+        self.release(window, cx);
+        self.plot = None;
+
         let (analyst, updates) = crate::analysis::open(origin.path.clone(), origin.hints.clone());
 
         // Dropping this task drops the receiver, which is half of what tells
         // the thread that nobody is waiting for it any more.
-        // Spawned against the window rather than the application, because
+        //
+        // It is spawned against the window rather than the application because
         // letting go of a texture needs one: gpui takes the window being
         // updated out of its own list, so an image released without naming it
         // stays in that window's atlas.
@@ -271,13 +280,6 @@ impl Shell {
                 }
             }
         });
-
-        // Nothing of the previous file is left standing. Its picture would
-        // otherwise be drawn under this one's axes until the first transform
-        // lands, and its plot size would send the first request at a width
-        // this file's labels may not leave.
-        self.release(window, cx);
-        self.plot = None;
 
         // Replacing the previous file drops both ends of its queue, which is
         // what stops its thread: a transform nobody will look at should not go
