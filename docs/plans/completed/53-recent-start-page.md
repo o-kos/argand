@@ -148,7 +148,14 @@ Status metadata hint and duration redesign remains deferred.
 
 ## Owner feedback: align the chooser with the filename column
 
-- [ ] Align `or` with the left edge of `Recent files` and the chooser text with
+- [x] Align `or` with the left edge of `Recent files` and the chooser text with
   the filename column, retaining content-sized hover backgrounds and hints.
-- [ ] Keep the empty-history chooser centered; validate both states in a fresh
+- [x] Keep the empty-history chooser centered; validate both states in a fresh
   release after the local gate and complete focused external review.
+
+Validation: formatting, strict Clippy and all 374 tests pass; release rebuilt
+following the gate. GPU-backed Wayland checks in both themes confirm the heading
+and separator share a left edge, and the chooser text shares the filename left
+edge. Two-entry, scrolling ten-entry and empty-history layouts retain compact
+highlights and hints; the empty-history chooser still opens the platform dialog.
+Focused external review returned no substantive findings; none were declined.

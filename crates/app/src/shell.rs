@@ -894,6 +894,7 @@ impl Shell {
             .ghost()
             .small()
             .h_6()
+            .px_2()
             .max_w(width)
             .justify_start()
             .cursor_pointer()
@@ -946,13 +947,21 @@ impl Shell {
                 .child(
                     div()
                         .w(width)
-                        .text_center()
                         .text_sm()
                         .text_color(cx.theme().muted_foreground)
                         .child("or"),
                 )
             })
-            .child(chooser)
+            .child(
+                div()
+                    .w(width)
+                    .flex()
+                    .flex_shrink_0()
+                    .when(empty, |row| row.justify_center())
+                    // Match the recent row's number column and gap; button padding is shared.
+                    .when(!empty, |row| row.pl_8())
+                    .child(chooser),
+            )
     }
 
     /// Which of the four the window is in.

@@ -342,9 +342,10 @@ from the list of files opened before. When launched without a file argument, the
 start page lists only recent paths verified as existing files. All checks run in
 independent background workers, so an unavailable network location cannot block
 the window or other entries. Alt+1 through Alt+9 open the first nine displayed
-links; other entries remain clickable. The compact rows highlight only their text-sized area on hover, without underlines. Below the list, centered `or`
-and `Open a signal file…` offer the platform chooser, including when no recent
-file is available. Ctrl+O (Cmd+O on macOS) opens the same chooser anywhere in the
+links; other entries remain clickable. The compact rows highlight only their
+text-sized area on hover, without underlines. Below the list, `or` aligns with
+the heading and `Open a signal file…` aligns with the filenames. This action opens
+the platform chooser and stays centered when no recent file is available. Ctrl+O (Cmd+O on macOS) opens the same chooser anywhere in the
 window. Shortcut hints show the registered binding in a distinct colour at the
 right edge. Hints fit their contents and wrap long paths within the window; the File menu also shows the Open accelerator.
 Unavailable paths remain in history for later launches. The list keeps the options each file was
