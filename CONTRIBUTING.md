@@ -118,8 +118,8 @@ The local pre-push gate is unchanged. Remote CI is a separate feedback schedule:
 | Move to Ready; update/reopen a Ready PR | Formatting/Clippy on Linux; tests and release builds on Linux, Windows and macOS | `ci/full` |
 | Push to `main`; manual workflow dispatch | Full validation | `ci/full` |
 
-Returning to Draft cancels the superseded PR run. In-progress main runs are not cancelled by
-later pushes. Manual dispatch validates the selected ref; use the Ready PR run as
+Returning to Draft cancels the superseded PR run. In-progress main runs are not
+cancelled by later pushes. Manual dispatch validates the selected ref; use the Ready PR run as
 the merge-validation path so the current base is included.
 
 Do not wait for GitHub CI between small iterations. Report local validation and
@@ -130,8 +130,9 @@ the branch is up to date. An earlier green revision is not evidence for a new on
 The full result requires explicit success from all three platforms; failure,
 cancellation or a skipped platform fails it. Drafts publish `ci/quick`, never a
 successful `ci/full`. Keep `ci/full` required on `main`, tied to GitHub Actions,
-with strict up-to-date checking. Change required checks only after the new workflow
-has passed a full PR run and reached `main`; preserve the remaining protection.
+with strict up-to-date checking. Migrate protection in stages: after a full PR run
+proves the new status, add it alongside the old required checks before merging the workflow. Remove the old
+contexts only after the workflow reaches `main`; preserve the remaining protection.
 Older open branches must incorporate the new `main` before using the new checks.
 
 ## Lint policy
@@ -165,7 +166,9 @@ An unexplained suppression that nobody re-reads turns the whole gate into a form
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every Pull Request and on every push to `main`. Its `linux` job runs the four commands above, in that order, after installing the system libraries GPUI links against; its `windows` and `macos` jobs run the test suite and the release build. All three are required checks on protected `main`.
+`.github/workflows/ci.yml` implements the [remote CI tiers](#remote-ci-tiers).
+Drafts receive quick Linux feedback; full runs include all three platforms.
+The aggregate `ci/full` is the required check after the staged protection migration.
 
 No runner has a GPU, so no job opens a window. What the three of them cover is that the workspace builds on every supported platform and that everything not needing a window passes; the application's own configuration and geometry logic is written to be testable without one.
 
