@@ -58,7 +58,12 @@ Require full remote CI for final acceptance, then squash-merge after approval.
 
 ## Owner feedback: one-sentence explanations
 
-- [ ] Express each explanatory hint as one concise sentence without a terminal
+- [x] Express each explanatory hint as one concise sentence without a terminal
   period or forced line break; retain separate heading/value and `hms.ms` notation.
-- [ ] Preserve format and timing semantics, run the local gate, rebuild release
+- [x] Preserve format and timing semantics, run the local gate, rebuild release
   and obtain focused external review before presenting the result.
+
+Validation: formatting, strict Clippy and all 377 tests pass, and release was
+rebuilt after the gate. The focused wording review returned no substantive
+findings; none were declined. This iteration changes prose only, retaining the
+previously verified tooltip layout and timing lifecycle.

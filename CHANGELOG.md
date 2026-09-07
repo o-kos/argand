@@ -65,7 +65,7 @@ promise applies to.
   follows the window corner, and status metadata has separate fields with tooltips
   and compact duration units. Sample domain and storage format use a middle dot.
   Hints show a heading, a muted current value at the same size, and an optional
-  smaller muted explanation without terminal periods. The duration hint shows a
+  smaller muted one-sentence explanation without a terminal period. The duration hint shows a
   millisecond clock; the completed-analysis timing now has an explanatory hint.
 - The Rust toolchain is now 1.97.1, which the GUI toolkit requires. `aspec`
   renders identically.

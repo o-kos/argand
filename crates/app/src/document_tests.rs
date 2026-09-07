@@ -239,7 +239,7 @@ fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
     assert_eq!(fields[0].hint.value, "wav");
     assert_eq!(fields[1].hint.value, "iq · i16");
     assert!(fields[1].hint.explanation.contains("interleaved I and Q"));
-    assert!(fields[1].hint.explanation.contains("Signed 16-bit"));
+    assert!(fields[1].hint.explanation.contains("signed 16-bit"));
     assert_eq!(fields[2].hint.value, "24 kHz");
     assert_eq!(fields[3].hint.value, "0:00:02.000");
     assert_eq!(fields[3].hint.explanation, "hms.ms");
@@ -248,7 +248,7 @@ fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
         assert!(!field.hint.explanation.ends_with('.'));
     }
     let real_u8 = MetadataHint::samples(SampleType::new(Domain::Real, SampleFormat::U8));
-    assert!(real_u8.explanation.contains("One scalar"));
+    assert!(real_u8.explanation.contains("one scalar"));
     assert!(real_u8.explanation.contains("128"));
     let cool_edit = MetadataHint::samples(SampleType::new(Domain::Iq, SampleFormat::F16x8));
     assert!(cool_edit.explanation.contains("32-bit floating point"));
@@ -264,7 +264,7 @@ fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
     let hint = document.status().hint().unwrap();
     assert_eq!(hint.title, "Analysis time");
     assert_eq!(hint.value, "1.250 s");
-    assert!(hint.explanation.contains("Excludes file opening and display"));
+    assert!(hint.explanation.contains("excluding file opening and display"));
     document.apply(Update::Progress { done: 1, total: 40 });
     assert!(document.status().hint().is_none());
     document.apply(Update::Failed(anyhow::anyhow!("read failed")));

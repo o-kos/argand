@@ -81,7 +81,7 @@ impl Status {
         Some(MetadataHint::new(
             "Analysis time",
             format!("{:.3} s", elapsed.as_secs_f64()),
-            "Reading samples and calculating the latest analysis\nExcludes file opening and display",
+            "Measures sample reading and analysis, excluding file opening and display",
         ))
     }
 
@@ -214,9 +214,9 @@ impl Document {
                     "Signal sample rate",
                     format_hz(meta.sample_rate),
                     if meta.is_iq() {
-                        "Complex samples per second\nEach I/Q pair counts as one sample"
+                        "The rate counts I/Q pairs per second"
                     } else {
-                        "Real samples per second"
+                        "The rate counts real samples per second"
                     },
                 ),
             ),
@@ -235,7 +235,7 @@ impl Document {
                 MetadataHint::new(
                     "Signal centre frequency",
                     format_hz(meta.center_freq),
-                    "Frequency represented by zero in the baseband signal",
+                    "This is the frequency represented by zero in the baseband signal",
                 ),
             ));
         }
@@ -275,35 +275,33 @@ impl MetadataHint {
 
     fn container(container: &str) -> Self {
         let explanation = match container {
-            "wav" => "WAVE container with sample format metadata",
-            "rf64" => "WAVE extension for captures larger than 4 GiB",
-            "bw64" => "Broadcast WAVE extension for captures larger than 4 GiB",
-            "flac" => "Lossless compression with sample format metadata",
-            "raw" => {
-                "Headerless samples\nFormat and sample rate are supplied when opening the file"
-            }
-            _ => "How samples and metadata are stored in the file",
+            "wav" => "The WAVE container stores samples and their format metadata",
+            "rf64" => "The RF64 container extends WAVE for captures larger than 4 GiB",
+            "bw64" => "The BW64 container extends broadcast WAVE for captures larger than 4 GiB",
+            "flac" => "The FLAC container compresses samples losslessly and stores their format",
+            "raw" => "Headerless samples use the format and rate supplied when opening the file",
+            _ => "The container defines how samples and metadata are stored in the file",
         };
         Self::new("File container type", container, explanation)
     }
 
     fn samples(sample_type: SampleType) -> Self {
         let (domain, explanation) = if sample_type.is_iq() {
-            ("iq", "Complex samples with interleaved I and Q components")
+            ("iq", "Each sample stores interleaved I and Q components")
         } else {
-            ("real", "One scalar value per sample")
+            ("real", "Each sample stores one scalar value")
         };
         let storage = match sample_type.format {
-            SampleFormat::U8 => "Unsigned 8-bit integers, with zero stored as 128",
-            SampleFormat::I16 => "Signed 16-bit integers",
-            SampleFormat::I32 => "Signed 32-bit integers",
-            SampleFormat::F32 => "32-bit floating point, nominal full scale -1 to +1",
-            SampleFormat::F16x8 => "CoolEdit 16x8: 32-bit floating point with arbitrary scale",
+            SampleFormat::U8 => "unsigned 8-bit integers, with zero stored as 128",
+            SampleFormat::I16 => "signed 16-bit integers",
+            SampleFormat::I32 => "signed 32-bit integers",
+            SampleFormat::F32 => "32-bit floating point with nominal full scale -1 to +1",
+            SampleFormat::F16x8 => "32-bit floating point with arbitrary scale (CoolEdit 16x8)",
         };
         Self::new(
             "Samples format",
             format!("{domain} · {}", sample_type.format.as_str()),
-            format!("{explanation}\n{storage}"),
+            format!("{explanation} as {storage}"),
         )
     }
 }

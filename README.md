@@ -335,7 +335,7 @@ have subtly rounded corners, and the reserved waveform strip stays 3 rem
 setting is still accepted so existing files load, but no longer sizes this strip.
 The status bar separates container, sample format, sample rate and duration with
 vertical rules. Hints show a heading, current value and optional smaller explanation
-without terminal periods. Values and explanations use muted text. Duration is compact
+of one sentence without a terminal period. Values and explanations use muted text. Duration is compact
 in the bar (`30m`, `1h12m30s`, `30.456s`, `20.2s`); its hint shows an hours:minutes:seconds
 clock with three millisecond digits and `hms.ms`. Captures with a centre frequency show
 that in another field. The `ready in` hint explains the latest analysis time, including
