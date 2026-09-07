@@ -26,18 +26,18 @@ The policy was kept separate from #42 to preserve that Pull Request's scope.
 
 ## Implementation steps
 
-- [ ] Synchronize the policy in `AGENTS.md` and `CONTRIBUTING.md`.
-- [ ] Update the CLI example to select the reviewer and effort explicitly.
+- [x] Synchronize the policy in `AGENTS.md` and `CONTRIBUTING.md`.
+- [x] Update the CLI example to select the reviewer and effort explicitly.
 - [ ] Complete standard validation and external review.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Check both mappings, consistency between the documents, and CLI syntax.
+- [x] Check both mappings, consistency between the documents, and CLI syntax.
 - [ ] External review returns no substantive findings.
 
 ## Post-completion

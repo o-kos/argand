@@ -144,13 +144,27 @@ The toolchain comes from `rust-toolchain.toml`, which is the only place the Rust
 
 ## External review
 
+Choose the external reviewer based on who implements the Issue:
+
+| Issue implementer | Required Draft Pull Request reviewer | CLI model | Reasoning effort |
+| --- | --- | --- | --- |
+| Claude | Codex GPT-6 Astra | `gpt-6-astra` | High |
+| Codex GPT-6 Astra | Codex GPT-5.6 Sol | `gpt-5.6-sol` | High |
+
+Select the required model and reasoning effort explicitly when invoking the `codex`
+CLI, and use them for every subsequent review round.
+
 Before the owner is asked to review, the Pull Request goes through a review by a second
 agent. Run it read-only so that the changes stay deliberate and this repository's own
 rules -- in particular that suppressions need the owner's agreement -- are not bypassed
 by an agent that has not read them:
 
+Set `review_model` to the CLI model from the matching row above, then run:
+
 ```sh
-codex exec -s read-only -C "$(git rev-parse --show-toplevel)" "$(cat review-prompt.md)" < /dev/null
+codex exec -s read-only --model "${review_model:?Set review_model from the table above}" \
+  -c 'model_reasoning_effort="high"' \
+  -C "$(git rev-parse --show-toplevel)" "$(cat review-prompt.md)" < /dev/null
 ```
 
 Closing stdin is required; without it the command waits for input forever. Note that
