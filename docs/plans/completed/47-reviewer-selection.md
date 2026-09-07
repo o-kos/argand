@@ -28,17 +28,25 @@ The policy was kept separate from #42 to preserve that Pull Request's scope.
 
 - [x] Synchronize the policy in `AGENTS.md` and `CONTRIBUTING.md`.
 - [x] Update the CLI example to select the reviewer and effort explicitly.
-- [ ] Complete standard validation and external review.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete standard validation and external review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo build --release --locked`, after the checks above pass
 - [x] Check both mappings, consistency between the documents, and CLI syntax.
-- [ ] External review returns no substantive findings.
+- [x] External review returns no substantive findings.
+
+## Validation results
+
+All 362 local tests, formatting, Clippy, and the subsequent release build passed.
+The shell example preserves read-only execution, passes both model identifiers and
+High effort explicitly, and stops when `review_model` is unset. External review
+found no substantive issues in policy consistency, CLI syntax, scope, or plan
+accuracy; there were no findings to accept or decline.
 
 ## Post-completion
 
