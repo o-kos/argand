@@ -67,3 +67,12 @@ Validation: formatting, strict Clippy and all 377 tests pass, and release was
 rebuilt after the gate. The focused wording review returned no substantive
 findings; none were declined. This iteration changes prose only, retaining the
 previously verified tooltip layout and timing lifecycle.
+
+## Regression: wrapped hint text exceeds its height
+
+- [ ] Reproduce the reported vertical clipping with the current release and
+  identify the layout/measurement mismatch.
+- [ ] Make wrapped text contribute its full height without restoring manual
+  sentence breaks or uniform hint widths.
+- [ ] Validate the reproduced case, both themes and DPI scaling in a fresh
+  release after the local gate, then complete focused external review.
