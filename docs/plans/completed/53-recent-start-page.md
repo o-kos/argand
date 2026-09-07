@@ -87,3 +87,20 @@ on Draft PR #50; its PR targets that branch until #50 is accepted and merged.
 After #50 merges, retarget this PR to main and reconcile its base. Keep Draft
 through owner feedback; request full CI only for final acceptance. Squash-merge
 and clean the branch after acceptance and required checks.
+
+## Owner feedback: recent rows and shortcut hints
+
+- [ ] Replace underlined links with compact ghost rows, a separate muted number
+  column and hover background. Keep file opening and numbering unchanged.
+- [ ] Fit the recent list to its contents until it needs to scroll; put `or`
+  and the chooser immediately below it instead of pinning the chooser at the bottom.
+- [ ] Add a shared tooltip layout with the action's registered keybinding in a
+  distinct theme colour at the right edge, without a punctuation separator.
+- [ ] Give the chooser a working Ctrl+O / macOS Cmd+O action and tooltip; route
+  File's Open item through the same action and show its accelerator. This owner
+  request also completes the existing [#45](https://github.com/o-kos/argand/issues/45).
+- [ ] Validate layout, hover, shortcuts, chooser and menu focus in a fresh release;
+  complete the local gate and focused external review.
+
+Status metadata tooltip and compact duration changes are explicitly deferred
+until the owner asks to proceed with them.
