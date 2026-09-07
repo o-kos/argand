@@ -137,6 +137,16 @@ Formatting, strict Clippy, all 367 local tests and the subsequent release build 
 Merge through a Pull Request after acceptance and required checks; clean the accepted
 branch according to `CONTRIBUTING.md`.
 
+## Contextual tooltip refinement
+
+- [ ] Replace plain hints with a title, theme-coloured terms and muted explanations.
+  Explain the actual real/IQ domain and scalar storage type, including the unusual
+  CoolEdit float format. Explain containers, capture sample rate, duration notation
+  and centre frequency without copying numeric status values.
+- [ ] Check fresh release tooltips in both themes and at high DPI; keep their
+  content inside a compact width that fits the minimum window.
+- [ ] Run the local gate, rebuild release and complete focused external review.
+
 ## Status wording refinement
 
 - [x] Separate sample domain and storage format with a middle dot (`iq · i16`).
