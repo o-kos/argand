@@ -1006,6 +1006,11 @@ impl Render for Shell {
             |file| file.document.status().message(),
         );
 
+        let status_hint = self
+            .file
+            .as_ref()
+            .and_then(|file| file.document.status().hint());
+
         let content = div()
             .size_full()
             .flex()
@@ -1078,7 +1083,17 @@ impl Render for Shell {
                                 .child(field.value)
                         }),
                     ))
-                    .child(div().flex_shrink_0().child(status)),
+                    .child(
+                        div()
+                            .id("analysis-status")
+                            .flex_shrink_0()
+                            .when_some(status_hint, |status, hint| {
+                                status.tooltip(move |window, cx| {
+                                    metadata_tooltip(hint.clone()).build(window, cx)
+                                })
+                            })
+                            .child(status),
+                    ),
             );
         frame.render(content, cx)
     }
@@ -1116,34 +1131,71 @@ fn shortcut_tooltip(
     })
 }
 
+fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui::App) -> Pixels {
+    let limit = px(320.).min(window.viewport_size().width - px(48.));
+    [
+        (hint.title, 0.875, FontWeight::SEMIBOLD),
+        (hint.value.as_str(), 0.875, FontWeight::NORMAL),
+        (hint.explanation.as_str(), 0.75, FontWeight::NORMAL),
+    ]
+    .into_iter()
+    .flat_map(|(text, scale, weight)| {
+        let style = gpui::TextStyle {
+            font_family: cx.theme().font_family.clone(),
+            font_weight: weight,
+            ..Default::default()
+        };
+        text.lines().map(move |line| {
+            window
+                .text_system()
+                .shape_line(
+                    line.to_owned().into(),
+                    window.rem_size() * scale,
+                    &[style.to_run(line.len())],
+                    None,
+                )
+                .width
+                .ceil()
+        })
+    })
+    .fold(px(0.), Pixels::max)
+    .min(limit)
+}
+
 fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
     Tooltip::element(move |window, cx| {
-        let term_color = if cx.theme().is_dark() {
-            cx.theme().blue_light
-        } else {
-            cx.theme().blue.darken(0.2)
-        };
+        // A definite content width lets wrapped lines contribute their full layout height.
+        let width = metadata_hint_width(&hint, window, cx);
         div()
-            .w(px(288.))
-            .max_w(window.viewport_size().width - px(32.))
+            .w(width)
             .py_1()
             .flex()
             .flex_col()
-            .gap_2()
-            .child(div().font_weight(FontWeight::SEMIBOLD).child(hint.title))
-            .children(hint.sections.iter().map(|&(term, explanation)| {
+            .gap_1()
+            .child(
                 div()
-                    .flex()
-                    .flex_col()
-                    .child(div().text_color(term_color).child(term))
-                    .when(!explanation.is_empty(), |section| {
-                        section.child(
-                            div()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(explanation),
-                        )
-                    })
-            }))
+                    .w_full()
+                    .flex_shrink_0()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(hint.title),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .flex_shrink_0()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(hint.value.clone()),
+            )
+            .when(!hint.explanation.is_empty(), |tooltip| {
+                tooltip.child(
+                    div()
+                        .w_full()
+                        .flex_shrink_0()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(hint.explanation.clone()),
+                )
+            })
     })
 }
 

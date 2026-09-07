@@ -63,10 +63,11 @@ promise applies to.
   `panels.waveform_fraction` setting is still accepted but no longer controls it.
 - File menu text matches the popup menu size. The Close hover/press background
   follows the window corner, and status metadata has separate fields with tooltips
-  and a duration in minutes:seconds.milliseconds. Sample domain and storage format
-  are separated by a middle dot. Theme-aware tooltips explain the container, actual
-  sample representation, rate and duration notation with highlighted terms and
-  muted descriptions, without repeating numeric status values.
+  and compact duration units. Sample domain and storage format use a middle dot.
+  Hints show a heading, a muted current value at the same size, and an optional
+  smaller muted one-sentence explanation without a terminal period. The duration hint shows a
+  millisecond clock; the completed-analysis timing now has an explanatory hint.
+  Wrapped explanations contribute their full height and stay inside the hint background.
 - The Rust toolchain is now 1.97.1, which the GUI toolkit requires. `aspec`
   renders identically.
 

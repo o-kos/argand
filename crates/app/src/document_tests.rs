@@ -164,7 +164,7 @@ fn the_status_bar_separates_metadata_and_keeps_rf_context() {
 
     assert_eq!(
         document.summary().unwrap().iter().map(|field| (field.value.as_str(), field.hint.title)).collect::<Vec<_>>(),
-        vec![("wav", "File container type"), ("iq · i16", "Samples format"), ("24 kHz", "Signal sample rate"), ("0:02.000", "Signal duration"), ("12.579 MHz", "Signal centre frequency")]
+        vec![("wav", "File container type"), ("iq · i16", "Samples format"), ("24 kHz", "Signal sample rate"), ("2s", "Signal duration"), ("12.579 MHz", "Signal centre frequency")]
     );
 }
 
@@ -178,7 +178,7 @@ fn a_baseband_capture_has_no_centre_frequency_worth_printing() {
 
     assert_eq!(
         document.summary().unwrap().iter().map(|field| field.value.as_str()).collect::<Vec<_>>(),
-        vec!["wav", "iq · i16", "24 kHz", "0:02.000"]
+        vec!["wav", "iq · i16", "24 kHz", "2s"]
     );
 }
 
@@ -188,15 +188,15 @@ fn a_document_is_named_by_its_file_rather_than_by_its_whole_path() {
 }
 
 #[test]
-fn capture_duration_rounds_before_splitting_minutes_seconds_and_milliseconds() {
+fn capture_duration_rounds_before_splitting_hours_minutes_seconds_and_milliseconds() {
     for (seconds, expected) in [
-        (0.0, "0:00.000"),
-        (0.0004, "0:00.000"),
-        (0.001, "0:00.001"),
-        (59.9996, "1:00.000"),
-        (221.34, "3:41.340"),
-        (3599.9996, "60:00.000"),
-        (3661.001, "61:01.001"),
+        (0.0, "0:00:00.000"),
+        (0.0004, "0:00:00.000"),
+        (0.001, "0:00:00.001"),
+        (59.9996, "0:01:00.000"),
+        (221.34, "0:03:41.340"),
+        (3599.9996, "1:00:00.000"),
+        (3661.001, "1:01:01.001"),
     ] {
         assert_eq!(capture_duration(seconds), expected);
     }
@@ -213,6 +213,60 @@ fn metadata_duration_counts_iq_pairs_and_real_samples_once() {
         }));
         let fields = document.summary().unwrap();
         assert_eq!(fields[1].value, label);
-        assert_eq!(fields[3].value, "3:41.340");
+        assert_eq!(fields[3].value, "3m41.34s");
+        assert_eq!(fields[3].hint.value, "0:03:41.340");
     }
+}
+
+#[test]
+fn compact_duration_trims_zero_units_and_fractional_zeros_after_rounding() {
+    for (seconds, expected) in [
+        (0.0, "0s"), (0.0004, "0s"), (0.0006, "0.001s"),
+        (30.456, "30.456s"), (20.2, "20.2s"), (59.9996, "1m"),
+        (1800.0, "30m"), (3600.0, "1h"), (4350.0, "1h12m30s"),
+        (3600.001, "1h0.001s"), (3601.0, "1h1s"),
+        (3660.0, "1h1m"), (3599.9996, "1h"), (90061.23, "25h1m1.23s"),
+    ] {
+        assert_eq!(compact_capture_duration(seconds), expected, "{seconds}");
+    }
+}
+
+#[test]
+fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
+    let mut document = opening();
+    document.apply(Update::Opened(meta()));
+    let fields = document.summary().unwrap();
+    assert_eq!(fields[0].hint.value, "wav");
+    assert_eq!(fields[1].hint.value, "iq · i16");
+    assert!(fields[1].hint.explanation.contains("interleaved I and Q"));
+    assert!(fields[1].hint.explanation.contains("signed 16-bit"));
+    assert_eq!(fields[2].hint.value, "24 kHz");
+    assert_eq!(fields[3].hint.value, "0:00:02.000");
+    assert_eq!(fields[3].hint.explanation, "hms.ms");
+    assert_eq!(fields[4].hint.value, "12.579 MHz");
+    for field in fields {
+        assert!(!field.hint.explanation.ends_with('.'));
+    }
+    let real_u8 = MetadataHint::samples(SampleType::new(Domain::Real, SampleFormat::U8));
+    assert!(real_u8.explanation.contains("one scalar"));
+    assert!(real_u8.explanation.contains("128"));
+    let cool_edit = MetadataHint::samples(SampleType::new(Domain::Iq, SampleFormat::F16x8));
+    assert!(cool_edit.explanation.contains("32-bit floating point"));
+}
+
+#[test]
+fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
+    let mut document = opening();
+    assert!(document.status().hint().is_none());
+    document.apply(Update::Opened(meta()));
+    assert!(document.status().hint().is_none());
+    document.apply(Update::Ready { analysis: analysis(64), elapsed: Duration::from_millis(1250) });
+    let hint = document.status().hint().unwrap();
+    assert_eq!(hint.title, "Analysis time");
+    assert_eq!(hint.value, "1.250 s");
+    assert!(hint.explanation.contains("excluding file opening and display"));
+    document.apply(Update::Progress { done: 1, total: 40 });
+    assert!(document.status().hint().is_none());
+    document.apply(Update::Failed(anyhow::anyhow!("read failed")));
+    assert!(document.status().hint().is_none());
 }
