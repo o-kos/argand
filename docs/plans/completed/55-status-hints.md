@@ -70,9 +70,24 @@ previously verified tooltip layout and timing lifecycle.
 
 ## Regression: wrapped hint text exceeds its height
 
-- [ ] Reproduce the reported vertical clipping with the current release and
+- [x] Reproduce the reported vertical clipping with the current release and
   identify the layout/measurement mismatch.
-- [ ] Make wrapped text contribute its full height without restoring manual
+- [x] Make wrapped text contribute its full height without restoring manual
   sentence breaks or uniform hint widths.
-- [ ] Validate the reproduced case, both themes and DPI scaling in a fresh
+- [x] Validate the reproduced case, both themes and DPI scaling in a fresh
   release after the local gate, then complete focused external review.
+
+Reproduction: after the one-sentence refinement, the second line of the Samples
+format explanation paints below the tooltip background at 640x400. The previous
+intrinsic-width flex column constrained only max width, leaving its height at
+one explanation line. Measure natural width with GPUI's matching title/value/
+explanation fonts, clamp to the existing maximum, and pass the definite width
+into layout with non-shrinking text blocks. Short hints retain natural widths;
+long hints wrap before height is established.
+
+Validation: formatting, strict Clippy and all 377 tests pass; release rebuilt
+after the gate. GPU-backed Wayland screenshots reproduce the overflow before
+the fix and show the complete two-line explanation inside the background after
+it. Both themes, the longer u8 explanation, analysis timing and compact duration
+hints pass at 640x400; the same sample-format case also passes at 200% DPI.
+Focused external review returned no substantive findings; none were declined.

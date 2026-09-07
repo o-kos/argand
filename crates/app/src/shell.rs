@@ -1131,23 +1131,66 @@ fn shortcut_tooltip(
     })
 }
 
+fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui::App) -> Pixels {
+    let limit = px(320.).min(window.viewport_size().width - px(48.));
+    [
+        (hint.title, 0.875, FontWeight::SEMIBOLD),
+        (hint.value.as_str(), 0.875, FontWeight::NORMAL),
+        (hint.explanation.as_str(), 0.75, FontWeight::NORMAL),
+    ]
+    .into_iter()
+    .flat_map(|(text, scale, weight)| {
+        let style = gpui::TextStyle {
+            font_family: cx.theme().font_family.clone(),
+            font_weight: weight,
+            ..Default::default()
+        };
+        text.lines().map(move |line| {
+            window
+                .text_system()
+                .shape_line(
+                    line.to_owned().into(),
+                    window.rem_size() * scale,
+                    &[style.to_run(line.len())],
+                    None,
+                )
+                .width
+                .ceil()
+        })
+    })
+    .fold(px(0.), Pixels::max)
+    .min(limit)
+}
+
 fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
     Tooltip::element(move |window, cx| {
+        // A definite content width lets wrapped lines contribute their full layout height.
+        let width = metadata_hint_width(&hint, window, cx);
         div()
-            .max_w(px(320.).min(window.viewport_size().width - px(48.)))
+            .w(width)
             .py_1()
             .flex()
             .flex_col()
             .gap_1()
-            .child(div().font_weight(FontWeight::SEMIBOLD).child(hint.title))
             .child(
                 div()
+                    .w_full()
+                    .flex_shrink_0()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(hint.title),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .flex_shrink_0()
                     .text_color(cx.theme().muted_foreground)
                     .child(hint.value.clone()),
             )
             .when(!hint.explanation.is_empty(), |tooltip| {
                 tooltip.child(
                     div()
+                        .w_full()
+                        .flex_shrink_0()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
                         .child(hint.explanation.clone()),
