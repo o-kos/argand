@@ -42,7 +42,14 @@ Move the frequency scale to the right, align numeric ink vertically with ticks, 
 
 ## Validation evidence
 
-- Formatting, Clippy and all 379 local tests pass; release rebuilt afterward
+- Formatting, Clippy and all 380 local tests pass; release rebuilt afterward
 - GPU-backed Linux Wayland screenshots cover 300, 640 and 1200 pixel windows, dark/light themes, and 100%/200% DPI
 - Numeric ink was approximately 3 logical pixels above the ticks before the fix; screenshot measurements after the fix place its center within 0.5 logical pixels of the tick center at both scales
 - Native Windows/macOS rendering was not exercised
+
+## External review follow-up
+
+- Accepted a fractional-DPI gutter finding: rounding the plot edge outward could reduce reserved label space
+- Added a regression test that first reproduced a frequency label extending beyond a 640px panel at 125% DPI
+- Round the right plot edge inward to retain the complete label bounds at fractional scales
+- No findings declined; focused follow-up review pending

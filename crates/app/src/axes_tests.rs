@@ -177,3 +177,33 @@ fn assert_time_labels_fit(frame: &Frame) {
         assert!(clear >= DejaVuSans.width("00", LABEL_SIZE));
     }
 }
+
+struct WideDigits;
+
+impl LabelMeasure for WideDigits {
+    fn width(&self, text: &str, size: f32) -> f32 {
+        DejaVuSans.width(text, size) * 1.04
+    }
+
+    fn digit_height(&self, size: f32) -> f32 {
+        DejaVuSans.digit_height(size)
+    }
+}
+
+#[test]
+fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
+    let extents = Extents {
+        seconds: (0.0, 30.0),
+        hertz: (5_000_001.0, 5_000_004.0),
+    };
+    // Slightly wider figures leave little slack below the next whole pixel.
+    for (width, scale) in [(640.0, 1.25), (640.0, 1.5), (619.4, 1.75), (300.2, 2.0)] {
+        let frame = Frame::measure(panel(width, 400.0), scale, extents, &WideDigits)
+            .expect("the panel holds a plot");
+        assert!(!frame.frequency.is_empty());
+        for tick in &frame.frequency {
+            let end = frame.plot.right() + LABEL_PAD + WideDigits.width(&tick.label, LABEL_SIZE);
+            assert!(end <= width, "{} ends at {end} beyond {width}px at {scale}x", tick.label);
+        }
+    }
+}

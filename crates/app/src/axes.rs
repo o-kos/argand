@@ -116,14 +116,10 @@ impl Frame {
         // Both edges are snapped rather than the origin and the size, so that
         // the width left between them is itself a whole number of device
         // pixels.
-        let snap = |value: f32| {
-            if scale > 0.0 {
-                (value * scale).round() / scale
-            } else {
-                value.round()
-            }
-        };
-        let right = snap(f32::from(panel.width) - gutter);
+        let scale = if scale > 0.0 { scale } else { 1.0 };
+        let snap = |value: f32| (value * scale).round() / scale;
+        // Snap inward so fractional DPI cannot take room from the labels.
+        let right = ((f32::from(panel.width) - gutter) * scale).floor() / scale;
         let top = snap(head);
         let plot = Rect {
             x: 0.0,
