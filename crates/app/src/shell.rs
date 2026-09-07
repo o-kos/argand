@@ -10,21 +10,24 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use gpui::{
-    AppContext, Application, Bounds, Context, Corners, ExternalPaths, InteractiveElement,
-    IntoElement, ParentElement, PathPromptOptions, Pixels, Render, RenderImage, Styled,
-    Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
-    WindowOptions, canvas, div, point, px, relative, size,
+    AppContext, Application, Bounds, Context, Corners, ExternalPaths, FontWeight,
+    InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement, PathPromptOptions,
+    Pixels, Render, RenderImage, StatefulInteractiveElement, Styled, Subscription, Task,
+    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations, WindowOptions, actions,
+    canvas, div, point, prelude::FluentBuilder, px, size,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::menu::{DropdownMenu, PopupMenuItem};
-use gpui_component::{ActiveTheme, Root, Sizable, ThemeMode, TitleBar};
+use gpui_component::tooltip::Tooltip;
+use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, ThemeMode, TitleBar};
 
 use argand_dsp::AnalysisRequest;
 
 use crate::analysis::{Analyst, Update};
 use crate::axes;
+use crate::chrome;
 use crate::config::{Config, Theme};
-use crate::document::{Document, Effect, Origin, Status};
+use crate::document::{Document, Effect, MetadataHint, Origin, Status};
 use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
 use crate::spectrogram;
 
@@ -32,6 +35,8 @@ use crate::spectrogram;
 const TITLE: &str = "argand";
 /// Reverse-DNS identifier desktop environments group windows by.
 const APP_ID: &str = "io.github.o_kos.argand";
+
+actions!(shell, [FocusNext, FocusPrevious]);
 
 /// Open the window and run until it closes.
 pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Option<Origin>) {
@@ -42,6 +47,10 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
         .with_assets(gpui_component_assets::Assets)
         .run(move |cx| {
             gpui_component::init(cx);
+            cx.bind_keys([
+                KeyBinding::new("tab", FocusNext, Some("Shell")),
+                KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
+            ]);
             gpui_component::theme::Theme::change(theme_mode(config.theme), None, cx);
 
             // Opening from a spawned task rather than straight from `run` follows
@@ -73,7 +82,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     if let Some(origin) = opening {
                         shell.update(cx, |shell, cx| shell.open(origin, window, cx));
                     }
-                    cx.new(|cx| Root::new(shell, window, cx))
+                    shell
                 });
 
                 // A window that will not open is the end of the run, and a task
@@ -106,8 +115,7 @@ fn window_options(saved: &Session, displays: &[Geometry]) -> WindowOptions {
         // of the frame too. Left unset, gpui requests *server-side*
         // decorations, and the desktop then draws a title bar of its own above
         // ours -- two of them, with the outer one owning the window controls.
-        // This is also what puts the frame, the shadow and the resize edges in
-        // `Root`'s hands, which is where the toolkit expects them.
+        // `chrome` owns the frame, shadow and resize regions.
         window_decorations: Some(WindowDecorations::Client),
         titlebar: Some(TitlebarOptions {
             title: Some(TITLE.into()),
@@ -175,9 +183,8 @@ struct PlotSize {
 struct Shell {
     /// What the person configured.
     ///
-    /// The panel proportions lay the window out; the colour scheme, the range
-    /// mode and the transform defaults go into every analysis request built
-    /// below.
+    /// The colour scheme, range mode and transform defaults go into every
+    /// analysis request built below.
     config: Config,
     /// Absent when the platform offers nowhere to keep state, or when the file
     /// there was written by a version this one must not overwrite. Either way
@@ -216,6 +223,7 @@ struct Shell {
     /// Held so that the one it replaces can be released: gpui keeps an
     /// uploaded image in the window's texture atlas until it is told to let go.
     texture: Option<Arc<RenderImage>>,
+    title_drag_pending: bool,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
 }
@@ -239,6 +247,7 @@ impl Shell {
             file: None,
             plot: None,
             texture: None,
+            title_drag_pending: false,
             _bounds: bounds,
         }
     }
@@ -495,7 +504,7 @@ impl Shell {
         let recent = self.recent_entries();
         Button::new("file-menu")
             .ghost()
-            .xsmall()
+            .small()
             .label("File")
             .dropdown_menu(move |mut menu, _, _| {
                 let opener = view.clone();
@@ -549,6 +558,81 @@ impl Shell {
             Some(file) => format!("{} - {TITLE}", file.document.origin().name()),
             None => TITLE.to_owned(),
         }
+    }
+
+    fn title_bar(
+        &self,
+        corners: Corners<Pixels>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let bar = if cfg!(target_os = "linux") {
+            div()
+                .id("title-bar")
+                .flex()
+                .items_center()
+                .h(gpui_component::TITLE_BAR_HEIGHT)
+                .pl_3()
+                .rounded_tl(corners.top_left)
+                .rounded_tr(corners.top_right)
+                .border_b_1()
+                .border_color(cx.theme().title_bar_border)
+                .bg(cx.theme().title_bar)
+                .on_double_click(|_, window, _| window.zoom_window())
+                .on_mouse_down_out(cx.listener(|shell, _, _, _| shell.title_drag_pending = false))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|shell, _, _, _| shell.title_drag_pending = true),
+                )
+                .on_mouse_up(
+                    MouseButton::Left,
+                    cx.listener(|shell, _, _, _| shell.title_drag_pending = false),
+                )
+                .on_mouse_move(cx.listener(|shell, _, window, _| {
+                    if std::mem::take(&mut shell.title_drag_pending) {
+                        window.start_window_move();
+                    }
+                }))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .flex_1()
+                        .h_full()
+                        .on_mouse_down(MouseButton::Right, |event, window, _| {
+                            window.show_window_menu(event.position)
+                        })
+                        .child(self.menu(cx)),
+                )
+                .child(chrome::controls(corners.top_right, window, cx))
+                .into_any_element()
+        } else {
+            TitleBar::new().child(self.menu(cx)).into_any_element()
+        };
+        div().relative().flex_shrink_0().child(bar).child(
+            // This non-interactive overlay spans the whole bar, including
+            // the controls, and leaves its drag/double-click hitbox intact.
+            div()
+                .absolute()
+                .left(px(128.0))
+                .right(px(128.0))
+                .top_0()
+                .h_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .overflow_hidden()
+                .text_sm()
+                .child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .text_center()
+                        .line_clamp(1)
+                        .text_ellipsis()
+                        .child(self.title()),
+                ),
+        )
     }
 
     /// The spectrogram panel: the picture, and the axes around it.
@@ -672,7 +756,10 @@ enum Showing {
 }
 
 impl Render for Shell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        window.set_rem_size(cx.theme().font_size);
+        let frame = chrome::Frame::for_window(window);
+        let corners = frame.corners;
         let summary = self
             .file
             .as_ref()
@@ -683,16 +770,16 @@ impl Render for Shell {
             |file| file.document.status().message(),
         );
 
-        // No window border here: `Root` already wraps what it is given in one,
-        // and a second would stack two shadows, two frames and two sets of
-        // resize edges on the platforms that decorate client-side.
-        div()
+        let content = div()
             .size_full()
             .flex()
             .flex_col()
-            .bg(cx.theme().background)
+            .font_family(cx.theme().font_family.clone())
             .text_color(cx.theme().foreground)
             .id("shell")
+            .key_context("Shell")
+            .on_action(|_: &FocusNext, window, _| window.focus_next())
+            .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
             // A capture dropped anywhere on the window opens, which is where a
             // person aims when the window is showing the wrong file.
             .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
@@ -700,30 +787,18 @@ impl Render for Shell {
                     shell.open(Origin::new(path.clone()), window, cx);
                 }
             }))
+            .child(self.title_bar(corners, window, cx))
             .child(
-                // One child rather than two: the bar spaces its children
-                // apart, which would put the title against the window
-                // controls at the other end.
-                TitleBar::new().child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .child(self.menu(cx))
-                        .child(div().text_sm().child(self.title())),
-                ),
-            )
-            .child(
-                // The window splits in the proportion the configuration asks
-                // for. The waveform strip belongs to a later milestone; until
-                // then it is what shows that the split reaches the layout.
+                // Two status-row heights: 3 rem, or 48 logical pixels with the default font.
+                // The waveform itself arrives in #31.
                 div()
                     .flex_1()
                     .flex()
                     .flex_col()
                     .child(
                         div()
-                            .h(relative(self.config.panels.waveform_fraction))
+                            .h_12()
+                            .flex_shrink_0()
                             .border_b_1()
                             .border_color(cx.theme().border),
                     )
@@ -736,16 +811,65 @@ impl Render for Shell {
                     .justify_between()
                     .gap_2()
                     .px_2()
-                    .h(px(24.0))
+                    .h_6()
+                    .flex_shrink_0()
+                    .rounded_bl(corners.bottom_left)
+                    .rounded_br(corners.bottom_right)
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().secondary)
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(summary)
-                    .child(status),
-            )
+                    .child(div().flex().min_w_0().overflow_hidden().children(
+                        summary.into_iter().enumerate().map(|(index, field)| {
+                            div()
+                                .id(("metadata", index))
+                                .px_2()
+                                .flex_shrink_0()
+                                .when(index > 0, |field| {
+                                    field.border_l_1().border_color(cx.theme().border)
+                                })
+                                .tooltip(move |window, cx| {
+                                    metadata_tooltip(field.hint.clone()).build(window, cx)
+                                })
+                                .child(field.value)
+                        }),
+                    ))
+                    .child(div().flex_shrink_0().child(status)),
+            );
+        frame.render(content, cx)
     }
+}
+
+fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
+    Tooltip::element(move |window, cx| {
+        let term_color = if cx.theme().is_dark() {
+            cx.theme().blue_light
+        } else {
+            cx.theme().blue.darken(0.2)
+        };
+        div()
+            .w(px(288.))
+            .max_w(window.viewport_size().width - px(32.))
+            .py_1()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(div().font_weight(FontWeight::SEMIBOLD).child(hint.title))
+            .children(hint.sections.iter().map(|&(term, explanation)| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(div().text_color(term_color).child(term))
+                    .when(!explanation.is_empty(), |section| {
+                        section.child(
+                            div()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(explanation),
+                        )
+                    })
+            }))
+    })
 }
 
 /// Hand one uploaded picture back to the toolkit.

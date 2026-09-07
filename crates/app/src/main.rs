@@ -11,6 +11,7 @@
 
 mod analysis;
 mod axes;
+mod chrome;
 mod cli;
 mod config;
 mod document;

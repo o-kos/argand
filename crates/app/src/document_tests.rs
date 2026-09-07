@@ -158,13 +158,13 @@ fn a_transform_that_has_not_reported_yet_has_no_fraction_to_show() {
 }
 
 #[test]
-fn the_status_bar_names_the_file_in_the_words_aspec_uses() {
+fn the_status_bar_separates_metadata_and_keeps_rf_context() {
     let mut document = opening();
     document.apply(Update::Opened(meta()));
 
     assert_eq!(
-        document.summary().as_deref(),
-        Some("wav iq_i16, 24 kHz, 2s, centre 12.579 MHz")
+        document.summary().unwrap().iter().map(|field| (field.value.as_str(), field.hint.title)).collect::<Vec<_>>(),
+        vec![("wav", "File container type"), ("iq · i16", "Samples format"), ("24 kHz", "Signal sample rate"), ("0:02.000", "Signal duration"), ("12.579 MHz", "Signal centre frequency")]
     );
 }
 
@@ -177,12 +177,42 @@ fn a_baseband_capture_has_no_centre_frequency_worth_printing() {
     }));
 
     assert_eq!(
-        document.summary().as_deref(),
-        Some("wav iq_i16, 24 kHz, 2s")
+        document.summary().unwrap().iter().map(|field| field.value.as_str()).collect::<Vec<_>>(),
+        vec!["wav", "iq · i16", "24 kHz", "0:02.000"]
     );
 }
 
 #[test]
 fn a_document_is_named_by_its_file_rather_than_by_its_whole_path() {
     assert_eq!(origin("/captures/2026/hfdl.iqw").name(), "hfdl.iqw");
+}
+
+#[test]
+fn capture_duration_rounds_before_splitting_minutes_seconds_and_milliseconds() {
+    for (seconds, expected) in [
+        (0.0, "0:00.000"),
+        (0.0004, "0:00.000"),
+        (0.001, "0:00.001"),
+        (59.9996, "1:00.000"),
+        (221.34, "3:41.340"),
+        (3599.9996, "60:00.000"),
+        (3661.001, "61:01.001"),
+    ] {
+        assert_eq!(capture_duration(seconds), expected);
+    }
+}
+
+#[test]
+fn metadata_duration_counts_iq_pairs_and_real_samples_once() {
+    for (domain, label) in [(Domain::Iq, "iq · i16"), (Domain::Real, "real · i16")] {
+        let mut document = opening();
+        document.apply(Update::Opened(SignalMeta {
+            sample_type: SampleType::new(domain, SampleFormat::I16),
+            len_samples: 5_312_160,
+            ..meta()
+        }));
+        let fields = document.summary().unwrap();
+        assert_eq!(fields[1].value, label);
+        assert_eq!(fields[3].value, "3:41.340");
+    }
 }
