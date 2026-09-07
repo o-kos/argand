@@ -192,25 +192,21 @@ impl Document {
         let meta = self.meta.as_ref()?;
         let domain = if meta.is_iq() { "iq" } else { "real" };
         let mut fields = vec![
-            MetadataField::new(meta.container, "Container"),
+            MetadataField::new(meta.container, "File container type"),
             MetadataField::new(
-                format!("{domain} {}", meta.sample_type.format.as_str()),
-                if meta.is_iq() {
-                    "Sample format (complex I/Q)"
-                } else {
-                    "Sample format (real)"
-                },
+                format!("{domain} · {}", meta.sample_type.format.as_str()),
+                "Samples format",
             ),
-            MetadataField::new(format_hz(meta.sample_rate), "Sample rate"),
+            MetadataField::new(format_hz(meta.sample_rate), "Signal sample rate"),
             MetadataField::new(
                 capture_duration(meta.duration_seconds()),
-                "Duration (minutes:seconds.milliseconds)",
+                "Signal duration (m:ss.ms)",
             ),
         ];
         if meta.center_freq != 0.0 {
             fields.push(MetadataField::new(
                 format_hz(meta.center_freq),
-                "Centre frequency",
+                "Signal centre frequency",
             ));
         }
         Some(fields)

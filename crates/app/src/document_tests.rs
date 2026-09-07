@@ -164,7 +164,7 @@ fn the_status_bar_separates_metadata_and_keeps_rf_context() {
 
     assert_eq!(
         document.summary().unwrap().iter().map(|field| (field.value.as_str(), field.hint)).collect::<Vec<_>>(),
-        vec![("wav", "Container"), ("iq i16", "Sample format (complex I/Q)"), ("24 kHz", "Sample rate"), ("0:02.000", "Duration (minutes:seconds.milliseconds)"), ("12.579 MHz", "Centre frequency")]
+        vec![("wav", "File container type"), ("iq · i16", "Samples format"), ("24 kHz", "Signal sample rate"), ("0:02.000", "Signal duration (m:ss.ms)"), ("12.579 MHz", "Signal centre frequency")]
     );
 }
 
@@ -178,7 +178,7 @@ fn a_baseband_capture_has_no_centre_frequency_worth_printing() {
 
     assert_eq!(
         document.summary().unwrap().iter().map(|field| field.value.as_str()).collect::<Vec<_>>(),
-        vec!["wav", "iq i16", "24 kHz", "0:02.000"]
+        vec!["wav", "iq · i16", "24 kHz", "0:02.000"]
     );
 }
 
@@ -204,7 +204,7 @@ fn capture_duration_rounds_before_splitting_minutes_seconds_and_milliseconds() {
 
 #[test]
 fn metadata_duration_counts_iq_pairs_and_real_samples_once() {
-    for (domain, label) in [(Domain::Iq, "iq i16"), (Domain::Real, "real i16")] {
+    for (domain, label) in [(Domain::Iq, "iq · i16"), (Domain::Real, "real · i16")] {
         let mut document = opening();
         document.apply(Update::Opened(SignalMeta {
             sample_type: SampleType::new(domain, SampleFormat::I16),

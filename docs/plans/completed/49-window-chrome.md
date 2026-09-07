@@ -98,7 +98,7 @@ Formatting, strict Clippy, all 367 local tests and the subsequent release build 
 - [x] Paint the Linux Close hover/press background with the frame's top-right radius.
   Keep Windows/macOS toolkit controls and the whole-bar title overlay.
 - [x] Raise File from extra-small (12) to small (14), matching popup menu text.
-- [x] Split metadata into bordered fields with tooltips; spell `iq i16` and show
+- [x] Split metadata into bordered fields with tooltips; spell `iq · i16` and show
   duration as minutes:seconds.milliseconds. Preserve optional centre frequency.
 - [x] Validate refinements at normal/high DPI.
 - [x] Repeat external review of the refinements.
@@ -120,7 +120,7 @@ Formatting, strict Clippy, all 367 local tests and the subsequent release build 
   none emits a resize request, and Minimize emits its expected request.
 - A 24 kHz I/Q WAV with 5,312,160 frames shows `3:41.340`. In the light theme,
   all five fields including `12.579 MHz` fit at the minimum width. Tooltips show
-  each field's meaning/value at both scales and in both themes. Close hover and
+  each field's explanation at both scales and in both themes. Close hover and
   pressed backgrounds follow the
   rounded normal-window corner; maximized controls have square corners.
 - External review found that right-clicks on window controls opened the system
@@ -136,3 +136,15 @@ Formatting, strict Clippy, all 367 local tests and the subsequent release build 
 
 Merge through a Pull Request after acceptance and required checks; clean the accepted
 branch according to `CONTRIBUTING.md`.
+
+## Status wording refinement
+
+- [x] Separate sample domain and storage format with a middle dot (`iq · i16`).
+- [x] Use explanatory tooltips without repeating the displayed value: file
+  container type, samples format, signal sample rate and signal duration (m:ss.ms).
+- [x] Complete local validation, fresh release build and focused external review.
+
+Formatting, strict Clippy and all 369 tests pass. A fresh release window shows
+`iq · i16` and explanatory tooltips without values. The focused external review
+returned no substantive findings. Remote CI runs in the background; its result
+must be checked on the final commit before merge.

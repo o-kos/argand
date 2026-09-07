@@ -54,7 +54,8 @@ promise applies to.
   `panels.waveform_fraction` setting is still accepted but no longer controls it.
 - File menu text matches the popup menu size. The Close hover/press background
   follows the window corner, and status metadata has separate fields with tooltips
-  and a duration in minutes:seconds.milliseconds.
+  and a duration in minutes:seconds.milliseconds. Sample domain and storage format
+  are separated by a middle dot; tooltips explain fields without repeating values.
 - The Rust toolchain is now 1.97.1, which the GUI toolkit requires. `aspec`
   renders identically.
 

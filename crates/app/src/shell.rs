@@ -822,7 +822,6 @@ impl Render for Shell {
                     .text_color(cx.theme().muted_foreground)
                     .child(div().flex().min_w_0().overflow_hidden().children(
                         summary.into_iter().enumerate().map(|(index, field)| {
-                            let hint = format!("{}: {}", field.hint, field.value);
                             div()
                                 .id(("metadata", index))
                                 .px_2()
@@ -831,7 +830,7 @@ impl Render for Shell {
                                     field.border_l_1().border_color(cx.theme().border)
                                 })
                                 .tooltip(move |window, cx| {
-                                    Tooltip::new(hint.clone()).build(window, cx)
+                                    Tooltip::new(field.hint).build(window, cx)
                                 })
                                 .child(field.value)
                         }),
