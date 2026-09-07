@@ -55,7 +55,9 @@ promise applies to.
 - File menu text matches the popup menu size. The Close hover/press background
   follows the window corner, and status metadata has separate fields with tooltips
   and a duration in minutes:seconds.milliseconds. Sample domain and storage format
-  are separated by a middle dot; tooltips explain fields without repeating values.
+  are separated by a middle dot. Theme-aware tooltips explain the container, actual
+  sample representation, rate and duration notation with highlighted terms and
+  muted descriptions, without repeating numeric status values.
 - The Rust toolchain is now 1.97.1, which the GUI toolkit requires. `aspec`
   renders identically.
 

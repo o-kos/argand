@@ -139,13 +139,22 @@ branch according to `CONTRIBUTING.md`.
 
 ## Contextual tooltip refinement
 
-- [ ] Replace plain hints with a title, theme-coloured terms and muted explanations.
+- [x] Replace plain hints with a title, theme-coloured terms and muted explanations.
   Explain the actual real/IQ domain and scalar storage type, including the unusual
   CoolEdit float format. Explain containers, capture sample rate, duration notation
   and centre frequency without copying numeric status values.
-- [ ] Check fresh release tooltips in both themes and at high DPI; keep their
+- [x] Check fresh release tooltips in both themes and at high DPI; keep their
   content inside a compact width that fits the minimum window.
-- [ ] Run the local gate, rebuild release and complete focused external review.
+- [x] Run the local gate, rebuild release and complete focused external review.
+
+Formatting, strict Clippy and all 369 tests pass; release was rebuilt afterwards.
+The tooltip content is 288 logical pixels wide, with wrapped explanations. GPU
+checks at the minimum 640x400 window cover light/dark themes and 200% DPI, plus
+real/u8 and I/Q CoolEdit 16x8 captures. Terms use the theme's light blue in dark
+mode and darkened blue in light mode; descriptions use muted foreground.
+The focused review found that supported FLAC files still received a generic
+container explanation. That finding was accepted and a FLAC-specific explanation
+was added. The final recheck returned no substantive findings; none were declined.
 
 ## Status wording refinement
 

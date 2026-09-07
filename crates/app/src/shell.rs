@@ -10,16 +10,16 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use gpui::{
-    AppContext, Application, Bounds, Context, Corners, ExternalPaths, InteractiveElement,
-    IntoElement, KeyBinding, MouseButton, ParentElement, PathPromptOptions, Pixels, Render,
-    RenderImage, StatefulInteractiveElement, Styled, Subscription, Task, TitlebarOptions,
-    WeakEntity, Window, WindowBounds, WindowDecorations, WindowOptions, actions, canvas, div,
-    point, prelude::FluentBuilder, px, size,
+    AppContext, Application, Bounds, Context, Corners, ExternalPaths, FontWeight,
+    InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement, PathPromptOptions,
+    Pixels, Render, RenderImage, StatefulInteractiveElement, Styled, Subscription, Task,
+    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations, WindowOptions, actions,
+    canvas, div, point, prelude::FluentBuilder, px, size,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_component::tooltip::Tooltip;
-use gpui_component::{ActiveTheme, InteractiveElementExt, Sizable, ThemeMode, TitleBar};
+use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, ThemeMode, TitleBar};
 
 use argand_dsp::AnalysisRequest;
 
@@ -27,7 +27,7 @@ use crate::analysis::{Analyst, Update};
 use crate::axes;
 use crate::chrome;
 use crate::config::{Config, Theme};
-use crate::document::{Document, Effect, Origin, Status};
+use crate::document::{Document, Effect, MetadataHint, Origin, Status};
 use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
 use crate::spectrogram;
 
@@ -830,7 +830,7 @@ impl Render for Shell {
                                     field.border_l_1().border_color(cx.theme().border)
                                 })
                                 .tooltip(move |window, cx| {
-                                    Tooltip::new(field.hint).build(window, cx)
+                                    metadata_tooltip(field.hint.clone()).build(window, cx)
                                 })
                                 .child(field.value)
                         }),
@@ -839,6 +839,37 @@ impl Render for Shell {
             );
         frame.render(content, cx)
     }
+}
+
+fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
+    Tooltip::element(move |window, cx| {
+        let term_color = if cx.theme().is_dark() {
+            cx.theme().blue_light
+        } else {
+            cx.theme().blue.darken(0.2)
+        };
+        div()
+            .w(px(288.))
+            .max_w(window.viewport_size().width - px(32.))
+            .py_1()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(div().font_weight(FontWeight::SEMIBOLD).child(hint.title))
+            .children(hint.sections.iter().map(|&(term, explanation)| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(div().text_color(term_color).child(term))
+                    .when(!explanation.is_empty(), |section| {
+                        section.child(
+                            div()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(explanation),
+                        )
+                    })
+            }))
+    })
 }
 
 /// Hand one uploaded picture back to the toolkit.

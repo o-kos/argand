@@ -163,8 +163,8 @@ fn the_status_bar_separates_metadata_and_keeps_rf_context() {
     document.apply(Update::Opened(meta()));
 
     assert_eq!(
-        document.summary().unwrap().iter().map(|field| (field.value.as_str(), field.hint)).collect::<Vec<_>>(),
-        vec![("wav", "File container type"), ("iq · i16", "Samples format"), ("24 kHz", "Signal sample rate"), ("0:02.000", "Signal duration (m:ss.ms)"), ("12.579 MHz", "Signal centre frequency")]
+        document.summary().unwrap().iter().map(|field| (field.value.as_str(), field.hint.title)).collect::<Vec<_>>(),
+        vec![("wav", "File container type"), ("iq · i16", "Samples format"), ("24 kHz", "Signal sample rate"), ("0:02.000", "Signal duration"), ("12.579 MHz", "Signal centre frequency")]
     );
 }
 

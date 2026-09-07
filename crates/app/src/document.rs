@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use argand_core::{SignalMeta, format_duration, format_hz};
+use argand_core::{SampleFormat, SampleType, SignalMeta, format_duration, format_hz};
 use argand_dsp::Analysis;
 use argand_io::OpenHints;
 
@@ -192,21 +192,47 @@ impl Document {
         let meta = self.meta.as_ref()?;
         let domain = if meta.is_iq() { "iq" } else { "real" };
         let mut fields = vec![
-            MetadataField::new(meta.container, "File container type"),
+            MetadataField::new(meta.container, MetadataHint::container(meta.container)),
             MetadataField::new(
                 format!("{domain} · {}", meta.sample_type.format.as_str()),
-                "Samples format",
+                MetadataHint::samples(meta.sample_type),
             ),
-            MetadataField::new(format_hz(meta.sample_rate), "Signal sample rate"),
+            MetadataField::new(
+                format_hz(meta.sample_rate),
+                MetadataHint::new(
+                    "Signal sample rate",
+                    vec![(
+                        "Samples per second",
+                        if meta.is_iq() {
+                            "Each I/Q pair counts as one complex sample."
+                        } else {
+                            "Each value counts as one real sample."
+                        },
+                    )],
+                ),
+            ),
             MetadataField::new(
                 capture_duration(meta.duration_seconds()),
-                "Signal duration (m:ss.ms)",
+                MetadataHint::new(
+                    "Signal duration",
+                    vec![
+                        ("m", "Minutes"),
+                        ("ss", "Seconds"),
+                        ("ms", "Milliseconds (three digits)"),
+                    ],
+                ),
             ),
         ];
         if meta.center_freq != 0.0 {
             fields.push(MetadataField::new(
                 format_hz(meta.center_freq),
-                "Signal centre frequency",
+                MetadataHint::new(
+                    "Signal centre frequency",
+                    vec![(
+                        "Tuning reference",
+                        "The frequency represented by zero in the baseband signal.",
+                    )],
+                ),
             ));
         }
         Some(fields)
@@ -215,15 +241,82 @@ impl Document {
 
 pub struct MetadataField {
     pub value: String,
-    pub hint: &'static str,
+    pub hint: MetadataHint,
 }
 
 impl MetadataField {
-    fn new(value: impl Into<String>, hint: &'static str) -> Self {
+    fn new(value: impl Into<String>, hint: MetadataHint) -> Self {
         Self {
             value: value.into(),
             hint,
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct MetadataHint {
+    pub title: &'static str,
+    pub sections: Vec<(&'static str, &'static str)>,
+}
+
+impl MetadataHint {
+    fn new(title: &'static str, sections: Vec<(&'static str, &'static str)>) -> Self {
+        Self { title, sections }
+    }
+
+    fn container(container: &str) -> Self {
+        let section = match container {
+            "wav" => (
+                "WAVE container",
+                "Stores samples with a header describing their format.",
+            ),
+            "rf64" => (
+                "RF64 container",
+                "A WAVE extension for captures larger than 4 GiB.",
+            ),
+            "bw64" => (
+                "BW64 container",
+                "A broadcast WAVE extension for captures larger than 4 GiB.",
+            ),
+            "flac" => (
+                "Free Lossless Audio Codec",
+                "Stores samples with lossless compression and a format header.",
+            ),
+            "raw" => (
+                "Headerless samples",
+                "The sample format and rate are supplied when opening the file.",
+            ),
+            _ => (
+                "File container",
+                "Describes how samples and metadata are stored in the file.",
+            ),
+        };
+        Self::new("File container type", vec![section])
+    }
+
+    fn samples(sample_type: SampleType) -> Self {
+        let domain = if sample_type.is_iq() {
+            (
+                "Complex I/Q",
+                "Interleaved in-phase and quadrature components.",
+            )
+        } else {
+            ("Real signal", "One scalar value per sample.")
+        };
+        let storage = match sample_type.format {
+            SampleFormat::U8 => (
+                "Unsigned 8-bit integer",
+                "Zero is stored as 128 (offset binary).",
+            ),
+            SampleFormat::I16 => ("Signed 16-bit integer", ""),
+            SampleFormat::I32 => ("Signed 32-bit integer", ""),
+            SampleFormat::F32 => ("32-bit floating point", "Nominal full scale is -1 to +1."),
+            SampleFormat::F16x8 => (
+                "CoolEdit 16x8",
+                "32-bit floating-point samples with arbitrary scale, not 16-bit integers.",
+            ),
+        };
+        Self::new("Samples format", vec![domain, storage])
     }
 }
 
