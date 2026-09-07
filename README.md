@@ -323,9 +323,14 @@ The seven options that say how to read a capture -- `--raw`, `--sample-type`,
 `--rate`, `--center`, `--offset`, `--normalize` and `--gain` -- are `aspec`'s
 own, spelled the same way. Everything that decides how the picture looks comes from
 `argand.toml` instead: the theme, the colour scheme, the dynamic range, the
-transform size and window, and the panel proportions. It is read from beside
+transform size and window. It is read from beside
 the binary first and from the platform configuration directory second, and a
 missing or malformed one costs a log line rather than the application.
+
+The title is centred between the window edges. Normal client-decorated windows
+have subtly rounded corners, and the reserved waveform strip stays 64 logical
+pixels high, including its separator. The older `panels.waveform_fraction`
+setting is still accepted so existing files load, but no longer sizes this strip.
 
 Files also open from the File menu, by dropping a capture on the window, and
 from the list of files opened before. That list keeps the options each file was

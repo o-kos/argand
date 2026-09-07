@@ -11,18 +11,19 @@ use std::time::Instant;
 
 use gpui::{
     AppContext, Application, Bounds, Context, Corners, ExternalPaths, InteractiveElement,
-    IntoElement, ParentElement, PathPromptOptions, Pixels, Render, RenderImage, Styled,
+    IntoElement, KeyBinding, ParentElement, PathPromptOptions, Pixels, Render, RenderImage, Styled,
     Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
-    WindowOptions, canvas, div, point, px, relative, size,
+    WindowOptions, actions, canvas, div, point, px, size,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::menu::{DropdownMenu, PopupMenuItem};
-use gpui_component::{ActiveTheme, Root, Sizable, ThemeMode, TitleBar};
+use gpui_component::{ActiveTheme, Sizable, ThemeMode, TitleBar};
 
 use argand_dsp::AnalysisRequest;
 
 use crate::analysis::{Analyst, Update};
 use crate::axes;
+use crate::chrome;
 use crate::config::{Config, Theme};
 use crate::document::{Document, Effect, Origin, Status};
 use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
@@ -33,6 +34,8 @@ const TITLE: &str = "argand";
 /// Reverse-DNS identifier desktop environments group windows by.
 const APP_ID: &str = "io.github.o_kos.argand";
 
+actions!(shell, [FocusNext, FocusPrevious]);
+
 /// Open the window and run until it closes.
 pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Option<Origin>) {
     // The toolkit's own icons -- the window controls among them -- are loaded
@@ -42,6 +45,10 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
         .with_assets(gpui_component_assets::Assets)
         .run(move |cx| {
             gpui_component::init(cx);
+            cx.bind_keys([
+                KeyBinding::new("tab", FocusNext, Some("Shell")),
+                KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
+            ]);
             gpui_component::theme::Theme::change(theme_mode(config.theme), None, cx);
 
             // Opening from a spawned task rather than straight from `run` follows
@@ -73,7 +80,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     if let Some(origin) = opening {
                         shell.update(cx, |shell, cx| shell.open(origin, window, cx));
                     }
-                    cx.new(|cx| Root::new(shell, window, cx))
+                    shell
                 });
 
                 // A window that will not open is the end of the run, and a task
@@ -106,8 +113,7 @@ fn window_options(saved: &Session, displays: &[Geometry]) -> WindowOptions {
         // of the frame too. Left unset, gpui requests *server-side*
         // decorations, and the desktop then draws a title bar of its own above
         // ours -- two of them, with the outer one owning the window controls.
-        // This is also what puts the frame, the shadow and the resize edges in
-        // `Root`'s hands, which is where the toolkit expects them.
+        // `chrome` owns the frame, shadow and resize regions.
         window_decorations: Some(WindowDecorations::Client),
         titlebar: Some(TitlebarOptions {
             title: Some(TITLE.into()),
@@ -175,9 +181,8 @@ struct PlotSize {
 struct Shell {
     /// What the person configured.
     ///
-    /// The panel proportions lay the window out; the colour scheme, the range
-    /// mode and the transform defaults go into every analysis request built
-    /// below.
+    /// The colour scheme, range mode and transform defaults go into every
+    /// analysis request built below.
     config: Config,
     /// Absent when the platform offers nowhere to keep state, or when the file
     /// there was written by a version this one must not overwrite. Either way
@@ -551,6 +556,45 @@ impl Shell {
         }
     }
 
+    fn title_bar(&self, corners: Corners<Pixels>, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .relative()
+            .flex_shrink_0()
+            .child(
+                TitleBar::new()
+                    .rounded_tl(corners.top_left)
+                    .rounded_tr(corners.top_right)
+                    // GPUI's rectangular overflow mask cannot clip a control's
+                    // hover background at the rounded corner.
+                    .pr(corners.top_right)
+                    .child(self.menu(cx)),
+            )
+            .child(
+                // This non-interactive overlay spans the whole bar, including
+                // the controls, and leaves its drag/double-click hitbox intact.
+                div()
+                    .absolute()
+                    .left(px(128.0))
+                    .right(px(128.0))
+                    .top_0()
+                    .h_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .overflow_hidden()
+                    .text_sm()
+                    .child(
+                        div()
+                            .w_full()
+                            .min_w_0()
+                            .text_center()
+                            .line_clamp(1)
+                            .text_ellipsis()
+                            .child(self.title()),
+                    ),
+            )
+    }
+
     /// The spectrogram panel: the picture, and the axes around it.
     ///
     /// One canvas does the measuring and the drawing, because the two are the
@@ -672,7 +716,10 @@ enum Showing {
 }
 
 impl Render for Shell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        window.set_rem_size(cx.theme().font_size);
+        let frame = chrome::Frame::for_window(window);
+        let corners = frame.corners;
         let summary = self
             .file
             .as_ref()
@@ -683,16 +730,16 @@ impl Render for Shell {
             |file| file.document.status().message(),
         );
 
-        // No window border here: `Root` already wraps what it is given in one,
-        // and a second would stack two shadows, two frames and two sets of
-        // resize edges on the platforms that decorate client-side.
-        div()
+        let content = div()
             .size_full()
             .flex()
             .flex_col()
-            .bg(cx.theme().background)
+            .font_family(cx.theme().font_family.clone())
             .text_color(cx.theme().foreground)
             .id("shell")
+            .key_context("Shell")
+            .on_action(|_: &FocusNext, window, _| window.focus_next())
+            .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
             // A capture dropped anywhere on the window opens, which is where a
             // person aims when the window is showing the wrong file.
             .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
@@ -700,30 +747,17 @@ impl Render for Shell {
                     shell.open(Origin::new(path.clone()), window, cx);
                 }
             }))
+            .child(self.title_bar(corners, cx))
             .child(
-                // One child rather than two: the bar spaces its children
-                // apart, which would put the title against the window
-                // controls at the other end.
-                TitleBar::new().child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .child(self.menu(cx))
-                        .child(div().text_sm().child(self.title())),
-                ),
-            )
-            .child(
-                // The window splits in the proportion the configuration asks
-                // for. The waveform strip belongs to a later milestone; until
-                // then it is what shows that the split reaches the layout.
+                // The waveform arrives in #31; its reserved height is fixed.
                 div()
                     .flex_1()
                     .flex()
                     .flex_col()
                     .child(
                         div()
-                            .h(relative(self.config.panels.waveform_fraction))
+                            .h(chrome::WAVEFORM_HEIGHT)
+                            .flex_shrink_0()
                             .border_b_1()
                             .border_color(cx.theme().border),
                     )
@@ -737,6 +771,9 @@ impl Render for Shell {
                     .gap_2()
                     .px_2()
                     .h(px(24.0))
+                    .flex_shrink_0()
+                    .rounded_bl(corners.bottom_left)
+                    .rounded_br(corners.bottom_right)
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().secondary)
@@ -744,7 +781,8 @@ impl Render for Shell {
                     .text_color(cx.theme().muted_foreground)
                     .child(summary)
                     .child(status),
-            )
+            );
+        frame.render(content, cx)
     }
 }
 

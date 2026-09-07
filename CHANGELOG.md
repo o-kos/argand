@@ -30,8 +30,8 @@ promise applies to.
   that cannot be read is reported in the window, with the same message `aspec`
   would print, and leaves the application working.
 - `argand.toml`, read from beside the binary or from the platform configuration
-  directory, sets the theme, the colour scheme, the dynamic-range mode, the
-  transform defaults and the panel proportions. Names are spelled as `aspec`
+  directory, sets the theme, the colour scheme, the dynamic-range mode and the
+  transform defaults. Names are spelled as `aspec`
   spells them. The application only ever reads this file.
 - The window remembers its size and state between runs, in `session.toml` in the
   platform state directory, wherever the toolkit reports the window state
@@ -44,9 +44,14 @@ promise applies to.
 
 - Replacing a spectrogram during resize no longer destroys its GPU texture
   while a preceding frame can still be using it, which could freeze the window.
+- Resize cursors return to the normal pointer inside the window, and the
+  right-hand title-bar area no longer starts a resize when the window is expanded.
 
 ### Changed
 
+- The window title is centred, normal client-decorated windows have subtle rounded
+  corners, and the waveform placeholder stays 64 logical pixels high. The legacy
+  `panels.waveform_fraction` setting is still accepted but no longer controls it.
 - The Rust toolchain is now 1.97.1, which the GUI toolkit requires. `aspec`
   renders identically.
 

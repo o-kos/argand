@@ -45,6 +45,8 @@ pub struct Config {
     #[serde(deserialize_with = "dynamic_range")]
     pub dynamic_range: DynamicRange,
     pub stft: Stft,
+    /// Legacy panel proportions, accepted for configuration compatibility.
+    /// The current waveform placeholder has a fixed height of 64 pixels.
     pub panels: Panels,
 }
 
@@ -118,15 +120,12 @@ where
     text.parse().map_err(serde::de::Error::custom)
 }
 
-/// How the window divides between the views that will fill it.
-///
-/// Fractions of the window rather than pixels, so the split survives a resize
-/// and a display change. The panels themselves arrive with later milestones;
-/// what this milestone settles is that their proportions are configured here.
+/// Legacy panel proportions retained so existing configuration files still load.
+/// They no longer size the fixed-height waveform placeholder.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Panels {
-    /// Share of the height the waveform strip takes.
+    /// Former share of the content height reserved for the waveform.
     ///
     /// Bounded well inside `0..1`: a strip taking none of the window or all of
     /// it is not a layout, it is a missing panel.
