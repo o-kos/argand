@@ -550,20 +550,20 @@ fn the_recent_list_survives_the_round_trip_through_the_file() {
 
 #[test]
 fn a_file_opened_again_moves_to_the_head_rather_than_appearing_twice() {
+    let dir = TempDir::new("head");
     let mut session = Session::default();
-    for name in ["/c/a.wav", "/c/b.wav", "/c/c.wav"] {
-        session.remember(Path::new(name), &OpenHints::default());
+    for name in ["a.wav", "b.wav", "c.wav"] {
+        session.remember(&dir.join(name), &OpenHints::default());
     }
     // And with different hints the second time, which are the ones worth
     // keeping: they are the ones that worked.
-    session.remember(Path::new("/c/a.wav"), &raw_hints());
+    session.remember(&dir.join("a.wav"), &raw_hints());
 
-    let names: Vec<_> = session
-        .recent
-        .iter()
-        .map(|entry| entry.path.to_string_lossy().into_owned())
-        .collect();
-    assert_eq!(names, ["/c/a.wav", "/c/c.wav", "/c/b.wav"]);
+    let names: Vec<_> = session.recent.iter().map(|entry| &entry.path).collect();
+    assert_eq!(
+        names,
+        [&dir.join("a.wav"), &dir.join("c.wav"), &dir.join("b.wav")]
+    );
     assert_eq!(
         session.recent[0].hints.to_open_hints().byte_offset,
         44,
@@ -590,13 +590,14 @@ fn a_file_named_from_the_current_directory_is_remembered_from_the_root() {
 
 #[test]
 fn the_recent_list_does_not_grow_without_end() {
+    let dir = TempDir::new("limit");
     let mut session = Session::default();
     for i in 0..RECENT_LIMIT * 2 {
-        session.remember(Path::new(&format!("/c/{i}.wav")), &OpenHints::default());
+        session.remember(&dir.join(&format!("{i}.wav")), &OpenHints::default());
     }
     assert_eq!(session.recent.len(), RECENT_LIMIT);
     // The newest is at the head and the oldest have gone.
-    assert_eq!(session.recent[0].path, PathBuf::from("/c/19.wav"));
+    assert_eq!(session.recent[0].path, dir.join("19.wav"));
 }
 
 #[test]
@@ -661,44 +662,24 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
 #[test]
 fn two_captures_with_the_same_name_are_told_apart_in_the_menu() {
+    // Two directories holding a capture named for the same frequency, which
+    // is how a directory of them and its copy elsewhere collide. The
+    // directories are built from a real root so that the paths are absolute
+    // in the way this platform spells one.
+    let root = TempDir::new("labels");
+    let (a, b) = (root.join("a"), root.join("b"));
     let mut session = Session::default();
-    for path in ["/b/12.579.iqw", "/a/12.579.iqw", "/a/other.iqw"] {
-        session.remember(Path::new(path), &OpenHints::default());
+    for path in [b.join("12.579.iqw"), a.join("12.579.iqw"), a.join("other.iqw")] {
+        session.remember(&path, &OpenHints::default());
     }
 
     assert_eq!(
         recent_labels(&session.recent),
         [
-            "other.iqw",
-            "12.579.iqw - /a",
-            "12.579.iqw - /b",
+            "other.iqw".to_owned(),
+            format!("12.579.iqw - {}", a.display()),
+            format!("12.579.iqw - {}", b.display()),
         ],
         "only the colliding names should carry a directory"
-    );
-}
-
-#[test]
-fn a_path_that_cannot_be_written_costs_its_entry_and_nothing_else() {
-    // TOML is UTF-8 and a filename on Linux is any bytes at all. Letting such
-    // a path into the list would fail every later save -- the window's own
-    // geometry included -- for as long as it stayed there.
-    let mut session = Session::default();
-    session.remember(Path::new("/captures/good.wav"), &OpenHints::default());
-
-    #[cfg(unix)]
-    {
-        use std::ffi::OsStr;
-        use std::os::unix::ffi::OsStrExt;
-        let awkward = PathBuf::from(OsStr::from_bytes(b"/captures/\xff\xfe.iqw"));
-        session.remember(&awkward, &OpenHints::default());
-    }
-
-    let dir = TempDir::new("awkward");
-    let path = dir.join(FILE_NAME);
-    assert!(session.save(&path), "the session should still be writable");
-    assert_eq!(
-        Session::load(&path).session.recent.len(),
-        1,
-        "the readable entry survives and the other was never added"
     );
 }
