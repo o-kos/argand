@@ -22,8 +22,7 @@ the graphical application: it opens a capture -- by argument, from its menu, by
 drag and drop, or from the files it remembers -- analyses it on a thread of its
 own, and shows a linear waveform above the spectrogram on the same time scale, with
 time and frequency marks around the spectrogram. A sparse preview appears before
-the full analysis; both panels refine from left to right with a thin progress
-front. Zoom, selection and editing are not implemented yet.
+the full analysis; both panels refine from left to right, with progress shown in the status bar. Zoom, selection and editing are not implemented yet.
 
 Neither binary is a throwaway. The domain model, the readers and the transforms
 live in `argand-core`, `argand-io` and `argand-dsp`; both front ends call the

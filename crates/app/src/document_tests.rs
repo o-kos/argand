@@ -288,5 +288,4 @@ fn refinement_freezes_waveform_display_scale_without_freezing_measured_levels() 
     final_analysis.time_peak = 0.9;
     document.apply(Update::Ready { analysis: final_analysis, elapsed: Duration::from_millis(100) });
     assert_eq!(document.waveform_peak(), Some(0.9));
-    assert!(document.coverage().is_none());
 }

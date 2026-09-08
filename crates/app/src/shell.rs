@@ -801,7 +801,6 @@ impl Shell {
             .as_ref()
             .map(|file| (file.opened_at, file.first_picture.clone()));
         let waveform = self.waveform.clone();
-        let coverage = self.file.as_ref().and_then(|file| file.document.coverage());
         let fraction = self.session.waveform_fraction;
         let rem = f32::from(cx.theme().font_size);
         let known_bounds = self.panel_bounds;
@@ -866,23 +865,6 @@ impl Shell {
                     {
                         tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
                     }
-                }
-                if let Some(coverage) =
-                    coverage.filter(|c| c.refined_columns > 0 && c.refined_columns < c.width)
-                {
-                    let x = frame.plot.x
-                        + frame.plot.width * coverage.refined_columns as f32
-                            / coverage.width as f32;
-                    window.paint_quad(gpui::fill(
-                        Bounds {
-                            origin: bounds.origin + point(px(x), px(4.0)),
-                            size: size(
-                                px(1.0),
-                                px(height + frame.plot.y + frame.plot.height - 4.0),
-                            ),
-                        },
-                        colors.tick,
-                    ));
                 }
                 axes::paint(&frame, spectrum_origin, &labels, colors, window, cx);
             },

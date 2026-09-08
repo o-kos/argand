@@ -36,7 +36,7 @@ Automatic normalization can scan hundreds of megabytes before analysis starts.
 - [x] Record baseline timings and preserve a CLI binary for output comparison.
 - [x] Implement bounded opening-level scans with unchanged CLI defaults.
 - [x] Add cancellable preview/refinement and shared paired snapshots to DSP.
-- [x] Integrate latest-request cancellation, progressive rendering and refinement indication.
+- [x] Integrate latest-request cancellation, progressive rendering and status-bar progress.
 - [x] Cover exact final results, preview geometry, cancellation and bounded queues with tests.
 - [x] Measure first-picture latency, snapshot cost and native responsiveness.
 - [x] Update architecture, user documentation and #31 integration status.
@@ -55,8 +55,8 @@ Automatic normalization can scan hundreds of megabytes before analysis starts.
 
 ## Post-completion
 
-Keep the PR Draft for owner review. Continue with a dependent focused branch for #32,
-then #62; leave #30 deferred. Merge only after owner acceptance and full CI.
+Keep the PR Draft and wait for owner acceptance before resuming #32, then #62.
+Leave #30 deferred. Merge only after owner acceptance and full CI.
 
 ## Implementation notes
 
@@ -99,3 +99,10 @@ automatic normalization budget; its first paint was 130.6 ms from launch. The or
 measurement fixture used an invalid fmt size and was discarded before this result.
 
 A final focused review of the bounded prefetch addition found no substantive issues.
+
+## Owner feedback
+
+Removed the moving refinement line from both panels. Sequential refinement and
+status-bar progress remain; the owner will assess the picture without the overlay.
+Wait for owner acceptance of #29 before resuming #32.
+The focused review of this removal found no substantive issues.
