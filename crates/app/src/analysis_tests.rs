@@ -199,7 +199,7 @@ fn a_window_that_has_gone_stops_the_thread_rather_than_leaving_it_waiting() {
 #[test]
 fn deferred_open_does_not_touch_the_file_until_the_first_frame_releases_it() {
     let dir = TempDir::new("deferred-open");
-    let (_analyst, updates, start) = prepare(dir.join("missing.wav"), OpenHints::default());
+    let (_analyst, updates, start) = prepare(dir.join("missing.wav"), OpenHints::default(), crate::execution::Settings::default());
     assert!(updates.try_recv().is_err());
     start.start();
     assert!(matches!(next(&updates), Some(Update::Failed(_))));
@@ -231,7 +231,7 @@ fn superseded_deliveries_cannot_replace_the_current_view() {
 fn full_snapshot_queue_does_not_prevent_cancelling_a_final_reply() {
     use std::cell::Cell;
     let (sender, receiver) = async_channel::bounded(2);
-    let delivery = || Delivery { generation: Some(1), update: Update::Progress { done: 0, total: 1 } };
+    let delivery = || Delivery { prepared_at: Instant::now(), generation: Some(1), update: Update::Progress { done: 0, total: 1 } };
     sender.try_send(delivery()).unwrap();
     sender.try_send(delivery()).unwrap();
     let polls = Cell::new(0);

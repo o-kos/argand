@@ -1,0 +1,76 @@
+--- a/crates/dsp/src/stft.rs
++++ b/crates/dsp/src/stft.rs
+@@ -712,0 +713 @@
++        let row_base = acc.row_base(column, self.out_height);
+@@ -764,3 +764,0 @@
+-        let row_base = acc.rows.len();
+-        acc.rows
+-            .resize(row_base + self.out_height, f32::NEG_INFINITY);
+@@ -774 +772 @@
+-                RowValues::Amplitude => peak,
++                RowValues::Amplitude => acc.rows[row_base + y].max(peak),
+@@ -778 +776 @@
+-        acc.cols.push(column as u32);
++        acc.frames += 1;
+@@ -789,0 +788 @@
++    frames: u64,
+@@ -805,0 +805 @@
++            frames: 0,
+@@ -818,0 +819,11 @@
++    fn row_base(&mut self, column: usize, height: usize) -> usize {
++        if matches!(self.row_values, RowValues::Amplitude)
++            && self.cols.last() == Some(&(column as u32)) {
++            return self.rows.len() - height;
++        }
++        let base = self.rows.len();
++        self.cols.push(column as u32);
++        self.rows.resize(base + height, f32::NEG_INFINITY);
++        base
++    }
++
+@@ -819,0 +831 @@
++        self.frames += other.frames;
+--- a/crates/dsp/src/progressive.rs
++++ b/crates/dsp/src/progressive.rs
+@@ -90 +90 @@
+-        self.frames += partial.cols.len() as u64;
++        self.frames += partial.frames;
+@@ -224 +224 @@
+-            .with_min_len(8)
++            .with_min_len(std::env::var("BENCH_GRAIN").ok().and_then(|v|v.parse().ok()).unwrap_or(8))
+@@ -308 +308 @@
+-    block.capacity = cfg.fft_size + cfg.hop * 255;
++    block.capacity = cfg.fft_size + cfg.hop * (std::env::var("BENCH_BATCH").ok().and_then(|v|v.parse::<usize>().ok()).unwrap_or(256) - 1);
+@@ -310,0 +311,7 @@
++    let preview_elapsed = started.elapsed();
++    let mut reading = Duration::ZERO;
++    let mut envelope_time = Duration::ZERO;
++    let mut transform_time = Duration::ZERO;
++    let mut snapshot_time = Duration::ZERO;
++    let mut snapshots = 0;
++    let mut max_batch = Duration::ZERO;
+@@ -313,0 +321 @@
++        let clock = Instant::now();
+@@ -314,0 +323,2 @@
++        reading += clock.elapsed();
++        let clock = Instant::now();
+@@ -317,0 +328 @@
++        envelope_time += clock.elapsed();
+@@ -326,0 +338 @@
++        let clock = Instant::now();
+@@ -327,0 +340,3 @@
++        let elapsed = clock.elapsed();
++        transform_time += elapsed;
++        max_batch = max_batch.max(elapsed);
+@@ -341,0 +357 @@
++            let clock = Instant::now();
+@@ -342,0 +359,2 @@
++            snapshot_time += clock.elapsed();
++            snapshots += 1;
+@@ -357 +375,5 @@
+-    Ok(state.snapshot(None))
++    let clock = Instant::now();
++    let result = state.snapshot(None);
++    snapshot_time += clock.elapsed();
++    eprintln!("STAGES preview={} read_peak={} envelope={} transform_merge={} snapshot={} snapshots={} max_batch={}", preview_elapsed.as_secs_f64(), reading.as_secs_f64(), envelope_time.as_secs_f64(), transform_time.as_secs_f64(), snapshot_time.as_secs_f64(), snapshots, max_batch.as_secs_f64());
++    Ok(result)

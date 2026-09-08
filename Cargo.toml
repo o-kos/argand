@@ -49,6 +49,7 @@ gpui-component-assets = "0.5.1"
 hsl = "0.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 indicatif = "0.18"
+libc = "0.2"
 memmap2 = "0.9"
 rayon = "1.10"
 realfft = "3.4"

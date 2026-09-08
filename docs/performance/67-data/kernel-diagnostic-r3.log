@@ -1,0 +1,3 @@
+STAGES preview=0.043130185 read_peak=2.61985664 envelope=0.866531293 transform_merge=3.186704136 snapshot=0.42775569 snapshots=121 max_batch=0.010529213
+KERNEL prepare_s=3.368540482 fft_s=4.780979892 aggregate_s=12.353120295
+{"affinity_errors":0,"db_hash":"ec469eda10ea059b","first":0.024915087,"frames":976559,"mode":"mapped","placement":"any","seconds":7.199897501,"updates":122,"workers":8}

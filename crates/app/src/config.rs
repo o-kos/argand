@@ -45,6 +45,7 @@ pub struct Config {
     #[serde(deserialize_with = "dynamic_range")]
     pub dynamic_range: DynamicRange,
     pub stft: Stft,
+    pub analysis: crate::execution::Settings,
     /// Legacy panel proportions, accepted for configuration compatibility.
     /// The waveform starts at 3 rem; its adjusted split belongs to session state.
     pub panels: Panels,
@@ -62,6 +63,7 @@ impl Default for Config {
             color_scheme: Colormap::Oceanic,
             dynamic_range: DynamicRange::Default,
             stft: Stft::default(),
+            analysis: crate::execution::Settings::default(),
             panels: Panels::default(),
         }
     }
@@ -185,6 +187,7 @@ impl Config {
     /// of it, so each bad value is replaced on its own.
     fn repaired(mut self) -> Self {
         let default = Self::default();
+        self.analysis.repair();
         if !self.stft.fft_size.is_power_of_two() || self.stft.fft_size < 2 {
             tracing::warn!(
                 found = self.stft.fft_size,

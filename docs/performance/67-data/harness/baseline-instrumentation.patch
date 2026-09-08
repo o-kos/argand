@@ -1,0 +1,41 @@
+--- a/crates/dsp/src/progressive.rs
++++ b/crates/dsp/src/progressive.rs
+@@ -224 +224 @@
+-            .with_min_len(8)
++            .with_min_len(std::env::var("BENCH_GRAIN").ok().and_then(|v|v.parse().ok()).unwrap_or(8))
+@@ -308 +308 @@
+-    block.capacity = cfg.fft_size + cfg.hop * 255;
++    block.capacity = cfg.fft_size + cfg.hop * (std::env::var("BENCH_BATCH").ok().and_then(|v|v.parse::<usize>().ok()).unwrap_or(256) - 1);
+@@ -310,0 +311,7 @@
++    let preview_elapsed = started.elapsed();
++    let mut reading = Duration::ZERO;
++    let mut envelope_time = Duration::ZERO;
++    let mut transform_time = Duration::ZERO;
++    let mut snapshot_time = Duration::ZERO;
++    let mut snapshots = 0;
++    let mut max_batch = Duration::ZERO;
+@@ -313,0 +321 @@
++        let clock = Instant::now();
+@@ -314,0 +323,2 @@
++        reading += clock.elapsed();
++        let clock = Instant::now();
+@@ -317,0 +328 @@
++        envelope_time += clock.elapsed();
+@@ -326,0 +338 @@
++        let clock = Instant::now();
+@@ -327,0 +340,3 @@
++        let elapsed = clock.elapsed();
++        transform_time += elapsed;
++        max_batch = max_batch.max(elapsed);
+@@ -341,0 +357 @@
++            let clock = Instant::now();
+@@ -342,0 +359,2 @@
++            snapshot_time += clock.elapsed();
++            snapshots += 1;
+@@ -357 +375,5 @@
+-    Ok(state.snapshot(None))
++    let clock = Instant::now();
++    let result = state.snapshot(None);
++    snapshot_time += clock.elapsed();
++    eprintln!("STAGES preview={} read_peak={} envelope={} transform_merge={} snapshot={} snapshots={} max_batch={}", preview_elapsed.as_secs_f64(), reading.as_secs_f64(), envelope_time.as_secs_f64(), transform_time.as_secs_f64(), snapshot_time.as_secs_f64(), snapshots, max_batch.as_secs_f64());
++    Ok(result)

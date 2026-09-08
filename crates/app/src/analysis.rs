@@ -9,7 +9,10 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 use argand_core::SignalMeta;
-use argand_dsp::{Analysis, AnalysisRequest, Coverage, DspError, Flow, analyze_progressive};
+use argand_dsp::{
+    Analysis, AnalysisRequest, Coverage, DspError, Flow, ProgressiveOptions,
+    analyze_progressive_with_options,
+};
 use argand_io::OpenHints;
 
 const THREAD_NAME: &str = "argand-analysis";
@@ -34,6 +37,7 @@ pub enum Update {
 }
 
 pub struct Delivery {
+    pub prepared_at: Instant,
     generation: Option<u64>,
     pub update: Update,
 }
@@ -51,6 +55,7 @@ pub struct Analyst {
 pub fn prepare(
     path: PathBuf,
     mut hints: OpenHints,
+    settings: crate::execution::Settings,
 ) -> (Analyst, async_channel::Receiver<Delivery>, Start) {
     hints.level_scan_bytes = Some(LEVEL_SCAN_BYTES);
     let (start, started) = async_channel::bounded(1);
@@ -62,10 +67,21 @@ pub fn prepare(
         .spawn({
             let outgoing = outgoing.clone();
             let generation = generation.clone();
-            move || worker(&path, &hints, &incoming, &outgoing, &generation, &started)
+            move || {
+                worker(
+                    &path,
+                    &hints,
+                    settings,
+                    &incoming,
+                    &outgoing,
+                    &generation,
+                    &started,
+                )
+            }
         });
     if let Err(error) = spawned {
         let _ = outgoing.try_send(Delivery {
+            prepared_at: Instant::now(),
             generation: None,
             update: Update::Failed(
                 anyhow::Error::new(error).context("starting the analysis thread"),
@@ -93,7 +109,7 @@ impl Start {
 
 #[cfg(test)]
 fn open(path: PathBuf, hints: OpenHints) -> (Analyst, async_channel::Receiver<Delivery>) {
-    let (analyst, updates, start) = prepare(path, hints);
+    let (analyst, updates, start) = prepare(path, hints, crate::execution::Settings::default());
     start.start();
     (analyst, updates)
 }
@@ -119,17 +135,17 @@ impl Analyst {
 fn worker(
     path: &Path,
     hints: &OpenHints,
+    settings: crate::execution::Settings,
     requests: &async_channel::Receiver<Requested>,
     updates: &async_channel::Sender<Delivery>,
     generation: &AtomicU64,
     started: &async_channel::Receiver<()>,
 ) {
-    let threads = std::thread::available_parallelism().map_or(2, |n| n.get().min(8));
-    tracing::debug!(threads, "starting analysis pool");
-    let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
+    let pool = match settings.pool() {
         Ok(pool) => pool,
         Err(error) => {
             let _ = updates.try_send(Delivery {
+                prepared_at: Instant::now(),
                 generation: None,
                 update: Update::Failed(error.into()),
             });
@@ -139,12 +155,13 @@ fn worker(
     if started.recv_blocking().is_err() || requests.is_closed() {
         return;
     }
-    pool.install(|| serve(path, hints, requests, updates, generation));
+    pool.install(|| serve(path, hints, settings, requests, updates, generation));
 }
 
 fn serve(
     path: &Path,
     hints: &OpenHints,
+    settings: crate::execution::Settings,
     requests: &async_channel::Receiver<Requested>,
     updates: &async_channel::Sender<Delivery>,
     generation: &AtomicU64,
@@ -154,6 +171,7 @@ fn serve(
         Ok(source) => source,
         Err(error) => {
             let _ = updates.try_send(Delivery {
+                prepared_at: Instant::now(),
                 generation: None,
                 update: Update::Failed(error.into()),
             });
@@ -163,6 +181,7 @@ fn serve(
     tracing::debug!(elapsed = ?opening_started.elapsed(), "file opened");
     if updates
         .try_send(Delivery {
+            prepared_at: Instant::now(),
             generation: None,
             update: Update::Opened(source.meta().clone()),
         })
@@ -184,6 +203,7 @@ fn serve(
         };
         let started = Instant::now();
         let _ = updates.try_send(Delivery {
+            prepared_at: Instant::now(),
             generation: Some(request.generation),
             update: Update::Progress {
                 done: 0,
@@ -191,9 +211,10 @@ fn serve(
             },
         });
         let mut waveform_peak = None;
-        let result = analyze_progressive(
+        let result = analyze_progressive_with_options(
             source.as_mut(),
             &request.analysis,
+            ProgressiveOptions::new(settings.batch_frames).unwrap_or_default(),
             &control,
             &mut |analysis, coverage| {
                 if control() == Flow::Stop {
@@ -201,6 +222,7 @@ fn serve(
                 }
                 tracing::debug!(?coverage, elapsed = ?started.elapsed(), "analysis snapshot");
                 let delivery = Delivery {
+                    prepared_at: Instant::now(),
                     generation: Some(request.generation),
                     update: Update::Snapshot {
                         waveform_peak: *waveform_peak.get_or_insert(analysis.time_peak),
@@ -231,6 +253,7 @@ fn serve(
         send_result(
             updates,
             Delivery {
+                prepared_at: Instant::now(),
                 generation: Some(request.generation),
                 update,
             },

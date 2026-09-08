@@ -282,6 +282,7 @@ impl Shell {
         // The toolkit says when the window has moved or resized, so nothing
         // here has to ask on every frame. It still says it once per step of a
         // drag, which is what [`Writer`] is for.
+        crate::profiling::watch_ui(cx);
         let focus = cx.focus_handle();
         window.focus(&focus);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
@@ -324,8 +325,11 @@ impl Shell {
         self.release(window);
         self.plot = None;
 
-        let (analyst, updates, start) =
-            crate::analysis::prepare(origin.path.clone(), origin.hints.clone());
+        let (analyst, updates, start) = crate::analysis::prepare(
+            origin.path.clone(),
+            origin.hints.clone(),
+            self.config.analysis,
+        );
         window.on_next_frame(move |window, _| {
             window.on_next_frame(move |_, _| start.start());
         });
@@ -339,6 +343,8 @@ impl Shell {
         // stays in that window's atlas.
         let pump = cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
+                tracing::trace!(target: "argand::ui_latency",
+                    age_us = update.prepared_at.elapsed().as_micros(), "analysis delivery received");
                 if shell
                     .update_in(cx, |shell, window, cx| shell.receive(update, window, cx))
                     .is_err()
@@ -512,6 +518,7 @@ impl Shell {
 
     /// Put the newest picture on the GPU and release the one it replaces.
     fn upload(&mut self, window: &mut Window) {
+        let started = Instant::now();
         let waveform_peak = self
             .file
             .as_ref()
@@ -536,6 +543,8 @@ impl Shell {
             .and_then(|analysis| spectrogram::texture(&analysis.spectrogram));
         let stale = std::mem::replace(&mut self.texture, fresh);
         release(stale, window);
+        tracing::trace!(target: "argand::ui_latency", elapsed_us = started.elapsed().as_micros(),
+            "texture prepared");
     }
 
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
