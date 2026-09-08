@@ -815,7 +815,6 @@ impl Shell {
                 if let Some(waveform) = &waveform {
                     waveform.paint(&frame, bounds.origin, height, window);
                 }
-                waveform::paint_axes(&frame, bounds.origin, height, colors, window);
                 window.paint_quad(gpui::fill(
                     Bounds {
                         origin: bounds.origin + point(px(0.0), px(height - 1.0)),

@@ -101,3 +101,16 @@ real/IQ, horizontal/vertical, default/fixed/auto range, and 0/12 dB input gain.
 GPU-backed Wayland checks confirm the unlabelled single trace in both themes,
 at 100%, 125% and 200% DPI, with the splitter gesture and restart checks passing.
 Focused external review found no substantive findings; none were declined.
+
+## Owner feedback: no waveform grid
+
+- [x] Remove the GUI waveform time-grid and horizontal zero-axis strokes.
+- [x] Keep the merged trace, separator and spectrogram axes unchanged.
+- [x] Validate formatting, Clippy, tests, release and native rendering, and complete focused review.
+
+All 389 tests, formatting and Clippy pass; the release was rebuilt afterward.
+Native dark/light screenshots confirm the waveform grid is removed and the
+spectrogram region is pixel-identical. A review finding about README grid text
+and CHANGELOG 0.0.2 was declined because both describe the unchanged CLI.
+The reviewer challenged that reasoning, withdrew the finding and reported a
+clean final round.
