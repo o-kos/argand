@@ -13,6 +13,10 @@ promise applies to.
 
 ### Added
 
+- A linear waveform above the GUI spectrogram, preserving short transients and
+  showing I and Q in distinct colours on one track. Both panels share time
+  marks, and a draggable separator remembers their proportions between runs.
+
 - Starting without a file shows links to existing recent captures, with Alt+1
   through Alt+9 for the first nine. Availability checks run in the background,
   independently for each path, so offline network locations do not block startup.

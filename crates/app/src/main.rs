@@ -1,8 +1,8 @@
 //! `argand`: the application binary.
 //!
 //! The window opens a signal file, analyses it on a thread of its own and
-//! shows the spectrogram that comes back. Editing, selections and the waveform
-//! panel arrive with the milestones after it.
+//! shows the spectrogram and waveform that come back. Editing and selections
+//! arrive with the milestones after it.
 //!
 //! Two files back it, and each has exactly one writer. `argand.toml` is a
 //! person's and is only ever read; `session.toml` is the program's and is
@@ -15,10 +15,12 @@ mod chrome;
 mod cli;
 mod config;
 mod document;
+mod panels;
 mod recent;
 mod session;
 mod shell;
 mod spectrogram;
+mod waveform;
 
 use clap::Parser;
 

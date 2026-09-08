@@ -241,7 +241,7 @@ window = \"blackman-harris\"
     assert_eq!(request.height, 480);
     // The whole file, since nothing narrows it yet.
     assert_eq!(request.range, argand_core::SampleRange::new(0, 96_000));
-    assert_eq!(request.waveform_columns, None);
+    assert_eq!(request.waveform_columns, Some(request.width));
 }
 
 #[test]

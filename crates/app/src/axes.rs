@@ -228,6 +228,19 @@ impl Labels {
             .shape_line(text.to_owned().into(), px(LABEL_SIZE), &[run], None)
     }
 
+    pub fn paint_text(
+        &self,
+        text: &str,
+        origin: Point<Pixels>,
+        color: Hsla,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let _ = self
+            .shape(text, color)
+            .paint(origin, px(LINE_HEIGHT), window, cx);
+    }
+
     /// Where the top of a line box goes for its ink to sit centred on `y`.
     ///
     /// A label is placed by the ink a digit puts on the canvas, which is
