@@ -39,7 +39,7 @@ fn the_picture_gets_what_the_labels_leave() {
         frame.plot.y + frame.plot.height < 800.0,
         "the time labels need a row"
     );
-    assert!(frame.plot.y > 0.0, "the unit needs a row above the axis");
+    assert!(frame.plot.y > 0.0, "the image clears the waveform panel");
 }
 
 #[test]
@@ -220,18 +220,20 @@ fn axis_labels_clear_adjacent_panels_and_the_window_edges() {
 
 fn assert_axis_bands_fit(frame: &Frame, width: f32, height: f32) {
     let half_line = LINE_HEIGHT / 2.0;
-    assert!(frame.plot.x >= 8.0);
-    assert!(frame.caption_row - half_line >= 8.0, "caption touches the waveform panel");
-    assert!(frame.caption_row + half_line < frame.plot.y);
+    assert_eq!(frame.plot.x, 4.0);
+    assert_eq!(frame.plot.y, 4.0, "the unit must not reserve a band above the image");
+    assert!(frame.caption_row - half_line >= frame.plot.y, "caption touches the waveform panel");
+    assert!(frame.caption_row + half_line < frame.plot.bottom());
     assert!(frame.time_row - half_line > frame.plot.bottom());
-    assert!(frame.time_row + half_line <= height - 8.0, "time labels touch the status bar");
+    assert!(frame.time_row + half_line <= height - 4.0, "time labels touch the status bar");
     let half_ink = DejaVuSans.digit_height(LABEL_SIZE) / 2.0;
     assert!(!frame.frequency.is_empty());
     for tick in &frame.frequency {
         let center = frame.plot.bottom() - tick.offset as f32 + 0.5;
-        assert!(center - half_ink >= frame.plot.y);
+        assert!(center - half_ink >= frame.caption_row + half_line + LABEL_PAD,
+            "frequency label collides with the unit");
         assert!(center + half_ink <= frame.plot.bottom(), "frequency label enters the time row");
         let right = frame.plot.right() + LABEL_PAD + DejaVuSans.width(&tick.label, LABEL_SIZE);
-        assert!(right <= width - 8.0);
+        assert!(right <= width - 4.0);
     }
 }

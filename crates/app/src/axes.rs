@@ -19,7 +19,7 @@ use gpui::{App, Bounds, Font, FontId, Hsla, Pixels, Point, Size, Window, fill, p
 /// Room between a label and whatever it labels.
 const LABEL_PAD: f32 = 6.0;
 /// Space between the complete axis layout and adjacent panels or window edges.
-const OUTER_PAD: f32 = 8.0;
+const OUTER_PAD: f32 = 4.0;
 /// How far a tick's mark reaches out of the plot.
 const TICK_LEN: f32 = 3.0;
 /// The size the labels are drawn at.
@@ -95,11 +95,10 @@ impl Frame {
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
 
-        // Reserve whole text rows, not just numeric ink: the unit and time
-        // labels must clear adjacent panels even when the font has descenders.
+        // The time labels get a full row below the plot; the unit occupies
+        // only the top of the right gutter, alongside the image.
         let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
-        let head = OUTER_PAD + row_height + LABEL_PAD;
-        let foot = head;
+        let foot = OUTER_PAD + row_height + LABEL_PAD;
         // Every candidate is measured, because which of two strings needs more
         // room is a question about glyphs and not about characters. The
         // caption counts too: over a narrow span `MHz` is wider than the
@@ -122,7 +121,7 @@ impl Frame {
         // Snap inward to preserve both label space and the outside margins.
         let left = ceil(OUTER_PAD);
         let right = floor(f32::from(panel.width) - OUTER_PAD - gutter);
-        let top = ceil(head);
+        let top = ceil(OUTER_PAD);
         let plot = Rect {
             x: left,
             y: top,
@@ -156,13 +155,13 @@ impl Frame {
                     min: f0,
                     max: f1,
                     lead: -(LABEL_PAD as i64),
-                    trail: -(LABEL_PAD as i64),
+                    trail: -((row_height + LABEL_PAD) as i64),
                 },
                 &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down),
             ),
             caption,
             time_row: plot.bottom() + LABEL_PAD + row_height / 2.0,
-            caption_row: plot.y - LABEL_PAD - row_height / 2.0,
+            caption_row: plot.y + row_height / 2.0,
         })
     }
 }

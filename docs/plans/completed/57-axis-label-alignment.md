@@ -67,3 +67,10 @@ Spacing validation passed on GPU-backed Linux Wayland in dark and light themes,
 at 300, 640 and 1200 pixel window widths and 100%, 125% and 200% DPI, including
 baseband, tuned and long-duration labels. The focused spacing review returned
 no substantive findings; none were declined.
+
+## Owner feedback: compact outer margins and unit placement
+
+- [x] Reduce the outside margin to 4 logical pixels
+- [x] Put the unit at the top of the right gutter alongside the actual image, removing the full-width empty band above the plot
+- [x] Reserve space below the unit in frequency tick selection and update the geometry regression test
+- [ ] Complete local checks, release build, native rendering checks and focused external review
