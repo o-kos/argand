@@ -335,7 +335,7 @@ pixel's time/frequency region. Mean power averages squared spectral amplitudes
 across the bins assigned to each row and the frames assigned to each column,
 then converts the result to dB. It shows average squared amplitude, not the
 integrated power of the displayed frequency band. Brief events become weaker in
-proportion to their duration; narrowing frequency detail can also dilute a tone.
+proportion to their duration; combining more frequency bins can also dilute a narrow tone.
 The waveform retains its min/max envelope under either mode.
 
 Switching starts a cancellable background analysis and retains the current

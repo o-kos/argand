@@ -28,18 +28,20 @@ The current GUI hardcodes MAX on both axes. The progressive analyzer compacts co
 - [x] Add linear-power reduction to plain and progressive DSP paths, including analytic correctness tests.
 - [x] Add a live GUI menu and configurable initial aggregation, using existing cancellation and image retirement.
 - [x] Update CLI help, user documentation, changelog and architectural context.
-- [ ] Compare source and 1 GB repeated m39 with identical FFT/display settings; preserve recordings.
-- [ ] Complete local validation and independent read-only review.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Compare source and 1 GB repeated m39 with identical FFT/display settings; preserve recordings.
+- [x] Complete local validation and independent read-only review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked` after checks, using the isolated release target used for performance work
-- [ ] Native menu switching, cancellation, and visual comparison with the current release build
-- [ ] External review using Codex GPT-5.6 Sol with High reasoning effort
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked` after checks, using the isolated release target used for performance work
+- [x] Native menu switching, cancellation, and visual comparison with the current release build
+- [x] External review using Codex GPT-5.6 Sol with High reasoning effort
+
+Validation results and native comparisons: [aggregation report](../../performance/69-spectrogram-aggregation.md). The implementation review returned no substantive findings.
 
 ## Post-completion
 

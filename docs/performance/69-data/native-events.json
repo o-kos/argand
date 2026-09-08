@@ -1,0 +1,24 @@
+{
+  "1-long-max.log": [
+    "2026-09-08T15:09:15.003334Z  INFO argand::config: configuration loaded path=/tmp/argand-69/native/config/argand/argand.toml config=Config { theme: Dark, color_scheme: Oceanic, dynamic_range: Default, aggregation: Max, stft: Stft { fft_size: 2048, window: Hann }, analysis: Settings { workers: 8, batch_frames: 1024, affinity: None }, panels: Panels { waveform_fraction: 0.2 } }",
+    "2026-09-08T15:09:15.077397Z DEBUG argand::analysis: file opened elapsed=89.814\u00b5s",
+    "2026-09-08T15:09:15.109858Z DEBUG argand::shell: the plot was laid out width=1236 height=662",
+    "2026-09-08T15:09:20.450759Z DEBUG argand::analysis: analysis completed elapsed=5.340812683s",
+    "2026-09-08T15:10:06.864170Z DEBUG argand::analysis: analysis completed elapsed=5.354087716s",
+    "2026-09-08T15:11:02.615516Z DEBUG argand::analysis: analysis completed elapsed=5.381352558s"
+  ],
+  "2-short-max.log": [
+    "2026-09-08T15:11:02.979783Z  INFO argand::config: configuration loaded path=/tmp/argand-69/native/config/argand/argand.toml config=Config { theme: Dark, color_scheme: Oceanic, dynamic_range: Default, aggregation: Max, stft: Stft { fft_size: 2048, window: Hann }, analysis: Settings { workers: 8, batch_frames: 1024, affinity: None }, panels: Panels { waveform_fraction: 0.2 } }",
+    "2026-09-08T15:11:03.052484Z DEBUG argand::analysis: file opened elapsed=91.734\u00b5s",
+    "2026-09-08T15:11:03.082588Z DEBUG argand::shell: the plot was laid out width=1236 height=662",
+    "2026-09-08T15:11:03.120960Z DEBUG argand::analysis: analysis completed elapsed=38.331698ms",
+    "2026-09-08T15:12:04.442093Z DEBUG argand::analysis: analysis completed elapsed=37.199649ms"
+  ],
+  "3-short-mean-power.log": [
+    "2026-09-08T15:13:49.896780Z  INFO argand::config: configuration loaded path=/tmp/argand-69/native/config/argand/argand.toml config=Config { theme: Dark, color_scheme: Oceanic, dynamic_range: Default, aggregation: MeanPower, stft: Stft { fft_size: 2048, window: Hann }, analysis: Settings { workers: 8, batch_frames: 1024, affinity: None }, panels: Panels { waveform_fraction: 0.2 } }",
+    "2026-09-08T15:13:49.964759Z DEBUG argand::analysis: file opened elapsed=128.33\u00b5s",
+    "2026-09-08T15:13:49.994820Z DEBUG argand::shell: the plot was laid out width=1236 height=662",
+    "2026-09-08T15:13:50.037618Z DEBUG argand::analysis: analysis completed elapsed=42.709013ms",
+    "2026-09-08T15:14:24.679808Z DEBUG argand::analysis: analysis completed elapsed=32.588872ms"
+  ]
+}
