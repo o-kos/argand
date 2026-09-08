@@ -17,7 +17,7 @@ are unavailable and their integration criteria cannot be completed in this incre
 
 ## Decisions
 
-- Start at 3 rem including the separator, following the current Issue #31 and #49 requirements.
+- Start at 3 rem with an invisible draggable boundary, following the owner refinement of Issues #31 and #49.
 - Use the spectrogram's exact horizontal plot geometry and request column count.
 - Use the same merged min/max trace and linear scaling as `aspec`, without channel or amplitude labels.
 - Persist a user-adjusted panel proportion; keep the font-relative default until adjusted.
@@ -114,3 +114,15 @@ spectrogram region is pixel-identical. A review finding about README grid text
 and CHANGELOG 0.0.2 was declined because both describe the unchanged CLI.
 The reviewer challenged that reasoning, withdrew the finding and reported a
 clean final round.
+
+## Owner feedback: remove the visible panel divider
+
+- [x] Remove the full-width separator stroke, preserving the independent drag hitbox and panel geometry.
+- [x] Document the invisible draggable boundary.
+- [x] Run the local gate, rebuild the release and complete focused external review.
+
+Formatting, strict Clippy and all 389 tests pass, followed by a release build.
+Dark/light GPU screenshots differ only in the removed separator row; dragging
+still changes and persists the panel height. Review found outdated separator
+wording in the Decisions section; it was accepted and corrected. The follow-up
+review is clean, with no findings declined.

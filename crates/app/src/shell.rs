@@ -815,13 +815,6 @@ impl Shell {
                 if let Some(waveform) = &waveform {
                     waveform.paint(&frame, bounds.origin, height, window);
                 }
-                window.paint_quad(gpui::fill(
-                    Bounds {
-                        origin: bounds.origin + point(px(0.0), px(height - 1.0)),
-                        size: size(bounds.size.width, px(1.0)),
-                    },
-                    colors.tick,
-                ));
                 // The picture first, then the marks over it: a grid line is
                 // there to be read against the spectrogram, not under it.
                 if let Some(texture) = texture {

@@ -331,7 +331,7 @@ missing or malformed one costs a log line rather than the application.
 
 The title is centred between the window edges. Normal client-decorated windows
 have subtly rounded corners. The waveform starts at 3 rem
-(normally 48 logical pixels) high, including its separator. Drag the separator
+(normally 48 logical pixels) high, with no visible separator line. Drag the boundary
 to change the panel proportion; the application remembers it between runs.
 Real and I/Q captures use one merged min/max trace, exactly as `aspec` does,
 without grid lines, a zero-axis line, a legend or an amplitude caption. Dragging stretches the existing view and
