@@ -206,6 +206,8 @@ impl std::fmt::Display for Reduce {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DspError {
+    #[error("overview caching supports max and mean-power reduction")]
+    BadOverviewReduction,
     #[error("analysis cancelled")]
     Cancelled,
     #[error("reading samples")]
@@ -1059,5 +1061,6 @@ mod tests {
 #[path = "progressive.rs"]
 mod progressive;
 pub use progressive::{
-    Coverage, Flow, ProgressiveOptions, analyze_progressive, analyze_progressive_with_options,
+    Coverage, Flow, Overview, ProgressiveOptions, analyze_overview, analyze_progressive,
+    analyze_progressive_with_options,
 };

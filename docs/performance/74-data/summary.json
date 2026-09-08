@@ -1,0 +1,108 @@
+{
+  "baseline-warm": {
+    "analysis_s": 6.809522365,
+    "runs_s": [
+      4.845083637,
+      6.809522365,
+      7.196307021
+    ],
+    "cpu_s": 27.54,
+    "rss_mib": 143.59375,
+    "peak_rss_mib": 268.0859375,
+    "first_paint_ms": 72.723829,
+    "ui_initial_p99_ms": 8.472,
+    "resizes": [
+      {
+        "name": "height",
+        "observed_ms": 6910.856349044479,
+        "cpu_s": 27.229999999999997
+      },
+      {
+        "name": "width",
+        "observed_ms": 6771.313927019946,
+        "cpu_s": 26.299999999999997
+      },
+      {
+        "name": "return",
+        "observed_ms": 7182.708902051672,
+        "cpu_s": 28.869999999999997
+      },
+      {
+        "name": "larger",
+        "observed_ms": 7670.36280897446,
+        "cpu_s": 31.89
+      },
+      {
+        "name": "restore",
+        "observed_ms": 7180.447509977967,
+        "cpu_s": 28.97999999999999
+      }
+    ]
+  },
+  "current-warm": {
+    "analysis_s": 7.804468444,
+    "runs_s": [
+      7.920572881,
+      7.511912901,
+      7.804468444
+    ],
+    "cpu_s": 31.48,
+    "rss_mib": 166.13671875,
+    "peak_rss_mib": 264.15625,
+    "first_paint_ms": 88.168079,
+    "ui_initial_p99_ms": 8.456,
+    "resizes": [
+      {
+        "name": "height",
+        "observed_ms": 42.198568931780756,
+        "cpu_s": 0.04999999999999716
+      },
+      {
+        "name": "width",
+        "observed_ms": 21.783045027405024,
+        "cpu_s": 0.030000000000001137
+      },
+      {
+        "name": "return",
+        "observed_ms": 42.18972206581384,
+        "cpu_s": 0.04999999999999716
+      },
+      {
+        "name": "larger",
+        "observed_ms": 42.81208000611514,
+        "cpu_s": 0.07000000000000028
+      },
+      {
+        "name": "restore",
+        "observed_ms": 37.669859011657536,
+        "cpu_s": 0.05000000000000071
+      }
+    ]
+  },
+  "baseline-cold": {
+    "analysis_s": 9.467293702,
+    "runs_s": [
+      12.068792176,
+      9.041019984,
+      9.467293702
+    ],
+    "cpu_s": 26.24,
+    "rss_mib": 143.578125,
+    "peak_rss_mib": 160.515625,
+    "first_paint_ms": 121.385367,
+    "ui_initial_p99_ms": 8.102
+  },
+  "current-cold": {
+    "analysis_s": 9.910505566,
+    "runs_s": [
+      9.975043382,
+      9.756488452,
+      9.910505566
+    ],
+    "cpu_s": 29.99,
+    "rss_mib": 166.22265625,
+    "peak_rss_mib": 175.23046875,
+    "first_paint_ms": 120.983677,
+    "ui_initial_p99_ms": 8.158
+  }
+}

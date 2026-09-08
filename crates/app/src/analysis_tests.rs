@@ -168,20 +168,20 @@ fn a_request_the_transform_will_not_run_leaves_the_file_open_for_the_next_one() 
 }
 
 #[test]
-fn only_the_last_of_a_run_of_requests_is_transformed() {
-    // The policy, not the race: a transform short enough to test against would
-    // finish between two offers as often as not, and the question here is what
-    // happens to the offers that pile up while a long one runs.
-    let (sender, receiver) = async_channel::unbounded();
-    for width in [16, 32, 48] {
-        let mut sized = request();
-        sized.width = width;
-        sender.try_send(sized).expect("the queue is open");
+fn resize_requests_coalesce_without_invalidating_analysis() {
+    let (sender, receiver) = async_channel::bounded(1);
+    let analyst = Analyst { requests: sender, mailbox: Arc::new(Mailbox::default()) };
+    analyst.request(request());
+    let first = analyst.mailbox.latest().unwrap();
+    for width in 1..1000 {
+        analyst.request(AnalysisRequest { width, ..request() });
     }
-
-    let first = receiver.try_recv().expect("the first request");
-    assert_eq!(newest(first, &receiver).width, 48);
-    assert!(receiver.is_empty(), "the overtaken requests should be gone");
+    let last = analyst.mailbox.latest().unwrap();
+    assert_eq!(last.analysis.width, 999);
+    assert_eq!(last.generation, first.generation);
+    assert_eq!(receiver.len(), 1);
+    analyst.request(AnalysisRequest { reduce: Reduce::MeanPower, ..request() });
+    assert_ne!(analyst.mailbox.latest().unwrap().generation, first.generation);
 }
 
 #[test]
@@ -206,22 +206,28 @@ fn deferred_open_does_not_touch_the_file_until_the_first_frame_releases_it() {
 }
 
 #[test]
-fn superseded_deliveries_cannot_replace_the_current_view() {
+fn resize_keeps_analysis_and_eventually_delivers_the_latest_size() {
     let dir = TempDir::new("superseded");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());
     assert!(matches!(next(&updates), Some(Update::Opened(_))));
     analyst.request(request());
-    let old = updates.recv_blocking().unwrap();
+    let old = loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if delivery.view_revision.is_some() { break delivery; }
+    };
     assert!(analyst.accepts(&old));
+    let generation = analyst.mailbox.latest().unwrap().generation;
     let mut latest = request();
     latest.width = 17;
     analyst.request(latest);
-    assert!(!analyst.accepts(&old));
+    assert_eq!(analyst.mailbox.latest().unwrap().generation, generation);
+    assert!(!analyst.accepts(&old), "queued old dimensions must be rejected");
     loop {
         let delivery = updates.recv_blocking().unwrap();
         if !analyst.accepts(&delivery) { continue; }
         if let Update::Ready { analysis, .. } = delivery.update {
-            assert_eq!(analysis.db.width, 17);
+            if analysis.db.width != 17 { continue; }
+            assert_eq!(analysis.frames, 61);
             break;
         }
     }
@@ -231,7 +237,7 @@ fn superseded_deliveries_cannot_replace_the_current_view() {
 fn full_snapshot_queue_does_not_prevent_cancelling_a_final_reply() {
     use std::cell::Cell;
     let (sender, receiver) = async_channel::bounded(2);
-    let delivery = || Delivery { prepared_at: Instant::now(), generation: Some(1), update: Update::Progress { done: 0, total: 1 } };
+    let delivery = || Delivery { prepared_at: Instant::now(), generation: Some(1), view_revision: None, update: Update::Progress { done: 0, total: 1 } };
     sender.try_send(delivery()).unwrap();
     sender.try_send(delivery()).unwrap();
     let polls = Cell::new(0);
@@ -267,5 +273,53 @@ fn aggregation_replacement_rejects_stale_work_and_matches_the_requested_result()
             }
             break;
         }
+    }
+}
+
+#[test]
+fn cached_resize_keeps_the_analysis_duration_and_never_enters_analyzing() {
+    let dir = TempDir::new("cached-resize");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    analyst.request(request());
+    let Some(Update::Ready { elapsed, .. }) = next_result(&updates) else { panic!("ready"); };
+    for (width, height) in [(73, 51), (200, 300), (3, 2), (64, 32)] {
+        analyst.request(AnalysisRequest { width, height, ..request() });
+        let Some(Update::Ready { analysis, elapsed: cached }) = next(&updates) else { panic!("resize must only redraw"); };
+        assert_eq!(cached, elapsed);
+        assert_eq!((analysis.db.width, analysis.db.height), (width, height));
+        assert_eq!(analysis.frames, 61);
+    }
+}
+
+#[test]
+fn only_display_dimensions_are_excluded_from_invalidation() {
+    let base = request();
+    assert!(same_analysis(base, AnalysisRequest { width: 5, height: 8, ..base }));
+    for changed in [
+        AnalysisRequest { cfg: StftConfig::new(128, Window::Hann), ..base },
+        AnalysisRequest { range: SampleRange::new(1, 3000), ..base },
+        AnalysisRequest { reduce: Reduce::MeanPower, ..base },
+        AnalysisRequest { dynamic_range: DynamicRange::Auto, ..base },
+        AnalysisRequest { waveform_columns: Some(12), ..base },
+    ] { assert!(!same_analysis(base, changed)); }
+}
+
+#[test]
+fn returning_to_a_previous_size_still_delivers_the_new_display_revision() {
+    let dir = TempDir::new("resize-return");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    analyst.request(request());
+    let Some(Update::Ready { elapsed, .. }) = next_result(&updates) else { panic!("ready"); };
+    analyst.request(AnalysisRequest { width: 13, ..request() });
+    analyst.request(request());
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        let Update::Ready { analysis, elapsed: cached } = delivery.update else { panic!("only a cached redraw"); };
+        assert_eq!(analysis.db.width, request().width);
+        assert_eq!(cached, elapsed);
+        break;
     }
 }

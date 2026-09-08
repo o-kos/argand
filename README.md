@@ -344,8 +344,28 @@ files in this run. Set the initial choice with the top-level configuration key
 `aggregation = "max"` (default) or `aggregation = "mean-power"`. Live choices do not
 rewrite `argand.toml` and are not yet restored between runs.
 
-`aspec --reduce mean-power` uses the same aggregation. Its existing `--reduce mean`
-retains its original meaning: average frame levels in dB after a frequency-bin
+Resizing the window or dragging the panel separator redraws from retained analysis
+without rereading the file or restarting FFT refinement. The GUI keeps up to 4096
+time cells and 2048 frequency cells (native FFT bins whenever they fit), plus a
+separate min/max envelope of up to 65536 sample cells. Every FFT frame still
+contributes; the cache does not use sparse sampling for the final result.
+
+The GUI reduces these cached values before applying colours. Peak includes every
+cell overlapping a pixel; Mean power weights linear powers by overlap and frame
+counts. An aligned boundary is exact apart from floating-point rounding; inside
+a cache cell, Peak can widen a feature by one cell at each edge and Mean power
+assumes uniform power. Waveform extrema conservatively include overlapping cells.
+A window wider/taller than the cache cannot reveal extra detail within a cell.
+The colour scale and reported analysis time remain stable during resizing.
+
+The retained spectral accumulator uses at most 32 MiB for Peak or 64 MiB for Mean
+power, independent of recording duration. Render buffers, waveform data, FFT
+plans/scratch and the mapped file are additional. See the
+[resize measurements](docs/performance/74-resize-cache.md) for costs and limits.
+
+`aspec --reduce mean-power` uses the same power definition and reduces directly
+to the requested pixel boundaries without the GUI overview approximation. Its
+existing `--reduce mean` retains its original meaning: average frame levels in dB after a frequency-bin
 maximum. All modes use the same FFT frame lattice; choosing Mean power does not
 reduce the number of transforms. A repeated capture viewed in full still cannot
 show the short source's timing detail at the same window width.
@@ -375,7 +395,7 @@ have subtly rounded corners. The waveform starts at 3 rem
 to change the panel proportion; the application remembers it between runs.
 Real and I/Q captures use one merged min/max trace, exactly as `aspec` does,
 without grid lines, a zero-axis line, a legend or an amplitude caption. Dragging stretches the existing view and
-requests one analysis after the separator is released. The older `panels.waveform_fraction`
+rebins the cached view as the separator moves without restarting analysis. The older `panels.waveform_fraction`
 setting is still accepted so existing files load, but no longer sizes this strip.
 The preview keeps its colour and waveform display scales while refinement runs,
 then resolves them once at completion. Replacing an analysis cancels its remaining

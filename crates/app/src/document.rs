@@ -59,7 +59,7 @@ impl Origin {
 ///
 /// The picture on screen and this are deliberately independent: a re-analysis
 /// puts the document back into [`Status::Analyzing`] while the previous
-/// picture is still up, because a window that blanks itself on every resize is
+/// picture is still up, because a window that blanks itself on every settings change is
 /// harder to use than one that shows a slightly stale spectrogram.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Status {
@@ -81,7 +81,7 @@ impl Status {
         Some(MetadataHint::new(
             "Analysis time",
             format!("{:.3} s", elapsed.as_secs_f64()),
-            "Measures sample reading and analysis, excluding file opening and display",
+            "Includes sample reading, transforms and image preparation, excluding file opening and window drawing",
         ))
     }
 

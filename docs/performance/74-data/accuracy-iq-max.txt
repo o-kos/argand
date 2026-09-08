@@ -1,0 +1,9 @@
+exact_s=0.033828
+overview_s=0.036014 dimensions=(180, 2048) frames=180 exact_frames=180
+db_abs_median=0 db_abs_p95=0 db_abs_p99=0 db_abs_max=0 signed_min=0 psd_abs_max=0
+waveform_lower_conservative=true waveform_upper_conservative=true time_peak_equal=true
+render=1236x562 seconds=0.010606 frames=180
+render=1036x562 seconds=0.007418 frames=180
+render=1236x662 seconds=0.010475 frames=180
+render=1636x812 seconds=0.020740 frames=180
+render=5000x1200 seconds=0.090219 frames=180
