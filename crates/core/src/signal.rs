@@ -97,12 +97,25 @@ pub enum SourceError {
     Decode(String),
 }
 
+/// A reader hint; it never changes the samples returned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessPattern {
+    Sequential,
+    Sparse,
+}
+
 /// A lazily-read signal.
 ///
 /// Implemented in `argand-io`, consumed by `argand-dsp`. Keeping it here is
 /// what stops DSP from knowing about file formats and IO from knowing about
 /// transforms.
 pub trait SampleSource: Send {
+    /// Readers without configurable readahead can ignore this hint.
+    fn access_pattern(&mut self, _pattern: AccessPattern) {}
+
+    /// Hint that a bounded range will be read soon, without changing the cursor.
+    fn prefetch(&mut self, _range: crate::SampleRange) {}
+
     fn meta(&self) -> &SignalMeta;
 
     /// Position the next `read` at `sample` (an I/Q pair counts as one).

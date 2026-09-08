@@ -206,6 +206,7 @@ impl Hints {
     /// Read the spellings back, dropping any this version cannot parse.
     pub fn to_open_hints(&self) -> OpenHints {
         OpenHints {
+            level_scan_bytes: None,
             raw: parsed("raw", &self.raw),
             sample_type: parsed("sample_type", &self.sample_type),
             sample_rate: self.sample_rate,

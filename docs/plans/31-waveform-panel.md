@@ -39,7 +39,8 @@ are unavailable and their integration criteria cannot be completed in this incre
 - [x] Update the changelog and architectural status.
 - [x] Complete the local gate, release build and external review.
 - [x] Verify native rendering and dragging with a current release binary.
-- [ ] ⚠️ Integrate progressive refinement after #29 and synchronized navigation after #30.
+- [x] Integrate progressive waveform refinement with #29.
+- [ ] ⚠️ Integrate synchronized navigation after deferred #30.
 
 ## Validation
 

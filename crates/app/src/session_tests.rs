@@ -518,6 +518,7 @@ fn only_an_ordinary_window_says_what_size_to_come_back_to() {
 /// The hints a headerless capture needs, as the command line would give them.
 fn raw_hints() -> OpenHints {
     OpenHints {
+            level_scan_bytes: None,
         raw: Some("iq_i16@2M".parse().expect("a raw spec")),
         sample_type: None,
         sample_rate: None,

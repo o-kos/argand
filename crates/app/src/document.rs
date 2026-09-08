@@ -136,6 +136,8 @@ pub struct Document {
     /// window has something to draw while the next one runs.
     analysis: Option<Box<Analysis>>,
     status: Status,
+    coverage: Option<argand_dsp::Coverage>,
+    waveform_peak: Option<f32>,
 }
 
 impl Document {
@@ -147,6 +149,8 @@ impl Document {
             meta: None,
             analysis: None,
             status: Status::Opening,
+            coverage: None,
+            waveform_peak: None,
         }
     }
 
@@ -160,6 +164,15 @@ impl Document {
 
     pub fn analysis(&self) -> Option<&Analysis> {
         self.analysis.as_deref()
+    }
+
+    pub fn waveform_peak(&self) -> Option<f32> {
+        self.waveform_peak
+            .or_else(|| self.analysis().map(|analysis| analysis.time_peak))
+    }
+
+    pub const fn coverage(&self) -> Option<argand_dsp::Coverage> {
+        self.coverage
     }
 
     pub const fn status(&self) -> &Status {
@@ -184,12 +197,29 @@ impl Document {
                 self.status = Status::Analyzing { done, total };
                 Effect::Status
             }
+            Update::Snapshot {
+                analysis,
+                coverage,
+                waveform_peak,
+            } => {
+                self.analysis = Some(analysis);
+                self.coverage = Some(coverage);
+                self.waveform_peak = Some(waveform_peak);
+                self.status = Status::Analyzing {
+                    done: coverage.refined_columns as u64,
+                    total: coverage.width as u64,
+                };
+                Effect::Analysis
+            }
             Update::Ready { analysis, elapsed } => {
+                self.coverage = None;
+                self.waveform_peak = None;
                 self.analysis = Some(analysis);
                 self.status = Status::Ready { elapsed };
                 Effect::Analysis
             }
             Update::Failed(error) => {
+                self.coverage = None;
                 // The chain, because the outer message names the step and the
                 // inner one says what actually went wrong.
                 self.status = Status::Failed(format!("{error:#}"));

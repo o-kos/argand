@@ -13,6 +13,10 @@ promise applies to.
 
 ### Added
 
+- The GUI shows a sparse signal preview before full analysis, then refines both
+  panels from left to right. New requests cancel obsolete work, interim display
+  scales remain stable, and opening-level scans have a 64 MiB budget.
+
 - A linear waveform above the GUI spectrogram, preserving short transients and
   merging I and Q into one trace, matching `aspec` without extra labels. The waveform has no grid or extra captions; both panels share the time
   scale, and a subtle draggable separator ends at the waveform edge and remembers their proportions between runs. Ruler borders match the tick marks, with the frequency border joined to the separator.

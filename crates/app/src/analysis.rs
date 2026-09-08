@@ -1,144 +1,222 @@
-//! The thread that owns one file's samples.
-//!
-//! [`argand_dsp::analyze`] is blocking and reads the whole capture, which on a
-//! long one takes as long as it takes. So it runs on a thread of its own, and
-//! that thread owns the [`SampleSource`] outright: nothing on the window's side
-//! holds a reference to it, and no frame can be drawn on a thread that is also
-//! transforming.
-//!
-//! Opening is on the same thread for the same reason. A header probe looks
-//! cheap, but a capture opened with `--normalize auto` is scanned for its peak
-//! before the first sample reaches a transform, and that is a pass over the
-//! file.
-//!
-//! Nothing here knows about a toolkit. The queue between the two threads is an
-//! `async_channel`, whose receiver a GPUI task can await and whose sender a
-//! plain thread can push to, so this module needs neither an executor nor a
-//! window to be run or tested.
-//!
-//! [`SampleSource`]: argand_core::SampleSource
+//! One background worker owns opening, preview and refinement for a document.
+//! Replies are bounded and tagged so a superseded analysis cannot replace the view.
 
 use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use std::time::{Duration, Instant};
 
-use argand_core::{SampleSource, SignalMeta, SourceError};
-use argand_dsp::{Analysis, AnalysisRequest, analyze};
+use argand_core::SignalMeta;
+use argand_dsp::{Analysis, AnalysisRequest, Coverage, DspError, Flow, analyze_progressive};
 use argand_io::OpenHints;
 
-/// Shortest gap between two progress updates.
-///
-/// `analyze` reports once per block read, which on a megahertz capture is
-/// thousands of times a second. Nothing on screen can show that, and a channel
-/// carrying it would spend more time on the progress than on the picture.
-const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
-
-/// The thread's name, as a debugger and `top` show it.
-///
-/// Fifteen bytes, which is what Linux accepts before it drops the name.
 const THREAD_NAME: &str = "argand-analysis";
+const LEVEL_SCAN_BYTES: usize = 64 << 20;
 
-/// What the analysis thread says back.
-///
-/// The sequence is `Opened` once, then any number of `Progress` runs each
-/// ending in `Ready` or `Failed`. A `Failed` before `Opened` is the file
-/// refusing to open at all, and the thread stops after it; one after `Opened`
-/// is a request the transform would not run, and another request may still
-/// succeed.
 pub enum Update {
-    /// The file opened, and this is what it says about itself.
     Opened(SignalMeta),
-    /// Samples read of samples to read, for the request in flight.
-    Progress { done: u64, total: u64 },
-    /// A finished analysis for the last request.
-    ///
-    /// Boxed because it is far the largest thing this enum carries, and every
-    /// other variant would otherwise be moved around at its size.
+    Progress {
+        done: u64,
+        total: u64,
+    },
+    Snapshot {
+        analysis: Box<Analysis>,
+        coverage: Coverage,
+        waveform_peak: f32,
+    },
     Ready {
         analysis: Box<Analysis>,
         elapsed: Duration,
     },
-    /// Nothing came of a request, and this is why.
     Failed(anyhow::Error),
 }
 
-/// The window's end of one file's analysis thread.
-///
-/// Dropping it closes the request channel, which an idle thread reads as the
-/// end of its work. A thread in the middle of a transform is stopped by
-/// [`Stopping`] instead, and neither is joined: what a caller waits for here
-/// it waits for on the thread drawing the window.
-pub struct Analyst {
-    requests: async_channel::Sender<AnalysisRequest>,
+pub struct Delivery {
+    generation: Option<u64>,
+    pub update: Update,
 }
 
-/// Open `path` on a new thread, and hand back the two ends of the queue.
-///
-/// The receiver is separate from the [`Analyst`] rather than reachable through
-/// it, because the two are what stops the thread and each has to be able to do
-/// it alone: dropping the receiver tells a thread mid-analysis that nobody is
-/// waiting for the answer, and dropping the [`Analyst`] tells an idle one that
-/// no request is coming.
-pub fn open(path: PathBuf, hints: OpenHints) -> (Analyst, async_channel::Receiver<Update>) {
-    let (requests, incoming) = async_channel::unbounded();
-    let (outgoing, updates) = async_channel::unbounded();
+struct Requested {
+    generation: u64,
+    analysis: AnalysisRequest,
+}
 
+pub struct Analyst {
+    requests: async_channel::Sender<Requested>,
+    generation: Arc<AtomicU64>,
+}
+
+pub fn prepare(
+    path: PathBuf,
+    mut hints: OpenHints,
+) -> (Analyst, async_channel::Receiver<Delivery>, Start) {
+    hints.level_scan_bytes = Some(LEVEL_SCAN_BYTES);
+    let (start, started) = async_channel::bounded(1);
+    let (requests, incoming) = async_channel::unbounded();
+    let (outgoing, updates) = async_channel::bounded(2);
+    let generation = Arc::new(AtomicU64::new(0));
     let spawned = std::thread::Builder::new()
         .name(THREAD_NAME.to_owned())
         .spawn({
             let outgoing = outgoing.clone();
-            move || serve(&path, &hints, &incoming, &outgoing)
+            let generation = generation.clone();
+            move || worker(&path, &hints, &incoming, &outgoing, &generation, &started)
         });
-
-    // A thread that will not start is reported like a file that will not open:
-    // the window says so and stays usable. The channel is unbounded, so this
-    // cannot block the caller.
     if let Err(error) = spawned {
-        let _ = outgoing.try_send(Update::Failed(
-            anyhow::Error::new(error).context("starting the analysis thread"),
-        ));
+        let _ = outgoing.try_send(Delivery {
+            generation: None,
+            update: Update::Failed(
+                anyhow::Error::new(error).context("starting the analysis thread"),
+            ),
+        });
     }
+    (
+        Analyst {
+            requests,
+            generation,
+        },
+        updates,
+        Start(start),
+    )
+}
 
-    (Analyst { requests }, updates)
+/// Release file opening only after the window has painted its initial frame.
+pub struct Start(async_channel::Sender<()>);
+
+impl Start {
+    pub fn start(self) {
+        let _ = self.0.try_send(());
+    }
+}
+
+#[cfg(test)]
+fn open(path: PathBuf, hints: OpenHints) -> (Analyst, async_channel::Receiver<Delivery>) {
+    let (analyst, updates, start) = prepare(path, hints);
+    start.start();
+    (analyst, updates)
 }
 
 impl Analyst {
-    /// Ask for an analysis, replacing whatever has not been started yet.
-    ///
-    /// `false` once the thread has gone, which is the caller's cue to stop
-    /// expecting updates.
-    pub fn request(&self, request: AnalysisRequest) -> bool {
-        // Unbounded, so this never blocks the thread drawing the window. What
-        // queues up here is bounded by how fast a person can resize a window,
-        // and `newest` throws away everything but the last of it.
-        self.requests.try_send(request).is_ok()
+    pub fn request(&self, analysis: AnalysisRequest) -> bool {
+        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+        self.requests
+            .try_send(Requested {
+                generation,
+                analysis,
+            })
+            .is_ok()
+    }
+
+    pub fn accepts(&self, delivery: &Delivery) -> bool {
+        delivery
+            .generation
+            .is_none_or(|id| id == self.generation.load(Ordering::Acquire))
     }
 }
 
-/// Open the file, then answer requests until nobody is asking.
-fn serve(
+fn worker(
     path: &Path,
     hints: &OpenHints,
-    requests: &async_channel::Receiver<AnalysisRequest>,
-    updates: &async_channel::Sender<Update>,
+    requests: &async_channel::Receiver<Requested>,
+    updates: &async_channel::Sender<Delivery>,
+    generation: &AtomicU64,
+    started: &async_channel::Receiver<()>,
 ) {
-    let mut source = match argand_io::open(path, hints) {
-        Ok(source) => source,
+    let threads = std::thread::available_parallelism().map_or(2, |n| n.get().min(8));
+    tracing::debug!(threads, "starting analysis pool");
+    let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
+        Ok(pool) => pool,
         Err(error) => {
-            let _ = updates.send_blocking(Update::Failed(anyhow::Error::new(error)));
+            let _ = updates.try_send(Delivery {
+                generation: None,
+                update: Update::Failed(error.into()),
+            });
             return;
         }
     };
+    if started.recv_blocking().is_err() || requests.is_closed() {
+        return;
+    }
+    pool.install(|| serve(path, hints, requests, updates, generation));
+}
+
+fn serve(
+    path: &Path,
+    hints: &OpenHints,
+    requests: &async_channel::Receiver<Requested>,
+    updates: &async_channel::Sender<Delivery>,
+    generation: &AtomicU64,
+) {
+    let opening_started = Instant::now();
+    let mut source = match argand_io::open(path, hints) {
+        Ok(source) => source,
+        Err(error) => {
+            let _ = updates.try_send(Delivery {
+                generation: None,
+                update: Update::Failed(error.into()),
+            });
+            return;
+        }
+    };
+    tracing::debug!(elapsed = ?opening_started.elapsed(), "file opened");
     if updates
-        .send_blocking(Update::Opened(source.meta().clone()))
+        .try_send(Delivery {
+            generation: None,
+            update: Update::Opened(source.meta().clone()),
+        })
         .is_err()
     {
         return;
     }
-
     while let Ok(request) = requests.recv_blocking() {
         let request = newest(request, requests);
+        let control = || {
+            if updates.is_closed()
+                || requests.is_closed()
+                || generation.load(Ordering::Acquire) != request.generation
+            {
+                Flow::Stop
+            } else {
+                Flow::Continue
+            }
+        };
         let started = Instant::now();
-        let update = match run(source.as_mut(), &request, updates) {
+        let _ = updates.try_send(Delivery {
+            generation: Some(request.generation),
+            update: Update::Progress {
+                done: 0,
+                total: request.analysis.range.len,
+            },
+        });
+        let mut waveform_peak = None;
+        let result = analyze_progressive(
+            source.as_mut(),
+            &request.analysis,
+            &control,
+            &mut |analysis, coverage| {
+                if control() == Flow::Stop {
+                    return Flow::Stop;
+                }
+                tracing::debug!(?coverage, elapsed = ?started.elapsed(), "analysis snapshot");
+                let delivery = Delivery {
+                    generation: Some(request.generation),
+                    update: Update::Snapshot {
+                        waveform_peak: *waveform_peak.get_or_insert(analysis.time_peak),
+                        analysis: Box::new(analysis),
+                        coverage,
+                    },
+                };
+                if coverage.refined_columns == 0 {
+                    send_result(updates, delivery, &control);
+                } else {
+                    let _ = updates.try_send(delivery);
+                }
+                Flow::Continue
+            },
+        );
+        let update = match result {
             Ok(analysis) => {
                 let elapsed = started.elapsed();
                 tracing::debug!(?elapsed, "analysis completed");
@@ -147,85 +225,36 @@ fn serve(
                     elapsed,
                 }
             }
-            Err(error) => Update::Failed(error),
+            Err(DspError::Cancelled) => continue,
+            Err(error) => Update::Failed(error.into()),
         };
-        if updates.send_blocking(update).is_err() {
-            return;
+        send_result(
+            updates,
+            Delivery {
+                generation: Some(request.generation),
+                update,
+            },
+            &control,
+        );
+    }
+}
+
+/// A final result must arrive, but waiting for GUI capacity must remain cancellable.
+fn send_result(
+    updates: &async_channel::Sender<Delivery>,
+    mut delivery: Delivery,
+    control: &dyn Fn() -> Flow,
+) {
+    while control() == Flow::Continue {
+        match updates.try_send(delivery) {
+            Ok(()) | Err(async_channel::TrySendError::Closed(_)) => return,
+            Err(async_channel::TrySendError::Full(pending)) => delivery = pending,
         }
+        std::thread::sleep(Duration::from_millis(1));
     }
 }
 
-/// A source that reports the end of the signal once nobody is waiting.
-///
-/// [`analyze`] is one blocking call with no way to interrupt it, so a document
-/// closed halfway through a half-hour capture would otherwise hold a thread, a
-/// core and a mapping until the transform finished on its own -- and opening
-/// several large files in a row would leave one such thread behind for each.
-///
-/// A read answered with "no more samples" is the one lever the transform does
-/// expose: it closes over what it has and returns within a block. What it
-/// returns goes nowhere, because the channel that would have carried it is the
-/// very thing whose closing stopped it.
-///
-/// This does not reach the level scan a capture opened with `--normalize auto`
-/// runs before the first transform: that happens inside `argand_io::open`,
-/// before there is a source to wrap.
-struct Stopping<'a> {
-    inner: &'a mut dyn SampleSource,
-    updates: &'a async_channel::Sender<Update>,
-}
-
-impl SampleSource for Stopping<'_> {
-    fn meta(&self) -> &SignalMeta {
-        self.inner.meta()
-    }
-
-    fn seek(&mut self, sample: u64) -> Result<(), SourceError> {
-        self.inner.seek(sample)
-    }
-
-    fn read(&mut self, buf: &mut [f32]) -> Result<usize, SourceError> {
-        if self.updates.is_closed() {
-            return Ok(0);
-        }
-        self.inner.read(buf)
-    }
-}
-
-/// One transform, reporting progress no oftener than the window can use it.
-fn run(
-    source: &mut dyn SampleSource,
-    request: &AnalysisRequest,
-    updates: &async_channel::Sender<Update>,
-) -> Result<Analysis, anyhow::Error> {
-    // `None` rather than a moment one interval ago: subtracting from a clock
-    // that starts at the machine's boot is not guaranteed to have anywhere to
-    // go, and the first report should be sent anyway.
-    let mut last: Option<Instant> = None;
-    let mut source = Stopping {
-        inner: source,
-        updates,
-    };
-    analyze(&mut source, request, &mut |done, total| {
-        let now = Instant::now();
-        if last.is_some_and(|last| now.duration_since(last) < PROGRESS_INTERVAL) {
-            return;
-        }
-        last = Some(now);
-        let _ = updates.try_send(Update::Progress { done, total });
-    })
-    .map_err(anyhow::Error::new)
-}
-
-/// The last request offered, discarding those overtaken while a transform ran.
-///
-/// A window being resized offers one request per step, and every one but the
-/// last describes a picture nobody is waiting for any more. Running them all
-/// would put the window minutes behind a drag that took a second.
-fn newest(
-    first: AnalysisRequest,
-    queued: &async_channel::Receiver<AnalysisRequest>,
-) -> AnalysisRequest {
+fn newest<T>(first: T, queued: &async_channel::Receiver<T>) -> T {
     let mut latest = first;
     while let Ok(next) = queued.try_recv() {
         latest = next;

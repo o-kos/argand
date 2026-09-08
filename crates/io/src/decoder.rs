@@ -34,6 +34,13 @@ pub struct DecodedSource {
     exhausted: bool,
 }
 
+/// Level policy for decoder-backed opening; an absent budget preserves full scans.
+pub struct DecodeLevels {
+    pub normalize: Normalize,
+    pub gain_db: f32,
+    pub scan_bytes: Option<usize>,
+}
+
 impl DecodedSource {
     pub fn open(
         path: &Path,
@@ -44,6 +51,33 @@ impl DecodedSource {
         normalize: Normalize,
         gain_db: f32,
     ) -> Result<Self, SourceError> {
+        Self::with_levels(
+            path,
+            container,
+            center_freq,
+            sample_rate_override,
+            sample_type_override,
+            DecodeLevels {
+                normalize,
+                gain_db,
+                scan_bytes: None,
+            },
+        )
+    }
+
+    pub fn with_levels(
+        path: &Path,
+        container: &'static str,
+        center_freq: f64,
+        sample_rate_override: Option<f64>,
+        sample_type_override: Option<SampleType>,
+        levels: DecodeLevels,
+    ) -> Result<Self, SourceError> {
+        let DecodeLevels {
+            normalize,
+            gain_db,
+            scan_bytes,
+        } = levels;
         let mut source = Self::open_plain(path, container, center_freq, sample_rate_override)?;
         if let Some(forced) = sample_type_override {
             source.meta.sample_type = forced;
@@ -56,7 +90,7 @@ impl DecodedSource {
             Normalize::Factor(v) => v,
             Normalize::Auto => {
                 let peak = Self::open_plain(path, container, center_freq, sample_rate_override)?
-                    .measure_peak()?
+                    .measure_peak(scan_bytes)?
                     * AUTO_HEADROOM;
                 if peak > 1e-9 { peak } else { 1.0 }
             }
@@ -183,11 +217,18 @@ impl DecodedSource {
     }
 
     /// Decode everything, returning the largest absolute value.
-    fn measure_peak(&mut self) -> Result<f32, SourceError> {
+    fn measure_peak(&mut self, budget: Option<usize>) -> Result<f32, SourceError> {
         let mut peak = 0.0f32;
         let mut buf = vec![0.0f32; 65536];
+        let mut remaining = budget.unwrap_or(usize::MAX) / self.meta.sample_type.format.bytes();
+        let channels = self.meta.channels();
         loop {
-            let n = self.read_unscaled(&mut buf)?;
+            let want = remaining.min(buf.len()) / channels * channels;
+            if want == 0 {
+                return Ok(peak);
+            }
+            let n = self.read_unscaled(&mut buf[..want])?;
+            remaining -= n;
             if n == 0 {
                 return Ok(peak);
             }

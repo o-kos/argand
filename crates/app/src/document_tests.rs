@@ -270,3 +270,23 @@ fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
     document.apply(Update::Failed(anyhow::anyhow!("read failed")));
     assert!(document.status().hint().is_none());
 }
+
+#[test]
+fn refinement_freezes_waveform_display_scale_without_freezing_measured_levels() {
+    let mut document = opening();
+    document.apply(Update::Opened(meta()));
+    let mut partial = analysis(32);
+    partial.time_peak = 0.9;
+    document.apply(Update::Snapshot {
+        analysis: partial,
+        coverage: argand_dsp::Coverage { refined_columns: 10, width: 32 },
+        waveform_peak: 0.5,
+    });
+    assert_eq!(document.waveform_peak(), Some(0.5));
+    assert_eq!(document.analysis().unwrap().time_peak, 0.9);
+    let mut final_analysis = analysis(32);
+    final_analysis.time_peak = 0.9;
+    document.apply(Update::Ready { analysis: final_analysis, elapsed: Duration::from_millis(100) });
+    assert_eq!(document.waveform_peak(), Some(0.9));
+    assert!(document.coverage().is_none());
+}

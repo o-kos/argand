@@ -7,11 +7,11 @@
 use std::fs::File;
 use std::path::Path;
 
-use argand_core::{SampleSource, SampleType, SignalMeta, SourceError};
+use argand_core::{AccessPattern, SampleRange, SampleSource, SampleType, SignalMeta, SourceError};
 use memmap2::Mmap;
 
 use crate::convert::convert;
-use crate::normalize::{Normalize, gain_factor, resolve_divisor};
+use crate::normalize::{Normalize, gain_factor, resolve_divisor_with_budget};
 
 pub struct MmapSource {
     map: Mmap,
@@ -25,6 +25,7 @@ pub struct MmapSource {
     pos: u64,
     /// Byte offset up to which pages have already been released.
     released: usize,
+    access: AccessPattern,
 }
 
 /// How far behind the read head pages are released, and how often.
@@ -41,11 +42,24 @@ impl MmapSource {
     /// interleaved samples of `meta.sample_type`.
     pub fn new(
         path: &Path,
+        meta: SignalMeta,
+        data_offset: usize,
+        data_len: usize,
+        normalize: Normalize,
+        gain_db: f32,
+    ) -> Result<Self, SourceError> {
+        Self::with_scan_budget(path, meta, data_offset, data_len, normalize, gain_db, None)
+    }
+
+    /// Map a source with a caller-specific automatic normalization scan budget.
+    pub fn with_scan_budget(
+        path: &Path,
         mut meta: SignalMeta,
         data_offset: usize,
         data_len: usize,
         normalize: Normalize,
         gain_db: f32,
+        scan_bytes: Option<usize>,
     ) -> Result<Self, SourceError> {
         let file = File::open(path)?;
         // Safety: the file is opened read-only and the mapping is never
@@ -63,7 +77,12 @@ impl MmapSource {
         meta.len_samples = (data_len / bytes_per_sample) as u64;
 
         let format = meta.sample_type.format;
-        let divisor = resolve_divisor(normalize, format, &map[data_offset..data_offset + data_len]);
+        let divisor = resolve_divisor_with_budget(
+            normalize,
+            format,
+            &map[data_offset..data_offset + data_len],
+            scan_bytes,
+        );
         meta.divisor = divisor;
 
         Ok(Self {
@@ -75,6 +94,7 @@ impl MmapSource {
             divisor,
             pos: 0,
             released: data_offset,
+            access: AccessPattern::Sequential,
         })
     }
 
@@ -113,6 +133,33 @@ impl MmapSource {
 }
 
 impl SampleSource for MmapSource {
+    fn prefetch(&mut self, range: SampleRange) {
+        #[cfg(unix)]
+        {
+            let range = range.clamped_to(self.meta.len_samples);
+            if range.len == 0 {
+                return;
+            }
+            let stride = self.meta.sample_type.bytes_per_sample();
+            let _ = self.map.advise_range(
+                memmap2::Advice::WillNeed,
+                self.data_offset + range.start as usize * stride,
+                range.len as usize * stride,
+            );
+        }
+        #[cfg(not(unix))]
+        let _ = range;
+    }
+
+    fn access_pattern(&mut self, pattern: AccessPattern) {
+        self.access = pattern;
+        #[cfg(unix)]
+        let _ = self.map.advise(match pattern {
+            AccessPattern::Sequential => memmap2::Advice::Sequential,
+            AccessPattern::Sparse => memmap2::Advice::Random,
+        });
+    }
+
     fn meta(&self) -> &SignalMeta {
         &self.meta
     }
@@ -157,7 +204,9 @@ impl SampleSource for MmapSource {
             self.scale,
         );
         self.pos += (written / channels) as u64;
-        self.release_behind(start + take);
+        if self.access == AccessPattern::Sequential {
+            self.release_behind(start + take);
+        }
         Ok(written)
     }
 }

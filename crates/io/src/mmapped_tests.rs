@@ -69,6 +69,8 @@ fn round_trips_every_sample_type() {
             Normalize::None,
         );
         assert_eq!(src.meta().sample_type, st, "{st}");
+        src.prefetch(SampleRange::new(1, u64::MAX));
+        src.prefetch(SampleRange::new(u64::MAX, 1));
         assert_eq!(
             src.meta().len_samples,
             (values.len() / st.channels()) as u64,

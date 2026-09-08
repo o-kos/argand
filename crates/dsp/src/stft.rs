@@ -202,6 +202,8 @@ impl std::fmt::Display for Reduce {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DspError {
+    #[error("analysis cancelled")]
+    Cancelled,
     #[error("reading samples")]
     Source(#[from] SourceError),
     #[error("fft size must be a power of two of at least 2, got {0}")]
@@ -809,6 +811,7 @@ impl Partial {
 }
 
 /// The image-sized dB accumulator that frames are folded into.
+#[derive(Clone)]
 struct ColumnStore {
     width: usize,
     height: usize,
@@ -957,3 +960,7 @@ pub fn shade(grid: &DbGrid, shading: Shading) -> SpectrogramImage {
 mod tests {
     include!("stft_tests.rs");
 }
+
+#[path = "progressive.rs"]
+mod progressive;
+pub use progressive::{Coverage, Flow, analyze_progressive};

@@ -335,3 +335,17 @@ fn a_64_bit_wave_is_read_and_named_as_such() {
         assert_eq!(drain(src.as_mut()).len(), values.len(), "{want}");
     }
 }
+
+#[test]
+fn decoder_level_scans_honour_a_budget_and_keep_unbudgeted_behaviour() {
+    let dir = TempDir::new("decoded-scan-budget");
+    let mut values = vec![0.25; 4096];
+    values[3000] = 0.9;
+    let path = write_wav(&dir.join("levels.wav"), SampleType::new(Domain::Real, SampleFormat::I16), 24_000, &values, 1.0);
+    let bounded = DecodedSource::with_levels(&path, "wav", 0.0, None, None, decoder::DecodeLevels {
+        normalize: Normalize::Auto, gain_db: 0.0, scan_bytes: Some(64),
+    }).unwrap();
+    let ordinary = DecodedSource::open(&path, "wav", 0.0, None, None, Normalize::Auto, 0.0).unwrap();
+    assert!((bounded.meta().divisor - 0.25 * normalize::AUTO_HEADROOM).abs() < 1e-6);
+    assert!((ordinary.meta().divisor - 0.9 * normalize::AUTO_HEADROOM).abs() < 0.0001);
+}

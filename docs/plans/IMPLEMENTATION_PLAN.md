@@ -16,7 +16,7 @@ The following work is complete:
 - **Phase 3:** configurable STFT size, window, and overlap; frames folded into image columns as they are computed so memory follows output size rather than input duration; six color schemes; and callback-based progress reporting.
 - **Phase 4:** a two-sided spectrum from `-Fs/2` to `+Fs/2` with `fftshift` for complex signals, a one-sided spectrum for real signals, physical frequency axes through `center_frequency`, and consistent 0 dBFS readings for full-scale tones in both domains.
 
-Phase 0 is now complete: `crates/app` holds the `argand` binary, a GPUI window with configuration and session state behind it, restoring what the toolkit reports. The application now also opens a signal file — by argument, by menu, by drag and drop, or from a remembered list — analyses it on a thread of its own, and draws the spectrogram with time and frequency axes placed by the tick policy `aspec` shares. That is the whole of Phase 3's data path but none of its speed: the transform is one blocking pass over the file, so a large capture is slow to appear. The GUI still needs progressive tiles and zoom from Phase 3, the min/max pyramid from Phase 2, editing from Phase 5, and the detailed spectrum window from Phase 6. The `argand-edit` crate does not exist yet.
+Phase 0 is now complete: `crates/app` holds the `argand` binary, a GPUI window with configuration and session state behind it, restoring what the toolkit reports. The application now also opens a signal file — by argument, by menu, by drag and drop, or from a remembered list — analyses it on a thread of its own, and draws the spectrogram with time and frequency axes placed by the tick policy `aspec` shares. A sparse preview now precedes sequential refinement of both panels, with cancellation on replacement requests. The GUI still needs zoom from Phase 3, the min/max pyramid from Phase 2, editing from Phase 5, and the detailed spectrum window from Phase 6. The `argand-edit` crate does not exist yet.
 
 Dependencies are pinned in `Cargo.lock`. The repository does not track `vendor/`. For local offline builds, fetch dependencies in advance with `cargo fetch --locked`, then build with `cargo build --frozen`.
 
@@ -27,7 +27,7 @@ Dependencies are pinned in `Cargo.lock`. The repository does not track `vendor/`
 | 0 | Scaffold and application shell | ✅ An empty window runs and reads configuration; built on all three operating systems |
 | 1 | Data model and file loading | ✅ Complete in `argand-core` and `argand-io` |
 | 2 | Waveform | Fast time-domain navigation and zooming |
-| 3 | Spectrogram | ✅ Complete in `argand-dsp`; the GUI draws one, but in one blocking pass and without zoom |
+| 3 | Spectrogram | ✅ Complete in `argand-dsp`; the GUI previews and refines both panels; zoom remains deferred |
 | 4 | I/Q correctness | ✅ Complete and covered by tests |
 | 5 | Selection and editing | Cut, copy, paste, and undo comparable to ocenaudio |
 | 6 | Detailed spectrum window | Deep analysis of a selection in a separate window |
