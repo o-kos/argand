@@ -37,7 +37,7 @@ are unavailable and their integration criteria cannot be completed in this incre
 - [x] Implement and persist a bounded draggable panel separator.
 - [x] Test transient preservation, alignment, channel visibility and restored panel layout.
 - [x] Update the changelog and architectural status.
-- [ ] Complete the local gate, release build and external review.
+- [x] Complete the local gate, release build and external review.
 - [x] Verify native rendering and dragging with a current release binary.
 - [ ] ⚠️ Integrate progressive refinement after #29 and synchronized navigation after #30.
 
@@ -48,7 +48,7 @@ are unavailable and their integration criteria cannot be completed in this incre
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] Native GPU checks for real and complex captures, narrow windows, themes and DPI
-- [ ] External review using GPT-5.6 Sol with High reasoning effort
+- [x] External review using GPT-5.6 Sol with High reasoning effort
 
 ## Post-completion
 
@@ -61,7 +61,8 @@ Move this plan to `completed/` only when the remaining dependency criteria are f
   including a one-sample burst and the final capture sample.
 - GPU-backed headless Wayland checks cover real and complex captures, dark and
   light themes, 300- and 640-pixel windows, and 100%, 125% and 200% display scale.
-- Native pointer dragging saves the split. After restarting, the waveform area
+- Native multi-step pointer dragging saves the split on normal window close.
+  After restarting, the waveform area
   is pixel-identical to the adjusted layout in both themes.
 - Native Windows/macOS rendering remains unverified.
 
@@ -73,5 +74,11 @@ Move this plan to `completed/` only when the remaining dependency criteria are f
 - Accepted: splitter motion could start a full analysis for an intermediate
   height. Coalesce requests during the gesture and ask once from the final
   layout after mouse-up; retain the displayed pair throughout the drag.
-- No findings declined. The follow-up review is pending.
+- No findings declined. The focused follow-up review found both defects closed
+  and no substantive regressions.
 - Snap adjusted panel boundaries to device pixels, including fractional DPI.
+
+- Final native checks confirm no analysis completes during a multi-step splitter
+  gesture and exactly one completes after mouse-up, in both themes.
+- Final native checks include identical I/Q samples and adjusted panel proportions
+  restored at 125% and 200% DPI.
