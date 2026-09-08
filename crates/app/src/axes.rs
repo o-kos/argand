@@ -18,6 +18,8 @@ use gpui::{App, Bounds, Font, FontId, Hsla, Pixels, Point, Size, Window, fill, p
 
 /// Room between a label and whatever it labels.
 const LABEL_PAD: f32 = 6.0;
+/// Space between the complete axis layout and adjacent panels or window edges.
+const OUTER_PAD: f32 = 8.0;
 /// How far a tick's mark reaches out of the plot.
 const TICK_LEN: f32 = 3.0;
 /// The size the labels are drawn at.
@@ -93,12 +95,10 @@ impl Frame {
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
 
-        // Half a label's ink: the room a mark centred on the end of an axis
-        // needs beyond that end.
-        let rise = (measure.digit_height(LABEL_SIZE) / 2.0).round();
-        // The caption heads the frequency labels, and the time labels sit in a
-        // row of their own; each takes a whole label's ink and the gap by it.
-        let head = 2.0 * rise + LABEL_PAD;
+        // Reserve whole text rows, not just numeric ink: the unit and time
+        // labels must clear adjacent panels even when the font has descenders.
+        let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
+        let head = OUTER_PAD + row_height + LABEL_PAD;
         let foot = head;
         // Every candidate is measured, because which of two strings needs more
         // room is a question about glyphs and not about characters. The
@@ -117,15 +117,17 @@ impl Frame {
         // the width left between them is itself a whole number of device
         // pixels.
         let scale = if scale > 0.0 { scale } else { 1.0 };
-        let snap = |value: f32| (value * scale).round() / scale;
-        // Snap inward so fractional DPI cannot take room from the labels.
-        let right = ((f32::from(panel.width) - gutter) * scale).floor() / scale;
-        let top = snap(head);
+        let ceil = |value: f32| (value * scale).ceil() / scale;
+        let floor = |value: f32| (value * scale).floor() / scale;
+        // Snap inward to preserve both label space and the outside margins.
+        let left = ceil(OUTER_PAD);
+        let right = floor(f32::from(panel.width) - OUTER_PAD - gutter);
+        let top = ceil(head);
         let plot = Rect {
-            x: 0.0,
+            x: left,
             y: top,
-            width: right,
-            height: snap(f32::from(panel.height) - foot) - top,
+            width: right - left,
+            height: floor(f32::from(panel.height) - foot) - top,
         };
         if plot.width < 1.0 || plot.height < 1.0 {
             return None;
@@ -145,24 +147,22 @@ impl Frame {
                 },
                 &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).after_tick(LABEL_PAD),
             ),
-            // Stacked in the gutter, running upwards: offset 0 is the lowest
-            // frequency, at the bottom. Below it is the time-label row, which
-            // a label may reach into; above it is the caption, which it may
-            // not.
+            // Frequency ink stays within the plot height, clear of both the
+            // unit above and the time-label row below.
             frequency: axis::ticks(
                 AxisKind::Frequency,
                 Axis {
                     length: plot.height as i64,
                     min: f0,
                     max: f1,
-                    lead: rise as i64,
-                    trail: -(head as i64),
+                    lead: -(LABEL_PAD as i64),
+                    trail: -(LABEL_PAD as i64),
                 },
                 &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down),
             ),
             caption,
-            time_row: plot.bottom() + LABEL_PAD + rise,
-            caption_row: plot.y - LABEL_PAD - rise,
+            time_row: plot.bottom() + LABEL_PAD + row_height / 2.0,
+            caption_row: plot.y - LABEL_PAD - row_height / 2.0,
         })
     }
 }

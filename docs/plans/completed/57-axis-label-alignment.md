@@ -54,3 +54,11 @@ Move the frequency scale to the right, align numeric ink vertically with ticks, 
 - Round the right plot edge inward to retain the complete label bounds at fractional scales
 - No findings declined; focused follow-up review confirmed the fix with no substantive findings
 - Fresh release also checked at 125% DPI with six-decimal frequency labels and hour-scale time labels
+
+## Owner feedback: spacing around the scales
+
+- [x] Reserve 8 logical pixels around the complete plot-and-axis layout
+- [x] Reserve full text rows for the unit and time labels and keep frequency labels within the plot height
+- [x] Add a regression test for adjacent panel clearance at ordinary and fractional DPI
+- [ ] Repeat the local gate, release build and native rendering checks
+- [ ] Complete focused external review of the spacing refinement

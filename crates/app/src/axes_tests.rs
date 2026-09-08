@@ -33,7 +33,7 @@ fn the_picture_gets_what_the_labels_leave() {
         "a {widest} pixel label does not fit in a {} pixel gutter",
         1200.0 - frame.plot.right()
     );
-    assert_eq!(frame.plot.x, 0.0);
+    assert!(frame.plot.x >= OUTER_PAD);
     assert!(frame.plot.right() < 1200.0);
     assert!(
         frame.plot.y + frame.plot.height < 800.0,
@@ -205,5 +205,33 @@ fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
             let end = frame.plot.right() + LABEL_PAD + WideDigits.width(&tick.label, LABEL_SIZE);
             assert!(end <= width, "{} ends at {end} beyond {width}px at {scale}x", tick.label);
         }
+    }
+}
+
+#[test]
+fn axis_labels_clear_adjacent_panels_and_the_window_edges() {
+    for scale in [1.0, 1.25, 1.5, 2.0] {
+        let extents = Extents { seconds: (0.0, 30.456), hertz: (-12_000.0, 12_000.0) };
+        let frame = Frame::measure(panel(300.0, 240.0), scale, extents, &DejaVuSans)
+            .expect("the panel holds a plot and its labels");
+        assert_axis_bands_fit(&frame, 300.0, 240.0);
+    }
+}
+
+fn assert_axis_bands_fit(frame: &Frame, width: f32, height: f32) {
+    let half_line = LINE_HEIGHT / 2.0;
+    assert!(frame.plot.x >= 8.0);
+    assert!(frame.caption_row - half_line >= 8.0, "caption touches the waveform panel");
+    assert!(frame.caption_row + half_line < frame.plot.y);
+    assert!(frame.time_row - half_line > frame.plot.bottom());
+    assert!(frame.time_row + half_line <= height - 8.0, "time labels touch the status bar");
+    let half_ink = DejaVuSans.digit_height(LABEL_SIZE) / 2.0;
+    assert!(!frame.frequency.is_empty());
+    for tick in &frame.frequency {
+        let center = frame.plot.bottom() - tick.offset as f32 + 0.5;
+        assert!(center - half_ink >= frame.plot.y);
+        assert!(center + half_ink <= frame.plot.bottom(), "frequency label enters the time row");
+        let right = frame.plot.right() + LABEL_PAD + DejaVuSans.width(&tick.label, LABEL_SIZE);
+        assert!(right <= width - 8.0);
     }
 }

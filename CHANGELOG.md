@@ -58,6 +58,10 @@ promise applies to.
 
 ### Changed
 
+- The GUI frequency scale sits on the right with vertically centered labels,
+  and time labels follow their ticks. Separate label rows and logical-pixel
+  margins keep the scales clear of the waveform panel, status bar and window edges.
+
 - The window title is centred, normal client-decorated windows have subtle rounded
   corners, and the waveform placeholder stays 3 rem (normally 48 logical pixels) high. The legacy
   `panels.waveform_fraction` setting is still accepted but no longer controls it.
