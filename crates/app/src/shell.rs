@@ -781,12 +781,12 @@ impl Shell {
         let known = self.plot;
         let request_due = self.panel_resize.due();
         let view = cx.entity().downgrade();
+        let separator_color = cx.theme().border;
         let colors = axes::Colors {
             // Over the picture rather than beside it, so it is drawn to be
             // read through: an opaque line hides a column of the spectrogram,
             // and a column is what a person is looking at.
             grid: cx.theme().border.opacity(0.55),
-            border: cx.theme().border,
             tick: cx.theme().muted_foreground,
             label: cx.theme().muted_foreground,
         };
@@ -821,7 +821,7 @@ impl Shell {
                         origin: bounds.origin + point(px(frame.plot.x), px(height - 1.0)),
                         size: size(px(frame.plot.width), px(1.0)),
                     },
-                    colors.border,
+                    separator_color,
                 ));
                 // The picture first, then the marks over it: a grid line is
                 // there to be read against the spectrogram, not under it.

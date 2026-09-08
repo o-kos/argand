@@ -305,8 +305,6 @@ impl LabelMeasure for Labels {
 pub struct Colors {
     /// Lines crossing the picture.
     pub grid: Hsla,
-    /// Boundaries between the picture and its rulers.
-    pub border: Hsla,
     /// The ticks outside it.
     pub tick: Hsla,
     pub label: Hsla,
@@ -336,23 +334,6 @@ pub fn paint(
         ));
     };
 
-    line(
-        window,
-        plot.x,
-        plot.bottom(),
-        plot.width,
-        1.0,
-        colors.border,
-    );
-    line(
-        window,
-        plot.right(),
-        plot.y,
-        1.0,
-        plot.height + 1.0,
-        colors.border,
-    );
-
     for tick in &frame.time {
         let x = plot.x + tick.offset as f32;
         line(window, x, plot.y, 1.0, plot.height, colors.grid);
@@ -379,6 +360,17 @@ pub fn paint(
             cx,
         );
     }
+
+    line(window, plot.x, plot.bottom(), plot.width, 1.0, colors.tick);
+    // Join the panel divider above the top inset and close the ruler corner below.
+    line(
+        window,
+        plot.right(),
+        -1.0,
+        1.0,
+        plot.bottom() + 2.0,
+        colors.tick,
+    );
 
     // The unit, once, above the labels it belongs to. An axis that placed no
     // label has nothing for it to head.

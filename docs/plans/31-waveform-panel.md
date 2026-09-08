@@ -139,3 +139,18 @@ Formatting, strict Clippy and all 389 tests pass, followed by a release build.
 GPU-backed dark/light screenshots confirm the divider ends at the waveform edge,
 its pixels match the status-bar border, and both ruler borders are present.
 Focused external review is clean; no findings were accepted or declined.
+
+## Owner feedback: continuous ruler outline
+
+The ruler borders use tick colour, superseding the previous theme-border choice.
+The waveform separator retains the subtler status-bar border colour.
+
+- [x] Match both ruler baselines to their tick marks.
+- [x] Extend the frequency baseline through the top inset to meet the separator with no gap.
+- [x] Validate the local gate, fresh release in both themes and multiple DPI scales, and focused external review.
+
+Formatting, strict Clippy and all 389 tests pass, followed by a fresh release build.
+GPU-backed screenshots in dark/light themes at 100%, 125% and 200% show continuous
+upper joins and lower ruler corners. Both baselines paint after grid lines so
+endpoint grid strokes cannot alter their colour. Focused external review is clean,
+with no findings accepted or declined.
