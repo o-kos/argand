@@ -25,9 +25,9 @@ The current GUI hardcodes MAX on both axes. The progressive analyzer compacts co
 
 ## Implementation steps
 
-- [ ] Add linear-power reduction to plain and progressive DSP paths, including analytic correctness tests.
-- [ ] Add a live GUI menu and configurable initial aggregation, using existing cancellation and image retirement.
-- [ ] Update CLI help, user documentation, changelog and architectural context.
+- [x] Add linear-power reduction to plain and progressive DSP paths, including analytic correctness tests.
+- [x] Add a live GUI menu and configurable initial aggregation, using existing cancellation and image retirement.
+- [x] Update CLI help, user documentation, changelog and architectural context.
 - [ ] Compare source and 1 GB repeated m39 with identical FFT/display settings; preserve recordings.
 - [ ] Complete local validation and independent read-only review.
 - [ ] Move this plan to `docs/plans/completed/` before final review.

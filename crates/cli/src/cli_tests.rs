@@ -226,3 +226,13 @@ fn an_input_file_is_required() {
     assert!(Args::try_parse_from(["aspec"]).is_err());
     assert_eq!(parse(&["x.wav"]).inputs, [PathBuf::from("x.wav")]);
 }
+
+
+#[test]
+fn mean_power_is_explicit_and_legacy_mean_keeps_its_spelling() {
+    for name in argand_dsp::REDUCE_NAMES {
+        let args = Args::try_parse_from(["aspec", "x.wav", "--reduce", name]).unwrap();
+        assert_eq!(args.reduce.as_str(), name);
+    }
+    assert_eq!("average".parse::<Reduce>().unwrap(), Reduce::Mean);
+}

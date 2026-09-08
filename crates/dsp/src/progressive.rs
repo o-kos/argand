@@ -93,7 +93,7 @@ impl Refinement {
                 }
                 frames
             });
-        let plan = Plan::new(&request.cfg, &meta, request.height);
+        let plan = Plan::new(&request.cfg, &meta, request.height, request.reduce);
         Ok(Self {
             store: ColumnStore::new(request.width, request.height, request.reduce),
             power: vec![0.0; plan.bins],
@@ -197,7 +197,7 @@ impl Refinement {
     }
 
     fn partial(&self) -> Partial {
-        let mut partial = Partial::new(self.plan.bins, self.plan.fft_size);
+        let mut partial = self.plan.partial();
         if matches!(self.request.reduce, Reduce::Max) {
             partial.row_values = RowValues::Amplitude;
         }
@@ -433,13 +433,15 @@ impl SnapshotCache {
                 continue;
             }
             let start = column * store.height;
-            let source = &store.values[start..start + store.height];
             let target = &mut self.values[start..start + store.height];
-            for (dst, &value) in target.iter_mut().zip(source) {
+            for (row, dst) in target.iter_mut().enumerate() {
                 *dst = match store.reduce {
-                    Reduce::Max => 20.0 * value.max(MAG_FLOOR).log10(),
-                    Reduce::Mean if store.counts[column] > 1 => value / store.counts[column] as f32,
-                    Reduce::Mean => value,
+                    Reduce::MeanPower => store.mean_power_db(column, row),
+                    Reduce::Max => 20.0 * store.values[start + row].max(MAG_FLOOR).log10(),
+                    Reduce::Mean if store.counts[column] > 1 => {
+                        store.values[start + row] / store.counts[column] as f32
+                    }
+                    Reduce::Mean => store.values[start + row],
                 };
             }
         }
@@ -478,7 +480,7 @@ mod cache_tests {
 
     #[test]
     fn cached_columns_match_full_rendering_after_updates_and_scale_changes() {
-        for reduce in [Reduce::Max, Reduce::Mean] {
+        for reduce in [Reduce::Max, Reduce::Mean, Reduce::MeanPower] {
             check_updates(reduce);
         }
     }

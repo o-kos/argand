@@ -7,7 +7,7 @@ fn progressive_final_matches_plain_analysis_in_both_domains_and_reducers() {
         };
         values[FFT * 3 + 27] = 0.95;
         *values.last_mut().unwrap() = -0.8;
-        for reduce in [Reduce::Max, Reduce::Mean] {
+        for reduce in [Reduce::Max, Reduce::Mean, Reduce::MeanPower] {
             for width in [1, 7, 128, 257] {
                 assert_progressive_matches(domain, reduce, width, &values);
             }
@@ -196,7 +196,7 @@ fn scheduling_preserves_fft_counts_psd_waveform_and_both_reducers() {
 }
 
 fn check_scheduling_options(domain: Domain, values: &[f32]) {
-    for reduce in [Reduce::Max, Reduce::Mean] {
+    for reduce in [Reduce::Max, Reduce::Mean, Reduce::MeanPower] {
         for batch in [1, 16, 256, 1024, 4096] {
             assert_progressive_options_match(
                 domain,

@@ -687,3 +687,6 @@ fn shading_a_grid_that_does_not_cover_its_shape_draws_nothing() {
 }
 
 include!("progressive_tests.rs");
+
+#[path = "aggregation_tests.rs"]
+mod aggregation;
