@@ -122,3 +122,27 @@ fn a_grid_whose_shape_does_not_fit_its_values_answers_nothing() {
     assert_eq!(short.shape(), None);
     assert_eq!(short.column(3), None);
 }
+
+#[test]
+fn waveform_pixels_merge_channels_join_steps_and_clip_at_full_scale() {
+    let mut envelope = WaveformEnvelope::new(3, 2);
+    envelope.min = vec![-0.8, 0.2, 0.9, 0.9, -2.0, -2.0];
+    envelope.max = vec![-0.4, 0.6, 0.9, 0.9, -2.0, -2.0];
+    assert_eq!(
+        envelope.pixel_spans(3, 10, 1.0).collect::<Vec<_>>(),
+        vec![Some((-8, 6)), Some((6, 9)), Some((-10, 6))]
+    );
+}
+
+#[test]
+fn real_waveform_pixels_resample_columns_and_round_like_the_cli() {
+    let mut envelope = WaveformEnvelope::new(2, 1);
+    envelope.min = vec![0.25, -0.25];
+    envelope.max = envelope.min.clone();
+    assert_eq!(
+        envelope.pixel_spans(4, 10, 1.0).collect::<Vec<_>>(),
+        vec![Some((3, 3)), Some((3, 3)), Some((-3, 3)), Some((-3, -3))]
+    );
+    assert_eq!(envelope.pixel_spans(0, 10, 1.0).count(), 0);
+    assert_eq!(WaveformEnvelope::new(0, 1).pixel_spans(1, 10, 1.0).next(), Some(None));
+}

@@ -498,8 +498,15 @@ impl Shell {
             .file
             .as_ref()
             .and_then(|file| file.document.analysis())
-            .and_then(|analysis| analysis.waveform.clone())
-            .map(|envelope| Arc::new(waveform::Waveform { envelope }));
+            .and_then(|analysis| {
+                Some(Arc::new(waveform::Waveform {
+                    envelope: analysis.waveform.clone()?,
+                    full_scale: self
+                        .config
+                        .dynamic_range
+                        .waveform_full_scale(analysis.time_peak),
+                }))
+            });
         let fresh = self
             .file
             .as_ref()
@@ -807,7 +814,6 @@ impl Shell {
                 let spectrum_origin = bounds.origin + point(px(0.0), px(height));
                 if let Some(waveform) = &waveform {
                     waveform.paint(&frame, bounds.origin, height, window);
-                    waveform::paint_legend(waveform, bounds.origin, &labels, window, cx);
                 }
                 waveform::paint_axes(&frame, bounds.origin, height, colors, window);
                 window.paint_quad(gpui::fill(

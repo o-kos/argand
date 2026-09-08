@@ -5,13 +5,13 @@ Tracks [Issue #31](https://github.com/o-kos/argand/issues/31).
 ## Overview
 
 Replace the waveform placeholder with a linear time-domain envelope above the
-spectrogram. Preserve transients, distinguish I and Q in one track, and remember
+spectrogram. Preserve transients, merge I and Q in one track, and remember
 the user-adjusted panel split.
 
 ## Context
 
 The DSP already computes a channel-separated `WaveformEnvelope` in the same
-sample-reading pass as the spectrogram. The GUI currently does not request it.
+sample-reading pass as the spectrogram. The GUI requests it at the spectrogram column count.
 Issues #29 and #30 are still open: progressive refinement and time navigation
 are unavailable and their integration criteria cannot be completed in this increment.
 
@@ -19,10 +19,10 @@ are unavailable and their integration criteria cannot be completed in this incre
 
 - Start at 3 rem including the separator, following the current Issue #31 and #49 requirements.
 - Use the spectrogram's exact horizontal plot geometry and request column count.
-- Keep linear amplitude values and distinguish I and Q with labelled colours.
+- Use the same merged min/max trace and linear scaling as `aspec`, without channel or amplitude labels.
 - Persist a user-adjusted panel proportion; keep the font-relative default until adjusted.
 - Retain the latest waveform and spectrogram together while a replacement is computed.
-- Compare envelope values with the shared DSP used by `aspec`; the CLI deliberately merges channel spans, so its pixels are not a two-colour GUI reference.
+- Share waveform pixel spans and amplitude scaling with `aspec`, preserving its CLI output.
 - Keep Issue #31 open until the #29/#30 integration criteria are implemented and verified.
 
 ## Rejected alternatives
@@ -33,9 +33,9 @@ are unavailable and their integration criteria cannot be completed in this incre
 ## Implementation steps
 
 - [x] Request and expose the waveform envelope alongside each spectrogram.
-- [x] Draw aligned real and I/Q traces with a labelled linear scale.
+- [x] Draw an aligned merged real/IQ trace without additional labels.
 - [x] Implement and persist a bounded draggable panel separator.
-- [x] Test transient preservation, alignment, channel visibility and restored panel layout.
+- [x] Test transient preservation, alignment, merged channel extrema and restored panel layout.
 - [x] Update the changelog and architectural status.
 - [x] Complete the local gate, release build and external review.
 - [x] Verify native rendering and dragging with a current release binary.
@@ -82,3 +82,22 @@ Move this plan to `completed/` only when the remaining dependency criteria are f
   gesture and exactly one completes after mouse-up, in both themes.
 - Final native checks include identical I/Q samples and adjusted panel proportions
   restored at 125% and 200% DPI.
+
+## Owner feedback: match the aspec waveform
+
+The owner superseded the original separate-channel and labelled-scale criteria:
+use one merged envelope, as `aspec` does, with no extra text. This also supersedes
+the first review's overlap-colour remedy; the deferred splitter request fix remains.
+
+- [x] Share channel merging, pixel rounding and adjacent-column joining through `WaveformEnvelope::pixel_spans`.
+- [x] Share default and peak-relative amplitude scaling with `aspec`.
+- [x] Remove channel colours, overlap bands, legend and amplitude caption; return their row to the trace.
+- [x] Verify unchanged CLI PNG pixels in both orientations and every range mode.
+- [x] Repeat the local gate, release build, native checks and focused external review.
+
+The merged-waveform revision passes all 389 tests, formatting and strict Clippy,
+followed by a release build. All 24 CLI PNG comparisons are pixel-identical:
+real/IQ, horizontal/vertical, default/fixed/auto range, and 0/12 dB input gain.
+GPU-backed Wayland checks confirm the unlabelled single trace in both themes,
+at 100%, 125% and 200% DPI, with the splitter gesture and restart checks passing.
+Focused external review found no substantive findings; none were declined.

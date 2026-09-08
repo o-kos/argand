@@ -333,8 +333,8 @@ The title is centred between the window edges. Normal client-decorated windows
 have subtly rounded corners. The waveform starts at 3 rem
 (normally 48 logical pixels) high, including its separator. Drag the separator
 to change the panel proportion; the application remembers it between runs.
-Real captures have one trace; I and Q share a track in distinct colours, with
-`Both` identifying their overlap. Dragging stretches the existing view and
+Real and I/Q captures use one merged min/max trace, exactly as `aspec` does,
+without an extra legend or amplitude caption. Dragging stretches the existing view and
 requests one analysis after the separator is released. The older `panels.waveform_fraction`
 setting is still accepted so existing files load, but no longer sizes this strip.
 The status bar separates container, sample format, sample rate and duration with
