@@ -73,4 +73,9 @@ no substantive findings; none were declined.
 - [x] Reduce the outside margin to 4 logical pixels
 - [x] Put the unit at the top of the right gutter alongside the actual image, removing the full-width empty band above the plot
 - [x] Reserve space below the unit in frequency tick selection and update the geometry regression test
-- [ ] Complete local checks, release build, native rendering checks and focused external review
+- [x] Complete local checks, release build, native rendering checks and focused external review
+
+The compact layout passed all 381 local tests, Clippy and formatting checks, then
+native Linux Wayland checks in both themes and at 100%, 125% and 200% DPI using
+a fresh release binary. Focused external review returned no substantive findings;
+none were declined.
