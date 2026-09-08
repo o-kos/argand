@@ -15,7 +15,7 @@ promise applies to.
 
 - A linear waveform above the GUI spectrogram, preserving short transients and
   merging I and Q into one trace, matching `aspec` without extra labels. The waveform has no grid or extra captions; both panels share the time
-  scale, and a draggable boundary without a visible line remembers their proportions between runs.
+  scale, and a subtle draggable separator ends at the waveform edge and remembers their proportions between runs. Borders separate the spectrogram from its time and frequency rulers.
 
 - Starting without a file shows links to existing recent captures, with Alt+1
   through Alt+9 for the first nine. Availability checks run in the background,

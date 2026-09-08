@@ -786,6 +786,7 @@ impl Shell {
             // read through: an opaque line hides a column of the spectrogram,
             // and a column is what a person is looking at.
             grid: cx.theme().border.opacity(0.55),
+            border: cx.theme().border,
             tick: cx.theme().muted_foreground,
             label: cx.theme().muted_foreground,
         };
@@ -815,6 +816,13 @@ impl Shell {
                 if let Some(waveform) = &waveform {
                     waveform.paint(&frame, bounds.origin, height, window);
                 }
+                window.paint_quad(gpui::fill(
+                    Bounds {
+                        origin: bounds.origin + point(px(frame.plot.x), px(height - 1.0)),
+                        size: size(px(frame.plot.width), px(1.0)),
+                    },
+                    colors.border,
+                ));
                 // The picture first, then the marks over it: a grid line is
                 // there to be read against the spectrogram, not under it.
                 if let Some(texture) = texture {

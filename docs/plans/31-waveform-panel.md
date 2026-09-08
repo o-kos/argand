@@ -17,7 +17,7 @@ are unavailable and their integration criteria cannot be completed in this incre
 
 ## Decisions
 
-- Start at 3 rem with an invisible draggable boundary, following the owner refinement of Issues #31 and #49.
+- Start at 3 rem with a subtle draggable separator limited to the waveform width, following the owner refinement of Issues #31 and #49.
 - Use the spectrogram's exact horizontal plot geometry and request column count.
 - Use the same merged min/max trace and linear scaling as `aspec`, without channel or amplitude labels.
 - Persist a user-adjusted panel proportion; keep the font-relative default until adjusted.
@@ -126,3 +126,16 @@ Dark/light GPU screenshots differ only in the removed separator row; dragging
 still changes and persists the panel height. Review found outdated separator
 wording in the Decisions section; it was accepted and corrected. The follow-up
 review is clean, with no findings declined.
+
+## Owner feedback: subtle divider and ruler borders
+
+This supersedes the previous interpretation that removed the divider entirely.
+
+- [x] Match the divider to the status-bar border colour and 1-logical-pixel thickness, ending at the waveform plot edge.
+- [x] Restore the time ruler's top border and frequency ruler's left border, using the same theme border.
+- [x] Validate the local gate, release rendering in both themes and focused external review.
+
+Formatting, strict Clippy and all 389 tests pass, followed by a release build.
+GPU-backed dark/light screenshots confirm the divider ends at the waveform edge,
+its pixels match the status-bar border, and both ruler borders are present.
+Focused external review is clean; no findings were accepted or declined.

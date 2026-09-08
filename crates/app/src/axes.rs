@@ -305,6 +305,8 @@ impl LabelMeasure for Labels {
 pub struct Colors {
     /// Lines crossing the picture.
     pub grid: Hsla,
+    /// Boundaries between the picture and its rulers.
+    pub border: Hsla,
     /// The ticks outside it.
     pub tick: Hsla,
     pub label: Hsla,
@@ -333,6 +335,23 @@ pub fn paint(
             color,
         ));
     };
+
+    line(
+        window,
+        plot.x,
+        plot.bottom(),
+        plot.width,
+        1.0,
+        colors.border,
+    );
+    line(
+        window,
+        plot.right(),
+        plot.y,
+        1.0,
+        plot.height + 1.0,
+        colors.border,
+    );
 
     for tick in &frame.time {
         let x = plot.x + tick.offset as f32;
