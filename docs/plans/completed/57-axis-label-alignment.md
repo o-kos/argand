@@ -42,7 +42,7 @@ Move the frequency scale to the right, align numeric ink vertically with ticks, 
 
 ## Validation evidence
 
-- Formatting, Clippy and all 380 local tests pass; release rebuilt afterward
+- Formatting, Clippy and all 381 local tests pass; release rebuilt afterward
 - GPU-backed Linux Wayland screenshots cover 300, 640 and 1200 pixel windows, dark/light themes, and 100%/200% DPI
 - Numeric ink was approximately 3 logical pixels above the ticks before the fix; screenshot measurements after the fix place its center within 0.5 logical pixels of the tick center at both scales
 - Native Windows/macOS rendering was not exercised
@@ -60,5 +60,10 @@ Move the frequency scale to the right, align numeric ink vertically with ticks, 
 - [x] Reserve 8 logical pixels around the complete plot-and-axis layout
 - [x] Reserve full text rows for the unit and time labels and keep frequency labels within the plot height
 - [x] Add a regression test for adjacent panel clearance at ordinary and fractional DPI
-- [ ] Repeat the local gate, release build and native rendering checks
-- [ ] Complete focused external review of the spacing refinement
+- [x] Repeat the local gate, release build and native rendering checks
+- [x] Complete focused external review of the spacing refinement
+
+Spacing validation passed on GPU-backed Linux Wayland in dark and light themes,
+at 300, 640 and 1200 pixel window widths and 100%, 125% and 200% DPI, including
+baseband, tuned and long-duration labels. The focused spacing review returned
+no substantive findings; none were declined.
