@@ -720,7 +720,9 @@ impl Plan {
                     .zip(self.window.coefficients.iter())
                     .map(|(iq, &w)| Complex32::new(iq[0] * w, iq[1] * w)),
             );
-            fft.process(&mut acc.complex);
+            acc.scratch
+                .resize(fft.get_inplace_scratch_len(), Complex32::default());
+            fft.process_with_scratch(&mut acc.complex, &mut acc.scratch);
 
             // fftshift: negative frequencies first.
             let half = self.fft_size / 2;
@@ -739,7 +741,9 @@ impl Plan {
             }
             // The transform only fails on a size mismatch, which cannot
             // happen: the buffers come from the same plan.
-            let _ = fft.process(&mut acc.real_in, &mut acc.real_out);
+            acc.scratch
+                .resize(fft.get_scratch_len(), Complex32::default());
+            let _ = fft.process_with_scratch(&mut acc.real_in, &mut acc.real_out, &mut acc.scratch);
 
             let last = self.bins - 1;
             for (i, slot) in mags.iter_mut().enumerate().take(self.bins) {
@@ -766,16 +770,27 @@ impl Plan {
                 .max(lo + 1)
                 .min(self.bins);
             let peak = mags[lo..hi].iter().fold(0.0f32, |m, v| m.max(*v));
-            acc.rows[row_base + y] = 20.0 * peak.max(MAG_FLOOR).log10();
+            acc.rows[row_base + y] = match acc.row_values {
+                RowValues::Amplitude => peak,
+                RowValues::Decibels => 20.0 * peak.max(MAG_FLOOR).log10(),
+            };
         }
         acc.cols.push(column as u32);
     }
 }
 
+#[derive(Clone, Copy)]
+enum RowValues {
+    Amplitude,
+    Decibels,
+}
+
 /// Per-thread accumulator: scratch buffers plus the frames it has finished.
 struct Partial {
     cols: Vec<u32>,
-    /// `cols.len() * out_height` dB values, low frequency first.
+    row_values: RowValues,
+    scratch: Vec<Complex32>,
+    /// `cols.len() * out_height` values, low frequency first.
     rows: Vec<f32>,
     power: Vec<f64>,
     time_peak: f32,
@@ -789,6 +804,8 @@ impl Partial {
     fn new(bins: usize, fft_size: usize) -> Self {
         Self {
             cols: Vec::new(),
+            row_values: RowValues::Decibels,
+            scratch: Vec::new(),
             rows: Vec::new(),
             power: vec![0.0; bins],
             time_peak: 0.0,
@@ -898,7 +915,7 @@ fn fold_column(dst: &mut [f32], src: &[f32], reduce: Reduce) {
 }
 
 /// How a decibel value becomes a colour.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Shading {
     pub colormap: Colormap,
     pub db_min: f32,
@@ -918,25 +935,32 @@ pub struct Shading {
 /// empty image. [`analyze`] cannot build one, because it sets the shape and
 /// the values together.
 pub fn shade(grid: &DbGrid, shading: Shading) -> SpectrogramImage {
+    let Some((width, height)) = grid.shape() else {
+        return SpectrogramImage::new(0, 0);
+    };
+
+    let mut image = SpectrogramImage::new(width, height);
+    shade_columns(grid, shading, &mut image, 0..width);
+    image
+}
+
+fn shade_columns(
+    grid: &DbGrid,
+    shading: Shading,
+    image: &mut SpectrogramImage,
+    columns: impl Iterator<Item = usize>,
+) {
     let Shading {
         colormap,
         db_min,
         db_max,
     } = shading;
-    let Some((width, height)) = grid.shape() else {
-        return SpectrogramImage::new(0, 0);
-    };
-
+    let height = grid.height;
     let gradient = colormap.gradient();
     let span = (db_max - db_min).max(1e-6);
-    let mut image = SpectrogramImage::new(width, height);
-
-    for x in 0..width {
-        // The shape holds, so the values cover `width * height` and this
-        // column is inside them.
+    for x in columns {
         let column = &grid.values[x * height..(x + 1) * height];
         for y in 0..height {
-            // Row 0 is the top of the image, which is the highest frequency.
             let value = column[height - 1 - y];
             let normalized = if value.is_finite() {
                 (value - db_min) / span
@@ -946,14 +970,12 @@ pub fn shade(grid: &DbGrid, shading: Shading) -> SpectrogramImage {
             image.put(x, y, gradient[gradient_index(normalized)]);
         }
     }
-
     image.t0 = grid.t0;
     image.t1 = grid.t1;
     image.f0 = grid.f0;
     image.f1 = grid.f1;
     image.db_min = db_min;
     image.db_max = db_max;
-    image
 }
 
 #[cfg(test)]

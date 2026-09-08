@@ -39,6 +39,12 @@ fn assert_progressive_matches(domain: Domain, reduce: Reduce, width: usize, valu
                 preview.psd.peak(100_000.0).unwrap().bin,
                 plain.psd.peak(100_000.0).unwrap().bin
             );
+            let shading = Shading {
+                colormap: request.colormap,
+                db_min: preview.spectrogram.db_min,
+                db_max: preview.spectrogram.db_max,
+            };
+            assert_eq!(preview.spectrogram.rgba, shade(&preview.db, shading).rgba);
             previews += 1;
             Flow::Continue
         },

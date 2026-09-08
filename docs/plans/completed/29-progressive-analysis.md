@@ -106,3 +106,35 @@ Removed the moving refinement line from both panels. Sequential refinement and
 status-bar progress remain; the owner will assess the picture without the overlay.
 Wait for owner acceptance of #29 before resuming #32.
 The focused review of this removal found no substantive issues.
+
+## Full-pass performance follow-up
+
+The owner authorized fixing the measured full-pass overhead before reconsidering
+display-width-limited spectral sampling. Retain every FFT frame, Max/Mean semantics,
+progressive snapshots, cancellation, and the current eight-worker limit.
+
+- [x] Defer Max row logarithms until column reduction and reuse FFT scratch buffers.
+- [x] Cache grid values and colours, refreshing changed columns and invalidating colours when the scale changes.
+- [x] Verify intermediate and final output against uncached rendering and ordinary analysis.
+- [x] Repeat the full gate, release measurements on m39 at four/eight workers, and native inspection.
+- [x] Complete external review and present the Draft iteration for owner acceptance.
+
+The follow-up passes formatting, Clippy and all 402 tests. The 1 GB m39 final
+f32 dB grid is byte-identical to the pre-optimization result. In sequential
+release DSP measurements outside the sandbox at 1214x662, four workers changed
+from 12.672 s to 10.578 s and eight from 12.585 s to 9.613 s. All 976,559 frames
+and intermediate snapshots remain enabled. These individual measurements depend
+on host load and output dimensions; they are not a timing guarantee. A rebuilt
+1280x800 GPU window completed the same recording in 8.019 s on eight available
+CPUs, with the preview and final image inspected. GUI affinity also constrains
+rendering threads, so it is not the same experiment as changing only the DSP pool.
+The cache still clones owned grids/images for delivery and uploads whole textures;
+this iteration avoids repeated DSP/logarithm/colour work, not all copy/upload cost.
+
+External review accepted one coverage finding: the first cache test changed its
+shading between updates and did not independently exercise selective recolouring.
+A dedicated fixed-shading test now checks an updated column, its empty followers,
+and an unchanged control column against a full render. No findings were declined.
+
+The focused follow-up review confirmed the coverage finding resolved and found no
+remaining substantive issues. The final round was clean.

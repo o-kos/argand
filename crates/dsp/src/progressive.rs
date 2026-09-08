@@ -36,6 +36,7 @@ struct Refinement {
     envelope: Option<EnvelopeBuilder>,
     time_peak: f32,
     preview_frames: Vec<u64>,
+    cache: SnapshotCache,
 }
 
 impl Refinement {
@@ -72,6 +73,7 @@ impl Refinement {
             plan,
             columns,
             preview_frames,
+            cache: SnapshotCache::new(request.width, request.height),
             frames: 0,
             time_peak: 0.0,
         })
@@ -79,6 +81,9 @@ impl Refinement {
 
     fn absorb(&mut self, partial: &Partial) {
         self.store.absorb(partial, self.request.height);
+        for &column in &partial.cols {
+            self.cache.dirty[column as usize] = true;
+        }
         for (slot, add) in self.power.iter_mut().zip(&partial.power) {
             *slot += add;
         }
@@ -146,28 +151,34 @@ impl Refinement {
             .zip(samples.par_chunks_exact(frame_len))
             .with_min_len(16)
             .fold(
-                || Partial::new(self.plan.bins, self.plan.fft_size),
+                || self.partial(),
                 |mut acc, (&frame, samples)| {
                     self.plan.frame(samples, &mut acc, self.columns.of(frame));
                     acc
                 },
             )
-            .reduce(
-                || Partial::new(self.plan.bins, self.plan.fft_size),
-                Partial::merge,
-            );
+            .reduce(|| self.partial(), Partial::merge);
         self.absorb(&partial);
         tracing::trace!(?reading, transform = ?(started.elapsed() - reading), frames = frames.len(), "preview batch");
         Ok(())
     }
 
-    fn snapshot(&self, frozen: Option<&DisplayScale>) -> Analysis {
+    fn partial(&self) -> Partial {
+        let mut partial = Partial::new(self.plan.bins, self.plan.fft_size);
+        if matches!(self.request.reduce, Reduce::Max) {
+            partial.row_values = RowValues::Amplitude;
+        }
+        partial
+    }
+
+    fn snapshot(&mut self, frozen: Option<&DisplayScale>) -> Analysis {
+        self.cache.refresh(&self.store);
         let request = self.request;
         let (f0, f1) = self.meta.frequency_span();
         let db = DbGrid {
             width: request.width,
             height: request.height,
-            values: self.store.clone().finish(),
+            values: self.cache.values.clone(),
             t0: request.range.start as f64 / self.meta.sample_rate,
             t1: request.range.end() as f64 / self.meta.sample_rate,
             f0,
@@ -191,8 +202,9 @@ impl Refinement {
                 &resolved
             }
         };
+        self.cache.shade(&db, scale.shading);
         Analysis {
-            spectrogram: shade(&db, scale.shading),
+            spectrogram: self.cache.image.clone(),
             db,
             psd,
             waveform: finish_envelope(self.envelope.clone(), request.range, self.meta.sample_rate),
@@ -216,7 +228,7 @@ impl Refinement {
                     .is_err()
             })
             .fold(
-                || Partial::new(self.plan.bins, cfg.fft_size),
+                || self.partial(),
                 |mut acc, k| {
                     let start = k * cfg.hop * channels;
                     self.plan.frame(
@@ -227,10 +239,7 @@ impl Refinement {
                     acc
                 },
             )
-            .reduce(
-                || Partial::new(self.plan.bins, cfg.fft_size),
-                Partial::merge,
-            );
+            .reduce(|| self.partial(), Partial::merge);
         self.absorb(&partial);
     }
 }
@@ -346,4 +355,170 @@ pub fn analyze_progressive(
     state.time_peak = state.time_peak.max(block.peak);
     continuing(control)?;
     Ok(state.snapshot(None))
+}
+
+struct SnapshotCache {
+    values: Vec<f32>,
+    dirty: Vec<bool>,
+    image: SpectrogramImage,
+    shading: Option<Shading>,
+}
+
+impl SnapshotCache {
+    fn new(width: usize, height: usize) -> Self {
+        Self {
+            values: vec![f32::NEG_INFINITY; width * height],
+            dirty: vec![true; width],
+            image: SpectrogramImage::new(width, height),
+            shading: None,
+        }
+    }
+
+    fn refresh(&mut self, store: &ColumnStore) {
+        for column in 0..store.width {
+            if store.counts[column] == 0 {
+                self.fill_gap(column, store.height);
+                continue;
+            }
+            if !self.dirty[column] {
+                continue;
+            }
+            let start = column * store.height;
+            let source = &store.values[start..start + store.height];
+            let target = &mut self.values[start..start + store.height];
+            for (dst, &value) in target.iter_mut().zip(source) {
+                *dst = match store.reduce {
+                    Reduce::Max => 20.0 * value.max(MAG_FLOOR).log10(),
+                    Reduce::Mean if store.counts[column] > 1 => value / store.counts[column] as f32,
+                    Reduce::Mean => value,
+                };
+            }
+        }
+    }
+
+    fn fill_gap(&mut self, column: usize, height: usize) {
+        if column == 0 || !self.dirty[column - 1] {
+            return;
+        }
+        self.dirty[column] = true;
+        let (left, right) = self.values.split_at_mut(column * height);
+        right[..height].copy_from_slice(&left[(column - 1) * height..]);
+    }
+
+    fn shade(&mut self, grid: &DbGrid, shading: Shading) {
+        if self.shading != Some(shading) {
+            self.dirty.fill(true);
+        }
+        shade_columns(
+            grid,
+            shading,
+            &mut self.image,
+            self.dirty
+                .iter()
+                .enumerate()
+                .filter_map(|(column, &dirty)| dirty.then_some(column)),
+        );
+        self.shading = Some(shading);
+        self.dirty.fill(false);
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    #[test]
+    fn cached_columns_match_full_rendering_after_updates_and_scale_changes() {
+        for reduce in [Reduce::Max, Reduce::Mean] {
+            check_updates(reduce);
+        }
+    }
+
+    #[test]
+    fn fixed_scale_refreshes_changed_columns_and_gaps_without_touching_other_columns() {
+        let mut store = ColumnStore::new(5, 2, Reduce::Max);
+        let mut cache = SnapshotCache::new(5, 2);
+        let mut partial = Partial::new(2, 2);
+        partial.cols = vec![0, 4];
+        partial.rows = vec![0.01, 0.02, 0.5, 0.7];
+        store.absorb(&partial, 2);
+        cache.refresh(&store);
+        let mut grid = DbGrid {
+            width: 5,
+            height: 2,
+            values: cache.values.clone(),
+            t0: 0.0,
+            t1: 1.0,
+            f0: 0.0,
+            f1: 1.0,
+        };
+        let shading = Shading {
+            colormap: Colormap::Oceanic,
+            db_min: -80.0,
+            db_max: 0.0,
+        };
+        cache.shade(&grid, shading);
+        let before = cache.image.clone();
+        partial.cols = vec![0];
+        partial.rows = vec![0.1, 0.2];
+        store.absorb(&partial, 2);
+        cache.dirty[0] = true;
+        cache.refresh(&store);
+        assert_eq!(cache.dirty, vec![true, true, true, true, false]);
+        grid.values.clone_from(&cache.values);
+        cache.shade(&grid, shading);
+        assert_eq!(cache.image.rgba, shade(&grid, shading).rgba);
+        for y in 0..2 {
+            assert_ne!(cache.image.get(0, y), before.get(0, y));
+            assert_eq!(cache.image.get(3, y), cache.image.get(0, y));
+            assert_eq!(cache.image.get(4, y), before.get(4, y));
+        }
+    }
+
+    fn check_updates(reduce: Reduce) {
+        let mut store = ColumnStore::new(7, 3, reduce);
+        let mut cache = SnapshotCache::new(7, 3);
+        for (column, value) in [(0, 0.1), (4, 0.3), (0, 0.8), (2, 0.5), (4, 0.9)] {
+            let mut partial = Partial::new(3, 4);
+            partial.cols.push(column);
+            partial.rows = vec![value, value * 0.5, 0.0];
+            if matches!(reduce, Reduce::Mean) {
+                for v in &mut partial.rows {
+                    *v = 20.0 * v.max(MAG_FLOOR).log10();
+                }
+            }
+            store.absorb(&partial, 3);
+            cache.dirty[column as usize] = true;
+            cache.refresh(&store);
+            let mut values = store.clone().finish();
+            if matches!(reduce, Reduce::Max) {
+                for v in &mut values {
+                    *v = 20.0 * v.max(MAG_FLOOR).log10();
+                }
+            }
+            assert_eq!(cache.values, values);
+            let grid = DbGrid {
+                width: 7,
+                height: 3,
+                values,
+                t0: 1.0,
+                t1: 9.0,
+                f0: -7.0,
+                f1: 7.0,
+            };
+            for colormap in [Colormap::Oceanic, Colormap::Grayscale] {
+                for db_min in [-100.0, -50.0, -50.0] {
+                    let shading = Shading {
+                        colormap,
+                        db_min,
+                        db_max: 0.0,
+                    };
+                    cache.shade(&grid, shading);
+                    assert_eq!(cache.image.rgba, shade(&grid, shading).rgba);
+                    assert_eq!((cache.image.t0, cache.image.t1), (1.0, 9.0));
+                    assert!(cache.dirty.iter().all(|dirty| !dirty));
+                }
+            }
+        }
+    }
 }

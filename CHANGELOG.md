@@ -66,6 +66,8 @@ promise applies to.
 
 ### Changed
 
+- Reduce full-pass spectrogram overhead by reusing FFT scratch buffers and updating only changed display columns during refinement.
+
 - The GUI frequency scale sits on the right with vertically centered labels,
   and time labels follow their ticks. The frequency unit sits inside the right
   gutter beside the image, while a separate time row and 4-logical-pixel outer
