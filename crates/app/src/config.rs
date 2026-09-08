@@ -46,7 +46,7 @@ pub struct Config {
     pub dynamic_range: DynamicRange,
     pub stft: Stft,
     /// Legacy panel proportions, accepted for configuration compatibility.
-    /// The current waveform placeholder has a fixed height of 3 rem (normally 48 logical pixels).
+    /// The waveform starts at 3 rem; its adjusted split belongs to session state.
     pub panels: Panels,
 }
 
@@ -121,7 +121,7 @@ where
 }
 
 /// Legacy panel proportions retained so existing configuration files still load.
-/// They no longer size the fixed-height waveform placeholder.
+/// They no longer size the waveform panel.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Panels {
@@ -237,8 +237,7 @@ impl Config {
             reduce: Reduce::Max,
             colormap: self.color_scheme,
             dynamic_range: self.dynamic_range,
-            // No waveform panel yet.
-            waveform_columns: None,
+            waveform_columns: Some(width),
         }
     }
 

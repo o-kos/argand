@@ -708,10 +708,7 @@ pub struct PlotInput<'a> {
 /// fills 90% of the half-height, and the shape the strip exists to show
 /// disappears into a solid band.
 pub fn waveform_full_scale(time_peak: f32, dynamic_range: DynamicRange) -> f32 {
-    match dynamic_range {
-        DynamicRange::Default => 1.0,
-        DynamicRange::Fixed(_) | DynamicRange::Auto => time_peak.max(1e-6),
-    }
+    dynamic_range.waveform_full_scale(time_peak)
 }
 
 /// Whether an axis draws its labels, or only the grid lines that go with them.
@@ -1257,38 +1254,15 @@ fn draw_waveform(
         scene.down(canvas, rect, &scene.time, Labelled::No);
     }
 
-    let full_scale = scene.input.waveform_full_scale.max(1e-6);
-    let offset = |value: f32| -> i64 {
-        let level = (value.abs() / full_scale).clamp(0.0, 1.0);
-        let distance = (level * half as f32).round() as i64;
-        if value >= 0.0 {
-            // Positive is up when time runs across, right when it runs down.
-            if horizontal { -distance } else { distance }
-        } else if horizontal {
-            distance
-        } else {
-            -distance
-        }
-    };
-
-    // I and Q are merged into one span rather than drawn as two traces. On a
-    // real capture their envelopes very nearly coincide, so the second colour
-    // ended up hidden under the first everywhere except at the extremes, and
-    // paid for that with a legend and a blend nobody could read.
-    let mut previous: Option<(i64, i64)> = None;
-    for step in 0..columns {
-        let column = (step as usize * waveform.columns) / columns.max(1) as usize;
-        let Some((mut lo, mut hi)) = merged_span(waveform, column, &offset) else {
+    for (step, span) in waveform
+        .pixel_spans(columns as usize, half, scene.input.waveform_full_scale)
+        .enumerate()
+    {
+        let Some((lo, hi)) = span else {
             continue;
         };
-        // Join to the previous column so a trace moving faster than one column
-        // per pixel reads as a line rather than a dotted scatter.
-        if let Some((prev_lo, prev_hi)) = previous {
-            lo = lo.min(prev_hi);
-            hi = hi.max(prev_lo);
-        }
-        previous = Some((lo, hi));
-
+        let (lo, hi) = if horizontal { (-hi, -lo) } else { (lo, hi) };
+        let step = step as i64;
         if horizontal {
             vline(
                 canvas,
@@ -1309,27 +1283,6 @@ fn draw_waveform(
     }
 
     frame(canvas, rect);
-}
-
-/// The column's extent across every channel, in pixels from the centre line.
-///
-/// A complex signal is one track: the strip answers "how big was the signal
-/// here", and that is the wider of I and Q, not either on its own.
-fn merged_span(
-    waveform: &WaveformEnvelope,
-    column: usize,
-    offset: &impl Fn(f32) -> i64,
-) -> Option<(i64, i64)> {
-    let mut span: Option<(i64, i64)> = None;
-    for channel in 0..waveform.channels {
-        let (min, max) = waveform.column(column, channel)?;
-        let (lo, hi) = (offset(max).min(offset(min)), offset(max).max(offset(min)));
-        span = Some(match span {
-            Some((s_lo, s_hi)) => (s_lo.min(lo), s_hi.max(hi)),
-            None => (lo, hi),
-        });
-    }
-    span
 }
 
 /// dB bounds that fit the trace with a little air around it.

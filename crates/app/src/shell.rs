@@ -32,6 +32,7 @@ use crate::document::{Document, Effect, MetadataHint, Origin, Status};
 use crate::recent::RecentFiles;
 use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
 use crate::spectrogram;
+use crate::{panels, waveform};
 
 /// What the window is called, in its title bar and to the desktop environment.
 const TITLE: &str = "argand";
@@ -253,6 +254,9 @@ struct Shell {
     /// uploaded image in the window's texture atlas until it is told to let go.
     texture: Option<Arc<RenderImage>>,
     title_drag_pending: bool,
+    waveform: Option<Arc<waveform::Waveform>>,
+    panel_bounds: Option<Bounds<Pixels>>,
+    panel_resize: panels::ResizeRequests,
     focus: FocusHandle,
     file_menu: Option<WeakEntity<PopupMenu>>,
     startup_recent: Option<RecentFiles>,
@@ -283,6 +287,9 @@ impl Shell {
             plot: None,
             texture: None,
             title_drag_pending: false,
+            waveform: None,
+            panel_bounds: None,
+            panel_resize: panels::ResizeRequests::default(),
             focus,
             file_menu: None,
             startup_recent: None,
@@ -443,7 +450,8 @@ impl Shell {
             "the plot was laid out"
         );
         self.plot = Some(plot);
-        self.ask_for_a_picture();
+        self.panel_resize.changed();
+        self.flush_resize();
         cx.notify();
     }
 
@@ -486,6 +494,19 @@ impl Shell {
 
     /// Put the newest picture on the GPU and release the one it replaces.
     fn upload(&mut self, window: &mut Window) {
+        self.waveform = self
+            .file
+            .as_ref()
+            .and_then(|file| file.document.analysis())
+            .and_then(|analysis| {
+                Some(Arc::new(waveform::Waveform {
+                    envelope: analysis.waveform.clone()?,
+                    full_scale: self
+                        .config
+                        .dynamic_range
+                        .waveform_full_scale(analysis.time_peak),
+                }))
+            });
         let fresh = self
             .file
             .as_ref()
@@ -497,6 +518,7 @@ impl Shell {
 
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
     fn release(&mut self, window: &mut Window) {
+        self.waveform = None;
         release(self.texture.take(), window);
     }
 
@@ -752,8 +774,14 @@ impl Shell {
     /// not a moment at which the entity being painted can be borrowed again.
     fn spectrogram(&self, extents: axes::Extents, cx: &mut Context<Self>) -> impl IntoElement {
         let texture = self.texture.clone();
+        let waveform = self.waveform.clone();
+        let fraction = self.session.waveform_fraction;
+        let rem = f32::from(cx.theme().font_size);
+        let known_bounds = self.panel_bounds;
         let known = self.plot;
+        let request_due = self.panel_resize.due();
         let view = cx.entity().downgrade();
+        let separator_color = cx.theme().border;
         let colors = axes::Colors {
             // Over the picture rather than beside it, so it is drawn to be
             // read through: an opaque line hides a column of the spectrogram,
@@ -767,24 +795,39 @@ impl Shell {
             move |bounds, window, cx| {
                 let scale = window.scale_factor();
                 let labels = axes::Labels::new(window);
-                let frame = axes::Frame::measure(bounds.size, scale, extents, &labels)?;
+                let height =
+                    panels::waveform_height(f32::from(bounds.size.height), rem, fraction, scale);
+                let spectrum_size = size(bounds.size.width, bounds.size.height - px(height));
+                let frame = axes::Frame::measure(spectrum_size, scale, extents, &labels)?;
                 let measured = device_size(frame.plot, scale);
-                if known != Some(measured) {
+                if known != Some(measured) || known_bounds != Some(bounds) || request_due {
                     cx.defer(move |cx| {
-                        let _ = view.update(cx, |shell, cx| shell.resize(measured, cx));
+                        let _ =
+                            view.update(cx, |shell, cx| shell.layout_panels(bounds, measured, cx));
                     });
                 }
-                Some((frame, labels))
+                Some((frame, labels, height))
             },
             move |bounds, prepainted, window, cx| {
-                let Some((frame, labels)) = prepainted else {
+                let Some((frame, labels, height)) = prepainted else {
                     return;
                 };
+                let spectrum_origin = bounds.origin + point(px(0.0), px(height));
+                if let Some(waveform) = &waveform {
+                    waveform.paint(&frame, bounds.origin, height, window);
+                }
+                window.paint_quad(gpui::fill(
+                    Bounds {
+                        origin: bounds.origin + point(px(frame.plot.x), px(height - 1.0)),
+                        size: size(px(frame.plot.width), px(1.0)),
+                    },
+                    separator_color,
+                ));
                 // The picture first, then the marks over it: a grid line is
                 // there to be read against the spectrogram, not under it.
                 if let Some(texture) = texture {
                     let plot = Bounds {
-                        origin: bounds.origin + point(px(frame.plot.x), px(frame.plot.y)),
+                        origin: spectrum_origin + point(px(frame.plot.x), px(frame.plot.y)),
                         size: size(px(frame.plot.width), px(frame.plot.height)),
                     };
                     if let Err(error) =
@@ -793,10 +836,116 @@ impl Shell {
                         tracing::warn!(%error, "cannot draw the spectrogram");
                     }
                 }
-                axes::paint(&frame, bounds.origin, &labels, colors, window, cx);
+                axes::paint(&frame, spectrum_origin, &labels, colors, window, cx);
             },
         )
         .size_full()
+    }
+
+    fn layout_panels(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        measured: PlotSize,
+        cx: &mut Context<Self>,
+    ) {
+        self.panel_bounds = Some(bounds);
+        if self.plot != Some(measured) {
+            self.resize(measured, cx);
+        }
+        self.flush_resize();
+        cx.notify();
+    }
+
+    fn flush_resize(&mut self) {
+        if self.panel_resize.due() {
+            self.panel_resize.requested();
+            self.ask_for_a_picture();
+        }
+    }
+
+    fn finish_splitter(&mut self, _: &gpui::MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if self.panel_resize.dragging {
+            self.panel_resize.dragging = false;
+            cx.notify();
+        }
+    }
+
+    fn content(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .when(!matches!(self.showing(), Showing::Plot(_)), |content| {
+                content.child(
+                    div()
+                        .h_12()
+                        .flex_shrink_0()
+                        .border_b_1()
+                        .border_color(cx.theme().border),
+                )
+            })
+            .child(self.middle(window, cx))
+    }
+
+    fn splitter(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let total = self
+            .panel_bounds
+            .map_or(0.0, |bounds| f32::from(bounds.size.height));
+        let height = panels::waveform_height(
+            total,
+            f32::from(cx.theme().font_size),
+            self.session.waveform_fraction,
+            window.scale_factor(),
+        );
+        div()
+            .id("waveform-splitter")
+            .absolute()
+            .left_0()
+            .right_0()
+            .top(px((height - 3.0).max(0.0)))
+            .h(px(5.0))
+            .cursor(gpui::CursorStyle::ResizeUpDown)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|shell, _, _, cx| {
+                    shell.panel_resize.dragging = true;
+                    cx.stop_propagation();
+                }),
+            )
+    }
+
+    fn drag_splitter(
+        &mut self,
+        event: &gpui::MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.panel_resize.dragging {
+            return;
+        }
+        if !event.dragging() {
+            self.panel_resize.dragging = false;
+            cx.notify();
+            return;
+        }
+        let Some(bounds) = self.panel_bounds else {
+            return;
+        };
+        let total = f32::from(bounds.size.height);
+        if total <= 0.0 {
+            return;
+        }
+        let requested = f32::from(event.position.y - bounds.origin.y) / total;
+        let height = panels::waveform_height(
+            total,
+            f32::from(cx.theme().font_size),
+            Some(requested.clamp(0.0, 1.0)),
+            window.scale_factor(),
+        );
+        self.session.waveform_fraction = Some(height / total);
+        self.save();
+        cx.notify();
     }
 
     /// What fills the middle of the window.
@@ -819,7 +968,10 @@ impl Shell {
         match self.showing() {
             Showing::Plot(extents) => div()
                 .flex_1()
+                .min_h_0()
+                .relative()
                 .child(self.spectrogram(extents, cx))
+                .child(self.splitter(window, cx))
                 .into_any_element(),
             // A file that has not said what it is yet has no axes to draw and
             // no picture to draw them around; the status bar reports it.
@@ -1024,6 +1176,9 @@ impl Render for Shell {
             } else {
                 "Shell"
             })
+            .on_mouse_move(cx.listener(Self::drag_splitter))
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))
+            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_splitter))
             .on_action(cx.listener(Self::open_recent))
             .on_action(|_: &FocusNext, window, _| window.focus_next())
             .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
@@ -1035,23 +1190,7 @@ impl Render for Shell {
                 }
             }))
             .child(self.title_bar(corners, window, cx))
-            .child(
-                // Two status-row heights: 3 rem, or 48 logical pixels with the default font.
-                // The waveform itself arrives in #31.
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .h_12()
-                            .flex_shrink_0()
-                            .border_b_1()
-                            .border_color(cx.theme().border),
-                    )
-                    .child(self.middle(window, cx)),
-            )
+            .child(self.content(window, cx))
             .child(
                 div()
                     .flex()

@@ -20,8 +20,8 @@ Two binaries share one core. `aspec` is a command line tool that renders a
 signal file's spectrogram to a PNG, with a waveform strip above it. `argand` is
 the graphical application: it opens a capture -- by argument, from its menu, by
 drag and drop, or from the files it remembers -- analyses it on a thread of its
-own, and shows the spectrogram with time and frequency axes. It is early: no
-waveform panel, no zoom, no selection, no editing yet, and the transform is a
+own, and shows a linear waveform above the spectrogram on the same time scale, with
+time and frequency marks around the spectrogram. It is early: no zoom, no selection, no editing yet, and the transform is a
 single pass over the whole file, so a large capture takes a while to appear.
 
 Neither binary is a throwaway. The domain model, the readers and the transforms
@@ -330,8 +330,12 @@ the binary first and from the platform configuration directory second, and a
 missing or malformed one costs a log line rather than the application.
 
 The title is centred between the window edges. Normal client-decorated windows
-have subtly rounded corners, and the reserved waveform strip stays 3 rem
-(normally 48 logical pixels) high, including its separator. The older `panels.waveform_fraction`
+have subtly rounded corners. The waveform starts at 3 rem
+(normally 48 logical pixels) high, with a subtle separator ending at the waveform’s right edge. Ruler borders match their tick marks; the frequency border joins the separator. Drag the boundary
+to change the panel proportion; the application remembers it between runs.
+Real and I/Q captures use one merged min/max trace, exactly as `aspec` does,
+without grid lines, a zero-axis line, a legend or an amplitude caption. Dragging stretches the existing view and
+requests one analysis after the separator is released. The older `panels.waveform_fraction`
 setting is still accepted so existing files load, but no longer sizes this strip.
 The status bar separates container, sample format, sample rate and duration with
 vertical rules. Hints show a heading, current value and optional smaller explanation

@@ -34,6 +34,42 @@ fn capture(dir: &TempDir) -> PathBuf {
     )
 }
 
+#[test]
+fn waveform_preserves_each_channel_and_short_bursts_in_the_shared_columns() {
+    let dir = TempDir::new("waveform-bursts");
+    let mut values = vec![0.0; SAMPLES * 2];
+    values[65 * 2] = 0.75;
+    values[65 * 2 + 1] = -0.25;
+    values[(SAMPLES - 1) * 2 + 1] = 0.5;
+    let path = write_wav(
+        &dir.join("bursts.wav"),
+        SampleType::new(Domain::Iq, SampleFormat::F32),
+        RATE as u32,
+        &values,
+        1.0,
+    );
+    let (analyst, updates) = open(path, OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    let mut request = request();
+    request.waveform_columns = Some(request.width);
+    assert!(analyst.request(request));
+    let Some(Update::Ready { analysis, .. }) = next_result(&updates) else {
+        panic!("analysis should finish");
+    };
+    let waveform = analysis.waveform.as_ref().expect("requested envelope");
+    assert_eq!(waveform.columns, analysis.spectrogram.width);
+    assert_eq!(waveform.t0, analysis.spectrogram.t0);
+    assert_eq!(waveform.t1, analysis.spectrogram.t1);
+    for column in 0..64 {
+        for channel in 0..2 {
+            let samples = (column * 64..(column + 1) * 64).map(|sample| values[sample * 2 + channel]);
+            let low = samples.clone().fold(f32::INFINITY, f32::min);
+            let high = samples.fold(f32::NEG_INFINITY, f32::max);
+            assert_eq!(waveform.column(column, channel), Some((low, high)));
+        }
+    }
+}
+
 /// The next update, or `None` once the thread has stopped.
 ///
 /// Nothing here can wait for ever: the thread owns the only sender, so the

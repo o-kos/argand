@@ -101,6 +101,14 @@ pub enum DynamicRange {
 }
 
 impl DynamicRange {
+    /// Linear amplitude at the waveform edge, using the time-domain peak.
+    pub fn waveform_full_scale(self, time_peak: f32) -> f32 {
+        match self {
+            Self::Default => 1.0,
+            Self::Fixed(_) | Self::Auto => time_peak.max(1e-6),
+        }
+    }
+
     pub const fn mode(self) -> &'static str {
         match self {
             Self::Default => "default",

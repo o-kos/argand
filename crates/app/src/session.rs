@@ -72,15 +72,15 @@ pub const RECENT_LIMIT: usize = 10;
 /// whatever that version was recording. The number goes up whenever the layout
 /// gains something, so that an older binary sees a number it does not know and
 /// leaves the file rather than quietly rewriting it without what it could not
-/// read. Version 2 added the recent list.
-pub const VERSION: u32 = 2;
+/// read. Version 2 added the recent list; version 3 adds the panel split.
+pub const VERSION: u32 = 3;
 
 /// Every layout this program can read, oldest first.
 ///
 /// An older file is read into the current shape and written back at
 /// [`VERSION`]: each version so far only added fields, so what is missing has
 /// a default and nothing has to be converted.
-const READABLE: [u32; 2] = [1, VERSION];
+const READABLE: [u32; 3] = [1, 2, VERSION];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -288,6 +288,9 @@ pub fn recent_labels(recent: &[Recent]) -> Vec<String> {
 /// Everything one run hands to the next.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
+    /// User-adjusted waveform share; absence preserves the 3-rem default.
+    #[serde(default)]
+    pub waveform_fraction: Option<f32>,
     /// Layout of this file, checked before anything in it is believed.
     pub version: u32,
     pub geometry: Option<Geometry>,
@@ -301,6 +304,7 @@ impl Default for Session {
     fn default() -> Self {
         Self {
             version: VERSION,
+            waveform_fraction: None,
             geometry: None,
             window_state: WindowState::default(),
             recent: Vec::new(),
@@ -369,6 +373,9 @@ impl Session {
             Ok(session) => Restored {
                 session: Self {
                     version: VERSION,
+                    waveform_fraction: session
+                        .waveform_fraction
+                        .filter(|value| value.is_finite() && (0.0..=1.0).contains(value)),
                     ..session
                 },
                 writable: true,

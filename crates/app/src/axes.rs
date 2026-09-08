@@ -361,6 +361,17 @@ pub fn paint(
         );
     }
 
+    line(window, plot.x, plot.bottom(), plot.width, 1.0, colors.tick);
+    // Join the panel divider above the top inset and close the ruler corner below.
+    line(
+        window,
+        plot.right(),
+        -1.0,
+        1.0,
+        plot.bottom() + 2.0,
+        colors.tick,
+    );
+
     // The unit, once, above the labels it belongs to. An axis that placed no
     // label has nothing for it to head.
     if let Some(caption) = frame.caption.filter(|_| !frame.frequency.is_empty()) {

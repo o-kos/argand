@@ -169,6 +169,43 @@ impl WaveformEnvelope {
         Some((*self.min.get(i)?, *self.max.get(i)?))
     }
 
+    /// Merged channel spans in pixel offsets from zero, with positive values up.
+    /// Adjacent spans are joined so sparse traces remain continuous. Front ends
+    /// choose the time direction and translate these offsets into their canvas.
+    pub fn pixel_spans(
+        &self,
+        columns: usize,
+        half: i64,
+        full_scale: f32,
+    ) -> impl Iterator<Item = Option<(i64, i64)>> + '_ {
+        let full_scale = full_scale.max(1e-6);
+        let offset = move |value: f32| {
+            let level = (value.abs() / full_scale).clamp(0.0, 1.0);
+            let distance = (level * half as f32).round() as i64;
+            if value >= 0.0 { distance } else { -distance }
+        };
+        let mut previous: Option<(i64, i64)> = None;
+        (0..columns).map(move |step| {
+            let column = step * self.columns / columns.max(1);
+            let mut span: Option<(i64, i64)> = None;
+            for channel in 0..self.channels {
+                let (min, max) = self.column(column, channel)?;
+                let (lo, hi) = (offset(min).min(offset(max)), offset(min).max(offset(max)));
+                span = Some(match span {
+                    Some((s_lo, s_hi)) => (s_lo.min(lo), s_hi.max(hi)),
+                    None => (lo, hi),
+                });
+            }
+            let (mut lo, mut hi) = span?;
+            if let Some((prev_lo, prev_hi)) = previous {
+                lo = lo.min(prev_hi);
+                hi = hi.max(prev_lo);
+            }
+            previous = Some((lo, hi));
+            previous
+        })
+    }
+
     /// Largest excursion from zero anywhere in the envelope.
     pub fn peak(&self) -> f32 {
         self.min
