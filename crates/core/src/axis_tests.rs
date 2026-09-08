@@ -522,3 +522,27 @@ fn a_value_too_small_for_its_unit_prints_as_a_bare_zero() {
     assert_eq!(hertz_unit(0.0, 12.6e6).format(12_579_887.0), "12.579887");
     assert_eq!(hertz_unit(0.0, 2.4e9).format(2_400_000_000.0), "2.4");
 }
+
+#[test]
+fn start_anchored_labels_use_their_full_width_for_edges_and_spacing() {
+    let text = DejaVuSans;
+    let labels = across(&text).after_tick(6.0);
+    for (min, max) in [(0.0, 60.0), (590.0, 650.0), (3500.0, 7500.0)] {
+        for length in [80, 200, 600, 1200] {
+            let axis = Axis { lead: 0, trail: 0, ..axis(length, min, max) };
+            let marks = ticks(AxisKind::Time, axis, &labels);
+            assert!(!marks.is_empty());
+            for tick in &marks {
+                let end = tick.offset as f64 + 6.0 + labels.extent(&tick.label);
+                assert!(end <= (length - 1) as f64, "{length}px: {tick:?}");
+            }
+            for pair in marks.windows(2) {
+                let clear = (pair[1].offset - pair[0].offset) as f64 - labels.extent(&pair[0].label);
+                assert!(clear >= labels.gap());
+            }
+            if min == 0.0 {
+                assert_eq!(marks[0].offset, 0);
+            }
+        }
+    }
+}

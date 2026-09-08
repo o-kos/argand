@@ -86,14 +86,32 @@ pub struct LabelMetrics<'a> {
     measure: &'a dyn LabelMeasure,
     size: f32,
     run: LabelRun,
+    start_offset: Option<f32>,
 }
 
 impl<'a> LabelMetrics<'a> {
     pub fn new(measure: &'a dyn LabelMeasure, size: f32, run: LabelRun) -> Self {
-        Self { measure, size, run }
+        Self {
+            measure,
+            size,
+            run,
+            start_offset: None,
+        }
     }
 
-    /// Ink the label occupies along the axis, centred on its tick.
+    /// Place labels after their tick in the increasing-offset direction.
+    /// `gap` is the distance from the tick to the start of the label.
+    pub fn after_tick(mut self, gap: f32) -> Self {
+        self.start_offset = Some(gap);
+        self
+    }
+
+    fn bounds(&self, offset: f64, extent: f64) -> (f64, f64) {
+        let start = offset + self.start_offset.map_or(-extent / 2.0, f64::from);
+        (start, start + extent)
+    }
+
+    /// Ink the label occupies along the axis.
     fn extent(&self, label: &str) -> f64 {
         match self.run {
             LabelRun::Across => f64::from(self.measure.width(label, self.size)),
@@ -202,7 +220,8 @@ pub fn widest_labels(kind: AxisKind, min: f64, max: f64) -> Vec<String> {
 /// A tick with the ink its label puts on the axis.
 struct Placed {
     tick: Tick,
-    extent: f64,
+    start: f64,
+    end: f64,
 }
 
 /// Every round multiple of `step` inside the axis, minus the outermost labels
@@ -249,13 +268,15 @@ fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Ve
         let offset = ((value - axis.min) * scale)
             .round()
             .clamp(0.0, (axis.length - 1) as f64);
+        let (start, end) = labels.bounds(offset, extent);
         placed.push(Placed {
             tick: Tick {
                 value,
                 label,
                 offset: offset as i64,
             },
-            extent,
+            start,
+            end,
         });
     }
 
@@ -274,10 +295,7 @@ fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Ve
 
     let lo = -(axis.lead as f64);
     let hi = (axis.length - 1 + axis.trail) as f64;
-    placed.retain(|p| {
-        let centre = p.tick.offset as f64;
-        centre - p.extent / 2.0 >= lo && centre + p.extent / 2.0 <= hi
-    });
+    placed.retain(|p| p.start >= lo && p.end <= hi);
     placed
 }
 
@@ -304,8 +322,7 @@ fn escape(value: f64, axis: Axis) -> f64 {
 fn readable(placed: &[Placed], gap: f64) -> bool {
     placed.windows(2).all(|pair| {
         let (a, b) = (&pair[0], &pair[1]);
-        a.tick.label != b.tick.label
-            && (b.tick.offset - a.tick.offset) as f64 >= (a.extent + b.extent) / 2.0 + gap
+        a.tick.label != b.tick.label && b.start - a.end >= gap
     })
 }
 
