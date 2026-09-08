@@ -157,5 +157,7 @@ are compared with fresh full renderings, including empty followers and scale cha
 
 Review corrections: add separate display revisions; describe CPU image-preparation
 cost accurately in the timing hint; bound sparse preview work independently of the
-cache and remove stale splitter documentation. Native measurements are complete. The follow-up review is pending; its final result
-will be recorded before owner acceptance.
+cache and remove stale splitter documentation. All 427 tests, formatting and strict Clippy pass, and the release was rebuilt after
+the gate. All three review findings were accepted and addressed; none were discarded.
+The follow-up review is clean and checked the final headline measurements against
+the raw summary. Platform/empirical limits remain as listed above.

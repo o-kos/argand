@@ -34,7 +34,7 @@ The worker currently cancels and reruns analysis for each image size. Screen-siz
 - [x] Verify cache boundary arithmetic, both signal domains/reducers, cancellation and resizing during refinement.
 - [x] Measure baseline/current native resize and initial load behavior, including memory and UI timer observations.
 - [x] Document resolution, performance and unverified conditions; update architectural context.
-- [ ] Complete independent review and move the plan to `docs/plans/completed/`.
+- [x] Complete independent review and move the plan to `docs/plans/completed/`.
 
 ## Validation
 
@@ -43,10 +43,12 @@ The worker currently cancels and reruns analysis for each image size. Screen-siz
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked` after checks
 - [x] Repeated real GPU comparisons with the retained 1 GB recording and short real/IQ fixtures
-- [ ] Independent read-only GPT-5.6 Sol High review, iterated until clean
+- [x] Independent read-only GPT-5.6 Sol High review, iterated until clean
 
 ## Post-completion
 
 Keep the PR Draft for owner feedback. Integration follows acceptance and full CI of the parent stack.
 
-Measurements and numerical limits: [report](../performance/74-resize-cache.md). All 427 tests pass.
+Measurements and numerical limits: [report](../../performance/74-resize-cache.md). All 427 tests pass.
+
+Independent review: three findings accepted and addressed; none discarded. The follow-up code review is clean and checked the final measurements against the raw summary.
