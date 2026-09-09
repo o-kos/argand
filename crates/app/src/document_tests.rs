@@ -297,14 +297,14 @@ fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
     document.apply(Update::Opened(meta(), FileInfo { bytes: Some(192044), sample_units: Some((3276.8, 0.0)) }));
     let field = document.file_summary().unwrap();
     assert_eq!(field.value, "wav · iq i16 · 24 kHz · 2s");
-    assert!(field.hint.value.contains("I/Q pairs: 48000"));
-    assert!(field.hint.value.contains("File size: 192044 bytes"));
+    assert!(field.hint.value.contains("I/Q pairs: 48,000"));
+    assert!(field.hint.value.contains("File size: 187.54 KiB · 192,044 B"));
     assert!(field.hint.value.contains("awaiting complete analysis"));
     let mut result = analysis(2);
     result.waveform = Some(argand_core::WaveformEnvelope { columns: 2, channels: 2,
         min: vec![-5.0, -2.5, 0.0, 0.0], max: vec![1.25, 0.625, 0.0, 0.0], t0: 0.0, t1: 2.0 });
     document.apply(Update::Ready { analysis: result, elapsed: Duration::from_secs(1) });
     let hint = document.file_summary().unwrap().hint.value;
-    assert!(hint.contains("I minimum / maximum: -16384 / 4096"), "{hint}");
-    assert!(hint.contains("Q minimum / maximum: -8192 / 2048"), "{hint}");
+    assert!(hint.contains("I min / max: −16,384 / 4,096"), "{hint}");
+    assert!(hint.contains("Q min / max: −8,192 / 2,048"), "{hint}");
 }

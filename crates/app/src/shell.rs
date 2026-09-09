@@ -46,7 +46,7 @@ const TITLE: &str = "argand";
 /// Reverse-DNS identifier desktop environments group windows by.
 const APP_ID: &str = "io.github.o_kos.argand";
 
-actions!(shell, [FocusNext, FocusPrevious, ChooseFile]);
+actions!(shell, [FocusNext, FocusPrevious, ChooseFile, EditAnalysis]);
 
 #[derive(Clone, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = shell, no_json)]
@@ -63,6 +63,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
         .with_assets(gpui_component_assets::Assets)
         .run(move |cx| {
             gpui_component::init(cx);
+            settings_ui::init(cx);
             cx.bind_keys([
                 KeyBinding::new("tab", FocusNext, Some("Shell")),
                 KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
@@ -227,10 +228,10 @@ struct Shell {
     /// analysis request built below.
     config: Config,
     settings: Settings,
-    settings_open: bool,
+    settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
+    analysis_hovered: bool,
     settings_error: Option<String>,
-    expanded_setting: Option<&'static str>,
-    settings_focus: FocusHandle,
+
     /// Absent when the platform offers nowhere to keep state, or when the file
     /// there was written by a version this one must not overwrite. Either way
     /// the window simply does not remember itself.
@@ -297,10 +298,10 @@ impl Shell {
         let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
             settings,
-            settings_open: false,
+            settings_window: None,
+            analysis_hovered: false,
             settings_error: None,
-            expanded_setting: None,
-            settings_focus: cx.focus_handle(),
+
             config,
             writer,
             session: saved,
@@ -329,8 +330,6 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         tracing::info!(path = %origin.path.display(), "opening");
-        self.settings_open = false;
-        self.expanded_setting = None;
         self.settings_error = None;
         self.recent_updates = None;
         self.startup_recent = None;
@@ -627,10 +626,16 @@ impl Shell {
                 let _ = window.update(cx, Self::choose_file);
             });
         });
+        cx.on_action(move |_: &EditAnalysis, cx| {
+            cx.defer(move |cx| {
+                let _ = window.update(cx, |shell, window, cx| {
+                    shell.edit_analysis(&EditAnalysis, window, cx)
+                });
+            });
+        });
     }
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings_open = false;
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
         }
@@ -1242,6 +1247,7 @@ impl Render for Shell {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_splitter))
             .on_action(cx.listener(Self::open_recent))
+            .on_action(cx.listener(Self::edit_analysis))
             .on_action(|_: &FocusNext, window, _| window.focus_next())
             .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
             // A capture dropped anywhere on the window opens, which is where a
@@ -1323,6 +1329,33 @@ fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui::App) -> 
 
 fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
     Tooltip::element(move |window, cx| {
+        if !hint.rows.is_empty() {
+            return div()
+                .w(px(330.).min(window.viewport_size().width - px(48.)))
+                .py_1()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .mb_1()
+                        .child(hint.title),
+                )
+                .children(hint.rows.iter().map(|(label, value)| {
+                    settings_ui::detail_row(label.clone(), value.clone(), cx)
+                }))
+                .child(
+                    div()
+                        .mt_1()
+                        .pt_2()
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(hint.explanation.clone()),
+                );
+        }
         // A definite content width lets wrapped lines contribute their full layout height.
         let width = metadata_hint_width(&hint, window, cx);
         div()

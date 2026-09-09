@@ -329,7 +329,7 @@ transform size and window. It is read from beside
 the binary first and from the platform configuration directory second, and a
 missing or malformed one costs a log line rather than the application.
 
-The **Aggregation** control in the status-bar analysis popup switches between **Peak (MAX)** and
+The **Aggregation** control in the analysis settings window switches between **Peak (MAX)** and
 **Mean power** while a file is open. Peak preserves the strongest value in each
 pixel's time/frequency region. Mean power averages squared spectral amplitudes
 across the bins assigned to each row and the frames assigned to each column,
@@ -408,17 +408,27 @@ and decoded original sample minima/maxima, separately for I and Q. Extrema becom
 available after the complete waveform pass; decoding precision limits their precision.
 
 FFT sizes are powers of two from 2 to 1,048,576; overlap is rounded to a whole-sample hop.
-Click the analysis group, for example `2048 · hann · 110 dB`, to adjust FFT size,
-window, overlap, aggregation, colour scheme and dynamic range. Range modes are
-absolute full scale (0 to -110 dBFS), a fixed span below the measured peak, and
-automatic. Range buttons adjust the fixed span by 1 dB; the menu offers common spans.
-An excessive span is yellow. The popup offers the same recommendation as `aspec`
-when the selected non-auto span exceeds the recommendation by at least 10 dB;
-click it to apply. Colour and range changes reuse cached values without a new FFT,
-including during refinement. Transform changes cancel obsolete work and retain
-the previous picture until a preview arrives. Style edits during that initial
-replacement interval apply to the incoming preview; the retained picture keeps
-its own transform and style until then. Invalid choices show an explanation.
+Hover over the analysis group, for example `2048 · hann · 110 dB`, for its details.
+Click it, choose **Edit settings…** in the hint, or press Ctrl+, (Cmd+, on macOS)
+to open the analysis settings window. Standard dropdowns select FFT size, window,
+aggregation and colour scheme; numeric fields edit overlap and fixed dynamic range.
+Tab and Shift+Tab move between controls, arrows navigate lists or step numbers,
+Enter confirms a choice or numeric edit, and Escape closes a list before closing
+the settings window. Numeric edits also commit when focus leaves the field.
+
+Range modes are absolute full scale (0 to -110 dBFS), a fixed span below the measured
+peak, and automatic. The effective range remains visible as a readout outside the fixed mode.
+The status text is muted and brightens on hover. Only a nonzero signal whose spectral
+peak falls in the lower half of the absolute scale produces a yellow range warning.
+A narrower recommendation by itself is not a warning; silence and peak-relative modes
+are excluded. The hover hint and settings window offer the measured recommended
+range used by `aspec`, and apply it with one action.
+
+Colour and range changes reuse cached values without a new FFT, including during
+refinement. Transform changes cancel obsolete work and retain the previous picture
+until a preview arrives. Style edits during that initial replacement interval apply
+to the incoming preview; the retained picture keeps its own transform and style
+until then. Invalid choices show an explanation.
 Effective choices persist in session version 4; configuration defaults remain untouched.
 The bar describes the displayed analysis while a replacement is pending.
 The `ready in` hint explains the latest analysis time, including sample reading

@@ -1,5 +1,10 @@
 # Status-bar analysis settings validation
 
+This report records the first implementation and its worker timing measurements.
+The final controls, hints and warning policy are documented in the
+[owner-feedback validation](32-status-settings-ux.md); screenshots and popup descriptions
+below are historical.
+
 Local validation on 2026-09-09 for #32, #61 and the range-advice portion of #62.
 The release executable was rebuilt after formatting, Clippy and all 440 tests passed.
 No lint policy was relaxed. Cross-platform native interaction is not covered by this

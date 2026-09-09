@@ -187,3 +187,55 @@ mod tests {
         assert_eq!(settings.colormap, Colormap::Inferno);
     }
 }
+
+/// Warn only when an absolute scale hides a low-level signal in its lower half.
+pub fn low_signal_recommendation(analysis: &argand_dsp::Analysis) -> Option<f32> {
+    let peak = analysis
+        .db
+        .values
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f32::NEG_INFINITY, f32::max);
+    visibility_advice(analysis.dynamic_range, peak, analysis.time_peak)
+}
+
+fn visibility_advice(
+    range: argand_dsp::DynamicRangeResult,
+    peak_db: f32,
+    time_peak: f32,
+) -> Option<f32> {
+    (range.requested == DynamicRange::Default
+        && time_peak.is_finite()
+        && time_peak > 0.0
+        && peak_db.is_finite()
+        && peak_db <= -range.effective_db / 2.0)
+        .then_some(range.recommended_db)
+}
+
+#[cfg(test)]
+mod visibility_tests {
+    use super::*;
+    #[test]
+    fn a_narrow_recommendation_does_not_make_a_normal_signal_a_warning() {
+        let range = argand_dsp::DynamicRangeResult {
+            requested: DynamicRange::Default,
+            effective_db: 110.0,
+            recommended_db: 30.0,
+        };
+        assert_eq!(visibility_advice(range, -6.0, 0.9), None);
+        assert_eq!(visibility_advice(range, -60.0, 0.002), Some(30.0));
+        assert_eq!(visibility_advice(range, -180.0, 0.0), None);
+        assert_eq!(visibility_advice(range, f32::NEG_INFINITY, 0.01), None);
+        for requested in [DynamicRange::Fixed(110.0), DynamicRange::Auto] {
+            assert_eq!(
+                visibility_advice(
+                    argand_dsp::DynamicRangeResult { requested, ..range },
+                    -60.0,
+                    0.002
+                ),
+                None
+            );
+        }
+    }
+}

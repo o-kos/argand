@@ -14,11 +14,11 @@ promise applies to.
 ### Added
 
 - Two compact status-bar groups: combined file details with sample count, file size
-  and sample extrema, and an interactive analysis popup. Adjust FFT, window,
+  and sample extrema, and analysis controls. Adjust FFT, window,
   overlap, aggregation, colours and display range; settings survive restarts.
   Colour/range changes reuse analysis, and a yellow range offers a clickable recommendation.
 
-- Select Peak (MAX) or Mean power from the GUI analysis popup. The new mean
+- Select Peak (MAX) or Mean power from the GUI analysis settings window. The new mean
   averages squared spectral amplitudes across time and frequency before conversion
   to dB, and is also available as `aspec --reduce mean-power`. The existing CLI
   `mean` keeps its dB averaging behavior. The top-level `aggregation` configuration
@@ -82,6 +82,8 @@ promise applies to.
   right-hand title-bar area no longer starts a resize when the window is expanded.
 
 ### Changed
+
+- File details use aligned hint rows; FFT details appear on hover with muted status text. Analysis settings use standard dropdowns and numeric fields with full keyboard access. Yellow range warnings are limited to low-level signals in the absolute display scale.
 
 - Reduce full-pass spectrogram overhead by reusing FFT scratch buffers and updating only changed display columns during refinement.
 
