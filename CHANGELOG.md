@@ -65,6 +65,12 @@ promise applies to.
 
 ### Fixed
 
+- Resizing the GUI window or dragging its panel separator reuses a bounded
+  spectral overview instead of restarting complete file analysis. Refinement
+  continues during resizing, and status timing and colour levels remain stable.
+  Cached cell overlap preserves peaks and weights mean power before shading;
+  detail within a cache cell is limited by the documented overview resolution.
+
 - Replacing a spectrogram during resize no longer destroys its GPU texture
   while a preceding frame can still be using it, which could freeze the window.
 - Resize cursors return to the normal pointer inside the window, and the

@@ -264,7 +264,7 @@ fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
     let hint = document.status().hint().unwrap();
     assert_eq!(hint.title, "Analysis time");
     assert_eq!(hint.value, "1.250 s");
-    assert!(hint.explanation.contains("excluding file opening and display"));
+    assert!(hint.explanation.contains("excluding file opening and window drawing"));
     document.apply(Update::Progress { done: 1, total: 40 });
     assert!(document.status().hint().is_none());
     document.apply(Update::Failed(anyhow::anyhow!("read failed")));

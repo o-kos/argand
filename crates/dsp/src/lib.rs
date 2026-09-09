@@ -13,8 +13,9 @@ pub mod window;
 pub use stft::{
     Analysis, AnalysisRequest, Coverage, DB_FLOOR, DEFAULT_DYNAMIC_RANGE_DB, DspError,
     DynamicRange, DynamicRangeResult, Flow, MAX_RECOMMENDED_RANGE_DB, MIN_RECOMMENDED_RANGE_DB,
-    ParseDynamicRangeError, ParseEnumError, ProgressiveOptions, REDUCE_NAMES, Reduce, Shading,
-    StftConfig, analyze, analyze_progressive, analyze_progressive_with_options, shade,
+    Overview, ParseDynamicRangeError, ParseEnumError, ProgressiveOptions, REDUCE_NAMES, Reduce,
+    Shading, StftConfig, analyze, analyze_overview, analyze_progressive,
+    analyze_progressive_with_options, shade,
 };
 pub use waveform::EnvelopeBuilder;
 pub use window::{ParseWindowError, WINDOW_NAMES, Window, WindowTable};

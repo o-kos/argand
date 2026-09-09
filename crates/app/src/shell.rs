@@ -248,10 +248,8 @@ struct Shell {
     file: Option<OpenFile>,
     /// The size the plot was last laid out at.
     ///
-    /// It arrives from the layout rather than being computed here, and it is
-    /// what a request is sized to, so a window resized to twice the width is
-    /// answered with twice the columns rather than with the same picture
-    /// stretched.
+    /// Layout sizes the display request. The worker rebins its retained
+    /// overview without restarting analysis when only these dimensions change.
     plot: Option<PlotSize>,
     /// The picture currently on the GPU.
     ///
@@ -262,7 +260,7 @@ struct Shell {
     title_drag_pending: bool,
     waveform: Option<Arc<waveform::Waveform>>,
     panel_bounds: Option<Bounds<Pixels>>,
-    panel_resize: panels::ResizeRequests,
+    splitter_dragging: bool,
     focus: FocusHandle,
     open_menu: Option<WeakEntity<PopupMenu>>,
     startup_recent: Option<RecentFiles>,
@@ -297,7 +295,7 @@ impl Shell {
             title_drag_pending: false,
             waveform: None,
             panel_bounds: None,
-            panel_resize: panels::ResizeRequests::default(),
+            splitter_dragging: false,
             focus,
             open_menu: None,
             startup_recent: None,
@@ -474,8 +472,7 @@ impl Shell {
             "the plot was laid out"
         );
         self.plot = Some(plot);
-        self.panel_resize.changed();
-        self.flush_resize();
+        self.ask_for_a_picture();
         cx.notify();
     }
 
@@ -858,7 +855,6 @@ impl Shell {
         let rem = f32::from(cx.theme().font_size);
         let known_bounds = self.panel_bounds;
         let known = self.plot;
-        let request_due = self.panel_resize.due();
         let view = cx.entity().downgrade();
         let separator_color = cx.theme().border;
         let colors = axes::Colors {
@@ -879,7 +875,7 @@ impl Shell {
                 let spectrum_size = size(bounds.size.width, bounds.size.height - px(height));
                 let frame = axes::Frame::measure(spectrum_size, scale, extents, &labels)?;
                 let measured = device_size(frame.plot, scale);
-                if known != Some(measured) || known_bounds != Some(bounds) || request_due {
+                if known != Some(measured) || known_bounds != Some(bounds) {
                     cx.defer(move |cx| {
                         let _ =
                             view.update(cx, |shell, cx| shell.layout_panels(bounds, measured, cx));
@@ -935,20 +931,12 @@ impl Shell {
         if self.plot != Some(measured) {
             self.resize(measured, cx);
         }
-        self.flush_resize();
         cx.notify();
     }
 
-    fn flush_resize(&mut self) {
-        if self.panel_resize.due() {
-            self.panel_resize.requested();
-            self.ask_for_a_picture();
-        }
-    }
-
     fn finish_splitter(&mut self, _: &gpui::MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
-        if self.panel_resize.dragging {
-            self.panel_resize.dragging = false;
+        if self.splitter_dragging {
+            self.splitter_dragging = false;
             cx.notify();
         }
     }
@@ -992,7 +980,7 @@ impl Shell {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|shell, _, _, cx| {
-                    shell.panel_resize.dragging = true;
+                    shell.splitter_dragging = true;
                     cx.stop_propagation();
                 }),
             )
@@ -1004,11 +992,11 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.panel_resize.dragging {
+        if !self.splitter_dragging {
             return;
         }
         if !event.dragging() {
-            self.panel_resize.dragging = false;
+            self.splitter_dragging = false;
             cx.notify();
             return;
         }

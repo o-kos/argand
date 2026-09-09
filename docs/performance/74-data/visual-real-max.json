@@ -1,0 +1,9 @@
+{
+  "name": "real",
+  "mode": "max",
+  "gpu": [
+    "/dev/dri/renderD128"
+  ],
+  "analysis_passes": 1,
+  "new_cached_views": 2
+}

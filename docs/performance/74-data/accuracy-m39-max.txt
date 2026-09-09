@@ -1,0 +1,9 @@
+exact_s=0.049322
+overview_s=0.052624 dimensions=(826, 1025) frames=826 exact_frames=826
+db_abs_median=0 db_abs_p95=0 db_abs_p99=0 db_abs_max=0 signed_min=0 psd_abs_max=0
+waveform_lower_conservative=true waveform_upper_conservative=true time_peak_equal=true
+render=1236x562 seconds=0.010746 frames=826
+render=1036x562 seconds=0.009144 frames=826
+render=1236x662 seconds=0.011535 frames=826
+render=1636x812 seconds=0.020802 frames=826
+render=5000x1200 seconds=0.091145 frames=826

@@ -1,0 +1,9 @@
+exact_s=7.147663
+overview_s=8.412562 dimensions=(4096, 1025) frames=976559 exact_frames=976559
+db_abs_median=0.17669296 db_abs_p95=0.73173904 db_abs_p99=1.3142166 db_abs_max=7.2925644 signed_min=-3.7616806 psd_abs_max=0
+waveform_lower_conservative=true waveform_upper_conservative=true time_peak_equal=true
+render=1236x562 seconds=0.012608 frames=976559
+render=1036x562 seconds=0.010897 frames=976559
+render=1236x662 seconds=0.019134 frames=976559
+render=1636x812 seconds=0.031351 frames=976559
+render=5000x1200 seconds=0.113204 frames=976559

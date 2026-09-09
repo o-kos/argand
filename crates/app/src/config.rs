@@ -239,10 +239,9 @@ impl Config {
     /// The transform this configuration asks for: the whole of `meta`, drawn
     /// at `width` by `height` pixels.
     ///
-    /// Everything a picture depends on is decided here rather than in the
-    /// window, which is what lets `aspec` and this application be given the
-    /// same request and produce the same picture from it. The size is the
-    /// plot's, in device pixels, so one transform column is one screen column.
+    /// Dimensions are display pixels. The GUI worker uses a bounded overview
+    /// and rebins it to this size; ordinary DSP/CLI analysis reduces directly
+    /// to these pixel boundaries.
     pub fn analysis_request(
         &self,
         meta: &SignalMeta,

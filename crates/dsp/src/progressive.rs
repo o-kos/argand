@@ -58,7 +58,8 @@ struct DisplayScale {
     dynamic_range: DynamicRangeResult,
 }
 
-struct Refinement {
+/// Reusable, bounded full-range spectral data. Rendering never reads samples.
+pub struct Overview {
     request: AnalysisRequest,
     meta: SignalMeta,
     plan: Plan,
@@ -69,11 +70,22 @@ struct Refinement {
     envelope: Option<EnvelopeBuilder>,
     time_peak: f32,
     preview_frames: Vec<u64>,
-    cache: SnapshotCache,
+    cache: Option<SnapshotCache>,
+    display_scale: Option<DisplayScale>,
+    view_cache: Option<overview::RenderCache>,
+    dirty: Vec<bool>,
 }
 
-impl Refinement {
-    fn new(meta: SignalMeta, mut request: AnalysisRequest) -> Result<Self, DspError> {
+impl Overview {
+    fn new(meta: SignalMeta, request: AnalysisRequest) -> Result<Self, DspError> {
+        Self::with_cache(meta, request, true)
+    }
+
+    fn with_cache(
+        meta: SignalMeta,
+        mut request: AnalysisRequest,
+        pixel_cache: bool,
+    ) -> Result<Self, DspError> {
         check_request(&request)?;
         request.range = request.range.clamped_to(meta.len_samples);
         if request.range.len < request.cfg.fft_size as u64 {
@@ -106,7 +118,10 @@ impl Refinement {
             plan,
             columns,
             preview_frames,
-            cache: SnapshotCache::new(request.width, request.height),
+            cache: pixel_cache.then(|| SnapshotCache::new(request.width, request.height)),
+            display_scale: None,
+            view_cache: None,
+            dirty: vec![true; request.width],
             frames: 0,
             time_peak: 0.0,
         })
@@ -115,7 +130,12 @@ impl Refinement {
     fn absorb(&mut self, partial: &Partial) {
         self.store.absorb(partial, self.request.height);
         for &column in &partial.cols {
-            self.cache.dirty[column as usize] = true;
+            self.dirty[column as usize] = true;
+        }
+        if let Some(cache) = &mut self.cache {
+            for &column in &partial.cols {
+                cache.dirty[column as usize] = true;
+            }
         }
         for (slot, add) in self.power.iter_mut().zip(&partial.power) {
             *slot += add;
@@ -205,13 +225,14 @@ impl Refinement {
     }
 
     fn snapshot(&mut self, frozen: Option<&DisplayScale>) -> Analysis {
-        self.cache.refresh(&self.store);
+        let cache = self.cache.as_mut().expect("pixel analysis cache");
+        cache.refresh(&self.store);
         let request = self.request;
         let (f0, f1) = self.meta.frequency_span();
         let db = DbGrid {
             width: request.width,
             height: request.height,
-            values: self.cache.values.clone(),
+            values: cache.values.clone(),
             t0: request.range.start as f64 / self.meta.sample_rate,
             t1: request.range.end() as f64 / self.meta.sample_rate,
             f0,
@@ -235,9 +256,9 @@ impl Refinement {
                 &resolved
             }
         };
-        self.cache.shade(&db, scale.shading);
+        cache.shade(&db, scale.shading);
         Analysis {
-            spectrogram: self.cache.image.clone(),
+            spectrogram: cache.image.clone(),
             db,
             psd,
             waveform: finish_envelope(self.envelope.clone(), request.range, self.meta.sample_rate),
@@ -310,32 +331,50 @@ pub fn analyze_progressive_with_options(
     publish: &mut dyn FnMut(Analysis, Coverage) -> Flow,
 ) -> Result<Analysis, DspError> {
     continuing(control)?;
-    let started = Instant::now();
-    let mut state = Refinement::new(source.meta().clone(), *request)?;
-    let planned = started.elapsed();
+    let mut state = Overview::new(source.meta().clone(), *request)?;
+    let mut frozen = None;
+    refine(
+        source,
+        &mut state,
+        options,
+        control,
+        &mut |state, coverage| {
+            let snapshot = state.snapshot(frozen.as_ref());
+            if frozen.is_none() {
+                frozen = Some(DisplayScale {
+                    shading: Shading {
+                        colormap: request.colormap,
+                        db_min: snapshot.spectrogram.db_min,
+                        db_max: snapshot.spectrogram.db_max,
+                    },
+                    dynamic_range: snapshot.dynamic_range,
+                });
+            }
+            publish(snapshot, coverage)
+        },
+    )?;
+    Ok(state.snapshot(None))
+}
+
+fn refine(
+    source: &mut dyn SampleSource,
+    state: &mut Overview,
+    options: ProgressiveOptions,
+    control: &dyn Fn() -> Flow,
+    publish: &mut dyn FnMut(&mut Overview, Coverage) -> Flow,
+) -> Result<(), DspError> {
     source.access_pattern(AccessPattern::Sparse);
     let count = state.preview_frames.len().min(FIRST_PREVIEW_FRAMES);
     let first: Vec<u64> = (0..count)
         .map(|i| state.preview_frames[i * state.preview_frames.len() / count])
         .collect();
     state.preview(source, control, &first)?;
-    let transformed = started.elapsed();
     continuing(control)?;
-    let preview = state.snapshot(None);
-    tracing::debug!(?planned, ?transformed, snapshot = ?(started.elapsed() - transformed), "preview prepared");
-    let frozen = DisplayScale {
-        shading: Shading {
-            colormap: request.colormap,
-            db_min: preview.spectrogram.db_min,
-            db_max: preview.spectrogram.db_max,
-        },
-        dynamic_range: preview.dynamic_range,
-    };
     if publish(
-        preview,
+        state,
         Coverage {
             refined_columns: 0,
-            width: request.width,
+            width: state.request.width,
         },
     ) == Flow::Stop
     {
@@ -350,7 +389,7 @@ pub fn analyze_progressive_with_options(
     if !remaining.is_empty() {
         state.preview(source, control, &remaining)?;
     }
-    let cfg = request.cfg;
+    let cfg = state.request.cfg;
     let range = state.request.range;
     source.access_pattern(AccessPattern::Sequential);
     source.seek(range.start)?;
@@ -388,12 +427,11 @@ pub fn analyze_progressive_with_options(
         block.carry(consumed.min(block.filled));
         if last_snapshot.elapsed() >= SNAPSHOT_INTERVAL && frame_base < state.columns.total_frames {
             continuing(control)?;
-            let snapshot = state.snapshot(Some(&frozen));
             let coverage = Coverage {
                 refined_columns: state.columns.of(frame_base),
-                width: request.width,
+                width: state.request.width,
             };
-            if publish(snapshot, coverage) == Flow::Stop {
+            if publish(state, coverage) == Flow::Stop {
                 return Err(DspError::Cancelled);
             }
             last_snapshot = Instant::now();
@@ -403,7 +441,7 @@ pub fn analyze_progressive_with_options(
     block.drain(state.envelope.as_mut())?;
     state.time_peak = state.time_peak.max(block.peak);
     continuing(control)?;
-    Ok(state.snapshot(None))
+    Ok(())
 }
 
 struct SnapshotCache {
@@ -612,3 +650,7 @@ mod allocation_tests {
         );
     }
 }
+
+#[path = "overview.rs"]
+mod overview;
+pub use overview::analyze_overview;
