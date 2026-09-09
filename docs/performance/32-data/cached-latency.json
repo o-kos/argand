@@ -1,0 +1,38 @@
+[
+  {
+    "kind": "palette",
+    "click_to_changed_frame_ms": 34.104,
+    "presentation_ms": 27.332,
+    "frames": 3
+  },
+  {
+    "kind": "palette",
+    "click_to_changed_frame_ms": 34.947,
+    "presentation_ms": 25.959,
+    "frames": 3
+  },
+  {
+    "kind": "palette",
+    "click_to_changed_frame_ms": 33.156,
+    "presentation_ms": 26.045,
+    "frames": 3
+  },
+  {
+    "kind": "palette",
+    "click_to_changed_frame_ms": 33.815,
+    "presentation_ms": 25.783,
+    "frames": 3
+  },
+  {
+    "kind": "palette",
+    "click_to_changed_frame_ms": 32.616,
+    "presentation_ms": 25.776,
+    "frames": 3
+  },
+  {
+    "kind": "range",
+    "click_to_changed_frame_ms": 32.596,
+    "presentation_ms": 25.62,
+    "frames": 3
+  }
+]

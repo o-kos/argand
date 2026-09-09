@@ -25,7 +25,11 @@ use gpui_component::menu::{DropdownMenu, PopupMenu, PopupMenuItem};
 use gpui_component::tooltip::Tooltip;
 use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, ThemeMode, TitleBar};
 
+use crate::settings::Settings;
 use argand_dsp::AnalysisRequest;
+
+#[path = "settings_ui.rs"]
+mod settings_ui;
 
 use crate::analysis::{Analyst, Delivery};
 use crate::axes;
@@ -198,6 +202,7 @@ struct OpenFile {
     _updates: Task<()>,
     opened_at: Instant,
     first_picture: Arc<AtomicBool>,
+    displayed_settings: Option<Settings>,
 }
 
 /// The size of the plot in device pixels, which is the size the transform is
@@ -221,6 +226,11 @@ struct Shell {
     /// The colour scheme, range mode and transform defaults go into every
     /// analysis request built below.
     config: Config,
+    settings: Settings,
+    settings_open: bool,
+    settings_error: Option<String>,
+    expanded_setting: Option<&'static str>,
+    settings_focus: FocusHandle,
     /// Absent when the platform offers nowhere to keep state, or when the file
     /// there was written by a version this one must not overwrite. Either way
     /// the window simply does not remember itself.
@@ -284,7 +294,13 @@ impl Shell {
         let focus = cx.focus_handle();
         window.focus(&focus);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
+        let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
+            settings,
+            settings_open: false,
+            settings_error: None,
+            expanded_setting: None,
+            settings_focus: cx.focus_handle(),
             config,
             writer,
             session: saved,
@@ -313,6 +329,9 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         tracing::info!(path = %origin.path.display(), "opening");
+        self.settings_open = false;
+        self.expanded_setting = None;
+        self.settings_error = None;
         self.recent_updates = None;
         self.startup_recent = None;
 
@@ -362,6 +381,7 @@ impl Shell {
             _updates: pump,
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
+            displayed_settings: None,
         });
         cx.notify();
     }
@@ -434,6 +454,9 @@ impl Shell {
             return;
         }
         let effect = file.document.apply(delivery.update);
+        if effect == Effect::Analysis {
+            file.displayed_settings = Some(self.settings);
+        }
 
         match effect {
             Effect::Opened => {
@@ -510,7 +533,10 @@ impl Shell {
     fn request(&self, document: &Document) -> Option<AnalysisRequest> {
         let meta = document.meta()?;
         let plot = self.plot?;
-        Some(self.config.analysis_request(meta, plot.width, plot.height))
+        Some(
+            self.settings
+                .analysis_request(meta, plot.width, plot.height),
+        )
     }
 
     /// Put the newest picture on the GPU and release the one it replaces.
@@ -527,9 +553,9 @@ impl Shell {
             .and_then(|analysis| {
                 Some(Arc::new(waveform::Waveform {
                     envelope: analysis.waveform.clone()?,
-                    full_scale: self
-                        .config
+                    full_scale: analysis
                         .dynamic_range
+                        .requested
                         .waveform_full_scale(waveform_peak.unwrap_or(analysis.time_peak)),
                 }))
             });
@@ -604,10 +630,12 @@ impl Shell {
     }
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings_open = false;
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
-            window.focus(&self.focus);
         }
+        window.focus(&self.focus);
+        cx.notify();
         Self::choose(&cx.entity().downgrade(), window, cx);
     }
 
@@ -651,47 +679,7 @@ impl Shell {
     /// drawn there too rather than handed to a platform menu bar that only one
     /// of the three has.
     fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .items_center()
-            .child(self.file_menu(cx))
-            .child(self.aggregation_menu(cx))
-    }
-
-    fn set_aggregation(&mut self, aggregation: Aggregation, cx: &mut Context<Self>) {
-        if self.config.aggregation == aggregation {
-            return;
-        }
-        self.config.aggregation = aggregation;
-        self.ask_for_a_picture();
-        cx.notify();
-    }
-
-    fn aggregation_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().downgrade();
-        let focus = self.focus.clone();
-        let selected = self.config.aggregation;
-        Button::new("spectrogram-menu")
-            .ghost()
-            .small()
-            .label("Spectrogram")
-            .dropdown_menu(move |mut menu, _, cx| {
-                let menu_view = cx.entity().downgrade();
-                let _ = view.update(cx, |shell, _| shell.open_menu = Some(menu_view));
-                menu = menu.action_context(focus.clone()).label("Aggregation");
-                for aggregation in Aggregation::ALL {
-                    let view = view.clone();
-                    menu = menu.item(
-                        PopupMenuItem::new(aggregation.label())
-                            .checked(aggregation == selected)
-                            .on_click(move |_, _, cx| {
-                                let _ = view
-                                    .update(cx, |shell, cx| shell.set_aggregation(aggregation, cx));
-                            }),
-                    );
-                }
-                menu
-            })
+        div().flex().items_center().child(self.file_menu(cx))
     }
 
     fn file_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1204,7 +1192,9 @@ impl Shell {
         let Some(file) = self.file.as_ref() else {
             return Showing::Nothing;
         };
-        if let Status::Failed(reason) = file.document.status() {
+        if let Status::Failed(reason) = file.document.status()
+            && file.document.analysis().is_none()
+        {
             return Showing::Failed(reason.clone());
         }
         match self.extents() {
@@ -1235,21 +1225,6 @@ impl Render for Shell {
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;
-        let summary = self
-            .file
-            .as_ref()
-            .and_then(|file| file.document.summary())
-            .unwrap_or_default();
-        let status = self.file.as_ref().map_or_else(
-            || "ready".to_owned(),
-            |file| file.document.status().message(),
-        );
-
-        let status_hint = self
-            .file
-            .as_ref()
-            .and_then(|file| file.document.status().hint());
-
         let content = div()
             .size_full()
             .flex()
@@ -1278,49 +1253,7 @@ impl Render for Shell {
             }))
             .child(self.title_bar(corners, window, cx))
             .child(self.content(window, cx))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_2()
-                    .px_2()
-                    .h_6()
-                    .flex_shrink_0()
-                    .rounded_bl(corners.bottom_left)
-                    .rounded_br(corners.bottom_right)
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().secondary)
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(div().flex().min_w_0().overflow_hidden().children(
-                        summary.into_iter().enumerate().map(|(index, field)| {
-                            div()
-                                .id(("metadata", index))
-                                .px_2()
-                                .flex_shrink_0()
-                                .when(index > 0, |field| {
-                                    field.border_l_1().border_color(cx.theme().border)
-                                })
-                                .tooltip(move |window, cx| {
-                                    metadata_tooltip(field.hint.clone()).build(window, cx)
-                                })
-                                .child(field.value)
-                        }),
-                    ))
-                    .child(
-                        div()
-                            .id("analysis-status")
-                            .flex_shrink_0()
-                            .when_some(status_hint, |status, hint| {
-                                status.tooltip(move |window, cx| {
-                                    metadata_tooltip(hint.clone()).build(window, cx)
-                                })
-                            })
-                            .child(status),
-                    ),
-            );
+            .child(self.status_bar(corners, cx));
         frame.render(content, cx)
     }
 }

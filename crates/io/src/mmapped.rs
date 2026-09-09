@@ -133,6 +133,16 @@ impl MmapSource {
 }
 
 impl SampleSource for MmapSource {
+    fn original_sample_units(&self) -> Option<(f64, f64)> {
+        let factor = 1.0 / f64::from(self.scale);
+        let offset = if self.meta.sample_type.format == argand_core::SampleFormat::U8 {
+            128.0
+        } else {
+            0.0
+        };
+        (factor.is_finite() && factor > 0.0).then_some((factor, offset))
+    }
+
     fn prefetch(&mut self, range: SampleRange) {
         #[cfg(unix)]
         {

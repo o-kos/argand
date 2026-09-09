@@ -692,3 +692,11 @@ include!("progressive_tests.rs");
 mod aggregation;
 
 include!("overview_tests.rs");
+
+#[test]
+fn range_advice_uses_the_shared_ten_decibel_threshold_and_is_absent_in_auto() {
+    assert_eq!(suggested_range_db(false, 69.9, 60.0), None);
+    assert_eq!(suggested_range_db(false, 70.0, 60.0), Some(60.0));
+    assert_eq!(suggested_range_db(true, 110.0, 60.0), None);
+    assert_eq!(suggested_range_db(false, f32::NAN, 60.0), None);
+}

@@ -13,16 +13,16 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use argand_core::{Colormap, SampleRange, SignalMeta};
-use argand_dsp::{AnalysisRequest, DynamicRange, Reduce, StftConfig, Window};
-use serde::{Deserialize, Deserializer};
+use argand_core::Colormap;
+use argand_dsp::{DynamicRange, Reduce, Window};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// The name a person looks for, beside the binary or in the configuration
 /// directory.
 pub const FILE_NAME: &str = "argand.toml";
 
 /// How the window is painted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
     #[default]
@@ -31,7 +31,7 @@ pub enum Theme {
 }
 
 /// The GUI's two spectrogram aggregation policies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Aggregation {
     #[default]
@@ -124,7 +124,7 @@ impl Default for Stft {
 /// The names come from the same `FromStr` the CLI parses with, so a colour
 /// scheme or a window function is spelled once for both front ends and cannot
 /// drift between them.
-fn parsed<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+pub(crate) fn parsed<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     T: FromStr,
@@ -140,7 +140,7 @@ where
 /// that choice is spelled by leaving `-d` out, and a file has no absent value
 /// once the key is written. Accepting the word it prints is what lets a person
 /// write back what the report showed them.
-fn dynamic_range<'de, D>(deserializer: D) -> Result<DynamicRange, D::Error>
+pub(crate) fn dynamic_range<'de, D>(deserializer: D) -> Result<DynamicRange, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -214,14 +214,22 @@ impl Config {
     /// size the FFT will refuse, a fraction outside the window. A person who
     /// wrote one of them wants the rest of their file, not the defaults for all
     /// of it, so each bad value is replaced on its own.
-    fn repaired(mut self) -> Self {
+    pub(crate) fn repaired(mut self) -> Self {
         let default = Self::default();
         self.analysis.repair();
-        if !self.stft.fft_size.is_power_of_two() || self.stft.fft_size < 2 {
+        if let DynamicRange::Fixed(value) = self.dynamic_range
+            && (!value.is_finite() || value <= 0.0)
+        {
+            self.dynamic_range = default.dynamic_range;
+        }
+
+        if !self.stft.fft_size.is_power_of_two()
+            || !(2..=crate::settings::MAX_FFT_SIZE).contains(&self.stft.fft_size)
+        {
             tracing::warn!(
                 found = self.stft.fft_size,
                 using = default.stft.fft_size,
-                "fft size must be a power of two of at least two"
+                "fft size must be a power of two from 2 to 1048576"
             );
             self.stft.fft_size = default.stft.fft_size;
         }
@@ -234,39 +242,6 @@ impl Config {
             self.panels.waveform_fraction = default.panels.waveform_fraction;
         }
         self
-    }
-
-    /// The transform this configuration asks for: the whole of `meta`, drawn
-    /// at `width` by `height` pixels.
-    ///
-    /// Dimensions are display pixels. The GUI worker uses a bounded overview
-    /// and rebins it to this size; ordinary DSP/CLI analysis reduces directly
-    /// to these pixel boundaries.
-    pub fn analysis_request(
-        &self,
-        meta: &SignalMeta,
-        width: usize,
-        height: usize,
-    ) -> AnalysisRequest {
-        let fft_size = self.stft.fft_size;
-        AnalysisRequest {
-            cfg: StftConfig {
-                fft_size,
-                // Three quarters of each transform overlaps the one before it,
-                // which is what `aspec` applies when `--hop` is left out.
-                hop: (fft_size / 4).max(1),
-                window: self.stft.window,
-            },
-            // Selections and zoom arrive with the milestones after this one,
-            // and each of them narrows this span.
-            range: SampleRange::new(0, meta.len_samples),
-            width,
-            height,
-            reduce: self.aggregation.reduce(),
-            colormap: self.color_scheme,
-            dynamic_range: self.dynamic_range,
-            waveform_columns: Some(width),
-        }
     }
 
     /// Where `argand.toml` is looked for, in the order it is looked for.

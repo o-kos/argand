@@ -150,13 +150,15 @@ impl Overview {
         control: &dyn Fn() -> Flow,
         frames: &[u64],
     ) -> Result<(), DspError> {
-        let frame_len = self.request.cfg.fft_size * self.meta.channels();
-        let batch = ((1 << 18) / frame_len).clamp(1, 64);
-        for frames in frames.chunks(batch) {
+        for frames in frames.chunks(self.preview_batch_size()) {
             continuing(control)?;
             self.preview_batch(source, control, frames)?;
         }
         Ok(())
+    }
+
+    fn preview_batch_size(&self) -> usize {
+        ((1 << 18) / (self.request.cfg.fft_size * self.meta.channels())).clamp(1, 64)
     }
 
     fn preview_batch(
@@ -338,6 +340,7 @@ pub fn analyze_progressive_with_options(
         &mut state,
         options,
         control,
+        &|| false,
         &mut |state, coverage| {
             let snapshot = state.snapshot(frozen.as_ref());
             if frozen.is_none() {
@@ -356,11 +359,38 @@ pub fn analyze_progressive_with_options(
     Ok(state.snapshot(None))
 }
 
+fn refresh_preview(
+    source: &mut dyn SampleSource,
+    state: &mut Overview,
+    remaining: &[u64],
+    control: &dyn Fn() -> Flow,
+    refresh: &dyn Fn() -> bool,
+    publish: &mut dyn FnMut(&mut Overview, Coverage) -> Flow,
+) -> Result<(), DspError> {
+    for frames in remaining.chunks(state.preview_batch_size()) {
+        continuing(control)?;
+        state.preview_batch(source, control, frames)?;
+        if refresh()
+            && publish(
+                state,
+                Coverage {
+                    refined_columns: 0,
+                    width: state.request.width,
+                },
+            ) == Flow::Stop
+        {
+            return Err(DspError::Cancelled);
+        }
+    }
+    Ok(())
+}
+
 fn refine(
     source: &mut dyn SampleSource,
     state: &mut Overview,
     options: ProgressiveOptions,
     control: &dyn Fn() -> Flow,
+    refresh: &dyn Fn() -> bool,
     publish: &mut dyn FnMut(&mut Overview, Coverage) -> Flow,
 ) -> Result<(), DspError> {
     source.access_pattern(AccessPattern::Sparse);
@@ -386,9 +416,7 @@ fn refine(
         .copied()
         .filter(|frame| first.binary_search(frame).is_err())
         .collect();
-    if !remaining.is_empty() {
-        state.preview(source, control, &remaining)?;
-    }
+    refresh_preview(source, state, &remaining, control, refresh, publish)?;
     let cfg = state.request.cfg;
     let range = state.request.range;
     source.access_pattern(AccessPattern::Sequential);
@@ -425,7 +453,9 @@ fn refine(
             }
         }
         block.carry(consumed.min(block.filled));
-        if last_snapshot.elapsed() >= SNAPSHOT_INTERVAL && frame_base < state.columns.total_frames {
+        if (refresh() || last_snapshot.elapsed() >= SNAPSHOT_INTERVAL)
+            && frame_base < state.columns.total_frames
+        {
             continuing(control)?;
             let coverage = Coverage {
                 refined_columns: state.columns.of(frame_base),
@@ -653,4 +683,4 @@ mod allocation_tests {
 
 #[path = "overview.rs"]
 mod overview;
-pub use overview::analyze_overview;
+pub use overview::{analyze_overview, analyze_overview_with_refresh};

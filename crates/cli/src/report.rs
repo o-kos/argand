@@ -481,13 +481,11 @@ impl Report {
 
 impl Report {
     fn suggested_range_db(&self) -> Option<f32> {
-        if self.stft.dynamic_range_mode == "auto" {
-            return None;
-        }
-        if self.stft.dynamic_range_db - self.stft.recommended_dynamic_range_db < 10.0 {
-            return None;
-        }
-        Some(self.stft.recommended_dynamic_range_db)
+        argand_dsp::suggested_range_db(
+            self.stft.dynamic_range_mode == "auto",
+            self.stft.dynamic_range_db,
+            self.stft.recommended_dynamic_range_db,
+        )
     }
 
     /// Suggest the measured range when the selected one is wider by at least

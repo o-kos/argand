@@ -349,3 +349,55 @@ fn decoder_level_scans_honour_a_budget_and_keep_unbudgeted_behaviour() {
     assert!((bounded.meta().divisor - 0.25 * normalize::AUTO_HEADROOM).abs() < 1e-6);
     assert!((ordinary.meta().divisor - 0.9 * normalize::AUTO_HEADROOM).abs() < 0.0001);
 }
+
+#[test]
+fn original_units_recover_integer_values_through_both_readers_and_gain() {
+    let dir = TempDir::new("original-units");
+    for (format, expected) in [
+        (SampleFormat::I16, [-16384.0, 8192.0, 4096.0]),
+        (SampleFormat::U8, [64.0, 160.0, 144.0]),
+    ] {
+        let path = write_wav(&dir.join(&format!("{format:?}.wav")),
+            SampleType::new(Domain::Real, format), 24000, &[-0.5, 0.25, 0.125], 1.0);
+        for normalize in [Normalize::None, Normalize::Auto, Normalize::Factor(8.0)] {
+            let hints = OpenHints { normalize: Some(normalize), gain_db: 6.0, ..OpenHints::default() };
+            let mmap = open(&path, &hints).unwrap();
+            let decoded = Box::new(DecodedSource::open(&path, "wav", 0.0, None, None, normalize, 6.0).unwrap());
+            for mut source in [mmap, decoded as Box<dyn SampleSource>] {
+                assert_original_values(source.as_mut(), &expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn decoder_original_units_use_the_true_24_bit_depth() {
+    let dir = TempDir::new("pcm24-units");
+    let path = dir.join("pcm24.wav");
+    let values = [-8_388_608i32, 8_388_607, 12345, -45678];
+    let mut bytes = Vec::from(*b"RIFF");
+    bytes.extend_from_slice(&48u32.to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16u32.to_le_bytes());
+    for value in [1u16, 1] { bytes.extend_from_slice(&value.to_le_bytes()); }
+    for value in [24000u32, 72000] { bytes.extend_from_slice(&value.to_le_bytes()); }
+    for value in [3u16, 24] { bytes.extend_from_slice(&value.to_le_bytes()); }
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&12u32.to_le_bytes());
+    for value in values { bytes.extend_from_slice(&value.to_le_bytes()[..3]); }
+    std::fs::write(&path, bytes).unwrap();
+    let mut source = open(&path, &OpenHints::default()).unwrap();
+    let (factor, offset) = source.original_sample_units().unwrap();
+    for (actual, expected) in drain(source.as_mut()).iter().zip(values) {
+        assert!((f64::from(*actual) * factor + offset - f64::from(expected)).abs() < 0.01);
+    }
+}
+
+fn assert_original_values(source: &mut dyn SampleSource, expected: &[f64]) {
+    let (factor, offset) = source.original_sample_units().unwrap();
+    let values = drain(source);
+    assert_eq!(values.len(), expected.len());
+    for (actual, expected) in values.iter().zip(expected) {
+        assert!((f64::from(*actual) * factor + offset - expected).abs() < 0.01);
+    }
+}

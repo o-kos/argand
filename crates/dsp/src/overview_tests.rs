@@ -114,3 +114,28 @@ fn overview_sparse_budget_keeps_every_frame_when_time_cells_are_compressed() {
         for (a,b) in result.psd.db.iter().zip(&exact.psd.db) { assert!((a-b).abs() < 0.0001); }
     }
 }
+
+#[test]
+fn explicit_style_refresh_bypasses_the_periodic_snapshot_interval() {
+    let mut source = VecSource::new(Domain::Iq, iq_tone(FFT * 400, TONE_HZ, 0.4), 0.0);
+    let req = request(20, 20, SampleRange::new(0, source.meta.len_samples));
+    let mut refined = 0;
+    let mut previews = 0;
+    let mut state = analyze_overview_with_refresh(&mut source, &req,
+        ProgressiveOptions::new(1).unwrap(), &|| Flow::Continue, &|| true,
+        &mut |state, coverage| {
+            if coverage.refined_columns > 0 { refined += 1; } else { previews += 1; }
+            state.set_style(Colormap::Inferno, DynamicRange::Fixed(40.0)).unwrap();
+            let view = state.render(20, 20, None).unwrap();
+            assert_eq!(view.dynamic_range.requested, DynamicRange::Fixed(40.0));
+            Flow::Continue
+        }).unwrap();
+    assert!(previews > 2, "refresh must be checked during the remaining sparse preview");
+    assert!(refined > 10, "explicit refresh must not wait for the timer");
+    let final_view = state.render(20, 20, None).unwrap();
+    let expected = analyze(&mut source, &req, &mut |_, _| {}).unwrap();
+    assert_eq!(final_view.frames, expected.frames);
+    for (actual, expected) in final_view.db.values.iter().zip(&expected.db.values) {
+        assert!((actual - expected).abs() < 0.0001);
+    }
+}

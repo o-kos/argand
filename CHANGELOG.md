@@ -13,7 +13,12 @@ promise applies to.
 
 ### Added
 
-- Select Peak (MAX) or Mean power from the GUI Spectrogram menu. The new mean
+- Two compact status-bar groups: combined file details with sample count, file size
+  and sample extrema, and an interactive analysis popup. Adjust FFT, window,
+  overlap, aggregation, colours and display range; settings survive restarts.
+  Colour/range changes reuse analysis, and a yellow range offers a clickable recommendation.
+
+- Select Peak (MAX) or Mean power from the GUI analysis popup. The new mean
   averages squared spectral amplitudes across time and frequency before conversion
   to dB, and is also available as `aspec --reduce mean-power`. The existing CLI
   `mean` keeps its dB averaging behavior. The top-level `aggregation` configuration

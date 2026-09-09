@@ -56,7 +56,7 @@ fn every_pixel_uploaded_is_one_the_transform_produced() {
     let mut source =
         argand_io::open(&path, &argand_io::OpenHints::default()).expect("the fixture opens");
     let config = crate::config::Config::default();
-    let request = config.analysis_request(&source.meta().clone(), 128, 64);
+    let request = crate::settings::Settings::from_config(&config).analysis_request(&source.meta().clone(), 128, 64);
     let analysis =
         argand_dsp::analyze(source.as_mut(), &request, &mut |_, _| {}).expect("the transform runs");
 

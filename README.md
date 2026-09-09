@@ -329,7 +329,7 @@ transform size and window. It is read from beside
 the binary first and from the platform configuration directory second, and a
 missing or malformed one costs a log line rather than the application.
 
-The **Spectrogram > Aggregation** menu switches between **Peak (MAX)** and
+The **Aggregation** control in the status-bar analysis popup switches between **Peak (MAX)** and
 **Mean power** while a file is open. Peak preserves the strongest value in each
 pixel's time/frequency region. Mean power averages squared spectral amplitudes
 across the bins assigned to each row and the frames assigned to each column,
@@ -340,9 +340,9 @@ The waveform retains its min/max envelope under either mode.
 
 Switching starts a cancellable background analysis and retains the current
 picture until the replacement preview arrives. The choice applies to subsequent
-files in this run. Set the initial choice with the top-level configuration key
+files and survives restarts. Set the initial choice with the top-level configuration key
 `aggregation = "max"` (default) or `aggregation = "mean-power"`. Live choices do not
-rewrite `argand.toml` and are not yet restored between runs.
+rewrite `argand.toml`; effective settings are saved in `session.toml`.
 
 Resizing the window or dragging the panel separator redraws from retained analysis
 without rereading the file or restarting FFT refinement. The GUI keeps up to 4096
@@ -401,13 +401,28 @@ The preview keeps its colour and waveform display scales while refinement runs,
 then resolves them once at completion. Replacing an analysis cancels its remaining
 work. GUI automatic normalization samples at most 64 MiB; a sparse scan can miss
 an isolated peak. `aspec` retains its existing normalization scan policy.
-The status bar separates container, sample format, sample rate and duration with
-vertical rules. Hints show a heading, current value and optional smaller explanation
-of one sentence without a terminal period. Values and explanations use muted text. Duration is compact
-in the bar (`30m`, `1h12m30s`, `30.456s`, `20.2s`); its hint shows an hours:minutes:seconds
-clock with three millisecond digits and `hms.ms`. Captures with a centre frequency show
-that in another field. The `ready in` hint explains the latest analysis time, including
-sample reading and excluding file opening and display.
+The status bar combines file metadata into one compact group, for example
+`wav · real i16 · 7.2 kHz · 47m12.4s`. Its hint includes the exact duration,
+sample count (I/Q pairs for complex signals), file size in bytes, centre frequency,
+and decoded original sample minima/maxima, separately for I and Q. Extrema become
+available after the complete waveform pass; decoding precision limits their precision.
+
+FFT sizes are powers of two from 2 to 1,048,576; overlap is rounded to a whole-sample hop.
+Click the analysis group, for example `2048 · hann · 110 dB`, to adjust FFT size,
+window, overlap, aggregation, colour scheme and dynamic range. Range modes are
+absolute full scale (0 to -110 dBFS), a fixed span below the measured peak, and
+automatic. Range buttons adjust the fixed span by 1 dB; the menu offers common spans.
+An excessive span is yellow. The popup offers the same recommendation as `aspec`
+when the selected non-auto span exceeds the recommendation by at least 10 dB;
+click it to apply. Colour and range changes reuse cached values without a new FFT,
+including during refinement. Transform changes cancel obsolete work and retain
+the previous picture until a preview arrives. Style edits during that initial
+replacement interval apply to the incoming preview; the retained picture keeps
+its own transform and style until then. Invalid choices show an explanation.
+Effective choices persist in session version 4; configuration defaults remain untouched.
+The bar describes the displayed analysis while a replacement is pending.
+The `ready in` hint explains the latest analysis time, including sample reading
+and excluding file opening and display.
 
 Files also open from the File menu, by dropping a capture on the window, and
 from the list of files opened before. When launched without a file argument, the

@@ -16,7 +16,7 @@ use argand_core::{SampleFormat, SampleType, SignalMeta, format_duration, format_
 use argand_dsp::Analysis;
 use argand_io::OpenHints;
 
-use crate::analysis::Update;
+use crate::analysis::{FileInfo, Update};
 
 /// Where a document came from, and how it was read.
 ///
@@ -137,6 +137,8 @@ pub struct Document {
     analysis: Option<Box<Analysis>>,
     status: Status,
     waveform_peak: Option<f32>,
+    file_info: FileInfo,
+    sample_extrema: Option<Vec<(f32, f32)>>,
 }
 
 impl Document {
@@ -149,6 +151,8 @@ impl Document {
             analysis: None,
             status: Status::Opening,
             waveform_peak: None,
+            file_info: FileInfo::default(),
+            sample_extrema: None,
         }
     }
 
@@ -180,7 +184,8 @@ impl Document {
     /// here and merely drawn there.
     pub fn apply(&mut self, update: Update) -> Effect {
         match update {
-            Update::Opened(meta) => {
+            Update::Opened(meta, info) => {
+                self.file_info = info;
                 self.meta = Some(meta);
                 // Nothing has been asked for yet; the window builds the first
                 // request from the length this update just brought.
@@ -206,6 +211,27 @@ impl Document {
             }
             Update::Ready { analysis, elapsed } => {
                 self.waveform_peak = None;
+                self.sample_extrema = analysis.waveform.as_ref().map(|waveform| {
+                    (0..waveform.channels)
+                        .map(|channel| {
+                            let low = waveform
+                                .min
+                                .iter()
+                                .skip(channel)
+                                .step_by(waveform.channels)
+                                .copied()
+                                .fold(f32::INFINITY, f32::min);
+                            let high = waveform
+                                .max
+                                .iter()
+                                .skip(channel)
+                                .step_by(waveform.channels)
+                                .copied()
+                                .fold(f32::NEG_INFINITY, f32::max);
+                            (low, high)
+                        })
+                        .collect()
+                });
                 self.analysis = Some(analysis);
                 self.status = Status::Ready { elapsed };
                 Effect::Analysis
@@ -219,7 +245,86 @@ impl Document {
         }
     }
 
-    /// Separate status fields, available once the header has been read.
+    pub fn file_summary(&self) -> Option<MetadataField> {
+        let meta = self.meta()?;
+        let fields = self.summary()?;
+        let value = format!(
+            "{} · {} {} · {} · {}",
+            meta.container,
+            if meta.is_iq() { "iq" } else { "real" },
+            meta.sample_type.format.as_str(),
+            format_hz(meta.sample_rate),
+            compact_capture_duration(meta.duration_seconds())
+        );
+        let mut details = fields
+            .iter()
+            .map(|field| format!("{}: {}", field.hint.title, field.hint.value))
+            .collect::<Vec<_>>();
+        details.push(format!(
+            "{}: {}",
+            if meta.is_iq() { "I/Q pairs" } else { "Samples" },
+            meta.len_samples
+        ));
+        details.push(self.file_info.bytes.map_or_else(
+            || "File size: unavailable".into(),
+            |bytes| {
+                format!(
+                    "File size: {bytes} bytes ({:.2} MiB)",
+                    bytes as f64 / 1048576.0
+                )
+            },
+        ));
+        details.extend(self.extrema_details(meta));
+        Some(MetadataField::new(
+            value,
+            MetadataHint::new(
+                "Signal file",
+                details.join("\n"),
+                if meta.is_iq() {
+                    "Sample rate and count refer to I/Q pairs; extrema are decoded original sample values"
+                } else {
+                    "Extrema are decoded original sample values before normalization and gain"
+                },
+            ),
+        ))
+    }
+
+    fn extrema_details(&self, meta: &SignalMeta) -> Vec<String> {
+        let Some(extrema) = &self.sample_extrema else {
+            return vec!["Sample minimum / maximum: awaiting complete analysis".into()];
+        };
+        let Some((scale, offset)) = self.file_info.sample_units else {
+            return vec!["Original sample minimum / maximum: unavailable".into()];
+        };
+        let number = |value: f32| {
+            let value = f64::from(value) * scale + offset;
+            if !value.is_finite() {
+                return "unavailable".into();
+            }
+            match meta.sample_type.format {
+                SampleFormat::U8 | SampleFormat::I16 | SampleFormat::I32 => format!("{value:.0}"),
+                _ => format!("{value:.7}"),
+            }
+        };
+        extrema
+            .iter()
+            .enumerate()
+            .map(|(channel, &(low, high))| {
+                let label = match (meta.is_iq(), channel) {
+                    (true, 0) => "I",
+                    (true, _) => "Q",
+                    _ => "Sample",
+                };
+                format!(
+                    "{label} minimum / maximum: {} / {}",
+                    number(low),
+                    number(high)
+                )
+            })
+            .collect()
+    }
+
+    /// Detailed fields combined in the file hint.
     pub fn summary(&self) -> Option<Vec<MetadataField>> {
         let meta = self.meta.as_ref()?;
         let domain = if meta.is_iq() { "iq" } else { "real" };

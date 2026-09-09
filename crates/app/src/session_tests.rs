@@ -117,7 +117,7 @@ fn a_session_survives_the_round_trip() {
     let dir = TempDir::new("roundtrip");
     let path = dir.join("session.toml");
     let session = Session {
-        version: VERSION,
+        analysis_settings: None,        version: VERSION,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(12.0, 34.0, 1280.0, 800.0)),
         window_state: WindowState::Maximized,
@@ -169,7 +169,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
     let path = dir.join("session.toml");
 
     let first = Session {
-        version: VERSION,
+        analysis_settings: None,        version: VERSION,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(0.0, 0.0, 800.0, 600.0)),
         window_state: WindowState::Normal,
@@ -226,7 +226,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
 
     let at = |ms: u64| Instant::now() + Duration::from_millis(ms);
     let moved = |x: f32| Session {
-        version: VERSION,
+        analysis_settings: None,        version: VERSION,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -268,7 +268,7 @@ fn a_position_that_has_not_changed_is_not_written_again() {
     let dir = TempDir::new("idle");
     let path = dir.join("session.toml");
     let held = Session {
-        version: VERSION,
+        analysis_settings: None,        version: VERSION,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -297,7 +297,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
 
     let start = Instant::now();
     let moved = |x: f32| Session {
-        version: VERSION,
+        analysis_settings: None,        version: VERSION,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -319,7 +319,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let dir = TempDir::new("returned");
     let path = dir.join("session.toml");
     let at = |x: f32| Session {
-        version: VERSION,
+        analysis_settings: None,        version: VERSION,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -356,7 +356,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
 
     let mut writer = Writer::new(path.clone(), Session::default());
     let moved = Session {
-        version: VERSION,
+        analysis_settings: None,        version: VERSION,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -402,7 +402,7 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
     let mut writer = Writer::new(path.clone(), Session::default());
     let start = Instant::now();
     let at = |x: f32| Session {
-        version: VERSION,
+        analysis_settings: None,        version: VERSION,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -664,8 +664,8 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 3"),
-        "panel persistence uses session version 3: {text}"
+        text.contains("version = 4"),
+        "settings persistence uses session version 4: {text}"
     );
 }
 
@@ -708,4 +708,29 @@ fn old_and_invalid_panel_splits_keep_the_font_relative_default() {
         assert_eq!(restored.session.waveform_fraction, None);
         assert_eq!(restored.session.version, VERSION);
     }
+}
+
+#[test]
+fn analysis_settings_survive_restart_without_changing_configuration_or_older_geometry() {
+    let dir = TempDir::new("settings-session");
+    let path = dir.join(FILE_NAME);
+    let config_path = dir.join("argand.toml");
+    let config_text = "# My defaults\ndynamic_range = 'auto'\n";
+    std::fs::write(&config_path, config_text).unwrap();
+    std::fs::write(&path, "version=3\nwindow_state='normal'\nwaveform_fraction=0.3\n[geometry]\nx=1.0\ny=2.0\nwidth=900.0\nheight=600.0\n").unwrap();
+    let mut session = Session::load(&path).session;
+    assert!(session.analysis_settings.is_none());
+    let settings = crate::settings::Settings {
+        fft_size: 4096, overlap: 50, window: argand_dsp::Window::Hamming,
+        aggregation: crate::config::Aggregation::MeanPower,
+        colormap: argand_core::Colormap::Viridis,
+        dynamic_range: argand_dsp::DynamicRange::Fixed(43.0),
+    };
+    session.analysis_settings = Some(settings);
+    assert!(session.save(&path));
+    let restored = Session::load(&path).session;
+    assert_eq!(restored.analysis_settings, Some(settings));
+    assert_eq!(restored.geometry, session.geometry);
+    assert_eq!(restored.waveform_fraction, Some(0.3));
+    assert_eq!(std::fs::read_to_string(config_path).unwrap(), config_text);
 }

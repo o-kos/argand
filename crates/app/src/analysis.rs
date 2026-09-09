@@ -11,15 +11,21 @@ use std::time::{Duration, Instant};
 use argand_core::SignalMeta;
 use argand_dsp::{
     Analysis, AnalysisRequest, Coverage, DspError, Flow, Overview, ProgressiveOptions,
-    analyze_overview,
+    analyze_overview_with_refresh,
 };
 use argand_io::OpenHints;
 
 const THREAD_NAME: &str = "argand-analysis";
 const LEVEL_SCAN_BYTES: usize = 64 << 20;
 
+#[derive(Default)]
+pub struct FileInfo {
+    pub bytes: Option<u64>,
+    pub sample_units: Option<(f64, f64)>,
+}
+
 pub enum Update {
-    Opened(SignalMeta),
+    Opened(SignalMeta, FileInfo),
     Progress {
         done: u64,
         total: u64,
@@ -78,6 +84,8 @@ fn same_analysis(a: AnalysisRequest, b: AnalysisRequest) -> bool {
             width: b.width,
             height: b.height,
             waveform_columns: b.waveform_columns,
+            colormap: b.colormap,
+            dynamic_range: b.dynamic_range,
             ..a
         } == b
 }
@@ -223,7 +231,13 @@ fn serve(
             prepared_at: Instant::now(),
             generation: None,
             view_revision: None,
-            update: Update::Opened(source.meta().clone()),
+            update: Update::Opened(
+                source.meta().clone(),
+                FileInfo {
+                    bytes: std::fs::metadata(path).ok().map(|meta| meta.len()),
+                    sample_units: source.original_sample_units(),
+                },
+            ),
         })
         .is_err()
     {
@@ -330,10 +344,14 @@ impl Cached {
         }
         let started = Instant::now();
         let view = request.analysis;
-        let update = match self
+        let rendered = self
             .overview
-            .render(view.width, view.height, view.waveform_columns)
-        {
+            .set_style(view.colormap, view.dynamic_range)
+            .and_then(|()| {
+                self.overview
+                    .render(view.width, view.height, view.waveform_columns)
+            });
+        let update = match rendered {
             Ok(analysis) => {
                 let elapsed = *self.elapsed.get_or_insert_with(|| {
                     let elapsed = self.started.elapsed();
@@ -370,11 +388,18 @@ fn compute(
     );
     let mut waveform_peak = None;
     let mut render_error = None;
-    let result = analyze_overview(
+    let last_style =
+        std::cell::Cell::new((request.analysis.colormap, request.analysis.dynamic_range));
+    let result = analyze_overview_with_refresh(
         source,
         &request.analysis,
         ProgressiveOptions::new(settings.batch_frames).unwrap_or_default(),
         &|| replies.control(request.generation),
+        &|| {
+            replies.mailbox.latest().is_some_and(|latest| {
+                last_style.get() != (latest.analysis.colormap, latest.analysis.dynamic_range)
+            })
+        },
         &mut |overview, coverage| {
             let Some(latest) = replies.mailbox.latest() else {
                 return Flow::Stop;
@@ -383,7 +408,10 @@ fn compute(
                 return Flow::Stop;
             }
             let view = latest.analysis;
-            let analysis = match overview.render(view.width, view.height, view.waveform_columns) {
+            let rendered = overview
+                .set_style(view.colormap, view.dynamic_range)
+                .and_then(|()| overview.render(view.width, view.height, view.waveform_columns));
+            let analysis = match rendered {
                 Ok(analysis) => analysis,
                 Err(error) => {
                     render_error = Some(error);
@@ -393,6 +421,7 @@ fn compute(
             if replies.view_control(latest) == Flow::Stop {
                 return replies.control(request.generation);
             }
+            let style_changed = last_style.get() != (view.colormap, view.dynamic_range);
             tracing::debug!(?coverage, elapsed = ?started.elapsed(), "analysis snapshot");
             let delivery = Delivery {
                 prepared_at: Instant::now(),
@@ -404,10 +433,13 @@ fn compute(
                     coverage,
                 },
             };
-            if coverage.refined_columns == 0 {
-                send_result(replies.updates, delivery, &|| replies.view_control(latest));
+            let delivered = if coverage.refined_columns == 0 || style_changed {
+                send_result(replies.updates, delivery, &|| replies.view_control(latest))
             } else {
-                let _ = replies.updates.try_send(delivery);
+                replies.updates.try_send(delivery).is_ok()
+            };
+            if delivered {
+                last_style.set((view.colormap, view.dynamic_range));
             }
             Flow::Continue
         },
@@ -431,14 +463,16 @@ fn send_result(
     updates: &async_channel::Sender<Delivery>,
     mut delivery: Delivery,
     control: &dyn Fn() -> Flow,
-) {
+) -> bool {
     while control() == Flow::Continue {
         match updates.try_send(delivery) {
-            Ok(()) | Err(async_channel::TrySendError::Closed(_)) => return,
+            Ok(()) => return true,
+            Err(async_channel::TrySendError::Closed(_)) => return false,
             Err(async_channel::TrySendError::Full(pending)) => delivery = pending,
         }
         std::thread::sleep(Duration::from_millis(1));
     }
+    false
 }
 
 #[cfg(test)]

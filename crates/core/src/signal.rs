@@ -116,6 +116,12 @@ pub trait SampleSource: Send {
     /// Hint that a bounded range will be read soon, without changing the cursor.
     fn prefetch(&mut self, _range: crate::SampleRange) {}
 
+    /// Convert a decoded value back to original sample units as `value * factor + offset`.
+    /// None means the reader cannot recover that scale. Decoding precision still applies.
+    fn original_sample_units(&self) -> Option<(f64, f64)> {
+        None
+    }
+
     fn meta(&self) -> &SignalMeta;
 
     /// Position the next `read` at `sample` (an I/Q pair counts as one).

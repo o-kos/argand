@@ -70,14 +70,14 @@ fn opening_a_file_is_what_lets_a_request_be_built_for_it() {
     let mut document = opening();
     // The span to analyse is the length the file just reported, so the window
     // is told to build a request rather than merely to redraw.
-    assert_eq!(document.apply(Update::Opened(meta())), Effect::Opened);
+    assert_eq!(document.apply(Update::Opened(meta(), FileInfo::default())), Effect::Opened);
     assert_eq!(document.meta().map(|m| m.len_samples), Some(48_000));
 }
 
 #[test]
 fn a_finished_analysis_is_what_the_window_draws_from() {
     let mut document = opening();
-    document.apply(Update::Opened(meta()));
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     assert_eq!(
         document.apply(Update::Ready {
             analysis: analysis(64),
@@ -105,7 +105,7 @@ fn a_finished_analysis_is_what_the_window_draws_from() {
 #[test]
 fn a_new_transform_leaves_the_previous_picture_up_while_it_runs() {
     let mut document = opening();
-    document.apply(Update::Opened(meta()));
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     document.apply(Update::Ready {
         analysis: analysis(64),
         elapsed: Duration::from_millis(1250),
@@ -150,7 +150,7 @@ fn a_failure_is_something_to_read_rather_than_something_to_crash_on() {
 #[test]
 fn a_transform_that_has_not_reported_yet_has_no_fraction_to_show() {
     let mut document = opening();
-    document.apply(Update::Opened(meta()));
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     assert_eq!(document.status().message(), "analysing...");
 
     document.apply(Update::Progress { done: 1, total: 40 });
@@ -160,7 +160,7 @@ fn a_transform_that_has_not_reported_yet_has_no_fraction_to_show() {
 #[test]
 fn the_status_bar_separates_metadata_and_keeps_rf_context() {
     let mut document = opening();
-    document.apply(Update::Opened(meta()));
+    document.apply(Update::Opened(meta(), FileInfo::default()));
 
     assert_eq!(
         document.summary().unwrap().iter().map(|field| (field.value.as_str(), field.hint.title)).collect::<Vec<_>>(),
@@ -174,7 +174,7 @@ fn a_baseband_capture_has_no_centre_frequency_worth_printing() {
     document.apply(Update::Opened(SignalMeta {
         center_freq: 0.0,
         ..meta()
-    }));
+    }, FileInfo::default()));
 
     assert_eq!(
         document.summary().unwrap().iter().map(|field| field.value.as_str()).collect::<Vec<_>>(),
@@ -210,7 +210,7 @@ fn metadata_duration_counts_iq_pairs_and_real_samples_once() {
             sample_type: SampleType::new(domain, SampleFormat::I16),
             len_samples: 5_312_160,
             ..meta()
-        }));
+        }, FileInfo::default()));
         let fields = document.summary().unwrap();
         assert_eq!(fields[1].value, label);
         assert_eq!(fields[3].value, "3m41.34s");
@@ -234,7 +234,7 @@ fn compact_duration_trims_zero_units_and_fractional_zeros_after_rounding() {
 #[test]
 fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
     let mut document = opening();
-    document.apply(Update::Opened(meta()));
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     let fields = document.summary().unwrap();
     assert_eq!(fields[0].hint.value, "wav");
     assert_eq!(fields[1].hint.value, "iq · i16");
@@ -258,7 +258,7 @@ fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
 fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
     let mut document = opening();
     assert!(document.status().hint().is_none());
-    document.apply(Update::Opened(meta()));
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     assert!(document.status().hint().is_none());
     document.apply(Update::Ready { analysis: analysis(64), elapsed: Duration::from_millis(1250) });
     let hint = document.status().hint().unwrap();
@@ -274,7 +274,7 @@ fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
 #[test]
 fn refinement_freezes_waveform_display_scale_without_freezing_measured_levels() {
     let mut document = opening();
-    document.apply(Update::Opened(meta()));
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     let mut partial = analysis(32);
     partial.time_peak = 0.9;
     document.apply(Update::Snapshot {
@@ -288,4 +288,23 @@ fn refinement_freezes_waveform_display_scale_without_freezing_measured_levels() 
     final_analysis.time_peak = 0.9;
     document.apply(Update::Ready { analysis: final_analysis, elapsed: Duration::from_millis(100) });
     assert_eq!(document.waveform_peak(), Some(0.9));
+}
+
+#[test]
+fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
+    let mut document = opening();
+    document.origin.hints.gain_db = 20.0;
+    document.apply(Update::Opened(meta(), FileInfo { bytes: Some(192044), sample_units: Some((3276.8, 0.0)) }));
+    let field = document.file_summary().unwrap();
+    assert_eq!(field.value, "wav · iq i16 · 24 kHz · 2s");
+    assert!(field.hint.value.contains("I/Q pairs: 48000"));
+    assert!(field.hint.value.contains("File size: 192044 bytes"));
+    assert!(field.hint.value.contains("awaiting complete analysis"));
+    let mut result = analysis(2);
+    result.waveform = Some(argand_core::WaveformEnvelope { columns: 2, channels: 2,
+        min: vec![-5.0, -2.5, 0.0, 0.0], max: vec![1.25, 0.625, 0.0, 0.0], t0: 0.0, t1: 2.0 });
+    document.apply(Update::Ready { analysis: result, elapsed: Duration::from_secs(1) });
+    let hint = document.file_summary().unwrap().hint.value;
+    assert!(hint.contains("I minimum / maximum: -16384 / 4096"), "{hint}");
+    assert!(hint.contains("Q minimum / maximum: -8192 / 2048"), "{hint}");
 }

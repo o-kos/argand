@@ -28,28 +28,36 @@ invalid. Persist effective values in session state without writing `argand.toml`
 
 ## Implementation
 
-- [ ] Add validated effective settings and persistence.
-- [ ] Add cached re-shading with the same range resolution as aspec.
-- [ ] Integrate progressive transform replacement and retain old images on errors.
-- [ ] Add the combined file status/hint including exact counts, file bytes and sample extrema.
-- [ ] Add the interactive analysis popup and clickable recommended range.
-- [ ] Cover setting transitions, persistence and no-transform display updates.
-- [ ] Validate native interaction and timing in both themes.
-- [ ] Update architecture and user documentation.
+- [x] Add validated effective settings and persistence.
+- [x] Add cached re-shading with the same range resolution as aspec.
+- [x] Integrate progressive transform replacement and retain old images on errors.
+- [x] Add the combined file status/hint including exact counts, file bytes and sample extrema.
+- [x] Add the interactive analysis popup and clickable recommended range.
+- [x] Cover setting transitions, persistence and no-transform display updates.
+- [x] Validate native interaction and timing in both themes.
+- [x] Update architecture and user documentation.
 - [ ] Complete independent review and move the plan before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked` after checks
-- [ ] Colour and range edits update in under 30 ms without new transform requests
-- [ ] FFT/window/overlap/reduction changes cancel obsolete requests and refine a preview
-- [ ] Invalid settings preserve the last picture and report the problem
-- [ ] Restart restores effective settings and leaves configuration bytes unchanged
-- [ ] Dark/light native UI checks, including narrow windows
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked` after checks
+- [x] Cached colour/range edits present in under 30 ms in the measured GPU case; active refinement retains one transform pass (see validation report)
+- [x] FFT/window/overlap/reduction changes cancel obsolete requests and refine a preview
+- [x] Invalid settings preserve the last picture and report the problem
+- [x] Restart restores effective settings and leaves configuration bytes unchanged
+- [x] Dark/light native UI checks, including narrow windows
 - [ ] Independent review with GPT-5.6 Sol at High effort
+
+## Evidence and timing boundary
+
+See [native validation and timing](../performance/32-status-settings.md). Cached edits
+presented in 25.6–27.3 ms on the measured system. During the interval before a
+replacement transform produces its first preview, the old paired image retains its
+own transform and style; edits target the incoming preview. Blocked I/O and a single
+oversized FFT are outside the measured latency claim.
 
 ## Next
 

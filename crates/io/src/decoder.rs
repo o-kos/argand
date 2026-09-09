@@ -30,6 +30,7 @@ pub struct DecodedSource {
     /// Values to drop after a seek that landed early.
     skip: usize,
     scale: f32,
+    original_units: Option<(f64, f64)>,
     divisor: f32,
     exhausted: bool,
 }
@@ -168,6 +169,7 @@ impl DecodedSource {
             None => SampleFormat::I32,
         };
 
+        let original_units = original_units(&params);
         let mut source = Self {
             reader,
             decoder,
@@ -186,6 +188,7 @@ impl DecodedSource {
             pending_pos: 0,
             skip: 0,
             scale: 1.0,
+            original_units,
             divisor: 1.0,
             exhausted: false,
         };
@@ -313,6 +316,25 @@ impl DecodedSource {
     }
 }
 
+fn original_units(params: &symphonia::core::codecs::CodecParameters) -> Option<(f64, f64)> {
+    if is_float(params) {
+        return Some((1.0, 0.0));
+    }
+    let bits = params
+        .bits_per_sample
+        .filter(|bits| (1..=32).contains(bits))?;
+    let offset = if matches!(
+        params.codec,
+        symphonia::core::codecs::CODEC_TYPE_PCM_U8
+            | symphonia::core::codecs::CODEC_TYPE_PCM_U8_PLANAR
+    ) {
+        128.0
+    } else {
+        0.0
+    };
+    Some((2.0f64.powi(bits as i32 - 1), offset))
+}
+
 fn is_float(params: &symphonia::core::codecs::CodecParameters) -> bool {
     matches!(
         params.sample_format,
@@ -326,6 +348,12 @@ fn decode_err(e: impl std::fmt::Display) -> SourceError {
 }
 
 impl SampleSource for DecodedSource {
+    fn original_sample_units(&self) -> Option<(f64, f64)> {
+        let (units, offset) = self.original_units?;
+        let factor = units / f64::from(self.scale);
+        (factor.is_finite() && factor > 0.0).then_some((factor, offset))
+    }
+
     fn meta(&self) -> &SignalMeta {
         &self.meta
     }
