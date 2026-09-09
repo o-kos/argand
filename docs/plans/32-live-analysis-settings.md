@@ -16,8 +16,13 @@ invalid. Persist effective values in session state without writing `argand.toml`
   transform for these edits. Apply current display settings to subsequent snapshots too.
 - Track the settings that produced the displayed analysis separately from requested
   settings so diagnostics can remain accurate while a replacement runs.
-- Use a compact side panel opened from the window controls; keep controls grouped by
-  transform and display. Reuse existing popup controls and typography.
+- Use two status-bar groups: a combined file summary with one metadata hint, and an
+  analysis summary opening an interactive popup. Group transform and display controls.
+  The file hint includes sample count, file bytes, and original sample extrema (I/Q separately).
+- Highlight an excessive display range in yellow using the aspec recommendation policy;
+  make the recommended range directly applicable in the popup.
+- Include #61 and the range-advice portion of #62 in this owner-approved scope. Keep
+  the remaining signal-level/FFT diagnostic panels in #62.
 - Store valid effective choices in a new backwards-readable session version; preserve
   configuration defaults and comments.
 
@@ -26,7 +31,8 @@ invalid. Persist effective values in session state without writing `argand.toml`
 - [ ] Add validated effective settings and persistence.
 - [ ] Add cached re-shading with the same range resolution as aspec.
 - [ ] Integrate progressive transform replacement and retain old images on errors.
-- [ ] Add the settings panel and recommended range display.
+- [ ] Add the combined file status/hint including exact counts, file bytes and sample extrema.
+- [ ] Add the interactive analysis popup and clickable recommended range.
 - [ ] Cover setting transitions, persistence and no-transform display updates.
 - [ ] Validate native interaction and timing in both themes.
 - [ ] Update architecture and user documentation.
@@ -47,4 +53,6 @@ invalid. Persist effective values in session state without writing `argand.toml`
 
 ## Next
 
-Continue with signal levels and FFT information (#62). Leave #30 deferred.
+Continue with the remaining signal levels and FFT information (#62). Leave #30 deferred.
+The retained overview introduced by #74 is the source for display-only changes; style
+changes must no longer invalidate the transform generation, even during refinement.
