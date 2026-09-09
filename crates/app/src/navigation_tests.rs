@@ -29,9 +29,9 @@ fn restoration_handles_short_changed_empty_and_corrupt_captures() {
 
 #[test]
 fn sample_math_does_not_overflow_at_the_end_of_a_large_capture() {
-    let view = View { start: u64::MAX - 4096, len: 4096 };
+    let view = View { start: u64::MAX - 16384, len: 16384 };
     assert_eq!(view.pan(100.0, u64::MAX), view);
-    assert_eq!(view.zoom(0.5, 1.0, u64::MAX, 2048).start, u64::MAX - 2048);
+    assert_eq!(view.zoom(0.5, 1.0, u64::MAX, 2048).start, u64::MAX - 8192);
 }
 
 #[test]
@@ -56,4 +56,25 @@ fn deep_zoom_clips_source_columns_before_gpu_conversion() {
     assert_eq!(column_mapping(held, shown, 2000, 999), (0.0, 0.5));
     assert_eq!(column_mapping(held, shown, 2000, 1000), (0.5, 1.0));
     assert_eq!(visible_columns(held, (90_000.0, 90_001.0), 2000), 2000..2000);
+}
+
+
+#[test]
+fn huge_capture_views_keep_distinct_seconds_after_zoom_and_restore() {
+    for total in [1_u64 << 53, 1_u64 << 60, u64::MAX] {
+        for rate in [1.0, 24_000_000.0, 1_000_000_000.0] {
+            let view = View { start: total - 2, len: 2 }.bounded(total, 2);
+            let (lo, hi) = view.seconds(rate);
+            assert!(hi > lo, "{total} at {rate}: {view:?}");
+            let zoom = view.zoom(0.01, 1.0, total, 2);
+            assert_eq!(zoom, view);
+        }
+    }
+}
+
+#[test]
+fn cursor_precision_covers_rf_time_resolution() {
+    assert_eq!(time_precision(40.0 / 1500.0), 3);
+    assert_eq!(time_precision(2048.0 / 24e6 / 1500.0), 8);
+    assert_eq!(time_precision(2.0 / 24e6 / 1500.0), 9);
 }

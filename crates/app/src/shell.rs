@@ -245,6 +245,7 @@ struct Shell {
     settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
     analysis_hovered: bool,
     settings_backup: Option<Settings>,
+    settings_view_backup: Option<crate::navigation::View>,
     settings_error: Option<String>,
 
     /// Absent when the platform offers nowhere to keep state, or when the file
@@ -321,6 +322,7 @@ impl Shell {
             settings_window: None,
             analysis_hovered: false,
             settings_backup: None,
+            settings_view_backup: None,
             settings_error: None,
 
             config,
@@ -553,13 +555,17 @@ impl Shell {
     ///
     /// Silent when the file has not opened yet or the panel has not been laid
     /// out: both arrive on their own, and each one calls back here.
-    fn ask_for_a_picture(&self) {
+    fn ask_for_a_picture(&mut self) {
         let Some(file) = self.file.as_ref() else {
             return;
         };
         let Some(request) = self.request(&file.document) else {
             return;
         };
+        let Some(file) = self.file.as_mut() else {
+            return;
+        };
+        file.document.requested_range(request.range);
         if !file.analyst.request(request) {
             tracing::warn!("the analysis thread has stopped; nothing more will be drawn");
         }
@@ -579,7 +585,7 @@ impl Shell {
 
     /// Put the newest picture on the GPU and release the one it replaces.
     fn upload(&mut self, window: &mut Window) {
-        self.deep_preview = None;
+        self.release_deep_preview(window);
         let started = Instant::now();
         let waveform_peak = self
             .file
@@ -612,7 +618,7 @@ impl Shell {
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
     fn release(&mut self, window: &mut Window) {
         self.waveform = None;
-        self.deep_preview = None;
+        self.release_deep_preview(window);
         release(self.texture.take(), window);
     }
 
@@ -1190,7 +1196,7 @@ impl Render for Shell {
             self.upload_pending = false;
             self.upload(window);
         }
-        self.prepare_deep_preview();
+        self.prepare_deep_preview(window);
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;

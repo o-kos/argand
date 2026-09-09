@@ -168,18 +168,24 @@ fn defer_layout(
     });
 }
 
-/// At extreme zoom, a single source column can be millions of pixels wide.
-/// Paint its visible colour runs directly so GPU f32 coordinates stay local.
+/// Small source-column textures keep coordinates and draw counts bounded.
 pub(super) struct DeepPreview {
     columns: std::ops::Range<usize>,
     held: (f64, f64),
     width: usize,
-    height: usize,
-    runs: Vec<(usize, usize, usize, gpui::Hsla)>,
+    strips: Vec<(usize, Arc<RenderImage>)>,
 }
 
 impl Shell {
-    pub(super) fn prepare_deep_preview(&mut self) {
+    pub(super) fn release_deep_preview(&mut self, window: &mut Window) {
+        if let Some(deep) = self.deep_preview.take() {
+            for (_, texture) in &deep.strips {
+                release(Some(texture.clone()), window);
+            }
+        }
+    }
+
+    pub(super) fn prepare_deep_preview(&mut self, window: &mut Window) {
         let Some(extents) = self.extents() else {
             return;
         };
@@ -189,7 +195,7 @@ impl Shell {
         let image = &analysis.spectrogram;
         let held = (image.t0, image.t1);
         if crate::navigation::image_mapping(held, extents.seconds).1 <= 1024.0 {
-            self.deep_preview = None;
+            self.release_deep_preview(window);
             return;
         }
         let columns = crate::navigation::visible_columns(held, extents.seconds, image.width);
@@ -200,55 +206,39 @@ impl Shell {
         {
             return;
         }
-        let mut runs = Vec::new();
-        let pixel = |column, row| {
-            let index = (row * image.width + column) * 4;
-            &image.rgba[index..index + 4]
-        };
-        for column in columns.clone() {
-            let mut row = 0;
-            while row < image.height {
-                let start = row;
-                let color = pixel(column, row);
-                row += 1;
-                while row < image.height && pixel(column, row) == color {
-                    row += 1;
-                }
-                let color = gpui::rgb(
-                    (u32::from(color[0]) << 16) | (u32::from(color[1]) << 8) | u32::from(color[2]),
-                )
-                .into();
-                runs.push((column, start, row, color));
-            }
-        }
-        self.deep_preview = Some(Arc::new(DeepPreview {
+        let strips = columns
+            .clone()
+            .filter_map(|column| {
+                spectrogram::column_texture(image, column).map(|texture| (column, texture))
+            })
+            .collect();
+        let deep = DeepPreview {
             columns,
             held,
             width: image.width,
-            height: image.height,
-            runs,
-        }));
+            strips,
+        };
+        self.release_deep_preview(window);
+        self.deep_preview = Some(Arc::new(deep));
     }
 }
 
 impl DeepPreview {
     fn paint(&self, plot: Bounds<Pixels>, shown: (f64, f64), window: &mut Window) {
-        for &(column, start, end, color) in &self.runs {
+        for (column, texture) in &self.strips {
             let (left, right) =
-                crate::navigation::column_mapping(self.held, shown, self.width, column);
-            let top = start as f32 / self.height as f32;
-            let bottom = end as f32 / self.height as f32;
-            window.paint_quad(gpui::fill(
-                Bounds {
-                    origin: plot.origin
-                        + point(plot.size.width * left as f32, plot.size.height * top),
-                    size: size(
-                        plot.size.width * (right - left) as f32,
-                        plot.size.height * (bottom - top),
-                    ),
-                },
-                color,
-            ));
+                crate::navigation::column_mapping(self.held, shown, self.width, *column);
+            let bounds = Bounds {
+                origin: plot.origin + point(plot.size.width * left as f32, px(0.)),
+                size: size(plot.size.width * (right - left) as f32, plot.size.height),
+            };
+            window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
+                if let Err(error) =
+                    window.paint_image(bounds, Corners::default(), texture.clone(), 0, false)
+                {
+                    tracing::warn!(%error, "cannot draw the held spectrogram column");
+                }
+            });
         }
     }
 }

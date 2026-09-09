@@ -91,6 +91,9 @@ impl Shell {
             return;
         }
         self.view = Some(view);
+        if self.settings_backup.is_some() {
+            self.settings_view_backup = Some(view);
+        }
         self.remember_view();
         self.ask_for_a_picture();
         tracing::debug!(start = view.start, len = view.len, "time view requested");
@@ -176,7 +179,14 @@ impl Shell {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.pointer = Some(event.position);
+        let pointer = self
+            .plot_geometry
+            .filter(|geometry| geometry.both.contains(&event.position))
+            .map(|_| event.position);
+        if self.pan.is_none() && self.pointer == pointer {
+            return;
+        }
+        self.pointer = pointer;
         if let Some(pan) = self.pan
             && let Some(total) = self.sample_count()
         {
@@ -209,8 +219,11 @@ impl Shell {
         let extents = self.extents()?;
         let x = f32::from(pointer.x - geometry.both.left()) / f32::from(geometry.both.size.width);
         let time = extents.seconds.0 + x as f64 * (extents.seconds.1 - extents.seconds.0);
+        let decimals = navigation::time_precision(
+            (extents.seconds.1 - extents.seconds.0) / f32::from(geometry.both.size.width) as f64,
+        );
         if !geometry.spectrum.contains(&pointer) {
-            return Some(format!("{time:.6} s"));
+            return Some(format!("{time:.decimals$} s"));
         }
         let y = f32::from(pointer.y - geometry.spectrum.top())
             / f32::from(geometry.spectrum.size.height);
@@ -222,7 +235,7 @@ impl Shell {
             .analysis()
             .and_then(|analysis| navigation::level_at(&analysis.db, time, y as f64))
             .map_or_else(|| "—".into(), |db| format!("{db:.1} dBFS"));
-        Some(format!("{time:.6} s · {frequency:.1} Hz · {level}"))
+        Some(format!("{time:.decimals$} s · {frequency:.1} Hz · {level}"))
     }
 
     pub(super) fn navigation_actions(

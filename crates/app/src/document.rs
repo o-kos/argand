@@ -135,6 +135,7 @@ pub struct Document {
     /// The last analysis produced for it, kept across a re-analysis so the
     /// window has something to draw while the next one runs.
     analysis: Option<Box<Analysis>>,
+    requested_range: Option<argand_core::SampleRange>,
     status: Status,
     waveform_peak: Option<f32>,
     file_info: FileInfo,
@@ -150,6 +151,7 @@ impl Document {
             origin,
             meta: None,
             analysis: None,
+            requested_range: None,
             status: Status::Opening,
             waveform_peak: None,
             file_info: FileInfo::default(),
@@ -179,6 +181,12 @@ impl Document {
             .or_else(|| self.analysis().map(|analysis| analysis.time_peak))
     }
 
+    /// Set before the worker request; the shell rejects obsolete generations
+    /// before applying their replies, so the accepted result has this range.
+    pub fn requested_range(&mut self, range: argand_core::SampleRange) {
+        self.requested_range = Some(range);
+    }
+
     pub const fn status(&self) -> &Status {
         &self.status
     }
@@ -195,6 +203,7 @@ impl Document {
         match update {
             Update::Opened(meta, info) => {
                 self.file_info = info;
+                self.requested_range = Some(argand_core::SampleRange::new(0, meta.len_samples));
                 self.meta = Some(meta);
                 // Nothing has been asked for yet; the window builds the first
                 // request from the length this update just brought.
@@ -235,11 +244,9 @@ impl Document {
     }
 
     fn remember_extrema(&mut self, analysis: &Analysis) {
-        if !self
-            .meta
-            .as_ref()
-            .is_some_and(|meta| analysis.db.t0 == 0.0 && analysis.db.t1 == meta.duration_seconds())
-        {
+        if !self.meta.as_ref().is_some_and(|meta| {
+            self.requested_range == Some(argand_core::SampleRange::new(0, meta.len_samples))
+        }) {
             return;
         }
         self.sample_extrema = analysis.waveform.as_ref().map(|waveform| {

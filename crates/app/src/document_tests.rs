@@ -310,7 +310,22 @@ fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
     assert!(hint.contains("Q min / max: −8,192 / 2,048"), "{hint}");
     let mut zoomed = analysis(2);
     zoomed.db.t0 = 0.5;
+    document.requested_range(argand_core::SampleRange::new(12_000, 12_000));
     zoomed.waveform = Some(argand_core::WaveformEnvelope::new(2, 2));
     document.apply(Update::Ready { analysis: zoomed, elapsed: Duration::from_secs(1) });
     assert_eq!(document.file_summary().unwrap().hint.value, hint, "a zoom must not replace file-wide extrema");
+}
+
+
+#[test]
+fn file_wide_extrema_use_integer_range_provenance() {
+    let mut document = opening();
+    let total = (1_u64 << 54) + 1;
+    document.apply(Update::Opened(SignalMeta { len_samples: total, ..meta() }, FileInfo::default()));
+    document.requested_range(argand_core::SampleRange::new(0, total - 1));
+    let mut partial = analysis(2);
+    partial.db.t1 = total as f64 / meta().sample_rate;
+    partial.waveform = Some(argand_core::WaveformEnvelope::new(2, 2));
+    document.apply(Update::Ready { analysis: partial, elapsed: Duration::ZERO });
+    assert!(document.sample_extrema.is_none());
 }

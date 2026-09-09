@@ -22,7 +22,7 @@ the graphical application: it opens a capture -- by argument, from its menu, by
 drag and drop, or from the files it remembers -- analyses it on a thread of its
 own, and shows a linear waveform above the spectrogram on the same time scale, with
 time and frequency marks around the spectrogram. A sparse preview appears before
-the full analysis; both panels refine from left to right, with progress shown in the status bar. Zoom, selection and editing are not implemented yet.
+the full analysis; both panels refine from left to right, with progress shown in the status bar. Time zoom and pan are supported; selection and editing remain deferred.
 
 Neither binary is a throwaway. The domain model, the readers and the transforms
 live in `argand-core`, `argand-io` and `argand-dsp`; both front ends call the
@@ -355,7 +355,8 @@ scroll also pan. The View menu exposes the keyboard commands:
 | Home / End | Move to the capture's beginning / end |
 | `0` | Fit the entire capture |
 
-The minimum span is one FFT. Axes and held pictures move immediately; a new
+The minimum span is one FFT, with a representability floor for sample indices
+beyond the exact integer range of floating-point time coordinates. Axes and held pictures move immediately; a new
 preview replaces the placeholder at the same physical coordinates. Newly exposed
 areas remain empty until a preview covers them. Rapid navigation replaces pending
 requests instead of queuing transforms. Each recent entry remembers its time view,

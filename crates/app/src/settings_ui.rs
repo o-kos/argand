@@ -77,6 +77,10 @@ impl Shell {
         };
         self.settings_window = None;
         self.analysis_hovered = false;
+        let view = self.settings_view_backup.take();
+        if !accept {
+            self.view = view;
+        }
         self.apply_settings(if accept { self.settings } else { backup }, cx);
     }
 
@@ -274,6 +278,7 @@ impl Shell {
             return;
         }
         self.settings_backup = Some(self.settings);
+        self.settings_view_backup = self.view;
         self.analysis_hovered = false;
         cx.notify();
         let owner = cx.entity().downgrade();

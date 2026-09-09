@@ -36,6 +36,20 @@ pub fn texture(image: &SpectrogramImage) -> Option<Arc<RenderImage>> {
     Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
 }
 
+/// A source column for a deeply zoomed placeholder. Copy only visible strips,
+/// bounded by `ceil(image.width / 1024) + 1`, rather than a stretched image.
+pub fn column_texture(image: &SpectrogramImage, column: usize) -> Option<Arc<RenderImage>> {
+    if column >= image.width {
+        return None;
+    }
+    let mut strip = SpectrogramImage::new(1, image.height);
+    for row in 0..image.height {
+        let offset = (row * image.width + column) * 4;
+        strip.rgba[row * 4..row * 4 + 4].copy_from_slice(image.rgba.get(offset..offset + 4)?);
+    }
+    texture(&strip)
+}
+
 /// The same pixels with red and blue exchanged.
 fn bgra(image: &SpectrogramImage) -> Vec<u8> {
     let mut bytes = image.rgba.clone();

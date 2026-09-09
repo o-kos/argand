@@ -176,10 +176,15 @@ cancellable mailbox. Size and style changes retain their previous cache semantic
 commands and the View menu. `plot_ui.rs` immediately maps both held pictures into
 the requested time interval and clips the spectrogram to its plot. Cursor levels
 come from the displayed grid's own extents; uncovered time has no reported level.
-Only completed full-capture analyses update the file hint's extrema.
-At zoom ratios above 1024, the few visible source columns are drawn as clipped
-colour runs to avoid losing the viewport in large GPU f32 image coordinates.
+Only completed full-capture analyses update the file hint's extrema, classified
+from the exact requested sample range after generation validation.
+At zoom ratios above 1024, the few visible source columns are cached as one-pixel-wide textures and drawn
+with clipped bounds to avoid losing the viewport in large GPU f32 image coordinates.
 `AxisKind::PreciseTime` extends the shared clock ladder with fractional seconds
 for the GUI; CLI whole-second clock formatting remains unchanged.
 Navigation stages view persistence in memory; the next session save or orderly
 close flushes it, so gestures themselves perform no filesystem writes.
+The minimum span also keeps floating-point time endpoints representable for
+extreme sample counts. The settings editor restores automatic view expansion on
+Cancel; explicit navigation during editing becomes the new view to restore.
+Cursor time precision follows the visible time per pixel, up to nanoseconds.

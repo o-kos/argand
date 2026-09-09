@@ -45,7 +45,8 @@ physical extents. The shell currently always requests the full capture.
 - [x] Check superseded requests, range-specific metadata and settings changes.
 - [x] ➕ Add fractional time labels for zoomed GUI views; preserve CLI clock formatting.
 - [x] Update relevant documentation.
-- [x] ➕ Bound deep-zoom GPU coordinates with visible colour runs and stage navigation persistence without filesystem writes.
+- [x] ➕ Bound deep-zoom GPU coordinates with visible source-column textures and stage navigation persistence without filesystem writes.
+- [x] ➕ Address review findings: exact full-capture provenance, representable time spans, FFT-preview cancellation, RF cursor precision, bounded texture-strip rendering, and redundant redraws.
 - [ ] Complete validation and independent review.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -61,3 +62,20 @@ physical extents. The shell currently always requests the full capture.
 ## Post-completion
 
 None.
+
+## Native validation
+
+Checked on Linux in an isolated 1600 x 1000 Sway output using the real GPU:
+real and complex 8 kHz fixtures, a 12.5 MHz centre frequency, dark/light themes,
+760 x 620 and larger windows, pointer-anchored wheel zoom, drag pan, every View
+keyboard command, a one-FFT end-of-file view and restoration after restart.
+A one-hour real capture was zoomed directly to 2048 samples; the captured
+in-progress frame already had the requested axes and transformed paired
+pictures, followed by the refined view at the same time coordinates.
+
+The first independent review found four medium and two low issues. All were
+accepted. Extremely large counts now retain a representable minimum time span;
+file-wide extrema use exact request provenance. Settings cancellation restores
+automatic view expansion, cursor precision follows zoom, deep previews use a
+bounded number of narrow textures, and pointer moves outside plots no longer
+redraw the picture. The stale README statement was removed.

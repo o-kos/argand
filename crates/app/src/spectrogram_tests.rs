@@ -74,3 +74,13 @@ fn every_pixel_uploaded_is_one_the_transform_produced() {
         );
     }
 }
+
+
+#[test]
+fn deep_zoom_column_keeps_every_frequency_row_and_channel_order() {
+    let mut source = SpectrogramImage::new(2, 2);
+    source.rgba = vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255];
+    let strip = column_texture(&source, 1).unwrap();
+    assert_eq!(strip.as_bytes(0).unwrap(), &[6, 5, 4, 255, 12, 11, 10, 255]);
+    assert!(column_texture(&source, 2).is_none());
+}

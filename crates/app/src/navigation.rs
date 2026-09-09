@@ -18,7 +18,7 @@ impl View {
     }
 
     pub fn bounded(self, total: u64, fft: usize) -> Self {
-        let min = (fft as u64).max(1).min(total);
+        let min = minimum_span(total, fft);
         let len = if self.len == 0 {
             total
         } else {
@@ -49,7 +49,7 @@ impl View {
         let anchor = anchor.clamp(0.0, 1.0);
         let len = ((self.len as f64 * factor).round() as u64)
             .max(1)
-            .clamp((fft as u64).max(1).min(total), total);
+            .clamp(minimum_span(total, fft), total);
         let shift = (self.len as f64 - len as f64) * anchor;
         Self {
             start: shifted(self.start, shift, total - len),
@@ -63,6 +63,18 @@ impl View {
             ..self
         }
     }
+}
+
+// Two ULPs keep both absolute endpoints distinct after sample-to-seconds
+// conversion, even for counts larger than f64's exact integer range.
+fn minimum_span(total: u64, fft: usize) -> u64 {
+    let count = total as f64;
+    let precision = (2.0 * (count.next_up() - count)).ceil() as u64;
+    (fft as u64).max(1).max(precision).min(total)
+}
+
+pub fn time_precision(seconds_per_pixel: f64) -> usize {
+    (-seconds_per_pixel.log10()).ceil().clamp(3.0, 9.0) as usize
 }
 
 fn shifted(start: u64, delta: f64, max: u64) -> u64 {
