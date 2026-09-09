@@ -425,7 +425,7 @@ The status text is muted and brightens on hover. Only a nonzero signal whose spe
 peak falls in the lower half of the absolute scale produces a yellow range warning.
 A narrower recommendation by itself is not a warning; silence and peak-relative modes
 are excluded. The hover hint and settings window offer the measured recommended
-range used by `aspec`, and apply it with one action or Ctrl+Shift+R (Cmd+Shift+R on macOS).
+range used by `aspec`, and apply it with one action or Ctrl+R (Cmd+R on macOS).
 A yellow ⚠ accompanies the highlighted range. Opening the editor hides the hint.
 
 Colour and range changes reuse cached values without a new FFT, including during

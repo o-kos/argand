@@ -100,7 +100,7 @@ and the final round was clean.
 - [x] Reset to configured defaults with a keyboard-accessible button.
 - [x] Keep range and its mode local to the current file; ignore old saved levels.
 - [x] Dismiss the analysis hint when opening the editor.
-- [x] Add Ctrl+Shift+R (Cmd+Shift+R on macOS) and a yellow warning glyph.
+- [x] Add Ctrl+R (Cmd+R on macOS) and a yellow warning glyph.
 - [x] Validate persistence, native interactions, full gate, release and independent review.
 
 See [cancellation and file-specific range validation](../../performance/32-settings-cancel.md).

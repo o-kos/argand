@@ -13,8 +13,8 @@ Range and its mode are file-specific. Opening a file restores the configured ran
 only FFT/window/overlap/aggregation/palette choices persist. Session version 5 omits
 range, reads versions 1–4 and ignores legacy range values. Configuration is not edited.
 
-Opening the settings editor removes the analysis hover hint. Ctrl+Shift+R
-(Cmd+Shift+R on macOS) applies the recommended range; the binding is shown in both
+Opening the settings editor removes the analysis hover hint. Ctrl+R
+(Cmd+R on macOS) applies the recommended range; the binding is shown in both
 places that offer the action. The main window and editor handle it in their own
 focus contexts, with an application-level fallback for popup focus. A yellow ⚠
 accompanies the warning range.
@@ -66,3 +66,6 @@ hint updated it to peak-relative 30 dB and removed the warning and recommendatio
 [Live hint after recommendation](32-ui-data/cancel-live-hint.png)
 
 The final focused independent review was clean. No findings were declined.
+
+The owner subsequently simplified the binding to Ctrl+R (Cmd+R on macOS).
+The earlier interaction log and screenshots above retain the original binding.

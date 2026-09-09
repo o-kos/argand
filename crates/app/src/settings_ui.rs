@@ -17,9 +17,9 @@ pub(super) fn init(cx: &mut gpui::App) {
     )]);
     cx.bind_keys([KeyBinding::new(
         if cfg!(target_os = "macos") {
-            "cmd-shift-r"
+            "cmd-r"
         } else {
-            "ctrl-shift-r"
+            "ctrl-r"
         },
         UseRecommendedRange,
         None,
