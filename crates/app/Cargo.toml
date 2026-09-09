@@ -34,3 +34,6 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 argand-core = { workspace = true, features = ["testutil"] }
 argand-io = { workspace = true, features = ["testutil"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true

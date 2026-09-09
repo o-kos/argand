@@ -191,6 +191,7 @@ dependencies = [
  "gpui-component",
  "gpui-component-assets",
  "image",
+ "libc",
  "rayon",
  "serde",
  "toml 0.9.12+spec-1.1.0",

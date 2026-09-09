@@ -1,0 +1,105 @@
+--- a/crates/dsp/src/stft.rs
++++ b/crates/dsp/src/stft.rs
+@@ -708,0 +709 @@
++        let mut clock = std::time::Instant::now();
+@@ -712,0 +714 @@
++        let row_base = acc.row_base(column, self.out_height);
+@@ -724,0 +727,2 @@
++            acc.prepare_ns += clock.elapsed().as_nanos();
++            clock = std::time::Instant::now();
+@@ -725,0 +730,2 @@
++            acc.fft_ns += clock.elapsed().as_nanos();
++            clock = std::time::Instant::now();
+@@ -745,0 +752,2 @@
++            acc.prepare_ns += clock.elapsed().as_nanos();
++            clock = std::time::Instant::now();
+@@ -746,0 +755,2 @@
++            acc.fft_ns += clock.elapsed().as_nanos();
++            clock = std::time::Instant::now();
+@@ -764,3 +773,0 @@
+-        let row_base = acc.rows.len();
+-        acc.rows
+-            .resize(row_base + self.out_height, f32::NEG_INFINITY);
+@@ -774 +781 @@
+-                RowValues::Amplitude => peak,
++                RowValues::Amplitude => acc.rows[row_base + y].max(peak),
+@@ -778 +785,2 @@
+-        acc.cols.push(column as u32);
++        acc.aggregate_ns += clock.elapsed().as_nanos();
++        acc.frames += 1;
+@@ -789,0 +798,2 @@
++    prepare_ns: u128, fft_ns: u128, aggregate_ns: u128,
++    frames: u64,
+@@ -805,0 +816,2 @@
++            prepare_ns: 0, fft_ns: 0, aggregate_ns: 0,
++            frames: 0,
+@@ -818,0 +831,11 @@
++    fn row_base(&mut self, column: usize, height: usize) -> usize {
++        if matches!(self.row_values, RowValues::Amplitude)
++            && self.cols.last() == Some(&(column as u32)) {
++            return self.rows.len() - height;
++        }
++        let base = self.rows.len();
++        self.cols.push(column as u32);
++        self.rows.resize(base + height, f32::NEG_INFINITY);
++        base
++    }
++
+@@ -819,0 +843,4 @@
++        self.prepare_ns += other.prepare_ns;
++        self.fft_ns += other.fft_ns;
++        self.aggregate_ns += other.aggregate_ns;
++        self.frames += other.frames;
+--- a/crates/dsp/src/progressive.rs
++++ b/crates/dsp/src/progressive.rs
+@@ -28,0 +29 @@
++    prepare_ns: u128, fft_ns: u128, aggregate_ns: u128,
+@@ -64,0 +66 @@
++            prepare_ns: 0, fft_ns: 0, aggregate_ns: 0,
+@@ -82,0 +85,3 @@
++        self.prepare_ns += partial.prepare_ns;
++        self.fft_ns += partial.fft_ns;
++        self.aggregate_ns += partial.aggregate_ns;
+@@ -90 +95 @@
+-        self.frames += partial.cols.len() as u64;
++        self.frames += partial.frames;
+@@ -224 +229 @@
+-            .with_min_len(8)
++            .with_min_len(std::env::var("BENCH_GRAIN").ok().and_then(|v|v.parse().ok()).unwrap_or(8))
+@@ -308 +313 @@
+-    block.capacity = cfg.fft_size + cfg.hop * 255;
++    block.capacity = cfg.fft_size + cfg.hop * (std::env::var("BENCH_BATCH").ok().and_then(|v|v.parse::<usize>().ok()).unwrap_or(256) - 1);
+@@ -310,0 +316,7 @@
++    let preview_elapsed = started.elapsed();
++    let mut reading = Duration::ZERO;
++    let mut envelope_time = Duration::ZERO;
++    let mut transform_time = Duration::ZERO;
++    let mut snapshot_time = Duration::ZERO;
++    let mut snapshots = 0;
++    let mut max_batch = Duration::ZERO;
+@@ -313,0 +326 @@
++        let clock = Instant::now();
+@@ -314,0 +328,2 @@
++        reading += clock.elapsed();
++        let clock = Instant::now();
+@@ -317,0 +333 @@
++        envelope_time += clock.elapsed();
+@@ -326,0 +343 @@
++        let clock = Instant::now();
+@@ -327,0 +345,3 @@
++        let elapsed = clock.elapsed();
++        transform_time += elapsed;
++        max_batch = max_batch.max(elapsed);
+@@ -341,0 +362 @@
++            let clock = Instant::now();
+@@ -342,0 +364,2 @@
++            snapshot_time += clock.elapsed();
++            snapshots += 1;
+@@ -357 +380,6 @@
+-    Ok(state.snapshot(None))
++    let clock = Instant::now();
++    let result = state.snapshot(None);
++    snapshot_time += clock.elapsed();
++    eprintln!("STAGES preview={} read_peak={} envelope={} transform_merge={} snapshot={} snapshots={} max_batch={}", preview_elapsed.as_secs_f64(), reading.as_secs_f64(), envelope_time.as_secs_f64(), transform_time.as_secs_f64(), snapshot_time.as_secs_f64(), snapshots, max_batch.as_secs_f64());
++    eprintln!("KERNEL prepare_s={} fft_s={} aggregate_s={}", state.prepare_ns as f64 / 1e9, state.fft_ns as f64 / 1e9, state.aggregate_ns as f64 / 1e9);
++    Ok(result)

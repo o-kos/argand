@@ -8,6 +8,39 @@ const FIRST_PREVIEW_FRAMES: usize = 128;
 
 const SNAPSHOT_INTERVAL: Duration = Duration::from_millis(50);
 
+/// Scheduling bounds independent of transform semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProgressiveOptions {
+    batch_frames: usize,
+}
+
+impl Default for ProgressiveOptions {
+    fn default() -> Self {
+        Self { batch_frames: 1024 }
+    }
+}
+
+impl ProgressiveOptions {
+    pub fn new(batch_frames: usize) -> Result<Self, DspError> {
+        if !(1..=4096).contains(&batch_frames) {
+            return Err(DspError::BadBatchSize(batch_frames));
+        }
+        Ok(Self { batch_frames })
+    }
+
+    /// Bound decoded samples and estimated FFT work, allowing one oversized FFT.
+    fn frames(self, cfg: &StftConfig, channels: usize) -> usize {
+        let samples = (1 << 20) / channels;
+        let bounded = samples.saturating_sub(cfg.fft_size) / cfg.hop + 1;
+        // Bound transform work too: high overlap can fit thousands of large FFTs
+        // in a small input buffer. One oversized FFT remains indivisible.
+        let work_budget = 2048u64 * 11 * 1024;
+        let frame_work = (cfg.fft_size as u64).saturating_mul(u64::from(cfg.fft_size.ilog2()));
+        let work_frames = (work_budget / frame_work).max(1) as usize;
+        self.batch_frames.min(bounded).min(work_frames)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flow {
     Continue,
@@ -87,7 +120,7 @@ impl Refinement {
         for (slot, add) in self.power.iter_mut().zip(&partial.power) {
             *slot += add;
         }
-        self.frames += partial.cols.len() as u64;
+        self.frames += partial.frames;
         self.time_peak = self.time_peak.max(partial.time_peak);
     }
 
@@ -221,7 +254,7 @@ impl Refinement {
         let buffer = &block.buf;
         let partial = (0..frames)
             .into_par_iter()
-            .with_min_len(8)
+            .with_min_len((frames / rayon::current_num_threads().saturating_mul(4)).max(1))
             .filter(|&k| {
                 self.preview_frames
                     .binary_search(&(frame_base + k as u64))
@@ -256,6 +289,23 @@ fn continuing(control: &dyn Fn() -> Flow) -> Result<(), DspError> {
 pub fn analyze_progressive(
     source: &mut dyn SampleSource,
     request: &AnalysisRequest,
+    control: &dyn Fn() -> Flow,
+    publish: &mut dyn FnMut(Analysis, Coverage) -> Flow,
+) -> Result<Analysis, DspError> {
+    analyze_progressive_with_options(
+        source,
+        request,
+        ProgressiveOptions::default(),
+        control,
+        publish,
+    )
+}
+
+/// Run the same complete analysis with an explicit scheduling budget.
+pub fn analyze_progressive_with_options(
+    source: &mut dyn SampleSource,
+    request: &AnalysisRequest,
+    options: ProgressiveOptions,
     control: &dyn Fn() -> Flow,
     publish: &mut dyn FnMut(Analysis, Coverage) -> Flow,
 ) -> Result<Analysis, DspError> {
@@ -304,9 +354,8 @@ pub fn analyze_progressive(
     let range = state.request.range;
     source.access_pattern(AccessPattern::Sequential);
     source.seek(range.start)?;
-    let mut block = Block::new(source, cfg.fft_size, state.meta.channels(), range.len);
-    block.capacity = cfg.fft_size + cfg.hop * 255;
-    block.buf.resize(block.capacity * block.channels, 0.0);
+    let capacity = cfg.fft_size + cfg.hop * (options.frames(&cfg, state.meta.channels()) - 1);
+    let mut block = Block::with_capacity(source, capacity, state.meta.channels(), range.len);
     let mut frame_base = 0;
     let mut last_snapshot = Instant::now();
     while frame_base < state.columns.total_frames {
@@ -520,5 +569,44 @@ mod cache_tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod scheduling_tests {
+    use super::*;
+
+    #[test]
+    fn batches_reject_invalid_sizes_and_bound_decoded_memory() {
+        assert!(ProgressiveOptions::new(0).is_err());
+        assert!(ProgressiveOptions::new(4097).is_err());
+        let options = ProgressiveOptions::new(4096).unwrap();
+        for channels in [1, 2] {
+            for size in [2048, 65536, 1 << 22] {
+                let cfg = StftConfig::new(size, Window::Hann);
+                let frames = options.frames(&cfg, channels);
+                let values = (cfg.fft_size + (frames - 1) * cfg.hop) * channels;
+                assert!(values <= (1 << 20) || frames == 1);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod allocation_tests {
+    use super::*;
+
+    #[test]
+    fn high_overlap_large_transforms_do_not_hide_unbounded_batch_work() {
+        let cfg = StftConfig {
+            fft_size: 262144,
+            hop: 1,
+            window: Window::Hann,
+        };
+        assert_eq!(ProgressiveOptions::new(4096).unwrap().frames(&cfg, 1), 4);
+        assert_eq!(
+            ProgressiveOptions::default().frames(&StftConfig::new(2048, Window::Hann), 1),
+            1024
+        );
     }
 }

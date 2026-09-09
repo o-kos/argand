@@ -329,6 +329,25 @@ transform size and window. It is read from beside
 the binary first and from the platform configuration directory second, and a
 missing or malformed one costs a log line rather than the application.
 
+The compute budget is configurable independently of the UI:
+
+```toml
+[analysis]
+workers = 0           # Automatic: at most 8 available logical CPUs
+batch_frames = 1024   # 1..4096; additionally bounded by memory and FFT work
+affinity = "none"    # "efficiency" optionally confines compute to detected E cores
+```
+
+Valid explicit worker counts (1..128) are clamped to the process CPU budget.
+Out-of-range worker or batch values are logged and reset to their defaults.
+Workers share a dynamic Rayon queue; FFT plans do not start nested threads.
+Efficiency affinity currently supports Linux Intel hybrid x86-64 CPUs via CPUID,
+within the inherited CPU mask. Other CPUs/platforms fall back to ordinary scheduling
+with a warning. Only the compute pool is pinned; the UI retains its mask.
+This mode is optional, not an automatic speed optimization. See
+[the scheduling measurements](docs/performance/67-fft-scheduling.md) for results,
+limitations and proposed automatic planning.
+
 The title is centred between the window edges. Normal client-decorated windows
 have subtly rounded corners. The waveform starts at 3 rem
 (normally 48 logical pixels) high, with a subtle separator ending at the waveform’s right edge. Ruler borders match their tick marks; the frequency border joins the separator. Drag the boundary

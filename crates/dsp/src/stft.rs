@@ -210,6 +210,8 @@ pub enum DspError {
     BadFftSize(usize),
     #[error("hop must be at least 1")]
     BadHop,
+    #[error("batch size must be between 1 and 4096 FFT frames, got {0}")]
+    BadBatchSize(usize),
     #[error("output size must be at least 1x1, got {width}x{height}")]
     BadOutputSize { width: usize, height: usize },
     #[error("dynamic range must be finite and greater than zero, got {0}")]
@@ -283,8 +285,16 @@ struct Block<'a> {
 
 impl<'a> Block<'a> {
     fn new(src: &'a mut dyn SampleSource, fft_size: usize, channels: usize, len: u64) -> Self {
-        let buf = vec![0.0f32; BLOCK_SAMPLES.max(fft_size) * channels];
-        let capacity = buf.len() / channels;
+        Self::with_capacity(src, BLOCK_SAMPLES.max(fft_size), channels, len)
+    }
+
+    fn with_capacity(
+        src: &'a mut dyn SampleSource,
+        capacity: usize,
+        channels: usize,
+        len: u64,
+    ) -> Self {
+        let buf = vec![0.0f32; capacity * channels];
         Self {
             src,
             buf,
@@ -710,6 +720,7 @@ impl Plan {
             .iter()
             .fold(acc.time_peak, |m, v| if v.abs() > m { v.abs() } else { m });
 
+        let row_base = acc.row_base(column, self.out_height);
         let mags = &mut acc.mags;
         if self.is_iq {
             let fft = self.complex.as_ref().expect("complex plan");
@@ -761,9 +772,6 @@ impl Plan {
         }
 
         // Fold bins down to image rows, low frequency first.
-        let row_base = acc.rows.len();
-        acc.rows
-            .resize(row_base + self.out_height, f32::NEG_INFINITY);
         for y in 0..self.out_height {
             let lo = y * self.bins / self.out_height;
             let hi = (((y + 1) * self.bins) / self.out_height)
@@ -771,11 +779,11 @@ impl Plan {
                 .min(self.bins);
             let peak = mags[lo..hi].iter().fold(0.0f32, |m, v| m.max(*v));
             acc.rows[row_base + y] = match acc.row_values {
-                RowValues::Amplitude => peak,
+                RowValues::Amplitude => acc.rows[row_base + y].max(peak),
                 RowValues::Decibels => 20.0 * peak.max(MAG_FLOOR).log10(),
             };
         }
-        acc.cols.push(column as u32);
+        acc.frames += 1;
     }
 }
 
@@ -787,6 +795,7 @@ enum RowValues {
 
 /// Per-thread accumulator: scratch buffers plus the frames it has finished.
 struct Partial {
+    frames: u64,
     cols: Vec<u32>,
     row_values: RowValues,
     scratch: Vec<Complex32>,
@@ -803,6 +812,7 @@ struct Partial {
 impl Partial {
     fn new(bins: usize, fft_size: usize) -> Self {
         Self {
+            frames: 0,
             cols: Vec::new(),
             row_values: RowValues::Decibels,
             scratch: Vec::new(),
@@ -816,7 +826,20 @@ impl Partial {
         }
     }
 
+    fn row_base(&mut self, column: usize, height: usize) -> usize {
+        if matches!(self.row_values, RowValues::Amplitude)
+            && self.cols.last() == Some(&(column as u32))
+        {
+            return self.rows.len() - height;
+        }
+        let base = self.rows.len();
+        self.cols.push(column as u32);
+        self.rows.resize(base + height, f32::NEG_INFINITY);
+        base
+    }
+
     fn merge(mut self, other: Self) -> Self {
+        self.frames += other.frames;
         self.cols.extend_from_slice(&other.cols);
         self.rows.extend_from_slice(&other.rows);
         for (slot, add) in self.power.iter_mut().zip(other.power.iter()) {
@@ -985,4 +1008,6 @@ mod tests {
 
 #[path = "progressive.rs"]
 mod progressive;
-pub use progressive::{Coverage, Flow, analyze_progressive};
+pub use progressive::{
+    Coverage, Flow, ProgressiveOptions, analyze_progressive, analyze_progressive_with_options,
+};
