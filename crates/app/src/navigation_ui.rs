@@ -50,17 +50,18 @@ impl Shell {
             .find(|entry| Some(&entry.path) == path.as_ref())
             .and_then(|entry| entry.view);
         if let Some(settings) = self.settings_backup {
-            self.settings_view_backup = Some(
-                saved
-                    .unwrap_or(View::full(meta.len_samples))
-                    .bounded(meta.len_samples, settings.fft_size),
-            );
+            self.settings_view_backup =
+                Some(saved.unwrap_or(View::full(meta.len_samples)).bounded(
+                    meta.len_samples,
+                    settings.fft_size,
+                    self.view_columns(),
+                ));
         }
-        self.view = Some(
-            saved
-                .unwrap_or(View::full(meta.len_samples))
-                .bounded(meta.len_samples, self.settings.fft_size),
-        );
+        self.view = Some(saved.unwrap_or(View::full(meta.len_samples)).bounded(
+            meta.len_samples,
+            self.settings.fft_size,
+            self.view_columns(),
+        ));
     }
 
     pub(super) fn bound_view(&mut self) {
@@ -68,9 +69,13 @@ impl Shell {
         if let Some(total) = self.sample_count()
             && let Some(view) = self.view
         {
-            self.view = Some(view.bounded(total, self.settings.fft_size));
+            self.view = Some(view.bounded(total, self.settings.fft_size, self.view_columns()));
             self.remember_view();
         }
+    }
+
+    fn view_columns(&self) -> usize {
+        self.plot.map_or(1, |plot| plot.width)
     }
 
     fn sample_count(&self) -> Option<u64> {
@@ -111,7 +116,16 @@ impl Shell {
         if let Some(view) = self.view
             && let Some(total) = self.sample_count()
         {
-            self.navigate(view.zoom(factor, anchor, total, self.settings.fft_size), cx);
+            self.navigate(
+                view.zoom(
+                    factor,
+                    anchor,
+                    total,
+                    self.settings.fft_size,
+                    self.view_columns(),
+                ),
+                cx,
+            );
         }
     }
 
@@ -224,23 +238,24 @@ impl Shell {
             return None;
         }
         let extents = self.extents()?;
-        let x = f32::from(pointer.x - geometry.both.left()) / f32::from(geometry.both.size.width);
-        let time = extents.seconds.0 + x as f64 * (extents.seconds.1 - extents.seconds.0);
+        let x = f32::from(pointer.x - geometry.both.left()) as f64
+            / f32::from(geometry.both.size.width) as f64;
+        let time = extents.seconds.0 + x * (extents.seconds.1 - extents.seconds.0);
         let decimals = navigation::time_precision(
-            (extents.seconds.1 - extents.seconds.0) / f32::from(geometry.both.size.width) as f64,
+            (extents.seconds.1 - extents.seconds.0) / self.view_columns() as f64,
         );
         if !geometry.spectrum.contains(&pointer) {
             return Some(format!("{time:.decimals$} s"));
         }
-        let y = f32::from(pointer.y - geometry.spectrum.top())
-            / f32::from(geometry.spectrum.size.height);
-        let frequency = extents.hertz.1 - y as f64 * (extents.hertz.1 - extents.hertz.0);
+        let y = f32::from(pointer.y - geometry.spectrum.top()) as f64
+            / f32::from(geometry.spectrum.size.height) as f64;
+        let frequency = extents.hertz.1 - y * (extents.hertz.1 - extents.hertz.0);
         let level = self
             .file
             .as_ref()?
             .document
             .analysis()
-            .and_then(|analysis| navigation::level_at(&analysis.db, time, y as f64))
+            .and_then(|analysis| navigation::level_at(&analysis.db, extents.seconds, x, y))
             .map_or_else(|| "—".into(), |db| format!("{db:.1} dBFS"));
         Some(format!("{time:.decimals$} s · {frequency:.1} Hz · {level}"))
     }

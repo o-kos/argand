@@ -195,7 +195,8 @@ impl WaveformEnvelope {
         seconds: (f64, f64),
     ) -> impl Iterator<Item = Option<(i64, i64)>> + '_ {
         let indices = (0..columns).map(move |step| {
-            let time = seconds.0 + step as f64 / columns.max(1) as f64 * (seconds.1 - seconds.0);
+            let time =
+                seconds.0 + (step as f64 + 0.5) / columns.max(1) as f64 * (seconds.1 - seconds.0);
             if !(self.t0..self.t1).contains(&time) {
                 return None;
             }

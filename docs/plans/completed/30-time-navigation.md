@@ -74,7 +74,7 @@ in-progress frame already had the requested axes and transformed paired
 pictures, followed by the refined view at the same time coordinates.
 
 The first independent review found four medium and two low issues. All were
-accepted. Extremely large counts now retain a representable minimum time span;
+accepted. Extremely large counts now retain a screen-resolution representable time span;
 file-wide extrema use exact request provenance. Settings cancellation restores
 automatic view expansion, cursor precision follows zoom, deep previews use a
 bounded number of narrow textures, and pointer moves outside plots no longer
@@ -83,5 +83,13 @@ redraw the picture. The stale README statement was removed.
 The reviewed build also passed the 24 MS/s cursor check and the native
 2048-sample view -> FFT 65536 preview -> Escape scenario. Both FFT 2048 and the
 exact opening range were restored and saved on close. The local gate passed
-457 tests; the release binary was rebuilt after it. Final independent review is
+458 tests; the release binary was rebuilt after it. Final independent review is
 pending.
+
+The second review accepted the other fixes and requested that the extreme-count
+floor cover every display column and 10% keyboard pans. The floor now reserves
+two ULPs per device-pixel column, is reapplied on width changes, and is tested
+with an interior u64-scale view, one-pixel and 10% pans, a 1500-column grid and
+waveform at 24 MS/s and 1 GS/s. Waveform mapping samples pixel centres.
+Cursor grid lookup interpolates relative to the held grid, avoiding an
+absolute-time rounding trip; displayed time remains an absolute capture time.

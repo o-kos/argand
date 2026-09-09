@@ -533,7 +533,11 @@ impl Shell {
             height = plot.height,
             "the plot was laid out"
         );
+        let width_changed = self.plot.is_none_or(|old| old.width != plot.width);
         self.plot = Some(plot);
+        if width_changed {
+            self.bound_view();
+        }
         self.ask_for_a_picture();
         cx.notify();
     }

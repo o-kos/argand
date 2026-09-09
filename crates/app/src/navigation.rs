@@ -17,8 +17,8 @@ impl View {
         }
     }
 
-    pub fn bounded(self, total: u64, fft: usize) -> Self {
-        let min = minimum_span(total, fft);
+    pub fn bounded(self, total: u64, fft: usize, columns: usize) -> Self {
+        let min = minimum_span(total, fft, columns);
         let len = if self.len == 0 {
             total
         } else {
@@ -42,14 +42,14 @@ impl View {
     }
 
     /// Keep the sample under `anchor` at the same fractional screen position.
-    pub fn zoom(self, factor: f64, anchor: f64, total: u64, fft: usize) -> Self {
+    pub fn zoom(self, factor: f64, anchor: f64, total: u64, fft: usize, columns: usize) -> Self {
         if !factor.is_finite() || factor <= 0.0 || !anchor.is_finite() {
             return self;
         }
         let anchor = anchor.clamp(0.0, 1.0);
         let len = ((self.len as f64 * factor).round() as u64)
             .max(1)
-            .clamp(minimum_span(total, fft), total);
+            .clamp(minimum_span(total, fft, columns), total);
         let shift = (self.len as f64 - len as f64) * anchor;
         Self {
             start: shifted(self.start, shift, total - len),
@@ -65,11 +65,11 @@ impl View {
     }
 }
 
-// Two ULPs keep both absolute endpoints distinct after sample-to-seconds
-// conversion, even for counts larger than f64's exact integer range.
-fn minimum_span(total: u64, fft: usize) -> u64 {
+// Reserve two ULPs per display pixel (and at least ten pixels for 10% pans),
+// so interpolation stays distinct across the entire view at extreme counts.
+fn minimum_span(total: u64, fft: usize, columns: usize) -> u64 {
     let count = total as f64;
-    let precision = (2.0 * (count.next_up() - count)).ceil() as u64;
+    let precision = (2.0 * (count.next_up() - count) * columns.max(10) as f64).ceil() as u64;
     (fft as u64).max(1).max(precision).min(total)
 }
 
@@ -120,17 +120,29 @@ pub fn column_mapping(
 }
 
 /// Use the shaded cell, with the highest frequency at the top of the image.
-pub fn level_at(grid: &DbGrid, time: f64, from_top: f64) -> Option<f32> {
+pub fn level_at(grid: &DbGrid, shown: (f64, f64), across: f64, from_top: f64) -> Option<f32> {
+    let span = grid.t1 - grid.t0;
     if grid.width == 0
         || grid.height == 0
-        || !time.is_finite()
-        || !(grid.t0..grid.t1).contains(&time)
+        || !span.is_finite()
+        || span <= 0.0
+        || !(0.0..1.0).contains(&across)
         || !(0.0..1.0).contains(&from_top)
     {
         return None;
     }
-    let x = ((time - grid.t0) / (grid.t1 - grid.t0) * grid.width as f64) as usize;
-    let row = (from_top * grid.height as f64) as usize;
+    // Keep interpolation relative to the held grid: adding a pixel offset to
+    // a very large absolute time would discard its low bits before lookup.
+    let column =
+        ((shown.0 - grid.t0) / span + across * ((shown.1 - shown.0) / span)) * grid.width as f64;
+    if !(0.0..grid.width as f64).contains(&column) {
+        return None;
+    }
+    let index = |position: f64, cells: usize| {
+        ((position + cells as f64 * f64::EPSILON * 8.0).floor() as usize).min(cells - 1)
+    };
+    let x = index(column, grid.width);
+    let row = index(from_top * grid.height as f64, grid.height);
     grid.value(x, grid.height - 1 - row)
 }
 

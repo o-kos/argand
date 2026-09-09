@@ -56,7 +56,7 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 - Memory-map input files and parse them lazily instead of loading complete captures into RAM. `SampleSource` exposes optional access-pattern and bounded prefetch hints; they never change its cursor or decoded values. The mmap reader uses Unix advice to overlap sparse preview reads.
 - Build a multi-level min/max peak pyramid for waveform level-of-detail selection.
 - The GUI retains a toolkit-neutral `Overview` in its document worker: at most 4096 time cells by 2048 frequency cells, keeping native FFT bins when they fit, and up to 65536 sample min/max cells for the waveform. Every STFT frame is accumulated. `Overview::render` rebins values before shading: conservative overlapping maxima or overlap- and frame-count-weighted linear powers. Cache boundaries are the declared resolution; sub-cell structure cannot be recovered. The spectral accumulator is bounded to 32 MiB (Peak) or 64 MiB (Mean power), excluding display buffers, waveform, PSD/FFT storage and input mapping. Ordinary DSP/CLI rendering still reduces directly to requested pixels; legacy dB Mean is not an overview reducer.
-- Display dimensions use a coalescing mailbox and do not change the analysis generation, including during splitter dragging and progressive refinement. File/range/FFT/reducer changes invalidate analysis. Colour and dynamic-range changes advance only the display revision; explicit style refreshes bypass the periodic snapshot interval between bounded batches. The worker renders the newest requested size from the same overview; completed redraws preserve analysis duration and resolved colour range. Only image-sized snapshots cross to the UI.
+- Display dimensions use a coalescing mailbox and do not change the analysis generation while the sample range stays unchanged, including during splitter dragging and progressive refinement. At extreme sample counts, growing the plot width can widen the range to preserve representable time coordinates (#30). File/range/FFT/reducer changes invalidate analysis. Colour and dynamic-range changes advance only the display revision; explicit style refreshes bypass the periodic snapshot interval between bounded batches. The worker renders the newest requested size from the same overview; completed redraws preserve analysis duration and resolved colour range. Only image-sized snapshots cross to the UI.
 - Use a piece table so cuts and pastes remain `O(1)` for multi-hour files.
 - Keep expensive work off the UI thread by using rayon or dedicated worker threads.
 
@@ -184,7 +184,8 @@ with clipped bounds to avoid losing the viewport in large GPU f32 image coordina
 for the GUI; CLI whole-second clock formatting remains unchanged.
 Navigation stages view persistence in memory; the next session save or orderly
 close flushes it, so gestures themselves perform no filesystem writes.
-The minimum span also keeps floating-point time endpoints representable for
-extreme sample counts. The settings editor restores automatic view expansion on
+The minimum span also reserves two floating-point ULPs per display column at
+extreme sample counts (at least ten columns for keyboard pans). Width changes
+reapply this floor before requesting analysis; waveform lookup uses pixel centres. The settings editor restores automatic view expansion on
 Cancel; explicit navigation during editing becomes the new view to restore.
 Cursor time precision follows the visible time per pixel, up to nanoseconds.

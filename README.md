@@ -355,8 +355,8 @@ scroll also pan. The View menu exposes the keyboard commands:
 | Home / End | Move to the capture's beginning / end |
 | `0` | Fit the entire capture |
 
-The minimum span is one FFT, with a representability floor for sample indices
-beyond the exact integer range of floating-point time coordinates. Axes and held pictures move immediately; a new
+The minimum span is one FFT, with a screen-resolution representability floor
+for extreme sample indices. This floor is rechecked when the plot width changes. Axes and held pictures move immediately; a new
 preview replaces the placeholder at the same physical coordinates. Newly exposed
 areas remain empty until a preview covers them. Rapid navigation replaces pending
 requests instead of queuing transforms. Each recent entry remembers its time view,
