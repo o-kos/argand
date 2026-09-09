@@ -83,8 +83,7 @@ redraw the picture. The stale README statement was removed.
 The reviewed build also passed the 24 MS/s cursor check and the native
 2048-sample view -> FFT 65536 preview -> Escape scenario. Both FFT 2048 and the
 exact opening range were restored and saved on close. The local gate passed
-458 tests; the release binary was rebuilt after it. Final independent review is
-pending.
+458 tests; the release binary was rebuilt after it.
 
 The second review accepted the other fixes and requested that the extreme-count
 floor cover every display column and 10% keyboard pans. The floor now reserves
@@ -93,3 +92,9 @@ with an interior u64-scale view, one-pixel and 10% pans, a 1500-column grid and
 waveform at 24 MS/s and 1 GS/s. Waveform mapping samples pixel centres.
 Cursor grid lookup interpolates relative to the held grid, avoiding an
 absolute-time rounding trip; displayed time remains an absolute capture time.
+
+The third independent review returned no actionable findings. All findings from
+the preceding rounds were accepted and addressed; none were deferred or rejected.
+The final release passed repeated native RF, resizing, endpoint navigation and
+one-hour deep-zoom checks. Linux CI is blocked before compilation by an unrelated
+Google Chrome APT index checksum mismatch, tracked separately in #78.
