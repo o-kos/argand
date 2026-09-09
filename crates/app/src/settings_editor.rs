@@ -99,6 +99,16 @@ impl Editor {
                 cx.observe_release_in(&shell, window, |_, _, window, _| window.remove_window()),
             );
         }
+        let closing_owner = owner.clone();
+        let closing_id = window.window_handle().window_id();
+        cx.on_release(move |_, cx| {
+            cx.defer(move |cx| {
+                let _ = closing_owner.update(cx, |shell, cx| {
+                    shell.cancel_settings_window(closing_id, cx);
+                });
+            });
+        })
+        .detach();
         fft.focus_handle(cx).focus(window);
         Self {
             owner,
@@ -113,6 +123,58 @@ impl Editor {
             error: None,
             _subscriptions: subscriptions,
         }
+    }
+
+    fn close(&mut self, accept: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if accept && !self.commit_numbers(window, cx) {
+            return;
+        }
+        let _ = self
+            .owner
+            .update(cx, |shell, cx| shell.finish_settings(accept, cx));
+        window.remove_window();
+    }
+
+    fn commit_numbers(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let overlap = self.overlap.read(cx).value();
+        let range = self.range.read(cx).value();
+        let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
+        match self
+            .settings
+            .edited_numbers(&overlap, fixed.then_some(range.as_ref()))
+        {
+            Ok(settings) => self.apply(settings, window, cx),
+            Err(error) => {
+                self.error = Some(error);
+                cx.notify();
+            }
+        }
+        self.error.is_none()
+    }
+
+    fn recommend(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let db = self
+            .owner
+            .upgrade()
+            .and_then(|shell| shell.read(cx).range_recommendation());
+        if let Some(db) = db {
+            self.apply(
+                Settings {
+                    dynamic_range: DynamicRange::Fixed(db),
+                    ..self.settings
+                },
+                window,
+                cx,
+            );
+            self.range.focus_handle(cx).focus(window);
+        }
+    }
+
+    fn reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(owner) = self.owner.upgrade() else {
+            return;
+        };
+        self.apply(Settings::from_config(&owner.read(cx).config), window, cx);
     }
 
     fn update_effective_range(
@@ -284,7 +346,12 @@ impl Editor {
             .child(form_row("Aggregation", Select::new(&self.aggregation), cx))
     }
 
-    fn footer_status(&self, pending: bool, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn footer_status(
+        &self,
+        pending: bool,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         if let Some(error) = &self.error {
             return div()
                 .flex_1()
@@ -302,17 +369,11 @@ impl Editor {
                 .outline()
                 .small()
                 .label(format!("Use recommended: {db} dB"))
-                .on_click(cx.listener(move |editor, _, window, cx| {
-                    editor.apply(
-                        Settings {
-                            dynamic_range: DynamicRange::Fixed(db),
-                            ..editor.settings
-                        },
-                        window,
-                        cx,
-                    );
-                    editor.range.focus_handle(cx).focus(window);
-                }))
+                .when_some(
+                    Kbd::binding_for_action(&UseRecommendedRange, None, window),
+                    |button, kbd| button.child(kbd),
+                )
+                .on_click(cx.listener(|editor, _, window, cx| editor.recommend(window, cx)))
                 .into_any_element();
         }
         div()
@@ -321,7 +382,7 @@ impl Editor {
             .child(if pending {
                 "Updating the picture…"
             } else {
-                "Changes are saved automatically"
+                "Changes are previewed until OK"
             })
             .into_any_element()
     }
@@ -360,7 +421,7 @@ impl Editor {
 }
 
 impl Render for Editor {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let pending = self.owner.upgrade().is_some_and(|shell| {
             let shell = shell.read(cx);
             shell.file.as_ref().is_some_and(|f| {
@@ -373,7 +434,14 @@ impl Render for Editor {
             .flex()
             .flex_col()
             .key_context("AnalysisEditor")
-            .on_action(cx.listener(|_, _: &CloseSettings, window, _| window.remove_window()))
+            .on_action(cx.listener(|editor, _: &UseRecommendedRange, window, cx| {
+                editor.recommend(window, cx)
+            }))
+            .on_action(
+                cx.listener(|editor, _: &CloseSettings, window, cx| {
+                    editor.close(false, window, cx)
+                }),
+            )
             .child(TitleBar::new().child(div().text_sm().child("Analysis settings")))
             .child(
                 div()
@@ -392,19 +460,43 @@ impl Render for Editor {
             .child(
                 div()
                     .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_3()
+                    .flex_col()
+                    .gap_2()
                     .px_5()
                     .py_3()
                     .border_t_1()
                     .border_color(cx.theme().border)
-                    .child(self.footer_status(pending, cx))
+                    .child(self.footer_status(pending, window, cx))
                     .child(
-                        Button::new("close-settings")
-                            .outline()
-                            .label("Close")
-                            .on_click(|_, window, _| window.remove_window()),
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Button::new("reset-settings")
+                                    .outline()
+                                    .label("Reset to defaults")
+                                    .on_click(cx.listener(|editor, _, window, cx| {
+                                        editor.reset(window, cx)
+                                    })),
+                            )
+                            .child(div().flex_1())
+                            .child(
+                                Button::new("cancel-settings")
+                                    .outline()
+                                    .label("Cancel")
+                                    .on_click(cx.listener(|editor, _, window, cx| {
+                                        editor.close(false, window, cx)
+                                    })),
+                            )
+                            .child(
+                                Button::new("accept-settings")
+                                    .primary()
+                                    .label("OK")
+                                    .on_click(cx.listener(|editor, _, window, cx| {
+                                        editor.close(true, window, cx)
+                                    })),
+                            ),
                     ),
             )
     }

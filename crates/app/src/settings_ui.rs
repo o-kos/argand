@@ -15,6 +15,15 @@ pub(super) fn init(cx: &mut gpui::App) {
         EditAnalysis,
         None,
     )]);
+    cx.bind_keys([KeyBinding::new(
+        if cfg!(target_os = "macos") {
+            "cmd-shift-r"
+        } else {
+            "ctrl-shift-r"
+        },
+        UseRecommendedRange,
+        None,
+    )]);
     editor::init(cx);
 }
 
@@ -30,6 +39,10 @@ impl Shell {
             cx.notify();
             return;
         }
+        self.apply_settings(settings, cx);
+    }
+
+    fn apply_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
         self.settings_error = None;
         tracing::debug!(?settings, "analysis settings requested");
         if let Some(file) = &mut self.file
@@ -40,10 +53,42 @@ impl Shell {
             file.displayed_settings = Some(settings);
         }
         self.settings = settings;
-        self.session.analysis_settings = Some(settings);
-        self.save();
+        if self.settings_backup.is_none() {
+            self.session.analysis_settings = Some(settings);
+            self.save();
+        }
         self.ask_for_a_picture();
         cx.notify();
+    }
+
+    fn cancel_settings_window(&mut self, id: gpui::WindowId, cx: &mut Context<Self>) {
+        if self
+            .settings_window
+            .is_some_and(|handle| handle.window_id() == id)
+        {
+            self.finish_settings(false, cx);
+        }
+    }
+
+    pub(super) fn finish_settings(&mut self, accept: bool, cx: &mut Context<Self>) {
+        let Some(backup) = self.settings_backup.take() else {
+            return;
+        };
+        self.settings_window = None;
+        self.analysis_hovered = false;
+        self.apply_settings(if accept { self.settings } else { backup }, cx);
+    }
+
+    pub(super) fn use_recommended_range(&mut self, cx: &mut Context<Self>) {
+        if let Some(db) = self.range_recommendation() {
+            self.set_settings(
+                Settings {
+                    dynamic_range: DynamicRange::Fixed(db),
+                    ..self.settings
+                },
+                cx,
+            );
+        }
     }
 
     fn displayed_range(&self) -> Option<argand_dsp::DynamicRangeResult> {
@@ -161,8 +206,8 @@ impl Shell {
             .id("analysis-summary")
             .border_l_1()
             .border_color(cx.theme().border)
-            .hoverable_tooltip(move |window, cx| {
-                analysis_tooltip(hint_owner.clone()).build(window, cx)
+            .when(self.settings_backup.is_none(), |panel| {
+                panel.hoverable_tooltip(move |_, cx| live_analysis_tooltip(hint_owner.clone(), cx))
             })
             .child(
                 Button::new("analysis-settings")
@@ -190,7 +235,11 @@ impl Shell {
                             .child(
                                 div()
                                     .when(warning, |s| s.text_color(advice_color(cx)))
-                                    .child(range),
+                                    .child(if warning {
+                                        format!("⚠ {range}")
+                                    } else {
+                                        range
+                                    }),
                             ),
                     ),
             )
@@ -209,6 +258,12 @@ impl Shell {
         }) {
             return;
         }
+        if self.settings_backup.is_some() {
+            return;
+        }
+        self.settings_backup = Some(self.settings);
+        self.analysis_hovered = false;
+        cx.notify();
         let owner = cx.entity().downgrade();
         let settings = self.settings;
         let range = self
@@ -217,10 +272,10 @@ impl Shell {
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
-                size(px(440.), px(520.)),
+                size(px(460.), px(560.)),
                 cx,
             ))),
-            window_min_size: Some(size(px(400.), px(480.))),
+            window_min_size: Some(size(px(440.), px(540.))),
             window_decorations: Some(WindowDecorations::Client),
             titlebar: Some(TitleBar::title_bar_options()),
             app_id: Some(APP_ID.into()),
@@ -238,7 +293,10 @@ impl Shell {
                 Ok(handle) => {
                     let _ = owner.update(cx, |shell, _| shell.settings_window = Some(handle));
                 }
-                Err(error) => tracing::error!(%error, "cannot open analysis settings"),
+                Err(error) => {
+                    let _ = owner.update(cx, |shell, cx| shell.finish_settings(false, cx));
+                    tracing::error!(%error, "cannot open analysis settings");
+                }
             }
         });
     }
@@ -262,6 +320,16 @@ pub(super) fn detail_row(
                 .child(label.into()),
         )
         .child(div().flex_1().min_w_0().text_right().child(value.into()))
+}
+
+fn live_analysis_tooltip(owner: WeakEntity<Shell>, cx: &mut gpui::App) -> gpui::AnyView {
+    cx.new(|cx| {
+        if let Some(owner) = owner.upgrade() {
+            cx.observe(&owner, |_, _, cx| cx.notify()).detach();
+        }
+        analysis_tooltip(owner)
+    })
+    .into()
 }
 
 fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
@@ -316,7 +384,11 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                     Button::new("hint-recommendation")
                         .ghost()
                         .small()
-                        .label(format!("Use recommended range: {db} dB"))
+                        .label(format!("Use recommended: {db} dB"))
+                        .when_some(
+                            Kbd::binding_for_action(&UseRecommendedRange, None, window),
+                            |button, kbd| button.child(kbd),
+                        )
                         .on_click(move |_, _, cx| {
                             let _ = apply_owner.update(cx, |shell, cx| {
                                 shell.set_settings(

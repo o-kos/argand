@@ -17,11 +17,12 @@ pub struct Settings {
     pub aggregation: Aggregation,
     #[serde(deserialize_with = "crate::config::parsed", serialize_with = "spelled")]
     pub colormap: Colormap,
-    #[serde(
-        deserialize_with = "crate::config::dynamic_range",
-        serialize_with = "spelled"
-    )]
+    #[serde(skip, default = "default_range")]
     pub dynamic_range: DynamicRange,
+}
+
+fn default_range() -> DynamicRange {
+    DynamicRange::Default
 }
 
 fn spelled<T: std::fmt::Display, S: Serializer>(
@@ -44,9 +45,36 @@ impl Settings {
     }
 
     pub fn restored(saved: Option<Self>, config: &Config) -> Self {
+        let defaults = Self::from_config(&config.clone().repaired());
         saved
+            .map(|settings| Self {
+                dynamic_range: defaults.dynamic_range,
+                ..settings
+            })
             .filter(|settings| settings.validate(None).is_ok())
-            .unwrap_or_else(|| Self::from_config(&config.clone().repaired()))
+            .unwrap_or(defaults)
+    }
+
+    pub fn edited_numbers(self, overlap: &str, range: Option<&str>) -> Result<Self, String> {
+        let overlap = overlap
+            .parse::<f32>()
+            .map_err(|_| "Enter a number for overlap")?;
+        if !overlap.is_finite() || !(0.0..=95.0).contains(&overlap) || overlap.fract() != 0.0 {
+            return Err("Overlap must be a whole number from 0 to 95%".into());
+        }
+        let dynamic_range = match range {
+            Some(value) => {
+                DynamicRange::Fixed(value.parse().map_err(|_| "Enter a number for range")?)
+            }
+            None => self.dynamic_range,
+        };
+        let settings = Self {
+            overlap: overlap as u8,
+            dynamic_range,
+            ..self
+        };
+        settings.validate(None)?;
+        Ok(settings)
     }
 
     pub fn validate(self, samples: Option<u64>) -> Result<(), String> {
@@ -114,6 +142,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn confirming_numeric_edits_validates_both_fields_without_losing_either() {
+        let settings = Settings::from_config(&Config::default());
+        let edited = settings.edited_numbers("50", Some("47.5")).unwrap();
+        assert_eq!(edited.overlap, 50);
+        assert_eq!(edited.dynamic_range, DynamicRange::Fixed(47.5));
+        for overlap in ["", "nan", "75.5", "96"] {
+            assert!(settings.edited_numbers(overlap, Some("47.5")).is_err());
+        }
+        for range in ["", "0", "-1", "nan", "inf"] {
+            assert!(settings.edited_numbers("50", Some(range)).is_err());
+        }
+        assert_eq!(
+            settings.edited_numbers("50.0", None).unwrap().dynamic_range,
+            DynamicRange::Default
+        );
+    }
+
+    #[test]
     fn saved_choices_round_trip_and_invalid_values_fall_back() {
         let config = Config::default();
         let settings = Settings {
@@ -126,7 +172,22 @@ mod tests {
         };
         let text = toml::to_string(&settings).unwrap();
         let saved = toml::from_str(&text).unwrap();
-        assert_eq!(Settings::restored(Some(saved), &config), settings);
+        assert!(!text.contains("dynamic_range"));
+        assert_eq!(
+            Settings::restored(Some(saved), &config),
+            Settings {
+                dynamic_range: config.dynamic_range,
+                ..settings
+            }
+        );
+        let legacy = format!("{text}dynamic_range = '43'\n");
+        let saved = toml::from_str(&legacy).unwrap();
+        let mut configured = config.clone();
+        configured.dynamic_range = DynamicRange::Auto;
+        assert_eq!(
+            Settings::restored(Some(saved), &configured).dynamic_range,
+            DynamicRange::Auto
+        );
         assert_eq!(
             Settings::restored(
                 Some(Settings {

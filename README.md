@@ -414,7 +414,10 @@ to open the analysis settings window. Standard dropdowns select FFT size, window
 aggregation and colour scheme; numeric fields edit overlap and fixed dynamic range.
 Tab and Shift+Tab move between controls, arrows navigate lists or step numbers,
 Enter confirms a choice or numeric edit, and Escape closes a list before closing
-the settings window. Numeric edits also commit when focus leaves the field.
+the settings window and cancels its changes. Numeric edits also commit when focus leaves the field.
+Changes preview immediately; **OK** keeps them, while **Cancel**, Escape or closing
+the window restores the settings present when it opened. **Reset to defaults** previews
+the defaults from `argand.toml`, or built-in defaults when no configuration is present.
 
 Range modes are absolute full scale (0 to -110 dBFS), a fixed span below the measured
 peak, and automatic. The effective range remains visible as a readout outside the fixed mode.
@@ -422,14 +425,18 @@ The status text is muted and brightens on hover. Only a nonzero signal whose spe
 peak falls in the lower half of the absolute scale produces a yellow range warning.
 A narrower recommendation by itself is not a warning; silence and peak-relative modes
 are excluded. The hover hint and settings window offer the measured recommended
-range used by `aspec`, and apply it with one action.
+range used by `aspec`, and apply it with one action or Ctrl+Shift+R (Cmd+Shift+R on macOS).
+A yellow ⚠ accompanies the highlighted range. Opening the editor hides the hint.
 
 Colour and range changes reuse cached values without a new FFT, including during
 refinement. Transform changes cancel obsolete work and retain the previous picture
 until a preview arrives. Style edits during that initial replacement interval apply
 to the incoming preview; the retained picture keeps its own transform and style
 until then. Invalid choices show an explanation.
-Effective choices persist in session version 4; configuration defaults remain untouched.
+FFT, window, overlap, aggregation and colour choices persist after OK in session
+version 5; configuration defaults remain untouched. Range and its mode belong to
+the current file: opening a file or restarting restores the configured range default.
+Older saved range values are ignored.
 The bar describes the displayed analysis while a replacement is pending.
 The `ready in` hint explains the latest analysis time, including sample reading
 and excluding file opening and display.

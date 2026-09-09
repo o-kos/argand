@@ -83,6 +83,11 @@ promise applies to.
 
 ### Changed
 
+- Analysis settings preview until OK, with Cancel and Reset to defaults controls.
+  Dynamic range now belongs to the current file rather than the saved session.
+  Opening the editor dismisses its hint; Ctrl+Shift+R (Cmd+Shift+R on macOS)
+  applies range advice, and a yellow ⚠ marks the warning.
+
 - File details use aligned hint rows; FFT details appear on hover with muted status text. Analysis settings use standard dropdowns and numeric fields with full keyboard access. Yellow range warnings are limited to low-level signals in the absolute display scale.
 
 - Reduce full-pass spectrogram overhead by reusing FFT scratch buffers and updating only changed display columns during refinement.

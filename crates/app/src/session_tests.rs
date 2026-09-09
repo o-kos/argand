@@ -664,8 +664,8 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 4"),
-        "settings persistence uses session version 4: {text}"
+        text.contains("version = 5"),
+        "file-specific range requires session version 5: {text}"
     );
 }
 
@@ -729,7 +729,8 @@ fn analysis_settings_survive_restart_without_changing_configuration_or_older_geo
     session.analysis_settings = Some(settings);
     assert!(session.save(&path));
     let restored = Session::load(&path).session;
-    assert_eq!(restored.analysis_settings, Some(settings));
+    assert_eq!(restored.analysis_settings, Some(crate::settings::Settings { dynamic_range: argand_dsp::DynamicRange::Default, ..settings }));
+    assert!(!std::fs::read_to_string(&path).unwrap().contains("dynamic_range"));
     assert_eq!(restored.geometry, session.geometry);
     assert_eq!(restored.waveform_fraction, Some(0.3));
     assert_eq!(std::fs::read_to_string(config_path).unwrap(), config_text);

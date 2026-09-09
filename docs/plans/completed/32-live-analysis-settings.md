@@ -6,7 +6,8 @@ Resolves #32. Builds on the progressive analysis in #29; navigation (#30) is def
 
 Provide compact in-window analysis controls for the effective transform and display
 settings. Keep the current picture while replacement work runs or a combination is
-invalid. Persist effective values in session state without writing `argand.toml`.
+invalid. Persist transform and palette values in session state without writing `argand.toml`;
+keep dynamic range local to the current file.
 
 ## Decisions
 
@@ -24,7 +25,7 @@ invalid. Persist effective values in session state without writing `argand.toml`
   offer the aspec recommended range in the hover hint and settings window.
 - Include #61 and the range-advice portion of #62 in this owner-approved scope. Keep
   the remaining signal-level/FFT diagnostic panels in #62.
-- Store valid effective choices in a new backwards-readable session version; preserve
+- Store accepted transform/palette choices in a new backwards-readable session version; preserve
   configuration defaults and comments.
 
 ## Implementation
@@ -92,3 +93,16 @@ The revised controls and keyboard interaction are documented in
 review identified a rejected select value that did not reflect effective settings;
 restoring the selects on rejection fixes it. No findings were declined in this revision,
 and the final round was clean.
+
+## Owner feedback: cancellation and file-specific range
+
+- [x] Preview edits until OK; Cancel, Escape and window close restore opening settings.
+- [x] Reset to configured defaults with a keyboard-accessible button.
+- [x] Keep range and its mode local to the current file; ignore old saved levels.
+- [x] Dismiss the analysis hint when opening the editor.
+- [x] Add Ctrl+Shift+R (Cmd+Shift+R on macOS) and a yellow warning glyph.
+- [x] Validate persistence, native interactions, full gate, release and independent review.
+
+See [cancellation and file-specific range validation](../../performance/32-settings-cancel.md).
+Both follow-up review findings were accepted: atomic confirmation of numeric text
+and live hint refresh. The final focused review was clean; no findings were declined.

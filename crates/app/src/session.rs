@@ -72,15 +72,14 @@ pub const RECENT_LIMIT: usize = 10;
 /// whatever that version was recording. The number goes up whenever the layout
 /// gains something, so that an older binary sees a number it does not know and
 /// leaves the file rather than quietly rewriting it without what it could not
-/// read. Version 2 added the recent list, version 3 the panel split, and version 4 the analysis settings.
-pub const VERSION: u32 = 4;
+/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range.
+pub const VERSION: u32 = 5;
 
 /// Every layout this program can read, oldest first.
 ///
 /// An older file is read into the current shape and written back at
-/// [`VERSION`]: each version so far only added fields, so what is missing has
-/// a default and nothing has to be converted.
-const READABLE: [u32; 4] = [1, 2, 3, VERSION];
+/// [`VERSION`]: missing fields have defaults; legacy dynamic range values are ignored.
+const READABLE: [u32; 5] = [1, 2, 3, 4, VERSION];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

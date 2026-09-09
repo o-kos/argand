@@ -1,5 +1,9 @@
 # Status and settings interaction revision
 
+The cancellation and file-specific range follow-up is recorded in
+[the next interaction report](32-settings-cancel.md). The screenshots below show
+the earlier editor revision.
+
 Native validation on 2026-09-09 for the owner feedback on Draft PR #64 (#32).
 This supersedes the UI descriptions in the [first validation report](32-status-settings.md).
 The earlier worker timing measurements are retained there; this revision does not

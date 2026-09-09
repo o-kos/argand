@@ -46,7 +46,16 @@ const TITLE: &str = "argand";
 /// Reverse-DNS identifier desktop environments group windows by.
 const APP_ID: &str = "io.github.o_kos.argand";
 
-actions!(shell, [FocusNext, FocusPrevious, ChooseFile, EditAnalysis]);
+actions!(
+    shell,
+    [
+        FocusNext,
+        FocusPrevious,
+        ChooseFile,
+        EditAnalysis,
+        UseRecommendedRange
+    ]
+);
 
 #[derive(Clone, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = shell, no_json)]
@@ -230,6 +239,7 @@ struct Shell {
     settings: Settings,
     settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
     analysis_hovered: bool,
+    settings_backup: Option<Settings>,
     settings_error: Option<String>,
 
     /// Absent when the platform offers nowhere to keep state, or when the file
@@ -300,6 +310,7 @@ impl Shell {
             settings,
             settings_window: None,
             analysis_hovered: false,
+            settings_backup: None,
             settings_error: None,
 
             config,
@@ -329,6 +340,12 @@ impl Shell {
     /// transform, and that is a pass over the file that must not happen on the
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
+        let editor = self.settings_window;
+        self.finish_settings(false, cx);
+        if let Some(editor) = editor {
+            let _ = editor.update(cx, |_, window, _| window.remove_window());
+        }
+        self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
         self.settings_error = None;
         self.recent_updates = None;
@@ -624,6 +641,11 @@ impl Shell {
         cx.on_action(move |_: &ChooseFile, cx| {
             cx.defer(move |cx| {
                 let _ = window.update(cx, Self::choose_file);
+            });
+        });
+        cx.on_action(move |_: &UseRecommendedRange, cx| {
+            cx.defer(move |cx| {
+                let _ = window.update(cx, |shell, _, cx| shell.use_recommended_range(cx));
             });
         });
         cx.on_action(move |_: &EditAnalysis, cx| {
@@ -1230,36 +1252,40 @@ impl Render for Shell {
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;
-        let content = div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .font_family(cx.theme().font_family.clone())
-            .text_color(cx.theme().foreground)
-            .id("shell")
-            .track_focus(&self.focus)
-            .key_context(if self.file.is_none() {
-                "Shell StartPage"
-            } else {
-                "Shell"
-            })
-            .on_mouse_move(cx.listener(Self::drag_splitter))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_splitter))
-            .on_action(cx.listener(Self::open_recent))
-            .on_action(cx.listener(Self::edit_analysis))
-            .on_action(|_: &FocusNext, window, _| window.focus_next())
-            .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
-            // A capture dropped anywhere on the window opens, which is where a
-            // person aims when the window is showing the wrong file.
-            .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
-                if let Some(path) = dropped.paths().first() {
-                    shell.open(Origin::new(path.clone()), window, cx);
-                }
-            }))
-            .child(self.title_bar(corners, window, cx))
-            .child(self.content(window, cx))
-            .child(self.status_bar(corners, cx));
+        let content =
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .font_family(cx.theme().font_family.clone())
+                .text_color(cx.theme().foreground)
+                .id("shell")
+                .track_focus(&self.focus)
+                .key_context(if self.file.is_none() {
+                    "Shell StartPage"
+                } else {
+                    "Shell"
+                })
+                .on_mouse_move(cx.listener(Self::drag_splitter))
+                .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))
+                .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_splitter))
+                .on_action(cx.listener(Self::open_recent))
+                .on_action(cx.listener(Self::edit_analysis))
+                .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
+                    shell.use_recommended_range(cx)
+                }))
+                .on_action(|_: &FocusNext, window, _| window.focus_next())
+                .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
+                // A capture dropped anywhere on the window opens, which is where a
+                // person aims when the window is showing the wrong file.
+                .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
+                    if let Some(path) = dropped.paths().first() {
+                        shell.open(Origin::new(path.clone()), window, cx);
+                    }
+                }))
+                .child(self.title_bar(corners, window, cx))
+                .child(self.content(window, cx))
+                .child(self.status_bar(corners, cx));
         frame.render(content, cx)
     }
 }
