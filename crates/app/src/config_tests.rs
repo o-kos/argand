@@ -1,4 +1,5 @@
 use super::*;
+use argand_dsp::AnalysisRequest;
 use argand_dsp::Window;
 
 /// A scratch directory removed when it goes out of scope.
@@ -229,7 +230,7 @@ window = \"blackman-harris\"
         source: PathBuf::from("capture.wav"),
     };
 
-    let request = config.analysis_request(&meta, 1024, 480);
+    let request = crate::settings::Settings::from_config(&config).analysis_request(&meta, 1024, 480);
 
     assert_eq!(request.cfg.fft_size, 512);
     assert_eq!(request.cfg.window, argand_dsp::Window::BlackmanHarris);
@@ -266,7 +267,7 @@ fn a_transform_size_of_two_still_leaves_a_hop_of_at_least_one() {
         source: PathBuf::from("capture.wav"),
     };
 
-    assert_eq!(config.analysis_request(&meta, 64, 32).cfg.hop, 1);
+    assert_eq!(crate::settings::Settings::from_config(&config).analysis_request(&meta, 64, 32).cfg.hop, 1);
 }
 
 #[test]
@@ -280,13 +281,13 @@ fn aggregation_defaults_and_switches_without_changing_the_transform_or_waveform(
         divisor: 1.0,
         source: PathBuf::from("memory"),
     };
-    let default = Config::default().analysis_request(&meta, 800, 400);
+    let default = crate::settings::Settings::from_config(&Config::default()).analysis_request(&meta, 800, 400);
     assert_eq!(default.reduce, Reduce::Max);
     for aggregation in Aggregation::ALL {
         let name = aggregation.reduce().as_str();
         let config: Config = toml::from_str(&format!("aggregation = \"{name}\"\n")).unwrap();
         assert_eq!(config.aggregation, aggregation);
-        let request = config.analysis_request(&meta, 800, 400);
+        let request = crate::settings::Settings::from_config(&config).analysis_request(&meta, 800, 400);
         assert_eq!(request.reduce, aggregation.reduce());
         assert_eq!(AnalysisRequest { reduce: default.reduce, ..request }, default);
     }

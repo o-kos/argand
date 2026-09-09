@@ -21,6 +21,7 @@ mod panels;
 mod profiling;
 mod recent;
 mod session;
+mod settings;
 mod shell;
 mod spectrogram;
 mod waveform;

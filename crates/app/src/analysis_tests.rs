@@ -49,7 +49,7 @@ fn waveform_preserves_each_channel_and_short_bursts_in_the_shared_columns() {
         1.0,
     );
     let (analyst, updates) = open(path, OpenHints::default());
-    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
     let mut request = request();
     request.waveform_columns = Some(request.width);
     assert!(analyst.request(request));
@@ -94,9 +94,10 @@ fn a_file_that_opens_reports_what_it_is_before_anything_is_asked_of_it() {
     let dir = TempDir::new("analysis-open");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());
 
-    let Some(Update::Opened(meta)) = next(&updates) else {
+    let Some(Update::Opened(meta, info)) = next(&updates) else {
         panic!("the first update should describe the file");
     };
+    assert!(info.bytes.is_some_and(|bytes| bytes > (SAMPLES * 8) as u64));
     assert_eq!(meta.sample_rate, RATE);
     assert_eq!(meta.len_samples, SAMPLES as u64);
     assert!(meta.is_iq());
@@ -108,7 +109,7 @@ fn a_request_comes_back_as_a_picture_of_the_size_it_asked_for() {
     let dir = TempDir::new("analysis-request");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());
 
-    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
     assert!(analyst.request(request()), "the thread should be listening");
 
     let Some(Update::Ready { analysis, elapsed }) = next_result(&updates) else {
@@ -151,7 +152,7 @@ fn a_file_that_will_not_open_says_so_instead_of_taking_the_application_with_it()
 fn a_request_the_transform_will_not_run_leaves_the_file_open_for_the_next_one() {
     let dir = TempDir::new("analysis-retry");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());
-    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
 
     // More points than the capture holds, which the transform refuses.
     let mut impossible = request();
@@ -188,7 +189,7 @@ fn resize_requests_coalesce_without_invalidating_analysis() {
 fn a_window_that_has_gone_stops_the_thread_rather_than_leaving_it_waiting() {
     let dir = TempDir::new("analysis-drop");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());
-    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
 
     drop(analyst);
     // With no sender left there is no request to wait for, so the thread ends
@@ -209,7 +210,7 @@ fn deferred_open_does_not_touch_the_file_until_the_first_frame_releases_it() {
 fn resize_keeps_analysis_and_eventually_delivers_the_latest_size() {
     let dir = TempDir::new("superseded");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());
-    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
     analyst.request(request());
     let old = loop {
         let delivery = updates.recv_blocking().unwrap();
@@ -255,7 +256,7 @@ fn aggregation_replacement_rejects_stale_work_and_matches_the_requested_result()
     let dir = TempDir::new("aggregation-replacement");
     let path = capture(&dir);
     let (analyst, updates) = open(path.clone(), OpenHints::default());
-    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
     analyst.request(request());
     let stale = updates.recv_blocking().unwrap();
     assert!(analyst.accepts(&stale));
@@ -280,7 +281,7 @@ fn aggregation_replacement_rejects_stale_work_and_matches_the_requested_result()
 fn cached_resize_keeps_the_analysis_duration_and_never_enters_analyzing() {
     let dir = TempDir::new("cached-resize");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());
-    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
     analyst.request(request());
     let Some(Update::Ready { elapsed, .. }) = next_result(&updates) else { panic!("ready"); };
     for (width, height) in [(73, 51), (200, 300), (3, 2), (64, 32)] {
@@ -293,14 +294,15 @@ fn cached_resize_keeps_the_analysis_duration_and_never_enters_analyzing() {
 }
 
 #[test]
-fn only_display_dimensions_are_excluded_from_invalidation() {
+fn display_dimensions_and_style_are_excluded_from_invalidation() {
     let base = request();
+    assert!(same_analysis(base, AnalysisRequest { dynamic_range: DynamicRange::Auto, colormap: Colormap::Inferno, ..base }));
     assert!(same_analysis(base, AnalysisRequest { width: 5, height: 8, ..base }));
     for changed in [
         AnalysisRequest { cfg: StftConfig::new(128, Window::Hann), ..base },
         AnalysisRequest { range: SampleRange::new(1, 3000), ..base },
         AnalysisRequest { reduce: Reduce::MeanPower, ..base },
-        AnalysisRequest { dynamic_range: DynamicRange::Auto, ..base },
+
         AnalysisRequest { waveform_columns: Some(12), ..base },
     ] { assert!(!same_analysis(base, changed)); }
 }
@@ -309,7 +311,7 @@ fn only_display_dimensions_are_excluded_from_invalidation() {
 fn returning_to_a_previous_size_still_delivers_the_new_display_revision() {
     let dir = TempDir::new("resize-return");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());
-    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
     analyst.request(request());
     let Some(Update::Ready { elapsed, .. }) = next_result(&updates) else { panic!("ready"); };
     analyst.request(AnalysisRequest { width: 13, ..request() });
@@ -322,4 +324,142 @@ fn returning_to_a_previous_size_still_delivers_the_new_display_revision() {
         assert_eq!(cached, elapsed);
         break;
     }
+}
+
+#[test]
+fn cached_style_changes_preserve_samples_psd_frames_and_duration() {
+    let dir = TempDir::new("cached-style");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
+    let initial = AnalysisRequest { waveform_columns: Some(64), ..request() };
+    analyst.request(initial);
+    let Some(Update::Ready { analysis: original, elapsed }) = next_result(&updates) else { panic!("ready"); };
+    let generation = analyst.mailbox.generation.load(Ordering::Acquire);
+    for dynamic_range in [DynamicRange::Fixed(50.0), DynamicRange::Auto, DynamicRange::Default] {
+        for colormap in [Colormap::Inferno, Colormap::Grayscale, Colormap::Oceanic] {
+            analyst.request(AnalysisRequest { dynamic_range, colormap, ..initial });
+            let Some(Update::Ready { analysis, elapsed: cached }) = next(&updates) else { panic!("style must only redraw"); };
+            assert_eq!(analyst.mailbox.generation.load(Ordering::Acquire), generation);
+            assert_eq!(elapsed, cached);
+            assert_eq!(analysis.db.values, original.db.values);
+            assert_eq!(analysis.psd.db, original.psd.db);
+            assert_eq!(analysis.frames, original.frames);
+            assert_eq!(analysis.waveform.as_ref().unwrap().min, original.waveform.as_ref().unwrap().min);
+            assert_eq!(analysis.dynamic_range.requested, dynamic_range);
+            let expected = argand_dsp::shade(&analysis.db, argand_dsp::Shading {
+                colormap, db_min: analysis.spectrogram.db_min, db_max: analysis.spectrogram.db_max,
+            });
+            assert_eq!(analysis.spectrogram.rgba, expected.rgba);
+            if dynamic_range == DynamicRange::Default && colormap == Colormap::Oceanic {
+                assert_eq!(analysis.spectrogram.rgba, original.spectrogram.rgba);
+            }
+        }
+    }
+}
+
+#[test]
+fn changing_style_after_preview_keeps_the_generation_and_finishes_with_latest_style() {
+    let dir = TempDir::new("preview-style");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
+    analyst.request(request());
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !matches!(delivery.update, Update::Snapshot { .. }) { continue; }
+        let generation = analyst.mailbox.generation.load(Ordering::Acquire);
+        analyst.request(AnalysisRequest { dynamic_range: DynamicRange::Fixed(40.0), colormap: Colormap::Inferno, ..request() });
+        assert_eq!(analyst.mailbox.generation.load(Ordering::Acquire), generation);
+        assert!(!analyst.accepts(&delivery));
+        break;
+    }
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        if let Update::Ready { analysis, .. } = delivery.update {
+            assert_eq!(analysis.frames, 61);
+            assert_eq!(analysis.dynamic_range.requested, DynamicRange::Fixed(40.0));
+            break;
+        }
+    }
+}
+
+#[test]
+fn required_delivery_acknowledges_only_a_successful_send_and_cancels_when_superseded() {
+    let (sender, receiver) = async_channel::bounded(1);
+    let delivery = || Delivery { prepared_at: Instant::now(), generation: Some(1), view_revision: Some(1),
+        update: Update::Progress { done: 0, total: 1 } };
+    assert!(send_result(&sender, delivery(), &|| Flow::Continue));
+    assert!(!send_result(&sender, delivery(), &|| Flow::Stop));
+    let pending = std::thread::spawn(move || {
+        send_result(&sender, Delivery { prepared_at: Instant::now(), generation: Some(1), view_revision: Some(2),
+            update: Update::Progress { done: 1, total: 1 } }, &|| Flow::Continue)
+    });
+    assert_eq!(receiver.recv_blocking().unwrap().view_revision, Some(1));
+    assert_eq!(receiver.recv_blocking().unwrap().view_revision, Some(2));
+    assert!(pending.join().unwrap());
+}
+
+struct ResizingSource {
+    inner: Box<dyn argand_core::SampleSource>,
+    analyst: Analyst,
+    updates: async_channel::Receiver<Delivery>,
+    stage: usize,
+}
+impl argand_core::SampleSource for ResizingSource {
+    fn meta(&self) -> &SignalMeta { self.inner.meta() }
+    fn seek(&mut self, sample: u64) -> Result<(), argand_core::SourceError> { self.inner.seek(sample) }
+    fn read(&mut self, buf: &mut [f32]) -> Result<usize, argand_core::SourceError> {
+        while let Ok(delivery) = self.updates.try_recv() {
+            let Update::Snapshot { ref analysis, coverage, .. } = delivery.update else { continue; };
+            let current = self.analyst.mailbox.latest().unwrap();
+            match self.stage {
+                0 => {
+                    assert_eq!(coverage.refined_columns, 0);
+                    self.analyst.request(AnalysisRequest {
+                        colormap: Colormap::Inferno, dynamic_range: DynamicRange::Fixed(40.0),
+                        ..current.analysis
+                    });
+                }
+                1 => {
+                    assert_eq!(coverage.refined_columns, 0);
+                    assert_eq!(analysis.dynamic_range.requested, DynamicRange::Fixed(40.0));
+                    assert!(self.analyst.accepts(&delivery));
+                    self.analyst.request(AnalysisRequest { width: 17, ..current.analysis });
+                    assert!(!self.analyst.accepts(&delivery), "resize invalidates the queued style snapshot");
+                }
+                2 => {
+                    assert!(self.analyst.accepts(&delivery));
+                    assert_eq!(coverage.refined_columns, 0, "replacement must arrive during sparse preview");
+                    assert_eq!(analysis.db.width, 17);
+                    assert_eq!(analysis.dynamic_range.requested, DynamicRange::Fixed(40.0));
+                    assert_eq!(delivery.generation, Some(1), "refresh must retain the transform");
+                    self.analyst.requests.close();
+                }
+                _ => panic!("unexpected snapshot"),
+            }
+            self.stage += 1;
+        }
+        self.inner.read(buf)
+    }
+}
+
+#[test]
+fn a_queued_style_preview_invalidated_by_resize_is_republished_during_preview() {
+    let dir = TempDir::new("preview-style-resize");
+    let samples = 2048 * 400;
+    let path = write_wav(&dir.join("long.wav"), SampleType::new(Domain::Iq, SampleFormat::F32),
+        RATE as u32, &iq_tone(samples, RATE, 6_000.0, 0.5), 1.0);
+    let (requests, incoming) = async_channel::bounded(1);
+    let (outgoing, updates) = async_channel::bounded(2);
+    let mailbox = Arc::new(Mailbox::default());
+    let analyst = Analyst { requests, mailbox: mailbox.clone() };
+    analyst.request(AnalysisRequest { cfg: StftConfig::new(2048, Window::Hann),
+        range: SampleRange::new(0, samples as u64), ..request() });
+    let initial = mailbox.latest().unwrap();
+    let mut source = ResizingSource { inner: argand_io::open(&path, &OpenHints::default()).unwrap(),
+        analyst, updates, stage: 0 };
+    let replies = Replies { requests: &incoming, updates: &outgoing, mailbox: &mailbox };
+    let result = compute(&mut source, initial, crate::execution::Settings::default(), &replies);
+    assert!(matches!(result, Err(DspError::Cancelled)));
+    assert_eq!(source.stage, 3);
 }

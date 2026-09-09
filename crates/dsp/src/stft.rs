@@ -155,6 +155,15 @@ impl std::fmt::Display for DynamicRange {
     }
 }
 
+/// Recommend a narrower display range using the shared CLI/GUI policy.
+pub fn suggested_range_db(auto: bool, effective_db: f32, recommended_db: f32) -> Option<f32> {
+    (!auto
+        && effective_db.is_finite()
+        && recommended_db.is_finite()
+        && effective_db - recommended_db >= 10.0)
+        .then_some(recommended_db)
+}
+
 /// The requested range together with the values measured and applied.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DynamicRangeResult {
@@ -1061,6 +1070,6 @@ mod tests {
 #[path = "progressive.rs"]
 mod progressive;
 pub use progressive::{
-    Coverage, Flow, Overview, ProgressiveOptions, analyze_overview, analyze_progressive,
-    analyze_progressive_with_options,
+    Coverage, Flow, Overview, ProgressiveOptions, analyze_overview, analyze_overview_with_refresh,
+    analyze_progressive, analyze_progressive_with_options,
 };

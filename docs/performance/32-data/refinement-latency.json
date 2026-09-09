@@ -1,0 +1,15 @@
+{
+  "completed_passes": 1,
+  "changes": [
+    {
+      "prepared_ms": 12.075000000000001,
+      "upload_prepared_ms": 27.118,
+      "snapshot": "coverage=Coverage { refined_columns: 665, width: 4096 } elapsed=2.160988645s"
+    },
+    {
+      "prepared_ms": 12.381,
+      "upload_prepared_ms": 28.865,
+      "snapshot": "coverage=Coverage { refined_columns: 901, width: 4096 } elapsed=2.904489276s"
+    }
+  ]
+}

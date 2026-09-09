@@ -25,7 +25,11 @@ use gpui_component::menu::{DropdownMenu, PopupMenu, PopupMenuItem};
 use gpui_component::tooltip::Tooltip;
 use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, ThemeMode, TitleBar};
 
+use crate::settings::Settings;
 use argand_dsp::AnalysisRequest;
+
+#[path = "settings_ui.rs"]
+mod settings_ui;
 
 use crate::analysis::{Analyst, Delivery};
 use crate::axes;
@@ -42,7 +46,16 @@ const TITLE: &str = "argand";
 /// Reverse-DNS identifier desktop environments group windows by.
 const APP_ID: &str = "io.github.o_kos.argand";
 
-actions!(shell, [FocusNext, FocusPrevious, ChooseFile]);
+actions!(
+    shell,
+    [
+        FocusNext,
+        FocusPrevious,
+        ChooseFile,
+        EditAnalysis,
+        UseRecommendedRange
+    ]
+);
 
 #[derive(Clone, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = shell, no_json)]
@@ -59,6 +72,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
         .with_assets(gpui_component_assets::Assets)
         .run(move |cx| {
             gpui_component::init(cx);
+            settings_ui::init(cx);
             cx.bind_keys([
                 KeyBinding::new("tab", FocusNext, Some("Shell")),
                 KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
@@ -198,6 +212,7 @@ struct OpenFile {
     _updates: Task<()>,
     opened_at: Instant,
     first_picture: Arc<AtomicBool>,
+    displayed_settings: Option<Settings>,
 }
 
 /// The size of the plot in device pixels, which is the size the transform is
@@ -221,6 +236,12 @@ struct Shell {
     /// The colour scheme, range mode and transform defaults go into every
     /// analysis request built below.
     config: Config,
+    settings: Settings,
+    settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
+    analysis_hovered: bool,
+    settings_backup: Option<Settings>,
+    settings_error: Option<String>,
+
     /// Absent when the platform offers nowhere to keep state, or when the file
     /// there was written by a version this one must not overwrite. Either way
     /// the window simply does not remember itself.
@@ -284,7 +305,14 @@ impl Shell {
         let focus = cx.focus_handle();
         window.focus(&focus);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
+        let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
+            settings,
+            settings_window: None,
+            analysis_hovered: false,
+            settings_backup: None,
+            settings_error: None,
+
             config,
             writer,
             session: saved,
@@ -312,7 +340,14 @@ impl Shell {
     /// transform, and that is a pass over the file that must not happen on the
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
+        let editor = self.settings_window;
+        self.finish_settings(false, cx);
+        if let Some(editor) = editor {
+            let _ = editor.update(cx, |_, window, _| window.remove_window());
+        }
+        self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
+        self.settings_error = None;
         self.recent_updates = None;
         self.startup_recent = None;
 
@@ -362,6 +397,7 @@ impl Shell {
             _updates: pump,
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
+            displayed_settings: None,
         });
         cx.notify();
     }
@@ -434,6 +470,9 @@ impl Shell {
             return;
         }
         let effect = file.document.apply(delivery.update);
+        if effect == Effect::Analysis {
+            file.displayed_settings = Some(self.settings);
+        }
 
         match effect {
             Effect::Opened => {
@@ -510,7 +549,10 @@ impl Shell {
     fn request(&self, document: &Document) -> Option<AnalysisRequest> {
         let meta = document.meta()?;
         let plot = self.plot?;
-        Some(self.config.analysis_request(meta, plot.width, plot.height))
+        Some(
+            self.settings
+                .analysis_request(meta, plot.width, plot.height),
+        )
     }
 
     /// Put the newest picture on the GPU and release the one it replaces.
@@ -527,9 +569,9 @@ impl Shell {
             .and_then(|analysis| {
                 Some(Arc::new(waveform::Waveform {
                     envelope: analysis.waveform.clone()?,
-                    full_scale: self
-                        .config
+                    full_scale: analysis
                         .dynamic_range
+                        .requested
                         .waveform_full_scale(waveform_peak.unwrap_or(analysis.time_peak)),
                 }))
             });
@@ -601,13 +643,26 @@ impl Shell {
                 let _ = window.update(cx, Self::choose_file);
             });
         });
+        cx.on_action(move |_: &UseRecommendedRange, cx| {
+            cx.defer(move |cx| {
+                let _ = window.update(cx, |shell, _, cx| shell.use_recommended_range(cx));
+            });
+        });
+        cx.on_action(move |_: &EditAnalysis, cx| {
+            cx.defer(move |cx| {
+                let _ = window.update(cx, |shell, window, cx| {
+                    shell.edit_analysis(&EditAnalysis, window, cx)
+                });
+            });
+        });
     }
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
-            window.focus(&self.focus);
         }
+        window.focus(&self.focus);
+        cx.notify();
         Self::choose(&cx.entity().downgrade(), window, cx);
     }
 
@@ -651,47 +706,7 @@ impl Shell {
     /// drawn there too rather than handed to a platform menu bar that only one
     /// of the three has.
     fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .items_center()
-            .child(self.file_menu(cx))
-            .child(self.aggregation_menu(cx))
-    }
-
-    fn set_aggregation(&mut self, aggregation: Aggregation, cx: &mut Context<Self>) {
-        if self.config.aggregation == aggregation {
-            return;
-        }
-        self.config.aggregation = aggregation;
-        self.ask_for_a_picture();
-        cx.notify();
-    }
-
-    fn aggregation_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().downgrade();
-        let focus = self.focus.clone();
-        let selected = self.config.aggregation;
-        Button::new("spectrogram-menu")
-            .ghost()
-            .small()
-            .label("Spectrogram")
-            .dropdown_menu(move |mut menu, _, cx| {
-                let menu_view = cx.entity().downgrade();
-                let _ = view.update(cx, |shell, _| shell.open_menu = Some(menu_view));
-                menu = menu.action_context(focus.clone()).label("Aggregation");
-                for aggregation in Aggregation::ALL {
-                    let view = view.clone();
-                    menu = menu.item(
-                        PopupMenuItem::new(aggregation.label())
-                            .checked(aggregation == selected)
-                            .on_click(move |_, _, cx| {
-                                let _ = view
-                                    .update(cx, |shell, cx| shell.set_aggregation(aggregation, cx));
-                            }),
-                    );
-                }
-                menu
-            })
+        div().flex().items_center().child(self.file_menu(cx))
     }
 
     fn file_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1204,7 +1219,9 @@ impl Shell {
         let Some(file) = self.file.as_ref() else {
             return Showing::Nothing;
         };
-        if let Status::Failed(reason) = file.document.status() {
+        if let Status::Failed(reason) = file.document.status()
+            && file.document.analysis().is_none()
+        {
             return Showing::Failed(reason.clone());
         }
         match self.extents() {
@@ -1235,92 +1252,40 @@ impl Render for Shell {
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;
-        let summary = self
-            .file
-            .as_ref()
-            .and_then(|file| file.document.summary())
-            .unwrap_or_default();
-        let status = self.file.as_ref().map_or_else(
-            || "ready".to_owned(),
-            |file| file.document.status().message(),
-        );
-
-        let status_hint = self
-            .file
-            .as_ref()
-            .and_then(|file| file.document.status().hint());
-
-        let content = div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .font_family(cx.theme().font_family.clone())
-            .text_color(cx.theme().foreground)
-            .id("shell")
-            .track_focus(&self.focus)
-            .key_context(if self.file.is_none() {
-                "Shell StartPage"
-            } else {
-                "Shell"
-            })
-            .on_mouse_move(cx.listener(Self::drag_splitter))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_splitter))
-            .on_action(cx.listener(Self::open_recent))
-            .on_action(|_: &FocusNext, window, _| window.focus_next())
-            .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
-            // A capture dropped anywhere on the window opens, which is where a
-            // person aims when the window is showing the wrong file.
-            .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
-                if let Some(path) = dropped.paths().first() {
-                    shell.open(Origin::new(path.clone()), window, cx);
-                }
-            }))
-            .child(self.title_bar(corners, window, cx))
-            .child(self.content(window, cx))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_2()
-                    .px_2()
-                    .h_6()
-                    .flex_shrink_0()
-                    .rounded_bl(corners.bottom_left)
-                    .rounded_br(corners.bottom_right)
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().secondary)
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(div().flex().min_w_0().overflow_hidden().children(
-                        summary.into_iter().enumerate().map(|(index, field)| {
-                            div()
-                                .id(("metadata", index))
-                                .px_2()
-                                .flex_shrink_0()
-                                .when(index > 0, |field| {
-                                    field.border_l_1().border_color(cx.theme().border)
-                                })
-                                .tooltip(move |window, cx| {
-                                    metadata_tooltip(field.hint.clone()).build(window, cx)
-                                })
-                                .child(field.value)
-                        }),
-                    ))
-                    .child(
-                        div()
-                            .id("analysis-status")
-                            .flex_shrink_0()
-                            .when_some(status_hint, |status, hint| {
-                                status.tooltip(move |window, cx| {
-                                    metadata_tooltip(hint.clone()).build(window, cx)
-                                })
-                            })
-                            .child(status),
-                    ),
-            );
+        let content =
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .font_family(cx.theme().font_family.clone())
+                .text_color(cx.theme().foreground)
+                .id("shell")
+                .track_focus(&self.focus)
+                .key_context(if self.file.is_none() {
+                    "Shell StartPage"
+                } else {
+                    "Shell"
+                })
+                .on_mouse_move(cx.listener(Self::drag_splitter))
+                .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))
+                .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_splitter))
+                .on_action(cx.listener(Self::open_recent))
+                .on_action(cx.listener(Self::edit_analysis))
+                .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
+                    shell.use_recommended_range(cx)
+                }))
+                .on_action(|_: &FocusNext, window, _| window.focus_next())
+                .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
+                // A capture dropped anywhere on the window opens, which is where a
+                // person aims when the window is showing the wrong file.
+                .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
+                    if let Some(path) = dropped.paths().first() {
+                        shell.open(Origin::new(path.clone()), window, cx);
+                    }
+                }))
+                .child(self.title_bar(corners, window, cx))
+                .child(self.content(window, cx))
+                .child(self.status_bar(corners, cx));
         frame.render(content, cx)
     }
 }
@@ -1390,6 +1355,33 @@ fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui::App) -> 
 
 fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
     Tooltip::element(move |window, cx| {
+        if !hint.rows.is_empty() {
+            return div()
+                .w(px(330.).min(window.viewport_size().width - px(48.)))
+                .py_1()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .mb_1()
+                        .child(hint.title),
+                )
+                .children(hint.rows.iter().map(|(label, value)| {
+                    settings_ui::detail_row(label.clone(), value.clone(), cx)
+                }))
+                .child(
+                    div()
+                        .mt_1()
+                        .pt_2()
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(hint.explanation.clone()),
+                );
+        }
         // A definite content width lets wrapped lines contribute their full layout height.
         let width = metadata_hint_width(&hint, window, cx);
         div()

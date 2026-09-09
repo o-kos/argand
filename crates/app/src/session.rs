@@ -72,15 +72,14 @@ pub const RECENT_LIMIT: usize = 10;
 /// whatever that version was recording. The number goes up whenever the layout
 /// gains something, so that an older binary sees a number it does not know and
 /// leaves the file rather than quietly rewriting it without what it could not
-/// read. Version 2 added the recent list; version 3 adds the panel split.
-pub const VERSION: u32 = 3;
+/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range.
+pub const VERSION: u32 = 5;
 
 /// Every layout this program can read, oldest first.
 ///
 /// An older file is read into the current shape and written back at
-/// [`VERSION`]: each version so far only added fields, so what is missing has
-/// a default and nothing has to be converted.
-const READABLE: [u32; 3] = [1, 2, VERSION];
+/// [`VERSION`]: missing fields have defaults; legacy dynamic range values are ignored.
+const READABLE: [u32; 5] = [1, 2, 3, 4, VERSION];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -289,6 +288,8 @@ pub fn recent_labels(recent: &[Recent]) -> Vec<String> {
 /// Everything one run hands to the next.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
+    #[serde(default)]
+    pub analysis_settings: Option<crate::settings::Settings>,
     /// User-adjusted waveform share; absence preserves the 3-rem default.
     #[serde(default)]
     pub waveform_fraction: Option<f32>,
@@ -305,6 +306,7 @@ impl Default for Session {
     fn default() -> Self {
         Self {
             version: VERSION,
+            analysis_settings: None,
             waveform_fraction: None,
             geometry: None,
             window_state: WindowState::default(),

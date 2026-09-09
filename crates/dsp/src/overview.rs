@@ -17,6 +17,19 @@ pub fn analyze_overview(
     control: &dyn Fn() -> Flow,
     publish: &mut dyn FnMut(&mut Overview, Coverage) -> Flow,
 ) -> Result<Overview, DspError> {
+    analyze_overview_with_refresh(source, request, options, control, &|| false, publish)
+}
+
+/// As `analyze_overview`, with an explicit display refresh checked between bounded batches.
+/// This bypasses the periodic snapshot interval without changing transform coverage.
+pub fn analyze_overview_with_refresh(
+    source: &mut dyn SampleSource,
+    request: &AnalysisRequest,
+    options: ProgressiveOptions,
+    control: &dyn Fn() -> Flow,
+    refresh: &dyn Fn() -> bool,
+    publish: &mut dyn FnMut(&mut Overview, Coverage) -> Flow,
+) -> Result<Overview, DspError> {
     continuing(control)?;
     check_request(request)?;
     if request.reduce == Reduce::Mean {
@@ -51,12 +64,33 @@ pub fn analyze_overview(
     state.preview_frames = (0..preview_count)
         .map(|i| ((u128::from(i) * u128::from(frames)).div_ceil(u128::from(preview_count))) as u64)
         .collect();
-    refine(source, &mut state, options, control, publish)?;
+    refine(source, &mut state, options, control, refresh, publish)?;
     state.display_scale = None;
     Ok(state)
 }
 
 impl Overview {
+    /// Change display settings without reading samples or changing the transform lattice.
+    pub fn set_style(
+        &mut self,
+        colormap: Colormap,
+        dynamic_range: DynamicRange,
+    ) -> Result<(), DspError> {
+        if let DynamicRange::Fixed(value) = dynamic_range
+            && (!value.is_finite() || value <= 0.0)
+        {
+            return Err(DspError::BadDynamicRange(value));
+        }
+        if self.request.dynamic_range != dynamic_range {
+            self.display_scale = None;
+        } else if let Some(scale) = &mut self.display_scale {
+            scale.shading.colormap = colormap;
+        }
+        self.request.colormap = colormap;
+        self.request.dynamic_range = dynamic_range;
+        Ok(())
+    }
+
     /// Cache dimensions, independent of the initial and subsequent windows.
     pub fn dimensions(&self) -> (usize, usize) {
         (self.request.width, self.request.height)

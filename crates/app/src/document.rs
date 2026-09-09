@@ -16,7 +16,7 @@ use argand_core::{SampleFormat, SampleType, SignalMeta, format_duration, format_
 use argand_dsp::Analysis;
 use argand_io::OpenHints;
 
-use crate::analysis::Update;
+use crate::analysis::{FileInfo, Update};
 
 /// Where a document came from, and how it was read.
 ///
@@ -137,6 +137,9 @@ pub struct Document {
     analysis: Option<Box<Analysis>>,
     status: Status,
     waveform_peak: Option<f32>,
+    file_info: FileInfo,
+    sample_extrema: Option<Vec<(f32, f32)>>,
+    range_recommendation: Option<f32>,
 }
 
 impl Document {
@@ -149,6 +152,9 @@ impl Document {
             analysis: None,
             status: Status::Opening,
             waveform_peak: None,
+            file_info: FileInfo::default(),
+            sample_extrema: None,
+            range_recommendation: None,
         }
     }
 
@@ -162,6 +168,10 @@ impl Document {
 
     pub fn analysis(&self) -> Option<&Analysis> {
         self.analysis.as_deref()
+    }
+
+    pub const fn range_recommendation(&self) -> Option<f32> {
+        self.range_recommendation
     }
 
     pub fn waveform_peak(&self) -> Option<f32> {
@@ -179,8 +189,12 @@ impl Document {
     /// no toolkit in sight, so what the window shows at each step is decided
     /// here and merely drawn there.
     pub fn apply(&mut self, update: Update) -> Effect {
+        if let Update::Snapshot { analysis, .. } | Update::Ready { analysis, .. } = &update {
+            self.range_recommendation = crate::settings::low_signal_recommendation(analysis);
+        }
         match update {
-            Update::Opened(meta) => {
+            Update::Opened(meta, info) => {
+                self.file_info = info;
                 self.meta = Some(meta);
                 // Nothing has been asked for yet; the window builds the first
                 // request from the length this update just brought.
@@ -206,6 +220,27 @@ impl Document {
             }
             Update::Ready { analysis, elapsed } => {
                 self.waveform_peak = None;
+                self.sample_extrema = analysis.waveform.as_ref().map(|waveform| {
+                    (0..waveform.channels)
+                        .map(|channel| {
+                            let low = waveform
+                                .min
+                                .iter()
+                                .skip(channel)
+                                .step_by(waveform.channels)
+                                .copied()
+                                .fold(f32::INFINITY, f32::min);
+                            let high = waveform
+                                .max
+                                .iter()
+                                .skip(channel)
+                                .step_by(waveform.channels)
+                                .copied()
+                                .fold(f32::NEG_INFINITY, f32::max);
+                            (low, high)
+                        })
+                        .collect()
+                });
                 self.analysis = Some(analysis);
                 self.status = Status::Ready { elapsed };
                 Effect::Analysis
@@ -219,7 +254,110 @@ impl Document {
         }
     }
 
-    /// Separate status fields, available once the header has been read.
+    pub fn file_summary(&self) -> Option<MetadataField> {
+        let meta = self.meta()?;
+        let value = format!(
+            "{} · {} {} · {} · {}",
+            meta.container,
+            if meta.is_iq() { "iq" } else { "real" },
+            meta.sample_type.format.as_str(),
+            format_hz(meta.sample_rate),
+            compact_capture_duration(meta.duration_seconds())
+        );
+        let mut rows = self
+            .summary()?
+            .into_iter()
+            .map(|field| {
+                let label = match field.hint.title {
+                    "File container type" => "Container",
+                    "Samples format" => "Sample format",
+                    "Signal sample rate" => "Sample rate",
+                    "Signal duration" => "Duration",
+                    _ => "Centre frequency",
+                };
+                (label.to_owned(), field.hint.value)
+            })
+            .collect::<Vec<_>>();
+        rows.push((
+            if meta.is_iq() { "I/Q pairs" } else { "Samples" }.into(),
+            group_integer(&meta.len_samples.to_string()),
+        ));
+        rows.push((
+            "File size".into(),
+            self.file_info
+                .bytes
+                .map_or_else(|| "Unavailable".into(), file_size),
+        ));
+        rows.extend(self.extrema_details(meta).into_iter().filter_map(|line| {
+            let (label, value) = line.split_once(": ")?;
+            Some((
+                label
+                    .replace("Original sample minimum / maximum", "Min / max")
+                    .replace("Sample minimum / maximum", "Min / max")
+                    .replace("minimum / maximum", "min / max"),
+                value.to_owned(),
+            ))
+        }));
+        let value_text = rows
+            .iter()
+            .map(|(label, value)| format!("{label}: {value}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Some(MetadataField::new(
+            value,
+            MetadataHint {
+                rows,
+                ..MetadataHint::new(
+                    "File details",
+                    value_text,
+                    if meta.is_iq() {
+                        "Rate and count refer to I/Q pairs; min/max use decoded sample units"
+                    } else {
+                        "Min/max use decoded sample units, before normalization and gain"
+                    },
+                )
+            },
+        ))
+    }
+
+    fn extrema_details(&self, meta: &SignalMeta) -> Vec<String> {
+        let Some(extrema) = &self.sample_extrema else {
+            return vec!["Sample minimum / maximum: awaiting complete analysis".into()];
+        };
+        let Some((scale, offset)) = self.file_info.sample_units else {
+            return vec!["Original sample minimum / maximum: unavailable".into()];
+        };
+        let number = |value: f32| {
+            let value = f64::from(value) * scale + offset;
+            if !value.is_finite() {
+                return "unavailable".into();
+            }
+            match meta.sample_type.format {
+                SampleFormat::U8 | SampleFormat::I16 | SampleFormat::I32 => {
+                    group_integer(&format!("{value:.0}"))
+                }
+                _ => format!("{value:.7}"),
+            }
+        };
+        extrema
+            .iter()
+            .enumerate()
+            .map(|(channel, &(low, high))| {
+                let label = match (meta.is_iq(), channel) {
+                    (true, 0) => "I",
+                    (true, _) => "Q",
+                    _ => "Sample",
+                };
+                format!(
+                    "{label} minimum / maximum: {} / {}",
+                    number(low),
+                    number(high)
+                )
+            })
+            .collect()
+    }
+
+    /// Detailed fields combined in the file hint.
     pub fn summary(&self) -> Option<Vec<MetadataField>> {
         let meta = self.meta.as_ref()?;
         let domain = if meta.is_iq() { "iq" } else { "real" };
@@ -283,6 +421,7 @@ pub struct MetadataHint {
     pub title: &'static str,
     pub value: String,
     pub explanation: String,
+    pub rows: Vec<(String, String)>,
 }
 
 impl MetadataHint {
@@ -291,6 +430,7 @@ impl MetadataHint {
             title,
             value: value.into(),
             explanation: explanation.into(),
+            rows: Vec::new(),
         }
     }
 
@@ -369,6 +509,33 @@ fn compact_capture_duration(seconds: f64) -> String {
         _ => format!("{seconds}s"),
     };
     format!("{hours}{minutes}{seconds}")
+}
+
+fn group_integer(value: &str) -> String {
+    let digits = value.strip_prefix('-').unwrap_or(value);
+    let mut result = if value.starts_with('-') {
+        "−".to_owned()
+    } else {
+        String::new()
+    };
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            result.push(',');
+        }
+        result.push(digit);
+    }
+    result
+}
+
+fn file_size(bytes: u64) -> String {
+    let exact = group_integer(&bytes.to_string());
+    let (divisor, unit) = match bytes {
+        n if n >= 1 << 30 => ((1u64 << 30) as f64, "GiB"),
+        n if n >= 1 << 20 => ((1u64 << 20) as f64, "MiB"),
+        n if n >= 1 << 10 => ((1u64 << 10) as f64, "KiB"),
+        _ => return format!("{exact} B"),
+    };
+    format!("{:.2} {unit} · {exact} B", bytes as f64 / divisor)
 }
 
 #[cfg(test)]
