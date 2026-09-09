@@ -30,6 +30,33 @@ pub enum Theme {
     Light,
 }
 
+/// The GUI's two spectrogram aggregation policies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Aggregation {
+    #[default]
+    Max,
+    MeanPower,
+}
+
+impl Aggregation {
+    pub const ALL: [Self; 2] = [Self::Max, Self::MeanPower];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Max => "Peak (MAX)",
+            Self::MeanPower => "Mean power",
+        }
+    }
+
+    pub const fn reduce(self) -> Reduce {
+        match self {
+            Self::Max => Reduce::Max,
+            Self::MeanPower => Reduce::MeanPower,
+        }
+    }
+}
+
 /// Everything `argand.toml` can set.
 ///
 /// Every field has a default, so a file that sets one value is a complete file.
@@ -44,6 +71,7 @@ pub struct Config {
     /// number of decibels below the measured peak.
     #[serde(deserialize_with = "dynamic_range")]
     pub dynamic_range: DynamicRange,
+    pub aggregation: Aggregation,
     pub stft: Stft,
     pub analysis: crate::execution::Settings,
     /// Legacy panel proportions, accepted for configuration compatibility.
@@ -62,6 +90,7 @@ impl Default for Config {
             theme: Theme::default(),
             color_scheme: Colormap::Oceanic,
             dynamic_range: DynamicRange::Default,
+            aggregation: Aggregation::default(),
             stft: Stft::default(),
             analysis: crate::execution::Settings::default(),
             panels: Panels::default(),
@@ -234,10 +263,7 @@ impl Config {
             range: SampleRange::new(0, meta.len_samples),
             width,
             height,
-            // The loudest frame in a column rather than the average of them: a
-            // burst shorter than a pixel is what a capture is usually being
-            // looked at for, and averaging is what loses it.
-            reduce: Reduce::Max,
+            reduce: self.aggregation.reduce(),
             colormap: self.color_scheme,
             dynamic_range: self.dynamic_range,
             waveform_columns: Some(width),

@@ -77,16 +77,18 @@ impl StftConfig {
     }
 }
 
-/// How several frames sharing one image column are combined.
+/// How spectral values sharing an image pixel are combined.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reduce {
     /// Keep the strongest. Short bursts survive being scaled down.
     Max,
-    /// Average. Smoother, but a brief signal can vanish into the floor.
+    /// Average frame levels in dB after taking the frequency-bin maximum.
     Mean,
+    /// Average squared amplitudes across bins and frames, then convert to dB.
+    MeanPower,
 }
 
-pub const REDUCE_NAMES: [&str; 2] = ["max", "mean"];
+pub const REDUCE_NAMES: [&str; 3] = ["max", "mean", "mean-power"];
 
 /// How the colour scale's decibel window is selected.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -174,6 +176,7 @@ impl Reduce {
         match self {
             Reduce::Max => "max",
             Reduce::Mean => "mean",
+            Reduce::MeanPower => "mean-power",
         }
     }
 }
@@ -185,6 +188,7 @@ impl std::str::FromStr for Reduce {
         match s.trim().to_ascii_lowercase().as_str() {
             "max" => Ok(Reduce::Max),
             "mean" | "avg" | "average" => Ok(Reduce::Mean),
+            "mean-power" => Ok(Reduce::MeanPower),
             _ => Err(ParseEnumError {
                 what: "reduce mode",
                 name: s.to_string(),
@@ -511,7 +515,7 @@ pub fn analyze(
     }
 
     let total_frames = (range.len - cfg.fft_size as u64) / cfg.hop as u64 + 1;
-    let plan = Plan::new(cfg, &meta, out_height);
+    let plan = Plan::new(cfg, &meta, out_height, reduce);
     let bins = plan.bins;
 
     let mut store = ColumnStore::new(out_width, out_height, reduce);
@@ -643,10 +647,11 @@ struct Plan {
     /// Divides the raw transform output so a full-scale tone reads 0 dBFS.
     amplitude_scale: f32,
     out_height: usize,
+    reduce: Reduce,
 }
 
 impl Plan {
-    fn new(cfg: &StftConfig, meta: &SignalMeta, out_height: usize) -> Self {
+    fn new(cfg: &StftConfig, meta: &SignalMeta, out_height: usize, reduce: Reduce) -> Self {
         let window = WindowTable::new(cfg.window, cfg.fft_size);
         let is_iq = meta.is_iq();
         let bins = if is_iq {
@@ -675,6 +680,7 @@ impl Plan {
             is_iq,
             amplitude_scale: 1.0 / (cfg.fft_size as f32 * window.coherent_gain),
             out_height,
+            reduce,
             window,
         }
     }
@@ -690,6 +696,14 @@ impl Plan {
         }
     }
 
+    fn partial(&self) -> Partial {
+        let mut partial = Partial::new(self.bins, self.fft_size);
+        if self.reduce == Reduce::MeanPower {
+            partial.row_values = RowValues::Power;
+        }
+        partial
+    }
+
     /// Transform every whole frame the block holds, in parallel.
     fn transform_block(
         &self,
@@ -703,7 +717,7 @@ impl Plan {
         (0..frames)
             .into_par_iter()
             .fold(
-                || Partial::new(self.bins, self.fft_size),
+                || self.partial(),
                 |mut acc, k| {
                     let start = k * hop * channels;
                     let frame = &buf[start..start + self.fft_size * channels];
@@ -711,7 +725,7 @@ impl Plan {
                     acc
                 },
             )
-            .reduce(|| Partial::new(self.bins, self.fft_size), Partial::merge)
+            .reduce(|| self.partial(), Partial::merge)
     }
 
     /// Transform one frame and fold the result into `acc`.
@@ -777,11 +791,8 @@ impl Plan {
             let hi = (((y + 1) * self.bins) / self.out_height)
                 .max(lo + 1)
                 .min(self.bins);
-            let peak = mags[lo..hi].iter().fold(0.0f32, |m, v| m.max(*v));
-            acc.rows[row_base + y] = match acc.row_values {
-                RowValues::Amplitude => acc.rows[row_base + y].max(peak),
-                RowValues::Decibels => 20.0 * peak.max(MAG_FLOOR).log10(),
-            };
+            let row = &mut acc.rows[row_base + y];
+            *row = acc.row_values.fold(&mags[lo..hi], *row);
         }
         acc.frames += 1;
     }
@@ -791,6 +802,22 @@ impl Plan {
 enum RowValues {
     Amplitude,
     Decibels,
+    Power,
+}
+
+impl RowValues {
+    fn fold(self, magnitudes: &[f32], previous: f32) -> f32 {
+        if matches!(self, Self::Power) {
+            let sum: f64 = magnitudes.iter().map(|&v| f64::from(v).powi(2)).sum();
+            return (sum / magnitudes.len() as f64) as f32;
+        }
+        let peak = magnitudes.iter().fold(0.0f32, |m, &v| m.max(v));
+        if matches!(self, Self::Amplitude) {
+            previous.max(peak)
+        } else {
+            20.0 * peak.max(MAG_FLOOR).log10()
+        }
+    }
 }
 
 /// Per-thread accumulator: scratch buffers plus the frames it has finished.
@@ -857,7 +884,8 @@ struct ColumnStore {
     height: usize,
     reduce: Reduce,
     values: Vec<f32>,
-    counts: Vec<u32>,
+    counts: Vec<u64>,
+    power: Vec<f64>,
 }
 
 impl ColumnStore {
@@ -866,8 +894,17 @@ impl ColumnStore {
             width,
             height,
             reduce,
-            values: vec![f32::NEG_INFINITY; width * height],
+            values: if reduce == Reduce::MeanPower {
+                Vec::new()
+            } else {
+                vec![f32::NEG_INFINITY; width * height]
+            },
             counts: vec![0; width],
+            power: if reduce == Reduce::MeanPower {
+                vec![0.0; width * height]
+            } else {
+                Vec::new()
+            },
         }
     }
 
@@ -878,10 +915,21 @@ impl ColumnStore {
                 continue;
             }
             let src = &partial.rows[frame * height..(frame + 1) * height];
-            let dst = &mut self.values[col * self.height..(col + 1) * self.height];
-            fold_column(dst, src, self.reduce);
+            let range = col * self.height..(col + 1) * self.height;
+            if self.reduce == Reduce::MeanPower {
+                for (dst, &value) in self.power[range].iter_mut().zip(src) {
+                    *dst += f64::from(value);
+                }
+            } else {
+                fold_column(&mut self.values[range], src, self.reduce == Reduce::Max);
+            }
             self.counts[col] += 1;
         }
+    }
+
+    fn mean_power_db(&self, column: usize, row: usize) -> f32 {
+        let power = self.power[column * self.height + row] / self.counts[column].max(1) as f64;
+        (10.0 * power.max(POWER_FLOOR).log10()) as f32
     }
 
     /// Divide each averaged column by the number of frames that landed in it.
@@ -899,6 +947,11 @@ impl ColumnStore {
 
     /// Column-major dB values, low frequency first within each column.
     fn finish(mut self) -> Vec<f32> {
+        if self.reduce == Reduce::MeanPower {
+            self.values = (0..self.width * self.height)
+                .map(|index| self.mean_power_db(index / self.height, index % self.height))
+                .collect();
+        }
         if matches!(self.reduce, Reduce::Mean) {
             self.average_columns();
         }
@@ -920,19 +973,16 @@ impl ColumnStore {
 /// `Max` keeps the loudest value seen; `Mean` accumulates, and `finish`
 /// divides by the count afterwards. A non-finite accumulator means the column
 /// is still empty, so the first value replaces it rather than adding to it.
-fn fold_column(dst: &mut [f32], src: &[f32], reduce: Reduce) {
-    match reduce {
-        Reduce::Max => {
-            for (d, s) in dst.iter_mut().zip(src) {
-                if *s > *d {
-                    *d = *s;
-                }
+fn fold_column(dst: &mut [f32], src: &[f32], keep_peak: bool) {
+    if keep_peak {
+        for (d, s) in dst.iter_mut().zip(src) {
+            if *s > *d {
+                *d = *s;
             }
         }
-        Reduce::Mean => {
-            for (d, s) in dst.iter_mut().zip(src) {
-                *d = if d.is_finite() { *d + *s } else { *s };
-            }
+    } else {
+        for (d, s) in dst.iter_mut().zip(src) {
+            *d = if d.is_finite() { *d + *s } else { *s };
         }
     }
 }

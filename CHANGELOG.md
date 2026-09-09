@@ -13,6 +13,12 @@ promise applies to.
 
 ### Added
 
+- Select Peak (MAX) or Mean power from the GUI Spectrogram menu. The new mean
+  averages squared spectral amplitudes across time and frequency before conversion
+  to dB, and is also available as `aspec --reduce mean-power`. The existing CLI
+  `mean` keeps its dB averaging behavior. The top-level `aggregation` configuration
+  sets the GUI's initial choice.
+
 - The GUI shows a sparse signal preview before full analysis, then refines both
   panels from left to right. New requests cancel obsolete work, interim display
   scales remain stable, and opening-level scans have a 64 MiB budget.

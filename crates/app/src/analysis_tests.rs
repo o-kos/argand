@@ -242,3 +242,30 @@ fn full_snapshot_queue_does_not_prevent_cancelling_a_final_reply() {
     assert_eq!(receiver.len(), 2);
     assert_eq!(polls.get(), 2);
 }
+
+
+#[test]
+fn aggregation_replacement_rejects_stale_work_and_matches_the_requested_result() {
+    let dir = TempDir::new("aggregation-replacement");
+    let path = capture(&dir);
+    let (analyst, updates) = open(path.clone(), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    analyst.request(request());
+    let stale = updates.recv_blocking().unwrap();
+    assert!(analyst.accepts(&stale));
+    let latest = AnalysisRequest { reduce: Reduce::MeanPower, ..request() };
+    analyst.request(latest);
+    assert!(!analyst.accepts(&stale));
+    let mut source = argand_io::open(&path, &OpenHints::default()).unwrap();
+    let expected = argand_dsp::analyze(&mut *source, &latest, &mut |_, _| {}).unwrap();
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        if let Update::Ready { analysis, .. } = delivery.update {
+            for (actual, expected) in analysis.db.values.iter().zip(&expected.db.values) {
+                assert!((actual - expected).abs() < 0.0001);
+            }
+            break;
+        }
+    }
+}

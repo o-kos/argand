@@ -129,7 +129,7 @@ pub struct Args {
     #[arg(short = 'd', long, value_name = "DB|auto", allow_hyphen_values = true)]
     pub dynamic_range: Option<DynamicRange>,
 
-    /// How frames sharing a column are combined
+    /// Aggregation: max, mean (dB), or mean-power (linear power, both axes)
     #[arg(long, value_name = "R", default_value = "max")]
     pub reduce: Reduce,
 

@@ -30,7 +30,7 @@ use argand_dsp::AnalysisRequest;
 use crate::analysis::{Analyst, Delivery};
 use crate::axes;
 use crate::chrome;
-use crate::config::{Config, Theme};
+use crate::config::{Aggregation, Config, Theme};
 use crate::document::{Document, Effect, MetadataHint, Origin, Status};
 use crate::recent::RecentFiles;
 use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
@@ -264,7 +264,7 @@ struct Shell {
     panel_bounds: Option<Bounds<Pixels>>,
     panel_resize: panels::ResizeRequests,
     focus: FocusHandle,
-    file_menu: Option<WeakEntity<PopupMenu>>,
+    open_menu: Option<WeakEntity<PopupMenu>>,
     startup_recent: Option<RecentFiles>,
     recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
@@ -299,7 +299,7 @@ impl Shell {
             panel_bounds: None,
             panel_resize: panels::ResizeRequests::default(),
             focus,
-            file_menu: None,
+            open_menu: None,
             startup_recent: None,
             recent_updates: None,
             _bounds: bounds,
@@ -607,7 +607,7 @@ impl Shell {
     }
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(menu) = self.file_menu.take() {
+        if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
             window.focus(&self.focus);
         }
@@ -654,6 +654,50 @@ impl Shell {
     /// drawn there too rather than handed to a platform menu bar that only one
     /// of the three has.
     fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .child(self.file_menu(cx))
+            .child(self.aggregation_menu(cx))
+    }
+
+    fn set_aggregation(&mut self, aggregation: Aggregation, cx: &mut Context<Self>) {
+        if self.config.aggregation == aggregation {
+            return;
+        }
+        self.config.aggregation = aggregation;
+        self.ask_for_a_picture();
+        cx.notify();
+    }
+
+    fn aggregation_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity().downgrade();
+        let focus = self.focus.clone();
+        let selected = self.config.aggregation;
+        Button::new("spectrogram-menu")
+            .ghost()
+            .small()
+            .label("Spectrogram")
+            .dropdown_menu(move |mut menu, _, cx| {
+                let menu_view = cx.entity().downgrade();
+                let _ = view.update(cx, |shell, _| shell.open_menu = Some(menu_view));
+                menu = menu.action_context(focus.clone()).label("Aggregation");
+                for aggregation in Aggregation::ALL {
+                    let view = view.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(aggregation.label())
+                            .checked(aggregation == selected)
+                            .on_click(move |_, _, cx| {
+                                let _ = view
+                                    .update(cx, |shell, cx| shell.set_aggregation(aggregation, cx));
+                            }),
+                    );
+                }
+                menu
+            })
+    }
+
+    fn file_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().downgrade();
         let focus = self.focus.clone();
         // Rebuilt from what the session holds when the menu is opened, so an
@@ -665,7 +709,7 @@ impl Shell {
             .label("File")
             .dropdown_menu(move |mut menu, _, cx| {
                 let menu_view = cx.entity().downgrade();
-                let _ = view.update(cx, |shell, _| shell.file_menu = Some(menu_view));
+                let _ = view.update(cx, |shell, _| shell.open_menu = Some(menu_view));
                 menu = menu
                     .action_context(focus.clone())
                     .item(PopupMenuItem::new("Open file...").action(Box::new(ChooseFile)));

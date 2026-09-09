@@ -268,3 +268,27 @@ fn a_transform_size_of_two_still_leaves_a_hop_of_at_least_one() {
 
     assert_eq!(config.analysis_request(&meta, 64, 32).cfg.hop, 1);
 }
+
+#[test]
+fn aggregation_defaults_and_switches_without_changing_the_transform_or_waveform() {
+    let meta = argand_core::SignalMeta {
+        sample_rate: 24_000.0,
+        center_freq: 0.0,
+        sample_type: argand_core::SampleType::new(argand_core::Domain::Real, argand_core::SampleFormat::F32),
+        len_samples: 48_000,
+        container: "test",
+        divisor: 1.0,
+        source: PathBuf::from("memory"),
+    };
+    let default = Config::default().analysis_request(&meta, 800, 400);
+    assert_eq!(default.reduce, Reduce::Max);
+    for aggregation in Aggregation::ALL {
+        let name = aggregation.reduce().as_str();
+        let config: Config = toml::from_str(&format!("aggregation = \"{name}\"\n")).unwrap();
+        assert_eq!(config.aggregation, aggregation);
+        let request = config.analysis_request(&meta, 800, 400);
+        assert_eq!(request.reduce, aggregation.reduce());
+        assert_eq!(AnalysisRequest { reduce: default.reduce, ..request }, default);
+    }
+    assert!(toml::from_str::<Config>("aggregation = \"mean\"").is_err());
+}

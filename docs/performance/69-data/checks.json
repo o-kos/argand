@@ -1,0 +1,26 @@
+{
+  "long_waveform_unchanged": true,
+  "cancelled_replacement_matches_mean_power": true,
+  "max_matches_parent_native_capture": true,
+  "short_waveform_unchanged": true,
+  "short_max_restored": true,
+  "source_equals_repeat_prefix_except_filename": true,
+  "cli_compatibility": [
+    {
+      "reducer": "max",
+      "png_identical": true,
+      "sha256": [
+        "43b407a7c8f3e32434816ec67fdb8623f54e6428bb3a3c543a670582ad2e58db",
+        "43b407a7c8f3e32434816ec67fdb8623f54e6428bb3a3c543a670582ad2e58db"
+      ]
+    },
+    {
+      "reducer": "mean",
+      "png_identical": true,
+      "sha256": [
+        "bc6112568aa979b59374853d99ce54644e14e661f74630b8874119ad64126ef0",
+        "bc6112568aa979b59374853d99ce54644e14e661f74630b8874119ad64126ef0"
+      ]
+    }
+  ]
+}

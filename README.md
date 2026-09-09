@@ -147,7 +147,7 @@ Short flags match the sgvr CLI (`-f -w -c -i -d`) on purpose.
   -d, --dynamic-range <DB|auto>
                             range below the measured peak, or auto
                             [default: absolute 0...-110 dBFS]
-      --reduce <R>          max or mean, when frames share a column [max]
+      --reduce <R>          max, mean (dB), or mean-power [max]
 
   -i, --image-size <WxH>    [2048x512]
       --panels <P>          waveform, psd, db, none [waveform]
@@ -328,6 +328,27 @@ own, spelled the same way. Everything that decides how the picture looks comes f
 transform size and window. It is read from beside
 the binary first and from the platform configuration directory second, and a
 missing or malformed one costs a log line rather than the application.
+
+The **Spectrogram > Aggregation** menu switches between **Peak (MAX)** and
+**Mean power** while a file is open. Peak preserves the strongest value in each
+pixel's time/frequency region. Mean power averages squared spectral amplitudes
+across the bins assigned to each row and the frames assigned to each column,
+then converts the result to dB. It shows average squared amplitude, not the
+integrated power of the displayed frequency band. Brief events become weaker in
+proportion to their duration; combining more frequency bins can also dilute a narrow tone.
+The waveform retains its min/max envelope under either mode.
+
+Switching starts a cancellable background analysis and retains the current
+picture until the replacement preview arrives. The choice applies to subsequent
+files in this run. Set the initial choice with the top-level configuration key
+`aggregation = "max"` (default) or `aggregation = "mean-power"`. Live choices do not
+rewrite `argand.toml` and are not yet restored between runs.
+
+`aspec --reduce mean-power` uses the same aggregation. Its existing `--reduce mean`
+retains its original meaning: average frame levels in dB after a frequency-bin
+maximum. All modes use the same FFT frame lattice; choosing Mean power does not
+reduce the number of transforms. A repeated capture viewed in full still cannot
+show the short source's timing detail at the same window width.
 
 The compute budget is configurable independently of the UI:
 
