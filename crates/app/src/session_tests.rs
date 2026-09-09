@@ -664,8 +664,8 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 5"),
-        "file-specific range requires session version 5: {text}"
+        text.contains("version = 6"),
+        "per-file navigation requires session version 6: {text}"
     );
 }
 
@@ -734,4 +734,37 @@ fn analysis_settings_survive_restart_without_changing_configuration_or_older_geo
     assert_eq!(restored.geometry, session.geometry);
     assert_eq!(restored.waveform_fraction, Some(0.3));
     assert_eq!(std::fs::read_to_string(config_path).unwrap(), config_text);
+}
+
+
+#[test]
+fn recent_views_survive_reordering_and_disk_restoration() {
+    let dir = TempDir::new("time-view");
+    let path = dir.path.join("session.toml");
+    let mut session = Session::default();
+    session.remember(Path::new("one.wav"), &OpenHints::default());
+    let view = crate::navigation::View { start: 12345, len: 98765 };
+    session.recent[0].view = Some(view);
+    session.remember(Path::new("two.wav"), &OpenHints::default());
+    session.remember(Path::new("one.wav"), &OpenHints::default());
+    assert_eq!(session.recent[0].view, Some(view));
+    assert_eq!(session.recent[1].view, None);
+    assert!(session.save(&path));
+    assert_eq!(Session::load(&path).session.recent, session.recent);
+}
+
+
+#[test]
+fn staging_navigation_does_not_write_until_flush() {
+    let dir = TempDir::new("stage-view");
+    let path = dir.join("session.toml");
+    let initial = Session::default();
+    let mut writer = Writer::new(path.clone(), initial.clone());
+    let mut next = initial;
+    next.remember(Path::new("one.wav"), &OpenHints::default());
+    next.recent[0].view = Some(crate::navigation::View { start: 100, len: 2048 });
+    writer.stage(next.clone());
+    assert!(!path.exists(), "navigation must not touch the filesystem");
+    writer.flush(Instant::now());
+    assert_eq!(Session::load(&path).session, next);
 }

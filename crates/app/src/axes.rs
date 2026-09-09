@@ -28,7 +28,7 @@ const TICK_LEN: f32 = 3.0;
 /// it, and the marks should not compete with the picture they surround.
 const LABEL_SIZE: f32 = 11.0;
 
-/// What the axes span: the whole file, in seconds and in hertz.
+/// What the axes span: the requested time view and the full frequency range.
 ///
 /// Taken from the file's own description rather than from a finished analysis,
 /// so the room the labels need is known before the first transform runs -- and
@@ -136,7 +136,7 @@ impl Frame {
             plot,
             // Time labels stay under the plot, clear of the frequency gutter.
             time: axis::ticks(
-                AxisKind::Time,
+                AxisKind::PreciseTime,
                 Axis {
                     length: plot.width as i64,
                     min: t0,

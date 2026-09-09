@@ -546,3 +546,20 @@ fn start_anchored_labels_use_their_full_width_for_edges_and_spacing() {
         }
     }
 }
+
+
+#[test]
+fn precise_time_ticks_remain_readable_between_seconds_and_at_rf_spans() {
+    let text = DejaVuSans;
+    for (lo, hi) in [(39.744, 40.0), (3599.9998, 3600.0002), (0.0, 0.000002)] {
+        let bounds = axis(1200, lo, hi);
+        let labels = across(&text);
+        let marks = ticks(AxisKind::PreciseTime, bounds, &labels);
+        assert!(marks.len() >= 3, "{marks:?}");
+        assert!(marks.windows(2).all(|pair| pair[0].label != pair[1].label));
+        assert!(marks.iter().all(|tick| tick.label.contains(':')));
+        assert!(marks.iter().all(|tick| tick.value >= lo - 1e-9 && tick.value <= hi + 1e-9));
+    }
+    assert_eq!(format_precise_clock(59.9999, Clock::MinutesSeconds, 0.001), "1:00.000");
+    assert_eq!(format_precise_clock(39.75, Clock::MinutesSeconds, 0.01), "0:39.75");
+}

@@ -344,6 +344,31 @@ files and survives restarts. Set the initial choice with the top-level configura
 `aggregation = "max"` (default) or `aggregation = "mean-power"`. Live choices do not
 rewrite `argand.toml`; effective settings are saved in `session.toml`.
 
+The waveform and spectrogram share a time view. Scroll over either plot to zoom
+about the pointer, or drag with the left button to pan. Shift-scroll and horizontal
+scroll also pan. The View menu exposes the keyboard commands:
+
+| Key | Action |
+| --- | --- |
+| `+` or `=` / `-` | Zoom in / out about the view centre |
+| Left / Right | Pan by one tenth of the visible span |
+| Home / End | Move to the capture's beginning / end |
+| `0` | Fit the entire capture |
+
+The minimum span is one FFT. Axes and held pictures move immediately; a new
+preview replaces the placeholder at the same physical coordinates. Newly exposed
+areas remain empty until a preview covers them. Rapid navigation replaces pending
+requests instead of queuing transforms. Each recent entry remembers its time view,
+clamped to the opened file and current FFT size on restoration. Navigation changes
+are staged in memory and written with the next session save or orderly window
+close, keeping filesystem work out of navigation input handlers.
+
+The status bar shows pointer time from the capture start, physical frequency in Hz
+(including centre frequency), and the displayed grid cell's level in dBFS. Above
+the waveform it shows time only. Uncovered placeholder areas have no level.
+File min/max values stay file-wide; they become available after a full-capture
+analysis and remain unchanged when navigating.
+
 Resizing the window or dragging the panel separator redraws from retained analysis
 without rereading the file or restarting FFT refinement. The GUI keeps up to 4096
 time cells and 2048 frequency cells (native FFT bins whenever they fit), plus a

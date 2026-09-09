@@ -220,27 +220,7 @@ impl Document {
             }
             Update::Ready { analysis, elapsed } => {
                 self.waveform_peak = None;
-                self.sample_extrema = analysis.waveform.as_ref().map(|waveform| {
-                    (0..waveform.channels)
-                        .map(|channel| {
-                            let low = waveform
-                                .min
-                                .iter()
-                                .skip(channel)
-                                .step_by(waveform.channels)
-                                .copied()
-                                .fold(f32::INFINITY, f32::min);
-                            let high = waveform
-                                .max
-                                .iter()
-                                .skip(channel)
-                                .step_by(waveform.channels)
-                                .copied()
-                                .fold(f32::NEG_INFINITY, f32::max);
-                            (low, high)
-                        })
-                        .collect()
-                });
+                self.remember_extrema(&analysis);
                 self.analysis = Some(analysis);
                 self.status = Status::Ready { elapsed };
                 Effect::Analysis
@@ -252,6 +232,37 @@ impl Document {
                 Effect::Status
             }
         }
+    }
+
+    fn remember_extrema(&mut self, analysis: &Analysis) {
+        if !self
+            .meta
+            .as_ref()
+            .is_some_and(|meta| analysis.db.t0 == 0.0 && analysis.db.t1 == meta.duration_seconds())
+        {
+            return;
+        }
+        self.sample_extrema = analysis.waveform.as_ref().map(|waveform| {
+            (0..waveform.channels)
+                .map(|channel| {
+                    let low = waveform
+                        .min
+                        .iter()
+                        .skip(channel)
+                        .step_by(waveform.channels)
+                        .copied()
+                        .fold(f32::INFINITY, f32::min);
+                    let high = waveform
+                        .max
+                        .iter()
+                        .skip(channel)
+                        .step_by(waveform.channels)
+                        .copied()
+                        .fold(f32::NEG_INFINITY, f32::max);
+                    (low, high)
+                })
+                .collect()
+        });
     }
 
     pub fn file_summary(&self) -> Option<MetadataField> {
@@ -322,7 +333,7 @@ impl Document {
 
     fn extrema_details(&self, meta: &SignalMeta) -> Vec<String> {
         let Some(extrema) = &self.sample_extrema else {
-            return vec!["Sample minimum / maximum: awaiting complete analysis".into()];
+            return vec!["Sample minimum / maximum: available after full-capture analysis".into()];
         };
         let Some((scale, offset)) = self.file_info.sample_units else {
             return vec!["Original sample minimum / maximum: unavailable".into()];

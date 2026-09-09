@@ -299,12 +299,18 @@ fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
     assert_eq!(field.value, "wav · iq i16 · 24 kHz · 2s");
     assert!(field.hint.value.contains("I/Q pairs: 48,000"));
     assert!(field.hint.value.contains("File size: 187.54 KiB · 192,044 B"));
-    assert!(field.hint.value.contains("awaiting complete analysis"));
+    assert!(field.hint.value.contains("available after full-capture analysis"));
     let mut result = analysis(2);
+    result.db.t1 = 2.0;
     result.waveform = Some(argand_core::WaveformEnvelope { columns: 2, channels: 2,
         min: vec![-5.0, -2.5, 0.0, 0.0], max: vec![1.25, 0.625, 0.0, 0.0], t0: 0.0, t1: 2.0 });
     document.apply(Update::Ready { analysis: result, elapsed: Duration::from_secs(1) });
     let hint = document.file_summary().unwrap().hint.value;
     assert!(hint.contains("I min / max: −16,384 / 4,096"), "{hint}");
     assert!(hint.contains("Q min / max: −8,192 / 2,048"), "{hint}");
+    let mut zoomed = analysis(2);
+    zoomed.db.t0 = 0.5;
+    zoomed.waveform = Some(argand_core::WaveformEnvelope::new(2, 2));
+    document.apply(Update::Ready { analysis: zoomed, elapsed: Duration::from_secs(1) });
+    assert_eq!(document.file_summary().unwrap().hint.value, hint, "a zoom must not replace file-wide extrema");
 }

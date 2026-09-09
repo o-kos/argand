@@ -235,6 +235,37 @@ fn resize_keeps_analysis_and_eventually_delivers_the_latest_size() {
 }
 
 #[test]
+fn rapid_time_navigation_rejects_old_pictures_and_analyzes_only_the_latest_range() {
+    let dir = TempDir::new("time-navigation");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    let Some(Update::Opened(meta, _)) = next(&updates) else { panic!("opened") };
+    let initial = AnalysisRequest { waveform_columns: Some(64), ..request() };
+    analyst.request(initial);
+    let old = loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if delivery.view_revision.is_some() { break delivery; }
+    };
+    let original = analyst.mailbox.latest().unwrap().generation;
+    for start in 1..=100 {
+        analyst.request(AnalysisRequest { range: SampleRange::new(start, 2048), ..initial });
+    }
+    assert_eq!(analyst.mailbox.latest().unwrap().generation, original + 100);
+    assert!(analyst.requests.len() <= 1, "only one wakeup may be queued");
+    assert!(!analyst.accepts(&old));
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        if let Update::Ready { analysis, .. } = delivery.update {
+            assert_eq!(analysis.db.t0, 100.0 / meta.sample_rate);
+            assert_eq!(analysis.db.t1, 2148.0 / meta.sample_rate);
+            let waveform = analysis.waveform.unwrap();
+            assert_eq!((waveform.t0, waveform.t1), (analysis.db.t0, analysis.db.t1));
+            break;
+        }
+    }
+}
+
+#[test]
 fn full_snapshot_queue_does_not_prevent_cancelling_a_final_reply() {
     use std::cell::Cell;
     let (sender, receiver) = async_channel::bounded(2);

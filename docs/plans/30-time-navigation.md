@@ -40,18 +40,20 @@ physical extents. The shell currently always requests the full capture.
 
 ## Implementation steps
 
-- [ ] Implement and test bounded navigation, cursor lookup and view persistence.
-- [ ] Integrate synchronized immediate rendering and mouse/keyboard controls.
-- [ ] Check superseded requests, range-specific metadata and settings changes.
-- [ ] Update relevant documentation.
+- [x] Implement and test bounded navigation, cursor lookup and view persistence.
+- [x] Integrate synchronized immediate rendering and mouse/keyboard controls.
+- [x] Check superseded requests, range-specific metadata and settings changes.
+- [x] ➕ Add fractional time labels for zoomed GUI views; preserve CLI clock formatting.
+- [x] Update relevant documentation.
+- [x] ➕ Bound deep-zoom GPU coordinates with visible colour runs and stage navigation persistence without filesystem writes.
 - [ ] Complete validation and independent review.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] Native GPU checks: anchored zoom, drag, keyboard-only navigation,
   synchronized panels, cursor units/levels, rapid input, restoration and bounds.
