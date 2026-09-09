@@ -398,3 +398,68 @@ fn required_delivery_acknowledges_only_a_successful_send_and_cancels_when_supers
     assert_eq!(receiver.recv_blocking().unwrap().view_revision, Some(2));
     assert!(pending.join().unwrap());
 }
+
+struct ResizingSource {
+    inner: Box<dyn argand_core::SampleSource>,
+    analyst: Analyst,
+    updates: async_channel::Receiver<Delivery>,
+    stage: usize,
+}
+impl argand_core::SampleSource for ResizingSource {
+    fn meta(&self) -> &SignalMeta { self.inner.meta() }
+    fn seek(&mut self, sample: u64) -> Result<(), argand_core::SourceError> { self.inner.seek(sample) }
+    fn read(&mut self, buf: &mut [f32]) -> Result<usize, argand_core::SourceError> {
+        while let Ok(delivery) = self.updates.try_recv() {
+            let Update::Snapshot { ref analysis, coverage, .. } = delivery.update else { continue; };
+            let current = self.analyst.mailbox.latest().unwrap();
+            match self.stage {
+                0 => {
+                    assert_eq!(coverage.refined_columns, 0);
+                    self.analyst.request(AnalysisRequest {
+                        colormap: Colormap::Inferno, dynamic_range: DynamicRange::Fixed(40.0),
+                        ..current.analysis
+                    });
+                }
+                1 => {
+                    assert_eq!(coverage.refined_columns, 0);
+                    assert_eq!(analysis.dynamic_range.requested, DynamicRange::Fixed(40.0));
+                    assert!(self.analyst.accepts(&delivery));
+                    self.analyst.request(AnalysisRequest { width: 17, ..current.analysis });
+                    assert!(!self.analyst.accepts(&delivery), "resize invalidates the queued style snapshot");
+                }
+                2 => {
+                    assert!(self.analyst.accepts(&delivery));
+                    assert_eq!(coverage.refined_columns, 0, "replacement must arrive during sparse preview");
+                    assert_eq!(analysis.db.width, 17);
+                    assert_eq!(analysis.dynamic_range.requested, DynamicRange::Fixed(40.0));
+                    assert_eq!(delivery.generation, Some(1), "refresh must retain the transform");
+                    self.analyst.requests.close();
+                }
+                _ => panic!("unexpected snapshot"),
+            }
+            self.stage += 1;
+        }
+        self.inner.read(buf)
+    }
+}
+
+#[test]
+fn a_queued_style_preview_invalidated_by_resize_is_republished_during_preview() {
+    let dir = TempDir::new("preview-style-resize");
+    let samples = 2048 * 400;
+    let path = write_wav(&dir.join("long.wav"), SampleType::new(Domain::Iq, SampleFormat::F32),
+        RATE as u32, &iq_tone(samples, RATE, 6_000.0, 0.5), 1.0);
+    let (requests, incoming) = async_channel::bounded(1);
+    let (outgoing, updates) = async_channel::bounded(2);
+    let mailbox = Arc::new(Mailbox::default());
+    let analyst = Analyst { requests, mailbox: mailbox.clone() };
+    analyst.request(AnalysisRequest { cfg: StftConfig::new(2048, Window::Hann),
+        range: SampleRange::new(0, samples as u64), ..request() });
+    let initial = mailbox.latest().unwrap();
+    let mut source = ResizingSource { inner: argand_io::open(&path, &OpenHints::default()).unwrap(),
+        analyst, updates, stage: 0 };
+    let replies = Replies { requests: &incoming, updates: &outgoing, mailbox: &mailbox };
+    let result = compute(&mut source, initial, crate::execution::Settings::default(), &replies);
+    assert!(matches!(result, Err(DspError::Cancelled)));
+    assert_eq!(source.stage, 3);
+}

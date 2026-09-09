@@ -388,17 +388,17 @@ fn compute(
     );
     let mut waveform_peak = None;
     let mut render_error = None;
-    let last_style =
-        std::cell::Cell::new((request.analysis.colormap, request.analysis.dynamic_range));
+    let last_view = std::cell::Cell::new(None);
     let result = analyze_overview_with_refresh(
         source,
         &request.analysis,
         ProgressiveOptions::new(settings.batch_frames).unwrap_or_default(),
         &|| replies.control(request.generation),
         &|| {
-            replies.mailbox.latest().is_some_and(|latest| {
-                last_style.get() != (latest.analysis.colormap, latest.analysis.dynamic_range)
-            })
+            replies
+                .mailbox
+                .latest()
+                .is_some_and(|latest| last_view.get() != Some(latest.view_revision))
         },
         &mut |overview, coverage| {
             let Some(latest) = replies.mailbox.latest() else {
@@ -421,7 +421,7 @@ fn compute(
             if replies.view_control(latest) == Flow::Stop {
                 return replies.control(request.generation);
             }
-            let style_changed = last_style.get() != (view.colormap, view.dynamic_range);
+            let view_changed = last_view.get() != Some(latest.view_revision);
             tracing::debug!(?coverage, elapsed = ?started.elapsed(), "analysis snapshot");
             let delivery = Delivery {
                 prepared_at: Instant::now(),
@@ -433,13 +433,13 @@ fn compute(
                     coverage,
                 },
             };
-            let delivered = if coverage.refined_columns == 0 || style_changed {
+            let delivered = if coverage.refined_columns == 0 || view_changed {
                 send_result(replies.updates, delivery, &|| replies.view_control(latest))
             } else {
                 replies.updates.try_send(delivery).is_ok()
             };
             if delivered {
-                last_style.set((view.colormap, view.dynamic_range));
+                last_view.set(Some(latest.view_revision));
             }
             Flow::Continue
         },

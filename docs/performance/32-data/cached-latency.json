@@ -1,38 +1,38 @@
 [
   {
     "kind": "palette",
-    "click_to_changed_frame_ms": 34.104,
-    "presentation_ms": 27.332,
+    "click_to_changed_frame_ms": 33.632,
+    "presentation_ms": 24.947,
     "frames": 3
   },
   {
     "kind": "palette",
-    "click_to_changed_frame_ms": 34.947,
-    "presentation_ms": 25.959,
+    "click_to_changed_frame_ms": 35.23,
+    "presentation_ms": 25.784,
     "frames": 3
   },
   {
     "kind": "palette",
-    "click_to_changed_frame_ms": 33.156,
-    "presentation_ms": 26.045,
+    "click_to_changed_frame_ms": 39.998,
+    "presentation_ms": 26.053,
     "frames": 3
   },
   {
     "kind": "palette",
-    "click_to_changed_frame_ms": 33.815,
-    "presentation_ms": 25.783,
+    "click_to_changed_frame_ms": 37.683,
+    "presentation_ms": 26.562,
     "frames": 3
   },
   {
     "kind": "palette",
-    "click_to_changed_frame_ms": 32.616,
-    "presentation_ms": 25.776,
+    "click_to_changed_frame_ms": 35.162,
+    "presentation_ms": 27.633,
     "frames": 3
   },
   {
     "kind": "range",
-    "click_to_changed_frame_ms": 32.596,
-    "presentation_ms": 25.62,
+    "click_to_changed_frame_ms": 39.176,
+    "presentation_ms": 24.513,
     "frames": 3
   }
 ]

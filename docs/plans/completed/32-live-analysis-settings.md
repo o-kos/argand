@@ -36,7 +36,7 @@ invalid. Persist effective values in session state without writing `argand.toml`
 - [x] Cover setting transitions, persistence and no-transform display updates.
 - [x] Validate native interaction and timing in both themes.
 - [x] Update architecture and user documentation.
-- [ ] Complete independent review and move the plan before final review.
+- [x] Complete independent review and move the plan before final review.
 
 ## Validation
 
@@ -49,15 +49,27 @@ invalid. Persist effective values in session state without writing `argand.toml`
 - [x] Invalid settings preserve the last picture and report the problem
 - [x] Restart restores effective settings and leaves configuration bytes unchanged
 - [x] Dark/light native UI checks, including narrow windows
-- [ ] Independent review with GPT-5.6 Sol at High effort
+- [x] Independent review with GPT-5.6 Sol at High effort
 
 ## Evidence and timing boundary
 
-See [native validation and timing](../performance/32-status-settings.md). Cached edits
-presented in 25.6–27.3 ms on the measured system. During the interval before a
+See [native validation and timing](../../performance/32-status-settings.md). Cached edits
+presented in 24.5–27.7 ms on the measured system. During the interval before a
 replacement transform produces its first preview, the old paired image retains its
 own transform and style; edits target the incoming preview. Blocked I/O and a single
 oversized FFT are outside the measured latency claim.
+
+## Independent review
+
+Three rounds completed; the final round had no substantive findings. Accepted fixes
+cover sparse-preview refresh and cancellable delivery, whole-sample overlap aliases,
+configuration FFT limits, and a queued style snapshot superseded by resize. The last
+case has a deterministic regression test that failed before the fix.
+
+The proposal to re-shade the superseded transform before its replacement preview was
+declined: the retained paired picture stays associated with its own transform/style
+and new style choices target the incoming preview. The reviewer challenged and
+accepted this rationale under the explicit timing boundary above.
 
 ## Next
 

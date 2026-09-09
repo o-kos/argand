@@ -1,7 +1,7 @@
 # Status-bar analysis settings validation
 
 Local validation on 2026-09-09 for #32, #61 and the range-advice portion of #62.
-The release executable was rebuilt after formatting, Clippy and all 439 tests passed.
+The release executable was rebuilt after formatting, Clippy and all 440 tests passed.
 No lint policy was relaxed. Cross-platform native interaction is not covered by this
 Linux experiment; the normal Ready PR matrix remains the merge gate.
 
@@ -58,12 +58,12 @@ kept the original completed-analysis count at one.
 
 | Change | Compositor presentation, ms | Screencopy receipt, ms |
 | --- | ---: | ---: |
-| Palette 1 | 27.332 | 34.104 |
-| Palette 2 | 25.959 | 34.947 |
-| Palette 3 | 26.045 | 33.156 |
-| Palette 4 | 25.783 | 33.815 |
-| Palette 5 | 25.776 | 32.616 |
-| Recommended range | 25.620 | 32.596 |
+| Palette 1 | 24.947 | 33.632 |
+| Palette 2 | 25.784 | 35.230 |
+| Palette 3 | 26.053 | 39.998 |
+| Palette 4 | 26.562 | 37.683 |
+| Palette 5 | 27.633 | 35.162 |
+| Recommended range | 24.513 | 39.176 |
 
 [Raw measurements](32-data/cached-latency.json) and the
 [measurement client](32-data/latency.c) are retained. The client moves the virtual
@@ -97,18 +97,30 @@ run. Popup placement and coordinates depend on the fixture and window dimensions
 ## Active refinement
 
 The 1 GB file used FFT 2048 and one worker so the actions occurred before analysis
-completion. The palette edit arrived at 16.4% refinement; the range edit at 22.4%.
-The new CPU snapshots took 5.572 and 11.284 ms, and CPU texture preparation for those
-snapshots completed after 13.652 and 16.679 ms. These are trace-derived preparation
+completion. The palette edit arrived at 16.2% refinement; the range edit at 22.0%.
+The new CPU snapshots took 12.075 and 12.381 ms, and CPU texture preparation for those
+snapshots completed after 27.118 and 28.865 ms. These are trace-derived preparation
 timings, not presentation measurements. The test completed exactly one transform
 pass. [Raw results](32-data/refinement-latency.json).
 
 DSP/worker tests cover style refresh between sparse preview batches as well as
 refinement batches, queue saturation and cancellation, and cached colour/range
-changes preserving transform generation, frame counts, dB values and PSD.
+changes preserving transform generation, frame counts, dB values and PSD. A
+deterministic worker test invalidates a queued style preview with a resize before
+UI acceptance and requires the replacement during sparse preview. It failed on
+the prior implementation (replacement only at 1021 refined columns) and passes
+with publication tracked by display revision.
 
 There is no universal 30 ms guarantee for blocked sample I/O or a single oversized
 FFT. When a replacement transform has not produced its first preview, the retained
 old paired picture keeps its original transform and style; style edits apply to
 the incoming preview. Once that overview is available, edits re-shade it without
 restarting the transform. This interval is explicitly documented in the README.
+
+## Independent review
+
+Three rounds completed. Accepted findings addressed sparse-preview refresh/delivery,
+whole-sample overlap aliases, configuration FFT bounds, and queued style snapshots
+invalidated by a newer display revision. The final round reported no substantive
+findings. The reviewer challenged and accepted the documented pre-preview retention
+decision; it remains the timing boundary above.
