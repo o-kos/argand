@@ -49,6 +49,13 @@ impl Shell {
             .iter()
             .find(|entry| Some(&entry.path) == path.as_ref())
             .and_then(|entry| entry.view);
+        if let Some(settings) = self.settings_backup {
+            self.settings_view_backup = Some(
+                saved
+                    .unwrap_or(View::full(meta.len_samples))
+                    .bounded(meta.len_samples, settings.fft_size),
+            );
+        }
         self.view = Some(
             saved
                 .unwrap_or(View::full(meta.len_samples))

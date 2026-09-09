@@ -47,16 +47,16 @@ physical extents. The shell currently always requests the full capture.
 - [x] Update relevant documentation.
 - [x] ➕ Bound deep-zoom GPU coordinates with visible source-column textures and stage navigation persistence without filesystem writes.
 - [x] ➕ Address review findings: exact full-capture provenance, representable time spans, FFT-preview cancellation, RF cursor precision, bounded texture-strip rendering, and redundant redraws.
-- [ ] Complete validation and independent review.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete local validation and address independent review findings.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Native GPU checks: anchored zoom, drag, keyboard-only navigation,
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Native GPU checks: anchored zoom, drag, keyboard-only navigation,
   synchronized panels, cursor units/levels, rapid input, restoration and bounds.
 
 ## Post-completion
@@ -79,3 +79,9 @@ file-wide extrema use exact request provenance. Settings cancellation restores
 automatic view expansion, cursor precision follows zoom, deep previews use a
 bounded number of narrow textures, and pointer moves outside plots no longer
 redraw the picture. The stale README statement was removed.
+
+The reviewed build also passed the 24 MS/s cursor check and the native
+2048-sample view -> FFT 65536 preview -> Escape scenario. Both FFT 2048 and the
+exact opening range were restored and saved on close. The local gate passed
+457 tests; the release binary was rebuilt after it. Final independent review is
+pending.
