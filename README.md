@@ -21,8 +21,8 @@ signal file's spectrogram to a PNG, with a waveform strip above it. `argand` is
 the graphical application: it opens a capture -- by argument, from its menu, by
 drag and drop, or from the files it remembers -- analyses it on a thread of its
 own, and shows a linear waveform above the spectrogram on the same time scale, with
-time and frequency marks around the spectrogram. It is early: no zoom, no selection, no editing yet, and the transform is a
-single pass over the whole file, so a large capture takes a while to appear.
+time and frequency marks around the spectrogram. A sparse preview appears before
+the full analysis; both panels refine from left to right, with progress shown in the status bar. Zoom, selection and editing are not implemented yet.
 
 Neither binary is a throwaway. The domain model, the readers and the transforms
 live in `argand-core`, `argand-io` and `argand-dsp`; both front ends call the
@@ -337,6 +337,10 @@ Real and I/Q captures use one merged min/max trace, exactly as `aspec` does,
 without grid lines, a zero-axis line, a legend or an amplitude caption. Dragging stretches the existing view and
 requests one analysis after the separator is released. The older `panels.waveform_fraction`
 setting is still accepted so existing files load, but no longer sizes this strip.
+The preview keeps its colour and waveform display scales while refinement runs,
+then resolves them once at completion. Replacing an analysis cancels its remaining
+work. GUI automatic normalization samples at most 64 MiB; a sparse scan can miss
+an isolated peak. `aspec` retains its existing normalization scan policy.
 The status bar separates container, sample format, sample rate and duration with
 vertical rules. Hints show a heading, current value and optional smaller explanation
 of one sentence without a terminal period. Values and explanations use muted text. Duration is compact

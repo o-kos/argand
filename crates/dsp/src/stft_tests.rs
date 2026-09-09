@@ -685,3 +685,5 @@ fn shading_a_grid_that_does_not_cover_its_shape_draws_nothing() {
     assert_eq!((image.width, image.height), (4, 4));
     assert!(image.rgba.chunks_exact(4).all(|p| p[3] == 255));
 }
+
+include!("progressive_tests.rs");

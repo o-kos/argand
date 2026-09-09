@@ -95,6 +95,7 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
     let started = Instant::now();
 
     let hints = OpenHints {
+        level_scan_bytes: None,
         raw: args.raw,
         sample_type: args.sample_type,
         sample_rate: args.rate,

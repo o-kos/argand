@@ -136,6 +136,7 @@ pub struct Document {
     /// window has something to draw while the next one runs.
     analysis: Option<Box<Analysis>>,
     status: Status,
+    waveform_peak: Option<f32>,
 }
 
 impl Document {
@@ -147,6 +148,7 @@ impl Document {
             meta: None,
             analysis: None,
             status: Status::Opening,
+            waveform_peak: None,
         }
     }
 
@@ -160,6 +162,11 @@ impl Document {
 
     pub fn analysis(&self) -> Option<&Analysis> {
         self.analysis.as_deref()
+    }
+
+    pub fn waveform_peak(&self) -> Option<f32> {
+        self.waveform_peak
+            .or_else(|| self.analysis().map(|analysis| analysis.time_peak))
     }
 
     pub const fn status(&self) -> &Status {
@@ -184,7 +191,21 @@ impl Document {
                 self.status = Status::Analyzing { done, total };
                 Effect::Status
             }
+            Update::Snapshot {
+                analysis,
+                coverage,
+                waveform_peak,
+            } => {
+                self.analysis = Some(analysis);
+                self.waveform_peak = Some(waveform_peak);
+                self.status = Status::Analyzing {
+                    done: coverage.refined_columns as u64,
+                    total: coverage.width as u64,
+                };
+                Effect::Analysis
+            }
             Update::Ready { analysis, elapsed } => {
+                self.waveform_peak = None;
                 self.analysis = Some(analysis);
                 self.status = Status::Ready { elapsed };
                 Effect::Analysis

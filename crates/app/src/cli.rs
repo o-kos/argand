@@ -77,6 +77,7 @@ impl Args {
         Some(Origin {
             path: self.input.clone()?,
             hints: OpenHints {
+                level_scan_bytes: None,
                 raw: self.raw,
                 sample_type: self.sample_type,
                 sample_rate: self.rate,

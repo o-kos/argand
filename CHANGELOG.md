@@ -13,6 +13,10 @@ promise applies to.
 
 ### Added
 
+- The GUI shows a sparse signal preview before full analysis, then refines both
+  panels from left to right. New requests cancel obsolete work, interim display
+  scales remain stable, and opening-level scans have a 64 MiB budget.
+
 - A linear waveform above the GUI spectrogram, preserving short transients and
   merging I and Q into one trace, matching `aspec` without extra labels. The waveform has no grid or extra captions; both panels share the time
   scale, and a subtle draggable separator ends at the waveform edge and remembers their proportions between runs. Ruler borders match the tick marks, with the frequency border joined to the separator.
@@ -61,6 +65,8 @@ promise applies to.
   right-hand title-bar area no longer starts a resize when the window is expanded.
 
 ### Changed
+
+- Reduce full-pass spectrogram overhead by reusing FFT scratch buffers and updating only changed display columns during refinement.
 
 - The GUI frequency scale sits on the right with vertically centered labels,
   and time labels follow their ticks. The frequency unit sits inside the right

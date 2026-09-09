@@ -124,3 +124,23 @@ fn a_mode_written_down_is_read_back_as_itself() {
         );
     }
 }
+
+#[test]
+fn a_scan_budget_limits_work_without_changing_default_normalization() {
+    let mut values = vec![0.25; 4096];
+    values[2048] = 20.0;
+    let data = floats(&values);
+    let bounded = resolve_divisor_with_budget(Normalize::Auto, SampleFormat::F32, &data, Some(64));
+    assert!((bounded - 0.25 * AUTO_HEADROOM).abs() < 1e-6);
+    let ordinary = resolve_divisor(Normalize::Auto, SampleFormat::F32, &data);
+    assert!((ordinary - 20.0 * AUTO_HEADROOM).abs() < 1e-6);
+    assert_eq!(resolve_divisor_with_budget(Normalize::Factor(7.0), SampleFormat::F32, &data, Some(0)), 7.0);
+}
+
+#[test]
+fn a_file_that_fits_the_scan_budget_keeps_its_tail_peak() {
+    let mut values = vec![0.1; (1 << 19) + 3];
+    *values.last_mut().unwrap() = 17.0;
+    let data = floats(&values);
+    assert_eq!(resolve_divisor_with_budget(Normalize::Auto, SampleFormat::F32, &data, Some(data.len())), 17.0 * AUTO_HEADROOM);
+}

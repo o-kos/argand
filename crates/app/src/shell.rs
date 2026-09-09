@@ -6,7 +6,10 @@
 //! [`crate::analysis`], none of which know about a toolkit and all of which are
 //! tested without one. This module converts between those answers and GPUI.
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Instant;
 
 use gpui::{
@@ -24,7 +27,7 @@ use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, Them
 
 use argand_dsp::AnalysisRequest;
 
-use crate::analysis::{Analyst, Update};
+use crate::analysis::{Analyst, Delivery};
 use crate::axes;
 use crate::chrome;
 use crate::config::{Config, Theme};
@@ -193,6 +196,8 @@ struct OpenFile {
     document: Document,
     analyst: Analyst,
     _updates: Task<()>,
+    opened_at: Instant,
+    first_picture: Arc<AtomicBool>,
 }
 
 /// The size of the plot in device pixels, which is the size the transform is
@@ -253,6 +258,7 @@ struct Shell {
     /// Held so that the one it replaces can be released: gpui keeps an
     /// uploaded image in the window's texture atlas until it is told to let go.
     texture: Option<Arc<RenderImage>>,
+    upload_pending: bool,
     title_drag_pending: bool,
     waveform: Option<Arc<waveform::Waveform>>,
     panel_bounds: Option<Bounds<Pixels>>,
@@ -286,6 +292,7 @@ impl Shell {
             file: None,
             plot: None,
             texture: None,
+            upload_pending: false,
             title_drag_pending: false,
             waveform: None,
             panel_bounds: None,
@@ -300,7 +307,7 @@ impl Shell {
 
     /// Open a file, replacing whatever was open before it.
     ///
-    /// Nothing is read here. [`crate::analysis::open`] starts a thread that
+    /// Nothing is read here. [`crate::analysis::prepare`] starts a thread that
     /// does the opening as well as the transforms, because a capture asked to
     /// normalize is scanned for its peak before the first sample reaches a
     /// transform, and that is a pass over the file that must not happen on the
@@ -317,7 +324,11 @@ impl Shell {
         self.release(window);
         self.plot = None;
 
-        let (analyst, updates) = crate::analysis::open(origin.path.clone(), origin.hints.clone());
+        let (analyst, updates, start) =
+            crate::analysis::prepare(origin.path.clone(), origin.hints.clone());
+        window.on_next_frame(move |window, _| {
+            window.on_next_frame(move |_, _| start.start());
+        });
 
         // Dropping this task drops the receiver, which is half of what tells
         // the thread that nobody is waiting for it any more.
@@ -345,6 +356,8 @@ impl Shell {
             document: Document::opening(origin),
             analyst,
             _updates: pump,
+            opened_at: Instant::now(),
+            first_picture: Arc::new(AtomicBool::new(false)),
         });
         cx.notify();
     }
@@ -409,10 +422,15 @@ impl Shell {
 
     /// Fold one update from the analysis thread into the document, and do
     /// whatever it asks for.
-    fn receive(&mut self, update: Update, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(effect) = self.file.as_mut().map(|file| file.document.apply(update)) else {
+    fn receive(&mut self, delivery: Delivery, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(file) = self.file.as_mut() else {
             return;
         };
+        if !file.analyst.accepts(&delivery) {
+            return;
+        }
+        let effect = file.document.apply(delivery.update);
+
         match effect {
             Effect::Opened => {
                 // Remembered now rather than when it was asked for. A file
@@ -432,7 +450,7 @@ impl Shell {
                 // at all.
                 self.ask_for_a_picture();
             }
-            Effect::Analysis => self.upload(window),
+            Effect::Analysis => self.upload_pending = true,
             Effect::Status => {}
         }
         cx.notify();
@@ -494,6 +512,10 @@ impl Shell {
 
     /// Put the newest picture on the GPU and release the one it replaces.
     fn upload(&mut self, window: &mut Window) {
+        let waveform_peak = self
+            .file
+            .as_ref()
+            .and_then(|file| file.document.waveform_peak());
         self.waveform = self
             .file
             .as_ref()
@@ -504,7 +526,7 @@ impl Shell {
                     full_scale: self
                         .config
                         .dynamic_range
-                        .waveform_full_scale(analysis.time_peak),
+                        .waveform_full_scale(waveform_peak.unwrap_or(analysis.time_peak)),
                 }))
             });
         let fresh = self
@@ -774,6 +796,10 @@ impl Shell {
     /// not a moment at which the entity being painted can be borrowed again.
     fn spectrogram(&self, extents: axes::Extents, cx: &mut Context<Self>) -> impl IntoElement {
         let texture = self.texture.clone();
+        let first_picture = self
+            .file
+            .as_ref()
+            .map(|file| (file.opened_at, file.first_picture.clone()));
         let waveform = self.waveform.clone();
         let fraction = self.session.waveform_fraction;
         let rem = f32::from(cx.theme().font_size);
@@ -834,6 +860,10 @@ impl Shell {
                         window.paint_image(plot, Corners::default(), texture, 0, false)
                     {
                         tracing::warn!(%error, "cannot draw the spectrogram");
+                    } else if let Some((opened_at, painted)) = &first_picture
+                        && !painted.swap(true, Ordering::Relaxed)
+                    {
+                        tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
                     }
                 }
                 axes::paint(&frame, spectrum_origin, &labels, colors, window, cx);
@@ -973,9 +1003,21 @@ impl Shell {
                 .child(self.spectrogram(extents, cx))
                 .child(self.splitter(window, cx))
                 .into_any_element(),
-            // A file that has not said what it is yet has no axes to draw and
-            // no picture to draw them around; the status bar reports it.
-            Showing::Opening => div().flex_1().into_any_element(),
+            // Physical labels need the metadata; their boundaries can appear immediately.
+            Showing::Opening => div()
+                .flex_1()
+                .min_h_0()
+                .p_1()
+                .pr(px(52.0))
+                .pb(px(24.0))
+                .child(
+                    div()
+                        .size_full()
+                        .border_r_1()
+                        .border_b_1()
+                        .border_color(cx.theme().muted_foreground),
+                )
+                .into_any_element(),
             Showing::Nothing => self.start_page(window, cx).into_any_element(),
             Showing::Failed(reason) => notice(reason, cx.theme().danger),
         }
@@ -1145,6 +1187,10 @@ enum Showing {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.upload_pending {
+            self.upload_pending = false;
+            self.upload(window);
+        }
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;

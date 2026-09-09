@@ -81,11 +81,24 @@ impl std::fmt::Display for Normalize {
 /// `Auto` measures the file; anything else is a constant, so the scan is
 /// skipped entirely.
 pub fn resolve_divisor(mode: Normalize, format: SampleFormat, data: &[u8]) -> f32 {
+    resolve_divisor_with_budget(mode, format, data, None)
+}
+
+/// Resolve levels using a bounded, evenly spread scan when a budget is supplied.
+pub fn resolve_divisor_with_budget(
+    mode: Normalize,
+    format: SampleFormat,
+    data: &[u8],
+    scan_bytes: Option<usize>,
+) -> f32 {
     match mode {
         Normalize::None => format.full_scale(),
         Normalize::Factor(v) => v,
         Normalize::Auto => {
-            let peak = measure_peak(format, data) * AUTO_HEADROOM;
+            let peak = match scan_bytes {
+                Some(budget) => bounded_peak(format, data, budget),
+                None => measure_peak(format, data),
+            } * AUTO_HEADROOM;
             if peak > 1e-9 {
                 peak
             } else {
@@ -118,6 +131,34 @@ fn measure_peak(format: SampleFormat, data: &[u8]) -> f32 {
             peak_abs(format, &data[start..end])
         })
         .reduce(|| 0.0f32, f32::max)
+}
+
+fn bounded_peak(format: SampleFormat, data: &[u8], budget: usize) -> f32 {
+    let width = format.bytes();
+    let values = data.len() / width;
+    let budget = (budget / width).min(values);
+    if budget == 0 {
+        return 0.0;
+    }
+    if budget == values {
+        return data[..values * width]
+            .par_chunks((1 << 20) / width * width)
+            .map(|chunk| peak_abs(format, chunk))
+            .reduce(|| 0.0, f32::max);
+    }
+    let chunks = budget.div_ceil((1 << 20) / width).min(64);
+    let chunk = budget / chunks;
+    (0..chunks)
+        .into_par_iter()
+        .map(|i| {
+            let start = if chunks == 1 {
+                0
+            } else {
+                i * (values - chunk) / (chunks - 1)
+            };
+            peak_abs(format, &data[start * width..(start + chunk) * width])
+        })
+        .reduce(|| 0.0, f32::max)
 }
 
 /// Turn decibels into a linear multiplier.

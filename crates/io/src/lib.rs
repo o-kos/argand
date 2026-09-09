@@ -48,6 +48,8 @@ pub struct OpenHints {
     /// detected sample format".
     pub normalize: Option<Normalize>,
     pub gain_db: f32,
+    /// Optional maximum bytes sampled for automatic level normalization.
+    pub level_scan_bytes: Option<usize>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -167,13 +169,14 @@ fn open_wave(
         .normalize
         .unwrap_or_else(|| Normalize::default_for(sample_type.format));
 
-    MmapSource::new(
+    MmapSource::with_scan_budget(
         path,
         meta,
         layout.data_offset,
         layout.declared_len.unwrap_or(usize::MAX),
         normalize,
         hints.gain_db,
+        hints.level_scan_bytes,
     )
     .map(|s| Box::new(s) as Box<dyn SampleSource>)
     .map_err(|source| IoError::Source {
@@ -209,13 +212,14 @@ fn open_raw(
         .normalize
         .unwrap_or_else(|| Normalize::default_for(sample_type.format));
 
-    MmapSource::new(
+    MmapSource::with_scan_budget(
         path,
         meta,
         hints.byte_offset as usize,
         usize::MAX,
         normalize,
         hints.gain_db,
+        hints.level_scan_bytes,
     )
     .map(|s| Box::new(s) as Box<dyn SampleSource>)
     .map_err(|source| IoError::Source {
@@ -253,14 +257,17 @@ fn open_decoded(
         }
     };
 
-    DecodedSource::open(
+    DecodedSource::with_levels(
         path,
         container,
         hints.center_freq,
         hints.sample_rate,
         hints.sample_type,
-        normalize,
-        hints.gain_db,
+        decoder::DecodeLevels {
+            normalize,
+            gain_db: hints.gain_db,
+            scan_bytes: hints.level_scan_bytes,
+        },
     )
     .map(|s| Box::new(s) as Box<dyn SampleSource>)
     .map_err(wrap)

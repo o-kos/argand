@@ -11,9 +11,10 @@ pub mod waveform;
 pub mod window;
 
 pub use stft::{
-    Analysis, AnalysisRequest, DB_FLOOR, DEFAULT_DYNAMIC_RANGE_DB, DspError, DynamicRange,
-    DynamicRangeResult, MAX_RECOMMENDED_RANGE_DB, MIN_RECOMMENDED_RANGE_DB, ParseDynamicRangeError,
-    ParseEnumError, REDUCE_NAMES, Reduce, Shading, StftConfig, analyze, shade,
+    Analysis, AnalysisRequest, Coverage, DB_FLOOR, DEFAULT_DYNAMIC_RANGE_DB, DspError,
+    DynamicRange, DynamicRangeResult, Flow, MAX_RECOMMENDED_RANGE_DB, MIN_RECOMMENDED_RANGE_DB,
+    ParseDynamicRangeError, ParseEnumError, REDUCE_NAMES, Reduce, Shading, StftConfig, analyze,
+    analyze_progressive, shade,
 };
 pub use waveform::EnvelopeBuilder;
 pub use window::{ParseWindowError, WINDOW_NAMES, Window, WindowTable};

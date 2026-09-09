@@ -12,6 +12,7 @@
 use argand_core::WaveformEnvelope;
 
 /// Accumulates a [`WaveformEnvelope`] from blocks of samples as they arrive.
+#[derive(Clone)]
 pub struct EnvelopeBuilder {
     columns: usize,
     channels: usize,
@@ -68,8 +69,8 @@ impl EnvelopeBuilder {
 
     /// Fold channel-interleaved `samples` beginning at range index `first`.
     ///
-    /// Blocks must arrive in order and must not overlap; the caller owns that,
-    /// because it is the same read loop that drives the transform.
+    /// Overlapping or out-of-order blocks are safe: extrema are idempotent,
+    /// so sparse preview windows can be retained during sequential refinement.
     pub fn fold(&mut self, samples: &[f32], first: u64) {
         if self.is_degenerate() {
             return;

@@ -74,15 +74,16 @@ fn waveform_preserves_each_channel_and_short_bursts_in_the_shared_columns() {
 ///
 /// Nothing here can wait for ever: the thread owns the only sender, so the
 /// channel closes behind it however it ends.
-fn next(updates: &async_channel::Receiver<Update>) -> Option<Update> {
-    updates.recv_blocking().ok()
+fn next(updates: &async_channel::Receiver<Delivery>) -> Option<Update> {
+    updates.recv_blocking().ok().map(|delivery| delivery.update)
 }
 
 /// The next `Ready` or `Failed`, skipping whatever progress arrives first.
-fn next_result(updates: &async_channel::Receiver<Update>) -> Option<Update> {
+fn next_result(updates: &async_channel::Receiver<Delivery>) -> Option<Update> {
     loop {
         match next(updates)? {
             Update::Progress { done, total } => assert!(done <= total, "{done} of {total}"),
+            Update::Snapshot { .. } => {},
             other => return Some(other),
         }
     }
@@ -193,4 +194,51 @@ fn a_window_that_has_gone_stops_the_thread_rather_than_leaving_it_waiting() {
     // With no sender left there is no request to wait for, so the thread ends
     // and closes the channel behind it.
     assert!(updates.recv_blocking().is_err());
+}
+
+#[test]
+fn deferred_open_does_not_touch_the_file_until_the_first_frame_releases_it() {
+    let dir = TempDir::new("deferred-open");
+    let (_analyst, updates, start) = prepare(dir.join("missing.wav"), OpenHints::default());
+    assert!(updates.try_recv().is_err());
+    start.start();
+    assert!(matches!(next(&updates), Some(Update::Failed(_))));
+}
+
+#[test]
+fn superseded_deliveries_cannot_replace_the_current_view() {
+    let dir = TempDir::new("superseded");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_))));
+    analyst.request(request());
+    let old = updates.recv_blocking().unwrap();
+    assert!(analyst.accepts(&old));
+    let mut latest = request();
+    latest.width = 17;
+    analyst.request(latest);
+    assert!(!analyst.accepts(&old));
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        if let Update::Ready { analysis, .. } = delivery.update {
+            assert_eq!(analysis.db.width, 17);
+            break;
+        }
+    }
+}
+
+#[test]
+fn full_snapshot_queue_does_not_prevent_cancelling_a_final_reply() {
+    use std::cell::Cell;
+    let (sender, receiver) = async_channel::bounded(2);
+    let delivery = || Delivery { generation: Some(1), update: Update::Progress { done: 0, total: 1 } };
+    sender.try_send(delivery()).unwrap();
+    sender.try_send(delivery()).unwrap();
+    let polls = Cell::new(0);
+    send_result(&sender, delivery(), &|| {
+        polls.set(polls.get() + 1);
+        if polls.get() == 1 { Flow::Continue } else { Flow::Stop }
+    });
+    assert_eq!(receiver.len(), 2);
+    assert_eq!(polls.get(), 2);
 }
