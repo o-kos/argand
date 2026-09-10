@@ -34,6 +34,30 @@ impl Drop for TempDir {
 }
 
 #[test]
+fn number_format_defaults_to_system_and_accepts_explicit_locales() {
+    let dir = TempDir::new("number-format");
+    assert_eq!(Config::default().number_format, "system");
+    for format in ["system", "ru-RU", "en-US", "ar-EG-u-nu-latn", "C", "POSIX"] {
+        let path = dir.write("argand.toml", &format!("number_format = {format:?}\n"));
+        assert_eq!(Config::load(&[path]).number_format, format);
+    }
+}
+
+#[test]
+fn invalid_number_format_preserves_other_configuration() {
+    let dir = TempDir::new("invalid-number-format");
+    for format in ["", "ru_RU.UTF-8", "not a locale"] {
+        let path = dir.write(
+            "argand.toml",
+            &format!("theme = \"light\"\nnumber_format = {format:?}\n"),
+        );
+        let config = Config::load(&[path]);
+        assert_eq!(config.number_format, "system");
+        assert_eq!(config.theme, Theme::Light);
+    }
+}
+
+#[test]
 fn a_file_that_sets_one_value_is_a_complete_file() {
     let dir = TempDir::new("partial");
     let path = dir.write("argand.toml", "theme = \"light\"\n");
@@ -42,6 +66,7 @@ fn a_file_that_sets_one_value_is_a_complete_file() {
     assert_eq!(config.theme, Theme::Light);
     // Everything it did not mention keeps the shipped value.
     assert_eq!(config.panels, Panels::default());
+    assert_eq!(config.number_format, "system");
 }
 
 #[test]

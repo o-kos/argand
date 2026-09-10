@@ -10,8 +10,20 @@ mod system;
 
 static CURRENT: OnceLock<Numbers> = OnceLock::new();
 
-pub fn initialize() {
-    CURRENT.get_or_init(|| Numbers::new(&system::locale()));
+pub fn initialize(format: &str) {
+    CURRENT.get_or_init(|| configured(format, system::locale));
+}
+
+pub fn valid_format(format: &str) -> bool {
+    matches!(format, "system" | "C" | "POSIX") || format.parse::<Locale>().is_ok()
+}
+
+fn configured(format: &str, system: impl FnOnce() -> String) -> Numbers {
+    if format == "system" {
+        Numbers::new(&system())
+    } else {
+        Numbers::new(format)
+    }
 }
 
 pub fn current() -> &'static Numbers {
@@ -229,6 +241,32 @@ impl Numbers {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configuration_override_controls_labels_hints_and_input_without_reading_system() {
+        let numbers = configured("ru-RU", || panic!("override must not read system locale"));
+        assert_eq!(
+            numbers.axis_label("#424703", argand_core::axis::AxisKind::Samples),
+            "424\u{a0}703"
+        );
+        assert_eq!(
+            numbers.axis_label("29.562 s", argand_core::axis::AxisKind::Seconds),
+            "29,562"
+        );
+        assert_eq!(
+            numbers.text("424703 samples, 58.987 s"),
+            "424\u{a0}703 samples, 58,987 s"
+        );
+        assert_eq!(numbers.canonical("45,5"), Ok("45.5".into()));
+    }
+
+    #[test]
+    fn system_setting_preserves_the_detected_numeric_locale() {
+        for (locale, expected) in [("C", "1234.5"), ("ru-RU", "1\u{a0}234,5")] {
+            let numbers = configured("system", || locale.into());
+            assert_eq!(numbers.format("1234.5", true), expected);
+        }
+    }
 
     #[test]
     fn decimal_grouping_precision_and_large_integers_follow_locale() {

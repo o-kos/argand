@@ -281,7 +281,11 @@ existing sample. Status-bar time readouts remain in seconds. CLI defaults and
 CLI frequency axes are unchanged.
 
 `numbers.rs` formats GUI numbers with ICU/CLDR using the regional numeric locale
-read by `numeric_locale.rs` at startup. Numeric settings use the same formatter
+read by `numeric_locale.rs` at startup. Top-level `Config::number_format` defaults
+to `system` and accepts an explicit BCP 47 tag or C/POSIX. It has no visual editor
+or session override. Configuration loads before numeric initialization, which
+precedes session restoration and window creation; invalid locale strings reset
+only this field to `system`. Numeric settings use the same formatter
 and validate localized grouping when parsing. `LabelMeasure::localize` runs before
 tick measurement; CLI implementations keep the default identity hook. GUI HMS
 labels use colons between clock fields, and fractions use the locale decimal mark.

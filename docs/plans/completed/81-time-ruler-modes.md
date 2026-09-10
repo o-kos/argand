@@ -81,6 +81,25 @@ The branch includes the merged minimap implementation from #83.
 Continue with #80, then the remaining grid/ruler backlog, and #82. Continuous
 minimap drag latency remains in the owner-approved backlog issue #84.
 
+## Owner feedback: configuration-only numeric locale override
+
+- [x] Add top-level `number_format` to `argand.toml`, defaulting to `system`,
+  with explicit BCP 47 locale tags and C/POSIX supported without an editor control.
+- [x] Initialize numeric presentation after configuration loading; keep system
+  locale precedence and canonical configuration/session serialization unchanged.
+- [x] Repair invalid locale strings independently, document the option, and
+  verify overrides under a C numeric environment, including native UI and input.
+- [x] Run the full local gate, rebuild release, and obtain a clean external review.
+
+Validation: all 509 tests, strict Clippy and formatting passed, followed by a
+fresh release build. Native Linux checks on a real Intel GPU used
+`LANG=ru_RU.UTF-8`, `LC_NUMERIC=C.UTF-8` and no `LC_ALL`. With no override,
+file hints and sample labels retain C formatting. With `number_format="ru-RU"`,
+sample labels and file hints gain grouping, fractional time/frequency labels use
+commas, and the settings editor accepts 45,5 dB and displays it in the analysis
+hint. The independent review of this iteration found no substantive issues;
+there were no rejected or deferred findings.
+
 ## Owner feedback: scale presentation and numeric locale
 
 - [x] Rename the format submenu and HMS entry; share it with a time-ruler context menu.
@@ -92,7 +111,7 @@ minimap drag latency remains in the owner-approved backlog issue #84.
   grouping, integer precision, settings input and menu behavior in validation.
 - [x] Complete local gate, current release, native checks and external review.
 
-Numeric presentation is initialized from system regional/numeric settings. On
+Numeric presentation defaults to system regional/numeric settings. On
 Linux the LC_ALL/LC_NUMERIC/LANG precedence applies; machine-readable data and CLI
 formats retain their existing contracts. The decimal formatter uses CLDR data;
 locale-specific grouping and digit shapes are not maintained as a hand-written

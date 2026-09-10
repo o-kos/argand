@@ -39,11 +39,11 @@ use session::{Session, Writer};
 fn main() {
     let args = Args::parse();
     init_tracing();
-    numbers::initialize();
 
     // Both files are read before the window is created, and nothing expensive
     // shares that path: what the window opens as depends on them.
     let config = Config::load(&Config::search_path());
+    numbers::initialize(&config.number_format);
 
     // A session is only written back when there is somewhere to write and the
     // file there is not from a version this one would be overwriting.

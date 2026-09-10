@@ -366,11 +366,26 @@ format. The choice survives restarts. Switching formats leaves the visible range
 unchanged and does not recalculate the spectrum. Arrow keys follow the divisions
 of the selected ruler; zoom and position still reset whenever a file is opened.
 
-GUI numbers use the system numeric locale, including grouping, decimal marks,
+GUI numbers use the system numeric locale by default, including grouping, decimal marks,
 axis labels, cursor badges, hints and analysis settings. Numeric fields accept
 the same locale. Linux follows `LC_ALL`, then `LC_NUMERIC`, then `LANG`; Windows
 and macOS use the system regional locale. Number conventions come from CLDR;
 configuration, session serialization and CLI output retain their existing formats.
+
+To override the numeric locale, set the top-level `number_format` option in
+`argand.toml` (before any `[section]`), then restart the application:
+
+```toml
+number_format = "ru-RU"
+```
+
+The default is `"system"`, also used when the option is absent. Explicit values
+are BCP 47 locale tags such as `"ru-RU"`, `"en-US"` or `"de-DE"`; `"C"` and
+`"POSIX"` select a decimal point without digit grouping. Use tags such as `ru-RU`,
+not environment spellings such as `ru_RU.UTF-8`. Invalid tags produce a log warning
+and fall back to `system`, preserving the other configuration settings. This
+option is only available in the configuration file and applies to both numeric
+display and input; it does not change the interface language.
 
 Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
 Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved
