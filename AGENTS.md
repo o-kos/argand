@@ -172,7 +172,7 @@ probes; these are not input-to-display measurements.
 The shell starts every opened file at its full sample range, clamps its span to
 one FFT or the shorter capture, and sends range changes through the existing
 cancellable mailbox. Size and style changes retain their previous cache semantics.
-`navigation_ui.rs` provides wheel zoom about the pointer, left-drag pan (including the time ruler), identical wheel zoom and Ctrl+wheel horizontal pan over plots and the time ruler, keyboard
+`navigation_ui.rs` provides Ctrl+wheel zoom about the pointer, left-drag pan (including the time ruler), identical Ctrl+wheel zoom and wheel horizontal pan over plots and the time ruler, keyboard
 commands and the View menu. The crosshair is restricted to the spectrogram. `plot_ui.rs` immediately maps both held pictures into
 the requested time interval and clips the spectrogram to its plot. Cursor levels
 come from the displayed grid's own extents; uncovered time has no reported level.
@@ -230,5 +230,10 @@ is omitted. Left/Right pan by one measured division; Ctrl+Left/Right by five.
 `navigation::TickPan` accumulates divisions before sample rounding, preventing drift
 for nonintegral samples per division; hitting either capture edge resets its origin.
 Shift+wheel is reserved for vertical frequency panning in #80 and currently does
-not navigate in time. Ctrl+wheel pans horizontally; unmodified wheel zooms on both
+not navigate in time. Unmodified wheel pans horizontally; Ctrl+wheel zooms on both
 plots and the time ruler.
+
+All time zoom keys use Control: Ctrl+Plus/Equals, Ctrl+Minus and Ctrl+0 (fit).
+Alt guides use a white three-logical-pixel stroke with a black one-pixel core,
+clipped to the plot, and slightly rounded coordinate badges with optically
+centred text. Guide colours are independent of the spectrogram palette.

@@ -13,7 +13,7 @@ promise applies to.
 
 ### Added
 
-- Hold Alt over the spectrogram to show guide lines to the time and frequency rulers with coordinate badges.
+- Hold Alt over the spectrogram to show guide lines to the time and frequency rulers with rounded coordinate badges, vertically centred text and white/black/white lines visible across palettes.
 
 - Two compact status-bar groups: combined file details with sample count, file size
   and sample extrema, and analysis controls. Adjust FFT, window,
@@ -89,7 +89,7 @@ promise applies to.
 
 ### Changed
 
-- Every file opening resets time zoom and position. Wheel zoom and Ctrl+wheel horizontal pan work over both the spectrogram and time ruler. Left/Right move by one ruler division, Ctrl+Left/Right by five, preserving ruler spacing and format. The crosshair is limited to the spectrogram.
+- Every file opening resets time zoom and position. Ctrl+wheel zoom and wheel horizontal pan work over both the spectrogram and time ruler. Left/Right move by one ruler division, Ctrl+Left/Right by five, preserving ruler spacing and format. The crosshair is limited to the spectrogram. Zoom keys use Ctrl+Plus/Minus and Ctrl+0 (fit).
 
 - Analysis settings preview until OK, with Cancel and Reset to defaults controls.
   Dynamic range now belongs to the current file rather than the saved session.

@@ -344,19 +344,19 @@ files and survives restarts. Set the initial choice with the top-level configura
 `aggregation = "max"` (default) or `aggregation = "mean-power"`. Live choices do not
 rewrite `argand.toml`; effective settings are saved in `session.toml`.
 
-The waveform and spectrogram share a time view. Scroll over either plot to zoom
-about the pointer, or drag with the left button to pan. The time ruler uses the
-same gestures: wheel zooms, Ctrl+wheel pans horizontally. Shift+wheel is reserved
+The waveform and spectrogram share a time view. Scroll over either plot to pan
+in time, or hold Ctrl to zoom about the pointer. Left-drag also pans. The time
+ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved
 for frequency panning (#80) and currently leaves the time view unchanged.
 The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands:
 
 | Key | Action |
 | --- | --- |
-| `+` or `=` / `-` | Zoom in / out about the view centre |
+| Ctrl+`+` or Ctrl+`=` / Ctrl+`-` | Zoom in / out about the view centre |
 | Left / Right | Pan by one time-ruler division |
 | Ctrl+Left / Ctrl+Right | Pan by five time-ruler divisions |
 | Home / End | Move to the capture's beginning / end |
-| `0` | Fit the entire capture |
+| Ctrl+`0` | Fit the entire capture |
 
 The minimum span is one FFT, with a screen-resolution representability floor
 for extreme sample indices. This floor is rechecked when the plot width changes. Axes and held pictures move immediately; a new
@@ -372,7 +372,8 @@ The status bar shows pointer time from the capture start, physical frequency in 
 (including centre frequency), and the displayed grid cell's level in dBFS. Above
 the waveform and time ruler it shows time only. Uncovered placeholder areas have no level.
 Hold **Alt** over the spectrogram to project the cursor onto the time and frequency
-rulers, with exact coordinate badges. Release Alt to hide the guides.
+rulers, with rounded coordinate badges. White/black/white guide lines remain
+visible across palettes. Release Alt to hide the guides.
 File min/max values stay file-wide; they become available after a full-capture
 analysis and remain unchanged when navigating.
 

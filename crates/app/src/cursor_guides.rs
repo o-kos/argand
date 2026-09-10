@@ -28,13 +28,15 @@ impl CursorGuides {
         let at = |x, y| panel.origin + point(px(x), px(y));
         let x = f32::from(pointer.x);
         let y = f32::from(pointer.y);
+        paint_lines(
+            Bounds::new(
+                at(frame.plot.x, frame.plot.y),
+                size(px(frame.plot.width), px(frame.plot.height)),
+            ),
+            panel.origin + pointer,
+            window,
+        );
         window.with_content_mask(Some(gpui::ContentMask { bounds: panel }), |window| {
-            for bounds in [
-                Bounds::new(at(x, y), size(px(1.), px(frame.plot.bottom() - y))),
-                Bounds::new(at(x, y), size(px(frame.plot.right() - x), px(1.))),
-            ] {
-                window.paint_quad(fill(bounds, self.ink));
-            }
             self.badge(
                 &readout.time,
                 point(px(x), px(frame.time_row - LINE_HEIGHT / 2.)),
@@ -67,13 +69,34 @@ impl CursorGuides {
         let width = f32::from(shaped.width) + 6.;
         let rect = badge_bounds(anchor, panel.size, width);
         let origin = panel.origin + point(px(rect.x), px(rect.y));
-        window.paint_quad(fill(
-            Bounds::new(origin, size(px(rect.width), px(rect.height))),
-            self.ink,
-        ));
-        let top = labels.line_top(LINE_HEIGHT / 2., &shaped);
+        window.paint_quad(
+            fill(
+                Bounds::new(origin, size(px(rect.width), px(rect.height))),
+                self.ink,
+            )
+            .corner_radii(px(3.)),
+        );
+        // Optical correction for the digit ink inside the filled badge.
+        let top = labels.line_top(rect.height / 2., &shaped) + 1.;
         let _ = shaped.paint(origin + point(px(3.), px(top)), px(LINE_HEIGHT), window, cx);
     }
+}
+
+fn paint_lines(plot: Bounds<Pixels>, pointer: Point<Pixels>, window: &mut Window) {
+    let scale = window.scale_factor();
+    let x = px((f32::from(pointer.x) * scale).floor() / scale);
+    let y = px((f32::from(pointer.y) * scale).floor() / scale);
+    window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
+        for (width, color) in [(3., gpui::white()), (1., gpui::black())] {
+            let offset = px((width - 1.) / 2.);
+            for bounds in [
+                Bounds::new(point(x - offset, y), size(px(width), plot.bottom() - y)),
+                Bounds::new(point(x, y - offset), size(plot.right() - x, px(width))),
+            ] {
+                window.paint_quad(fill(bounds, color));
+            }
+        }
+    });
 }
 
 fn badge_bounds(anchor: Point<Pixels>, panel: Size<Pixels>, width: f32) -> Rect {

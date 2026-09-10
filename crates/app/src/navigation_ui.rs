@@ -20,10 +20,10 @@ actions!(
 
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([
-        KeyBinding::new("+", ZoomIn, Some("Plot")),
-        KeyBinding::new("=", ZoomIn, Some("Plot")),
-        KeyBinding::new("-", ZoomOut, Some("Plot")),
-        KeyBinding::new("0", FitCapture, Some("Plot")),
+        KeyBinding::new("ctrl-+", ZoomIn, Some("Plot")),
+        KeyBinding::new("ctrl-=", ZoomIn, Some("Plot")),
+        KeyBinding::new("ctrl--", ZoomOut, Some("Plot")),
+        KeyBinding::new("ctrl-0", FitCapture, Some("Plot")),
         KeyBinding::new("left", PanLeft, Some("Plot")),
         KeyBinding::new("right", PanRight, Some("Plot")),
         KeyBinding::new("ctrl-left", PanFarLeft, Some("Plot")),
@@ -69,7 +69,7 @@ impl PlotGeometry {
         if modifiers.shift {
             return Scroll::VerticalPending;
         }
-        if modifiers.control {
+        if !modifiers.control {
             let distance = if horizontal { delta.x } else { delta.y };
             return Scroll::Pan(-f32::from(distance) as f64 / width);
         }
@@ -406,20 +406,20 @@ mod tests {
         let geometry = geometry();
         for position in [point(px(60.), px(80.)), point(px(60.), px(160.))] {
             let delta = point(px(0.), px(-160.));
+            assert!(
+                matches!(geometry.scroll(position, delta, gpui::Modifiers::default()), Scroll::Pan(f) if (f - 1.6).abs() < 1e-10)
+            );
+            let control = gpui::Modifiers {
+                control: true,
+                ..Default::default()
+            };
             assert!(matches!(
-                geometry.scroll(position, delta, gpui::Modifiers::default()),
+                geometry.scroll(position, delta, control),
                 Scroll::Zoom {
                     factor: 2.0,
                     anchor: 0.5
                 }
             ));
-            let control = gpui::Modifiers {
-                control: true,
-                ..Default::default()
-            };
-            assert!(
-                matches!(geometry.scroll(position, delta, control), Scroll::Pan(f) if (f - 1.6).abs() < 1e-10)
-            );
             let shift = gpui::Modifiers {
                 shift: true,
                 ..Default::default()

@@ -182,3 +182,27 @@ Final native reruns passed on the rebuilt release, including the same-process re
 sequence, both wheel surfaces, one/five-division steps and combined zoom/arrow input.
 Changing the zoomed, panned capture to grayscale left the entire time-ruler strip
 pixel-identical, confirming retained spacing through a style update.
+
+## Control-modified zoom and cursor-guide contrast
+
+The final bindings supersede the preceding plain-wheel zoom iteration.
+
+- [x] Use plain wheel for time pan and Ctrl+wheel for pointer-anchored zoom on plots and the time ruler; retain the Shift+wheel reservation for #80.
+- [x] Require Control for every zoom key: Plus/Equals, Minus and 0 (fit).
+- [x] Round the Alt coordinate badge backgrounds and correct their optical vertical text alignment.
+- [x] Paint guide lines with a three-logical-pixel white stroke and one-pixel black core, clipped to the spectrum for contrast on every palette.
+- [x] Validate modifier dispatch, badge alignment and guide contrast on the rebuilt native release; run the full gate and independent review.
+
+The rebuilt release passed native Linux GPU checks for plain-wheel panning and
+Ctrl+wheel zoom on both surfaces, Control-modified Plus/Equals/Minus/Fit and inert
+bare zoom keys. One/five-division keyboard panning still passed. View-menu hints
+show Control. Pixel probes confirmed the white/black/white line cross-section;
+Alt release restored the underlying pixels without analysis. Badges remained
+inside the panel at both plot corners. The default palette was inspected at 1x and
+grayscale at 2x scaling; the frequency badge at 1x has equal four-pixel ink
+padding above and below. These are sampled native checks on Linux, not tests of
+Windows/macOS rasterization. Formatting, strict Clippy and all 478 tests passed;
+the release was rebuilt afterward.
+
+Independent review found no substantive actionable issues in this iteration;
+there were no findings to accept or decline.
