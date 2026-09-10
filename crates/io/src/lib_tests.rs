@@ -401,3 +401,81 @@ fn assert_original_values(source: &mut dyn SampleSource, expected: &[f64]) {
         assert!((f64::from(*actual) * factor + offset - expected).abs() < 0.01);
     }
 }
+
+#[test]
+fn reopening_reuses_normalization_and_preserves_independent_cursors() {
+    let dir = TempDir::new("reopen");
+    let values = [0.125, -0.25, 0.5, -0.75];
+    for st in all_sample_types() {
+        let path = write_wav(&dir.join(&format!("{st}.wav")), st, 48000, &values, 1.0);
+        let hints = OpenHints { normalize: Some(Normalize::Auto), gain_db: 6., ..Default::default() };
+        let mut original = open(&path, &hints).unwrap();
+        let expected = drain(original.as_mut());
+        original.seek(1).unwrap();
+        let mut reopened = reopen(original.meta(), &OpenHints { level_scan_bytes: Some(0), ..hints }).unwrap();
+        assert_eq!(reopened.meta().divisor, original.meta().divisor);
+        assert_eq!(reopened.original_sample_units(), original.original_sample_units());
+        assert_eq!(drain(reopened.as_mut()), expected);
+        assert_eq!(drain(original.as_mut()), expected[st.channels()..]);
+        let mut changed = reopened.meta().clone();
+        changed.len_samples += 1;
+        assert!(reopen(&changed, &OpenHints::default()).is_err());
+    }
+}
+
+#[test]
+fn unknown_length_flac_reopens_without_counting_or_normalizing_again() {
+    let dir = TempDir::new("reopen-flac");
+    let path = dir.join("levels.flac");
+    let mut data = include_bytes!("../tests/fixtures/levels.flac").to_vec();
+    std::fs::write(&path, &data).unwrap();
+    let hints = OpenHints { normalize: Some(Normalize::Auto), gain_db: 6., ..Default::default() };
+    let mut original = open(&path, &hints).unwrap();
+    assert_eq!(original.meta().len_samples, 16384);
+    let expected = drain(original.as_mut());
+    let meta = original.meta().clone();
+    let units = original.original_sample_units();
+    drop(original);
+    data[21] &= 0xf0;
+    data[22..26].fill(0);
+    std::fs::write(&path, &data).unwrap();
+    let mut reopened = reopen(&meta, &OpenHints { level_scan_bytes: Some(0), ..hints.clone() }).unwrap();
+    assert_eq!(reopened.meta().len_samples, 16384);
+    assert_eq!(reopened.meta().divisor, meta.divisor);
+    assert_eq!(reopened.original_sample_units(), units);
+    assert_eq!(drain(reopened.as_mut()), expected);
+    for sample in [0, 5, 28, 1, 31, 0] {
+        reopened.seek(sample).unwrap();
+        let mut value = [0.];
+        assert_eq!(reopened.read(&mut value).unwrap(), 1);
+        assert_eq!(value[0], expected[sample as usize]);
+    }
+    drop(reopened);
+    let mut counted = open(&path, &hints).unwrap();
+    assert_eq!(counted.meta().len_samples, 16384);
+    assert_eq!(drain(counted.as_mut()), expected);
+    drop(counted);
+    let mut default = open(&path, &OpenHints::default()).unwrap();
+    assert_eq!(default.meta().len_samples, 16384);
+    assert_eq!(drain(default.as_mut()).len(), 16384);
+    // Unknown-length streams use the supplied count without a decoding pass.
+    let known = SignalMeta { len_samples: 32768, ..meta };
+    let reopened = reopen(&known, &hints).unwrap();
+    assert_eq!(reopened.meta().len_samples, 32768);
+}
+
+#[test]
+fn flac_seeks_discard_old_packets_and_preserve_levels() {
+    let dir = TempDir::new("flac-seeks");
+    let path = dir.join("levels.flac");
+    std::fs::write(&path, include_bytes!("../tests/fixtures/levels.flac")).unwrap();
+    let hints = OpenHints { normalize: Some(Normalize::Auto), gain_db: 6., ..Default::default() };
+    let mut source = open(&path, &hints).unwrap();
+    let expected = drain(source.as_mut());
+    let units = source.original_sample_units();
+    for sample in [14336, 0, 512, 4096, 14336, 1024, 0] {
+        source.seek(sample).unwrap();
+        assert_eq!(drain(source.as_mut()), expected[sample as usize..], "sample {sample}");
+        assert_eq!(source.original_sample_units(), units);
+    }
+}

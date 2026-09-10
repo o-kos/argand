@@ -218,6 +218,7 @@ struct OpenFile {
     document: Document,
     analyst: Analyst,
     _updates: Task<()>,
+    _minimap_updates: Option<Task<()>>,
     opened_at: Instant,
     first_picture: Arc<AtomicBool>,
     displayed_settings: Option<Settings>,
@@ -432,6 +433,7 @@ impl Shell {
             document: Document::opening(origin),
             analyst,
             _updates: pump,
+            _minimap_updates: None,
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
             displayed_settings: None,
@@ -520,6 +522,7 @@ impl Shell {
         match effect {
             Effect::Opened => {
                 self.reset_view();
+                self.start_minimap(window, cx);
                 // Remembered now rather than when it was asked for. A file
                 // that will not open must not overwrite the hints of the entry
                 // that did: a raw capture first opened with `--raw iq_i16@2M`
@@ -539,6 +542,46 @@ impl Shell {
             }
             Effect::Analysis => self.upload_pending = true,
             Effect::Status => {}
+        }
+        cx.notify();
+    }
+
+    fn start_minimap(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(file) = &mut self.file else { return };
+        let Some(meta) = file.document.meta().cloned() else {
+            return;
+        };
+        let updates = crate::minimap::start(file.document.origin().clone(), meta);
+        file._minimap_updates = Some(cx.spawn_in(window, async move |shell, cx| {
+            while let Ok(update) = updates.recv().await {
+                if shell
+                    .update_in(cx, |shell, _, cx| {
+                        shell.receive_minimap(update, cx);
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        }));
+    }
+
+    fn receive_minimap(
+        &mut self,
+        update: anyhow::Result<Arc<crate::minimap::Snapshot>>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(file) = &mut self.file else { return };
+        match update {
+            Ok(snapshot) => {
+                file.document.minimap_ready(&snapshot);
+                self.waveform = Some(Arc::new(waveform::Waveform::new(snapshot)));
+            }
+            Err(error) => {
+                tracing::warn!(%error, "minimap unavailable");
+                file.document.minimap_failed(format!("{error:#}"));
+                self.waveform = None;
+            }
         }
         cx.notify();
     }
@@ -607,6 +650,7 @@ impl Shell {
             .settings
             .analysis_request(meta, plot.width, plot.height);
         request.range = self.view?.range();
+        request.waveform_columns = None;
         Some(request)
     }
 
@@ -614,23 +658,6 @@ impl Shell {
     fn upload(&mut self, window: &mut Window) {
         self.release_deep_preview(window);
         let started = Instant::now();
-        let waveform_peak = self
-            .file
-            .as_ref()
-            .and_then(|file| file.document.waveform_peak());
-        self.waveform = self
-            .file
-            .as_ref()
-            .and_then(|file| file.document.analysis())
-            .and_then(|analysis| {
-                Some(Arc::new(waveform::Waveform {
-                    envelope: analysis.waveform.clone()?,
-                    full_scale: analysis
-                        .dynamic_range
-                        .requested
-                        .waveform_full_scale(waveform_peak.unwrap_or(analysis.time_peak)),
-                }))
-            });
         let fresh = self
             .file
             .as_ref()
@@ -1018,7 +1045,16 @@ impl Shell {
                 .cursor(
                     self.plot_geometry
                         .map_or(gpui::CursorStyle::Arrow, |geometry| {
-                            geometry.cursor(self.pointer, self.pan.is_some())
+                            geometry.cursor(
+                                self.pointer,
+                                self.pan.is_some(),
+                                self.view.zip(
+                                    self.file
+                                        .as_ref()
+                                        .and_then(|file| file.document.meta())
+                                        .map(|meta| meta.len_samples),
+                                ),
+                            )
                         }),
                 )
                 .on_scroll_wheel(cx.listener(Self::wheel))

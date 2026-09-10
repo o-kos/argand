@@ -37,7 +37,10 @@ pub(super) fn init(cx: &mut gpui::App) {
 pub(super) struct PlotGeometry {
     pub time_scheme: Option<argand_core::axis::TickScheme>,
     pub spectrum: Bounds<Pixels>,
+    pub minimap: Bounds<Pixels>,
+    pub minimap_columns: usize,
     pub navigation: Bounds<Pixels>,
+    pub frequency_ruler: Bounds<Pixels>,
 }
 
 enum Scroll {
@@ -47,15 +50,38 @@ enum Scroll {
 }
 
 impl PlotGeometry {
-    pub fn cursor(self, pointer: Option<gpui::Point<Pixels>>, dragging: bool) -> gpui::CursorStyle {
+    pub fn cursor(
+        self,
+        pointer: Option<gpui::Point<Pixels>>,
+        dragging: bool,
+        viewport: Option<(View, u64)>,
+    ) -> gpui::CursorStyle {
         if dragging {
             return gpui::CursorStyle::ClosedHand;
         }
-        if pointer.is_some_and(|position| self.spectrum.contains(&position)) {
-            gpui::CursorStyle::Crosshair
+        let Some(position) = pointer else {
+            return gpui::CursorStyle::Arrow;
+        };
+        if self.spectrum.contains(&position) {
+            return gpui::CursorStyle::Crosshair;
+        }
+        let time_ruler = self.navigation.contains(&position) && position.y > self.spectrum.bottom();
+        let selected = self.minimap.contains(&position)
+            && viewport.is_some_and(|(view, total)| {
+                let fraction = self.minimap_fraction(position);
+                let (left, right) = crate::minimap::viewport(view, total, self.minimap_columns);
+                (left..=right).contains(&fraction)
+            });
+        if time_ruler || self.frequency_ruler.contains(&position) || selected {
+            gpui::CursorStyle::OpenHand
         } else {
             gpui::CursorStyle::Arrow
         }
+    }
+
+    fn minimap_fraction(self, position: gpui::Point<Pixels>) -> f64 {
+        f32::from(position.x - self.minimap.left()) as f64
+            / f32::from(self.minimap.size.width) as f64
     }
 
     fn scroll(
@@ -85,6 +111,7 @@ pub(super) struct Pan {
     position: gpui::Point<Pixels>,
     view: View,
     width: f32,
+    minimap: bool,
 }
 
 impl Shell {
@@ -205,6 +232,9 @@ impl Shell {
         if !geometry.navigation.contains(&event.position) || self.splitter_dragging {
             return;
         }
+        if geometry.minimap.contains(&event.position) {
+            return;
+        }
         self.pan = None;
         let delta = event.delta.pixel_delta(px(40.));
         match geometry.scroll(event.position, delta, event.modifiers) {
@@ -229,12 +259,46 @@ impl Shell {
         }
         window.focus(&self.focus);
         self.hold_time_scheme(window);
+        let minimap = geometry.minimap.contains(&event.position);
+        if minimap && !self.minimap_press(event, geometry, window, cx) {
+            self.pan = None;
+            return;
+        }
         self.pan = self.view.map(|view| Pan {
             position: event.position,
             view,
             width: f32::from(geometry.navigation.size.width),
+            minimap,
         });
         cx.notify();
+    }
+
+    fn minimap_press(
+        &mut self,
+        event: &gpui::MouseDownEvent,
+        geometry: PlotGeometry,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(view) = self.view else { return false };
+        let Some(total) = self.sample_count() else {
+            return false;
+        };
+        let fraction = geometry.minimap_fraction(event.position);
+        let viewport = crate::minimap::viewport(view, total, geometry.minimap_columns);
+        match crate::minimap::click(
+            fraction,
+            viewport,
+            event.modifiers.control,
+            event.click_count,
+        ) {
+            crate::minimap::Click::Grab => return true,
+            crate::minimap::Click::Step(divisions) => self.pan_ticks(divisions, window, cx),
+            crate::minimap::Click::Center => {
+                self.navigate(crate::minimap::center(view, fraction, total), cx)
+            }
+        }
+        false
     }
 
     pub(super) fn pointer_moved(
@@ -245,7 +309,10 @@ impl Shell {
     ) {
         let pointer = self
             .plot_geometry
-            .filter(|geometry| geometry.navigation.contains(&event.position))
+            .filter(|geometry| {
+                geometry.navigation.contains(&event.position)
+                    || geometry.frequency_ruler.contains(&event.position)
+            })
             .map(|_| event.position);
         if self.pan.is_none() && self.pointer == pointer {
             return;
@@ -256,7 +323,12 @@ impl Shell {
         {
             if event.dragging() {
                 let fraction = f32::from(pan.position.x - event.position.x) / pan.width;
-                self.navigate(pan.view.pan(fraction as f64, total), cx);
+                let fraction = if pan.minimap {
+                    -f64::from(fraction) * total as f64 / pan.view.len.max(1) as f64
+                } else {
+                    f64::from(fraction)
+                };
+                self.navigate(pan.view.pan(fraction, total), cx);
             } else {
                 self.pan = None;
             }
@@ -280,7 +352,11 @@ impl Shell {
         if !geometry.navigation.contains(&pointer) {
             return None;
         }
-        let extents = self.extents()?;
+        let mut extents = self.extents()?;
+        if geometry.minimap.contains(&pointer) {
+            let meta = self.file.as_ref()?.document.meta()?;
+            extents.seconds = (0., meta.duration_seconds());
+        }
         let x = f32::from(pointer.x - geometry.navigation.left()) as f64
             / f32::from(geometry.navigation.size.width) as f64;
         let time = extents.seconds.0 + x * (extents.seconds.1 - extents.seconds.0);
@@ -376,29 +452,82 @@ mod tests {
     fn geometry() -> PlotGeometry {
         PlotGeometry {
             time_scheme: None,
+            minimap_columns: 100,
+            frequency_ruler: Bounds::new(point(px(110.), px(50.)), size(px(30.), px(100.))),
             spectrum: Bounds::new(point(px(10.), px(50.)), size(px(100.), px(100.))),
             navigation: Bounds::new(point(px(10.), px(10.)), size(px(100.), px(160.))),
+            minimap: Bounds::new(point(px(10.), px(10.)), size(px(100.), px(30.))),
         }
     }
 
     #[test]
-    fn crosshair_is_limited_to_spectrum() {
+    fn cursor_identifies_spectrum_minimap_viewport_and_both_rulers() {
         let geometry = geometry();
-        for position in [
-            point(px(50.), px(20.)),
-            point(px(50.), px(160.)),
-            point(px(120.), px(80.)),
+        let viewport = Some((
+            View {
+                start: 200,
+                len: 300,
+            },
+            1000,
+        ));
+        for (x, y, expected) in [
+            (50., 20., gpui::CursorStyle::OpenHand),
+            (20., 20., gpui::CursorStyle::Arrow),
+            (50., 160., gpui::CursorStyle::OpenHand),
+            (120., 80., gpui::CursorStyle::OpenHand),
+            (50., 80., gpui::CursorStyle::Crosshair),
         ] {
             assert_eq!(
-                geometry.cursor(Some(position), false),
-                gpui::CursorStyle::Arrow
+                geometry.cursor(Some(point(px(x), px(y))), false, viewport),
+                expected
             );
         }
         assert_eq!(
-            geometry.cursor(Some(point(px(50.), px(80.))), false),
-            gpui::CursorStyle::Crosshair
+            geometry.cursor(None, true, viewport),
+            gpui::CursorStyle::ClosedHand
         );
-        assert_eq!(geometry.cursor(None, true), gpui::CursorStyle::ClosedHand);
+        assert_eq!(
+            geometry.cursor(None, false, viewport),
+            gpui::CursorStyle::Arrow
+        );
+        assert_eq!(
+            geometry.cursor(Some(point(px(50.), px(20.))), false, None),
+            gpui::CursorStyle::Arrow
+        );
+    }
+
+    #[test]
+    fn hidpi_minimap_hand_and_click_match_the_last_visible_device_pixel() {
+        let geometry = PlotGeometry {
+            minimap_columns: 200,
+            ..geometry()
+        };
+        let view = View {
+            start: 999999,
+            len: 1,
+        };
+        let viewport = Some((view, 1000000));
+        let interval = crate::minimap::viewport(view, 1000000, geometry.minimap_columns);
+        assert_eq!(interval, (0.995, 1.));
+        for (x, cursor, click) in [
+            (
+                109.25,
+                gpui::CursorStyle::Arrow,
+                crate::minimap::Click::Step(-1),
+            ),
+            (
+                109.75,
+                gpui::CursorStyle::OpenHand,
+                crate::minimap::Click::Grab,
+            ),
+        ] {
+            let position = point(px(x), px(20.));
+            assert_eq!(geometry.cursor(Some(position), false, viewport), cursor);
+            assert_eq!(
+                crate::minimap::click(geometry.minimap_fraction(position), interval, false, 1),
+                click
+            );
+        }
     }
 
     #[test]

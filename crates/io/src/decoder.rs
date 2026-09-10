@@ -74,31 +74,48 @@ impl DecodedSource {
         sample_type_override: Option<SampleType>,
         levels: DecodeLevels,
     ) -> Result<Self, SourceError> {
+        let mut source =
+            Self::open_plain(path, container, center_freq, sample_rate_override, None)?;
+        if let Some(forced) = sample_type_override {
+            source.meta.sample_type = forced;
+        }
+        source.apply_levels(levels)
+    }
+
+    pub(crate) fn apply_levels(mut self, levels: DecodeLevels) -> Result<Self, SourceError> {
         let DecodeLevels {
             normalize,
             gain_db,
             scan_bytes,
         } = levels;
-        let mut source = Self::open_plain(path, container, center_freq, sample_rate_override)?;
-        if let Some(forced) = sample_type_override {
-            source.meta.sample_type = forced;
-        }
-
         // Symphonia hands back values already on the unit scale, so the only
         // divisor left is a peak measurement, and that needs a decode pass.
         let divisor = match normalize {
             Normalize::None => 1.0,
             Normalize::Factor(v) => v,
             Normalize::Auto => {
-                let peak = Self::open_plain(path, container, center_freq, sample_rate_override)?
-                    .measure_peak(scan_bytes)?
-                    * AUTO_HEADROOM;
+                let peak = Self::reopen(&self.meta, 0.)?.measure_peak(scan_bytes)? * AUTO_HEADROOM;
                 if peak > 1e-9 { peak } else { 1.0 }
             }
         };
-        source.divisor = divisor;
-        source.meta.divisor = divisor;
-        source.scale = gain_factor(gain_db) / divisor;
+        self.divisor = divisor;
+        self.meta.divisor = divisor;
+        self.scale = gain_factor(gain_db) / divisor;
+        Ok(self)
+    }
+
+    pub(crate) fn reopen(meta: &SignalMeta, gain_db: f32) -> Result<Self, SourceError> {
+        let mut source = Self::open_plain(
+            &meta.source,
+            meta.container,
+            meta.center_freq,
+            Some(meta.sample_rate),
+            Some(meta.len_samples),
+        )?;
+        source.meta.sample_type = meta.sample_type;
+        source.meta.divisor = meta.divisor;
+        source.divisor = meta.divisor;
+        source.scale = gain_factor(gain_db) / meta.divisor;
         Ok(source)
     }
 
@@ -107,6 +124,7 @@ impl DecodedSource {
         container: &'static str,
         center_freq: f64,
         sample_rate_override: Option<f64>,
+        known_len: Option<u64>,
     ) -> Result<Self, SourceError> {
         let file = File::open(path)?;
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -179,7 +197,11 @@ impl DecodedSource {
                 sample_rate: sample_rate_override.unwrap_or(sample_rate),
                 center_freq,
                 sample_type: SampleType::new(domain, format),
-                len_samples: params.n_frames.unwrap_or(0),
+                len_samples: params
+                    .n_frames
+                    .filter(|&count| count > 0)
+                    .or(known_len)
+                    .unwrap_or(0),
                 container,
                 divisor: 1.0,
                 source: PathBuf::from(path),
@@ -196,9 +218,10 @@ impl DecodedSource {
         // STREAMINFO usually carries the length; when it does not, the only
         // honest answer is to decode once and count. sgvr silently reported
         // zero here, which then truncated the whole analysis.
-        if source.meta.len_samples == 0 {
+        if source.meta.len_samples == 0 && known_len.is_none() {
             tracing::debug!("stream reports no frame count, counting by decoding");
-            let mut counter = Self::open_plain(path, container, center_freq, sample_rate_override)?;
+            let mut counter =
+                Self::open_plain(path, container, center_freq, sample_rate_override, Some(0))?;
             source.meta.len_samples = counter.count_samples()?;
         }
 
@@ -364,6 +387,17 @@ impl SampleSource for DecodedSource {
                 requested: sample,
                 total: self.meta.len_samples,
             });
+        }
+
+        // Symphonia's FLAC seek can retain parsed packets at aligned frame offsets.
+        // A fresh parser avoids stale data without recounting or renormalizing.
+        if self.meta.container == "flac" {
+            let mut fresh = Self::reopen(&self.meta, 0.)?;
+            fresh.scale = self.scale;
+            *self = fresh;
+            if sample == 0 {
+                return Ok(());
+            }
         }
 
         let result = self

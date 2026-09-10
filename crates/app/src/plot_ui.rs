@@ -31,7 +31,16 @@ impl Shell {
             .file
             .as_ref()
             .map(|file| (file.opened_at, file.first_picture.clone()));
-        let waveform = self.waveform.clone();
+        let minimap = waveform::Panel {
+            waveform: self.waveform.clone(),
+            viewport: self.view.zip(
+                self.file
+                    .as_ref()
+                    .and_then(|file| file.document.meta())
+                    .map(|meta| meta.len_samples),
+            ),
+            separator: cx.theme().border,
+        };
         let fraction = self.session.waveform_fraction;
         let rem = f32::from(cx.theme().font_size);
         let known_bounds = self.panel_bounds;
@@ -39,7 +48,6 @@ impl Shell {
         let known_geometry = self.plot_geometry;
         let time_scheme = self.time_scheme;
         let view = cx.entity().downgrade();
-        let separator_color = cx.theme().border;
         let guides = self.cursor_guides(extents, cx);
         let colors = axes::Colors {
             // Over the picture rather than beside it, so it is drawn to be
@@ -60,7 +68,7 @@ impl Shell {
                 let frame =
                     axes::Frame::measure(spectrum_size, scale, extents, &labels, time_scheme)?;
                 let measured = device_size(frame.plot, scale);
-                let geometry = plot_geometry(bounds, &frame, height);
+                let geometry = plot_geometry(bounds, &frame, height, measured.width);
                 if known != Some(measured)
                     || known_bounds != Some(bounds)
                     || known_geometry != Some(geometry)
@@ -84,16 +92,7 @@ impl Shell {
                         window,
                     );
                 }
-                if let Some(waveform) = &waveform {
-                    waveform.paint(&frame, bounds.origin, height, extents.seconds, window);
-                }
-                window.paint_quad(gpui::fill(
-                    Bounds {
-                        origin: bounds.origin + point(px(frame.plot.x), px(height - 1.0)),
-                        size: size(px(frame.plot.width), px(1.0)),
-                    },
-                    separator_color,
-                ));
+                minimap.paint(&frame, bounds.origin, height, window);
                 // The picture first, then the marks over it: a grid line is
                 // there to be read against the spectrogram, not under it.
                 if let Some(texture) = texture
@@ -193,6 +192,7 @@ fn plot_geometry(
     bounds: Bounds<Pixels>,
     frame: &axes::Frame,
     height: f32,
+    minimap_columns: usize,
 ) -> navigation_ui::PlotGeometry {
     let spectrum = Bounds {
         origin: bounds.origin + point(px(frame.plot.x), px(height + frame.plot.y)),
@@ -200,7 +200,16 @@ fn plot_geometry(
     };
     navigation_ui::PlotGeometry {
         time_scheme: frame.time_scheme,
+        minimap_columns,
+        frequency_ruler: Bounds::new(
+            point(spectrum.right(), spectrum.top()),
+            size(bounds.right() - spectrum.right(), spectrum.size.height),
+        ),
         spectrum,
+        minimap: Bounds::new(
+            point(spectrum.left(), bounds.top()),
+            size(spectrum.size.width, px((height - 1.).max(0.))),
+        ),
         navigation: Bounds {
             origin: point(spectrum.left(), bounds.top()),
             size: size(spectrum.size.width, bounds.size.height),
