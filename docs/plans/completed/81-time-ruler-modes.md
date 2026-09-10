@@ -13,8 +13,7 @@ the selected format for the Alt time badge. Complex samples count I/Q pairs.
 Shared tick layout lives in `argand-core::axis`; the GUI measures it in `axes.rs`.
 Time navigation owns integer sample ranges and retains a tick scheme during pan.
 The minimap from #79 remains full-capture and independent of ruler formatting.
-The current PR is prepared after owner acceptance of #83 while its full CI runs;
-retarget and rebase onto main after that PR's squash merge.
+The branch includes the merged minimap implementation from #83.
 
 ## Decisions
 
@@ -39,25 +38,41 @@ retarget and rebase onto main after that PR's squash merge.
 
 ## Implementation steps
 
-- [ ] Add shared axis layouts and toolkit-neutral ruler formatting with regression tests.
-- [ ] Connect ruler modes, held tick navigation and Alt readouts to the GUI.
-- [ ] Add the checked View submenu and backward-compatible session persistence.
-- [ ] Update README, changelog and architectural invariants.
-- [ ] Complete native checks, local gate, fresh release build and external review.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Add shared axis layouts and toolkit-neutral ruler formatting with regression tests.
+- [x] Connect ruler modes, held tick navigation and Alt readouts to the GUI.
+- [x] Add the checked View submenu and backward-compatible session persistence.
+- [x] Update README, changelog and architectural invariants.
+- [x] Complete native checks, local gate, fresh release build and external review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] Default formatting, fractional seconds, integer sample ticks, capture offsets,
+- [x] Default formatting, fractional seconds, integer sample ticks, capture offsets,
   I/Q pair indices, readable labels and stable held grids at different zoom levels.
-- [ ] Mode switching preserves the view and avoids analysis requests; session
+- [x] Mode switching preserves the view and avoids analysis requests; session
   round-trip and old-session defaults preserve existing navigation reset rules.
-- [ ] Native real-GPU checks for the menu, three ruler modes, Alt badges, pan/zoom,
+- [x] Native real-GPU checks for the menu, three ruler modes, Alt badges, pan/zoom,
   file replacement and application restart, using real and I/Q captures.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked` after the gate passes
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked` after the gate passes
+
+## Results
+
+- Formatting, strict Clippy and all 500 local tests pass; the release was rebuilt
+  after the full gate. No lint policy was relaxed.
+- Native Linux/Sway checks on a real Intel GPU cover all three checked menu modes,
+  Alt badges, unchanged sample ranges and analysis counters on mode switching,
+  one/five keyboard divisions, real and I/Q captures, same-process file replacement
+  and persistence after restart. File replacement restores the full view while
+  retaining Samples mode. The I/Q fixture reports 94080 sample pairs; its badge
+  matches the expected integer capture index.
+- Review found fractional clock badges losing the hours field on hour-wide spans.
+  The formatter now retains hours and carries rounding across the hour boundary;
+  regression tests cover both behavior and the zoomed minutes-only format. The
+  corrected two-hour Alt readout also passed a native check. The final external
+  review returned no substantive findings; no findings were rejected.
 
 ## Post-completion
 

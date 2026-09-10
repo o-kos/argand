@@ -118,6 +118,7 @@ fn a_session_survives_the_round_trip() {
     let path = dir.join("session.toml");
     let session = Session {
         analysis_settings: None,        version: VERSION,
+        time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(12.0, 34.0, 1280.0, 800.0)),
         window_state: WindowState::Maximized,
@@ -170,6 +171,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
 
     let first = Session {
         analysis_settings: None,        version: VERSION,
+        time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(0.0, 0.0, 800.0, 600.0)),
         window_state: WindowState::Normal,
@@ -227,6 +229,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
     let at = |ms: u64| Instant::now() + Duration::from_millis(ms);
     let moved = |x: f32| Session {
         analysis_settings: None,        version: VERSION,
+        time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -269,6 +272,7 @@ fn a_position_that_has_not_changed_is_not_written_again() {
     let path = dir.join("session.toml");
     let held = Session {
         analysis_settings: None,        version: VERSION,
+        time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -298,6 +302,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
     let start = Instant::now();
     let moved = |x: f32| Session {
         analysis_settings: None,        version: VERSION,
+        time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -320,6 +325,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let path = dir.join("session.toml");
     let at = |x: f32| Session {
         analysis_settings: None,        version: VERSION,
+        time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -357,6 +363,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
     let mut writer = Writer::new(path.clone(), Session::default());
     let moved = Session {
         analysis_settings: None,        version: VERSION,
+        time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -403,6 +410,7 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
     let start = Instant::now();
     let at = |x: f32| Session {
         analysis_settings: None,        version: VERSION,
+        time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
@@ -664,8 +672,8 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 6"),
-        "the current session layout remains version 6: {text}"
+        text.contains("version = 7"),
+        "the current session layout is version 7: {text}"
     );
 }
 
@@ -750,4 +758,23 @@ fn legacy_saved_zoom_is_ignored() {
     let restored = Session::load(&path).session;
     assert_eq!(restored.recent.len(), 1);
     assert_eq!(restored.recent, session.recent);
+}
+
+#[test]
+fn ruler_mode_round_trips_and_all_older_sessions_default_to_clock() {
+    use crate::time_ruler::Mode;
+    let dir = TempDir::new("ruler-mode");
+    let path = dir.join(FILE_NAME);
+    for mode in [Mode::Clock, Mode::Seconds, Mode::Samples] {
+        let session = Session { time_ruler: mode, ..Session::default() };
+        assert!(session.save(&path));
+        assert_eq!(Session::load(&path).session.time_ruler, mode);
+    }
+    for version in 1..=6 {
+        std::fs::write(&path, format!("version = {version}\nwindow_state = \"normal\"\n")).unwrap();
+        let restored = Session::load(&path);
+        assert!(restored.writable);
+        assert_eq!(restored.session.time_ruler, Mode::Clock);
+        assert_eq!(restored.session.version, VERSION);
+    }
 }

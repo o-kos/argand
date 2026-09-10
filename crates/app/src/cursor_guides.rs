@@ -132,7 +132,12 @@ impl Readout {
         let time = extents.seconds.0 + (x - plot.x) as f64 / plot.width as f64 * time_span;
         let frequency_span = extents.hertz.1 - extents.hertz.0;
         let frequency = extents.hertz.1 - (y - plot.y) as f64 / plot.height as f64 * frequency_span;
-        let decimals = crate::navigation::time_precision(time_span / (plot.width * scale) as f64);
+        let time_label = extents.time.readout(
+            time,
+            time_span,
+            (plot.width * scale) as f64,
+            (x - plot.x) as f64 / plot.width as f64,
+        );
         let unit =
             axis::caption(AxisKind::Frequency, extents.hertz.0, extents.hertz.1).unwrap_or("Hz");
         let divisor = match unit {
@@ -145,7 +150,7 @@ impl Readout {
             frequency_span / (plot.height * scale) as f64 / divisor,
         );
         Some(Self {
-            time: format!("{time:.decimals$} s"),
+            time: time_label,
             frequency: format!("{:.*} {unit}", precision, frequency / divisor),
         })
     }
@@ -164,11 +169,12 @@ mod tests {
             height: 500.,
         };
         let extents = Extents {
+            time: crate::time_ruler::Ruler::CLOCK,
             seconds: (12., 12.001),
             hertz: (99e6, 101e6),
         };
         let center = Readout::at(plot, point(px(510.), px(270.)), extents, 1.).unwrap();
-        assert_eq!(center.time, "12.0005000 s");
+        assert_eq!(center.time, "0:12.0005000");
         assert_eq!(center.frequency, "100.000 MHz");
         let top = Readout::at(plot, point(px(10.), px(20.)), extents, 1.).unwrap();
         assert_eq!(top.frequency, "101.000 MHz");
@@ -185,12 +191,13 @@ mod tests {
             height: 500.,
         };
         let extents = Extents {
+            time: crate::time_ruler::Ruler::CLOCK,
             seconds: (0., 1.),
             hertz: (-24000., 24000.),
         };
         let bottom = Readout::at(plot, point(px(1000.), px(500.)), extents, 1.).unwrap();
         assert_eq!(bottom.frequency, "-24.000 kHz");
-        assert_eq!(bottom.time, "1.000 s");
+        assert_eq!(bottom.time, "0:01.000");
     }
 
     #[test]
@@ -202,13 +209,14 @@ mod tests {
             height: 500.,
         };
         let extents = Extents {
+            time: crate::time_ruler::Ruler::CLOCK,
             seconds: (0., 0.5),
             hertz: (0., 0.5),
         };
         let first = Readout::at(plot, point(px(0.5), px(0.5)), extents, 2.).unwrap();
         let next = Readout::at(plot, point(px(1.), px(1.)), extents, 2.).unwrap();
-        assert_eq!(first.time, "0.0005 s");
-        assert_eq!(next.time, "0.0010 s");
+        assert_eq!(first.time, "0:00.0005");
+        assert_eq!(next.time, "0:00.0010");
         assert_eq!(first.frequency, "0.4995 Hz");
         assert_eq!(next.frequency, "0.4990 Hz");
     }

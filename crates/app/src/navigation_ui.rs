@@ -6,6 +6,9 @@ use crate::navigation::{self, View};
 actions!(
     navigation,
     [
+        ClockRuler,
+        SecondsRuler,
+        SamplesRuler,
         ZoomIn,
         ZoomOut,
         FitCapture,
@@ -200,7 +203,7 @@ impl Shell {
         let Some(scheme) = self.time_scheme else {
             return;
         };
-        let step = scheme.step * rate;
+        let step = self.session.time_ruler.sample_step(scheme.step, rate);
         let mut pan = self
             .tick_pan
             .take()
@@ -390,6 +393,15 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         content
+            .on_action(cx.listener(|shell, _: &ClockRuler, _, cx| {
+                shell.set_time_ruler(crate::time_ruler::Mode::Clock, cx)
+            }))
+            .on_action(cx.listener(|shell, _: &SecondsRuler, _, cx| {
+                shell.set_time_ruler(crate::time_ruler::Mode::Seconds, cx)
+            }))
+            .on_action(cx.listener(|shell, _: &SamplesRuler, _, cx| {
+                shell.set_time_ruler(crate::time_ruler::Mode::Samples, cx)
+            }))
             .on_action(cx.listener(|shell, _: &ZoomIn, _, cx| shell.zoom(0.5, 0.5, cx)))
             .on_action(cx.listener(|shell, _: &ZoomOut, _, cx| shell.zoom(2.0, 0.5, cx)))
             .on_action(
@@ -415,17 +427,50 @@ impl Shell {
             }))
     }
 
+    fn set_time_ruler(&mut self, mode: crate::time_ruler::Mode, cx: &mut Context<Self>) {
+        if self.session.time_ruler == mode {
+            return;
+        }
+        self.session.time_ruler = mode;
+        self.time_scheme = None;
+        self.tick_pan = None;
+        self.save();
+        cx.notify();
+    }
+
     pub(super) fn view_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.focus.clone();
         let owner = cx.entity().downgrade();
+        let ruler = self.session.time_ruler;
         Button::new("view-menu")
             .ghost()
             .small()
             .label("View")
-            .dropdown_menu(move |menu, _, cx| {
+            .dropdown_menu(move |menu, window, cx| {
                 let popup = cx.entity().downgrade();
                 let _ = owner.update(cx, |shell, _| shell.open_menu = Some(popup));
+                let submenu_focus = focus.clone();
                 menu.action_context(focus.clone())
+                    .submenu("Time ruler", window, cx, move |menu, _, _| {
+                        use crate::time_ruler::Mode;
+                        menu.action_context(submenu_focus.clone())
+                            .item(
+                                PopupMenuItem::new("Current format")
+                                    .checked(ruler == Mode::Clock)
+                                    .action(Box::new(ClockRuler)),
+                            )
+                            .item(
+                                PopupMenuItem::new("Seconds")
+                                    .checked(ruler == Mode::Seconds)
+                                    .action(Box::new(SecondsRuler)),
+                            )
+                            .item(
+                                PopupMenuItem::new("Sample numbers")
+                                    .checked(ruler == Mode::Samples)
+                                    .action(Box::new(SamplesRuler)),
+                            )
+                    })
+                    .separator()
                     .item(PopupMenuItem::new("Zoom in").action(Box::new(ZoomIn)))
                     .item(PopupMenuItem::new("Zoom out").action(Box::new(ZoomOut)))
                     .item(PopupMenuItem::new("Fit capture").action(Box::new(FitCapture)))

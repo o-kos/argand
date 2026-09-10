@@ -357,6 +357,14 @@ double-click steps on its first press and centres on its second only if the
 pointer is still outside the updated interval. An open-hand cursor marks the
 viewport and rulers; dragging uses a closed hand. Pointer time over the minimap refers to the full recording.
 
+Choose **View → Time ruler** to show the current clock format (default), elapsed
+seconds, or zero-based sample numbers prefixed with `#`. Seconds and sample numbers
+refer to the start of the capture; one complex sample is one I/Q pair. Labels keep
+appropriate precision as you zoom, and the Alt time badge follows the selected
+format. The choice survives restarts. Switching formats leaves the visible range
+unchanged and does not recalculate the spectrum. Arrow keys follow the divisions
+of the selected ruler; zoom and position still reset whenever a file is opened.
+
 Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
 Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved
 for frequency panning (#80) and currently leaves the time view unchanged.

@@ -10,6 +10,7 @@ fn panel(width: f32, height: f32) -> Size<Pixels> {
 /// The two-sided span of a 24 kHz I/Q capture tuned to 12.579 MHz, half an
 /// hour long -- the repository's own fixture.
 const HFDL: Extents = Extents {
+    time: crate::time_ruler::Ruler::CLOCK,
     seconds: (0.0, 1800.0),
     hertz: (12_567_000.0, 12_591_000.0),
 };
@@ -71,7 +72,7 @@ fn a_tuned_capture_reads_in_the_unit_its_digits_need() {
     // Baseband: the same span with nothing added to it is kilohertz.
     let baseband = measure(
         panel(1200.0, 800.0),
-        Extents {
+        Extents { time: crate::time_ruler::Ruler::CLOCK,
             seconds: (0.0, 1800.0),
             hertz: (-12_000.0, 12_000.0),
         },
@@ -93,7 +94,7 @@ fn a_real_capture_is_labelled_from_zero_up_and_a_complex_one_either_side() {
 
     let real = measure(
         panel(1200.0, 800.0),
-        Extents {
+        Extents { time: crate::time_ruler::Ruler::CLOCK,
             seconds: (0.0, 10.0),
             hertz: (0.0, 12_000.0),
         },
@@ -192,7 +193,7 @@ impl LabelMeasure for WideDigits {
 
 #[test]
 fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
-    let extents = Extents {
+    let extents = Extents { time: crate::time_ruler::Ruler::CLOCK,
         seconds: (0.0, 30.0),
         hertz: (5_000_001.0, 5_000_004.0),
     };
@@ -211,7 +212,7 @@ fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
 #[test]
 fn axis_labels_clear_adjacent_panels_and_the_window_edges() {
     for scale in [1.0, 1.25, 1.5, 2.0] {
-        let extents = Extents { seconds: (0.0, 30.456), hertz: (-12_000.0, 12_000.0) };
+        let extents = Extents { time: crate::time_ruler::Ruler::CLOCK, seconds: (0.0, 30.456), hertz: (-12_000.0, 12_000.0) };
         let frame = Frame::measure(panel(300.0, 240.0), scale, extents, &DejaVuSans, None)
             .expect("the panel holds a plot and its labels");
         assert_axis_bands_fit(&frame, 300.0, 240.0);
@@ -235,5 +236,30 @@ fn assert_axis_bands_fit(frame: &Frame, width: f32, height: f32) {
         assert!(center + half_ink <= frame.plot.bottom(), "frequency label enters the time row");
         let right = frame.plot.right() + LABEL_PAD + DejaVuSans.width(&tick.label, LABEL_SIZE);
         assert!(right <= width - 4.0);
+    }
+}
+
+#[test]
+fn time_modes_preserve_plot_geometry_and_sample_origin() {
+    use crate::{navigation::View, time_ruler::{Mode, Ruler}};
+    let view = View { start: 2_400_000, len: 24_000 };
+    for width in [180., 640., 1200.] {
+        let baseline = measure(panel(width, 400.), HFDL);
+        for mode in [Mode::Clock, Mode::Seconds, Mode::Samples] {
+            let extents = Extents {
+                time: Ruler { mode, view, total: 43_200_000 },
+                seconds: view.seconds(24_000.),
+                ..HFDL
+            };
+            let frame = measure(panel(width, 400.), extents);
+            assert_eq!(frame.plot, baseline.plot);
+            assert_eq!(frame.frequency, baseline.frequency);
+            assert_time_labels_fit(&frame);
+            let bounds = extents.time.bounds(extents.seconds);
+            for tick in &frame.time {
+                assert!((bounds.0..=bounds.1).contains(&tick.value));
+                assert_eq!(tick.label.starts_with('#'), mode == Mode::Samples);
+            }
+        }
     }
 }

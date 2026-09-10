@@ -616,6 +616,11 @@ impl Shell {
     fn extents(&self) -> Option<axes::Extents> {
         let meta = self.file.as_ref()?.document.meta()?;
         Some(axes::Extents {
+            time: crate::time_ruler::Ruler {
+                mode: self.session.time_ruler,
+                view: self.view?,
+                total: meta.len_samples,
+            },
             seconds: self.view?.seconds(meta.sample_rate),
             hertz: meta.frequency_span(),
         })

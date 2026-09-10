@@ -67,6 +67,10 @@ pub enum AxisKind {
     Time,
     /// Clock labels with decimal subsecond steps for interactive time zoom.
     PreciseTime,
+    /// Elapsed seconds on a decimal ladder, with fractional tick precision.
+    Seconds,
+    /// Nonnegative integer sample indices on a decimal ladder.
+    Samples,
     /// Hertz, scaled to one unit chosen for the whole axis.
     Frequency,
     /// Whole decibels.
@@ -183,12 +187,19 @@ pub fn tick_layout(
         scheme: None,
     };
     let span = axis.max - axis.min;
+    if kind == AxisKind::Samples && (axis.min < 0. || axis.max > u64::MAX as f64) {
+        return empty();
+    }
     if axis.length < 2 || !axis.min.is_finite() || !span.is_finite() || span <= 0.0 {
         return empty();
     }
-    if let Some(scheme) =
-        held.filter(|s| s.step.is_finite() && s.step > 0. && s.span.is_finite() && s.span > 0.)
-    {
+    if let Some(scheme) = held.filter(|s| {
+        s.step.is_finite()
+            && s.step > 0.
+            && s.span.is_finite()
+            && s.span > 0.
+            && (kind != AxisKind::Samples || (s.step >= 1. && s.step.fract() == 0.))
+    }) {
         let mut placed = place(kind, axis, scheme, labels, true);
         let mut end = f64::NEG_INFINITY;
         for item in &mut placed {
@@ -226,7 +237,7 @@ pub fn tick_layout(
 /// `None` where the labels carry their own meaning: a clock reads as a clock.
 pub fn caption(kind: AxisKind, min: f64, max: f64) -> Option<&'static str> {
     match kind {
-        AxisKind::Time | AxisKind::PreciseTime => None,
+        AxisKind::Time | AxisKind::PreciseTime | AxisKind::Seconds | AxisKind::Samples => None,
         AxisKind::Frequency => Some(hertz_unit(min, max).name),
         AxisKind::Decibels => Some("dB"),
     }
@@ -250,6 +261,8 @@ pub fn widest_labels(kind: AxisKind, min: f64, max: f64) -> Vec<String> {
             Clock::HoursMinutesSeconds => vec![format!("{sign}{}:00:00", (peak / 3600.0) as u64)],
             Clock::MinutesSeconds => vec![format!("{sign}{}.00", (peak / 60.0) as u64)],
         },
+        AxisKind::Seconds => vec![format!("{sign}{peak:.9} s")],
+        AxisKind::Samples => vec![format!("#{peak:.0}")],
         AxisKind::PreciseTime => vec![format!("{sign}{}:00.000000000", (peak / 60.0) as u64)],
         // One unit for the whole axis, so the widest label is simply the
         // largest magnitude with every decimal that unit resolves to in use.
@@ -321,10 +334,13 @@ fn place(
     let mut placed = Vec::new();
     for k in first..=last {
         let value = k as f64 * step;
-        let label = if kind == AxisKind::PreciseTime {
-            format_precise_clock(value, clock_of(0., scheme.span), step)
-        } else {
-            format_label(kind, value, axis.min, axis.max)
+        let label = match kind {
+            AxisKind::PreciseTime => format_time(value, scheme.span, step),
+            AxisKind::Seconds => {
+                format!("{value:.precision$} s", precision = decimal_precision(step))
+            }
+            AxisKind::Samples => format!("#{}", k as i128 * step as i128),
+            _ => format_label(kind, value, axis.min, axis.max),
         };
         let extent = labels.extent(&label);
         let offset = ((value - axis.min) * scale)
@@ -405,6 +421,8 @@ fn ladder(kind: AxisKind, from: f64) -> Vec<f64> {
             .take_while(|step| *step < 1.0)
             .chain(clock_ladder(from.max(1.0)))
             .collect(),
+        AxisKind::Seconds => decimal_ladder(from.max(1e-9)),
+        AxisKind::Samples => decimal_ladder(from.max(1.)),
         _ => decimal_ladder(from),
     }
 }
@@ -476,6 +494,8 @@ fn format_label(kind: AxisKind, value: f64, min: f64, max: f64) -> String {
     match kind {
         AxisKind::Time | AxisKind::PreciseTime => format_clock(value, clock_of(min, max)),
         AxisKind::Frequency => hertz_unit(min, max).format(value),
+        AxisKind::Seconds => format!("{value} s"),
+        AxisKind::Samples => format!("#{value:.0}"),
         AxisKind::Decibels => format!("{value:.0}"),
     }
 }
@@ -494,19 +514,32 @@ fn format_clock(seconds: f64, clock: Clock) -> String {
     }
 }
 
+/// Format interactive clock time using the same precision as the ruler.
+pub fn format_time(seconds: f64, span: f64, step: f64) -> String {
+    format_precise_clock(seconds, clock_of(0., span), step)
+}
+
+fn decimal_precision(step: f64) -> usize {
+    (-step.log10()).ceil().clamp(0.0, 9.0) as usize
+}
+
 /// Fractional seconds need an unambiguous separator from minutes.
 fn format_precise_clock(seconds: f64, clock: Clock, step: f64) -> String {
     if step >= 1.0 {
         return format_clock(seconds, clock);
     }
-    let decimals = (-step.log10()).ceil().clamp(0.0, 9.0) as usize;
+    let decimals = decimal_precision(step);
     let factor = 10_f64.powi(decimals as i32);
     let rounded = (seconds.abs() * factor).round() / factor;
     let minutes = (rounded / 60.0).floor() as u64;
     let remainder = rounded - minutes as f64 * 60.0;
     let sign = if seconds < 0.0 { "-" } else { "" };
+    let prefix = match clock {
+        Clock::HoursMinutesSeconds => format!("{}:{:02}", minutes / 60, minutes % 60),
+        Clock::MinutesSeconds => minutes.to_string(),
+    };
     format!(
-        "{sign}{minutes}:{remainder:0width$.decimals$}",
+        "{sign}{prefix}:{remainder:0width$.decimals$}",
         width = decimals + 3
     )
 }

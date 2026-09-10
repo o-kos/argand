@@ -39,6 +39,7 @@ const LABEL_SIZE: f32 = 11.0;
 /// it is that room which decides how many columns the transform is asked for.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Extents {
+    pub time: crate::time_ruler::Ruler,
     pub seconds: (f64, f64),
     pub hertz: (f64, f64),
 }
@@ -97,7 +98,7 @@ impl Frame {
         measure: &dyn LabelMeasure,
         held: Option<axis::TickScheme>,
     ) -> Option<Self> {
-        let (t0, t1) = extents.seconds;
+        let (t0, t1) = extents.time.bounds(extents.seconds);
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
 
@@ -139,7 +140,7 @@ impl Frame {
         }
 
         let time = axis::tick_layout(
-            AxisKind::PreciseTime,
+            extents.time.mode.kind(),
             Axis {
                 length: plot.width as i64,
                 min: t0,

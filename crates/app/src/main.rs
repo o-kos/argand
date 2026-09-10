@@ -26,6 +26,7 @@ mod session;
 mod settings;
 mod shell;
 mod spectrogram;
+mod time_ruler;
 mod waveform;
 
 use clap::Parser;
