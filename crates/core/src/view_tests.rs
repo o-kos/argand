@@ -146,3 +146,19 @@ fn real_waveform_pixels_resample_columns_and_round_like_the_cli() {
     assert_eq!(envelope.pixel_spans(0, 10, 1.0).count(), 0);
     assert_eq!(WaveformEnvelope::new(0, 1).pixel_spans(1, 10, 1.0).next(), Some(None));
 }
+#[test]
+fn held_waveform_mapping_preserves_time_and_leaves_uncovered_columns_empty() {
+    let mut envelope = WaveformEnvelope::new(4, 1);
+    envelope.t0 = 10.0;
+    envelope.t1 = 14.0;
+    envelope.min = vec![0.1, 0.2, 0.3, 0.4];
+    envelope.max = envelope.min.clone();
+    assert_eq!(
+        envelope.pixel_spans_in(4, 10, 1.0, (10.0, 14.0)).collect::<Vec<_>>(),
+        envelope.pixel_spans(4, 10, 1.0).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        envelope.pixel_spans_in(4, 10, 1.0, (12.0, 16.0)).collect::<Vec<_>>(),
+        vec![Some((3, 3)), Some((3, 4)), None, None]
+    );
+}

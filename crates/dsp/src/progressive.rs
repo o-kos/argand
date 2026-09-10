@@ -12,11 +12,15 @@ const SNAPSHOT_INTERVAL: Duration = Duration::from_millis(50);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgressiveOptions {
     batch_frames: usize,
+    preview: bool,
 }
 
 impl Default for ProgressiveOptions {
     fn default() -> Self {
-        Self { batch_frames: 1024 }
+        Self {
+            batch_frames: 1024,
+            preview: true,
+        }
     }
 }
 
@@ -25,7 +29,17 @@ impl ProgressiveOptions {
         if !(1..=4096).contains(&batch_frames) {
             return Err(DspError::BadBatchSize(batch_frames));
         }
-        Ok(Self { batch_frames })
+        Ok(Self {
+            batch_frames,
+            preview: true,
+        })
+    }
+
+    /// Compute in sample order and publish only the completed result.
+    /// Small workloads use one FFT accumulator without Rayon frame scheduling.
+    pub fn final_only(mut self) -> Self {
+        self.preview = false;
+        self
     }
 
     /// Bound decoded samples and estimated FFT work, allowing one oversized FFT.
@@ -271,7 +285,22 @@ impl Overview {
         }
     }
 
-    fn transform(&mut self, block: &Block<'_>, frame_base: u64, frames: usize) {
+    fn transform(&mut self, block: &Block<'_>, frame_base: u64, frames: usize, serial: bool) {
+        if serial {
+            let mut partial = self.partial();
+            let cfg = self.request.cfg;
+            let channels = self.meta.channels();
+            for k in 0..frames {
+                let start = k * cfg.hop * channels;
+                self.plan.frame(
+                    &block.buf[start..start + cfg.fft_size * channels],
+                    &mut partial,
+                    self.columns.of(frame_base + k as u64),
+                );
+            }
+            self.absorb(&partial);
+            return;
+        }
         let cfg = self.request.cfg;
         let channels = self.meta.channels();
         let buffer = &block.buf;
@@ -385,10 +414,9 @@ fn refresh_preview(
     Ok(())
 }
 
-fn refine(
+fn publish_preview(
     source: &mut dyn SampleSource,
     state: &mut Overview,
-    options: ProgressiveOptions,
     control: &dyn Fn() -> Flow,
     refresh: &dyn Fn() -> bool,
     publish: &mut dyn FnMut(&mut Overview, Coverage) -> Flow,
@@ -417,6 +445,22 @@ fn refine(
         .filter(|frame| first.binary_search(frame).is_err())
         .collect();
     refresh_preview(source, state, &remaining, control, refresh, publish)?;
+    Ok(())
+}
+
+fn refine(
+    source: &mut dyn SampleSource,
+    state: &mut Overview,
+    options: ProgressiveOptions,
+    control: &dyn Fn() -> Flow,
+    refresh: &dyn Fn() -> bool,
+    publish: &mut dyn FnMut(&mut Overview, Coverage) -> Flow,
+) -> Result<(), DspError> {
+    if options.preview {
+        publish_preview(source, state, control, refresh, publish)?;
+    } else {
+        state.preview_frames.clear();
+    }
     let cfg = state.request.cfg;
     let range = state.request.range;
     source.access_pattern(AccessPattern::Sequential);
@@ -440,7 +484,10 @@ fn refine(
         }
         let frames = ((block.filled - cfg.fft_size) / cfg.hop + 1)
             .min((state.columns.total_frames - frame_base) as usize);
-        state.transform(&block, frame_base, frames);
+        let serial = !options.preview
+            && state.columns.total_frames
+                <= options.frames(&cfg, state.meta.channels()).min(128) as u64;
+        state.transform(&block, frame_base, frames, serial);
         frame_base += frames as u64;
         let mut consumed = frames * cfg.hop;
         while consumed > block.filled && block.remaining > 0 {
@@ -453,7 +500,8 @@ fn refine(
             }
         }
         block.carry(consumed.min(block.filled));
-        if (refresh() || last_snapshot.elapsed() >= SNAPSHOT_INTERVAL)
+        if options.preview
+            && (refresh() || last_snapshot.elapsed() >= SNAPSHOT_INTERVAL)
             && frame_base < state.columns.total_frames
         {
             continuing(control)?;

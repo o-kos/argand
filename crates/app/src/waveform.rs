@@ -11,7 +11,14 @@ pub struct Waveform {
 }
 
 impl Waveform {
-    pub fn paint(&self, frame: &Frame, origin: Point<Pixels>, height: f32, window: &mut Window) {
+    pub fn paint(
+        &self,
+        frame: &Frame,
+        origin: Point<Pixels>,
+        height: f32,
+        seconds: (f64, f64),
+        window: &mut Window,
+    ) {
         let scale = window.scale_factor();
         let columns = (frame.plot.width * scale).round() as usize;
         let rows = ((height - 9.0).max(0.0) * scale).round() as i64;
@@ -22,7 +29,7 @@ impl Waveform {
         let half = ((rows - 1) / 2).max(1);
         for (column, span) in self
             .envelope
-            .pixel_spans(columns, half, self.full_scale)
+            .pixel_spans_in(columns, half, self.full_scale, seconds)
             .enumerate()
         {
             let Some((lo, hi)) = span else {

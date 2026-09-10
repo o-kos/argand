@@ -1,0 +1,64 @@
+2026-09-10T06:25:23.452106Z DEBUG argand::shell::navigation_ui: time view requested start=106176 len=212352
+2026-09-10T06:25:23.474574Z DEBUG argand::analysis: analysis completed elapsed=21.7001ms
+2026-09-10T06:25:23.474606Z DEBUG argand::analysis: cached view prepared elapsed=17.204757ms width=1456 height=762 frames=411
+2026-09-10T06:25:23.494327Z TRACE argand::ui_latency: texture prepared elapsed_us=4654
+2026-09-10T06:25:23.512219Z DEBUG argand::shell::navigation_ui: time view requested start=159264 len=106176
+2026-09-10T06:25:23.525374Z DEBUG argand::analysis: analysis completed elapsed=13.005197ms
+2026-09-10T06:25:23.525387Z DEBUG argand::analysis: cached view prepared elapsed=10.705571ms width=1456 height=762 frames=204
+2026-09-10T06:25:23.541620Z TRACE argand::ui_latency: texture prepared elapsed_us=3013
+2026-09-10T06:25:23.572441Z DEBUG argand::shell::navigation_ui: time view requested start=185808 len=53088
+2026-09-10T06:25:23.582005Z DEBUG argand::analysis: analysis completed elapsed=9.455406ms
+2026-09-10T06:25:23.582017Z DEBUG argand::analysis: cached view prepared elapsed=7.724256ms width=1456 height=762 frames=100
+2026-09-10T06:25:23.591054Z TRACE argand::ui_latency: texture prepared elapsed_us=3646
+2026-09-10T06:25:23.632772Z DEBUG argand::shell::navigation_ui: time view requested start=199080 len=26544
+2026-09-10T06:25:23.642993Z DEBUG argand::analysis: analysis completed elapsed=10.129748ms
+2026-09-10T06:25:23.643006Z DEBUG argand::analysis: cached view prepared elapsed=9.175684ms width=1456 height=762 frames=48
+2026-09-10T06:25:23.654227Z TRACE argand::ui_latency: texture prepared elapsed_us=1845
+2026-09-10T06:25:23.692705Z DEBUG argand::shell::navigation_ui: time view requested start=205716 len=13272
+2026-09-10T06:25:23.701476Z DEBUG argand::analysis: analysis completed elapsed=8.723445ms
+2026-09-10T06:25:23.701518Z DEBUG argand::analysis: cached view prepared elapsed=8.138431ms width=1456 height=762 frames=22
+2026-09-10T06:25:23.720674Z TRACE argand::ui_latency: texture prepared elapsed_us=3506
+2026-09-10T06:25:23.752902Z DEBUG argand::shell::navigation_ui: time view requested start=209034 len=6636
+2026-09-10T06:25:23.765442Z DEBUG argand::analysis: analysis completed elapsed=12.360596ms
+2026-09-10T06:25:23.765468Z DEBUG argand::analysis: cached view prepared elapsed=11.81865ms width=1456 height=762 frames=9
+2026-09-10T06:25:23.771497Z TRACE argand::ui_latency: texture prepared elapsed_us=1932
+2026-09-10T06:25:23.813120Z DEBUG argand::shell::navigation_ui: time view requested start=210693 len=3318
+2026-09-10T06:25:23.820105Z DEBUG argand::analysis: analysis completed elapsed=6.80715ms
+2026-09-10T06:25:23.820115Z DEBUG argand::analysis: cached view prepared elapsed=6.34194ms width=1456 height=762 frames=3
+2026-09-10T06:25:23.835738Z TRACE argand::ui_latency: texture prepared elapsed_us=4811
+2026-09-10T06:25:23.873382Z DEBUG argand::shell::navigation_ui: time view requested start=211328 len=2048
+2026-09-10T06:25:23.873895Z DEBUG argand::analysis: analysis completed elapsed=424.191µs
+2026-09-10T06:25:23.873899Z DEBUG argand::analysis: cached view prepared elapsed=197.453µs width=1456 height=762 frames=1
+2026-09-10T06:25:23.879787Z TRACE argand::ui_latency: texture prepared elapsed_us=9
+2026-09-10T06:25:25.518306Z DEBUG argand::shell::navigation_ui: time view requested start=210304 len=4096
+2026-09-10T06:25:25.526202Z DEBUG argand::analysis: analysis completed elapsed=7.876024ms
+2026-09-10T06:25:25.526220Z DEBUG argand::analysis: cached view prepared elapsed=7.551554ms width=1456 height=762 frames=5
+2026-09-10T06:25:25.533090Z TRACE argand::ui_latency: texture prepared elapsed_us=3453
+2026-09-10T06:25:25.578395Z DEBUG argand::shell::navigation_ui: time view requested start=208256 len=8192
+2026-09-10T06:25:25.587897Z DEBUG argand::analysis: analysis completed elapsed=9.330879ms
+2026-09-10T06:25:25.587919Z DEBUG argand::analysis: cached view prepared elapsed=8.916404ms width=1456 height=762 frames=13
+2026-09-10T06:25:25.612240Z TRACE argand::ui_latency: texture prepared elapsed_us=2892
+2026-09-10T06:25:25.638622Z DEBUG argand::shell::navigation_ui: time view requested start=204160 len=16384
+2026-09-10T06:25:25.646291Z DEBUG argand::analysis: analysis completed elapsed=7.551534ms
+2026-09-10T06:25:25.646302Z DEBUG argand::analysis: cached view prepared elapsed=6.862434ms width=1456 height=762 frames=29
+2026-09-10T06:25:25.659582Z TRACE argand::ui_latency: texture prepared elapsed_us=2265
+2026-09-10T06:25:25.699105Z DEBUG argand::shell::navigation_ui: time view requested start=195968 len=32768
+2026-09-10T06:25:25.712582Z DEBUG argand::analysis: analysis completed elapsed=12.519525ms
+2026-09-10T06:25:25.712598Z DEBUG argand::analysis: cached view prepared elapsed=10.841085ms width=1456 height=762 frames=61
+2026-09-10T06:25:25.719712Z TRACE argand::ui_latency: texture prepared elapsed_us=3499
+2026-09-10T06:25:25.759205Z DEBUG argand::shell::navigation_ui: time view requested start=179584 len=65536
+2026-09-10T06:25:25.770819Z DEBUG argand::analysis: analysis completed elapsed=11.516255ms
+2026-09-10T06:25:25.770830Z DEBUG argand::analysis: cached view prepared elapsed=9.272056ms width=1456 height=762 frames=125
+2026-09-10T06:25:25.783408Z TRACE argand::ui_latency: texture prepared elapsed_us=2264
+2026-09-10T06:25:25.819420Z DEBUG argand::shell::navigation_ui: time view requested start=146816 len=131072
+2026-09-10T06:25:25.833734Z DEBUG argand::analysis: analysis completed elapsed=14.132763ms
+2026-09-10T06:25:25.833776Z DEBUG argand::analysis: cached view prepared elapsed=11.438232ms width=1456 height=762 frames=253
+2026-09-10T06:25:25.855472Z TRACE argand::ui_latency: texture prepared elapsed_us=3517
+2026-09-10T06:25:25.879633Z DEBUG argand::shell::navigation_ui: time view requested start=81280 len=262144
+2026-09-10T06:25:25.896061Z DEBUG argand::analysis: analysis completed elapsed=16.244561ms
+2026-09-10T06:25:25.896098Z DEBUG argand::analysis: cached view prepared elapsed=10.08331ms width=1456 height=762 frames=509
+2026-09-10T06:25:25.904261Z TRACE argand::ui_latency: texture prepared elapsed_us=2277
+2026-09-10T06:25:25.939854Z DEBUG argand::shell::navigation_ui: time view requested start=0 len=424703
+2026-09-10T06:25:25.969308Z DEBUG argand::analysis: analysis completed elapsed=28.543713ms
+2026-09-10T06:25:25.969337Z DEBUG argand::analysis: cached view prepared elapsed=19.348255ms width=1456 height=762 frames=826
+2026-09-10T06:25:25.981174Z TRACE argand::ui_latency: texture prepared elapsed_us=4763

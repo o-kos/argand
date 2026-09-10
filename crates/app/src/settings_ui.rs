@@ -53,6 +53,7 @@ impl Shell {
             file.displayed_settings = Some(settings);
         }
         self.settings = settings;
+        self.bound_view();
         if self.settings_backup.is_none() {
             self.session.analysis_settings = Some(settings);
             self.save();
@@ -76,6 +77,10 @@ impl Shell {
         };
         self.settings_window = None;
         self.analysis_hovered = false;
+        let view = self.settings_view_backup.take();
+        if !accept && let Some(view) = view {
+            self.view = Some(view);
+        }
         self.apply_settings(if accept { self.settings } else { backup }, cx);
     }
 
@@ -161,6 +166,17 @@ impl Shell {
             })
             .child(self.analysis_control(cx))
             .child(div().flex_1().min_w_0())
+            .when_some(self.cursor_readout(), |bar, text| {
+                bar.child(
+                    div()
+                        .id("cursor-readout")
+                        .min_w_0()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .whitespace_nowrap()
+                        .child(text),
+                )
+            })
             .child(
                 div()
                     .id("analysis-status")
@@ -262,6 +278,7 @@ impl Shell {
             return;
         }
         self.settings_backup = Some(self.settings);
+        self.settings_view_backup = self.view;
         self.analysis_hovered = false;
         cx.notify();
         let owner = cx.entity().downgrade();

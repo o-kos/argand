@@ -18,7 +18,7 @@ const HFDL: Extents = Extents {
 const UNSCALED: f32 = 1.0;
 
 fn measure(panel: Size<Pixels>, extents: Extents) -> Frame {
-    Frame::measure(panel, UNSCALED, extents, &DejaVuSans).expect("a panel this size holds a plot")
+    Frame::measure(panel, UNSCALED, extents, &DejaVuSans, None).expect("a panel this size holds a plot")
 }
 
 #[test]
@@ -108,8 +108,8 @@ fn a_real_capture_is_labelled_from_zero_up_and_a_complex_one_either_side() {
 fn a_panel_with_no_room_left_for_a_picture_is_not_one() {
     // Narrower than the gutter the frequency labels need, and shorter than the
     // two label rows: there is no rectangle to draw into.
-    assert!(Frame::measure(panel(20.0, 400.0), UNSCALED, HFDL, &DejaVuSans).is_none());
-    assert!(Frame::measure(panel(1200.0, 8.0), UNSCALED, HFDL, &DejaVuSans).is_none());
+    assert!(Frame::measure(panel(20.0, 400.0), UNSCALED, HFDL, &DejaVuSans, None).is_none());
+    assert!(Frame::measure(panel(1200.0, 8.0), UNSCALED, HFDL, &DejaVuSans, None).is_none());
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn the_plot_lands_on_whole_device_pixels_so_the_picture_is_not_resampled() {
     // A fractional panel on a 1.5x display, which is what a tiled window on a
     // scaled desktop hands over.
     let scale = 1.5;
-    let frame = Frame::measure(panel(1237.0, 803.5), scale, HFDL, &DejaVuSans)
+    let frame = Frame::measure(panel(1237.0, 803.5), scale, HFDL, &DejaVuSans, None)
         .expect("a panel this size holds a plot");
 
     for (name, edge) in [
@@ -198,7 +198,7 @@ fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
     };
     // Slightly wider figures leave little slack below the next whole pixel.
     for (width, scale) in [(640.0, 1.25), (640.0, 1.5), (619.4, 1.75), (300.2, 2.0)] {
-        let frame = Frame::measure(panel(width, 400.0), scale, extents, &WideDigits)
+        let frame = Frame::measure(panel(width, 400.0), scale, extents, &WideDigits, None)
             .expect("the panel holds a plot");
         assert!(!frame.frequency.is_empty());
         for tick in &frame.frequency {
@@ -212,7 +212,7 @@ fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
 fn axis_labels_clear_adjacent_panels_and_the_window_edges() {
     for scale in [1.0, 1.25, 1.5, 2.0] {
         let extents = Extents { seconds: (0.0, 30.456), hertz: (-12_000.0, 12_000.0) };
-        let frame = Frame::measure(panel(300.0, 240.0), scale, extents, &DejaVuSans)
+        let frame = Frame::measure(panel(300.0, 240.0), scale, extents, &DejaVuSans, None)
             .expect("the panel holds a plot and its labels");
         assert_axis_bands_fit(&frame, 300.0, 240.0);
     }

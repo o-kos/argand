@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use argand_core::SpectrogramImage;
-use gpui::RenderImage;
+use gpui::{Bounds, Corners, Pixels, RenderImage, Window, point, size};
 
 /// Bytes per pixel in both orders.
 const CHANNELS: usize = 4;
@@ -30,10 +30,67 @@ pub fn texture(image: &SpectrogramImage) -> Option<Arc<RenderImage>> {
     if image.width == 0 || image.height == 0 {
         return None;
     }
-    let width = u32::try_from(image.width).ok()?;
-    let height = u32::try_from(image.height).ok()?;
-    let buffer = image::RgbaImage::from_raw(width, height, bgra(image))?;
+    let width = u32::try_from(image.width).ok()?.checked_add(2)?;
+    let height = u32::try_from(image.height).ok()?.checked_add(2)?;
+    let buffer = image::RgbaImage::from_raw(width, height, padded_bgra(image)?)?;
     Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
+}
+
+/// Clip away replicated edge texels so linear atlas sampling never reads a neighbour.
+pub fn paint(texture: Arc<RenderImage>, bounds: Bounds<Pixels>, window: &mut Window) {
+    let dimensions = texture.size(0);
+    let width = u32::from(dimensions.width).saturating_sub(2).max(1) as f32;
+    let height = u32::from(dimensions.height).saturating_sub(2).max(1) as f32;
+    let padding = point(bounds.size.width / width, bounds.size.height / height);
+    let padded = Bounds {
+        origin: bounds.origin - padding,
+        size: size(
+            bounds.size.width + padding.x * 2.0,
+            bounds.size.height + padding.y * 2.0,
+        ),
+    };
+    window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
+        if let Err(error) = window.paint_image(padded, Corners::default(), texture, 0, false) {
+            tracing::warn!(%error, "cannot draw the spectrogram");
+        }
+    });
+}
+
+fn padded_bgra(image: &SpectrogramImage) -> Option<Vec<u8>> {
+    let stride = image.width.checked_mul(CHANNELS)?;
+    if image.rgba.len() != stride.checked_mul(image.height)? || stride == 0 || image.height == 0 {
+        return None;
+    }
+    let padded_stride = stride.checked_add(2 * CHANNELS)?;
+    let mut padded = vec![0; padded_stride.checked_mul(image.height.checked_add(2)?)?];
+    let bytes = bgra(image);
+    for (y, row) in bytes.chunks_exact(stride).enumerate() {
+        let start = (y + 1) * padded_stride;
+        padded[start..start + CHANNELS].copy_from_slice(&row[..CHANNELS]);
+        padded[start + CHANNELS..start + CHANNELS + stride].copy_from_slice(row);
+        padded[start + CHANNELS + stride..start + padded_stride]
+            .copy_from_slice(&row[stride - CHANNELS..]);
+    }
+    padded.copy_within(padded_stride..2 * padded_stride, 0);
+    padded.copy_within(
+        image.height * padded_stride..(image.height + 1) * padded_stride,
+        (image.height + 1) * padded_stride,
+    );
+    Some(padded)
+}
+
+/// A source column for a deeply zoomed placeholder. Copy only visible strips,
+/// bounded by `ceil(image.width / 1024) + 1`, rather than a stretched image.
+pub fn column_texture(image: &SpectrogramImage, column: usize) -> Option<Arc<RenderImage>> {
+    if column >= image.width {
+        return None;
+    }
+    let mut strip = SpectrogramImage::new(1, image.height);
+    for row in 0..image.height {
+        let offset = (row * image.width + column) * 4;
+        strip.rgba[row * 4..row * 4 + 4].copy_from_slice(image.rgba.get(offset..offset + 4)?);
+    }
+    texture(&strip)
 }
 
 /// The same pixels with red and blue exchanged.

@@ -664,8 +664,8 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 5"),
-        "file-specific range requires session version 5: {text}"
+        text.contains("version = 6"),
+        "the current session layout remains version 6: {text}"
     );
 }
 
@@ -734,4 +734,20 @@ fn analysis_settings_survive_restart_without_changing_configuration_or_older_geo
     assert_eq!(restored.geometry, session.geometry);
     assert_eq!(restored.waveform_fraction, Some(0.3));
     assert_eq!(std::fs::read_to_string(config_path).unwrap(), config_text);
+}
+
+
+#[test]
+fn legacy_saved_zoom_is_ignored() {
+    let dir = TempDir::new("legacy-view");
+    let path = dir.join("session.toml");
+    let mut session = Session::default();
+    session.remember(Path::new("/captures/one.wav"), &OpenHints::default());
+    assert!(session.save(&path));
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str("\n[recent.view]\nstart = 100\nlen = 2048\n");
+    std::fs::write(&path, text).unwrap();
+    let restored = Session::load(&path).session;
+    assert_eq!(restored.recent.len(), 1);
+    assert_eq!(restored.recent, session.recent);
 }

@@ -160,6 +160,7 @@ impl Overview {
     }
 }
 
+#[derive(PartialEq)]
 struct Overlap {
     cell: usize,
     units: f64,
@@ -213,6 +214,7 @@ impl Overlaps {
 
 pub(super) struct RenderCache {
     time: Overlaps,
+    repeats: Vec<usize>,
     frequency: Overlaps,
     values: Vec<f32>,
     image: SpectrogramImage,
@@ -222,8 +224,22 @@ pub(super) struct RenderCache {
 
 impl RenderCache {
     fn new(state: &Overview, width: usize, height: usize) -> Self {
+        let time = Overlaps::new(state.columns.total_frames, state.request.width, width, true);
+        let mut first = 0;
+        let repeats = time
+            .0
+            .iter()
+            .enumerate()
+            .map(|(column, spans)| {
+                if *spans != time.0[first] {
+                    first = column;
+                }
+                first
+            })
+            .collect();
         Self {
-            time: Overlaps::new(state.columns.total_frames, state.request.width, width, true),
+            time,
+            repeats,
             frequency: Overlaps::new(state.plan.bins as u64, state.request.height, height, false),
             values: vec![DB_FLOOR; width * height],
             image: SpectrogramImage::new(width, height),
@@ -257,12 +273,19 @@ impl RenderCache {
             .par_chunks_mut(height)
             .zip(&self.time.0)
             .zip(&self.dirty)
-            .filter(|(_, changed)| **changed)
-            .for_each(|((column, spans), _)| {
+            .enumerate()
+            .filter(|(index, (_, changed))| **changed && self.repeats[*index] == *index)
+            .for_each(|(_, ((column, spans), _))| {
                 for (value, rows) in column.iter_mut().zip(&self.frequency.0) {
                     *value = reduced_value(store, &filled, spans, rows);
                 }
             });
+        for (column, &first) in self.repeats.iter().enumerate() {
+            if first != column && self.dirty[column] {
+                self.values
+                    .copy_within(first * height..(first + 1) * height, column * height);
+            }
+        }
     }
 
     fn shade(&mut self, grid: &DbGrid, shading: Shading) {
@@ -276,8 +299,16 @@ impl RenderCache {
             self.dirty
                 .iter()
                 .enumerate()
-                .filter_map(|(i, &dirty)| dirty.then_some(i)),
+                .filter_map(|(i, &dirty)| (dirty && self.repeats[i] == i).then_some(i)),
         );
+        let width = grid.width;
+        self.image.rgba.par_chunks_mut(width * 4).for_each(|row| {
+            for (column, &first) in self.repeats.iter().enumerate() {
+                if first != column && self.dirty[column] {
+                    row.copy_within(first * 4..first * 4 + 4, column * 4);
+                }
+            }
+        });
         self.shading = Some(shading);
     }
 }

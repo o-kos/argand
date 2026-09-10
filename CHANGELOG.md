@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- Hold Alt over the spectrogram to show guide lines to the time and frequency rulers with rounded coordinate badges, vertically centred text and white/black/white lines visible across palettes.
+
 - Two compact status-bar groups: combined file details with sample count, file size
   and sample extrema, and analysis controls. Adjust FFT, window,
   overlap, aggregation, colours and display range; settings survive restarts.
@@ -70,6 +72,10 @@ promise applies to.
 
 ### Fixed
 
+- Time zoom keeps the current detail until a complete replacement is ready instead
+  of flashing sparse previews. Deep zoom computes short ranges in one pass and
+  avoids repeating identical display work; a retained wider picture fills known areas on zoom out.
+
 - Resizing the GUI window or dragging its panel separator reuses a bounded
   spectral overview instead of restarting complete file analysis. Refinement
   continues during resizing, and status timing and colour levels remain stable.
@@ -82,6 +88,8 @@ promise applies to.
   right-hand title-bar area no longer starts a resize when the window is expanded.
 
 ### Changed
+
+- Every file opening resets time zoom and position. Ctrl+wheel zoom and wheel horizontal pan work over both the spectrogram and time ruler. Left/Right move by one ruler division, Ctrl+Left/Right by five, preserving ruler spacing and format. The crosshair is limited to the spectrogram. Zoom keys use Ctrl+Plus/Minus and Ctrl+0 (fit).
 
 - Analysis settings preview until OK, with Cancel and Reset to defaults controls.
   Dynamic range now belongs to the current file rather than the saved session.

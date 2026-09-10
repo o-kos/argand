@@ -74,3 +74,24 @@ fn every_pixel_uploaded_is_one_the_transform_produced() {
         );
     }
 }
+
+
+#[test]
+fn deep_zoom_column_keeps_every_frequency_row_and_channel_order() {
+    let mut source = SpectrogramImage::new(2, 2);
+    source.rgba = vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255];
+    let strip = column_texture(&source, 1).unwrap();
+    let top = [6, 5, 4, 255].repeat(3);
+    let bottom = [12, 11, 10, 255].repeat(3);
+    assert_eq!(strip.as_bytes(0).unwrap(), [top.clone(), top, bottom.clone(), bottom].concat());
+    assert!(column_texture(&source, 2).is_none());
+}
+
+#[test]
+fn texture_padding_replicates_edges_without_changing_the_interior() {
+    let texture = texture(&two_pixels()).unwrap();
+    assert_eq!(u32::from(texture.size(0).width), 4);
+    assert_eq!(u32::from(texture.size(0).height), 3);
+    let row = [30,20,10,255, 30,20,10,255, 50,100,200,255, 50,100,200,255];
+    assert_eq!(texture.as_bytes(0).unwrap(), row.repeat(3));
+}

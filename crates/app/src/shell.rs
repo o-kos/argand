@@ -28,6 +28,13 @@ use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, Them
 use crate::settings::Settings;
 use argand_dsp::AnalysisRequest;
 
+#[path = "backdrop.rs"]
+mod backdrop;
+
+#[path = "navigation_ui.rs"]
+mod navigation_ui;
+#[path = "plot_ui.rs"]
+mod plot_ui;
 #[path = "settings_ui.rs"]
 mod settings_ui;
 
@@ -73,6 +80,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
         .run(move |cx| {
             gpui_component::init(cx);
             settings_ui::init(cx);
+            navigation_ui::init(cx);
             cx.bind_keys([
                 KeyBinding::new("tab", FocusNext, Some("Shell")),
                 KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
@@ -240,6 +248,7 @@ struct Shell {
     settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
     analysis_hovered: bool,
     settings_backup: Option<Settings>,
+    settings_view_backup: Option<crate::navigation::View>,
     settings_error: Option<String>,
 
     /// Absent when the platform offers nowhere to keep state, or when the file
@@ -272,11 +281,20 @@ struct Shell {
     /// Layout sizes the display request. The worker rebins its retained
     /// overview without restarting analysis when only these dimensions change.
     plot: Option<PlotSize>,
+    view: Option<crate::navigation::View>,
+    time_scheme: Option<argand_core::axis::TickScheme>,
+    tick_pan: Option<crate::navigation::TickPan>,
+    plot_geometry: Option<navigation_ui::PlotGeometry>,
+    pointer: Option<gpui::Point<Pixels>>,
+    pan: Option<navigation_ui::Pan>,
     /// The picture currently on the GPU.
     ///
     /// Held so that the one it replaces can be released: gpui keeps an
     /// uploaded image in the window's texture atlas until it is told to let go.
     texture: Option<Arc<RenderImage>>,
+    deep_preview: Option<Arc<plot_ui::DeepPreview>>,
+    backdrop: Option<backdrop::Backdrop>,
+    backdrop_refresh: Option<backdrop::Refresh>,
     upload_pending: bool,
     title_drag_pending: bool,
     waveform: Option<Arc<waveform::Waveform>>,
@@ -288,6 +306,7 @@ struct Shell {
     recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
+    _activation: Subscription,
 }
 
 impl Shell {
@@ -305,12 +324,14 @@ impl Shell {
         let focus = cx.focus_handle();
         window.focus(&focus);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
+        let activation = cx.observe_window_activation(window, |_, _, cx| cx.notify());
         let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
             settings,
             settings_window: None,
             analysis_hovered: false,
             settings_backup: None,
+            settings_view_backup: None,
             settings_error: None,
 
             config,
@@ -318,7 +339,16 @@ impl Shell {
             session: saved,
             file: None,
             plot: None,
+            view: None,
+            time_scheme: None,
+            tick_pan: None,
+            plot_geometry: None,
+            pointer: None,
+            pan: None,
             texture: None,
+            deep_preview: None,
+            backdrop: None,
+            backdrop_refresh: None,
             upload_pending: false,
             title_drag_pending: false,
             waveform: None,
@@ -329,6 +359,7 @@ impl Shell {
             startup_recent: None,
             recent_updates: None,
             _bounds: bounds,
+            _activation: activation,
         }
     }
 
@@ -357,6 +388,12 @@ impl Shell {
         // this file's labels may not leave.
         self.release(window);
         self.plot = None;
+        self.view = None;
+        self.time_scheme = None;
+        self.tick_pan = None;
+        self.plot_geometry = None;
+        self.pointer = None;
+        self.pan = None;
 
         let (analyst, updates, start) = crate::analysis::prepare(
             origin.path.clone(),
@@ -462,13 +499,19 @@ impl Shell {
 
     /// Fold one update from the analysis thread into the document, and do
     /// whatever it asks for.
-    fn receive(&mut self, delivery: Delivery, _window: &mut Window, cx: &mut Context<Self>) {
+    fn receive(&mut self, delivery: Delivery, window: &mut Window, cx: &mut Context<Self>) {
         let Some(file) = self.file.as_mut() else {
             return;
         };
         if !file.analyst.accepts(&delivery) {
             return;
         }
+        let Some(delivery) = self.refresh_backdrop_style(delivery, window, cx) else {
+            return;
+        };
+        let Some(file) = self.file.as_mut() else {
+            return;
+        };
         let effect = file.document.apply(delivery.update);
         if effect == Effect::Analysis {
             file.displayed_settings = Some(self.settings);
@@ -476,6 +519,7 @@ impl Shell {
 
         match effect {
             Effect::Opened => {
+                self.reset_view();
                 // Remembered now rather than when it was asked for. A file
                 // that will not open must not overwrite the hints of the entry
                 // that did: a raw capture first opened with `--raw iq_i16@2M`
@@ -510,7 +554,13 @@ impl Shell {
             height = plot.height,
             "the plot was laid out"
         );
+        let width_changed = self.plot.is_none_or(|old| old.width != plot.width);
         self.plot = Some(plot);
+        if width_changed {
+            self.time_scheme = None;
+            self.tick_pan = None;
+            self.bound_view();
+        }
         self.ask_for_a_picture();
         cx.notify();
     }
@@ -523,7 +573,7 @@ impl Shell {
     fn extents(&self) -> Option<axes::Extents> {
         let meta = self.file.as_ref()?.document.meta()?;
         Some(axes::Extents {
-            seconds: (0.0, meta.duration_seconds()),
+            seconds: self.view?.seconds(meta.sample_rate),
             hertz: meta.frequency_span(),
         })
     }
@@ -532,13 +582,17 @@ impl Shell {
     ///
     /// Silent when the file has not opened yet or the panel has not been laid
     /// out: both arrive on their own, and each one calls back here.
-    fn ask_for_a_picture(&self) {
+    fn ask_for_a_picture(&mut self) {
         let Some(file) = self.file.as_ref() else {
             return;
         };
         let Some(request) = self.request(&file.document) else {
             return;
         };
+        let Some(file) = self.file.as_mut() else {
+            return;
+        };
+        file.document.requested_range(request.range);
         if !file.analyst.request(request) {
             tracing::warn!("the analysis thread has stopped; nothing more will be drawn");
         }
@@ -549,14 +603,16 @@ impl Shell {
     fn request(&self, document: &Document) -> Option<AnalysisRequest> {
         let meta = document.meta()?;
         let plot = self.plot?;
-        Some(
-            self.settings
-                .analysis_request(meta, plot.width, plot.height),
-        )
+        let mut request = self
+            .settings
+            .analysis_request(meta, plot.width, plot.height);
+        request.range = self.view?.range();
+        Some(request)
     }
 
     /// Put the newest picture on the GPU and release the one it replaces.
     fn upload(&mut self, window: &mut Window) {
+        self.release_deep_preview(window);
         let started = Instant::now();
         let waveform_peak = self
             .file
@@ -589,6 +645,8 @@ impl Shell {
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
     fn release(&mut self, window: &mut Window) {
         self.waveform = None;
+        self.release_backdrop(window);
+        self.release_deep_preview(window);
         release(self.texture.take(), window);
     }
 
@@ -706,7 +764,11 @@ impl Shell {
     /// drawn there too rather than handed to a platform menu bar that only one
     /// of the three has.
     fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div().flex().items_center().child(self.file_menu(cx))
+        div()
+            .flex()
+            .items_center()
+            .child(self.file_menu(cx))
+            .when(self.view.is_some(), |bar| bar.child(self.view_menu(cx)))
     }
 
     fn file_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -848,107 +910,6 @@ impl Shell {
         )
     }
 
-    /// The spectrogram panel: the picture, and the axes around it.
-    ///
-    /// One canvas does the measuring and the drawing, because the two are the
-    /// same question. How wide the frequency labels are decides how much of
-    /// the panel is left for the picture, and that leftover is exactly what the
-    /// transform is asked to fill -- so the size reported back from here is the
-    /// plot's and not the panel's. Only the window has a font to measure the
-    /// labels with, which is why this cannot be settled anywhere earlier.
-    ///
-    /// The measurement is deferred rather than applied on the spot: prepaint is
-    /// not a moment at which the entity being painted can be borrowed again.
-    fn spectrogram(&self, extents: axes::Extents, cx: &mut Context<Self>) -> impl IntoElement {
-        let texture = self.texture.clone();
-        let first_picture = self
-            .file
-            .as_ref()
-            .map(|file| (file.opened_at, file.first_picture.clone()));
-        let waveform = self.waveform.clone();
-        let fraction = self.session.waveform_fraction;
-        let rem = f32::from(cx.theme().font_size);
-        let known_bounds = self.panel_bounds;
-        let known = self.plot;
-        let view = cx.entity().downgrade();
-        let separator_color = cx.theme().border;
-        let colors = axes::Colors {
-            // Over the picture rather than beside it, so it is drawn to be
-            // read through: an opaque line hides a column of the spectrogram,
-            // and a column is what a person is looking at.
-            grid: cx.theme().border.opacity(0.55),
-            tick: cx.theme().muted_foreground,
-            label: cx.theme().muted_foreground,
-        };
-
-        canvas(
-            move |bounds, window, cx| {
-                let scale = window.scale_factor();
-                let labels = axes::Labels::new(window);
-                let height =
-                    panels::waveform_height(f32::from(bounds.size.height), rem, fraction, scale);
-                let spectrum_size = size(bounds.size.width, bounds.size.height - px(height));
-                let frame = axes::Frame::measure(spectrum_size, scale, extents, &labels)?;
-                let measured = device_size(frame.plot, scale);
-                if known != Some(measured) || known_bounds != Some(bounds) {
-                    cx.defer(move |cx| {
-                        let _ =
-                            view.update(cx, |shell, cx| shell.layout_panels(bounds, measured, cx));
-                    });
-                }
-                Some((frame, labels, height))
-            },
-            move |bounds, prepainted, window, cx| {
-                let Some((frame, labels, height)) = prepainted else {
-                    return;
-                };
-                let spectrum_origin = bounds.origin + point(px(0.0), px(height));
-                if let Some(waveform) = &waveform {
-                    waveform.paint(&frame, bounds.origin, height, window);
-                }
-                window.paint_quad(gpui::fill(
-                    Bounds {
-                        origin: bounds.origin + point(px(frame.plot.x), px(height - 1.0)),
-                        size: size(px(frame.plot.width), px(1.0)),
-                    },
-                    separator_color,
-                ));
-                // The picture first, then the marks over it: a grid line is
-                // there to be read against the spectrogram, not under it.
-                if let Some(texture) = texture {
-                    let plot = Bounds {
-                        origin: spectrum_origin + point(px(frame.plot.x), px(frame.plot.y)),
-                        size: size(px(frame.plot.width), px(frame.plot.height)),
-                    };
-                    if let Err(error) =
-                        window.paint_image(plot, Corners::default(), texture, 0, false)
-                    {
-                        tracing::warn!(%error, "cannot draw the spectrogram");
-                    } else if let Some((opened_at, painted)) = &first_picture
-                        && !painted.swap(true, Ordering::Relaxed)
-                    {
-                        tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
-                    }
-                }
-                axes::paint(&frame, spectrum_origin, &labels, colors, window, cx);
-            },
-        )
-        .size_full()
-    }
-
-    fn layout_panels(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        measured: PlotSize,
-        cx: &mut Context<Self>,
-    ) {
-        self.panel_bounds = Some(bounds);
-        if self.plot != Some(measured) {
-            self.resize(measured, cx);
-        }
-        cx.notify();
-    }
-
     fn finish_splitter(&mut self, _: &gpui::MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
         if self.splitter_dragging {
             self.splitter_dragging = false;
@@ -1053,6 +1014,21 @@ impl Shell {
 
         match self.showing() {
             Showing::Plot(extents) => div()
+                .id("time-plot")
+                .cursor(
+                    self.plot_geometry
+                        .map_or(gpui::CursorStyle::Arrow, |geometry| {
+                            geometry.cursor(self.pointer, self.pan.is_some())
+                        }),
+                )
+                .on_scroll_wheel(cx.listener(Self::wheel))
+                .on_mouse_down(MouseButton::Left, cx.listener(Self::begin_pan))
+                .on_hover(cx.listener(|shell, hovered, _, cx| {
+                    if !hovered {
+                        shell.pointer = None;
+                        cx.notify();
+                    }
+                }))
                 .flex_1()
                 .min_h_0()
                 .relative()
@@ -1249,6 +1225,8 @@ impl Render for Shell {
             self.upload_pending = false;
             self.upload(window);
         }
+        self.prepare_backdrop(window);
+        self.prepare_deep_preview(window);
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;
@@ -1264,9 +1242,13 @@ impl Render for Shell {
                 .key_context(if self.file.is_none() {
                     "Shell StartPage"
                 } else {
-                    "Shell"
+                    "Shell Plot"
                 })
                 .on_mouse_move(cx.listener(Self::drag_splitter))
+                .on_mouse_move(cx.listener(Self::pointer_moved))
+                .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
+                .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_pan))
+                .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_pan))
                 .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_splitter))
                 .on_action(cx.listener(Self::open_recent))
@@ -1286,6 +1268,7 @@ impl Render for Shell {
                 .child(self.title_bar(corners, window, cx))
                 .child(self.content(window, cx))
                 .child(self.status_bar(corners, cx));
+        let content = self.navigation_actions(content, cx);
         frame.render(content, cx)
     }
 }

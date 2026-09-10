@@ -546,3 +546,72 @@ fn start_anchored_labels_use_their_full_width_for_edges_and_spacing() {
         }
     }
 }
+
+
+#[test]
+fn precise_time_ticks_remain_readable_between_seconds_and_at_rf_spans() {
+    let text = DejaVuSans;
+    for (lo, hi) in [(39.744, 40.0), (3599.9998, 3600.0002), (0.0, 0.000002)] {
+        let bounds = axis(1200, lo, hi);
+        let labels = across(&text);
+        let marks = ticks(AxisKind::PreciseTime, bounds, &labels);
+        assert!(marks.len() >= 3, "{marks:?}");
+        assert!(marks.windows(2).all(|pair| pair[0].label != pair[1].label));
+        assert!(marks.iter().all(|tick| tick.label.contains(':')));
+        assert!(marks.iter().all(|tick| tick.value >= lo - 1e-9 && tick.value <= hi + 1e-9));
+    }
+    assert_eq!(format_precise_clock(59.9999, Clock::MinutesSeconds, 0.001), "1:00.000");
+    assert_eq!(format_precise_clock(39.75, Clock::MinutesSeconds, 0.01), "0:39.75");
+}
+
+#[test]
+fn held_time_scheme_preserves_labels_and_spacing_during_pan() {
+    let metrics = across(&DejaVuSans);
+    for (start, span) in [(55., 10.), (599., 30.), (3595., 10.), (0.001, 0.01)] {
+        let first_axis = axis(1200, start, start + span);
+        let first = tick_layout(AxisKind::PreciseTime, first_axis, &metrics, None);
+        let scheme = first.scheme.unwrap();
+        let next_axis = axis(1200, start + scheme.step, start + span + scheme.step);
+        let next = tick_layout(AxisKind::PreciseTime, next_axis, &metrics, Some(scheme));
+        assert_eq!(next.scheme, Some(scheme));
+        let displacement = scheme.step / span * 1199.;
+        let mut shared = 0;
+        for a in &first.ticks {
+            if let Some(b) = next.ticks.iter().find(|b| b.value == a.value) {
+                assert_eq!(a.label, b.label);
+                assert!(((a.offset - b.offset) as f64 - displacement).abs() <= 1.);
+                shared += 1;
+            }
+        }
+        assert!(shared >= 2);
+    }
+}
+
+#[test]
+fn held_grid_keeps_spacing_when_longer_labels_need_to_be_hidden() {
+    let metrics = across(&DejaVuSans);
+    let scheme = TickScheme { step: 1., span: 10. };
+    let layout = tick_layout(AxisKind::PreciseTime, axis(200, 600., 610.), &metrics, Some(scheme));
+    assert!(layout.ticks.iter().any(|tick| tick.label.is_empty()));
+    for pair in layout.ticks.windows(2) {
+        assert_eq!(pair[1].value - pair[0].value, 1.);
+    }
+    let visible: Vec<_> = layout.ticks.iter().filter(|tick| !tick.label.is_empty()).collect();
+    for pair in visible.windows(2) {
+        assert!(pair[1].offset as f64 - pair[0].offset as f64 >= metrics.extent(&pair[0].label) + metrics.gap());
+    }
+}
+
+#[test]
+fn held_grid_keeps_edge_marks_when_their_labels_do_not_fit() {
+    let axis = Axis { length: 200, min: 0., max: 10., lead: 0, trail: 0 };
+    let metrics = across(&DejaVuSans);
+    let scheme = TickScheme { step: 2., span: 10. };
+    let held = tick_layout(AxisKind::PreciseTime, axis, &metrics, Some(scheme));
+    assert_eq!(held.ticks.len(), 6);
+    for edge in [0., 10.] {
+        assert!(held.ticks.iter().any(|tick| tick.value == edge && tick.label.is_empty()));
+    }
+    assert!(held.ticks.iter().any(|tick| tick.value == 2. && !tick.label.is_empty()));
+    assert!(!ticks(AxisKind::PreciseTime, axis, &metrics).iter().any(|tick| tick.value == 10.));
+}

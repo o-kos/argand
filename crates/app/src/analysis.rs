@@ -15,6 +15,9 @@ use argand_dsp::{
 };
 use argand_io::OpenHints;
 
+#[path = "analysis_progress.rs"]
+mod progress;
+
 const THREAD_NAME: &str = "argand-analysis";
 const LEVEL_SCAN_BYTES: usize = 64 << 20;
 
@@ -54,6 +57,7 @@ struct Requested {
     generation: u64,
     view_revision: u64,
     analysis: AnalysisRequest,
+    navigation: bool,
 }
 
 pub struct Analyst {
@@ -150,6 +154,15 @@ impl Analyst {
         if latest.is_some_and(|previous| previous.analysis == analysis) {
             return !self.requests.is_closed();
         }
+        let navigation = latest.is_some_and(|previous| {
+            same_analysis(
+                AnalysisRequest {
+                    range: analysis.range,
+                    ..previous.analysis
+                },
+                analysis,
+            ) && (previous.navigation || previous.analysis.range != analysis.range)
+        });
         let generation = match *latest {
             Some(previous) if same_analysis(previous.analysis, analysis) => previous.generation,
             _ => self.mailbox.generation.fetch_add(1, Ordering::AcqRel) + 1,
@@ -159,6 +172,7 @@ impl Analyst {
             generation,
             view_revision,
             analysis,
+            navigation,
         });
         drop(latest);
         match self.requests.try_send(()) {
@@ -344,12 +358,17 @@ impl Cached {
         }
         let started = Instant::now();
         let view = request.analysis;
+        let width = if request.navigation && self.overview.dimensions().0 == 1 {
+            1
+        } else {
+            view.width
+        };
         let rendered = self
             .overview
             .set_style(view.colormap, view.dynamic_range)
             .and_then(|()| {
                 self.overview
-                    .render(view.width, view.height, view.waveform_columns)
+                    .render(width, view.height, view.waveform_columns)
             });
         let update = match rendered {
             Ok(analysis) => {
@@ -389,10 +408,17 @@ fn compute(
     let mut waveform_peak = None;
     let mut render_error = None;
     let last_view = std::cell::Cell::new(None);
+    let options = ProgressiveOptions::new(settings.batch_frames).unwrap_or_default();
+    let options = if request.navigation {
+        options.final_only()
+    } else {
+        options
+    };
+    let mut source = progress::Source::new(source, request, replies);
     let result = analyze_overview_with_refresh(
-        source,
+        &mut source,
         &request.analysis,
-        ProgressiveOptions::new(settings.batch_frames).unwrap_or_default(),
+        options,
         &|| replies.control(request.generation),
         &|| {
             replies

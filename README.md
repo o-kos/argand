@@ -22,7 +22,7 @@ the graphical application: it opens a capture -- by argument, from its menu, by
 drag and drop, or from the files it remembers -- analyses it on a thread of its
 own, and shows a linear waveform above the spectrogram on the same time scale, with
 time and frequency marks around the spectrogram. A sparse preview appears before
-the full analysis; both panels refine from left to right, with progress shown in the status bar. Zoom, selection and editing are not implemented yet.
+the full analysis; both panels refine from left to right, with progress shown in the status bar. Time zoom and pan are supported; selection and editing remain deferred.
 
 Neither binary is a throwaway. The domain model, the readers and the transforms
 live in `argand-core`, `argand-io` and `argand-dsp`; both front ends call the
@@ -343,6 +343,39 @@ picture until the replacement preview arrives. The choice applies to subsequent
 files and survives restarts. Set the initial choice with the top-level configuration key
 `aggregation = "max"` (default) or `aggregation = "mean-power"`. Live choices do not
 rewrite `argand.toml`; effective settings are saved in `session.toml`.
+
+The waveform and spectrogram share a time view. Scroll over either plot to pan
+in time, or hold Ctrl to zoom about the pointer. Left-drag also pans. The time
+ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved
+for frequency panning (#80) and currently leaves the time view unchanged.
+The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands:
+
+| Key | Action |
+| --- | --- |
+| Ctrl+`+` or Ctrl+`=` / Ctrl+`-` | Zoom in / out about the view centre |
+| Left / Right | Pan by one time-ruler division |
+| Ctrl+Left / Ctrl+Right | Pan by five time-ruler divisions |
+| Home / End | Move to the capture's beginning / end |
+| Ctrl+`0` | Fit the entire capture |
+
+The minimum span is one FFT, with a screen-resolution representability floor
+for extreme sample indices. This floor is rechecked when the plot width changes. Axes and held pictures move immediately; a new
+completed image replaces the placeholder at the same physical coordinates. A retained
+wider picture fills known time on zoom-out while the replacement is calculated.
+Rapid navigation replaces pending requests instead of queuing transforms.
+Every file opening starts at full capture, including reopening a recent file within
+the same run. Legacy saved zoom and position are ignored. Panning retains the ruler
+spacing and clock format; arrow steps round to the nearest sample without accumulating
+fractional-sample drift. Capture boundaries limit the last step.
+
+The status bar shows pointer time from the capture start, physical frequency in Hz
+(including centre frequency), and the displayed grid cell's level in dBFS. Above
+the waveform and time ruler it shows time only. Uncovered placeholder areas have no level.
+Hold **Alt** over the spectrogram to project the cursor onto the time and frequency
+rulers, with rounded coordinate badges. White/black/white guide lines remain
+visible across palettes. Release Alt to hide the guides.
+File min/max values stay file-wide; they become available after a full-capture
+analysis and remain unchanged when navigating.
 
 Resizing the window or dragging the panel separator redraws from retained analysis
 without rereading the file or restarting FFT refinement. The GUI keeps up to 4096

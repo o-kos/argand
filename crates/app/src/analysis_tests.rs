@@ -235,6 +235,37 @@ fn resize_keeps_analysis_and_eventually_delivers_the_latest_size() {
 }
 
 #[test]
+fn rapid_time_navigation_rejects_old_pictures_and_analyzes_only_the_latest_range() {
+    let dir = TempDir::new("time-navigation");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    let Some(Update::Opened(meta, _)) = next(&updates) else { panic!("opened") };
+    let initial = AnalysisRequest { waveform_columns: Some(64), ..request() };
+    analyst.request(initial);
+    let old = loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if delivery.view_revision.is_some() { break delivery; }
+    };
+    let original = analyst.mailbox.latest().unwrap().generation;
+    for start in 1..=100 {
+        analyst.request(AnalysisRequest { range: SampleRange::new(start, 2048), ..initial });
+    }
+    assert_eq!(analyst.mailbox.latest().unwrap().generation, original + 100);
+    assert!(analyst.requests.len() <= 1, "only one wakeup may be queued");
+    assert!(!analyst.accepts(&old));
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        if let Update::Ready { analysis, .. } = delivery.update {
+            assert_eq!(analysis.db.t0, 100.0 / meta.sample_rate);
+            assert_eq!(analysis.db.t1, 2148.0 / meta.sample_rate);
+            let waveform = analysis.waveform.unwrap();
+            assert_eq!((waveform.t0, waveform.t1), (analysis.db.t0, analysis.db.t1));
+            break;
+        }
+    }
+}
+
+#[test]
 fn full_snapshot_queue_does_not_prevent_cancelling_a_final_reply() {
     use std::cell::Cell;
     let (sender, receiver) = async_channel::bounded(2);
@@ -462,4 +493,39 @@ fn a_queued_style_preview_invalidated_by_resize_is_republished_during_preview() 
     let result = compute(&mut source, initial, crate::execution::Settings::default(), &replies);
     assert!(matches!(result, Err(DspError::Cancelled)));
     assert_eq!(source.stage, 3);
+}
+
+#[test]
+fn zoom_publishes_only_a_compact_final_picture_and_keeps_display_cache_semantics() {
+    let dir = TempDir::new("compact-zoom");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
+    let initial = AnalysisRequest { waveform_columns: Some(64), ..request() };
+    analyst.request(initial);
+    assert!(matches!(next_result(&updates), Some(Update::Ready { .. })));
+    let zoom = AnalysisRequest { range: SampleRange::new(700, 256), ..initial };
+    analyst.request(zoom);
+    let elapsed = loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        match delivery.update {
+            Update::Progress { .. } => {},
+            Update::Ready { analysis, elapsed } => {
+                assert_eq!(analysis.frames, 1);
+                assert_eq!(analysis.spectrogram.width, 1);
+                assert_eq!(analysis.waveform.unwrap().columns, 64);
+                break elapsed;
+            }
+            _ => panic!("zoom must keep the held picture until the final result"),
+        }
+    };
+    let generation = analyst.mailbox.latest().unwrap().generation;
+    analyst.request(AnalysisRequest { width: 120, height: 44, waveform_columns: Some(120),
+        colormap: Colormap::Inferno, ..zoom });
+    assert_eq!(analyst.mailbox.latest().unwrap().generation, generation);
+    let Some(Update::Ready { analysis, elapsed: resized }) = next_result(&updates) else { panic!("ready") };
+    assert_eq!(resized, elapsed);
+    assert_eq!(analysis.spectrogram.width, 1);
+    assert_eq!(analysis.spectrogram.height, 44);
+    assert_eq!(analysis.waveform.unwrap().columns, 120);
 }

@@ -178,6 +178,39 @@ impl WaveformEnvelope {
         half: i64,
         full_scale: f32,
     ) -> impl Iterator<Item = Option<(i64, i64)>> + '_ {
+        self.spans_at(
+            (0..columns).map(move |step| Some(step * self.columns / columns.max(1))),
+            half,
+            full_scale,
+        )
+    }
+
+    /// Paint a held envelope in a different time view without allocating a
+    /// stretched buffer. Uncovered columns break continuity.
+    pub fn pixel_spans_in(
+        &self,
+        columns: usize,
+        half: i64,
+        full_scale: f32,
+        seconds: (f64, f64),
+    ) -> impl Iterator<Item = Option<(i64, i64)>> + '_ {
+        let indices = (0..columns).map(move |step| {
+            let time =
+                seconds.0 + (step as f64 + 0.5) / columns.max(1) as f64 * (seconds.1 - seconds.0);
+            if !(self.t0..self.t1).contains(&time) {
+                return None;
+            }
+            Some(((time - self.t0) / (self.t1 - self.t0) * self.columns as f64) as usize)
+        });
+        self.spans_at(indices, half, full_scale)
+    }
+
+    fn spans_at(
+        &self,
+        indices: impl Iterator<Item = Option<usize>>,
+        half: i64,
+        full_scale: f32,
+    ) -> impl Iterator<Item = Option<(i64, i64)>> {
         let full_scale = full_scale.max(1e-6);
         let offset = move |value: f32| {
             let level = (value.abs() / full_scale).clamp(0.0, 1.0);
@@ -185,8 +218,11 @@ impl WaveformEnvelope {
             if value >= 0.0 { distance } else { -distance }
         };
         let mut previous: Option<(i64, i64)> = None;
-        (0..columns).map(move |step| {
-            let column = step * self.columns / columns.max(1);
+        indices.map(move |column| {
+            let Some(column) = column else {
+                previous = None;
+                return None;
+            };
             let mut span: Option<(i64, i64)> = None;
             for channel in 0..self.channels {
                 let (min, max) = self.column(column, channel)?;
