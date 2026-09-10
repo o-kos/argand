@@ -259,8 +259,8 @@ Navigation changes only waveform ink: bright inside the requested time viewport,
 dark outside, with no border or fill. Full capture has no dimmed portion. Sample
 bounds retain a one-device-pixel minimum visible width. The minimap has no grid.
 An outside click invokes the same one-division pan as Left/Right; Ctrl+click invokes
-five divisions. Inside clicks only arm dragging. Double-click centres at the
-pointer. Dragging uses full-capture coordinates. The viewport and both rulers use
+five divisions. Inside clicks, including double-clicks, only arm dragging. An outside double-click
+centres at the pointer. Dragging uses full-capture coordinates. The viewport and both rulers use
 an open-hand cursor; active drags use a closed hand. Frequency navigation remains
 reserved for #80. Wheel gestures belong to the spectrum and time ruler. Pointer
 time over the minimap uses full-capture coordinates.

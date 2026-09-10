@@ -31,7 +31,8 @@ The existing toolkit-neutral EnvelopeBuilder preserves real/IQ extrema.
 - Draw the viewport from integer sample bounds, clamp it to the capture and give
   sub-pixel spans a minimum visible width without changing the actual range.
 - Outside click/Ctrl+click pans one/five ruler divisions through the keyboard path.
-  Inside click only arms dragging; double-click centres at the pointer. The viewport
+  Inside single/double click only arms dragging; outside double-click centres at
+  the pointer. The viewport
   and both rulers show an open hand, and active drags a closed hand. Spectrum and
   time-ruler wheel/drag behavior stays as accepted in #30. Cursor time above the
   minimap refers to the full capture.
@@ -45,7 +46,9 @@ The existing toolkit-neutral EnvelopeBuilder preserves real/IQ extrema.
 - Storing every sample or every display width violates the bounded cache policy.
 - Delaying every outside click until the double-click timeout would slow ordinary
   navigation. The first press responds immediately; a second press centres from
-  full-capture coordinates, independently of that intermediate step.
+  full-capture coordinates only if it remains outside the updated viewport.
+  Containment is checked on each press, so moving the viewport under the pointer
+  makes the second press stationary.
 
 ## Implementation steps
 
@@ -75,7 +78,7 @@ The existing toolkit-neutral EnvelopeBuilder preserves real/IQ extrema.
 - Native real-GPU checks on real and I/Q captures preserve the waveform geometry
   and background through zoom, pan, palette and resizing. Outside click/Ctrl+click
   exactly match one/five keyboard divisions in both directions; inside clicks
-  do not navigate; actual double-click sequences centre correctly. Cursor glyphs
+  do not navigate; outside double-click sequences centre correctly. Cursor glyphs
   show an open hand before pressing and a closed hand during dragging.
 - A 1 GB capture finishes its minimap despite early zoom; a 10 GB scan stops on
   replacement without delaying the new capture. Same-process reopening resets
@@ -90,6 +93,25 @@ The existing toolkit-neutral EnvelopeBuilder preserves real/IQ extrema.
   single-click delay was declined with the reasoning above and challenged in a
   follow-up review; no correctness failure beyond the deliberate intermediate
   step was identified.
+
+## Owner feedback: clicks and drag anchoring
+
+- [x] Keep both single and double clicks inside the bright interval stationary;
+  retain double-click centring outside it and dragging from inside it
+- [x] Check a long drag in both directions before changing its coordinate mapping
+- [x] Validate the updated click handling, rebuild release and review the follow-up
+
+On the existing release, dragging 600 logical pixels in either direction retained
+exactly 46 pixels between the pointer and the interval's left painted edge at every
+sampled position. Sample-rounding error stayed below 0.002 logical pixels. No
+interior drift was reproduced; clamping at the capture boundaries is expected.
+
+The updated release also passed native checks for inside double-clicks with and
+without Ctrl, full-capture double-clicks, outside centring and drag anchoring.
+Formatting, strict Clippy and all 492 tests pass. Review identified an inaccurate
+description of a second press landing inside the moved viewport; the README and
+plan now document the per-press containment rule. The final review round found
+no substantive issues.
 
 ## Post-completion
 

@@ -178,9 +178,6 @@ pub enum Click {
 }
 
 pub fn click(fraction: f64, viewport: (f64, f64), control: bool, count: usize) -> Click {
-    if count == 2 {
-        return Click::Center;
-    }
     let direction = if fraction < viewport.0 {
         -1
     } else if fraction > viewport.1 {
@@ -188,7 +185,11 @@ pub fn click(fraction: f64, viewport: (f64, f64), control: bool, count: usize) -
     } else {
         return Click::Grab;
     };
-    Click::Step(direction * if control { 5 } else { 1 })
+    if count == 2 {
+        Click::Center
+    } else {
+        Click::Step(direction * if control { 5 } else { 1 })
+    }
 }
 
 pub fn center(view: View, fraction: f64, total: u64) -> View {

@@ -90,7 +90,7 @@ promise applies to.
   right-hand title-bar area no longer starts a resize when the window is expanded.
 
 ### Changed
-- The waveform is now a full-capture minimap that darkens the waveform outside the visible interval, without a frame. Zoom, pan and spectral settings leave its content unchanged; outside click/Ctrl+click pan one/five ruler divisions, double-click centres, and dragging moves the interval. Open-hand cursors mark the interval and rulers. Its independent bounded scan continues when the initial FFT analysis is interrupted.
+- The waveform is now a full-capture minimap that darkens the waveform outside the visible interval, without a frame. Zoom, pan and spectral settings leave its content unchanged; outside click/Ctrl+click pan one/five ruler divisions, outside double-click centres, inside clicks leave the range unchanged, and dragging moves the interval. Open-hand cursors mark the interval and rulers. Its independent bounded scan continues when the initial FFT analysis is interrupted.
 
 
 - Every file opening resets time zoom and position. Ctrl+wheel zoom and wheel horizontal pan work over both the spectrogram and time ruler. Left/Right move by one ruler division, Ctrl+Left/Right by five, preserving ruler spacing and format. The crosshair is limited to the spectrogram. Zoom keys use Ctrl+Plus/Minus and Ctrl+0 (fit).

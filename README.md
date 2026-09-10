@@ -351,11 +351,11 @@ interval stays bright; the waveform outside it is darkened, without a border or
 background fill. At full capture the whole waveform stays bright. Sub-pixel
 intervals retain a one-device-pixel minimum width.
 Click outside the interval to pan one time-ruler division toward the pointer;
-Ctrl+click pans five divisions, matching the arrow shortcuts. A single click inside
-it does nothing; drag it to pan across the capture. Double-click centres the
-viewport at the pointer. Single-click responds immediately, so a double-click
-steps on its first press and centres on its second. An open-hand cursor marks the viewport and rulers;
-dragging uses a closed hand. Pointer time over the minimap refers to the full recording.
+Ctrl+click pans five divisions, matching the arrow shortcuts. Single and double
+clicks inside it do nothing; drag it to pan across the capture. An outside
+double-click steps on its first press and centres on its second only if the
+pointer is still outside the updated interval. An open-hand cursor marks the
+viewport and rulers; dragging uses a closed hand. Pointer time over the minimap refers to the full recording.
 
 Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
 Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved

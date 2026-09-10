@@ -136,10 +136,14 @@ fn minimap_clicks_share_keyboard_divisions_and_only_doubleclick_centers() {
         assert_eq!(click(fraction, (0.2, 0.5), false, 2), Click::Center);
     }
     for fraction in [0.2, 0.3, 0.5] {
-        assert_eq!(click(fraction, (0.2, 0.5), false, 1), Click::Grab);
-        assert_eq!(click(fraction, (0.2, 0.5), true, 1), Click::Grab);
+        for count in [1, 2] {
+            assert_eq!(click(fraction, (0.2, 0.5), false, count), Click::Grab);
+            assert_eq!(click(fraction, (0.2, 0.5), true, count), Click::Grab);
+        }
     }
-    assert_eq!(click(0.3, (0., 1.), false, 1), Click::Grab);
+    for count in [1, 2] {
+        assert_eq!(click(0.3, (0., 1.), false, count), Click::Grab);
+    }
     assert_eq!(viewport(View::full(1000), 1000, 2000), (0., 1.));
 }
 
