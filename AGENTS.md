@@ -78,6 +78,7 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
 - Use `thiserror` in libraries and `anyhow` in binaries. Non-test code must not use `unwrap` or `expect` on external data. Panics must not unwind across FFI boundaries.
 - Read `argand.toml` at startup from beside the binary or from the platform-specific configuration directory.
+- `crates/app/assets/argand.toml` is the single complete, commented default configuration for distribution. Keep it synchronized with `Config::default()` and all supported keys; its test parses without repairs. Package delivery is tracked in #86. Installations must preserve existing user configuration and must not place a default beside a system-installed executable, which would shadow the user file under the portable-first search policy.
 - Express units and axes in physical hertz and seconds. Never confuse audio sample rates with the true RF capture sample rate.
 - Direct conversation with the project owner must be in Russian only.
 - All repository content and project communication outside that direct conversation must be in English. This includes source comments, user-facing messages, logs, documentation, branch names, commit messages, Pull Request titles and descriptions, issues, and release notes.

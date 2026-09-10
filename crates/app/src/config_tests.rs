@@ -34,6 +34,43 @@ impl Drop for TempDir {
 }
 
 #[test]
+fn distributed_template_explicitly_lists_every_configuration_key() {
+    use std::collections::BTreeSet;
+
+    let template: toml::Table =
+        toml::from_str(include_str!("../assets/argand.toml")).expect("valid template");
+    let sections: &[(&str, &[&str])] = &[
+        (
+            "",
+            &[
+                "theme", "number_format", "color_scheme", "dynamic_range", "aggregation",
+                "stft", "analysis", "panels",
+            ],
+        ),
+        ("stft", &["fft_size", "window"]),
+        ("analysis", &["workers", "batch_frames", "affinity"]),
+        ("panels", &["waveform_fraction"]),
+    ];
+    for &(section, keys) in sections {
+        let table = if section.is_empty() {
+            &template
+        } else {
+            template[section].as_table().expect("configuration section")
+        };
+        let actual: BTreeSet<_> = table.keys().map(String::as_str).collect();
+        assert_eq!(actual, keys.iter().copied().collect(), "section {section:?}");
+    }
+}
+
+#[test]
+fn distributed_template_parses_without_repairs_and_matches_built_in_defaults() {
+    let template = include_str!("../assets/argand.toml");
+    let config: Config = toml::from_str(template).expect("valid distributed configuration");
+    assert_eq!(config, Config::default());
+    assert_eq!(config.clone().repaired(), config);
+}
+
+#[test]
 fn number_format_defaults_to_system_and_accepts_explicit_locales() {
     let dir = TempDir::new("number-format");
     assert_eq!(Config::default().number_format, "system");

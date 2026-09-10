@@ -330,6 +330,20 @@ transform size and window. It is read from beside
 the binary first and from the platform configuration directory second, and a
 missing or malformed one costs a log line rather than the application.
 
+The complete, English-commented default configuration is
+[`crates/app/assets/argand.toml`](crates/app/assets/argand.toml). Copy it to
+`~/.config/argand/argand.toml` on Linux (or
+`$XDG_CONFIG_HOME/argand/argand.toml` when set),
+`%APPDATA%\argand\argand.toml` on Windows, or
+`~/Library/Application Support/argand/argand.toml` on macOS, and edit the copy.
+Keep any existing user configuration when installing or updating.
+
+Argand packages and package-manager delivery are tracked in [#86](https://github.com/o-kos/argand/issues/86),
+including shipping this template and documenting its installed location. Current
+release archives contain aspec only. System packages must not put an active
+default beside the executable, where it would override user configuration;
+adjacent configuration is intended for portable installations.
+
 The **Aggregation** control in the analysis settings window switches between **Peak (MAX)** and
 **Mean power** while a file is open. Peak preserves the strongest value in each
 pixel's time/frequency region. Mean power averages squared spectral amplitudes

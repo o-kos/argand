@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- A complete `argand.toml` template with English comments and explicit built-in defaults in the application installation assets.
+
 - View → Time scale format and the time-ruler context menu select hours/minutes/seconds, elapsed seconds or zero-based sample numbers, with the unit shown once at the right. The Alt time badge follows the selection, and the format survives restarts without preserving file zoom or position.
 - GUI numbers, hints and analysis settings follow the system numeric locale, including decimal marks, digit grouping and localized numeric input. The configuration-only `number_format` option can override it with an explicit locale such as `ru-RU`.
 

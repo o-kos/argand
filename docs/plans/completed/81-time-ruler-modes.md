@@ -83,6 +83,31 @@ minimap drag latency remains in the owner-approved backlog issue #84.
 
 ## Owner feedback: configuration-only numeric locale override
 
+- [x] Supply the complete commented default configuration as an installation
+  asset, document its location and check it against the actual application defaults.
+- [x] Create the owner's user configuration with Russian numeric formatting;
+  track tag-driven OS distributions and shipping the template in a linked issue.
+- [x] Validate and review the configuration-template follow-up.
+
+The canonical template is `crates/app/assets/argand.toml`; it includes every
+current key, including the documented legacy panel value. Independent exact
+key-set and parser/default agreement tests catch missing keys and invalid or
+changed defaults. The full gate passes all 511 tests and the release build is current.
+`cargo package --list` includes `assets/argand.toml`. The owner's configuration
+uses the same settings with only `number_format` changed to `ru-RU`.
+
+Issue [#86](https://github.com/o-kos/argand/issues/86) tracks tag-triggered
+Linux/Windows/macOS distributions and package-manager delivery, including this
+template and preservation of user configuration. It coordinates with #40;
+the current release workflow still ships aspec archives only. Distribution
+templates must not shadow user configuration through the portable-first search
+order. No release or package availability is claimed by this template change.
+
+Review identified that deserialization fills omitted keys with defaults, leaving
+the initial equality test unable to detect an incomplete template. Accepted:
+an independent exact key-set test now covers the root and each section. The
+follow-up review found no substantive issues; no findings were rejected or deferred.
+
 - [x] Add top-level `number_format` to `argand.toml`, defaulting to `system`,
   with explicit BCP 47 locale tags and C/POSIX supported without an editor control.
 - [x] Initialize numeric presentation after configuration loading; keep system

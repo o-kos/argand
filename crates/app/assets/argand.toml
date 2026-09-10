@@ -1,0 +1,54 @@
+# Argand configuration: all supported keys with their built-in default values.
+# Edit a copy in your user configuration directory, then restart Argand.
+# A file beside the executable takes priority over the user configuration.
+# Argand reads this file without rewriting it. Missing keys use built-in defaults.
+# Numeric values in TOML use a decimal point, regardless of number_format.
+# Saved analysis settings override their initial values below. Window geometry,
+# the minimap split and time scale format belong to session.toml, not this file.
+
+# Window appearance: "dark" or "light".
+theme = "dark"
+
+# Numeric display and input: "system", a BCP 47 tag such as "ru-RU" or "en-US",
+# or "C" / "POSIX" for a decimal point without digit grouping.
+# "system" follows the OS numeric locale, independently of the interface language.
+number_format = "system"
+
+# Initial spectrogram palette: "oceanic", "grayscale", "inferno", "viridis",
+# "synthwave" or "sunset".
+color_scheme = "oceanic"
+
+# Colour range: "default" for the absolute -110..0 dBFS window, "auto" for an
+# automatic range, or a quoted positive dB value (e.g. "80") below the measured peak.
+# Range resets to this value whenever a file is opened.
+dynamic_range = "default"
+
+# Initial spectral reduction: "max" (strongest value) or "mean-power" (mean power).
+# This does not change the full-capture waveform minimap.
+aggregation = "max"
+
+[stft]
+# Initial FFT length: a power of two from 2 to 1048576, in samples (I/Q pairs).
+fft_size = 2048
+
+# Initial FFT window: "hann", "hamming", "blackman-harris" or "rect".
+window = "hann"
+
+[analysis]
+# FFT worker threads: 0 selects at most eight available logical CPUs.
+# Explicit values from 1 to 128 are capped by the available CPU budget.
+workers = 0
+
+# Maximum frames per compute batch, from 1 to 4096.
+# Memory and estimated FFT work limits may reduce the actual batch size.
+batch_frames = 1024
+
+# Worker affinity: "none" or "efficiency".
+# Efficiency-core pinning is supported on Linux Intel hybrid CPUs when discovery
+# succeeds; other CPUs/platforms fall back to normal scheduling. UI is unaffected.
+affinity = "none"
+
+[panels]
+# Legacy compatibility key, accepted from 0.05 to 0.9 but no longer used for layout.
+# The minimap starts at 3 rem; dragging its splitter saves the size in session.toml.
+waveform_fraction = 0.2
