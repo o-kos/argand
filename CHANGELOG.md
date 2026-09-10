@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
+- The default `theme = "system"` follows OS light/dark appearance changes; explicit `dark` and `light` overrides remain available.
 - A complete `argand.toml` template with English comments and explicit built-in defaults in the application installation assets.
 
 - View → Time scale format and the time-ruler context menu select hours/minutes/seconds, elapsed seconds or zero-based sample numbers, with the unit shown once at the right. The Alt time badge follows the selection, and the format survives restarts without preserving file zoom or position.
@@ -95,7 +97,7 @@ promise applies to.
   right-hand title-bar area no longer starts a resize when the window is expanded.
 
 ### Changed
-- The waveform is now a full-capture minimap that darkens the waveform outside the visible interval, without a frame. Zoom, pan and spectral settings leave its content unchanged; outside click/Ctrl+click pan one/five ruler divisions, outside double-click centres, inside clicks leave the range unchanged, and dragging moves the interval. Open-hand cursors mark the interval and rulers. Its independent bounded scan continues when the initial FFT analysis is interrupted.
+- The waveform is now a full-capture minimap that darkens the waveform outside the visible interval, without a frame. Zoom, pan and spectral settings leave its content unchanged; outside click/Ctrl+click pan one/five ruler divisions, outside double-click centres, inside clicks leave the range unchanged, and dragging moves the interval. When zoomed in, open-hand cursors mark the interval and time ruler. Its independent bounded scan continues when the initial FFT analysis is interrupted.
 
 
 - Every file opening resets time zoom and position. Ctrl+wheel zoom and wheel horizontal pan work over both the spectrogram and time ruler. Left/Right move by one ruler division, Ctrl+Left/Right by five, preserving ruler spacing and format. The crosshair is limited to the spectrogram. Zoom keys use Ctrl+Plus/Minus and Ctrl+0 (fit).

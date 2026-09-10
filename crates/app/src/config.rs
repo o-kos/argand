@@ -26,6 +26,7 @@ pub const FILE_NAME: &str = "argand.toml";
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
     #[default]
+    System,
     Dark,
     Light,
 }

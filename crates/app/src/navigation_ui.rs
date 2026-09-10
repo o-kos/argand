@@ -38,6 +38,7 @@ pub(super) fn init(cx: &mut gpui::App) {
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) struct PlotGeometry {
+    pub unit_hints: [Option<axes::UnitHint>; 2],
     pub time_scheme: Option<argand_core::axis::TickScheme>,
     pub spectrum: Bounds<Pixels>,
     pub minimap: Bounds<Pixels>,
@@ -75,7 +76,8 @@ impl PlotGeometry {
                 let (left, right) = crate::minimap::viewport(view, total, self.minimap_columns);
                 (left..=right).contains(&fraction)
             });
-        if time_ruler || self.frequency_ruler.contains(&position) || selected {
+        let can_pan = viewport.is_some_and(|(view, total)| view.len < total);
+        if can_pan && (time_ruler || selected) {
             gpui::CursorStyle::OpenHand
         } else {
             gpui::CursorStyle::Arrow
@@ -261,6 +263,13 @@ impl Shell {
             return;
         }
         window.focus(&self.focus);
+        if self
+            .view
+            .zip(self.sample_count())
+            .is_none_or(|(view, total)| view.len >= total)
+        {
+            return;
+        }
         self.hold_time_scheme(window);
         let minimap = geometry.minimap.contains(&event.position);
         if minimap && !self.minimap_press(event, geometry, window, cx) {
@@ -490,6 +499,11 @@ impl Shell {
                 .top(geometry.spectrum.bottom() - panel.top())
                 .w(geometry.frequency_ruler.right() - geometry.navigation.left())
                 .h(geometry.navigation.bottom() - geometry.spectrum.bottom())
+                .children(self.unit_hint(
+                    0,
+                    point(geometry.navigation.left(), geometry.spectrum.bottom()),
+                    cx,
+                ))
                 .context_menu(move |menu, window, cx| {
                     let popup = cx.entity();
                     let _ = owner.update(cx, |shell, cx| shell.track_time_menu(&popup, window, cx));
@@ -563,6 +577,7 @@ mod tests {
 
     fn geometry() -> PlotGeometry {
         PlotGeometry {
+            unit_hints: [None; 2],
             time_scheme: None,
             minimap_columns: 100,
             frequency_ruler: Bounds::new(point(px(110.), px(50.)), size(px(30.), px(100.))),
@@ -586,7 +601,7 @@ mod tests {
             (50., 20., gpui::CursorStyle::OpenHand),
             (20., 20., gpui::CursorStyle::Arrow),
             (50., 160., gpui::CursorStyle::OpenHand),
-            (120., 80., gpui::CursorStyle::OpenHand),
+            (120., 80., gpui::CursorStyle::Arrow),
             (50., 80., gpui::CursorStyle::Crosshair),
         ] {
             assert_eq!(
@@ -639,6 +654,19 @@ mod tests {
                 crate::minimap::click(geometry.minimap_fraction(position), interval, false, 1),
                 click
             );
+        }
+    }
+
+    #[test]
+    fn full_capture_and_non_draggable_frequency_ruler_use_an_arrow() {
+        let geometry = geometry();
+        for viewport in [None, Some((View::full(1000), 1000))] {
+            for (x, y) in [(50., 20.), (50., 160.), (120., 80.)] {
+                assert_eq!(
+                    geometry.cursor(Some(point(px(x), px(y))), false, viewport),
+                    gpui::CursorStyle::Arrow,
+                );
+            }
         }
     }
 

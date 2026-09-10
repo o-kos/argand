@@ -63,6 +63,28 @@ impl Rect {
     }
 }
 
+/// A unit caption's measured hover area and expanded meaning.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UnitHint {
+    pub bounds: Rect,
+    pub text: &'static str,
+    pub units: &'static str,
+    pub per_pixel: f64,
+}
+
+impl UnitHint {
+    pub fn resolution(self) -> String {
+        let value = self.per_pixel;
+        let number = if value > 0. && !(1e-9..1e9).contains(&value) {
+            format!("{value:.3e}")
+        } else {
+            let decimals = (3. - value.log10().floor()).clamp(0., 12.) as usize;
+            format!("{value:.decimals$}")
+        };
+        crate::numbers::text(&format!("Resolution: {number} {}/px", self.units))
+    }
+}
+
 /// Where the picture goes inside a panel, and what is drawn around it.
 pub struct Frame {
     /// The spectrogram's own rectangle, which is what a transform is sized to.
@@ -78,9 +100,51 @@ pub struct Frame {
     time_caption: &'static str,
     /// Where the ink of the caption is centred, over the gutter.
     caption_row: f32,
+    per_pixel: (f64, f64),
 }
 
 impl Frame {
+    pub fn unit_hints(&self, measure: &dyn LabelMeasure) -> [Option<UnitHint>; 2] {
+        let height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
+        let frequency = self.caption.filter(|_| !self.frequency.is_empty());
+        [
+            (Some(self.time_caption), self.time_row, self.per_pixel.0),
+            (frequency, self.caption_row, self.per_pixel.1),
+        ]
+        .map(|(caption, row, per_pixel)| {
+            caption.map(|caption| UnitHint {
+                bounds: Rect {
+                    x: self.plot.right() + LABEL_PAD,
+                    y: row - height / 2.,
+                    width: measure.width(caption, LABEL_SIZE).ceil(),
+                    height,
+                },
+                text: match caption {
+                    "hms" => "Time in hours, minutes and seconds",
+                    "s" => "Time in seconds",
+                    "#" => "Time in samples",
+                    "Hz" => "Frequency in Hz",
+                    "kHz" => "Frequency in kHz",
+                    "MHz" => "Frequency in MHz",
+                    "GHz" => "Frequency in GHz",
+                    _ => caption,
+                },
+                units: match caption {
+                    "hms" => "s",
+                    "#" => "samples",
+                    _ => caption,
+                },
+                per_pixel: per_pixel
+                    / match caption {
+                        "kHz" => 1e3,
+                        "MHz" => 1e6,
+                        "GHz" => 1e9,
+                        _ => 1.,
+                    },
+            })
+        })
+    }
+
     /// Reserve room for the labels, then lay out the marks in what is left.
     ///
     /// `scale` is the display's, and the plot's edges are snapped to whole
@@ -98,13 +162,13 @@ impl Frame {
         extents: Extents,
         measure: &dyn LabelMeasure,
         held: Option<axis::TickScheme>,
+        minimap_height: f32,
     ) -> Option<Self> {
         let (t0, t1) = extents.time.bounds(extents.seconds);
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
 
-        // The time labels get a full row below the plot; the unit occupies
-        // only the top of the right gutter, alongside the image.
+        // Time labels get a row below the plot; the frequency unit sits beside the minimap.
         let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
         let foot = OUTER_PAD + row_height + LABEL_PAD;
         // Every candidate is measured, because which of two strings needs more
@@ -130,7 +194,7 @@ impl Frame {
         // Snap inward to preserve both label space and the outside margins.
         let left = ceil(OUTER_PAD);
         let right = floor(f32::from(panel.width) - OUTER_PAD - gutter);
-        let top = ceil(OUTER_PAD);
+        let top = 0.;
         let plot = Rect {
             x: left,
             y: top,
@@ -166,14 +230,22 @@ impl Frame {
                     min: f0,
                     max: f1,
                     lead: -(LABEL_PAD as i64),
-                    trail: -((row_height + LABEL_PAD) as i64),
+                    trail: -(LABEL_PAD as i64),
                 },
                 &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down),
             ),
             caption,
             time_caption: extents.time.mode.caption(),
             time_row: plot.bottom() + LABEL_PAD + row_height / 2.0,
-            caption_row: plot.y + row_height / 2.0,
+            caption_row: -minimap_height / 2.0,
+            per_pixel: (
+                if extents.time.mode == crate::time_ruler::Mode::Samples {
+                    extents.time.view.len as f64
+                } else {
+                    extents.seconds.1 - extents.seconds.0
+                } / f64::from((plot.width * scale).round().max(1.)),
+                (f1 - f0) / f64::from((plot.height * scale).round().max(1.)),
+            ),
         })
     }
 }
@@ -386,7 +458,7 @@ pub fn paint(
     }
 
     line(window, plot.x, plot.bottom(), plot.width, 1.0, colors.tick);
-    // Join the panel divider above the top inset and close the ruler corner below.
+    // Join the minimap divider and close the ruler corner below.
     line(
         window,
         plot.right(),

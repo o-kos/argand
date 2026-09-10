@@ -34,6 +34,18 @@ impl Drop for TempDir {
 }
 
 #[test]
+fn theme_defaults_to_system_and_retains_explicit_overrides() {
+    assert_eq!(Config::default().theme, Theme::System);
+    let dir = TempDir::new("theme");
+    for (name, expected) in [("system", Theme::System), ("dark", Theme::Dark), ("light", Theme::Light)] {
+        let path = dir.write("argand.toml", &format!("theme = {name:?}\n"));
+        assert_eq!(Config::load(&[path]).theme, expected);
+    }
+    let path = dir.write("argand.toml", "number_format = \"ru-RU\"\n");
+    assert_eq!(Config::load(&[path]).theme, Theme::System);
+}
+
+#[test]
 fn distributed_template_explicitly_lists_every_configuration_key() {
     use std::collections::BTreeSet;
 

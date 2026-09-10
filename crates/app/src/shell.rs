@@ -101,7 +101,11 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     Some("StartPage"),
                 )
             }));
-            gpui_component::theme::Theme::change(theme_mode(config.theme), None, cx);
+            gpui_component::theme::Theme::change(
+                theme_mode(config.theme, cx.window_appearance()),
+                None,
+                cx,
+            );
 
             // Opening from a spawned task rather than straight from `run` follows
             // the toolkit's own examples and gives the platform a turn of its event
@@ -184,11 +188,21 @@ fn window_options(saved: &Session, displays: &[Geometry]) -> WindowOptions {
     }
 }
 
-const fn theme_mode(theme: Theme) -> ThemeMode {
+fn theme_mode(theme: Theme, appearance: gpui::WindowAppearance) -> ThemeMode {
     match theme {
+        Theme::System => appearance.into(),
         Theme::Dark => ThemeMode::Dark,
         Theme::Light => ThemeMode::Light,
     }
+}
+
+fn sync_theme(theme: Theme, window: &mut Window, cx: &mut gpui::App) {
+    let mode = theme_mode(theme, window.appearance());
+    if mode == cx.theme().mode {
+        return;
+    }
+    gpui_component::theme::Theme::change(mode, Some(window), cx);
+    cx.refresh_windows();
 }
 
 fn from_bounds(bounds: Bounds<Pixels>) -> Geometry {
@@ -309,6 +323,7 @@ struct Shell {
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
     _activation: Subscription,
+    _appearance: Subscription,
 }
 
 impl Shell {
@@ -327,6 +342,10 @@ impl Shell {
         window.focus(&focus);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
         let activation = cx.observe_window_activation(window, |_, _, cx| cx.notify());
+        sync_theme(config.theme, window, cx);
+        let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
+            sync_theme(shell.config.theme, window, cx);
+        });
         let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
             settings,
@@ -363,6 +382,7 @@ impl Shell {
             recent_updates: None,
             _bounds: bounds,
             _activation: activation,
+            _appearance: appearance,
         }
     }
 
@@ -1078,6 +1098,10 @@ impl Shell {
                 .child(self.spectrogram(extents, cx))
                 .child(self.splitter(window, cx))
                 .children(self.time_context_menu(cx))
+                .children(
+                    self.panel_bounds
+                        .and_then(|bounds| self.unit_hint(1, bounds.origin, cx)),
+                )
                 .into_any_element(),
             // Physical labels need the metadata; their boundaries can appear immediately.
             Showing::Opening => div()
@@ -1476,5 +1500,25 @@ fn device_size(plot: axes::Rect, scale: f32) -> PlotSize {
     PlotSize {
         width: edge(plot.width),
         height: edge(plot.height),
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+    use gpui::WindowAppearance;
+
+    #[test]
+    fn system_follows_appearance_and_explicit_themes_remain_fixed() {
+        for (appearance, expected) in [
+            (WindowAppearance::Light, ThemeMode::Light),
+            (WindowAppearance::VibrantLight, ThemeMode::Light),
+            (WindowAppearance::Dark, ThemeMode::Dark),
+            (WindowAppearance::VibrantDark, ThemeMode::Dark),
+        ] {
+            assert_eq!(theme_mode(Theme::System, appearance), expected);
+            assert_eq!(theme_mode(Theme::Dark, appearance), ThemeMode::Dark);
+            assert_eq!(theme_mode(Theme::Light, appearance), ThemeMode::Light);
+        }
     }
 }

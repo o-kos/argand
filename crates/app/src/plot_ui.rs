@@ -31,16 +31,7 @@ impl Shell {
             .file
             .as_ref()
             .map(|file| (file.opened_at, file.first_picture.clone()));
-        let minimap = waveform::Panel {
-            waveform: self.waveform.clone(),
-            viewport: self.view.zip(
-                self.file
-                    .as_ref()
-                    .and_then(|file| file.document.meta())
-                    .map(|meta| meta.len_samples),
-            ),
-            separator: cx.theme().border,
-        };
+        let minimap = self.minimap_panel(cx);
         let fraction = self.session.waveform_fraction;
         let rem = f32::from(cx.theme().font_size);
         let known_bounds = self.panel_bounds;
@@ -49,14 +40,7 @@ impl Shell {
         let time_scheme = self.time_scheme;
         let view = cx.entity().downgrade();
         let guides = self.cursor_guides(extents, cx);
-        let colors = axes::Colors {
-            // Over the picture rather than beside it, so it is drawn to be
-            // read through: an opaque line hides a column of the spectrogram,
-            // and a column is what a person is looking at.
-            grid: cx.theme().border.opacity(0.55),
-            tick: cx.theme().muted_foreground,
-            label: cx.theme().muted_foreground,
-        };
+        let colors = axis_colors(cx);
 
         canvas(
             move |bounds, window, cx| {
@@ -65,10 +49,16 @@ impl Shell {
                 let height =
                     panels::waveform_height(f32::from(bounds.size.height), rem, fraction, scale);
                 let spectrum_size = size(bounds.size.width, bounds.size.height - px(height));
-                let frame =
-                    axes::Frame::measure(spectrum_size, scale, extents, &labels, time_scheme)?;
+                let frame = axes::Frame::measure(
+                    spectrum_size,
+                    scale,
+                    extents,
+                    &labels,
+                    time_scheme,
+                    height,
+                )?;
                 let measured = device_size(frame.plot, scale);
-                let geometry = plot_geometry(bounds, &frame, height, measured.width);
+                let geometry = plot_geometry(bounds, &frame, &labels, height, measured.width);
                 if known != Some(measured)
                     || known_bounds != Some(bounds)
                     || known_geometry != Some(geometry)
@@ -144,8 +134,22 @@ impl Shell {
             self.extents()?,
             &axes::Labels::new(window),
             None,
+            height,
         )?
         .time_scheme
+    }
+
+    fn minimap_panel(&self, cx: &gpui::App) -> waveform::Panel {
+        waveform::Panel {
+            waveform: self.waveform.clone(),
+            viewport: self.view.zip(
+                self.file
+                    .as_ref()
+                    .and_then(|file| file.document.meta())
+                    .map(|meta| meta.len_samples),
+            ),
+            separator: cx.theme().border,
+        }
     }
 
     fn cursor_guides(
@@ -163,6 +167,35 @@ impl Shell {
             ink: cx.theme().foreground,
             paper: cx.theme().background,
         })
+    }
+
+    pub(super) fn unit_hint(
+        &self,
+        index: usize,
+        origin: gpui::Point<Pixels>,
+        cx: &Context<Self>,
+    ) -> Option<gpui::AnyElement> {
+        let menu_open = self
+            .open_menu
+            .as_ref()
+            .and_then(WeakEntity::upgrade)
+            .is_some();
+        if self.pan.is_some() || self.splitter_dragging || menu_open {
+            return None;
+        }
+        let hint = self.plot_geometry?.unit_hints[index]?;
+        let owner = cx.entity().downgrade();
+        Some(
+            div()
+                .id(hint.text)
+                .absolute()
+                .left(px(hint.bounds.x) - origin.x)
+                .top(px(hint.bounds.y) - origin.y)
+                .w(px(hint.bounds.width))
+                .h(px(hint.bounds.height))
+                .tooltip(move |_, cx| unit_tooltip(owner.clone(), index, cx))
+                .into_any_element(),
+        )
     }
 
     fn layout_panels(
@@ -188,9 +221,49 @@ impl Shell {
     }
 }
 
+fn axis_colors(cx: &gpui::App) -> axes::Colors {
+    axes::Colors {
+        // Keep the picture visible through the overlaid grid.
+        grid: cx.theme().border.opacity(0.55),
+        tick: cx.theme().muted_foreground,
+        label: cx.theme().muted_foreground,
+    }
+}
+
+fn unit_tooltip(owner: WeakEntity<Shell>, index: usize, cx: &mut gpui::App) -> gpui::AnyView {
+    cx.new(|cx| {
+        if let Some(owner) = owner.upgrade() {
+            cx.observe(&owner, |_, _, cx| cx.notify()).detach();
+        }
+        Tooltip::element(move |window, cx| {
+            let hint = owner.upgrade().and_then(|owner| {
+                owner
+                    .read(cx)
+                    .plot_geometry
+                    .and_then(|geometry| geometry.unit_hints[index])
+            });
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .max_w(px(320.).min(window.viewport_size().width - px(48.)))
+                .when_some(hint, |content, hint| {
+                    content.child(hint.text).child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(hint.resolution()),
+                    )
+                })
+        })
+    })
+    .into()
+}
+
 fn plot_geometry(
     bounds: Bounds<Pixels>,
     frame: &axes::Frame,
+    labels: &axes::Labels,
     height: f32,
     minimap_columns: usize,
 ) -> navigation_ui::PlotGeometry {
@@ -199,6 +272,13 @@ fn plot_geometry(
         size: size(px(frame.plot.width), px(frame.plot.height)),
     };
     navigation_ui::PlotGeometry {
+        unit_hints: frame.unit_hints(labels).map(|hint| {
+            hint.map(|mut hint| {
+                hint.bounds.x += f32::from(bounds.origin.x);
+                hint.bounds.y += f32::from(bounds.origin.y) + height;
+                hint
+            })
+        }),
         time_scheme: frame.time_scheme,
         minimap_columns,
         frequency_ruler: Bounds::new(

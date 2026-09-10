@@ -338,6 +338,10 @@ The complete, English-commented default configuration is
 `~/Library/Application Support/argand/argand.toml` on macOS, and edit the copy.
 Keep any existing user configuration when installing or updating.
 
+The default `theme = "system"` follows the operating system's light/dark appearance,
+including changes while Argand is running. Set `"dark"` or `"light"` to keep a fixed
+appearance. This controls the interface, independently of the spectrogram palette.
+
 Argand packages and package-manager delivery are tracked in [#86](https://github.com/o-kos/argand/issues/86),
 including shipping this template and documenting its installed location. Current
 release archives contain aspec only. System packages must not put an active
@@ -368,8 +372,9 @@ Click outside the interval to pan one time-ruler division toward the pointer;
 Ctrl+click pans five divisions, matching the arrow shortcuts. Single and double
 clicks inside it do nothing; drag it to pan across the capture. An outside
 double-click steps on its first press and centres on its second only if the
-pointer is still outside the updated interval. An open-hand cursor marks the
-viewport and rulers; dragging uses a closed hand. Pointer time over the minimap refers to the full recording.
+pointer is still outside the updated interval. When zoomed in, an open-hand cursor
+marks the viewport and time ruler; dragging uses a closed hand. Pointer time over
+the minimap refers to the full recording.
 
 Choose **View → Time scale format**, or right-click the time ruler, to show
 hours, minutes and seconds (hms, default), elapsed seconds, or zero-based sample
@@ -379,6 +384,14 @@ appropriate precision as you zoom, and the Alt time badge follows the selected
 format. The choice survives restarts. Switching formats leaves the visible range
 unchanged and does not recalculate the spectrum. Arrow keys follow the divisions
 of the selected ruler; zoom and position still reset whenever a file is opened.
+
+Hover over a time or frequency unit caption to see its meaning and resolution
+per physical screen pixel. The values follow the current view, window size and
+display scale, using the numeric locale. Clock time uses seconds per pixel;
+sample mode reads "Time in samples" with samples per pixel. The frequency caption
+sits to the right of the minimap and reads, for example, "Frequency in kHz".
+The time unit retains the ruler's right-click menu. Rulers show a hand only when
+they can be dragged; frequency dragging remains part of #80.
 
 GUI numbers use the system numeric locale by default, including grouping, decimal marks,
 axis labels, cursor badges, hints and analysis settings. Numeric fields accept

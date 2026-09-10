@@ -6,8 +6,8 @@
 # Saved analysis settings override their initial values below. Window geometry,
 # the minimap split and time scale format belong to session.toml, not this file.
 
-# Window appearance: "dark" or "light".
-theme = "dark"
+# Window appearance: "system" follows OS light/dark changes, or use "dark" / "light".
+theme = "system"
 
 # Numeric display and input: "system", a BCP 47 tag such as "ru-RU" or "en-US",
 # or "C" / "POSIX" for a decimal point without digit grouping.

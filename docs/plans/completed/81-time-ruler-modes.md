@@ -83,6 +83,43 @@ minimap drag latency remains in the owner-approved backlog issue #84.
 
 ## Owner feedback: configuration-only numeric locale override
 
+- [x] Add measured hover hints for time/frequency unit captions, preserving ruler
+  navigation and the time context menu; validate native interaction and review.
+- [x] Move the frequency unit beside the minimap, remove the four-pixel spectral
+  top gap, and show hand cursors only where panning is available.
+- [x] Use "Time in samples" and "Frequency in kHz" (with analogous frequency
+  units), with localized resolution per physical screen pixel that updates live.
+
+Ruler follow-up validation: formatting, strict Clippy and all 516 tests pass;
+the release was rebuilt after the gate. Native Linux checks on a real Intel GPU
+confirm the gap is gone, the frequency caption sits beside the minimap, all three
+time hints show localized resolution, and right-clicking the time unit still
+opens the format menu. With a stationary pointer, keyboard zoom updates the
+sample resolution from 291,7 to 145,8 to 72,92 samples/px. Format switching and
+hovering do not trigger analysis. Full-capture rulers retain arrow cursors;
+the time ruler becomes draggable after zoom, while frequency navigation awaits #80.
+
+Review caught stale popup weak references disabling hints after File/View menu
+dismissal; only live popup entities now suppress hints. Native checks confirm
+hints return after dismissal. The follow-up review found older documentation
+still promising hands on both rulers; those descriptions now match the actual
+pan availability. Both findings were accepted, with none rejected or deferred.
+
+- [x] Default to `theme = "system"`, follow OS appearance changes while running,
+  preserve explicit light/dark overrides, and update the template and owner config.
+- [x] Validate theme configuration and appearance handling, rebuild release, and
+  complete independent review of the theme-default follow-up.
+
+Theme-default validation: 513 tests, formatting and strict Clippy pass, followed
+by a fresh release build. Native Linux checks on an Intel GPU use an isolated
+Settings portal to exercise light/dark changes without changing desktop settings.
+The default follows light/dark/light transitions, including the open settings
+editor; explicit light and dark overrides stay fixed, and an explicit system
+configuration starts dark when the portal already reports dark. The owner's
+configuration now uses `theme = "system"` while retaining `number_format = "ru-RU"`.
+Independent review of the theme-default change found no substantive issues;
+no findings were rejected or deferred.
+
 - [x] Supply the complete commented default configuration as an installation
   asset, document its location and check it against the actual application defaults.
 - [x] Create the owner's user configuration with Russian numeric formatting;
