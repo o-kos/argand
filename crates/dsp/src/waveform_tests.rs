@@ -100,3 +100,12 @@ fn block_boundaries_do_not_change_the_result() {
     assert_eq!(one_shot.min, in_blocks.min);
     assert_eq!(one_shot.max, in_blocks.max);
 }
+
+#[test]
+fn full_u64_capture_coordinates_do_not_overflow_column_mapping() {
+    let mut builder = EnvelopeBuilder::new(65536, 2, u64::MAX);
+    builder.fold(&[0.5, -0.7, 0.8, 0.9], u64::MAX - 1);
+    let envelope = builder.finish(0., 1.);
+    assert_eq!(envelope.column(65535, 0), Some((0.5, 0.5)));
+    assert_eq!(envelope.column(65535, 1), Some((-0.7, -0.7)));
+}

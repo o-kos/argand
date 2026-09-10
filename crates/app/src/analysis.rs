@@ -36,7 +36,6 @@ pub enum Update {
     Snapshot {
         analysis: Box<Analysis>,
         coverage: Coverage,
-        waveform_peak: f32,
     },
     Ready {
         analysis: Box<Analysis>,
@@ -405,7 +404,6 @@ fn compute(
             total: request.analysis.range.len,
         },
     );
-    let mut waveform_peak = None;
     let mut render_error = None;
     let last_view = std::cell::Cell::new(None);
     let options = ProgressiveOptions::new(settings.batch_frames).unwrap_or_default();
@@ -454,7 +452,6 @@ fn compute(
                 generation: Some(request.generation),
                 view_revision: Some(latest.view_revision),
                 update: Update::Snapshot {
-                    waveform_peak: *waveform_peak.get_or_insert(analysis.time_peak),
                     analysis: Box::new(analysis),
                     coverage,
                 },

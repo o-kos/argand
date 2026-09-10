@@ -1,40 +1,69 @@
-//! Paint the same merged linear envelope that `aspec` renders.
+//! Full-capture minimap geometry is cached separately from the viewport overlay.
 
-use argand_core::WaveformEnvelope;
+use crate::{axes::Frame, minimap, navigation::View};
 use gpui::{Bounds, Pixels, Point, Window, fill, point, px, rgb, size};
-
-use crate::axes::Frame;
+use std::sync::{Arc, Mutex};
 
 pub struct Waveform {
-    pub envelope: WaveformEnvelope,
-    pub full_scale: f32,
+    snapshot: Arc<minimap::Snapshot>,
+    cache: Mutex<Option<Spans>>,
+}
+
+struct Spans {
+    columns: usize,
+    rows: i64,
+    values: Vec<Option<(i64, i64)>>,
 }
 
 impl Waveform {
+    pub fn new(snapshot: Arc<minimap::Snapshot>) -> Self {
+        Self {
+            snapshot,
+            cache: Mutex::new(None),
+        }
+    }
+
     pub fn paint(
         &self,
         frame: &Frame,
         origin: Point<Pixels>,
         height: f32,
-        seconds: (f64, f64),
+        viewport: Option<(View, u64)>,
         window: &mut Window,
     ) {
         let scale = window.scale_factor();
         let columns = (frame.plot.width * scale).round() as usize;
-        let rows = ((height - 9.0).max(0.0) * scale).round() as i64;
+        let rows = ((height - 9.).max(0.) * scale).round() as i64;
         if rows == 0 {
             return;
         }
-        let middle = rows / 2;
-        let half = ((rows - 1) / 2).max(1);
-        for (column, span) in self
-            .envelope
-            .pixel_spans_in(columns, half, self.full_scale, seconds)
-            .enumerate()
+        let mut cache = self
+            .cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if cache
+            .as_ref()
+            .is_none_or(|cache| cache.columns != columns || cache.rows != rows)
         {
-            let Some((lo, hi)) = span else {
-                continue;
-            };
+            let envelope = minimap::rebin(&self.snapshot.envelope, columns);
+            let half = ((rows - 1) / 2).max(1);
+            *cache = Some(Spans {
+                columns,
+                rows,
+                values: envelope
+                    .pixel_spans(columns, half, self.snapshot.full_scale)
+                    .collect(),
+            });
+        }
+        let Some(cache) = cache.as_ref() else { return };
+        let (left, right) = viewport.map_or((0., 1.), |(view, total)| {
+            minimap::viewport(view, total, columns)
+        });
+        let first = (left * columns as f64).round() as usize;
+        let end = (right * columns as f64).round() as usize;
+        let middle = rows / 2;
+        for (column, span) in cache.values.iter().enumerate() {
+            let Some((lo, hi)) = span else { continue };
             let top = (middle - hi).max(0);
             let bottom = (middle - lo + 1).min(rows);
             window.paint_quad(fill(
@@ -42,12 +71,37 @@ impl Waveform {
                     origin: origin
                         + point(
                             px(frame.plot.x + column as f32 / scale),
-                            px(4.0 + top as f32 / scale),
+                            px(4. + top as f32 / scale),
                         ),
-                    size: size(px(1.0 / scale), px((bottom - top) as f32 / scale)),
+                    size: size(px(1. / scale), px((bottom - top) as f32 / scale)),
                 },
-                rgb(0x78c8ff),
+                rgb(if (first..end).contains(&column) {
+                    0x78c8ff
+                } else {
+                    0x243c4d
+                }),
             ));
         }
+    }
+}
+
+pub struct Panel {
+    pub waveform: Option<Arc<Waveform>>,
+    pub viewport: Option<(View, u64)>,
+    pub separator: gpui::Hsla,
+}
+
+impl Panel {
+    pub fn paint(&self, frame: &Frame, origin: Point<Pixels>, height: f32, window: &mut Window) {
+        if let Some(waveform) = &self.waveform {
+            waveform.paint(frame, origin, height, self.viewport, window);
+        }
+        window.paint_quad(fill(
+            Bounds::new(
+                origin + point(px(frame.plot.x), px(height - 1.)),
+                size(px(frame.plot.width), px(1.)),
+            ),
+            self.separator,
+        ));
     }
 }

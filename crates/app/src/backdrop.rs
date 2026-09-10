@@ -13,7 +13,6 @@ pub(super) struct Refresh {
 struct PreparedStyle {
     db: Arc<argand_core::DbGrid>,
     image: argand_core::SpectrogramImage,
-    waveform: Option<Arc<waveform::Waveform>>,
     settings: Settings,
     shading: argand_dsp::Shading,
 }
@@ -55,20 +54,11 @@ impl Shell {
             return None;
         }
         let db = backdrop.db.clone();
-        let waveform = backdrop.waveform.clone();
-        let peak = backdrop.peak;
         let job = cx.background_executor().spawn(async move {
             let image = argand_dsp::shade(&db, shading);
-            let waveform = waveform.map(|old| {
-                Arc::new(waveform::Waveform {
-                    envelope: old.envelope.clone(),
-                    full_scale: settings.dynamic_range.waveform_full_scale(peak),
-                })
-            });
             PreparedStyle {
                 db,
                 image,
-                waveform,
                 settings,
                 shading,
             }
@@ -103,12 +93,7 @@ impl Shell {
         let Some(refresh) = self.backdrop_refresh.take() else {
             return;
         };
-        let PreparedStyle {
-            db,
-            image,
-            waveform,
-            ..
-        } = prepared;
+        let PreparedStyle { db, image, .. } = prepared;
         let accepted = self
             .file
             .as_ref()
@@ -133,7 +118,6 @@ impl Shell {
             deep.release(window);
         }
         backdrop.image = Arc::new(image);
-        backdrop.waveform = waveform;
         backdrop.settings = refresh.settings;
         self.receive(refresh.delivery, window, cx);
     }
@@ -144,10 +128,8 @@ pub(super) struct Backdrop {
     db: Arc<argand_core::DbGrid>,
     image: Arc<argand_core::SpectrogramImage>,
     texture: Arc<RenderImage>,
-    waveform: Option<Arc<waveform::Waveform>>,
     settings: Settings,
     complete: bool,
-    peak: f32,
     deep: Option<Arc<plot_ui::DeepPreview>>,
 }
 
@@ -215,10 +197,8 @@ impl Shell {
             db: Arc::new(analysis.db.clone()),
             image: Arc::new(analysis.spectrogram.clone()),
             texture,
-            waveform: self.waveform.clone(),
             settings,
             complete,
-            peak: file.document.waveform_peak().unwrap_or(analysis.time_peak),
             deep: None,
         };
         self.release_backdrop(window);
@@ -283,9 +263,6 @@ impl Backdrop {
                 ),
             };
             window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
-                if let Some(waveform) = &self.waveform {
-                    waveform.paint(frame, origin, height, shown, window);
-                }
                 if let Some(deep) = &self.deep {
                     deep.paint(plot, shown, window);
                 } else {
@@ -315,10 +292,8 @@ mod tests {
             }),
             texture: spectrogram::texture(&image).unwrap(),
             image: Arc::new(image),
-            waveform: None,
             settings: Settings::from_config(&Config::default()),
             complete,
-            peak: 0.5,
             deep: None,
         }
     }

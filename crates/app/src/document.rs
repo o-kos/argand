@@ -137,10 +137,10 @@ pub struct Document {
     analysis: Option<Box<Analysis>>,
     requested_range: Option<argand_core::SampleRange>,
     status: Status,
-    waveform_peak: Option<f32>,
     file_info: FileInfo,
     sample_extrema: Option<Vec<(f32, f32)>>,
     range_recommendation: Option<f32>,
+    minimap_error: Option<String>,
 }
 
 impl Document {
@@ -153,10 +153,10 @@ impl Document {
             analysis: None,
             requested_range: None,
             status: Status::Opening,
-            waveform_peak: None,
             file_info: FileInfo::default(),
             sample_extrema: None,
             range_recommendation: None,
+            minimap_error: None,
         }
     }
 
@@ -174,11 +174,6 @@ impl Document {
 
     pub const fn range_recommendation(&self) -> Option<f32> {
         self.range_recommendation
-    }
-
-    pub fn waveform_peak(&self) -> Option<f32> {
-        self.waveform_peak
-            .or_else(|| self.analysis().map(|analysis| analysis.time_peak))
     }
 
     /// Set before the worker request; the shell rejects obsolete generations
@@ -214,13 +209,8 @@ impl Document {
                 self.status = Status::Analyzing { done, total };
                 Effect::Status
             }
-            Update::Snapshot {
-                analysis,
-                coverage,
-                waveform_peak,
-            } => {
+            Update::Snapshot { analysis, coverage } => {
                 self.analysis = Some(analysis);
-                self.waveform_peak = Some(waveform_peak);
                 self.status = Status::Analyzing {
                     done: coverage.refined_columns as u64,
                     total: coverage.width as u64,
@@ -228,7 +218,6 @@ impl Document {
                 Effect::Analysis
             }
             Update::Ready { analysis, elapsed } => {
-                self.waveform_peak = None;
                 self.remember_extrema(&analysis);
                 self.analysis = Some(analysis);
                 self.status = Status::Ready { elapsed };
@@ -249,7 +238,24 @@ impl Document {
         }) {
             return;
         }
-        self.sample_extrema = analysis.waveform.as_ref().map(|waveform| {
+        if let Some(waveform) = &analysis.waveform {
+            self.remember_waveform_extrema(waveform);
+        }
+    }
+
+    pub fn minimap_ready(&mut self, snapshot: &crate::minimap::Snapshot) {
+        self.minimap_error = None;
+        if snapshot.complete {
+            self.remember_waveform_extrema(&snapshot.envelope);
+        }
+    }
+
+    pub fn minimap_failed(&mut self, error: String) {
+        self.minimap_error = Some(error);
+    }
+
+    fn remember_waveform_extrema(&mut self, waveform: &argand_core::WaveformEnvelope) {
+        self.sample_extrema = Some(
             (0..waveform.channels)
                 .map(|channel| {
                     let low = waveform
@@ -268,8 +274,8 @@ impl Document {
                         .fold(f32::NEG_INFINITY, f32::max);
                     (low, high)
                 })
-                .collect()
-        });
+                .collect(),
+        );
     }
 
     pub fn file_summary(&self) -> Option<MetadataField> {
@@ -316,6 +322,9 @@ impl Document {
                 value.to_owned(),
             ))
         }));
+        if let Some(error) = &self.minimap_error {
+            rows.push(("Waveform unavailable".into(), error.clone()));
+        }
         let value_text = rows
             .iter()
             .map(|(label, value)| format!("{label}: {value}"))
@@ -339,8 +348,13 @@ impl Document {
     }
 
     fn extrema_details(&self, meta: &SignalMeta) -> Vec<String> {
+        if self.minimap_error.is_some() {
+            return Vec::new();
+        }
         let Some(extrema) = &self.sample_extrema else {
-            return vec!["Sample minimum / maximum: available after full-capture analysis".into()];
+            return vec![
+                "Sample minimum / maximum: available after full-capture waveform scan".into(),
+            ];
         };
         let Some((scale, offset)) = self.file_info.sample_units else {
             return vec!["Original sample minimum / maximum: unavailable".into()];

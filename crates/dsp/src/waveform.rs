@@ -41,13 +41,14 @@ impl EnvelopeBuilder {
 
     /// Column a sample index falls in.
     fn column_of(&self, sample: u64) -> usize {
-        ((sample * self.columns as u64) / self.total_samples).min(self.columns as u64 - 1) as usize
+        ((u128::from(sample) * self.columns as u128) / u128::from(self.total_samples))
+            .min(self.columns as u128 - 1) as usize
     }
 
     /// First sample index belonging to `column`; `columns` yields the end.
     fn column_start(&self, column: usize) -> u64 {
-        let n = column as u64 * self.total_samples;
-        n.div_ceil(self.columns as u64)
+        let n = column as u128 * u128::from(self.total_samples);
+        n.div_ceil(self.columns as u128) as u64
     }
 
     /// Stretch one column's min/max envelope to cover one frame.
@@ -79,7 +80,7 @@ impl EnvelopeBuilder {
         if count == 0 || first >= self.total_samples {
             return;
         }
-        let end = (first + count).min(self.total_samples);
+        let end = first.saturating_add(count).min(self.total_samples);
 
         for column in self.column_of(first)..=self.column_of(end - 1) {
             let lo = self.column_start(column).max(first);

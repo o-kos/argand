@@ -272,22 +272,25 @@ fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
 }
 
 #[test]
-fn refinement_freezes_waveform_display_scale_without_freezing_measured_levels() {
+fn completed_minimap_extrema_survive_navigation_and_no_waveform_spectral_results() {
     let mut document = opening();
     document.apply(Update::Opened(meta(), FileInfo::default()));
-    let mut partial = analysis(32);
-    partial.time_peak = 0.9;
-    document.apply(Update::Snapshot {
-        analysis: partial,
-        coverage: argand_dsp::Coverage { refined_columns: 10, width: 32 },
-        waveform_peak: 0.5,
-    });
-    assert_eq!(document.waveform_peak(), Some(0.5));
-    assert_eq!(document.analysis().unwrap().time_peak, 0.9);
-    let mut final_analysis = analysis(32);
-    final_analysis.time_peak = 0.9;
-    document.apply(Update::Ready { analysis: final_analysis, elapsed: Duration::from_millis(100) });
-    assert_eq!(document.waveform_peak(), Some(0.9));
+    let mut envelope = argand_core::WaveformEnvelope::new(2, 2);
+    envelope.min = vec![-0.8, -0.5, -0.3, -0.4];
+    envelope.max = vec![0.7, 0.6, 0.2, 0.9];
+    let mut snapshot = crate::minimap::Snapshot { envelope, full_scale: 0.9, complete: false };
+    document.minimap_ready(&snapshot);
+    assert!(document.sample_extrema.is_none());
+    snapshot.complete = true;
+    document.minimap_ready(&snapshot);
+    let extrema = Some(vec![(-0.8, 0.7), (-0.5, 0.9)]);
+    assert_eq!(document.sample_extrema, extrema);
+    for range in [argand_core::SampleRange::new(1000, 2048), argand_core::SampleRange::new(0, 48000)] {
+        document.requested_range(range);
+        document.apply(Update::Ready { analysis: analysis(32), elapsed: Duration::ZERO });
+        assert_eq!(document.sample_extrema, extrema);
+    }
+    assert!(opening().sample_extrema.is_none());
 }
 
 #[test]
@@ -299,7 +302,7 @@ fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
     assert_eq!(field.value, "wav · iq i16 · 24 kHz · 2s");
     assert!(field.hint.value.contains("I/Q pairs: 48,000"));
     assert!(field.hint.value.contains("File size: 187.54 KiB · 192,044 B"));
-    assert!(field.hint.value.contains("available after full-capture analysis"));
+    assert!(field.hint.value.contains("available after full-capture waveform scan"));
     let mut result = analysis(2);
     result.db.t1 = 2.0;
     result.waveform = Some(argand_core::WaveformEnvelope { columns: 2, channels: 2,
@@ -328,4 +331,14 @@ fn file_wide_extrema_use_integer_range_provenance() {
     partial.waveform = Some(argand_core::WaveformEnvelope::new(2, 2));
     document.apply(Update::Ready { analysis: partial, elapsed: Duration::ZERO });
     assert!(document.sample_extrema.is_none());
+}
+
+#[test]
+fn minimap_failure_replaces_pending_extrema_hint() {
+    let mut document = opening();
+    document.apply(Update::Opened(meta(), FileInfo::default()));
+    document.minimap_failed("test read failure".into());
+    let hint = document.file_summary().unwrap().hint.value;
+    assert!(hint.contains("Waveform unavailable: test read failure"), "{hint}");
+    assert!(!hint.contains("available after"), "{hint}");
 }

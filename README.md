@@ -20,9 +20,10 @@ Two binaries share one core. `aspec` is a command line tool that renders a
 signal file's spectrogram to a PNG, with a waveform strip above it. `argand` is
 the graphical application: it opens a capture -- by argument, from its menu, by
 drag and drop, or from the files it remembers -- analyses it on a thread of its
-own, and shows a linear waveform above the spectrogram on the same time scale, with
+own, and shows a full-capture waveform minimap above the spectrogram, with
 time and frequency marks around the spectrogram. A sparse preview appears before
-the full analysis; both panels refine from left to right, with progress shown in the status bar. Time zoom and pan are supported; selection and editing remain deferred.
+the full analysis. The spectrogram refines from left to right with status-bar progress;
+the minimap replaces its preview once the independent waveform scan completes. Time zoom and pan are supported; selection and editing remain deferred.
 
 Neither binary is a throwaway. The domain model, the readers and the transforms
 live in `argand-core`, `argand-io` and `argand-dsp`; both front ends call the
@@ -344,9 +345,20 @@ files and survives restarts. Set the initial choice with the top-level configura
 `aggregation = "max"` (default) or `aggregation = "mean-power"`. Live choices do not
 rewrite `argand.toml`; effective settings are saved in `session.toml`.
 
-The waveform and spectrogram share a time view. Scroll over either plot to pan
-in time, or hold Ctrl to zoom about the pointer. Left-drag also pans. The time
-ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved
+The waveform is a full-capture minimap. Its content and amplitude scale remain
+fixed during spectrogram navigation and analysis-setting changes. The visible
+interval stays bright; the waveform outside it is darkened, without a border or
+background fill. At full capture the whole waveform stays bright. Sub-pixel
+intervals retain a one-device-pixel minimum width.
+Click outside the interval to pan one time-ruler division toward the pointer;
+Ctrl+click pans five divisions, matching the arrow shortcuts. Single and double
+clicks inside it do nothing; drag it to pan across the capture. An outside
+double-click steps on its first press and centres on its second only if the
+pointer is still outside the updated interval. An open-hand cursor marks the
+viewport and rulers; dragging uses a closed hand. Pointer time over the minimap refers to the full recording.
+
+Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
+Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved
 for frequency panning (#80) and currently leaves the time view unchanged.
 The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands:
 
@@ -374,8 +386,8 @@ the waveform and time ruler it shows time only. Uncovered placeholder areas have
 Hold **Alt** over the spectrogram to project the cursor onto the time and frequency
 rulers, with rounded coordinate badges. White/black/white guide lines remain
 visible across palettes. Release Alt to hide the guides.
-File min/max values stay file-wide; they become available after a full-capture
-analysis and remain unchanged when navigating.
+File min/max values stay file-wide; they become available after the full-capture
+waveform scan, even if navigation interrupts the initial spectral analysis.
 
 Resizing the window or dragging the panel separator redraws from retained analysis
 without rereading the file or restarting FFT refinement. The GUI keeps up to 4096
@@ -430,7 +442,7 @@ Real and I/Q captures use one merged min/max trace, exactly as `aspec` does,
 without grid lines, a zero-axis line, a legend or an amplitude caption. Dragging stretches the existing view and
 rebins the cached view as the separator moves without restarting analysis. The older `panels.waveform_fraction`
 setting is still accepted so existing files load, but no longer sizes this strip.
-The preview keeps its colour and waveform display scales while refinement runs,
+The spectral preview keeps its colour scale while refinement runs,
 then resolves them once at completion. Replacing an analysis cancels its remaining
 work. GUI automatic normalization samples at most 64 MiB; a sparse scan can miss
 an isolated peak. `aspec` retains its existing normalization scan policy.
@@ -524,3 +536,13 @@ Fixtures for all ten sample types are generated at test time rather than
 committed. Tests that use real captures look for them in `tests/signals/` and,
 for the wider format matrix, in `../sgvr/cli/tests` or wherever
 `ARGAND_EXTRA_FIXTURES` points; they report and skip when those are absent.
+
+The GUI minimap reopens its own cancellable reader using the resolved sample count
+and normalization divisor, without another count, normalization scan or FFT. It publishes a
+bounded sparse full-width preview, then scans every sample in blocks of at most
+256 KiB. The complete envelope retains at most 65536 min/max cells per channel
+(1 MiB for I/Q), with a separate bounded read buffer. Its scale is resolved from
+the complete capture peak. Initial completion can refine the preview and its
+scale once; later zoom, pan, palette and FFT changes do not rebuild it. Resizing
+conservatively rebins cached extrema. Closing or replacing the file cancels the
+reader without waiting on the UI thread.

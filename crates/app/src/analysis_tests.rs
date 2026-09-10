@@ -529,3 +529,25 @@ fn zoom_publishes_only_a_compact_final_picture_and_keeps_display_cache_semantics
     assert_eq!(analysis.spectrogram.height, 44);
     assert_eq!(analysis.waveform.unwrap().columns, 120);
 }
+
+#[test]
+fn unknown_length_flac_finishes_preview_and_refinement() {
+    let dir = TempDir::new("flac-preview-refinement");
+    let path = dir.join("levels.flac");
+    let mut data = include_bytes!("../../io/tests/fixtures/levels.flac").to_vec();
+    data[21] &= 0xf0;
+    data[22..26].fill(0);
+    std::fs::write(&path, data).unwrap();
+    let (analyst, updates) = open(path, OpenHints::default());
+    let Some(Update::Opened(meta, _)) = next(&updates) else { panic!("file must open") };
+    assert_eq!(meta.len_samples, 16384);
+    let mut request = request();
+    request.range = SampleRange::new(0, meta.len_samples);
+    request.cfg = StftConfig::new(2048, Window::Hann);
+    assert!(analyst.request(request));
+    match next_result(&updates) {
+        Some(Update::Ready { analysis, .. }) => assert_eq!(analysis.frames, 29),
+        Some(Update::Failed(error)) => panic!("{error:#}"),
+        _ => panic!("analysis must finish"),
+    }
+}

@@ -84,6 +84,31 @@ pub enum IoError {
 
 /// Open a signal file, applying `hints` on top of whatever the file declares.
 pub fn open(path: &Path, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoError> {
+    open_impl(path, hints, None)
+}
+
+/// Open an independent cursor using already resolved length and normalization.
+/// This avoids a second count/level scan when constructing a document overview.
+pub fn reopen(meta: &SignalMeta, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoError> {
+    let hints = OpenHints {
+        normalize: Some(Normalize::Factor(meta.divisor)),
+        ..hints.clone()
+    };
+    let source = open_impl(&meta.source, &hints, Some(meta))?;
+    if source.meta().len_samples != meta.len_samples {
+        return Err(IoError::Source {
+            path: meta.source.clone(),
+            source: SourceError::Decode("capture length changed while reopening".into()),
+        });
+    }
+    Ok(source)
+}
+
+fn open_impl(
+    path: &Path,
+    hints: &OpenHints,
+    known: Option<&SignalMeta>,
+) -> Result<Box<dyn SampleSource>, IoError> {
     let head = probe_head(path)?;
 
     if let Some(spec) = hints.raw {
@@ -97,7 +122,7 @@ pub fn open(path: &Path, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoE
                 // A valid wav in a layout the flat reader will not touch --
                 // 24-bit, say. The decoder may still manage it.
                 tracing::debug!("wav layout not natively supported, trying the decoder");
-                return open_decoded(path, "wav", hints);
+                return open_decoded(path, "wav", hints, known);
             }
             Err(source) => {
                 return Err(IoError::Wav {
@@ -109,7 +134,7 @@ pub fn open(path: &Path, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoE
     }
 
     if riff::is_flac(&head) {
-        return open_decoded(path, "flac", hints);
+        return open_decoded(path, "flac", hints, known);
     }
 
     Err(IoError::UnknownContainer {
@@ -232,45 +257,40 @@ fn open_decoded(
     path: &Path,
     container: &'static str,
     hints: &OpenHints,
+    known: Option<&SignalMeta>,
 ) -> Result<Box<dyn SampleSource>, IoError> {
     let wrap = |source| IoError::Source {
         path: path.to_owned(),
         source,
     };
 
-    // The sample format is only known after probing, so a default normalize
-    // mode needs one cheap open first.
-    let normalize = match hints.normalize {
-        Some(mode) => mode,
-        None => {
-            let probe = DecodedSource::open(
-                path,
-                container,
-                hints.center_freq,
-                hints.sample_rate,
-                hints.sample_type,
-                Normalize::None,
-                0.0,
-            )
-            .map_err(wrap)?;
-            Normalize::default_for(probe.meta().sample_type.format)
-        }
-    };
+    if let Some(meta) = known {
+        return DecodedSource::reopen(meta, hints.gain_db)
+            .map(|source| Box::new(source) as Box<dyn SampleSource>)
+            .map_err(wrap);
+    }
 
-    DecodedSource::with_levels(
+    let source = DecodedSource::open(
         path,
         container,
         hints.center_freq,
         hints.sample_rate,
         hints.sample_type,
-        decoder::DecodeLevels {
+        Normalize::None,
+        0.0,
+    )
+    .map_err(wrap)?;
+    let normalize = hints
+        .normalize
+        .unwrap_or_else(|| Normalize::default_for(source.meta().sample_type.format));
+    source
+        .apply_levels(decoder::DecodeLevels {
             normalize,
             gain_db: hints.gain_db,
             scan_bytes: hints.level_scan_bytes,
-        },
-    )
-    .map(|s| Box::new(s) as Box<dyn SampleSource>)
-    .map_err(wrap)
+        })
+        .map(|source| Box::new(source) as Box<dyn SampleSource>)
+        .map_err(wrap)
 }
 
 #[cfg(test)]
