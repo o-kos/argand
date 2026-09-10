@@ -16,6 +16,10 @@
 use argand_core::axis::{self, Axis, AxisKind, LabelMeasure, LabelMetrics, LabelRun, Tick};
 use gpui::{App, Bounds, Font, FontId, Hsla, Pixels, Point, Size, Window, fill, point, px, size};
 
+#[path = "cursor_guides.rs"]
+mod cursor_guides;
+pub use cursor_guides::CursorGuides;
+
 /// Room between a label and whatever it labels.
 const LABEL_PAD: f32 = 6.0;
 /// Space between the complete axis layout and adjacent panels or window edges.

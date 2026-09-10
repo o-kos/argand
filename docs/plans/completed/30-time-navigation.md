@@ -129,3 +129,25 @@ backdrop readouts, style retention, replacement policy, progress and parked deli
 ownership; these were addressed. The next zoom review and the separate interaction
 review returned no substantive findings. Keeping an already displayed sparse preview
 as an approximate visual placeholder was retained deliberately, with numeric levels disabled.
+
+## Alt cursor guides
+
+- [x] Draw cursor-to-ruler guides while Alt is held over the spectrogram, with time and physical frequency badges on the rulers.
+- [x] Keep badges within the panel at edges; hide guides on release, pointer exit and window deactivation without requesting analysis.
+- [x] Verify coordinate mapping, native modifier transitions, full local gate, release build and independent review.
+
+Vertical frequency zoom and panning are a separate follow-up issue and are not implemented in this iteration.
+
+Native checks on the release build with a real GPU passed stationary-pointer Alt
+press/release, both plot corners, pointer exit to the waveform, window deactivation
+and reactivation after releasing Alt in another window. Pixel comparison confirmed
+that release restores the original spectral/ruler pixels; analysis completion count
+remained one throughout modifier and pointer checks. Physical mapping tests cover
+negative I/Q frequency, RF centre frequency and fractional capture time.
+
+The Alt-guide iteration passed all 473 local tests, formatting, strict Clippy and a
+fresh release build. Review identified a stale menu handle suppressing guides and
+logical-pixel badge precision on scaled displays. Both were fixed; no findings were
+declined and the follow-up review was clean. Final native checks passed Alt release
+and reactivation after both File and View menu dismissal, plus a 2x output displaying
+five fractional time digits at the one-FFT zoom floor.

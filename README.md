@@ -368,6 +368,8 @@ capture, including when reading an older session that saved zoom and position.
 The status bar shows pointer time from the capture start, physical frequency in Hz
 (including centre frequency), and the displayed grid cell's level in dBFS. Above
 the waveform and time ruler it shows time only. Uncovered placeholder areas have no level.
+Hold **Alt** over the spectrogram to project the cursor onto the time and frequency
+rulers, with exact coordinate badges. Release Alt to hide the guides.
 File min/max values stay file-wide; they become available after a full-capture
 analysis and remain unchanged when navigating.
 

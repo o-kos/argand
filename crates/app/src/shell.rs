@@ -304,6 +304,7 @@ struct Shell {
     recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
+    _activation: Subscription,
 }
 
 impl Shell {
@@ -321,6 +322,7 @@ impl Shell {
         let focus = cx.focus_handle();
         window.focus(&focus);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
+        let activation = cx.observe_window_activation(window, |_, _, cx| cx.notify());
         let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
             settings,
@@ -353,6 +355,7 @@ impl Shell {
             startup_recent: None,
             recent_updates: None,
             _bounds: bounds,
+            _activation: activation,
         }
     }
 
@@ -1236,6 +1239,7 @@ impl Render for Shell {
                 })
                 .on_mouse_move(cx.listener(Self::drag_splitter))
                 .on_mouse_move(cx.listener(Self::pointer_moved))
+                .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
                 .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_pan))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_pan))
                 .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))

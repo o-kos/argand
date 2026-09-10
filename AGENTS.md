@@ -214,3 +214,11 @@ retain it. Both
 foreground and backdrop use bounded source-column textures above 1024x stretch.
 This is a navigation placeholder, not the full-capture waveform minimap planned
 separately in #79.
+
+`axes::CursorGuides` paints transient Alt-held cursor-to-ruler lines and coordinate
+badges from the requested physical extents, with precision based on device pixels. Badges use axis font metrics and remain
+within the spectrum panel; they do not change layout or submit analysis. Modifier
+and window-activation events repaint the shell, with current window modifier state
+read during painting. Guides are absent outside the spectrum, during panning, with
+an open menu or while the window is inactive. Vertical frequency navigation is
+tracked separately in #80.

@@ -39,6 +39,7 @@ impl Shell {
         let known_geometry = self.plot_geometry;
         let view = cx.entity().downgrade();
         let separator_color = cx.theme().border;
+        let guides = self.cursor_guides(extents, cx);
         let colors = axes::Colors {
             // Over the picture rather than beside it, so it is drawn to be
             // read through: an opaque line hides a column of the spectrogram,
@@ -57,17 +58,7 @@ impl Shell {
                 let spectrum_size = size(bounds.size.width, bounds.size.height - px(height));
                 let frame = axes::Frame::measure(spectrum_size, scale, extents, &labels)?;
                 let measured = device_size(frame.plot, scale);
-                let spectrum = Bounds {
-                    origin: bounds.origin + point(px(frame.plot.x), px(height + frame.plot.y)),
-                    size: size(px(frame.plot.width), px(frame.plot.height)),
-                };
-                let geometry = navigation_ui::PlotGeometry {
-                    spectrum,
-                    navigation: Bounds {
-                        origin: point(spectrum.left(), bounds.top()),
-                        size: size(spectrum.size.width, bounds.size.height),
-                    },
-                };
+                let geometry = plot_geometry(bounds, &frame, height);
                 if known != Some(measured)
                     || known_bounds != Some(bounds)
                     || known_geometry != Some(geometry)
@@ -122,9 +113,33 @@ impl Shell {
                     }
                 }
                 axes::paint(&frame, spectrum_origin, &labels, colors, window, cx);
+                if let Some(guides) = &guides {
+                    let panel = Bounds::new(
+                        spectrum_origin,
+                        size(bounds.size.width, bounds.size.height - px(height)),
+                    );
+                    guides.paint(&frame, panel, &labels, window, cx);
+                }
             },
         )
         .size_full()
+    }
+
+    fn cursor_guides(
+        &self,
+        extents: axes::Extents,
+        cx: &Context<Self>,
+    ) -> Option<axes::CursorGuides> {
+        let menu_open = self
+            .open_menu
+            .as_ref()
+            .and_then(WeakEntity::upgrade)
+            .is_some();
+        (self.pointer.is_some() && self.pan.is_none() && !menu_open).then_some(axes::CursorGuides {
+            extents,
+            ink: cx.theme().foreground,
+            paper: cx.theme().background,
+        })
     }
 
     fn layout_panels(
@@ -140,6 +155,24 @@ impl Shell {
             self.resize(measured, cx);
         }
         cx.notify();
+    }
+}
+
+fn plot_geometry(
+    bounds: Bounds<Pixels>,
+    frame: &axes::Frame,
+    height: f32,
+) -> navigation_ui::PlotGeometry {
+    let spectrum = Bounds {
+        origin: bounds.origin + point(px(frame.plot.x), px(height + frame.plot.y)),
+        size: size(px(frame.plot.width), px(frame.plot.height)),
+    };
+    navigation_ui::PlotGeometry {
+        spectrum,
+        navigation: Bounds {
+            origin: point(spectrum.left(), bounds.top()),
+            size: size(spectrum.size.width, bounds.size.height),
+        },
     }
 }
 

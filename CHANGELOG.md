@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- Hold Alt over the spectrogram to show guide lines to the time and frequency rulers with coordinate badges.
+
 - Two compact status-bar groups: combined file details with sample count, file size
   and sample extrema, and analysis controls. Adjust FFT, window,
   overlap, aggregation, colours and display range; settings survive restarts.
