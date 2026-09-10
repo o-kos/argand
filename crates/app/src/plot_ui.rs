@@ -37,6 +37,7 @@ impl Shell {
         let known_bounds = self.panel_bounds;
         let known = self.plot;
         let known_geometry = self.plot_geometry;
+        let time_scheme = self.time_scheme;
         let view = cx.entity().downgrade();
         let separator_color = cx.theme().border;
         let guides = self.cursor_guides(extents, cx);
@@ -56,7 +57,8 @@ impl Shell {
                 let height =
                     panels::waveform_height(f32::from(bounds.size.height), rem, fraction, scale);
                 let spectrum_size = size(bounds.size.width, bounds.size.height - px(height));
-                let frame = axes::Frame::measure(spectrum_size, scale, extents, &labels)?;
+                let frame =
+                    axes::Frame::measure(spectrum_size, scale, extents, &labels, time_scheme)?;
                 let measured = device_size(frame.plot, scale);
                 let geometry = plot_geometry(bounds, &frame, height);
                 if known != Some(measured)
@@ -125,6 +127,28 @@ impl Shell {
         .size_full()
     }
 
+    pub(super) fn measure_time_scheme(
+        &self,
+        window: &Window,
+    ) -> Option<argand_core::axis::TickScheme> {
+        let bounds = self.panel_bounds?;
+        let height = panels::waveform_height(
+            f32::from(bounds.size.height),
+            f32::from(window.rem_size()),
+            self.session.waveform_fraction,
+            window.scale_factor(),
+        );
+        let panel = size(bounds.size.width, bounds.size.height - px(height));
+        axes::Frame::measure(
+            panel,
+            window.scale_factor(),
+            self.extents()?,
+            &axes::Labels::new(window),
+            None,
+        )?
+        .time_scheme
+    }
+
     fn cursor_guides(
         &self,
         extents: axes::Extents,
@@ -149,6 +173,13 @@ impl Shell {
         geometry: navigation_ui::PlotGeometry,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .plot_geometry
+            .is_some_and(|old| old.navigation.size.width != geometry.navigation.size.width)
+        {
+            self.time_scheme = None;
+            self.tick_pan = None;
+        }
         self.panel_bounds = Some(bounds);
         self.plot_geometry = Some(geometry);
         if self.plot != Some(measured) {
@@ -168,6 +199,7 @@ fn plot_geometry(
         size: size(px(frame.plot.width), px(frame.plot.height)),
     };
     navigation_ui::PlotGeometry {
+        time_scheme: frame.time_scheme,
         spectrum,
         navigation: Bounds {
             origin: point(spectrum.left(), bounds.top()),

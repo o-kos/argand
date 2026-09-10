@@ -117,3 +117,39 @@ fn wider_picture_fills_only_time_missing_from_the_foreground() {
     assert_eq!(uncovered((0.0, 10.0), None), vec![(0.0, 1.0)]);
     assert_eq!(uncovered((0.0, 10.0), Some((0.0, 4.0))), vec![(0.4, 1.0)]);
 }
+
+#[test]
+fn keyboard_pan_accumulates_fractional_samples_without_drift() {
+    let original = View { start: 10000, len: 1000 };
+    let mut pan = TickPan::new(original, 7.2);
+    for _ in 0..100 { pan.advance(1, 100000); }
+    assert_eq!(pan.view.start, original.start + 720);
+    for _ in 0..100 { pan.advance(-1, 100000); }
+    assert_eq!(pan.view, original);
+    pan.advance(5, 100000);
+    assert_eq!(pan.view.start, original.start + 36);
+}
+
+#[test]
+fn keyboard_pan_reverses_immediately_at_capture_edges() {
+    let mut pan = TickPan::new(View { start: 2, len: 20 }, 7.2);
+    pan.advance(-5, 100);
+    assert_eq!(pan.view.start, 0);
+    pan.advance(1, 100);
+    assert_eq!(pan.view.start, 7);
+    pan.advance(100, 100);
+    assert_eq!(pan.view.start, 80);
+    pan.advance(-1, 100);
+    assert_eq!(pan.view.start, 73);
+}
+
+#[test]
+fn sub_sample_divisions_accumulate_away_from_capture_edges() {
+    let mut pan = TickPan::new(View { start: 0, len: 2 }, 0.2);
+    for _ in 0..5 { pan.advance(1, 100); }
+    assert_eq!(pan.view.start, 1);
+    pan.advance(1000, 100);
+    assert_eq!(pan.view.start, 98);
+    for _ in 0..5 { pan.advance(-1, 100); }
+    assert_eq!(pan.view.start, 97);
+}

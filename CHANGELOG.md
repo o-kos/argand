@@ -89,7 +89,7 @@ promise applies to.
 
 ### Changed
 
-- Time views are no longer saved between launches. The time ruler supports drag and wheel panning; the crosshair is limited to the spectrogram.
+- Every file opening resets time zoom and position. Wheel zoom and Ctrl+wheel horizontal pan work over both the spectrogram and time ruler. Left/Right move by one ruler division, Ctrl+Left/Right by five, preserving ruler spacing and format. The crosshair is limited to the spectrogram.
 
 - Analysis settings preview until OK, with Cancel and Reset to defaults controls.
   Dynamic range now belongs to the current file rather than the saved session.

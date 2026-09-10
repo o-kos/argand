@@ -1,9 +1,8 @@
 //! Sample-based time navigation and lookup in the picture currently displayed.
 
 use argand_core::{DbGrid, SampleRange};
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct View {
     pub start: u64,
     pub len: u64,
@@ -61,6 +60,36 @@ impl View {
         Self {
             start: shifted(self.start, self.len as f64 * fraction, total - self.len),
             ..self
+        }
+    }
+}
+
+/// Accumulate fractional-sample tick steps without rounding each key press.
+pub struct TickPan {
+    pub view: View,
+    pub step: f64,
+    origin: u64,
+    divisions: i64,
+}
+
+impl TickPan {
+    pub fn new(view: View, step: f64) -> Self {
+        Self {
+            view,
+            step,
+            origin: view.start,
+            divisions: 0,
+        }
+    }
+
+    pub fn advance(&mut self, divisions: i64, total: u64) {
+        self.divisions = self.divisions.saturating_add(divisions);
+        let limit = total - self.view.len;
+        let shift = self.divisions as f64 * self.step;
+        self.view.start = shifted(self.origin, shift, limit);
+        if shift <= -(self.origin as f64) || shift >= (limit - self.origin) as f64 {
+            self.origin = self.view.start;
+            self.divisions = 0;
         }
     }
 }

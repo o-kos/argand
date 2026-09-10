@@ -240,8 +240,6 @@ fn parsed<T: std::str::FromStr>(field: &'static str, text: &Option<String>) -> O
 /// only paths would offer entries that fail every time they are chosen.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Recent {
-    #[serde(skip)]
-    pub view: Option<crate::navigation::View>,
     pub path: PathBuf,
     #[serde(default)]
     pub hints: Hints,
@@ -470,16 +468,10 @@ impl Session {
             );
             return;
         }
-        let view = self
-            .recent
-            .iter()
-            .find(|entry| entry.path == path)
-            .and_then(|entry| entry.view);
         self.recent.retain(|entry| entry.path != path);
         self.recent.insert(
             0,
             Recent {
-                view,
                 path,
                 hints: Hints::from(hints),
             },

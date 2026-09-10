@@ -169,10 +169,10 @@ probes; these are not input-to-display measurements.
 ## Time navigation (#30)
 
 `navigation.rs` owns bounded sample ranges and held-grid level lookup without GPUI.
-The shell restores each recent entry's in-memory view within the current run, clamps its span to
+The shell starts every opened file at its full sample range, clamps its span to
 one FFT or the shorter capture, and sends range changes through the existing
 cancellable mailbox. Size and style changes retain their previous cache semantics.
-`navigation_ui.rs` provides wheel zoom about the pointer, left-drag pan (including the time ruler), ordinary wheel pan over the time ruler, keyboard
+`navigation_ui.rs` provides wheel zoom about the pointer, left-drag pan (including the time ruler), identical wheel zoom and Ctrl+wheel horizontal pan over plots and the time ruler, keyboard
 commands and the View menu. The crosshair is restricted to the spectrogram. `plot_ui.rs` immediately maps both held pictures into
 the requested time interval and clips the spectrogram to its plot. Cursor levels
 come from the displayed grid's own extents; uncovered time has no reported level.
@@ -182,7 +182,7 @@ At zoom ratios above 1024, the few visible source columns are cached as one-pixe
 with clipped bounds to avoid losing the viewport in large GPU f32 image coordinates.
 `AxisKind::PreciseTime` extends the shared clock ladder with fractional seconds
 for the GUI; CLI whole-second clock formatting remains unchanged.
-Recent time views are memory-only: serialization omits them and deserialization ignores legacy saved ranges. Each new launch starts with the full capture. Navigation gestures perform no filesystem writes.
+Recent entries contain no time view; deserialization ignores legacy saved ranges. Each file opening starts with the full capture, even within the same run. Navigation gestures perform no filesystem writes.
 The minimum span also reserves two floating-point ULPs per display column at
 extreme sample counts (at least ten columns for keyboard pans). Width changes
 reapply this floor before requesting analysis; waveform lookup uses pixel centres. The settings editor restores automatic view expansion on
@@ -222,3 +222,13 @@ and window-activation events repaint the shell, with current window modifier sta
 read during painting. Guides are absent outside the spectrum, during panning, with
 an open menu or while the window is inactive. Vertical frequency navigation is
 tracked separately in #80.
+
+`axis::TickScheme` retains the selected division spacing and clock-format span while
+panning. Zoom, file opening and width changes release that scheme for fresh layout.
+If wider labels collide after a pan, the grid remains stable and colliding label text
+is omitted. Left/Right pan by one measured division; Ctrl+Left/Right by five.
+`navigation::TickPan` accumulates divisions before sample rounding, preventing drift
+for nonintegral samples per division; hitting either capture edge resets its origin.
+Shift+wheel is reserved for vertical frequency panning in #80 and currently does
+not navigate in time. Ctrl+wheel pans horizontally; unmodified wheel zooms on both
+plots and the time ruler.

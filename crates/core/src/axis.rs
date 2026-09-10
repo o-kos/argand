@@ -153,24 +153,72 @@ const CLOCK_STEPS: [f64; 18] = [
     DAY,
 ];
 
+/// Tick spacing and clock format retained while panning a view.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TickScheme {
+    pub step: f64,
+    pub span: f64,
+}
+
+pub struct TickLayout {
+    pub ticks: Vec<Tick>,
+    pub scheme: Option<TickScheme>,
+}
+
 /// The ticks this axis accepts: the densest round step whose labels still read.
 pub fn ticks(kind: AxisKind, axis: Axis, labels: &LabelMetrics<'_>) -> Vec<Tick> {
+    tick_layout(kind, axis, labels, None).ticks
+}
+
+/// Reuse a scheme during panning, or choose the densest readable spacing.
+/// A retained scheme keeps every grid mark, hiding only colliding labels.
+pub fn tick_layout(
+    kind: AxisKind,
+    axis: Axis,
+    labels: &LabelMetrics<'_>,
+    held: Option<TickScheme>,
+) -> TickLayout {
+    let empty = || TickLayout {
+        ticks: Vec::new(),
+        scheme: None,
+    };
     let span = axis.max - axis.min;
     if axis.length < 2 || !axis.min.is_finite() || !span.is_finite() || span <= 0.0 {
-        return Vec::new();
+        return empty();
     }
-
-    // A first bound on how dense the axis could possibly be: even a label of no
-    // width needs the gap beside it, so no step below this one can ever fit.
+    if let Some(scheme) =
+        held.filter(|s| s.step.is_finite() && s.step > 0. && s.span.is_finite() && s.span > 0.)
+    {
+        let mut placed = place(kind, axis, scheme, labels, true);
+        let mut end = f64::NEG_INFINITY;
+        for item in &mut placed {
+            if item.tick.label.is_empty() {
+                continue;
+            }
+            if item.start - end < labels.gap() {
+                item.tick.label.clear();
+            } else {
+                end = item.end;
+            }
+        }
+        return TickLayout {
+            ticks: placed.into_iter().map(|p| p.tick).collect(),
+            scheme: Some(scheme),
+        };
+    }
     let length = axis.length as f64;
     let most = (length / labels.gap()).clamp(1.0, length);
     for step in ladder(kind, span / most) {
-        let placed = place(kind, axis, step, labels);
+        let scheme = TickScheme { step, span };
+        let placed = place(kind, axis, scheme, labels, false);
         if !placed.is_empty() && readable(&placed, labels.gap()) {
-            return placed.into_iter().map(|p| p.tick).collect();
+            return TickLayout {
+                ticks: placed.into_iter().map(|p| p.tick).collect(),
+                scheme: Some(scheme),
+            };
         }
     }
-    Vec::new()
+    empty()
 }
 
 /// The unit this axis prints in, named once instead of on every tick.
@@ -232,7 +280,14 @@ struct Placed {
 ///
 /// Values are `k * step` rather than a running sum: a tick at zero then comes
 /// out exactly zero, and the last one has not drifted by an accumulated epsilon.
-fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Vec<Placed> {
+fn place(
+    kind: AxisKind,
+    axis: Axis,
+    scheme: TickScheme,
+    labels: &LabelMetrics<'_>,
+    keep_edge_marks: bool,
+) -> Vec<Placed> {
+    let step = scheme.step;
     let span = axis.max - axis.min;
     let scale = (axis.length - 1) as f64 / span;
     // The slack absorbs the last bit of the division, so a range whose end sits
@@ -267,7 +322,7 @@ fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Ve
     for k in first..=last {
         let value = k as f64 * step;
         let label = if kind == AxisKind::PreciseTime {
-            format_precise_clock(value, clock_of(axis.min, axis.max), step)
+            format_precise_clock(value, clock_of(0., scheme.span), step)
         } else {
             format_label(kind, value, axis.min, axis.max)
         };
@@ -302,7 +357,15 @@ fn place(kind: AxisKind, axis: Axis, step: f64, labels: &LabelMetrics<'_>) -> Ve
 
     let lo = -(axis.lead as f64);
     let hi = (axis.length - 1 + axis.trail) as f64;
-    placed.retain(|p| p.start >= lo && p.end <= hi);
+    if keep_edge_marks {
+        for item in &mut placed {
+            if item.start < lo || item.end > hi {
+                item.tick.label.clear();
+            }
+        }
+    } else {
+        placed.retain(|p| p.start >= lo && p.end <= hi);
+    }
     placed
 }
 

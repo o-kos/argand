@@ -26,7 +26,7 @@ physical extents. The shell currently always requests the full capture.
   Never stretch old data across a different physical time interval.
 - Submit ranges through the existing latest-request mailbox. Preserve the
   worker's single-pass and cancellation guarantees.
-- Keep sample ranges in memory with recent-file entries during one run; reset them to full capture on restart. Ignore ranges saved by older sessions.
+- Start every opened or reopened file at full capture. Ignore ranges saved by older sessions.
 - Read cursor levels from the displayed grid at its own extents, including
   during placeholder rendering; do not report levels in uncovered areas.
 
@@ -151,3 +151,34 @@ logical-pixel badge precision on scaled displays. Both were fixed; no findings w
 declined and the follow-up review was clean. Final native checks passed Alt release
 and reactivation after both File and View menu dismissal, plus a 2x output displaying
 five fractional time digits at the one-FFT zoom floor.
+
+## Unified wheel and division-based keyboard navigation
+
+- [x] Reset zoom and position on every file opening, including recent-file reopening; remove per-file in-memory view retention.
+- [x] Use wheel zoom and Ctrl+wheel horizontal pan over both plots and the time ruler. Reserve Shift+wheel for #80 without changing time.
+- [x] Move by one actual ruler division with Left/Right and by five with Ctrl+Left/Right; retain grid spacing and clock format during panning.
+- [x] Accumulate fractional samples across key presses and clamp/reverse correctly at capture edges.
+- [x] Validate stable labels, file reopening and wheel/keyboard gestures with unit tests and the native release; complete the full gate and independent review.
+
+The owner clarified that labels travel with the spectrum while their spacing and
+format remain stable. Five divisions are the chosen coarse step. These requirements
+supersede earlier in-memory view restoration and time-ruler wheel-pan behavior.
+
+Native checks on the rebuilt release passed both wheel surfaces (plain zoom,
+Ctrl horizontal pan, Shift no-op), one-division and five-division keys, and exact
+return after reversing keys. At the measured 0.2-second ruler spacing, Right moved
+1440 samples and Ctrl+Right moved 7200 at 7200 samples/s. Screenshots confirmed the
+same labels shifted one division with unchanged spacing and format. Reopening the
+same file, opening a second path and returning to the first all restored full capture
+in one process. Zoom and Right sent in one event batch produced the same requested
+range as the commands sent with a redraw between them.
+
+The navigation review requested retaining held grid marks when edge labels do not
+fit and preserving the scheme during style-only settings changes. Both findings
+were accepted and fixed; the follow-up review was clean. A further regression covers
+sub-sample steps away from both file edges. The final full gate passes 478 tests.
+
+Final native reruns passed on the rebuilt release, including the same-process reopen
+sequence, both wheel surfaces, one/five-division steps and combined zoom/arrow input.
+Changing the zoomed, panned capture to grayscale left the entire time-ruler strip
+pixel-identical, confirming retained spacing through a style update.

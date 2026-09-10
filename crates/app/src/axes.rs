@@ -67,6 +67,7 @@ pub struct Frame {
     /// The spectrogram's own rectangle, which is what a transform is sized to.
     pub plot: Rect,
     pub time: Vec<Tick>,
+    pub time_scheme: Option<axis::TickScheme>,
     pub frequency: Vec<Tick>,
     /// The unit the frequency labels are in, named once above them instead of
     /// on every tick.
@@ -94,6 +95,7 @@ impl Frame {
         scale: f32,
         extents: Extents,
         measure: &dyn LabelMeasure,
+        held: Option<axis::TickScheme>,
     ) -> Option<Self> {
         let (t0, t1) = extents.seconds;
         let (f0, f1) = extents.hertz;
@@ -136,20 +138,22 @@ impl Frame {
             return None;
         }
 
+        let time = axis::tick_layout(
+            AxisKind::PreciseTime,
+            Axis {
+                length: plot.width as i64,
+                min: t0,
+                max: t1,
+                lead: 0,
+                trail: 0,
+            },
+            &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).after_tick(LABEL_PAD),
+            held,
+        );
         Some(Self {
             plot,
-            // Time labels stay under the plot, clear of the frequency gutter.
-            time: axis::ticks(
-                AxisKind::PreciseTime,
-                Axis {
-                    length: plot.width as i64,
-                    min: t0,
-                    max: t1,
-                    lead: 0,
-                    trail: 0,
-                },
-                &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).after_tick(LABEL_PAD),
-            ),
+            time: time.ticks,
+            time_scheme: time.scheme,
             // Frequency ink stays within the plot height, clear of both the
             // unit above and the time-label row below.
             frequency: axis::ticks(

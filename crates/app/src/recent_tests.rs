@@ -8,7 +8,6 @@ use crate::session::Hints;
 
 fn entry(path: impl Into<PathBuf>) -> Recent {
     Recent {
-        view: None,
         path: path.into(),
         hints: Hints::default(),
     }

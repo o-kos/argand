@@ -282,6 +282,8 @@ struct Shell {
     /// overview without restarting analysis when only these dimensions change.
     plot: Option<PlotSize>,
     view: Option<crate::navigation::View>,
+    time_scheme: Option<argand_core::axis::TickScheme>,
+    tick_pan: Option<crate::navigation::TickPan>,
     plot_geometry: Option<navigation_ui::PlotGeometry>,
     pointer: Option<gpui::Point<Pixels>>,
     pan: Option<navigation_ui::Pan>,
@@ -338,6 +340,8 @@ impl Shell {
             file: None,
             plot: None,
             view: None,
+            time_scheme: None,
+            tick_pan: None,
             plot_geometry: None,
             pointer: None,
             pan: None,
@@ -385,6 +389,8 @@ impl Shell {
         self.release(window);
         self.plot = None;
         self.view = None;
+        self.time_scheme = None;
+        self.tick_pan = None;
         self.plot_geometry = None;
         self.pointer = None;
         self.pan = None;
@@ -513,7 +519,7 @@ impl Shell {
 
         match effect {
             Effect::Opened => {
-                self.restore_view();
+                self.reset_view();
                 // Remembered now rather than when it was asked for. A file
                 // that will not open must not overwrite the hints of the entry
                 // that did: a raw capture first opened with `--raw iq_i16@2M`
@@ -525,7 +531,6 @@ impl Shell {
                     .map(|file| file.document.origin().clone())
                 {
                     self.remember_file(&origin);
-                    self.remember_view();
                 }
                 // The span to analyse is the length the file has just
                 // reported, so this is the first moment a request can be built
@@ -552,6 +557,8 @@ impl Shell {
         let width_changed = self.plot.is_none_or(|old| old.width != plot.width);
         self.plot = Some(plot);
         if width_changed {
+            self.time_scheme = None;
+            self.tick_pan = None;
             self.bound_view();
         }
         self.ask_for_a_picture();

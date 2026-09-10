@@ -345,14 +345,16 @@ files and survives restarts. Set the initial choice with the top-level configura
 rewrite `argand.toml`; effective settings are saved in `session.toml`.
 
 The waveform and spectrogram share a time view. Scroll over either plot to zoom
-about the pointer, or drag with the left button to pan. Shift-scroll and horizontal
-scroll also pan. The time ruler accepts left-drag panning and ordinary wheel panning.
+about the pointer, or drag with the left button to pan. The time ruler uses the
+same gestures: wheel zooms, Ctrl+wheel pans horizontally. Shift+wheel is reserved
+for frequency panning (#80) and currently leaves the time view unchanged.
 The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands:
 
 | Key | Action |
 | --- | --- |
 | `+` or `=` / `-` | Zoom in / out about the view centre |
-| Left / Right | Pan by one tenth of the visible span |
+| Left / Right | Pan by one time-ruler division |
+| Ctrl+Left / Ctrl+Right | Pan by five time-ruler divisions |
 | Home / End | Move to the capture's beginning / end |
 | `0` | Fit the entire capture |
 
@@ -361,9 +363,10 @@ for extreme sample indices. This floor is rechecked when the plot width changes.
 completed image replaces the placeholder at the same physical coordinates. A retained
 wider picture fills known time on zoom-out while the replacement is calculated.
 Rapid navigation replaces pending requests instead of queuing transforms.
-Time views remain in memory when switching between recent files during one run,
-but are never written to the session file. Every new launch starts with the full
-capture, including when reading an older session that saved zoom and position.
+Every file opening starts at full capture, including reopening a recent file within
+the same run. Legacy saved zoom and position are ignored. Panning retains the ruler
+spacing and clock format; arrow steps round to the nearest sample without accumulating
+fractional-sample drift. Capture boundaries limit the last step.
 
 The status bar shows pointer time from the capture start, physical frequency in Hz
 (including centre frequency), and the displayed grid cell's level in dBFS. Above
