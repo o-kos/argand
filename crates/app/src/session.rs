@@ -72,7 +72,7 @@ pub const RECENT_LIMIT: usize = 10;
 /// whatever that version was recording. The number goes up whenever the layout
 /// gains something, so that an older binary sees a number it does not know and
 /// leaves the file rather than quietly rewriting it without what it could not
-/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 adds per-file time views.
+/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load.
 pub const VERSION: u32 = 6;
 
 /// Every layout this program can read, oldest first.
@@ -240,7 +240,7 @@ fn parsed<T: std::str::FromStr>(field: &'static str, text: &Option<String>) -> O
 /// only paths would offer entries that fail every time they are chosen.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Recent {
-    #[serde(default)]
+    #[serde(skip)]
     pub view: Option<crate::navigation::View>,
     pub path: PathBuf,
     #[serde(default)]
@@ -533,12 +533,6 @@ impl Writer {
             pending: None,
             last_attempt: None,
         }
-    }
-
-    /// Stage navigation state without filesystem work in the input handler.
-    /// The next ordinary save or orderly window close writes the latest view.
-    pub fn stage(&mut self, session: Session) {
-        self.pending = (session != self.stored).then_some(session);
     }
 
     /// Record where the window is now, and write if enough time has passed.

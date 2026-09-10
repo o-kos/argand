@@ -70,6 +70,10 @@ promise applies to.
 
 ### Fixed
 
+- Time zoom keeps the current detail until a complete replacement is ready instead
+  of flashing sparse previews. Deep zoom computes short ranges in one pass and
+  avoids repeating identical display work; a retained wider picture fills known areas on zoom out.
+
 - Resizing the GUI window or dragging its panel separator reuses a bounded
   spectral overview instead of restarting complete file analysis. Refinement
   continues during resizing, and status timing and colour levels remain stable.
@@ -82,6 +86,8 @@ promise applies to.
   right-hand title-bar area no longer starts a resize when the window is expanded.
 
 ### Changed
+
+- Time views are no longer saved between launches. The time ruler supports drag and wheel panning; the crosshair is limited to the spectrogram.
 
 - Analysis settings preview until OK, with Cancel and Reset to defaults controls.
   Dynamic range now belongs to the current file rather than the saved session.

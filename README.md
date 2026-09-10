@@ -346,7 +346,8 @@ rewrite `argand.toml`; effective settings are saved in `session.toml`.
 
 The waveform and spectrogram share a time view. Scroll over either plot to zoom
 about the pointer, or drag with the left button to pan. Shift-scroll and horizontal
-scroll also pan. The View menu exposes the keyboard commands:
+scroll also pan. The time ruler accepts left-drag panning and ordinary wheel panning.
+The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands:
 
 | Key | Action |
 | --- | --- |
@@ -357,16 +358,16 @@ scroll also pan. The View menu exposes the keyboard commands:
 
 The minimum span is one FFT, with a screen-resolution representability floor
 for extreme sample indices. This floor is rechecked when the plot width changes. Axes and held pictures move immediately; a new
-preview replaces the placeholder at the same physical coordinates. Newly exposed
-areas remain empty until a preview covers them. Rapid navigation replaces pending
-requests instead of queuing transforms. Each recent entry remembers its time view,
-clamped to the opened file and current FFT size on restoration. Navigation changes
-are staged in memory and written with the next session save or orderly window
-close, keeping filesystem work out of navigation input handlers.
+completed image replaces the placeholder at the same physical coordinates. A retained
+wider picture fills known time on zoom-out while the replacement is calculated.
+Rapid navigation replaces pending requests instead of queuing transforms.
+Time views remain in memory when switching between recent files during one run,
+but are never written to the session file. Every new launch starts with the full
+capture, including when reading an older session that saved zoom and position.
 
 The status bar shows pointer time from the capture start, physical frequency in Hz
 (including centre frequency), and the displayed grid cell's level in dBFS. Above
-the waveform it shows time only. Uncovered placeholder areas have no level.
+the waveform and time ruler it shows time only. Uncovered placeholder areas have no level.
 File min/max values stay file-wide; they become available after a full-capture
 analysis and remain unchanged when navigating.
 

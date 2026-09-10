@@ -22,12 +22,11 @@ physical extents. The shell currently always requests the full capture.
   of GPUI and test them directly. The minimum span is one FFT, capped at the
   actual capture length for shorter inputs.
 - Apply the requested range to axes and both held pictures in the next frame;
-  crop to the plot and leave uncovered time blank until the next preview arrives.
+  crop to the plot and use the retained wider picture for known time while the complete replacement is calculated.
   Never stretch old data across a different physical time interval.
 - Submit ranges through the existing latest-request mailbox. Preserve the
   worker's single-pass and cancellation guarantees.
-- Persist sample ranges with recent-file entries and validate them against the
-  opened capture and current FFT. Preserve compatibility with older sessions.
+- Keep sample ranges in memory with recent-file entries during one run; reset them to full capture on restart. Ignore ranges saved by older sessions.
 - Read cursor levels from the displayed grid at its own extents, including
   during placeholder rendering; do not report levels in uncovered areas.
 
@@ -40,7 +39,7 @@ physical extents. The shell currently always requests the full capture.
 
 ## Implementation steps
 
-- [x] Implement and test bounded navigation, cursor lookup and view persistence.
+- [x] Implement and test bounded navigation, cursor lookup and in-memory recent views.
 - [x] Integrate synchronized immediate rendering and mouse/keyboard controls.
 - [x] Check superseded requests, range-specific metadata and settings changes.
 - [x] ➕ Add fractional time labels for zoomed GUI views; preserve CLI clock formatting.
@@ -98,3 +97,35 @@ the preceding rounds were accepted and addressed; none were deferred or rejected
 The final release passed repeated native RF, resizing, endpoint navigation and
 one-hour deep-zoom checks. Linux CI is blocked before compilation by an unrelated
 Google Chrome APT index checksum mismatch, tracked separately in #78.
+
+## Owner feedback: zoom performance
+
+Owner testing rejected the current zoom/pan redraw: sparse replacement previews flicker and deep zoom completes too slowly. Earlier native checks did not establish acceptable continuous navigation.
+
+- [x] Measure current short-range analysis and preview/render overhead.
+- [x] Keep navigation from replacing held detail with sparse intermediate snapshots.
+- [x] Add a bounded sequential path for small FFT workloads, retaining cancellation and resize/style cache semantics.
+- [x] Validate real/IQ, Max/MeanPower, rapid zoom and cancellation; record timings and native limitations.
+- [x] Repeat the local gate, release build and independent review for this iteration.
+
+Full-capture waveform minimap behaviour belongs to #79 and a separate PR.
+
+Evidence: [zoom measurements and native checks](../../performance/30-zoom.md).
+
+## Navigation interaction follow-up
+
+- [x] Restrict the crosshair to the spectrogram; retain the drag cursor during panning.
+- [x] Accept left-drag panning and ordinary mouse-wheel panning on the time ruler.
+- [x] Keep recent-file views only in memory during one run; ignore legacy saved ranges and start each new launch at full capture.
+- [x] Validate ruler gestures, cursor regions and restart behavior on the rebuilt native application.
+
+The restart requirement above supersedes the original per-file persistence acceptance criteria and its earlier restoration checks.
+
+The final iteration passed formatting, strict Clippy, all 469 local tests and a fresh
+release build. Native GPU checks covered the zoom replacement, palette swap,
+ruler gestures, cursor regions and restart behavior described in
+`docs/performance/30-zoom.md`. Two review rounds identified five issues across
+backdrop readouts, style retention, replacement policy, progress and parked delivery
+ownership; these were addressed. The next zoom review and the separate interaction
+review returned no substantive findings. Keeping an already displayed sparse preview
+as an approximate visual placeholder was retained deliberately, with numeric levels disabled.

@@ -665,7 +665,7 @@ fn the_version_goes_up_when_the_layout_gains_something() {
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
         text.contains("version = 6"),
-        "per-file navigation requires session version 6: {text}"
+        "the current session layout remains version 6: {text}"
     );
 }
 
@@ -738,7 +738,7 @@ fn analysis_settings_survive_restart_without_changing_configuration_or_older_geo
 
 
 #[test]
-fn recent_views_survive_reordering_and_disk_restoration() {
+fn recent_views_survive_reordering_but_not_restart() {
     let dir = TempDir::new("time-view");
     let path = dir.path.join("session.toml");
     let mut session = Session::default();
@@ -750,21 +750,25 @@ fn recent_views_survive_reordering_and_disk_restoration() {
     assert_eq!(session.recent[0].view, Some(view));
     assert_eq!(session.recent[1].view, None);
     assert!(session.save(&path));
-    assert_eq!(Session::load(&path).session.recent, session.recent);
+    assert!(!std::fs::read_to_string(&path).unwrap().contains("[recent.view]"));
+    let restored = Session::load(&path).session;
+    assert!(restored.recent.iter().all(|entry| entry.view.is_none()));
+    session.recent[0].view = None;
+    assert_eq!(restored.recent, session.recent);
 }
 
 
 #[test]
-fn staging_navigation_does_not_write_until_flush() {
-    let dir = TempDir::new("stage-view");
+fn legacy_saved_zoom_is_ignored() {
+    let dir = TempDir::new("legacy-view");
     let path = dir.join("session.toml");
-    let initial = Session::default();
-    let mut writer = Writer::new(path.clone(), initial.clone());
-    let mut next = initial;
-    next.remember(Path::new("one.wav"), &OpenHints::default());
-    next.recent[0].view = Some(crate::navigation::View { start: 100, len: 2048 });
-    writer.stage(next.clone());
-    assert!(!path.exists(), "navigation must not touch the filesystem");
-    writer.flush(Instant::now());
-    assert_eq!(Session::load(&path).session, next);
+    let mut session = Session::default();
+    session.remember(Path::new("/captures/one.wav"), &OpenHints::default());
+    assert!(session.save(&path));
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str("\n[recent.view]\nstart = 100\nlen = 2048\n");
+    std::fs::write(&path, text).unwrap();
+    let restored = Session::load(&path).session;
+    assert_eq!(restored.recent.len(), 1);
+    assert_eq!(restored.recent[0].view, None);
 }

@@ -139,3 +139,88 @@ fn explicit_style_refresh_bypasses_the_periodic_snapshot_interval() {
         assert!((actual - expected).abs() < 0.0001);
     }
 }
+
+#[test]
+fn final_only_overview_matches_progressive_for_serial_and_parallel_workloads() {
+    for domain in [Domain::Real, Domain::Iq] {
+        for reduce in [Reduce::Max, Reduce::MeanPower] {
+            for frames in [1, 16, 128, 257] {
+                check_final_only(domain, reduce, frames);
+            }
+        }
+    }
+}
+
+fn check_final_only(domain: Domain, reduce: Reduce, frames: usize) {
+    let len = FFT + FFT / 4 * (frames - 1) + 93;
+    let mut values = match domain {
+        Domain::Real => real_tone(len, TONE_HZ, 0.4),
+        Domain::Iq => iq_tone(len, TONE_HZ, 0.4),
+    };
+    *values.last_mut().unwrap() = 0.9;
+    let mut source = VecSource::new(domain, values, 12500000.0);
+    let mut req = request(41, 33, SampleRange::new(17, len as u64 - 17));
+    req.reduce = reduce;
+    req.waveform_columns = Some(41);
+    let mut progressive = analyze_overview(&mut source, &req, ProgressiveOptions::default(),
+        &|| Flow::Continue, &mut |_, _| Flow::Continue).unwrap();
+    let expected = progressive.render(41, 33, Some(41)).unwrap();
+    let mut final_only = analyze_overview(&mut source, &req, ProgressiveOptions::default().final_only(),
+        &|| Flow::Continue, &mut |_, _| panic!("navigation must not publish intermediate pictures")).unwrap();
+    let actual = final_only.render(41, 33, Some(41)).unwrap();
+    assert_eq!(actual.frames, expected.frames);
+    assert_eq!(actual.time_peak, 0.9);
+    let a = actual.waveform.as_ref().unwrap();
+    let b = expected.waveform.as_ref().unwrap();
+    assert_eq!(a.min, b.min);
+    assert_eq!(a.max, b.max);
+    assert_eq!((a.t0, a.t1, a.columns, a.channels), (b.t0, b.t1, b.columns, b.channels));
+    assert_eq!((actual.db.t0, actual.db.t1), (expected.db.t0, expected.db.t1));
+    for (a, b) in actual.db.values.iter().zip(&expected.db.values) {
+        assert!((a-b).abs() < 0.0001, "{domain:?} {reduce:?} {frames}: {a} != {b}");
+    }
+    for (a, b) in actual.psd.db.iter().zip(&expected.psd.db) {
+        assert!((a-b).abs() < 0.0001);
+    }
+    assert_eq!(actual.spectrogram.rgba, expected.spectrogram.rgba);
+}
+
+#[test]
+fn final_only_reads_samples_once_in_order_and_cancels_between_bounded_batches() {
+    use std::cell::Cell;
+    struct Tracked {
+        source: VecSource,
+        seeks: usize,
+        reads: Cell<usize>,
+        values: usize,
+    }
+    impl SampleSource for Tracked {
+        fn meta(&self) -> &SignalMeta { self.source.meta() }
+        fn seek(&mut self, n: u64) -> Result<(), SourceError> { self.seeks += 1; self.source.seek(n) }
+        fn read(&mut self, buf: &mut [f32]) -> Result<usize, SourceError> {
+            self.reads.set(self.reads.get() + 1);
+            let n = self.source.read(buf)?;
+            self.values += n;
+            Ok(n)
+        }
+        fn access_pattern(&mut self, pattern: argand_core::AccessPattern) {
+            assert_eq!(pattern, argand_core::AccessPattern::Sequential);
+        }
+    }
+    let len = FFT * 100 + 93;
+    let mut source = Tracked { source: VecSource::new(Domain::Iq, iq_tone(len, TONE_HZ, 0.4), 0.0),
+        seeks: 0, reads: Cell::new(0), values: 0 };
+    let mut req = request(31, 19, SampleRange::new(17, len as u64 - 17));
+    req.waveform_columns = Some(31);
+    analyze_overview(&mut source, &req, ProgressiveOptions::new(8).unwrap().final_only(),
+        &|| Flow::Continue, &mut |_, _| panic!("no preview")).unwrap();
+    assert_eq!(source.seeks, 1);
+    assert_eq!(source.values, (len - 17) * 2);
+    let checks = Cell::new(0);
+    source.reads.set(0);
+    let result = analyze_overview(&mut source, &req, ProgressiveOptions::new(8).unwrap().final_only(),
+        &|| { checks.set(checks.get()+1); if checks.get() > 2 { Flow::Stop } else { Flow::Continue } },
+        &mut |_, _| panic!("no preview"));
+    assert!(matches!(result, Err(DspError::Cancelled)));
+    assert_eq!(source.reads.get(), 1);
+}

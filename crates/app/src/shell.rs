@@ -28,6 +28,9 @@ use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, Them
 use crate::settings::Settings;
 use argand_dsp::AnalysisRequest;
 
+#[path = "backdrop.rs"]
+mod backdrop;
+
 #[path = "navigation_ui.rs"]
 mod navigation_ui;
 #[path = "plot_ui.rs"]
@@ -288,6 +291,8 @@ struct Shell {
     /// uploaded image in the window's texture atlas until it is told to let go.
     texture: Option<Arc<RenderImage>>,
     deep_preview: Option<Arc<plot_ui::DeepPreview>>,
+    backdrop: Option<backdrop::Backdrop>,
+    backdrop_refresh: Option<backdrop::Refresh>,
     upload_pending: bool,
     title_drag_pending: bool,
     waveform: Option<Arc<waveform::Waveform>>,
@@ -336,6 +341,8 @@ impl Shell {
             pan: None,
             texture: None,
             deep_preview: None,
+            backdrop: None,
+            backdrop_refresh: None,
             upload_pending: false,
             title_drag_pending: false,
             waveform: None,
@@ -483,13 +490,19 @@ impl Shell {
 
     /// Fold one update from the analysis thread into the document, and do
     /// whatever it asks for.
-    fn receive(&mut self, delivery: Delivery, _window: &mut Window, cx: &mut Context<Self>) {
+    fn receive(&mut self, delivery: Delivery, window: &mut Window, cx: &mut Context<Self>) {
         let Some(file) = self.file.as_mut() else {
             return;
         };
         if !file.analyst.accepts(&delivery) {
             return;
         }
+        let Some(delivery) = self.refresh_backdrop_style(delivery, window, cx) else {
+            return;
+        };
+        let Some(file) = self.file.as_mut() else {
+            return;
+        };
         let effect = file.document.apply(delivery.update);
         if effect == Effect::Analysis {
             file.displayed_settings = Some(self.settings);
@@ -622,6 +635,7 @@ impl Shell {
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
     fn release(&mut self, window: &mut Window) {
         self.waveform = None;
+        self.release_backdrop(window);
         self.release_deep_preview(window);
         release(self.texture.take(), window);
     }
@@ -991,11 +1005,12 @@ impl Shell {
         match self.showing() {
             Showing::Plot(extents) => div()
                 .id("time-plot")
-                .cursor(if self.pan.is_some() {
-                    gpui::CursorStyle::ClosedHand
-                } else {
-                    gpui::CursorStyle::Crosshair
-                })
+                .cursor(
+                    self.plot_geometry
+                        .map_or(gpui::CursorStyle::Arrow, |geometry| {
+                            geometry.cursor(self.pointer, self.pan.is_some())
+                        }),
+                )
                 .on_scroll_wheel(cx.listener(Self::wheel))
                 .on_mouse_down(MouseButton::Left, cx.listener(Self::begin_pan))
                 .on_hover(cx.listener(|shell, hovered, _, cx| {
@@ -1200,6 +1215,7 @@ impl Render for Shell {
             self.upload_pending = false;
             self.upload(window);
         }
+        self.prepare_backdrop(window);
         self.prepare_deep_preview(window);
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);

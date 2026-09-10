@@ -146,6 +146,20 @@ pub fn level_at(grid: &DbGrid, shown: (f64, f64), across: f64, from_top: f64) ->
     grid.value(x, grid.height - 1 - row)
 }
 
+/// Normalized parts of the view for which the foreground has no data.
+pub fn uncovered(shown: (f64, f64), held: Option<(f64, f64)>) -> Vec<(f64, f64)> {
+    let Some(held) = held else {
+        return vec![(0.0, 1.0)];
+    };
+    let span = shown.1 - shown.0;
+    let left = ((held.0 - shown.0) / span).clamp(0.0, 1.0);
+    let right = ((held.1 - shown.0) / span).clamp(0.0, 1.0);
+    [(0.0, left), (right, 1.0)]
+        .into_iter()
+        .filter(|(a, b)| a < b)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     include!("navigation_tests.rs");

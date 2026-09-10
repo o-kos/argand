@@ -26,7 +26,44 @@ pub(super) fn init(cx: &mut gpui::App) {
 #[derive(Clone, Copy, PartialEq)]
 pub(super) struct PlotGeometry {
     pub spectrum: Bounds<Pixels>,
-    pub both: Bounds<Pixels>,
+    pub navigation: Bounds<Pixels>,
+}
+
+enum Scroll {
+    Pan(f64),
+    Zoom { factor: f64, anchor: f64 },
+}
+
+impl PlotGeometry {
+    pub fn cursor(self, pointer: Option<gpui::Point<Pixels>>, dragging: bool) -> gpui::CursorStyle {
+        if dragging {
+            return gpui::CursorStyle::ClosedHand;
+        }
+        if pointer.is_some_and(|position| self.spectrum.contains(&position)) {
+            gpui::CursorStyle::Crosshair
+        } else {
+            gpui::CursorStyle::Arrow
+        }
+    }
+
+    fn scroll(
+        self,
+        position: gpui::Point<Pixels>,
+        delta: gpui::Point<Pixels>,
+        shift: bool,
+    ) -> Scroll {
+        let horizontal = f32::from(delta.x).abs() > f32::from(delta.y).abs();
+        let ruler = position.y >= self.spectrum.bottom();
+        let width = f32::from(self.navigation.size.width) as f64;
+        if ruler || shift || horizontal {
+            let distance = if horizontal { delta.x } else { delta.y };
+            return Scroll::Pan(-f32::from(distance) as f64 / width);
+        }
+        Scroll::Zoom {
+            factor: 2.0_f64.powf(-f32::from(delta.y) as f64 / 160.0),
+            anchor: f32::from(position.x - self.navigation.left()) as f64 / width,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -92,9 +129,6 @@ impl Shell {
             .find(|entry| Some(&entry.path) == path.as_ref())
         {
             entry.view = self.view;
-            if let Some(writer) = &mut self.writer {
-                writer.stage(self.session.clone());
-            }
         }
     }
 
@@ -146,29 +180,14 @@ impl Shell {
         let Some(geometry) = self.plot_geometry else {
             return;
         };
-        if !geometry.both.contains(&event.position) || self.splitter_dragging {
+        if !geometry.navigation.contains(&event.position) || self.splitter_dragging {
             return;
         }
         self.pan = None;
         let delta = event.delta.pixel_delta(px(40.));
-        if event.modifiers.shift || f32::from(delta.x).abs() > f32::from(delta.y).abs() {
-            let distance = if event.modifiers.shift {
-                delta.y
-            } else {
-                delta.x
-            };
-            self.pan_by(
-                -f32::from(distance) as f64 / f32::from(geometry.both.size.width) as f64,
-                cx,
-            );
-        } else {
-            let anchor = f32::from(event.position.x - geometry.both.left())
-                / f32::from(geometry.both.size.width);
-            self.zoom(
-                2.0_f64.powf(-f32::from(delta.y) as f64 / 160.0),
-                anchor as f64,
-                cx,
-            );
+        match geometry.scroll(event.position, delta, event.modifiers.shift) {
+            Scroll::Pan(fraction) => self.pan_by(fraction, cx),
+            Scroll::Zoom { factor, anchor } => self.zoom(factor, anchor, cx),
         }
         cx.stop_propagation();
     }
@@ -182,14 +201,14 @@ impl Shell {
         let Some(geometry) = self.plot_geometry else {
             return;
         };
-        if !geometry.both.contains(&event.position) || self.splitter_dragging {
+        if !geometry.navigation.contains(&event.position) || self.splitter_dragging {
             return;
         }
         window.focus(&self.focus);
         self.pan = self.view.map(|view| Pan {
             position: event.position,
             view,
-            width: f32::from(geometry.both.size.width),
+            width: f32::from(geometry.navigation.size.width),
         });
         cx.notify();
     }
@@ -202,7 +221,7 @@ impl Shell {
     ) {
         let pointer = self
             .plot_geometry
-            .filter(|geometry| geometry.both.contains(&event.position))
+            .filter(|geometry| geometry.navigation.contains(&event.position))
             .map(|_| event.position);
         if self.pan.is_none() && self.pointer == pointer {
             return;
@@ -234,12 +253,12 @@ impl Shell {
     pub(super) fn cursor_readout(&self) -> Option<String> {
         let geometry = self.plot_geometry?;
         let pointer = self.pointer?;
-        if !geometry.both.contains(&pointer) {
+        if !geometry.navigation.contains(&pointer) {
             return None;
         }
         let extents = self.extents()?;
-        let x = f32::from(pointer.x - geometry.both.left()) as f64
-            / f32::from(geometry.both.size.width) as f64;
+        let x = f32::from(pointer.x - geometry.navigation.left()) as f64
+            / f32::from(geometry.navigation.size.width) as f64;
         let time = extents.seconds.0 + x * (extents.seconds.1 - extents.seconds.0);
         let decimals = navigation::time_precision(
             (extents.seconds.1 - extents.seconds.0) / self.view_columns() as f64,
@@ -256,6 +275,11 @@ impl Shell {
             .document
             .analysis()
             .and_then(|analysis| navigation::level_at(&analysis.db, extents.seconds, x, y))
+            .or_else(|| {
+                self.backdrop
+                    .as_ref()
+                    .and_then(|backdrop| backdrop.level_at(extents.seconds, x, y))
+            })
             .map_or_else(|| "—".into(), |db| format!("{db:.1} dBFS"));
         Some(format!("{time:.decimals$} s · {frequency:.1} Hz · {level}"))
     }
@@ -299,5 +323,57 @@ impl Shell {
                     .item(PopupMenuItem::new("Go to start").action(Box::new(GoStart)))
                     .item(PopupMenuItem::new("Go to end").action(Box::new(GoEnd)))
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn geometry() -> PlotGeometry {
+        PlotGeometry {
+            spectrum: Bounds::new(point(px(10.), px(50.)), size(px(100.), px(100.))),
+            navigation: Bounds::new(point(px(10.), px(10.)), size(px(100.), px(160.))),
+        }
+    }
+
+    #[test]
+    fn crosshair_is_limited_to_spectrum() {
+        let geometry = geometry();
+        for position in [
+            point(px(50.), px(20.)),
+            point(px(50.), px(160.)),
+            point(px(120.), px(80.)),
+        ] {
+            assert_eq!(
+                geometry.cursor(Some(position), false),
+                gpui::CursorStyle::Arrow
+            );
+        }
+        assert_eq!(
+            geometry.cursor(Some(point(px(50.), px(80.))), false),
+            gpui::CursorStyle::Crosshair
+        );
+        assert_eq!(geometry.cursor(None, true), gpui::CursorStyle::ClosedHand);
+    }
+
+    #[test]
+    fn ruler_accepts_drag_and_wheel_pan_without_zoom() {
+        let geometry = geometry();
+        let ruler = point(px(60.), px(160.));
+        assert!(geometry.navigation.contains(&ruler));
+        assert!(!geometry.navigation.contains(&point(px(120.), px(160.))));
+        for delta in [point(px(0.), px(-40.)), point(px(-40.), px(0.))] {
+            assert!(
+                matches!(geometry.scroll(ruler, delta, false), Scroll::Pan(f) if (f - 0.4).abs() < 1e-10)
+            );
+        }
+        assert!(matches!(
+            geometry.scroll(point(px(60.), px(80.)), point(px(0.), px(-160.)), false),
+            Scroll::Zoom {
+                factor: 2.0,
+                anchor: 0.5
+            }
+        ));
     }
 }

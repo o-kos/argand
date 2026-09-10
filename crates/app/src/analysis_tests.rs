@@ -494,3 +494,38 @@ fn a_queued_style_preview_invalidated_by_resize_is_republished_during_preview() 
     assert!(matches!(result, Err(DspError::Cancelled)));
     assert_eq!(source.stage, 3);
 }
+
+#[test]
+fn zoom_publishes_only_a_compact_final_picture_and_keeps_display_cache_semantics() {
+    let dir = TempDir::new("compact-zoom");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
+    let initial = AnalysisRequest { waveform_columns: Some(64), ..request() };
+    analyst.request(initial);
+    assert!(matches!(next_result(&updates), Some(Update::Ready { .. })));
+    let zoom = AnalysisRequest { range: SampleRange::new(700, 256), ..initial };
+    analyst.request(zoom);
+    let elapsed = loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        match delivery.update {
+            Update::Progress { .. } => {},
+            Update::Ready { analysis, elapsed } => {
+                assert_eq!(analysis.frames, 1);
+                assert_eq!(analysis.spectrogram.width, 1);
+                assert_eq!(analysis.waveform.unwrap().columns, 64);
+                break elapsed;
+            }
+            _ => panic!("zoom must keep the held picture until the final result"),
+        }
+    };
+    let generation = analyst.mailbox.latest().unwrap().generation;
+    analyst.request(AnalysisRequest { width: 120, height: 44, waveform_columns: Some(120),
+        colormap: Colormap::Inferno, ..zoom });
+    assert_eq!(analyst.mailbox.latest().unwrap().generation, generation);
+    let Some(Update::Ready { analysis, elapsed: resized }) = next_result(&updates) else { panic!("ready") };
+    assert_eq!(resized, elapsed);
+    assert_eq!(analysis.spectrogram.width, 1);
+    assert_eq!(analysis.spectrogram.height, 44);
+    assert_eq!(analysis.waveform.unwrap().columns, 120);
+}

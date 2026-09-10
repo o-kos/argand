@@ -107,3 +107,13 @@ fn extreme_interior_views_pan_and_cover_every_display_column() {
         }
     }
 }
+
+#[test]
+fn wider_picture_fills_only_time_missing_from_the_foreground() {
+    assert_eq!(uncovered((0.0, 10.0), Some((2.0, 8.0))), vec![(0.0, 0.2), (0.8, 1.0)]);
+    assert_eq!(uncovered((2.0, 8.0), Some((0.0, 10.0))), vec![]);
+    assert_eq!(uncovered((0.0, 10.0), Some((20.0, 30.0))), vec![(0.0, 1.0)]);
+    assert_eq!(uncovered((0.0, 10.0), Some((-20.0, -10.0))), vec![(0.0, 1.0)]);
+    assert_eq!(uncovered((0.0, 10.0), None), vec![(0.0, 1.0)]);
+    assert_eq!(uncovered((0.0, 10.0), Some((0.0, 4.0))), vec![(0.4, 1.0)]);
+}

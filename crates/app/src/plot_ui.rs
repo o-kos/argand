@@ -21,6 +21,7 @@ impl Shell {
     ) -> impl IntoElement {
         let texture = self.texture.clone();
         let deep = self.deep_preview.clone();
+        let backdrop = self.backdrop.clone();
         let held_time = self
             .file
             .as_ref()
@@ -62,9 +63,9 @@ impl Shell {
                 };
                 let geometry = navigation_ui::PlotGeometry {
                     spectrum,
-                    both: Bounds {
+                    navigation: Bounds {
                         origin: point(spectrum.left(), bounds.top()),
-                        size: size(spectrum.size.width, spectrum.bottom() - bounds.top()),
+                        size: size(spectrum.size.width, bounds.size.height),
                     },
                 };
                 if known != Some(measured)
@@ -80,6 +81,16 @@ impl Shell {
                     return;
                 };
                 let spectrum_origin = bounds.origin + point(px(0.0), px(height));
+                if let Some(backdrop) = &backdrop {
+                    backdrop.paint(
+                        &frame,
+                        bounds.origin,
+                        height,
+                        extents.seconds,
+                        held_time,
+                        window,
+                    );
+                }
                 if let Some(waveform) = &waveform {
                     waveform.paint(&frame, bounds.origin, height, extents.seconds, window);
                 }
@@ -132,7 +143,7 @@ impl Shell {
     }
 }
 
-fn paint_held(
+pub(super) fn paint_held(
     texture: Arc<RenderImage>,
     plot: Bounds<Pixels>,
     held: (f64, f64),
@@ -148,9 +159,7 @@ fn paint_held(
         size: size(plot.size.width * stretch as f32, plot.size.height),
     };
     window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
-        if let Err(error) = window.paint_image(image, Corners::default(), texture, 0, false) {
-            tracing::warn!(%error, "cannot draw the spectrogram");
-        }
+        spectrogram::paint(texture, image, window);
     });
 }
 
@@ -179,9 +188,7 @@ pub(super) struct DeepPreview {
 impl Shell {
     pub(super) fn release_deep_preview(&mut self, window: &mut Window) {
         if let Some(deep) = self.deep_preview.take() {
-            for (_, texture) in &deep.strips {
-                release(Some(texture.clone()), window);
-            }
+            deep.release(window);
         }
     }
 
@@ -198,13 +205,27 @@ impl Shell {
             self.release_deep_preview(window);
             return;
         }
-        let columns = crate::navigation::visible_columns(held, extents.seconds, image.width);
-        if self
-            .deep_preview
-            .as_ref()
-            .is_some_and(|deep| deep.columns == columns)
+        if let Some(deep) =
+            DeepPreview::prepare(image, extents.seconds, self.deep_preview.as_deref())
         {
-            return;
+            self.release_deep_preview(window);
+            self.deep_preview = Some(Arc::new(deep));
+        }
+    }
+}
+
+impl DeepPreview {
+    pub(super) fn prepare(
+        image: &argand_core::SpectrogramImage,
+        shown: (f64, f64),
+        previous: Option<&Self>,
+    ) -> Option<Self> {
+        let held = (image.t0, image.t1);
+        let columns = crate::navigation::visible_columns(held, shown, image.width);
+        if previous.is_some_and(|deep| {
+            deep.columns == columns && deep.held == held && deep.width == image.width
+        }) {
+            return None;
         }
         let strips = columns
             .clone()
@@ -212,19 +233,21 @@ impl Shell {
                 spectrogram::column_texture(image, column).map(|texture| (column, texture))
             })
             .collect();
-        let deep = DeepPreview {
+        Some(Self {
             columns,
             held,
             width: image.width,
             strips,
-        };
-        self.release_deep_preview(window);
-        self.deep_preview = Some(Arc::new(deep));
+        })
     }
-}
 
-impl DeepPreview {
-    fn paint(&self, plot: Bounds<Pixels>, shown: (f64, f64), window: &mut Window) {
+    pub(super) fn release(&self, window: &mut Window) {
+        for (_, texture) in &self.strips {
+            release(Some(texture.clone()), window);
+        }
+    }
+
+    pub(super) fn paint(&self, plot: Bounds<Pixels>, shown: (f64, f64), window: &mut Window) {
         for (column, texture) in &self.strips {
             let (left, right) =
                 crate::navigation::column_mapping(self.held, shown, self.width, *column);
@@ -233,11 +256,7 @@ impl DeepPreview {
                 size: size(plot.size.width * (right - left) as f32, plot.size.height),
             };
             window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
-                if let Err(error) =
-                    window.paint_image(bounds, Corners::default(), texture.clone(), 0, false)
-                {
-                    tracing::warn!(%error, "cannot draw the held spectrogram column");
-                }
+                spectrogram::paint(texture.clone(), bounds, window);
             });
         }
     }

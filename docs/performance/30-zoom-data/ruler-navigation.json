@@ -1,0 +1,26 @@
+{
+  "before": [
+    159264,
+    106176
+  ],
+  "ruler_wheel": [
+    150513,
+    106176
+  ],
+  "ruler_drag": [
+    143221,
+    106176
+  ],
+  "spectrum_wheel": [
+    164063,
+    63133
+  ],
+  "saved_view_omitted": true,
+  "legacy_view_injected": true,
+  "restart_full_capture_visual": true,
+  "cursors": {
+    "waveform": "arrow",
+    "spectrum": "crosshair",
+    "time_ruler": "arrow"
+  }
+}
