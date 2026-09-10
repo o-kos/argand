@@ -4,7 +4,7 @@ Resolves #81: https://github.com/o-kos/argand/issues/81.
 
 ## Overview
 
-Offer the existing clock format, elapsed seconds and zero-based sample numbers
+Offer HMS clock time, elapsed seconds and zero-based sample numbers
 on the time ruler. Keep the capture range unchanged when switching modes and use
 the selected format for the Alt time badge. Complex samples count I/Q pairs.
 
@@ -18,11 +18,13 @@ The branch includes the merged minimap implementation from #83.
 ## Decisions
 
 - Add decimal-seconds and integer-sample axis kinds to the shared measured layout.
-  Keep existing clock formatting and CLI defaults unchanged.
+  Keep shared CLI clock formatting and CLI defaults unchanged. GUI HMS uses colons
+  between fields and the numeric locale for fractional seconds.
 - Keep presentation policy in a toolkit-neutral application module. Axis extents
   and held schemes use the selected ruler units; keyboard divisions convert back
   to samples exactly once. Mode changes reset only the held ruler scheme.
-- Offer a checked Time ruler submenu in View. Default to the current clock mode;
+- Offer a checked Time scale format submenu in View and the same context menu
+  on the time ruler. Default to HMS;
   persist the selected presentation in a versioned session, with older sessions
   defaulting to clock. File openings still reset the time view.
 - Alt time badges follow the selected mode and pointer precision; sample readouts
@@ -34,7 +36,7 @@ The branch includes the merged minimap implementation from #83.
 
 - Reusing formatted seconds as sample numbers would lose sample origin and I/Q
   pair semantics. Sample coordinates come from the capture range and true rate.
-- Replacing existing clock formatting would change the default promised by #81.
+- Changing CLI clock formatting is outside this GUI presentation change.
 
 ## Implementation steps
 
@@ -60,7 +62,7 @@ The branch includes the merged minimap implementation from #83.
 
 ## Results
 
-- Formatting, strict Clippy and all 500 local tests pass; the release was rebuilt
+- Formatting, strict Clippy and all 505 local tests pass; the release was rebuilt
   after the full gate. No lint policy was relaxed.
 - Native Linux/Sway checks on a real Intel GPU cover all three checked menu modes,
   Alt badges, unchanged sample ranges and analysis counters on mode switching,
@@ -78,3 +80,36 @@ The branch includes the merged minimap implementation from #83.
 
 Continue with #80, then the remaining grid/ruler backlog, and #82. Continuous
 minimap drag latency remains in the owner-approved backlog issue #84.
+
+## Owner feedback: scale presentation and numeric locale
+
+- [x] Rename the format submenu and HMS entry; share it with a time-ruler context menu.
+- [x] Show s/# once at the right of the time ruler and reserve caption space.
+- [x] Format all GUI numeric output with the numeric locale, including axes,
+  coordinate badges, status/file/analysis hints and settings; parse settings in
+  the same locale without changing configuration/session serialization.
+- [x] Measure localized axis labels before selecting ticks and cover decimal,
+  grouping, integer precision, settings input and menu behavior in validation.
+- [x] Complete local gate, current release, native checks and external review.
+
+Numeric presentation is initialized from system regional/numeric settings. On
+Linux the LC_ALL/LC_NUMERIC/LANG precedence applies; machine-readable data and CLI
+formats retain their existing contracts. The decimal formatter uses CLDR data;
+locale-specific grouping and digit shapes are not maintained as a hand-written
+language table. Time punctuation retains its clock structure.
+
+The locale review identified the default range text before analysis bypassing the
+formatter; it now uses the same numeric path. Native checks identified retained
+context-menu entities suppressing Alt guides after dismissal, and cleared hover
+state leaving a stationary pointer without guides after an outside click. A
+window-aware dismissal subscription clears only the matching menu and restores
+the pointer through the ordinary plot geometry filter. The final external review
+was clean; no findings were rejected or deferred.
+
+Final native checks on the rebuilt release verify all three formats in both menus,
+localized fractional time/frequency badges, a single right-hand ruler unit,
+unchanged viewport/analysis counters, and restored Alt lines after selection,
+Escape and an outside click without further pointer motion. Russian settings
+accept 45,5 dB and grouped FFT choices; hints show the same values, and the
+canonical saved FFT remains 4096. Arabic startup output includes localized
+default range digits. Restart preserves Samples mode while restoring full view.

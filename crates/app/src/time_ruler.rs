@@ -14,6 +14,14 @@ pub enum Mode {
 }
 
 impl Mode {
+    pub fn caption(self) -> &'static str {
+        match self {
+            Self::Clock => "hms",
+            Self::Seconds => "s",
+            Self::Samples => "#",
+        }
+    }
+
     pub fn kind(self) -> AxisKind {
         match self {
             Self::Clock => AxisKind::PreciseTime,
@@ -58,8 +66,11 @@ impl Ruler {
     pub fn readout(self, time: f64, span: f64, pixels: f64, fraction: f64) -> String {
         let precision = crate::navigation::time_precision(span / pixels);
         match self.mode {
-            Mode::Clock => axis::format_time(time, span, 10_f64.powi(-(precision as i32))),
-            Mode::Seconds => format!("{time:.precision$} s"),
+            Mode::Clock => crate::numbers::current().axis_label(
+                &axis::format_time(time, span, 10_f64.powi(-(precision as i32))),
+                AxisKind::PreciseTime,
+            ),
+            Mode::Seconds => crate::numbers::text(&format!("{time:.precision$} s")),
             Mode::Samples => {
                 let offset = (fraction.clamp(0., 1.) * self.view.len as f64).floor() as u64;
                 let index = self
@@ -67,7 +78,7 @@ impl Ruler {
                     .start
                     .saturating_add(offset)
                     .min(self.total.saturating_sub(1));
-                format!("#{index}")
+                format!("#{}", crate::numbers::number(index))
             }
         }
     }
@@ -90,7 +101,7 @@ mod tests {
         };
         let seconds = view.seconds(2e6);
         assert_eq!(ruler.bounds(seconds), (4_000_000., 4_002_000.));
-        assert_eq!(ruler.readout(2.0005, 0.001, 1000., 0.5), "#4001000");
+        assert_eq!(ruler.readout(2.0005, 0.001, 1000., 0.5), "#4,001,000");
         assert_eq!(Mode::Samples.sample_step(100., 2e6), 100.);
         ruler.mode = Mode::Seconds;
         assert_eq!(ruler.bounds(seconds), seconds);
@@ -113,15 +124,15 @@ mod tests {
         };
         assert_eq!(
             ruler.readout(0., 1., 1000., 0.),
-            format!("#{}", u64::MAX - 4096)
+            format!("#{}", crate::numbers::number(u64::MAX - 4096))
         );
         assert_eq!(
             ruler.readout(0., 1., 1000., 0.5),
-            format!("#{}", u64::MAX - 2048)
+            format!("#{}", crate::numbers::number(u64::MAX - 2048))
         );
         assert_eq!(
             ruler.readout(0., 1., 1000., 1.),
-            format!("#{}", u64::MAX - 1)
+            format!("#{}", crate::numbers::number(u64::MAX - 1))
         );
     }
 }

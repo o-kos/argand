@@ -75,6 +75,7 @@ pub struct Frame {
     pub caption: Option<&'static str>,
     /// Where the ink of a time label is centred, under the plot.
     time_row: f32,
+    time_caption: &'static str,
     /// Where the ink of the caption is centred, over the gutter.
     caption_row: f32,
 }
@@ -114,7 +115,8 @@ impl Frame {
             .iter()
             .map(String::as_str)
             .chain(caption)
-            .map(|label| measure.width(label, LABEL_SIZE))
+            .map(|label| measure.width(&measure.localize(label, AxisKind::Frequency), LABEL_SIZE))
+            .chain(["hms", "s", "#"].map(|label| measure.width(label, LABEL_SIZE)))
             .fold(0.0f32, f32::max)
             .ceil()
             + LABEL_PAD;
@@ -169,6 +171,7 @@ impl Frame {
                 &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down),
             ),
             caption,
+            time_caption: extents.time.mode.caption(),
             time_row: plot.bottom() + LABEL_PAD + row_height / 2.0,
             caption_row: plot.y + row_height / 2.0,
         })
@@ -212,7 +215,9 @@ impl Labels {
         let mut font = window.text_style().font();
         font.features = tabular(&font.features);
         let font_id = text.resolve_font(&font);
-        let widest = ('0'..='9')
+        let widest = crate::numbers::current()
+            .digits()
+            .into_iter()
             .max_by(|a, b| advance(&text, font_id, *a).total_cmp(&advance(&text, font_id, *b)))
             .unwrap_or('0');
         Self {
@@ -277,13 +282,23 @@ fn advance(text: &gpui::WindowTextSystem, font_id: FontId, digit: char) -> f32 {
 }
 
 impl LabelMeasure for Labels {
+    fn localize(&self, text: &str, kind: AxisKind) -> String {
+        crate::numbers::current().axis_label(text, kind)
+    }
+
     fn width(&self, text: &str, size: f32) -> f32 {
         // Digits normalized, so that what a row of zeros measures bounds what
         // any number in their place will measure. Nothing else is touched: the
         // separators and the sign shape as they will be drawn.
         let uniform: String = text
             .chars()
-            .map(|c| if c.is_ascii_digit() { self.widest } else { c })
+            .map(|c| {
+                if crate::numbers::current().digits().contains(&c) {
+                    self.widest
+                } else {
+                    c
+                }
+            })
             .collect();
         let run = gpui::TextRun {
             len: uniform.len(),
@@ -379,6 +394,17 @@ pub fn paint(
         1.0,
         plot.bottom() + 2.0,
         colors.tick,
+    );
+
+    let shaped = labels.shape(frame.time_caption, colors.label);
+    let _ = shaped.paint(
+        at(
+            plot.right() + LABEL_PAD,
+            labels.line_top(frame.time_row, &shaped),
+        ),
+        px(LINE_HEIGHT),
+        window,
+        cx,
     );
 
     // The unit, once, above the labels it belongs to. An axis that placed no

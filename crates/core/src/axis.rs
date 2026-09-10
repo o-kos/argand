@@ -18,6 +18,11 @@
 /// Two questions are enough for that, and neither of them names a glyph, an
 /// image or a toolkit, so the policy stays here and the font stays there.
 pub trait LabelMeasure {
+    /// Front-end presentation, applied before measuring or selecting ticks.
+    fn localize(&self, text: &str, _kind: AxisKind) -> String {
+        text.to_owned()
+    }
+
     /// Width of `text` in pixels at `size`.
     ///
     /// Putting any digit where any other digit stands must leave this
@@ -342,6 +347,7 @@ fn place(
             AxisKind::Samples => format!("#{}", k as i128 * step as i128),
             _ => format_label(kind, value, axis.min, axis.max),
         };
+        let label = labels.measure.localize(&label, kind);
         let extent = labels.extent(&label);
         let offset = ((value - axis.min) * scale)
             .round()

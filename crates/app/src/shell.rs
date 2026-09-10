@@ -303,6 +303,7 @@ struct Shell {
     splitter_dragging: bool,
     focus: FocusHandle,
     open_menu: Option<WeakEntity<PopupMenu>>,
+    menu_dismiss: Option<gpui::Subscription>,
     startup_recent: Option<RecentFiles>,
     recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
@@ -357,6 +358,7 @@ impl Shell {
             splitter_dragging: false,
             focus,
             open_menu: None,
+            menu_dismiss: None,
             startup_recent: None,
             recent_updates: None,
             _bounds: bounds,
@@ -1075,6 +1077,7 @@ impl Shell {
                 .relative()
                 .child(self.spectrogram(extents, cx))
                 .child(self.splitter(window, cx))
+                .children(self.time_context_menu(cx))
                 .into_any_element(),
             // Physical labels need the metadata; their boundaries can appear immediately.
             Showing::Opening => div()
@@ -1123,7 +1126,7 @@ impl Shell {
                             .flex_shrink_0()
                             .text_color(cx.theme().muted_foreground)
                             .child(if index < 9 {
-                                (index + 1).to_string()
+                                crate::numbers::number(index + 1)
                             } else {
                                 String::new()
                             }),

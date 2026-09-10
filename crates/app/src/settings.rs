@@ -56,16 +56,17 @@ impl Settings {
     }
 
     pub fn edited_numbers(self, overlap: &str, range: Option<&str>) -> Result<Self, String> {
-        let overlap = overlap
-            .parse::<f32>()
-            .map_err(|_| "Enter a number for overlap")?;
+        let overlap =
+            crate::numbers::parse::<f32>(overlap).map_err(|_| "Enter a number for overlap")?;
         if !overlap.is_finite() || !(0.0..=95.0).contains(&overlap) || overlap.fract() != 0.0 {
-            return Err("Overlap must be a whole number from 0 to 95%".into());
+            return Err(crate::numbers::text(
+                "Overlap must be a whole number from 0 to 95%",
+            ));
         }
         let dynamic_range = match range {
-            Some(value) => {
-                DynamicRange::Fixed(value.parse().map_err(|_| "Enter a number for range")?)
-            }
+            Some(value) => DynamicRange::Fixed(
+                crate::numbers::parse(value).map_err(|_| "Enter a number for range")?,
+            ),
             None => self.dynamic_range,
         };
         let settings = Self {
@@ -79,10 +80,12 @@ impl Settings {
 
     pub fn validate(self, samples: Option<u64>) -> Result<(), String> {
         if !self.fft_size.is_power_of_two() || !(2..=MAX_FFT_SIZE).contains(&self.fft_size) {
-            return Err("FFT size must be a power of two from 2 to 1048576".into());
+            return Err(crate::numbers::text(
+                "FFT size must be a power of two from 2 to 1048576",
+            ));
         }
         if self.overlap > 95 {
-            return Err("Overlap must be between 0 and 95%".into());
+            return Err(crate::numbers::text("Overlap must be between 0 and 95%"));
         }
         if let DynamicRange::Fixed(value) = self.dynamic_range
             && (!value.is_finite() || value <= 0.0)
@@ -93,7 +96,8 @@ impl Settings {
             && samples < self.fft_size as u64
         {
             return Err(format!(
-                "The signal has {samples} samples; choose a smaller FFT"
+                "The signal has {} samples; choose a smaller FFT",
+                crate::numbers::number(samples)
             ));
         }
         Ok(())

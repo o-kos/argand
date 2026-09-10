@@ -304,19 +304,22 @@ impl Shell {
         false
     }
 
+    fn plot_pointer(&self, position: gpui::Point<Pixels>) -> Option<gpui::Point<Pixels>> {
+        self.plot_geometry
+            .filter(|geometry| {
+                geometry.navigation.contains(&position)
+                    || geometry.frequency_ruler.contains(&position)
+            })
+            .map(|_| position)
+    }
+
     pub(super) fn pointer_moved(
         &mut self,
         event: &gpui::MouseMoveEvent,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let pointer = self
-            .plot_geometry
-            .filter(|geometry| {
-                geometry.navigation.contains(&event.position)
-                    || geometry.frequency_ruler.contains(&event.position)
-            })
-            .map(|_| event.position);
+        let pointer = self.plot_pointer(event.position);
         if self.pan.is_none() && self.pointer == pointer {
             return;
         }
@@ -367,7 +370,7 @@ impl Shell {
             (extents.seconds.1 - extents.seconds.0) / self.view_columns() as f64,
         );
         if !geometry.spectrum.contains(&pointer) {
-            return Some(format!("{time:.decimals$} s"));
+            return Some(crate::numbers::text(&format!("{time:.decimals$} s")));
         }
         let y = f32::from(pointer.y - geometry.spectrum.top()) as f64
             / f32::from(geometry.spectrum.size.height) as f64;
@@ -383,8 +386,14 @@ impl Shell {
                     .as_ref()
                     .and_then(|backdrop| backdrop.level_at(extents.seconds, x, y))
             })
-            .map_or_else(|| "—".into(), |db| format!("{db:.1} dBFS"));
-        Some(format!("{time:.decimals$} s · {frequency:.1} Hz · {level}"))
+            .map_or_else(
+                || "—".into(),
+                |db| crate::numbers::text(&format!("{db:.1} dBFS")),
+            );
+        Some(format!(
+            "{} · {level}",
+            crate::numbers::text(&format!("{time:.decimals$} s · {frequency:.1} Hz"))
+        ))
     }
 
     pub(super) fn navigation_actions(
@@ -438,6 +447,58 @@ impl Shell {
         cx.notify();
     }
 
+    fn track_time_menu(
+        &mut self,
+        menu: &gpui::Entity<PopupMenu>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_menu = Some(menu.downgrade());
+        self.menu_dismiss = Some(cx.subscribe_in(menu, window, Self::time_menu_dismissed));
+    }
+
+    fn time_menu_dismissed(
+        &mut self,
+        menu: &gpui::Entity<PopupMenu>,
+        _: &gpui::DismissEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .open_menu
+            .as_ref()
+            .is_some_and(|open| open.entity_id() == menu.entity_id())
+        {
+            self.open_menu = None;
+            self.pointer = self.plot_pointer(window.mouse_position());
+            cx.notify();
+        }
+    }
+
+    pub(super) fn time_context_menu(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+        use gpui_component::menu::ContextMenuExt;
+        let geometry = self.plot_geometry?;
+        let panel = self.panel_bounds?;
+        let focus = self.focus.clone();
+        let owner = cx.entity().downgrade();
+        let mode = self.session.time_ruler;
+        Some(
+            div()
+                .id("time-scale-context")
+                .absolute()
+                .left(geometry.navigation.left() - panel.left())
+                .top(geometry.spectrum.bottom() - panel.top())
+                .w(geometry.frequency_ruler.right() - geometry.navigation.left())
+                .h(geometry.navigation.bottom() - geometry.spectrum.bottom())
+                .context_menu(move |menu, window, cx| {
+                    let popup = cx.entity();
+                    let _ = owner.update(cx, |shell, cx| shell.track_time_menu(&popup, window, cx));
+                    time_scale_items(menu.action_context(focus.clone()), mode)
+                })
+                .into_any_element(),
+        )
+    }
+
     pub(super) fn view_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.focus.clone();
         let owner = cx.entity().downgrade();
@@ -451,24 +512,8 @@ impl Shell {
                 let _ = owner.update(cx, |shell, _| shell.open_menu = Some(popup));
                 let submenu_focus = focus.clone();
                 menu.action_context(focus.clone())
-                    .submenu("Time ruler", window, cx, move |menu, _, _| {
-                        use crate::time_ruler::Mode;
-                        menu.action_context(submenu_focus.clone())
-                            .item(
-                                PopupMenuItem::new("Current format")
-                                    .checked(ruler == Mode::Clock)
-                                    .action(Box::new(ClockRuler)),
-                            )
-                            .item(
-                                PopupMenuItem::new("Seconds")
-                                    .checked(ruler == Mode::Seconds)
-                                    .action(Box::new(SecondsRuler)),
-                            )
-                            .item(
-                                PopupMenuItem::new("Sample numbers")
-                                    .checked(ruler == Mode::Samples)
-                                    .action(Box::new(SamplesRuler)),
-                            )
+                    .submenu("Time scale format", window, cx, move |menu, _, _| {
+                        time_scale_items(menu.action_context(submenu_focus.clone()), ruler)
                     })
                     .separator()
                     .item(PopupMenuItem::new("Zoom in").action(Box::new(ZoomIn)))
@@ -488,6 +533,28 @@ impl Shell {
                     .item(PopupMenuItem::new("Go to end").action(Box::new(GoEnd)))
             })
     }
+}
+
+fn time_scale_items(
+    menu: gpui_component::menu::PopupMenu,
+    mode: crate::time_ruler::Mode,
+) -> gpui_component::menu::PopupMenu {
+    use crate::time_ruler::Mode;
+    menu.item(
+        PopupMenuItem::new("Hours, minutes, seconds (hms)")
+            .checked(mode == Mode::Clock)
+            .action(Box::new(ClockRuler)),
+    )
+    .item(
+        PopupMenuItem::new("Seconds")
+            .checked(mode == Mode::Seconds)
+            .action(Box::new(SecondsRuler)),
+    )
+    .item(
+        PopupMenuItem::new("Sample numbers")
+            .checked(mode == Mode::Samples)
+            .action(Box::new(SamplesRuler)),
+    )
 }
 
 #[cfg(test)]

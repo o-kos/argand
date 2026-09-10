@@ -19,6 +19,7 @@ mod document;
 mod execution;
 mod minimap;
 mod navigation;
+mod numbers;
 mod panels;
 mod profiling;
 mod recent;
@@ -38,6 +39,7 @@ use session::{Session, Writer};
 fn main() {
     let args = Args::parse();
     init_tracing();
+    numbers::initialize();
 
     // Both files are read before the window is created, and nothing expensive
     // shares that path: what the window opens as depends on them.

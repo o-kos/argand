@@ -357,13 +357,20 @@ double-click steps on its first press and centres on its second only if the
 pointer is still outside the updated interval. An open-hand cursor marks the
 viewport and rulers; dragging uses a closed hand. Pointer time over the minimap refers to the full recording.
 
-Choose **View → Time ruler** to show the current clock format (default), elapsed
-seconds, or zero-based sample numbers prefixed with `#`. Seconds and sample numbers
+Choose **View → Time scale format**, or right-click the time ruler, to show
+hours, minutes and seconds (hms, default), elapsed seconds, or zero-based sample
+numbers. The unit (`hms`, `s` or `#`) appears once at the right of the ruler. Seconds and sample numbers
 refer to the start of the capture; one complex sample is one I/Q pair. Labels keep
 appropriate precision as you zoom, and the Alt time badge follows the selected
 format. The choice survives restarts. Switching formats leaves the visible range
 unchanged and does not recalculate the spectrum. Arrow keys follow the divisions
 of the selected ruler; zoom and position still reset whenever a file is opened.
+
+GUI numbers use the system numeric locale, including grouping, decimal marks,
+axis labels, cursor badges, hints and analysis settings. Numeric fields accept
+the same locale. Linux follows `LC_ALL`, then `LC_NUMERIC`, then `LANG`; Windows
+and macOS use the system regional locale. Number conventions come from CLDR;
+configuration, session serialization and CLI output retain their existing formats.
 
 Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
 Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved

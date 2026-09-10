@@ -309,8 +309,8 @@ fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
         min: vec![-5.0, -2.5, 0.0, 0.0], max: vec![1.25, 0.625, 0.0, 0.0], t0: 0.0, t1: 2.0 });
     document.apply(Update::Ready { analysis: result, elapsed: Duration::from_secs(1) });
     let hint = document.file_summary().unwrap().hint.value;
-    assert!(hint.contains("I min / max: −16,384 / 4,096"), "{hint}");
-    assert!(hint.contains("Q min / max: −8,192 / 2,048"), "{hint}");
+    assert!(hint.contains("I min / max: -16,384 / 4,096"), "{hint}");
+    assert!(hint.contains("Q min / max: -8,192 / 2,048"), "{hint}");
     let mut zoomed = analysis(2);
     zoomed.db.t0 = 0.5;
     document.requested_range(argand_core::SampleRange::new(12_000, 12_000));

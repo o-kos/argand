@@ -268,7 +268,7 @@ time over the minimap uses full-capture coordinates.
 ## Time ruler modes (#81)
 
 `time_ruler.rs` owns the toolkit-neutral clock/seconds/samples presentation.
-`View > Time ruler` selects the mode; session version 7 remembers it, while older
+`View > Time scale format` and the time-ruler context menu share the mode items; session version 7 remembers it, while older
 sessions default to clock and file openings still reset the navigation range.
 `AxisKind::Seconds` uses decimal second steps with matching fractional labels;
 `AxisKind::Samples` uses integer decimal steps and exact integer-multiple labels
@@ -278,4 +278,18 @@ converts its step to samples once. Changing mode clears the held scheme, preserv
 the view and performs no analysis request. The Alt time badge uses the same mode;
 its sample index is computed relative to the integer view start and clamped to an
 existing sample. Status-bar time readouts remain in seconds. CLI defaults and
-frequency axes are unchanged.
+CLI frequency axes are unchanged.
+
+`numbers.rs` formats GUI numbers with ICU/CLDR using the regional numeric locale
+read by `numeric_locale.rs` at startup. Numeric settings use the same formatter
+and validate localized grouping when parsing. `LabelMeasure::localize` runs before
+tick measurement; CLI implementations keep the default identity hook. GUI HMS
+labels use colons between clock fields, and fractions use the locale decimal mark.
+Time units are painted once at the right; space for all three captions is reserved
+independently of the mode, so switching it cannot resize the spectral image.
+Machine-readable persistence and CLI number formatting do not use this module.
+
+The time-ruler context menu retains its popup entity after closing. The shell
+tracks its DismissEvent explicitly, clears only the matching menu, and restores
+the pointer from the owning window through the ordinary plot filter. This keeps
+Alt guides and cursor feedback available without a mouse move after dismissal.

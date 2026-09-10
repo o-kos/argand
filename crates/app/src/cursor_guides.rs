@@ -151,7 +151,11 @@ impl Readout {
         );
         Some(Self {
             time: time_label,
-            frequency: format!("{:.*} {unit}", precision, frequency / divisor),
+            frequency: crate::numbers::text(&format!(
+                "{:.*} {unit}",
+                precision,
+                frequency / divisor
+            )),
         })
     }
 }

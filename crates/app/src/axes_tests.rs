@@ -263,3 +263,38 @@ fn time_modes_preserve_plot_geometry_and_sample_origin() {
         }
     }
 }
+
+#[test]
+fn localized_time_labels_fit_and_units_do_not_resize_the_plot() {
+    struct Localized(crate::numbers::Numbers);
+    impl LabelMeasure for Localized {
+        fn localize(&self, text: &str, kind: AxisKind) -> String { self.0.axis_label(text, kind) }
+        fn width(&self, text: &str, size: f32) -> f32 {
+            DejaVuSans.width(&text.replace(['\u{a0}', '\u{202f}'], " "), size)
+        }
+        fn digit_height(&self, size: f32) -> f32 { DejaVuSans.digit_height(size) }
+    }
+    for locale in ["en-US", "ru-RU", "de-DE", "hi-IN"] {
+        let labels = Localized(crate::numbers::Numbers::new(locale));
+        let mut previous_plot = None;
+        for mode in [crate::time_ruler::Mode::Clock, crate::time_ruler::Mode::Seconds, crate::time_ruler::Mode::Samples] {
+            let extents = Extents {
+                time: crate::time_ruler::Ruler { mode, view: crate::navigation::View { start: 1_234_000, len: 20_000 }, total: 2_000_000 },
+                seconds: (1234., 1254.), hertz: (-100., 100.),
+            };
+            let frame = Frame::measure(panel(700., 400.), 1., extents, &labels, None).unwrap();
+            if let Some(plot) = previous_plot { assert_eq!(frame.plot, plot); }
+            previous_plot = Some(frame.plot);
+            assert_eq!(frame.time_caption, mode.caption());
+            assert!(!frame.time.is_empty());
+            let mut end = 0.;
+            for tick in frame.time {
+                assert!(!tick.label.contains(['#', 's']));
+                let left = tick.offset as f32 + LABEL_PAD;
+                assert!(left >= end);
+                end = left + labels.width(&tick.label, LABEL_SIZE);
+                assert!(end <= frame.plot.width);
+            }
+        }
+    }
+}

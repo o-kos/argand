@@ -205,10 +205,10 @@ impl Shell {
             .unwrap_or(self.settings);
         let range = self
             .displayed_range()
-            .map(|range| format!("{} dB", range.effective_db))
+            .map(|range| format!("{} dB", crate::numbers::number(range.effective_db)))
             .unwrap_or_else(|| match self.settings.dynamic_range {
-                DynamicRange::Default => "110 dB".into(),
-                DynamicRange::Fixed(db) => format!("{db} dB"),
+                DynamicRange::Default => crate::numbers::text("110 dB"),
+                DynamicRange::Fixed(db) => format!("{} dB", crate::numbers::number(db)),
                 DynamicRange::Auto => "auto".into(),
             });
         let hint_owner = cx.entity().downgrade();
@@ -247,7 +247,11 @@ impl Shell {
                             .gap_1()
                             .text_xs()
                             .text_color(foreground)
-                            .child(format!("{} · {} ·", displayed.fft_size, displayed.window))
+                            .child(format!(
+                                "{} · {} ·",
+                                crate::numbers::number(displayed.fft_size),
+                                displayed.window
+                            ))
                             .child(
                                 div()
                                     .when(warning, |s| s.text_color(advice_color(cx)))
@@ -368,8 +372,10 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
         let recommendation = shell.range_recommendation();
         let range = shell
             .displayed_range()
-            .map(|r| format!("{} dB", r.effective_db))
-            .unwrap_or_else(|| settings.dynamic_range.to_string());
+            .map(|r| format!("{} dB", crate::numbers::number(r.effective_db)))
+            .unwrap_or_else(|| crate::numbers::text(&settings.dynamic_range.to_string()));
+        let fft = crate::numbers::number(settings.fft_size);
+        let overlap = format!("{}%", crate::numbers::number(settings.overlap));
         let edit_owner = owner.clone();
         let apply_owner = owner.clone();
         div()
@@ -379,9 +385,9 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
             .flex_col()
             .gap_2()
             .child(div().font_weight(FontWeight::SEMIBOLD).child("Spectrogram"))
-            .child(detail_row("FFT size", settings.fft_size.to_string(), cx))
+            .child(detail_row("FFT size", fft, cx))
             .child(detail_row("Window", settings.window.to_string(), cx))
-            .child(detail_row("Overlap", format!("{}%", settings.overlap), cx))
+            .child(detail_row("Overlap", overlap, cx))
             .child(detail_row("Aggregation", settings.aggregation.label(), cx))
             .child(detail_row("Range mode", mode, cx))
             .child(detail_row("Range", range, cx))
@@ -401,7 +407,10 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                     Button::new("hint-recommendation")
                         .ghost()
                         .small()
-                        .label(format!("Use recommended: {db} dB"))
+                        .label(format!(
+                            "Use recommended: {} dB",
+                            crate::numbers::number(db)
+                        ))
                         .when_some(
                             Kbd::binding_for_action(&UseRecommendedRange, None, window),
                             |button, kbd| button.child(kbd),

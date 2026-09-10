@@ -13,7 +13,8 @@ promise applies to.
 
 ### Added
 
-- View → Time ruler selects the existing clock format, elapsed seconds or zero-based sample numbers. The Alt time badge follows the selection, and the format survives restarts without preserving file zoom or position.
+- View → Time scale format and the time-ruler context menu select hours/minutes/seconds, elapsed seconds or zero-based sample numbers, with the unit shown once at the right. The Alt time badge follows the selection, and the format survives restarts without preserving file zoom or position.
+- GUI numbers, hints and analysis settings follow the system numeric locale, including decimal marks, digit grouping and localized numeric input.
 
 - Hold Alt over the spectrogram to show guide lines to the time and frequency rulers with rounded coordinate badges, vertically centred text and white/black/white lines visible across palettes.
 
