@@ -34,6 +34,79 @@ impl Drop for TempDir {
 }
 
 #[test]
+fn theme_defaults_to_system_and_retains_explicit_overrides() {
+    assert_eq!(Config::default().theme, Theme::System);
+    let dir = TempDir::new("theme");
+    for (name, expected) in [("system", Theme::System), ("dark", Theme::Dark), ("light", Theme::Light)] {
+        let path = dir.write("argand.toml", &format!("theme = {name:?}\n"));
+        assert_eq!(Config::load(&[path]).theme, expected);
+    }
+    let path = dir.write("argand.toml", "number_format = \"ru-RU\"\n");
+    assert_eq!(Config::load(&[path]).theme, Theme::System);
+}
+
+#[test]
+fn distributed_template_explicitly_lists_every_configuration_key() {
+    use std::collections::BTreeSet;
+
+    let template: toml::Table =
+        toml::from_str(include_str!("../assets/argand.toml")).expect("valid template");
+    let sections: &[(&str, &[&str])] = &[
+        (
+            "",
+            &[
+                "theme", "number_format", "color_scheme", "dynamic_range", "aggregation",
+                "stft", "analysis", "panels",
+            ],
+        ),
+        ("stft", &["fft_size", "window"]),
+        ("analysis", &["workers", "batch_frames", "affinity"]),
+        ("panels", &["waveform_fraction"]),
+    ];
+    for &(section, keys) in sections {
+        let table = if section.is_empty() {
+            &template
+        } else {
+            template[section].as_table().expect("configuration section")
+        };
+        let actual: BTreeSet<_> = table.keys().map(String::as_str).collect();
+        assert_eq!(actual, keys.iter().copied().collect(), "section {section:?}");
+    }
+}
+
+#[test]
+fn distributed_template_parses_without_repairs_and_matches_built_in_defaults() {
+    let template = include_str!("../assets/argand.toml");
+    let config: Config = toml::from_str(template).expect("valid distributed configuration");
+    assert_eq!(config, Config::default());
+    assert_eq!(config.clone().repaired(), config);
+}
+
+#[test]
+fn number_format_defaults_to_system_and_accepts_explicit_locales() {
+    let dir = TempDir::new("number-format");
+    assert_eq!(Config::default().number_format, "system");
+    for format in ["system", "ru-RU", "en-US", "ar-EG-u-nu-latn", "C", "POSIX"] {
+        let path = dir.write("argand.toml", &format!("number_format = {format:?}\n"));
+        assert_eq!(Config::load(&[path]).number_format, format);
+    }
+}
+
+#[test]
+fn invalid_number_format_preserves_other_configuration() {
+    let dir = TempDir::new("invalid-number-format");
+    for format in ["", "ru_RU.UTF-8", "not a locale"] {
+        let path = dir.write(
+            "argand.toml",
+            &format!("theme = \"light\"\nnumber_format = {format:?}\n"),
+        );
+        let config = Config::load(&[path]);
+        assert_eq!(config.number_format, "system");
+        assert_eq!(config.theme, Theme::Light);
+    }
+}
+
+#[test]
 fn a_file_that_sets_one_value_is_a_complete_file() {
     let dir = TempDir::new("partial");
     let path = dir.write("argand.toml", "theme = \"light\"\n");
@@ -42,6 +115,7 @@ fn a_file_that_sets_one_value_is_a_complete_file() {
     assert_eq!(config.theme, Theme::Light);
     // Everything it did not mention keeps the shipped value.
     assert_eq!(config.panels, Panels::default());
+    assert_eq!(config.number_format, "system");
 }
 
 #[test]

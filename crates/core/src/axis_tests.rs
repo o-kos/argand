@@ -615,3 +615,76 @@ fn held_grid_keeps_edge_marks_when_their_labels_do_not_fit() {
     assert!(held.ticks.iter().any(|tick| tick.value == 2. && !tick.label.is_empty()));
     assert!(!ticks(AxisKind::PreciseTime, axis, &metrics).iter().any(|tick| tick.value == 10.));
 }
+
+#[test]
+fn decimal_time_and_sample_rulers_keep_labels_readable_at_capture_offsets() {
+    let text = DejaVuSans;
+    for kind in [AxisKind::Seconds, AxisKind::Samples] {
+        for length in [240, 800, 2000] {
+            for (start, span) in [(0., 10.), (12_345., 0.1), (2e6, 1000.), (1e12, 1e6)] {
+                let marks = ticks(kind, axis(length, start, start + span), &across(&text));
+                assert_no_overlap(&marks, &across(&text), "time ruler");
+                assert_ruler_values(kind, &marks, span);
+            }
+        }
+    }
+}
+
+#[test]
+fn decimal_and_sample_pan_retain_grid_and_label_precision() {
+    let text = DejaVuSans;
+    for kind in [AxisKind::Seconds, AxisKind::Samples] {
+        let initial = axis(1500, 125., 225.);
+        let first = tick_layout(kind, initial, &across(&text), None);
+        let scheme = first.scheme.unwrap();
+        let moved = axis(1500, initial.min + scheme.step, initial.max + scheme.step);
+        let next = tick_layout(kind, moved, &across(&text), Some(scheme));
+        assert_eq!(next.scheme, Some(scheme));
+        let mut shared = 0;
+        for a in first.ticks {
+            if let Some(b) = next.ticks.iter().find(|b| b.value == a.value) {
+                assert_eq!(a.label, b.label);
+                assert!(b.offset < a.offset);
+                shared += 1;
+            }
+        }
+        assert!(shared >= 3);
+    }
+}
+
+#[test]
+fn sample_ticks_are_exact_integer_multiples_even_above_f64_unit_precision() {
+    let text = DejaVuSans;
+    for (min, max) in [(0., 1.), (1e18, 1e18 + 1e8), (u64::MAX as f64 - 1e8, u64::MAX as f64)] {
+        let layout = tick_layout(AxisKind::Samples, axis(1800, min, max), &across(&text), None);
+        let step = layout.scheme.unwrap().step as u128;
+        assert!(step >= 1);
+        assert!(!layout.ticks.is_empty());
+        for mark in layout.ticks {
+            let index: u128 = mark.label.trim_start_matches('#').parse().unwrap();
+            assert_eq!(index % step, 0);
+            assert_eq!(index as f64, mark.value);
+        }
+    }
+    let held = TickScheme { step: 0.25, span: 1. };
+    let result = tick_layout(AxisKind::Samples, axis(800, 0., 1.), &across(&text), Some(held));
+    assert!(result.scheme.unwrap().step >= 1.);
+}
+
+fn assert_ruler_values(kind: AxisKind, marks: &[Tick], span: f64) {
+    for mark in marks {
+        let printed: f64 = match kind {
+            AxisKind::Samples => mark.label.trim_start_matches('#').parse::<u64>().unwrap() as f64,
+            _ => mark.label.trim_end_matches(" s").parse().unwrap(),
+        };
+        assert!((printed - mark.value).abs() < span * 1e-6);
+    }
+}
+
+#[test]
+fn fractional_clock_readouts_keep_hours_and_carry_across_the_hour_boundary() {
+    assert_eq!(format_time(3723.456, 7200., 0.001), "1:02:03.456");
+    assert_eq!(format_time(3599.9996, 7200., 0.001), "1:00:00.000");
+    assert_eq!(format_time(-3723.456, 7200., 0.001), "-1:02:03.456");
+    assert_eq!(format_time(3723.456, 30., 0.001), "62:03.456");
+}

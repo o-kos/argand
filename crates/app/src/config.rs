@@ -26,6 +26,7 @@ pub const FILE_NAME: &str = "argand.toml";
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
     #[default]
+    System,
     Dark,
     Light,
 }
@@ -64,6 +65,8 @@ impl Aggregation {
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub theme: Theme,
+    /// Numeric locale: `system`, a BCP 47 tag, or C/POSIX.
+    pub number_format: String,
     /// Colours the spectrogram is shaded with, by the same names `aspec` takes.
     #[serde(deserialize_with = "parsed")]
     pub color_scheme: Colormap,
@@ -88,6 +91,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             theme: Theme::default(),
+            number_format: "system".into(),
             color_scheme: Colormap::Oceanic,
             dynamic_range: DynamicRange::Default,
             aggregation: Aggregation::default(),
@@ -216,6 +220,13 @@ impl Config {
     /// of it, so each bad value is replaced on its own.
     pub(crate) fn repaired(mut self) -> Self {
         let default = Self::default();
+        if !crate::numbers::valid_format(&self.number_format) {
+            tracing::warn!(
+                found = self.number_format,
+                "invalid number_format; using the system numeric locale"
+            );
+            self.number_format = default.number_format;
+        }
         self.analysis.repair();
         if let DynamicRange::Fixed(value) = self.dynamic_range
             && (!value.is_finite() || value <= 0.0)

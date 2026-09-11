@@ -67,7 +67,7 @@ impl Editor {
         let palette = combo(Choice::Palette, settings, window, cx, &mut subscriptions);
         let overlap = number(
             Number::Overlap,
-            settings.overlap.to_string(),
+            crate::numbers::input(settings.overlap),
             window,
             cx,
             &mut subscriptions,
@@ -78,7 +78,7 @@ impl Editor {
         };
         let range = number(
             Number::Range,
-            db.to_string(),
+            crate::numbers::input(db),
             window,
             cx,
             &mut subscriptions,
@@ -189,7 +189,7 @@ impl Editor {
         let Some(range) = range else {
             return;
         };
-        let value = range.effective_db.to_string();
+        let value = crate::numbers::input(range.effective_db);
         if self.range.read(cx).value().as_ref() != value {
             self.range
                 .update(cx, |s, cx| s.set_value(value, window, cx));
@@ -201,7 +201,7 @@ impl Editor {
         self.error = None;
         self.sync_choices(window, cx);
         self.overlap.update(cx, |s, cx| {
-            s.set_value(settings.overlap.to_string(), window, cx)
+            s.set_value(crate::numbers::input(settings.overlap), window, cx)
         });
         let db = match settings.dynamic_range {
             DynamicRange::Fixed(db) => db,
@@ -211,14 +211,15 @@ impl Editor {
                 .and_then(|s| s.read(cx).displayed_range())
                 .map_or(110.0, |r| r.effective_db),
         };
-        self.range
-            .update(cx, |s, cx| s.set_value(db.to_string(), window, cx));
+        self.range.update(cx, |s, cx| {
+            s.set_value(crate::numbers::input(db), window, cx)
+        });
     }
 
     fn sync_choices(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let settings = self.settings;
         for (state, value) in [
-            (&self.fft, settings.fft_size.to_string()),
+            (&self.fft, crate::numbers::number(settings.fft_size)),
             (&self.window, settings.window.to_string()),
             (&self.aggregation, settings.aggregation.label().into()),
             (&self.mode, mode_name(settings.dynamic_range).into()),
@@ -249,7 +250,7 @@ impl Editor {
         let mut settings = self.settings;
         match choice {
             Choice::Fft => {
-                if let Ok(value) = value.parse() {
+                if let Ok(value) = crate::numbers::parse(value) {
                     settings.fft_size = value;
                 }
             }
@@ -269,7 +270,10 @@ impl Editor {
                 settings.dynamic_range = match value {
                     "Absolute full scale" => DynamicRange::Default,
                     "Automatic" => DynamicRange::Auto,
-                    _ => DynamicRange::Fixed(self.range.read(cx).value().parse().unwrap_or(110.0)),
+                    _ => DynamicRange::Fixed(
+                        crate::numbers::parse(self.range.read(cx).value().as_ref())
+                            .unwrap_or(110.0),
+                    ),
                 }
             }
             Choice::Palette => {
@@ -300,7 +304,7 @@ impl Editor {
             Number::Overlap => &self.overlap,
             Number::Range => &self.range,
         };
-        let parsed = input.read(cx).value().parse::<f32>();
+        let parsed = crate::numbers::parse::<f32>(input.read(cx).value().as_ref());
         let Ok(mut value) = parsed else {
             self.error = Some("Enter a number".into());
             cx.notify();
@@ -321,7 +325,9 @@ impl Editor {
                 settings.overlap = value as u8
             }
             Number::Overlap => {
-                self.error = Some("Overlap must be a whole number from 0 to 95%".into());
+                self.error = Some(crate::numbers::text(
+                    "Overlap must be a whole number from 0 to 95%",
+                ));
                 cx.notify();
                 return;
             }
@@ -368,7 +374,10 @@ impl Editor {
             return Button::new("use-recommendation")
                 .outline()
                 .small()
-                .label(format!("Use recommended: {db} dB"))
+                .label(format!(
+                    "Use recommended: {} dB",
+                    crate::numbers::number(db)
+                ))
                 .when_some(
                     Kbd::binding_for_action(&UseRecommendedRange, None, window),
                     |button, kbd| button.child(kbd),
@@ -542,9 +551,9 @@ fn combo(
 ) -> Combo {
     let (selected, items): (String, Vec<String>) = match choice {
         Choice::Fft => (
-            settings.fft_size.to_string(),
+            crate::numbers::number(settings.fft_size),
             (1..=crate::settings::MAX_FFT_SIZE.ilog2())
-                .map(|n| (1usize << n).to_string())
+                .map(|n| crate::numbers::number(1usize << n))
                 .collect(),
         ),
         Choice::Window => (

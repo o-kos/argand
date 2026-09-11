@@ -330,6 +330,24 @@ transform size and window. It is read from beside
 the binary first and from the platform configuration directory second, and a
 missing or malformed one costs a log line rather than the application.
 
+The complete, English-commented default configuration is
+[`crates/app/assets/argand.toml`](crates/app/assets/argand.toml). Copy it to
+`~/.config/argand/argand.toml` on Linux (or
+`$XDG_CONFIG_HOME/argand/argand.toml` when set),
+`%APPDATA%\argand\argand.toml` on Windows, or
+`~/Library/Application Support/argand/argand.toml` on macOS, and edit the copy.
+Keep any existing user configuration when installing or updating.
+
+The default `theme = "system"` follows the operating system's light/dark appearance,
+including changes while Argand is running. Set `"dark"` or `"light"` to keep a fixed
+appearance. This controls the interface, independently of the spectrogram palette.
+
+Argand packages and package-manager delivery are tracked in [#86](https://github.com/o-kos/argand/issues/86),
+including shipping this template and documenting its installed location. Current
+release archives contain aspec only. System packages must not put an active
+default beside the executable, where it would override user configuration;
+adjacent configuration is intended for portable installations.
+
 The **Aggregation** control in the analysis settings window switches between **Peak (MAX)** and
 **Mean power** while a file is open. Peak preserves the strongest value in each
 pixel's time/frequency region. Mean power averages squared spectral amplitudes
@@ -354,8 +372,48 @@ Click outside the interval to pan one time-ruler division toward the pointer;
 Ctrl+click pans five divisions, matching the arrow shortcuts. Single and double
 clicks inside it do nothing; drag it to pan across the capture. An outside
 double-click steps on its first press and centres on its second only if the
-pointer is still outside the updated interval. An open-hand cursor marks the
-viewport and rulers; dragging uses a closed hand. Pointer time over the minimap refers to the full recording.
+pointer is still outside the updated interval. When zoomed in, an open-hand cursor
+marks the viewport and time ruler; dragging uses a closed hand. Pointer time over
+the minimap refers to the full recording.
+
+Choose **View → Time scale format**, or right-click the time ruler, to show
+hours, minutes and seconds (hms, default), elapsed seconds, or zero-based sample
+numbers. The unit (`hms`, `s` or `#`) appears once at the right of the ruler. Seconds and sample numbers
+refer to the start of the capture; one complex sample is one I/Q pair. Labels keep
+appropriate precision as you zoom, and the Alt time badge follows the selected
+format. The choice survives restarts. Switching formats leaves the visible range
+unchanged and does not recalculate the spectrum. Arrow keys follow the divisions
+of the selected ruler; zoom and position still reset whenever a file is opened.
+
+Hover over a time or frequency unit caption to see its meaning and resolution
+per physical screen pixel. The values follow the current view, window size and
+display scale, using the numeric locale. Clock time uses seconds per pixel;
+sample mode reads "Time in samples" with samples per pixel. The frequency caption
+sits to the right of the minimap, aligned to the top of the frequency ruler, and
+its hint reads, for example, "Frequency in kHz".
+The time unit retains the ruler's right-click menu. Rulers show a hand only when
+they can be dragged; frequency dragging remains part of #80.
+
+GUI numbers use the system numeric locale by default, including grouping, decimal marks,
+axis labels, cursor badges, hints and analysis settings. Numeric fields accept
+the same locale. Linux follows `LC_ALL`, then `LC_NUMERIC`, then `LANG`; Windows
+and macOS use the system regional locale. Number conventions come from CLDR;
+configuration, session serialization and CLI output retain their existing formats.
+
+To override the numeric locale, set the top-level `number_format` option in
+`argand.toml` (before any `[section]`), then restart the application:
+
+```toml
+number_format = "ru-RU"
+```
+
+The default is `"system"`, also used when the option is absent. Explicit values
+are BCP 47 locale tags such as `"ru-RU"`, `"en-US"` or `"de-DE"`; `"C"` and
+`"POSIX"` select a decimal point without digit grouping. Use tags such as `ru-RU`,
+not environment spellings such as `ru_RU.UTF-8`. Invalid tags produce a log warning
+and fall back to `system`, preserving the other configuration settings. This
+option is only available in the configuration file and applies to both numeric
+display and input; it does not change the interface language.
 
 Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
 Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved
@@ -384,7 +442,9 @@ The status bar shows pointer time from the capture start, physical frequency in 
 (including centre frequency), and the displayed grid cell's level in dBFS. Above
 the waveform and time ruler it shows time only. Uncovered placeholder areas have no level.
 Hold **Alt** over the spectrogram to project the cursor onto the time and frequency
-rulers, with rounded coordinate badges. White/black/white guide lines remain
+rulers, with rounded coordinate badges. Badge widths stay fixed for the current
+ruler range and precision, and the text is centered. White/black/white guide lines meet
+the badges and remain
 visible across palettes. Release Alt to hide the guides.
 File min/max values stay file-wide; they become available after the full-capture
 waveform scan, even if navigation interrupts the initial spectral analysis.

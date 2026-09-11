@@ -12,11 +12,19 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use argand_core::{SampleFormat, SampleType, SignalMeta, format_duration, format_hz};
+use argand_core::{SampleFormat, SampleType, SignalMeta};
 use argand_dsp::Analysis;
 use argand_io::OpenHints;
 
 use crate::analysis::{FileInfo, Update};
+use crate::numbers;
+
+fn format_hz(value: f64) -> String {
+    numbers::text(&argand_core::format_hz(value))
+}
+fn format_duration(value: f64) -> String {
+    numbers::text(&argand_core::format_duration(value))
+}
 
 /// Where a document came from, and how it was read.
 ///
@@ -80,7 +88,7 @@ impl Status {
         };
         Some(MetadataHint::new(
             "Analysis time",
-            format!("{:.3} s", elapsed.as_secs_f64()),
+            numbers::text(&format!("{:.3} s", elapsed.as_secs_f64())),
             "Includes sample reading, transforms and image preparation, excluding file opening and window drawing",
         ))
     }
@@ -95,7 +103,7 @@ impl Status {
         match self {
             Self::Opening => "opening...".to_owned(),
             Self::Analyzing { done, total } => match percent(*done, *total) {
-                Some(percent) => format!("analysing... {percent}%"),
+                Some(percent) => format!("analysing... {}%", numbers::number(percent)),
                 None => "analysing...".to_owned(),
             },
             Self::Ready { elapsed } => {
@@ -368,7 +376,7 @@ impl Document {
                 SampleFormat::U8 | SampleFormat::I16 | SampleFormat::I32 => {
                     group_integer(&format!("{value:.0}"))
                 }
-                _ => format!("{value:.7}"),
+                _ => numbers::number(format!("{value:.7}")),
             }
         };
         extrema
@@ -475,7 +483,11 @@ impl MetadataHint {
             "raw" => "Headerless samples use the format and rate supplied when opening the file",
             _ => "The container defines how samples and metadata are stored in the file",
         };
-        Self::new("File container type", container, explanation)
+        Self::new(
+            "File container type",
+            container,
+            explanation.replace("4 GiB", &numbers::text("4 GiB")),
+        )
     }
 
     fn samples(sample_type: SampleType) -> Self {
@@ -494,7 +506,7 @@ impl MetadataHint {
         Self::new(
             "Samples format",
             format!("{domain} · {}", sample_type.format.as_str()),
-            format!("{explanation} as {storage}"),
+            format!("{explanation} as {}", numbers::text(storage)),
         )
     }
 }
@@ -505,13 +517,13 @@ fn duration_millis(seconds: f64) -> u64 {
 
 fn capture_duration(seconds: f64) -> String {
     let millis = duration_millis(seconds);
-    format!(
+    numbers::clock(&format!(
         "{}:{:02}:{:02}.{:03}",
         millis / 3_600_000,
         millis / 60_000 % 60,
         millis / 1000 % 60,
         millis % 1000
-    )
+    ))
 }
 
 fn compact_capture_duration(seconds: f64) -> String {
@@ -540,23 +552,11 @@ fn compact_capture_duration(seconds: f64) -> String {
         (0, 0) if millis > 0 => String::new(),
         _ => format!("{seconds}s"),
     };
-    format!("{hours}{minutes}{seconds}")
+    numbers::text(&format!("{hours}{minutes}{seconds}"))
 }
 
 fn group_integer(value: &str) -> String {
-    let digits = value.strip_prefix('-').unwrap_or(value);
-    let mut result = if value.starts_with('-') {
-        "−".to_owned()
-    } else {
-        String::new()
-    };
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index).is_multiple_of(3) {
-            result.push(',');
-        }
-        result.push(digit);
-    }
-    result
+    numbers::number(value)
 }
 
 fn file_size(bytes: u64) -> String {
@@ -567,7 +567,10 @@ fn file_size(bytes: u64) -> String {
         n if n >= 1 << 10 => ((1u64 << 10) as f64, "KiB"),
         _ => return format!("{exact} B"),
     };
-    format!("{:.2} {unit} · {exact} B", bytes as f64 / divisor)
+    format!(
+        "{} {unit} · {exact} B",
+        numbers::number(format!("{:.2}", bytes as f64 / divisor))
+    )
 }
 
 #[cfg(test)]

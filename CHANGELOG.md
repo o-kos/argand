@@ -13,6 +13,13 @@ promise applies to.
 
 ### Added
 
+- Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap at the top of the frequency ruler; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
+- The default `theme = "system"` follows OS light/dark appearance changes; explicit `dark` and `light` overrides remain available.
+- A complete `argand.toml` template with English comments and explicit built-in defaults in the application installation assets.
+
+- View → Time scale format and the time-ruler context menu select hours/minutes/seconds, elapsed seconds or zero-based sample numbers, with the unit shown once at the right. The Alt time badge follows the selection, and the format survives restarts without preserving file zoom or position.
+- GUI numbers, hints and analysis settings follow the system numeric locale, including decimal marks, digit grouping and localized numeric input. The configuration-only `number_format` option can override it with an explicit locale such as `ru-RU`.
+
 - Hold Alt over the spectrogram to show guide lines to the time and frequency rulers with rounded coordinate badges, vertically centred text and white/black/white lines visible across palettes.
 
 - Two compact status-bar groups: combined file details with sample count, file size
@@ -72,6 +79,8 @@ promise applies to.
 
 ### Fixed
 
+- Alt coordinate badges keep a fixed width for the current ruler range and precision, center their text, and meet the guide lines without a gap.
+
 - FLAC seeks discard old decoder packets, preventing incomplete progressive analysis and full-capture waveform scans.
 
 - Time zoom keeps the current detail until a complete replacement is ready instead
@@ -90,7 +99,7 @@ promise applies to.
   right-hand title-bar area no longer starts a resize when the window is expanded.
 
 ### Changed
-- The waveform is now a full-capture minimap that darkens the waveform outside the visible interval, without a frame. Zoom, pan and spectral settings leave its content unchanged; outside click/Ctrl+click pan one/five ruler divisions, outside double-click centres, inside clicks leave the range unchanged, and dragging moves the interval. Open-hand cursors mark the interval and rulers. Its independent bounded scan continues when the initial FFT analysis is interrupted.
+- The waveform is now a full-capture minimap that darkens the waveform outside the visible interval, without a frame. Zoom, pan and spectral settings leave its content unchanged; outside click/Ctrl+click pan one/five ruler divisions, outside double-click centres, inside clicks leave the range unchanged, and dragging moves the interval. When zoomed in, open-hand cursors mark the interval and time ruler. Its independent bounded scan continues when the initial FFT analysis is interrupted.
 
 
 - Every file opening resets time zoom and position. Ctrl+wheel zoom and wheel horizontal pan work over both the spectrogram and time ruler. Left/Right move by one ruler division, Ctrl+Left/Right by five, preserving ruler spacing and format. The crosshair is limited to the spectrogram. Zoom keys use Ctrl+Plus/Minus and Ctrl+0 (fit).
