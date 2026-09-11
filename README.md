@@ -390,7 +390,9 @@ per physical screen pixel. The values follow the current view, window size and
 display scale, using the numeric locale. Clock time uses seconds per pixel;
 sample mode reads "Time in samples" with samples per pixel. The frequency caption
 sits to the right of the minimap, aligned to the top of the frequency ruler, and
-its hint reads, for example, "Frequency in kHz".
+its hint reads, for example, "Frequency in kHz". Frequency resolution independently
+selects Hz, kHz, MHz or GHz from its value, so a kHz ruler can report
+"Resolution: 0.496 Hz/px" without redundant trailing zeros.
 The time unit retains the ruler's right-click menu. Rulers show a hand only when
 they can be dragged; frequency dragging remains part of #80.
 

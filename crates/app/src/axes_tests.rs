@@ -382,3 +382,27 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
         assert!(hints[1].unwrap().bounds.x < frame.plot.x);
     }
 }
+
+#[test]
+fn frequency_resolution_selects_units_independently_of_the_ruler() {
+    let hint = measure(panel(800., 600.), HFDL).unit_hints(&DejaVuSans)[1].unwrap();
+    for (scale, units) in [(1., "Hz"), (1e3, "kHz"), (1e6, "MHz"), (1e9, "GHz")] {
+        for (hertz, expected) in [
+            (0.496, "0.496 Hz"),
+            (1e-12, "1e-12 Hz"),
+            (1.234e-12, "1.234e-12 Hz"),
+            (0., "0 Hz"),
+            (999., "999 Hz"),
+            (1000., "1 kHz"),
+            (4960., "4.96 kHz"),
+            (1e6, "1 MHz"),
+            (1e9, "1 GHz"),
+        ] {
+            let hint = UnitHint { per_pixel: hertz / scale, units, ..hint };
+            assert_eq!(hint.resolution(), format!("Resolution: {expected}/px"));
+        }
+    }
+    let localized = crate::numbers::Numbers::new("ru-RU")
+        .text(&UnitHint { per_pixel: 0.000496, units: "kHz", ..hint }.resolution());
+    assert_eq!(localized, "Resolution: 0,496 Hz/px");
+}

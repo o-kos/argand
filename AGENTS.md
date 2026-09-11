@@ -303,7 +303,8 @@ Time units are painted once at the right; space for all three captions is reserv
 independently of the mode, so switching it cannot resize the spectral image.
 Unit hints use measured caption rectangles from the axis frame. The time hint
 belongs to the ruler context-menu element so right-click handling is preserved;
-the frequency hint occupies only its visible caption beside the minimap, not the frequency ticks. Hints observe the shell and report the current view span per physical device pixel, in seconds/samples and the displayed frequency unit. Hand cursors require an available pan range; the frequency ruler remains non-draggable until #80.
+the frequency hint occupies only its visible caption beside the minimap, not the frequency ticks. Hints observe the shell and report the current view span per physical device pixel, in seconds/samples and an independently selected frequency unit (Hz through GHz)
+based on resolution magnitude, without redundant decimal zeros. Hand cursors require an available pan range; the frequency ruler remains non-draggable until #80.
 Machine-readable persistence and CLI number formatting do not use this module.
 
 The time-ruler context menu retains its popup entity after closing. The shell
