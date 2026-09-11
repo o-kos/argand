@@ -109,22 +109,13 @@ pub struct Panel {
 }
 
 impl Panel {
-    pub fn paint(&self, frame: &Frame, bounds: Bounds<Pixels>, height: f32, window: &mut Window) {
-        let origin = bounds.origin
-            + point(
-                if frame.orientation.vertical() {
-                    bounds.size.width - px(height)
-                } else {
-                    px(0.)
-                },
-                px(0.),
-            );
+    pub fn paint(&self, frame: &Frame, origin: Point<Pixels>, height: f32, window: &mut Window) {
         if let Some(waveform) = &self.waveform {
             waveform.paint(frame, origin, height, self.viewport, window);
         }
         let bounds = if frame.orientation.vertical() {
             Bounds::new(
-                origin + point(px(0.), px(frame.plot.y)),
+                origin + point(px(height - 1.), px(frame.plot.y)),
                 size(px(1.), px(frame.plot.height)),
             )
         } else {

@@ -345,7 +345,7 @@ grid saves the choice and notifies the UI without requesting analysis.
 `orientation::Mode` maps physical time/frequency fractions and rectangles to the
 screen; spectral grids retain their original time-column/frequency-row order.
 Horizontal mode is the default. Vertical mode puts time downwards, frequency to
-the right and the independent minimap on the far right, after the time ruler. Uploaded BGRA pixels rotate
+the right and the independent minimap on the left. Uploaded BGRA pixels rotate
 clockwise in vertical mode, including padded deep-preview strips; held pictures
 and backdrop coverage use the same orientation mapping. GPU retirement still
 waits two frame callbacks. Switching mode reuploads retained images and requests
@@ -358,7 +358,7 @@ The mode button persists session version 9. Arrow bindings use Horizontal/Vertic
 key contexts so panning follows the screen; named time/frequency zoom shortcuts
 retain their axes. In vertical mode time labels occupy the right gutter, frequency
 labels the bottom row, with time units at bottom-right and frequency units beside
-the bottom-right end in the minimap footer. The grid and time-format settings apply
+the bottom-left end in the minimap footer. The grid and time-format settings apply
 to both layouts.
 
 Spectrum left-drag pans both physical axes, including frequency-only zoom when
@@ -374,7 +374,3 @@ window's physical Shift state, which Linux symbol normalization otherwise loses.
 Ctrl plus/equal/minus targets time; adding Shift targets frequency, including
 underscore and keypad aliases. Named menu actions retain their explicit axes.
 Ctrl+Shift+Up/Down are not zoom bindings; arrow pan bindings stay unchanged.
-
-The vertical minimap uses a left-edge divider and width measured from the right
-edge. Its hitbox excludes the time ruler; Alt badges end before the minimap.
-Spectrum and backdrop origins share orientation::Mode::spectrum_offset.

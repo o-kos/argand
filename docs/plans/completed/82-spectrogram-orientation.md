@@ -5,7 +5,7 @@
 Expose a visible Horizontal/Vertical button beside View and persist its active
 mode in the session. Missing mode defaults to Horizontal. Vertical mode places
 time from top to bottom and frequency from left to right, with the full-capture
-minimap in a vertical strip on the far right, after the time ruler. Switching orientation preserves the
+minimap in a vertical strip on the left. Switching orientation preserves the
 current physical time/frequency ranges and does not repeat FFTs, except when
 a longer time axis requires the existing representability floor to expand an
 extreme-index range. Keep that correctness guard and its normal analysis restart.
@@ -118,17 +118,16 @@ GPU checks verified both grid states in both orientations, persistence, matching
 menu checkmarks and Ctrl+G label, popup focus isolation and unchanged analysis
 counters. The final focused review was clean.
 
-## Owner follow-up: right-side vertical minimap
+## Owner follow-up: restore the left-side vertical minimap
 
-- [x] Move the vertical minimap after the time ruler and align paint/hitbox origins
-- [x] Move the splitter to its left edge and measure width from the right edge
-- [x] Keep frequency units in the minimap footer and Alt badges before the minimap
-- [x] Validate geometry, run full gate/release, native navigation and focused review
+- [x] Revert the right-side minimap experiment, including geometry and splitter direction
+- [x] Keep unit-caption placement unchanged pending a separate layout discussion
+- [x] Run the full local gate, rebuild release and complete focused review
 
-All 540 tests, formatting and strict Clippy passed; release rebuilt. Native Linux
-GPU checks covered the right-side minimap and time-ruler dragging, widening the
-minimap from its left divider, Alt guides, unit hints, narrow-window resizing,
-horizontal layout and one-FFT Home/End navigation on a 1 GB capture. Geometry
-tests cover both orientations, two minimap widths and fractional display scale.
-Focused review found orientation-ambiguous caption documentation; it was corrected,
-and the final round was clean.
+The owner preferred the original left-side minimap after trying the right-side
+layout. Frequency-unit placement remains a design discussion, not part of this revert.
+
+Formatting, strict Clippy and all 539 tests passed; release rebuilt. Focused
+independent review confirmed that application code exactly matches the previous
+left-side layout, documentation is consistent and no caption redesign was added.
+The review was clean. No new native GUI run was needed for this exact restoration.
