@@ -70,3 +70,18 @@ Focused review found redundant zeros in scientific frequency mantissas. The fix
 trims only the mantissa, preserving exponent and integer zeros; time hints retain
 their previous output. The final round was clean. All 536 tests, formatting and
 strict Clippy passed.
+
+## Owner follow-up: frequency mouse gestures
+
+- [x] Reproduce missing spectrum frequency drag and Ctrl+Shift+wheel on native Linux
+- [x] Accept Shift-remapped wheel deltas and enable both spectrum drag axes
+- [x] Submit one request after updating both viewports during diagonal drags
+- [x] Cover remapped wheel events and constrained ruler/minimap hitboxes
+- [x] Run full local gate, release, native gesture checks and focused review
+
+All 538 tests, formatting and strict Clippy passed; release rebuilt. Native Linux
+GPU events reproduced both failures before the fix and verified Ctrl+Shift+wheel
+on spectrum and both rulers, Shift+wheel, diagonal dragging in both orientations,
+frequency dragging with fitted time, ruler constraints and release of the drag.
+Frequency-only motion retained analysis counters. Focused independent review
+was clean, with no findings to accept or decline.

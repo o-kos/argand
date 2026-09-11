@@ -428,7 +428,8 @@ Left/Right pan frequency, with Ctrl taking five divisions. Zoom shortcuts keep
 their time/frequency meanings in both modes.
 
 Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
-Left-drag also pans. The time ruler uses the same gestures: wheel pans in time,
+Left-drag on the spectrogram pans both time and frequency; each ruler constrains
+dragging to its own axis. The time ruler uses the same gestures: wheel pans in time,
 Ctrl+wheel zooms. Shift+wheel pans frequency and Ctrl+Shift+wheel zooms frequency
 about the pointer. On the frequency ruler, drag or wheel to pan, and Ctrl+wheel to
 zoom. Its hand cursor appears only when the frequency range is narrowed.
