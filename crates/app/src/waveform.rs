@@ -32,7 +32,12 @@ impl Waveform {
         window: &mut Window,
     ) {
         let scale = window.scale_factor();
-        let columns = (frame.plot.width * scale).round() as usize;
+        let columns = (frame
+            .orientation
+            .axes(frame.plot.width, frame.plot.height)
+            .0
+            * scale)
+            .round() as usize;
         let rows = ((height - 9.).max(0.) * scale).round() as i64;
         if rows == 0 {
             return;
@@ -66,15 +71,27 @@ impl Waveform {
             let Some((lo, hi)) = span else { continue };
             let top = (middle - hi).max(0);
             let bottom = (middle - lo + 1).min(rows);
-            window.paint_quad(fill(
-                Bounds {
-                    origin: origin
+            let bounds = if frame.orientation.vertical() {
+                Bounds::new(
+                    origin
+                        + point(
+                            px(4. + (rows - bottom) as f32 / scale),
+                            px(frame.plot.y + column as f32 / scale),
+                        ),
+                    size(px((bottom - top) as f32 / scale), px(1. / scale)),
+                )
+            } else {
+                Bounds::new(
+                    origin
                         + point(
                             px(frame.plot.x + column as f32 / scale),
                             px(4. + top as f32 / scale),
                         ),
-                    size: size(px(1. / scale), px((bottom - top) as f32 / scale)),
-                },
+                    size(px(1. / scale), px((bottom - top) as f32 / scale)),
+                )
+            };
+            window.paint_quad(fill(
+                bounds,
                 rgb(if (first..end).contains(&column) {
                     0x78c8ff
                 } else {
@@ -96,12 +113,17 @@ impl Panel {
         if let Some(waveform) = &self.waveform {
             waveform.paint(frame, origin, height, self.viewport, window);
         }
-        window.paint_quad(fill(
+        let bounds = if frame.orientation.vertical() {
+            Bounds::new(
+                origin + point(px(height - 1.), px(frame.plot.y)),
+                size(px(1.), px(frame.plot.height)),
+            )
+        } else {
             Bounds::new(
                 origin + point(px(frame.plot.x), px(height - 1.)),
                 size(px(frame.plot.width), px(1.)),
-            ),
-            self.separator,
-        ));
+            )
+        };
+        window.paint_quad(fill(bounds, self.separator));
     }
 }

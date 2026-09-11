@@ -9,7 +9,7 @@ fn panel(width: f32, height: f32) -> Size<Pixels> {
 
 /// The two-sided span of a 24 kHz I/Q capture tuned to 12.579 MHz, half an
 /// hour long -- the repository's own fixture.
-const HFDL: Extents = Extents {
+const HFDL: Extents = Extents { orientation: crate::orientation::Mode::Horizontal,
     time: crate::time_ruler::Ruler::CLOCK,
     seconds: (0.0, 1800.0),
     hertz: (12_567_000.0, 12_591_000.0),
@@ -72,7 +72,7 @@ fn a_tuned_capture_reads_in_the_unit_its_digits_need() {
     // Baseband: the same span with nothing added to it is kilohertz.
     let baseband = measure(
         panel(1200.0, 800.0),
-        Extents { time: crate::time_ruler::Ruler::CLOCK,
+        Extents { orientation: crate::orientation::Mode::Horizontal, time: crate::time_ruler::Ruler::CLOCK,
             seconds: (0.0, 1800.0),
             hertz: (-12_000.0, 12_000.0),
         },
@@ -94,7 +94,7 @@ fn a_real_capture_is_labelled_from_zero_up_and_a_complex_one_either_side() {
 
     let real = measure(
         panel(1200.0, 800.0),
-        Extents { time: crate::time_ruler::Ruler::CLOCK,
+        Extents { orientation: crate::orientation::Mode::Horizontal, time: crate::time_ruler::Ruler::CLOCK,
             seconds: (0.0, 10.0),
             hertz: (0.0, 12_000.0),
         },
@@ -194,7 +194,7 @@ impl LabelMeasure for WideDigits {
 
 #[test]
 fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
-    let extents = Extents { time: crate::time_ruler::Ruler::CLOCK,
+    let extents = Extents { orientation: crate::orientation::Mode::Horizontal, time: crate::time_ruler::Ruler::CLOCK,
         seconds: (0.0, 30.0),
         hertz: (5_000_001.0, 5_000_004.0),
     };
@@ -213,7 +213,7 @@ fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
 #[test]
 fn axis_labels_clear_adjacent_panels_and_the_window_edges() {
     for scale in [1.0, 1.25, 1.5, 2.0] {
-        let extents = Extents { time: crate::time_ruler::Ruler::CLOCK, seconds: (0.0, 30.456), hertz: (-12_000.0, 12_000.0) };
+        let extents = Extents { orientation: crate::orientation::Mode::Horizontal, time: crate::time_ruler::Ruler::CLOCK, seconds: (0.0, 30.456), hertz: (-12_000.0, 12_000.0) };
         let frame = Frame::measure(panel(300.0, 240.0), scale, extents, &DejaVuSans, None)
             .expect("the panel holds a plot and its labels");
         assert_axis_bands_fit(&frame, 300.0, 240.0);
@@ -278,7 +278,7 @@ fn localized_time_labels_fit_and_units_do_not_resize_the_plot() {
         let labels = Localized(crate::numbers::Numbers::new(locale));
         let mut previous_plot = None;
         for mode in [crate::time_ruler::Mode::Clock, crate::time_ruler::Mode::Seconds, crate::time_ruler::Mode::Samples] {
-            let extents = Extents {
+            let extents = Extents { orientation: crate::orientation::Mode::Horizontal,
                 time: crate::time_ruler::Ruler { mode, view: crate::navigation::View { start: 1_234_000, len: 20_000 }, total: 2_000_000 },
                 seconds: (1234., 1254.), hertz: (-100., 100.),
             };
@@ -357,5 +357,28 @@ fn unit_resolution_uses_device_pixels_current_view_and_caption_units() {
         assert_eq!(frame.plot.y, 0.);
         let tiny = UnitHint { per_pixel: 1e-12, ..time };
         assert!(tiny.resolution().contains("1.000e-12"));
+    }
+}
+
+#[test]
+fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() {
+    use crate::orientation::Mode;
+    for scale in [1., 1.25, 2.] {
+        let extents = Extents { orientation: Mode::Vertical, ..HFDL };
+        let frame = Frame::measure(panel(800., 600.), scale, extents, &DejaVuSans, None).unwrap();
+        assert_eq!(frame.plot.x, 0.);
+        assert!(frame.plot.y >= 4.);
+        for tick in frame.time.iter().filter(|tick| !tick.label.is_empty()) {
+            assert!(frame.plot.right() + LABEL_PAD + DejaVuSans.width(&tick.label, LABEL_SIZE) <= 796.);
+        }
+        for tick in frame.frequency.iter().filter(|tick| !tick.label.is_empty()) {
+            let half = DejaVuSans.width(&tick.label, LABEL_SIZE) / 2.;
+            assert!(tick.offset as f32 >= half);
+            assert!(tick.offset as f32 + half <= frame.plot.width);
+        }
+        let hints = frame.unit_hints(&DejaVuSans);
+        assert_eq!(hints[0].unwrap().per_pixel, (extents.seconds.1 - extents.seconds.0) / (frame.plot.height * scale).round() as f64);
+        assert_eq!(hints[1].unwrap().per_pixel, (extents.hertz.1 - extents.hertz.0) / (frame.plot.width * scale).round() as f64 / 1e6);
+        assert!(hints[1].unwrap().bounds.x < frame.plot.x);
     }
 }

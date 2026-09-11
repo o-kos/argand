@@ -39,12 +39,26 @@ const LABEL_SIZE: f32 = 11.0;
 /// it is that room which decides how many columns the transform is asked for.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Extents {
+    pub orientation: crate::orientation::Mode,
     pub time: crate::time_ruler::Ruler,
     pub seconds: (f64, f64),
     pub hertz: (f64, f64),
 }
 
 impl Extents {
+    fn per_pixel(self, plot: Rect, scale: f32) -> (f64, f64) {
+        let (time_pixels, frequency_pixels) = self.orientation.axes(plot.width, plot.height);
+        let time_units = if self.time.mode == crate::time_ruler::Mode::Samples {
+            self.time.view.len as f64
+        } else {
+            self.seconds.1 - self.seconds.0
+        };
+        (
+            time_units / f64::from((time_pixels * scale).round().max(1.)),
+            (self.hertz.1 - self.hertz.0) / f64::from((frequency_pixels * scale).round().max(1.)),
+        )
+    }
+
     pub fn picture(self) -> crate::navigation::PictureView {
         crate::navigation::PictureView {
             time: self.seconds,
@@ -96,6 +110,7 @@ impl UnitHint {
 
 /// Where the picture goes inside a panel, and what is drawn around it.
 pub struct Frame {
+    pub orientation: crate::orientation::Mode,
     /// The spectrogram's own rectangle, which is what a transform is sized to.
     pub plot: Rect,
     pub time: Vec<Tick>,
@@ -110,6 +125,7 @@ pub struct Frame {
     time_caption: &'static str,
     /// Where the ink of the caption is centred, over the gutter.
     caption_row: f32,
+    caption_x: f32,
     per_pixel: (f64, f64),
 }
 
@@ -118,13 +134,23 @@ impl Frame {
         let height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
         let frequency = self.caption.filter(|_| !self.frequency.is_empty());
         [
-            (Some(self.time_caption), self.time_row, self.per_pixel.0),
-            (frequency, self.caption_row, self.per_pixel.1),
+            (
+                Some(self.time_caption),
+                self.plot.right() + LABEL_PAD,
+                self.time_row,
+                self.per_pixel.0,
+            ),
+            (
+                frequency,
+                self.caption_x,
+                self.caption_row,
+                self.per_pixel.1,
+            ),
         ]
-        .map(|(caption, row, per_pixel)| {
+        .map(|(caption, x, row, per_pixel)| {
             caption.map(|caption| UnitHint {
                 bounds: Rect {
-                    x: self.plot.right() + LABEL_PAD,
+                    x,
                     y: row - height / 2.,
                     width: measure.width(caption, LABEL_SIZE).ceil(),
                     height,
@@ -184,96 +210,130 @@ impl Frame {
         held: Option<axis::TickScheme>,
         held_frequency: Option<axis::TickScheme>,
     ) -> Option<Self> {
+        let orientation = extents.orientation;
+        let vertical = orientation.vertical();
         let (t0, t1) = extents.time.bounds(extents.seconds);
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
-
-        // Time labels get a row below the plot; the frequency unit sits beside the minimap.
         let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
         let foot = OUTER_PAD + row_height + LABEL_PAD;
-        // Every candidate is measured, because which of two strings needs more
-        // room is a question about glyphs and not about characters. The
-        // caption counts too: over a narrow span `MHz` is wider than the
-        // digits it heads.
-        let gutter = axis::widest_labels(AxisKind::Frequency, f0, f1)
-            .iter()
-            .map(String::as_str)
-            .chain(caption)
-            .map(|label| measure.width(&measure.localize(label, AxisKind::Frequency), LABEL_SIZE))
-            .chain(["hms", "s", "#"].map(|label| measure.width(label, LABEL_SIZE)))
-            .fold(0.0f32, f32::max)
-            .ceil()
-            + LABEL_PAD;
-
-        // Both edges are snapped rather than the origin and the size, so that
-        // the width left between them is itself a whole number of device
-        // pixels.
-        let scale = if scale > 0.0 { scale } else { 1.0 };
+        let scale = if scale > 0. { scale } else { 1. };
         let ceil = |value: f32| (value * scale).ceil() / scale;
         let floor = |value: f32| (value * scale).floor() / scale;
-        // Snap inward to preserve both label space and the outside margins.
-        let left = ceil(OUTER_PAD);
+        let top = if vertical { ceil(OUTER_PAD) } else { 0. };
+        let height = floor(f32::from(panel.height) - foot) - top;
+        let (right_kind, right_min, right_max, right_held) = if vertical {
+            (extents.time.mode.kind(), t0, t1, held)
+        } else {
+            (AxisKind::Frequency, f0, f1, held_frequency)
+        };
+        let right_labels = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down);
+        let right_labels = if vertical {
+            right_labels.keep_edge_marks()
+        } else {
+            right_labels
+        };
+        let right_ticks = axis::tick_layout(
+            right_kind,
+            Axis {
+                length: height as i64,
+                min: right_min,
+                max: right_max,
+                lead: -(LABEL_PAD as i64),
+                trail: -(LABEL_PAD as i64),
+            },
+            &right_labels,
+            right_held,
+        );
+        let gutter = ruler_gutter(extents, &right_ticks.ticks, caption, measure);
+        let left = if vertical { 0. } else { ceil(OUTER_PAD) };
         let right = floor(f32::from(panel.width) - OUTER_PAD - gutter);
-        let top = 0.;
         let plot = Rect {
             x: left,
             y: top,
             width: right - left,
-            height: floor(f32::from(panel.height) - foot) - top,
+            height,
         };
-        if plot.width < 1.0 || plot.height < 1.0 {
+        if plot.width < 1. || plot.height < 1. {
             return None;
         }
-
-        let time = axis::tick_layout(
-            extents.time.mode.kind(),
+        let (bottom_kind, bottom_min, bottom_max, bottom_held) = if vertical {
+            (AxisKind::Frequency, f0, f1, held_frequency)
+        } else {
+            (extents.time.mode.kind(), t0, t1, held)
+        };
+        let across = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).keep_edge_marks();
+        let across = if vertical {
+            across
+        } else {
+            across.after_tick(LABEL_PAD)
+        };
+        let bottom_ticks = axis::tick_layout(
+            bottom_kind,
             Axis {
                 length: plot.width as i64,
-                min: t0,
-                max: t1,
+                min: bottom_min,
+                max: bottom_max,
                 lead: 0,
                 trail: 0,
             },
-            &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across)
-                .after_tick(LABEL_PAD)
-                .keep_edge_marks(),
-            held,
+            &across,
+            bottom_held,
         );
-        let frequency = axis::tick_layout(
-            AxisKind::Frequency,
-            Axis {
-                length: plot.height as i64,
-                min: f0,
-                max: f1,
-                lead: -(LABEL_PAD as i64),
-                trail: -(LABEL_PAD as i64),
-            },
-            &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down),
-            held_frequency,
-        );
-
+        let (time, frequency) = if vertical {
+            (right_ticks, bottom_ticks)
+        } else {
+            (bottom_ticks, right_ticks)
+        };
+        let bottom_row = plot.bottom() + LABEL_PAD + row_height / 2.;
         Some(Self {
+            orientation,
             plot,
             time: time.ticks,
             time_scheme: time.scheme,
-            // Frequency ink stays within the plot height, clear of both the
-            // unit above and the time-label row below.
             frequency: frequency.ticks,
             frequency_scheme: frequency.scheme,
             caption,
             time_caption: extents.time.mode.caption(),
-            time_row: plot.bottom() + LABEL_PAD + row_height / 2.0,
-            caption_row: plot.y - measure.digit_height(LABEL_SIZE) / 2.0,
-            per_pixel: (
-                if extents.time.mode == crate::time_ruler::Mode::Samples {
-                    extents.time.view.len as f64
-                } else {
-                    extents.seconds.1 - extents.seconds.0
-                } / f64::from((plot.width * scale).round().max(1.)),
-                (f1 - f0) / f64::from((plot.height * scale).round().max(1.)),
-            ),
+            time_row: bottom_row,
+            caption_row: if vertical {
+                bottom_row
+            } else {
+                plot.y - measure.digit_height(LABEL_SIZE) / 2.
+            },
+            caption_x: if vertical {
+                plot.x - LABEL_PAD - measure.width(caption.unwrap_or("Hz"), LABEL_SIZE)
+            } else {
+                plot.right() + LABEL_PAD
+            },
+            per_pixel: extents.per_pixel(plot, scale),
         })
     }
+}
+
+fn ruler_gutter(
+    extents: Extents,
+    right_ticks: &[Tick],
+    caption: Option<&str>,
+    measure: &dyn LabelMeasure,
+) -> f32 {
+    let candidates = if extents.orientation.vertical() {
+        right_ticks.iter().map(|tick| tick.label.clone()).collect()
+    } else {
+        axis::widest_labels(AxisKind::Frequency, extents.hertz.0, extents.hertz.1)
+            .into_iter()
+            .map(|label| measure.localize(&label, AxisKind::Frequency))
+            .collect::<Vec<_>>()
+    };
+    candidates
+        .iter()
+        .map(String::as_str)
+        .chain(caption)
+        .chain(["hms", "s", "#"])
+        .map(|label| measure.width(label, LABEL_SIZE))
+        .fold(0.0f32, f32::max)
+        .ceil()
+        + LABEL_PAD
 }
 
 /// The window's font, measured the way the tick policy needs it measured.
@@ -456,41 +516,60 @@ pub fn paint(
         ));
     };
 
-    for tick in &frame.time {
-        let x = plot.x + tick.offset as f32;
-        if let Some(grid) = colors.grid {
-            line(window, x, plot.y, 1.0, plot.height, grid);
+    for (ticks, bottom, increasing_down, after_tick) in [
+        (&frame.time, !frame.orientation.vertical(), true, true),
+        (&frame.frequency, frame.orientation.vertical(), false, false),
+    ] {
+        for tick in ticks {
+            let (x, y) = if bottom {
+                (plot.x + tick.offset as f32, plot.bottom())
+            } else {
+                (
+                    plot.right(),
+                    if increasing_down {
+                        plot.y + tick.offset as f32
+                    } else {
+                        plot.bottom() - tick.offset as f32
+                    },
+                )
+            };
+            if let Some(grid) = colors.grid {
+                let (gx, gy, width, height) = if bottom {
+                    (x, plot.y, 1., plot.height)
+                } else {
+                    (plot.x, y, plot.width, 1.)
+                };
+                line(window, gx, gy, width, height, grid);
+            }
+            let (width, height) = if bottom {
+                (1., TICK_LEN)
+            } else {
+                (TICK_LEN, 1.)
+            };
+            line(window, x, y, width, height, colors.tick);
+            if tick.label.is_empty() {
+                continue;
+            }
+            let shaped = labels.shape(&tick.label, colors.label);
+            let (left, row) = if bottom {
+                (
+                    if after_tick {
+                        x + LABEL_PAD
+                    } else {
+                        x - f32::from(shaped.width) / 2.
+                    },
+                    frame.time_row,
+                )
+            } else {
+                (x + LABEL_PAD, y + 0.5)
+            };
+            let _ = shaped.paint(
+                at(left, labels.line_top(row, &shaped)),
+                px(LINE_HEIGHT),
+                window,
+                cx,
+            );
         }
-        line(window, x, plot.bottom(), 1.0, TICK_LEN, colors.tick);
-
-        if tick.label.is_empty() {
-            continue;
-        }
-        let shaped = labels.shape(&tick.label, colors.label);
-        let left = x + LABEL_PAD;
-        let top = labels.line_top(frame.time_row, &shaped);
-        let _ = shaped.paint(at(left, top), px(LINE_HEIGHT), window, cx);
-    }
-
-    for tick in &frame.frequency {
-        // Offset 0 is the lowest frequency, which is the bottom of the plot.
-        let y = plot.bottom() - tick.offset as f32;
-        if let Some(grid) = colors.grid {
-            line(window, plot.x, y, plot.width, 1.0, grid);
-        }
-        line(window, plot.right(), y, TICK_LEN, 1.0, colors.tick);
-
-        if tick.label.is_empty() {
-            continue;
-        }
-        let shaped = labels.shape(&tick.label, colors.label);
-        let left = plot.right() + LABEL_PAD;
-        let _ = shaped.paint(
-            at(left, labels.line_top(y + 0.5, &shaped)),
-            px(LINE_HEIGHT),
-            window,
-            cx,
-        );
     }
 
     line(window, plot.x, plot.bottom(), plot.width, 1.0, colors.tick);
@@ -519,7 +598,7 @@ pub fn paint(
     // label has nothing for it to head.
     if let Some(caption) = frame.caption.filter(|_| !frame.frequency.is_empty()) {
         let shaped = labels.shape(caption, colors.label);
-        let left = plot.right() + LABEL_PAD;
+        let left = frame.caption_x;
         let top = labels.line_top(frame.caption_row, &shaped);
         let _ = shaped.paint(at(left, top), px(LINE_HEIGHT), window, cx);
     }

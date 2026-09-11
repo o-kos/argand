@@ -648,6 +648,7 @@ impl Shell {
     fn extents(&self) -> Option<axes::Extents> {
         let meta = self.file.as_ref()?.document.meta()?;
         Some(axes::Extents {
+            orientation: self.session.orientation,
             time: crate::time_ruler::Ruler {
                 mode: self.session.time_ruler,
                 view: self.view?,
@@ -700,7 +701,9 @@ impl Shell {
             .file
             .as_ref()
             .and_then(|file| file.document.analysis())
-            .and_then(|analysis| spectrogram::texture(&analysis.spectrogram));
+            .and_then(|analysis| {
+                spectrogram::texture(&analysis.spectrogram, self.session.orientation)
+            });
         let stale = std::mem::replace(&mut self.texture, fresh);
         release(stale, window);
         tracing::trace!(target: "argand::ui_latency", elapsed_us = started.elapsed().as_micros(),
@@ -833,7 +836,10 @@ impl Shell {
             .flex()
             .items_center()
             .child(self.file_menu(cx))
-            .when(self.view.is_some(), |bar| bar.child(self.view_menu(cx)))
+            .when(self.view.is_some(), |bar| {
+                bar.child(self.view_menu(cx))
+                    .child(self.orientation_button(cx))
+            })
     }
 
     fn file_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1001,30 +1007,43 @@ impl Shell {
     }
 
     fn splitter(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let total = self
-            .panel_bounds
-            .map_or(0.0, |bounds| f32::from(bounds.size.height));
+        let total = self.panel_bounds.map_or(0.0, |bounds| {
+            f32::from(
+                self.session
+                    .orientation
+                    .axes(bounds.size.width, bounds.size.height)
+                    .1,
+            )
+        });
         let height = panels::waveform_height(
             total,
             f32::from(cx.theme().font_size),
             self.session.waveform_fraction,
             window.scale_factor(),
         );
-        div()
-            .id("waveform-splitter")
-            .absolute()
-            .left_0()
-            .right_0()
-            .top(px((height - 3.0).max(0.0)))
-            .h(px(5.0))
-            .cursor(gpui::CursorStyle::ResizeUpDown)
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|shell, _, _, cx| {
-                    shell.splitter_dragging = true;
-                    cx.stop_propagation();
-                }),
-            )
+        let divider = div().id("waveform-splitter").absolute();
+        let divider = if self.session.orientation.vertical() {
+            divider
+                .top_0()
+                .bottom_0()
+                .left(px((height - 3.).max(0.)))
+                .w(px(5.))
+                .cursor(gpui::CursorStyle::ResizeLeftRight)
+        } else {
+            divider
+                .left_0()
+                .right_0()
+                .top(px((height - 3.).max(0.)))
+                .h(px(5.))
+                .cursor(gpui::CursorStyle::ResizeUpDown)
+        };
+        divider.on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|shell, _, _, cx| {
+                shell.splitter_dragging = true;
+                cx.stop_propagation();
+            }),
+        )
     }
 
     fn drag_splitter(
@@ -1044,11 +1063,13 @@ impl Shell {
         let Some(bounds) = self.panel_bounds else {
             return;
         };
-        let total = f32::from(bounds.size.height);
+        let orientation = self.session.orientation;
+        let total = f32::from(orientation.axes(bounds.size.width, bounds.size.height).1);
         if total <= 0.0 {
             return;
         }
-        let requested = f32::from(event.position.y - bounds.origin.y) / total;
+        let delta = event.position - bounds.origin;
+        let requested = f32::from(orientation.axes(delta.x, delta.y).1) / total;
         let height = panels::waveform_height(
             total,
             f32::from(cx.theme().font_size),
@@ -1321,8 +1342,10 @@ impl Render for Shell {
                 .track_focus(&self.focus)
                 .key_context(if self.file.is_none() {
                     "Shell StartPage"
+                } else if self.session.orientation.vertical() {
+                    "Shell Plot Vertical"
                 } else {
-                    "Shell Plot"
+                    "Shell Plot Horizontal"
                 })
                 .on_mouse_move(cx.listener(Self::drag_splitter))
                 .on_mouse_move(cx.listener(Self::pointer_moved))

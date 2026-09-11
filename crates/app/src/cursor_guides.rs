@@ -65,20 +65,31 @@ impl CursorGuides {
             },
             labels,
         );
-        let badges = [
+        let vertical = frame.orientation.vertical();
+        let ordered_widths = if vertical {
+            [widths[1], widths[0]]
+        } else {
+            widths
+        };
+        let positions = [
             badge_bounds(
                 point(pointer.x, px(frame.time_row - LINE_HEIGHT / 2.)),
                 panel.size,
-                widths[0],
+                ordered_widths[0],
             ),
             badge_bounds(
                 point(panel.size.width, pointer.y - px(LINE_HEIGHT / 2.)),
                 panel.size,
-                widths[1],
+                ordered_widths[1],
             ),
         ];
+        let badges = if vertical {
+            [positions[1], positions[0]]
+        } else {
+            positions
+        };
         window.with_content_mask(Some(gpui::ContentMask { bounds: panel }), |window| {
-            paint_lines(panel.origin + pointer, panel.origin, badges, window);
+            paint_lines(panel.origin + pointer, panel.origin, positions, window);
             for (text, rect) in [(&readout.time, badges[0]), (&readout.frequency, badges[1])] {
                 self.badge(text, rect, panel, labels, window, cx);
             }
@@ -185,16 +196,19 @@ impl Readout {
         {
             return None;
         }
-        let time_span = extents.seconds.1 - extents.seconds.0;
-        let time = extents.seconds.0 + (x - plot.x) as f64 / plot.width as f64 * time_span;
-        let frequency_span = extents.hertz.1 - extents.hertz.0;
-        let frequency = extents.hertz.1 - (y - plot.y) as f64 / plot.height as f64 * frequency_span;
-        let time_label = extents.time.readout(
-            time,
-            time_span,
-            (plot.width * scale) as f64,
+        let (time_fraction, frequency_fraction) = extents.orientation.fractions(
             (x - plot.x) as f64 / plot.width as f64,
+            (y - plot.y) as f64 / plot.height as f64,
         );
+        let (time_length, frequency_length) = extents.orientation.axes(plot.width, plot.height);
+        let time_span = extents.seconds.1 - extents.seconds.0;
+        let time = extents.seconds.0 + time_fraction * time_span;
+        let frequency_span = extents.hertz.1 - extents.hertz.0;
+        let frequency = extents.hertz.1 - frequency_fraction * frequency_span;
+        let time_label =
+            extents
+                .time
+                .readout(time, time_span, (time_length * scale) as f64, time_fraction);
         let unit =
             axis::caption(AxisKind::Frequency, extents.hertz.0, extents.hertz.1).unwrap_or("Hz");
         let divisor = match unit {
@@ -204,7 +218,7 @@ impl Readout {
             _ => 1.,
         };
         let precision = crate::navigation::time_precision(
-            frequency_span / (plot.height * scale) as f64 / divisor,
+            frequency_span / (frequency_length * scale) as f64 / divisor,
         );
         Some(Self {
             time: time_label,
@@ -230,6 +244,7 @@ mod tests {
             height: 500.,
         };
         let extents = Extents {
+            orientation: crate::orientation::Mode::Horizontal,
             time: crate::time_ruler::Ruler::CLOCK,
             seconds: (12., 12.001),
             hertz: (99e6, 101e6),
@@ -252,6 +267,7 @@ mod tests {
             height: 500.,
         };
         let extents = Extents {
+            orientation: crate::orientation::Mode::Horizontal,
             time: crate::time_ruler::Ruler::CLOCK,
             seconds: (0., 1.),
             hertz: (-24000., 24000.),
@@ -270,6 +286,7 @@ mod tests {
             height: 500.,
         };
         let extents = Extents {
+            orientation: crate::orientation::Mode::Horizontal,
             time: crate::time_ruler::Ruler::CLOCK,
             seconds: (0., 0.5),
             hertz: (0., 0.5),
@@ -304,6 +321,7 @@ mod tests {
                 height: 500.,
             },
             extents: Extents {
+                orientation: crate::orientation::Mode::Horizontal,
                 time: crate::time_ruler::Ruler::CLOCK,
                 seconds: (0., 1.),
                 hertz: (-24000., 24000.),
@@ -350,6 +368,7 @@ mod tests {
             ] {
                 for scale in [1., 1.25, 2.] {
                     let extents = Extents {
+                        orientation: crate::orientation::Mode::Horizontal,
                         time: Ruler {
                             mode,
                             view: View {
@@ -362,6 +381,13 @@ mod tests {
                         hertz,
                     };
                     assert_badge_widths(extents, scale);
+                    assert_badge_widths(
+                        Extents {
+                            orientation: crate::orientation::Mode::Vertical,
+                            ..extents
+                        },
+                        scale,
+                    );
                 }
             }
         }
@@ -400,6 +426,7 @@ mod tests {
             height: 500.,
         };
         let extents = Extents {
+            orientation: crate::orientation::Mode::Horizontal,
             time: crate::time_ruler::Ruler {
                 mode: crate::time_ruler::Mode::Samples,
                 view: crate::navigation::View {
@@ -429,5 +456,28 @@ mod tests {
             assert!(rect.x >= 0. && rect.y >= 0.);
             assert!(rect.right() <= 100. && rect.bottom() <= 80.);
         }
+    }
+    #[test]
+    fn vertical_readouts_follow_time_down_and_frequency_right() {
+        let extents = Extents {
+            orientation: crate::orientation::Mode::Vertical,
+            time: crate::time_ruler::Ruler::CLOCK,
+            seconds: (10., 20.),
+            hertz: (-12000., 12000.),
+        };
+        let plot = Rect {
+            x: 10.,
+            y: 20.,
+            width: 400.,
+            height: 200.,
+        };
+        let center = Readout::at(plot, point(px(210.), px(120.)), extents, 1.).unwrap();
+        let left = Readout::at(plot, point(px(10.), px(120.)), extents, 1.).unwrap();
+        let bottom = Readout::at(plot, point(px(210.), px(220.)), extents, 1.).unwrap();
+        assert_eq!(center.time, left.time);
+        assert_eq!(center.frequency, "0.000 kHz");
+        assert_eq!(left.frequency, "-12.000 kHz");
+        assert_ne!(center.time, bottom.time);
+        assert_eq!(center.frequency, bottom.frequency);
     }
 }
