@@ -13,7 +13,7 @@ promise applies to.
 
 ### Added
 
-- Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
+- Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap at the top of the frequency ruler; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
 - The default `theme = "system"` follows OS light/dark appearance changes; explicit `dark` and `light` overrides remain available.
 - A complete `argand.toml` template with English comments and explicit built-in defaults in the application installation assets.
 

@@ -371,7 +371,7 @@ mod tests {
         use argand_core::testutil::DejaVuSans;
 
         let panel = size(px(1200.), px(800.));
-        let frame = Frame::measure(panel, scale, extents, &DejaVuSans, None, 48.).unwrap();
+        let frame = Frame::measure(panel, scale, extents, &DejaVuSans, None).unwrap();
         let widths = measure_badges(frame.plot, extents, scale, &DejaVuSans);
         for step in 0..=1000 {
             let fraction = step as f32 / 1000.;

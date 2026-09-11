@@ -162,7 +162,6 @@ impl Frame {
         extents: Extents,
         measure: &dyn LabelMeasure,
         held: Option<axis::TickScheme>,
-        minimap_height: f32,
     ) -> Option<Self> {
         let (t0, t1) = extents.time.bounds(extents.seconds);
         let (f0, f1) = extents.hertz;
@@ -237,7 +236,7 @@ impl Frame {
             caption,
             time_caption: extents.time.mode.caption(),
             time_row: plot.bottom() + LABEL_PAD + row_height / 2.0,
-            caption_row: -minimap_height / 2.0,
+            caption_row: plot.y - measure.digit_height(LABEL_SIZE) / 2.0,
             per_pixel: (
                 if extents.time.mode == crate::time_ruler::Mode::Samples {
                     extents.time.view.len as f64

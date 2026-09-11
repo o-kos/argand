@@ -224,3 +224,15 @@ or deferred.
 The rebuilt cache implementation also passed native mode/motion checks. Zoom
 changes second-readout precision and the reserved width; subsequent pointer
 motion retains that new width.
+
+## Owner feedback: frequency caption alignment
+
+- [x] Lower the frequency unit so its text meets the top of the frequency ruler,
+  keeping its measured hover target aligned and independent of minimap height.
+- [x] Validate the existing geometry checks, full gate, fresh release and review.
+
+Formatting, strict Clippy and all 519 tests pass, followed by a fresh release
+build. Native Linux checks on a real Intel GPU confirm the caption and its
+frequency/resolution hint sit at the ruler top with both default and enlarged
+minimaps. Independent review found no substantive issues; no findings were
+rejected or deferred.

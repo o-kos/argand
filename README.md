@@ -389,7 +389,8 @@ Hover over a time or frequency unit caption to see its meaning and resolution
 per physical screen pixel. The values follow the current view, window size and
 display scale, using the numeric locale. Clock time uses seconds per pixel;
 sample mode reads "Time in samples" with samples per pixel. The frequency caption
-sits to the right of the minimap and reads, for example, "Frequency in kHz".
+sits to the right of the minimap, aligned to the top of the frequency ruler, and
+its hint reads, for example, "Frequency in kHz".
 The time unit retains the ruler's right-click menu. Rulers show a hand only when
 they can be dragged; frequency dragging remains part of #80.
 

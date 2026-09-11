@@ -49,14 +49,8 @@ impl Shell {
                 let height =
                     panels::waveform_height(f32::from(bounds.size.height), rem, fraction, scale);
                 let spectrum_size = size(bounds.size.width, bounds.size.height - px(height));
-                let frame = axes::Frame::measure(
-                    spectrum_size,
-                    scale,
-                    extents,
-                    &labels,
-                    time_scheme,
-                    height,
-                )?;
+                let frame =
+                    axes::Frame::measure(spectrum_size, scale, extents, &labels, time_scheme)?;
                 let measured = device_size(frame.plot, scale);
                 let geometry = plot_geometry(bounds, &frame, &labels, height, measured.width);
                 if known != Some(measured)
@@ -134,7 +128,6 @@ impl Shell {
             self.extents()?,
             &axes::Labels::new(window),
             None,
-            height,
         )?
         .time_scheme
     }

@@ -19,7 +19,7 @@ const HFDL: Extents = Extents {
 const UNSCALED: f32 = 1.0;
 
 fn measure(panel: Size<Pixels>, extents: Extents) -> Frame {
-    Frame::measure(panel, UNSCALED, extents, &DejaVuSans, None, 48.).expect("a panel this size holds a plot")
+    Frame::measure(panel, UNSCALED, extents, &DejaVuSans, None).expect("a panel this size holds a plot")
 }
 
 #[test]
@@ -109,8 +109,8 @@ fn a_real_capture_is_labelled_from_zero_up_and_a_complex_one_either_side() {
 fn a_panel_with_no_room_left_for_a_picture_is_not_one() {
     // Narrower than the gutter the frequency labels need, and shorter than the
     // two label rows: there is no rectangle to draw into.
-    assert!(Frame::measure(panel(20.0, 400.0), UNSCALED, HFDL, &DejaVuSans, None, 48.).is_none());
-    assert!(Frame::measure(panel(1200.0, 8.0), UNSCALED, HFDL, &DejaVuSans, None, 48.).is_none());
+    assert!(Frame::measure(panel(20.0, 400.0), UNSCALED, HFDL, &DejaVuSans, None).is_none());
+    assert!(Frame::measure(panel(1200.0, 8.0), UNSCALED, HFDL, &DejaVuSans, None).is_none());
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn the_plot_lands_on_whole_device_pixels_so_the_picture_is_not_resampled() {
     // A fractional panel on a 1.5x display, which is what a tiled window on a
     // scaled desktop hands over.
     let scale = 1.5;
-    let frame = Frame::measure(panel(1237.0, 803.5), scale, HFDL, &DejaVuSans, None, 48.)
+    let frame = Frame::measure(panel(1237.0, 803.5), scale, HFDL, &DejaVuSans, None)
         .expect("a panel this size holds a plot");
 
     for (name, edge) in [
@@ -199,7 +199,7 @@ fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
     };
     // Slightly wider figures leave little slack below the next whole pixel.
     for (width, scale) in [(640.0, 1.25), (640.0, 1.5), (619.4, 1.75), (300.2, 2.0)] {
-        let frame = Frame::measure(panel(width, 400.0), scale, extents, &WideDigits, None, 48.)
+        let frame = Frame::measure(panel(width, 400.0), scale, extents, &WideDigits, None)
             .expect("the panel holds a plot");
         assert!(!frame.frequency.is_empty());
         for tick in &frame.frequency {
@@ -213,7 +213,7 @@ fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
 fn axis_labels_clear_adjacent_panels_and_the_window_edges() {
     for scale in [1.0, 1.25, 1.5, 2.0] {
         let extents = Extents { time: crate::time_ruler::Ruler::CLOCK, seconds: (0.0, 30.456), hertz: (-12_000.0, 12_000.0) };
-        let frame = Frame::measure(panel(300.0, 240.0), scale, extents, &DejaVuSans, None, 48.)
+        let frame = Frame::measure(panel(300.0, 240.0), scale, extents, &DejaVuSans, None)
             .expect("the panel holds a plot and its labels");
         assert_axis_bands_fit(&frame, 300.0, 240.0);
     }
@@ -224,7 +224,7 @@ fn assert_axis_bands_fit(frame: &Frame, width: f32, height: f32) {
     assert_eq!(frame.plot.x, 4.0);
     assert_eq!(frame.plot.y, 0.0, "the image has no gap below the minimap");
     assert!(frame.caption_row - half_line >= -48., "caption fits beside the minimap");
-    assert!(frame.caption_row + half_line < 0.);
+    assert_eq!(frame.caption_row + DejaVuSans.digit_height(LABEL_SIZE) / 2., frame.plot.y);
     assert!(frame.time_row - half_line > frame.plot.bottom());
     assert!(frame.time_row + half_line <= height - 4.0, "time labels touch the status bar");
     let half_ink = DejaVuSans.digit_height(LABEL_SIZE) / 2.0;
@@ -281,7 +281,7 @@ fn localized_time_labels_fit_and_units_do_not_resize_the_plot() {
                 time: crate::time_ruler::Ruler { mode, view: crate::navigation::View { start: 1_234_000, len: 20_000 }, total: 2_000_000 },
                 seconds: (1234., 1254.), hertz: (-100., 100.),
             };
-            let frame = Frame::measure(panel(700., 400.), 1., extents, &labels, None, 48.).unwrap();
+            let frame = Frame::measure(panel(700., 400.), 1., extents, &labels, None).unwrap();
             if let Some(plot) = previous_plot { assert_eq!(frame.plot, plot); }
             previous_plot = Some(frame.plot);
             assert_eq!(frame.time_caption, mode.caption());
@@ -312,7 +312,7 @@ fn unit_hints_follow_visible_captions_and_stay_in_the_gutter() {
                 let mut extents = HFDL;
                 extents.hertz = hertz;
                 extents.time.mode = mode;
-                let mut frame = Frame::measure(panel(800., 600.), scale, extents, &DejaVuSans, None, 48.)
+                let mut frame = Frame::measure(panel(800., 600.), scale, extents, &DejaVuSans, None)
                     .expect("plot fits");
                 let [time, frequency] = frame.unit_hints(&DejaVuSans).map(Option::unwrap);
                 assert_eq!(frequency.text, text);
@@ -320,7 +320,8 @@ fn unit_hints_follow_visible_captions_and_stay_in_the_gutter() {
                 assert_unit_hint_bounds(&frame, time);
                 assert_unit_hint_bounds(&frame, frequency);
                 assert!(time.bounds.y > frame.plot.bottom());
-                assert!(frequency.bounds.bottom() < 0.);
+                assert_eq!(frequency.bounds.y + frequency.bounds.height / 2.
+                    + DejaVuSans.digit_height(LABEL_SIZE) / 2., frame.plot.y);
                 frame.frequency.clear();
                 assert!(frame.unit_hints(&DejaVuSans)[1].is_none());
             }
@@ -344,14 +345,14 @@ fn unit_resolution_uses_device_pixels_current_view_and_caption_units() {
     extents.time.view = crate::navigation::View { start: 10_000, len: 48_000 };
     for mode in [Mode::Clock, Mode::Seconds, Mode::Samples] {
         extents.time.mode = mode;
-        let frame = Frame::measure(panel(800., 600.), 2., extents, &DejaVuSans, None, 120.).unwrap();
+        let frame = Frame::measure(panel(800., 600.), 2., extents, &DejaVuSans, None).unwrap();
         let [time, frequency] = frame.unit_hints(&DejaVuSans).map(Option::unwrap);
         let span = if mode == Mode::Samples { 48_000. } else { 2. };
         assert!((time.per_pixel * f64::from((frame.plot.width * 2.).round()) - span).abs() < 1e-8);
         assert!((frequency.per_pixel * f64::from((frame.plot.height * 2.).round()) - 24.).abs() < 1e-8);
         assert_eq!(frequency.units, "kHz");
         assert_eq!(time.units, if mode == Mode::Samples { "samples" } else { "s" });
-        assert_eq!(frequency.bounds.y + frequency.bounds.height / 2., -60.);
+        assert_eq!(frequency.bounds.y + frequency.bounds.height / 2., frame.caption_row);
         assert_eq!(frame.plot.y, 0.);
         let tiny = UnitHint { per_pixel: 1e-12, ..time };
         assert!(tiny.resolution().contains("1.000e-12"));
