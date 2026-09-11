@@ -360,3 +360,9 @@ retain their axes. In vertical mode time labels occupy the right gutter, frequen
 labels the bottom row, with time units at bottom-right and frequency units beside
 the bottom-left end in the minimap footer. The grid and time-format settings apply
 to both layouts.
+
+Spectrum left-drag pans both physical axes, including frequency-only zoom when
+time remains fitted. Rulers and minimap constrain dragging to their own axis.
+A pointer event updates both viewports before submitting one display request.
+Wheel handling uses the dominant nonzero delta component because Linux GPUI
+backends remap Shift+wheel to horizontal deltas; modifiers still select the axis.

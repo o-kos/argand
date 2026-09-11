@@ -11,6 +11,10 @@ promise applies to.
 
 ## [Unreleased]
 
+### Fixed
+
+- Spectrum dragging now pans both axes; ruler and minimap dragging remain constrained. Shift+wheel frequency pan and Ctrl+Shift+wheel frequency zoom also handle horizontal deltas emitted by Linux backends.
+
 ### Changed
 
 - Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.

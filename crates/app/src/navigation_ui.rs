@@ -73,6 +73,7 @@ pub(super) struct PlotGeometry {
     pub frequency_ruler: Bounds<Pixels>,
 }
 
+#[derive(Debug, PartialEq)]
 enum Scroll {
     FrequencyPan(f64),
     FrequencyZoom { factor: f64, anchor: f64 },
@@ -155,28 +156,41 @@ impl PlotGeometry {
         delta: gpui::Point<Pixels>,
         modifiers: gpui::Modifiers,
     ) -> Scroll {
-        let horizontal = f32::from(delta.x).abs() > f32::from(delta.y).abs();
+        // Linux backends turn Shift+wheel into a horizontal scroll delta.
+        let distance = if f32::from(delta.x).abs() > f32::from(delta.y).abs() {
+            delta.x
+        } else {
+            delta.y
+        };
+        let distance = f64::from(f32::from(distance));
         let width = self.time_length() as f64;
         let frequency_ruler = self.frequency_ruler.contains(&position);
         if modifiers.shift || frequency_ruler {
             let height = self.frequency_length() as f64;
             return if modifiers.control {
                 Scroll::FrequencyZoom {
-                    factor: 2.0_f64.powf(-f32::from(delta.y) as f64 / 160.0),
+                    factor: 2.0_f64.powf(-distance / 160.0),
                     anchor: (1. - self.fractions(position).1).clamp(0., 1.),
                 }
             } else {
-                Scroll::FrequencyPan(f32::from(delta.y) as f64 / height)
+                Scroll::FrequencyPan(distance / height)
             };
         }
         if !modifiers.control {
-            let distance = if horizontal { delta.x } else { delta.y };
-            return Scroll::Pan(-f32::from(distance) as f64 / width);
+            return Scroll::Pan(-distance / width);
         }
         Scroll::Zoom {
-            factor: 2.0_f64.powf(-f32::from(delta.y) as f64 / 160.0),
+            factor: 2.0_f64.powf(-distance / 160.0),
             anchor: self.fractions(position).0.clamp(0., 1.),
         }
+    }
+
+    fn drag_axes(self, position: gpui::Point<Pixels>) -> (bool, bool) {
+        let frequency_ruler = self.frequency_ruler.contains(&position);
+        (
+            self.navigation.contains(&position) && !frequency_ruler,
+            self.spectrum.contains(&position) || frequency_ruler,
+        )
     }
 }
 
@@ -234,8 +248,15 @@ impl Shell {
     }
 
     fn navigate(&mut self, view: View, cx: &mut Context<Self>) {
+        if self.set_time_view(view) {
+            self.ask_for_a_picture();
+            cx.notify();
+        }
+    }
+
+    fn set_time_view(&mut self, view: View) -> bool {
         if self.view == Some(view) {
-            return;
+            return false;
         }
         if self.view.is_none_or(|old| old.len != view.len) {
             self.time_scheme = None;
@@ -245,9 +266,8 @@ impl Shell {
         if self.settings_backup.is_some() {
             self.settings_view_backup = Some(view);
         }
-        self.ask_for_a_picture();
         tracing::debug!(start = view.start, len = view.len, "time view requested");
-        cx.notify();
+        true
     }
 
     fn zoom(&mut self, factor: f64, anchor: f64, cx: &mut Context<Self>) {
@@ -350,13 +370,15 @@ impl Shell {
             return;
         }
         window.focus(&self.focus);
-        if geometry.frequency_ruler.contains(&event.position) {
-            if self.frequency.span < 1. {
-                self.hold_frequency_scheme();
-                self.frequency_pan = Some((event.position, self.frequency));
-                self.pan = None;
-                cx.notify();
-            }
+        self.pan = None;
+        self.frequency_pan = None;
+        let (time, frequency) = geometry.drag_axes(event.position);
+        if frequency && self.frequency.span < 1. {
+            self.hold_frequency_scheme();
+            self.frequency_pan = Some((event.position, self.frequency));
+            cx.notify();
+        }
+        if !time {
             return;
         }
         if self
@@ -429,12 +451,13 @@ impl Shell {
             return;
         }
         self.pointer = pointer;
+        let mut changed = false;
         if let Some((origin, view)) = self.frequency_pan {
             if event.dragging() {
                 if let Some(geometry) = self.plot_geometry {
                     let fraction =
                         geometry.fractions(event.position).1 - geometry.fractions(origin).1;
-                    self.navigate_frequency(view.pan(fraction), cx);
+                    changed |= self.set_frequency_view(view.pan(fraction));
                 }
             } else {
                 self.frequency_pan = None;
@@ -452,10 +475,13 @@ impl Shell {
                 } else {
                     f64::from(fraction)
                 };
-                self.navigate(pan.view.pan(fraction, total), cx);
+                changed |= self.set_time_view(pan.view.pan(fraction, total));
             } else {
                 self.pan = None;
             }
+        }
+        if changed {
+            self.ask_for_a_picture();
         }
         cx.notify();
     }
@@ -529,8 +555,15 @@ impl Shell {
     }
 
     fn navigate_frequency(&mut self, view: crate::frequency::View, cx: &mut Context<Self>) {
+        if self.set_frequency_view(view) {
+            self.ask_for_a_picture();
+            cx.notify();
+        }
+    }
+
+    fn set_frequency_view(&mut self, view: crate::frequency::View) -> bool {
         if self.frequency == view {
-            return;
+            return false;
         }
         if self.frequency.span != view.span {
             self.frequency_scheme = None;
@@ -539,13 +572,12 @@ impl Shell {
         if self.settings_backup.is_some() {
             self.settings_frequency_backup = Some(view);
         }
-        self.ask_for_a_picture();
         tracing::debug!(
             start = view.start,
             span = view.span,
             "frequency view requested"
         );
-        cx.notify();
+        true
     }
 
     fn zoom_frequency(&mut self, factor: f64, anchor: f64, cx: &mut Context<Self>) {
@@ -992,6 +1024,45 @@ mod tests {
         ));
     }
     #[test]
+    fn shifted_horizontal_wheel_delta_matches_vertical_delivery() {
+        for orientation in [
+            crate::orientation::Mode::Horizontal,
+            crate::orientation::Mode::Vertical,
+        ] {
+            let geometry = PlotGeometry {
+                orientation,
+                ..geometry()
+            };
+            for position in [
+                point(px(60.), px(80.)),
+                point(px(60.), px(160.)),
+                point(px(120.), px(75.)),
+            ] {
+                for control in [false, true] {
+                    let modifiers = gpui::Modifiers {
+                        shift: true,
+                        control,
+                        ..Default::default()
+                    };
+                    let vertical = geometry.scroll(position, point(px(0.), px(-160.)), modifiers);
+                    let horizontal = geometry.scroll(position, point(px(-160.), px(0.)), modifiers);
+                    assert_eq!(horizontal, vertical);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn spectrum_drags_both_axes_but_rulers_and_minimap_stay_constrained() {
+        let geometry = geometry();
+        assert_eq!(geometry.drag_axes(point(px(60.), px(80.))), (true, true));
+        assert_eq!(geometry.drag_axes(point(px(60.), px(160.))), (true, false));
+        assert_eq!(geometry.drag_axes(point(px(120.), px(75.))), (false, true));
+        assert_eq!(geometry.drag_axes(point(px(60.), px(20.))), (true, false));
+        assert_eq!(geometry.drag_axes(point(px(0.), px(0.))), (false, false));
+    }
+
+    #[test]
     fn vertical_rulers_and_minimap_use_time_down_and_frequency_right() {
         let geometry = PlotGeometry {
             orientation: crate::orientation::Mode::Vertical,
@@ -999,8 +1070,12 @@ mod tests {
             minimap: Bounds::new(point(px(10.), px(10.)), size(px(30.), px(200.))),
             time_ruler: Bounds::new(point(px(150.), px(10.)), size(px(30.), px(200.))),
             frequency_ruler: Bounds::new(point(px(50.), px(210.)), size(px(100.), px(20.))),
+            navigation: Bounds::new(point(px(10.), px(10.)), size(px(170.), px(200.))),
             ..geometry()
         };
+        assert_eq!(geometry.drag_axes(point(px(75.), px(60.))), (true, true));
+        assert_eq!(geometry.drag_axes(point(px(175.), px(60.))), (true, false));
+        assert_eq!(geometry.drag_axes(point(px(75.), px(220.))), (false, true));
         let control = gpui::Modifiers {
             control: true,
             ..Default::default()
