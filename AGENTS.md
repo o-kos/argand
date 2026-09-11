@@ -326,7 +326,7 @@ policy. Held textures, the wider backdrop and numeric level lookup use both time
 and frequency extents. Frequency panning holds the tick scheme until zoom or a
 height change. Shift+wheel pans frequency; Ctrl+Shift+wheel zooms it. The frequency
 ruler supports drag/wheel pan and Ctrl+wheel zoom. Frequency keyboard zoom uses
-Ctrl+Shift+Up/Down/Home; Up/Down and Ctrl+Up/Down pan one/five divisions. No navigation
+Ctrl+Shift+plus/minus and Ctrl+Shift+Home; Up/Down and Ctrl+Up/Down pan one/five divisions. No navigation
 state is persisted, and the full-capture minimap is independent of both viewports.
 
 
@@ -366,3 +366,11 @@ time remains fitted. Rulers and minimap constrain dragging to their own axis.
 A pointer event updates both viewports before submitting one display request.
 Wheel handling uses the dominant nonzero delta component because Linux GPUI
 backends remap Shift+wheel to horizontal deltas; modifiers still select the axis.
+
+Zoom key interception is restricted to the focused Plot key context and runs
+before GPUI action matching. Descendant popup/input contexts swallow these zoom
+keys so inherited Plot bindings cannot navigate behind a focused control. It combines the keystroke Shift flag with the
+window's physical Shift state, which Linux symbol normalization otherwise loses.
+Ctrl plus/equal/minus targets time; adding Shift targets frequency, including
+underscore and keypad aliases. Named menu actions retain their explicit axes.
+Ctrl+Shift+Up/Down are not zoom bindings; arrow pan bindings stay unchanged.

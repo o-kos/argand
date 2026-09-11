@@ -13,6 +13,9 @@ promise applies to.
 
 ### Fixed
 
+- Restore Ctrl+Shift+plus/minus frequency zoom and prevent shifted symbol shortcuts from also zooming time. Top-row and keypad keys use the physical Shift state consistently.
+
+
 - Spectrum dragging now pans both axes; ruler and minimap dragging remain constrained. Shift+wheel frequency pan and Ctrl+Shift+wheel frequency zoom also handle horizontal deltas emitted by Linux backends.
 
 ### Changed

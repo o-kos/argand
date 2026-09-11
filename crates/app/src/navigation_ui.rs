@@ -49,14 +49,57 @@ pub(super) fn init(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-right", PanFarUp, Some("Plot && Vertical")),
         KeyBinding::new("home", GoStart, Some("Plot")),
         KeyBinding::new("end", GoEnd, Some("Plot")),
-        KeyBinding::new("ctrl-shift-up", FrequencyZoomIn, Some("Plot")),
-        KeyBinding::new("ctrl-shift-down", FrequencyZoomOut, Some("Plot")),
+        KeyBinding::new("ctrl-shift-+", FrequencyZoomIn, Some("Plot")),
+        KeyBinding::new("ctrl-shift--", FrequencyZoomOut, Some("Plot")),
         KeyBinding::new("ctrl-shift-home", FitFrequency, Some("Plot")),
         KeyBinding::new("up", PanUp, Some("Plot && Horizontal")),
         KeyBinding::new("down", PanDown, Some("Plot && Horizontal")),
         KeyBinding::new("ctrl-up", PanFarUp, Some("Plot && Horizontal")),
         KeyBinding::new("ctrl-down", PanFarDown, Some("Plot && Horizontal")),
     ]);
+    cx.intercept_keystrokes(|event, window, cx| {
+        if !event
+            .context_stack
+            .iter()
+            .any(|context| context.contains("Plot"))
+        {
+            return;
+        }
+        // GPUI consumes Shift for symbols; the window retains its physical state.
+        if let Some(action) = zoom_key(
+            &event.keystroke.key,
+            event.keystroke.modifiers,
+            window.modifiers().shift,
+        ) {
+            // A popup can inherit Plot bindings; do not navigate behind it.
+            if event
+                .context_stack
+                .last()
+                .is_some_and(|context| context.contains("Plot"))
+            {
+                window.dispatch_action(action, cx);
+            }
+            cx.stop_propagation();
+        }
+    })
+    .detach();
+}
+
+fn zoom_key(
+    key: &str,
+    modifiers: gpui::Modifiers,
+    physical_shift: bool,
+) -> Option<Box<dyn gpui::Action>> {
+    if !modifiers.control || modifiers.alt || modifiers.platform {
+        return None;
+    }
+    match (key, modifiers.shift || physical_shift) {
+        ("+" | "=" | "add", false) => Some(Box::new(ZoomIn)),
+        ("-" | "_" | "subtract", false) => Some(Box::new(ZoomOut)),
+        ("+" | "=" | "add", true) => Some(Box::new(FrequencyZoomIn)),
+        ("-" | "_" | "subtract", true) => Some(Box::new(FrequencyZoomOut)),
+        _ => None,
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -862,6 +905,74 @@ fn time_scale_items(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zoom_symbols_use_physical_shift_without_leaking_into_time_zoom() {
+        let control = gpui::Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        let shifted = gpui::Modifiers {
+            shift: true,
+            ..control
+        };
+        for key in ["+", "=", "add"] {
+            assert!(
+                zoom_key(key, control, false)
+                    .unwrap()
+                    .as_any()
+                    .is::<ZoomIn>()
+            );
+            assert!(
+                zoom_key(key, control, true)
+                    .unwrap()
+                    .as_any()
+                    .is::<FrequencyZoomIn>()
+            );
+            assert!(
+                zoom_key(key, shifted, false)
+                    .unwrap()
+                    .as_any()
+                    .is::<FrequencyZoomIn>()
+            );
+        }
+        for key in ["-", "_", "subtract"] {
+            assert!(
+                zoom_key(key, control, false)
+                    .unwrap()
+                    .as_any()
+                    .is::<ZoomOut>()
+            );
+            assert!(
+                zoom_key(key, control, true)
+                    .unwrap()
+                    .as_any()
+                    .is::<FrequencyZoomOut>()
+            );
+            assert!(
+                zoom_key(key, shifted, false)
+                    .unwrap()
+                    .as_any()
+                    .is::<FrequencyZoomOut>()
+            );
+        }
+        for modifiers in [
+            gpui::Modifiers::default(),
+            gpui::Modifiers {
+                alt: true,
+                ..control
+            },
+            gpui::Modifiers {
+                platform: true,
+                ..control
+            },
+        ] {
+            assert!(zoom_key("+", modifiers, true).is_none());
+        }
+        for key in ["up", "down", "home", "0", "a"] {
+            assert!(zoom_key(key, control, true).is_none());
+        }
+    }
 
     fn geometry() -> PlotGeometry {
         PlotGeometry {

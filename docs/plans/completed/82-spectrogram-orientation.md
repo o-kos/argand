@@ -85,3 +85,21 @@ on spectrum and both rulers, Shift+wheel, diagonal dragging in both orientations
 frequency dragging with fitted time, ruler constraints and release of the drag.
 Frequency-only motion retained analysis counters. Focused independent review
 was clean, with no findings to accept or decline.
+
+## Owner follow-up: restore frequency zoom shortcuts
+
+- [x] Reproduce Ctrl+Shift+plus incorrectly changing the time viewport
+- [x] Restore plus/minus frequency bindings and remove Up/Down zoom alternatives
+- [x] Resolve physical Shift before action matching, scoped to Plot focus
+- [x] Cover shifted symbols, keypad aliases and unrelated modifiers in tests
+- [x] Complete local gate, release, native top-row/keypad checks and focused review
+
+Native testing also caught inherited Plot bindings firing time zoom behind the
+time-ruler popup. Descendant focus now consumes zoom keys without dispatching
+a plot action; windows without Plot context are untouched.
+
+All 539 tests, formatting and strict Clippy passed; the final release was rebuilt.
+Native Linux GPU tests passed in both orientations for top-row and keypad
+Ctrl/Shift zoom, exactly one axis update per keystroke, removed arrow alternatives,
+menu/settings focus isolation and restored plot focus after menu dismissal.
+Focused independent review was clean, with no findings to accept or decline.
