@@ -24,6 +24,9 @@ promise applies to.
 
 ### Added
 
+- Ctrl+G toggles spectrogram grid visibility using the same saved setting as View → Show grid.
+
+
 - A persistent Horizontal/Vertical spectrogram button. Vertical mode places time downwards, frequency to the right and the minimap on the left; rulers, navigation and Alt guides follow the selected layout. Switching reuses the transform unless a longer time axis needs the existing coordinate-precision guard to widen an extreme-index range.
 
 - View → Show grid toggles the spectrogram grid and remembers the choice between sessions. Both rulers have longer ticks; time ticks and grid lines remain visible when an edge label cannot fit.
