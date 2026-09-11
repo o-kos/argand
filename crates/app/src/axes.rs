@@ -268,7 +268,7 @@ impl Frame {
             right_held,
         );
         let gutter = ruler_gutter(extents, &right_ticks.ticks, caption, measure);
-        let left = if vertical { 0. } else { ceil(OUTER_PAD) };
+        let left = ceil(OUTER_PAD);
         let right = floor(f32::from(panel.width) - OUTER_PAD - gutter);
         let plot = Rect {
             x: left,
@@ -324,7 +324,7 @@ impl Frame {
                 plot.y - measure.digit_height(LABEL_SIZE) / 2.
             },
             caption_x: if vertical {
-                plot.x - LABEL_PAD - measure.width(caption.unwrap_or("Hz"), LABEL_SIZE)
+                f32::from(panel.width) + OUTER_PAD
             } else {
                 plot.right() + LABEL_PAD
             },

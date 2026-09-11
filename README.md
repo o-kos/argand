@@ -389,8 +389,9 @@ Hover over a time or frequency unit caption to see its meaning and resolution
 per physical screen pixel. The values follow the current view, window size and
 display scale, using the numeric locale. Clock time uses seconds per pixel;
 sample mode reads "Time in samples" with samples per pixel. The frequency caption
-sits to the right of the minimap, aligned to the top of the frequency ruler, and
-its hint reads, for example, "Frequency in kHz". Frequency resolution independently
+sits beside the minimap at the top of the frequency ruler in horizontal mode,
+and in the right minimap footer in vertical mode. Its hint reads, for example,
+"Frequency in kHz". Frequency resolution independently
 selects Hz, kHz, MHz or GHz from its value, so a kHz ruler can report
 "Resolution: 0.496 Hz/px" without redundant trailing zeros.
 The time unit retains the ruler's right-click menu. Rulers show a hand only when
@@ -419,7 +420,8 @@ display and input; it does not change the interface language.
 
 The **Horizontal / Vertical** button beside View switches the complete spectral
 layout and remembers the mode. Vertical mode shows time from top to bottom,
-frequency from left to right and the full-capture minimap in a strip on the left.
+frequency from left to right and the full-capture minimap on the far right,
+after the time ruler. Drag its left divider leftwards to widen the minimap.
 Switching preserves both physical viewports and reuses the retained transform,
 except when a longer time axis requires the representability adjustment described below.
 Ruler dragging, unit hints, Alt guides and minimap navigation follow the layout;

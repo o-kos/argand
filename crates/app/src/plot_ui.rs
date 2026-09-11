@@ -72,14 +72,14 @@ impl Shell {
                 {
                     defer_layout(view.clone(), bounds, measured, geometry, cx);
                 }
-                Some((frame, labels, height))
+                Some((frame, labels, height, spectrum_size))
             },
             move |bounds, prepainted, window, cx| {
-                let Some((frame, labels, height)) = prepainted else {
+                let Some((frame, labels, height, spectrum_size)) = prepainted else {
                     return;
                 };
-                let (dx, dy) = orientation.axes(px(0.), px(height));
-                let spectrum_origin = bounds.origin + point(dx, dy);
+                let (ox, oy) = orientation.spectrum_offset(px(height));
+                let spectrum_origin = bounds.origin + point(ox, oy);
                 if let Some(backdrop) = &backdrop {
                     backdrop.paint(
                         &frame,
@@ -90,7 +90,7 @@ impl Shell {
                         window,
                     );
                 }
-                minimap.paint(&frame, bounds.origin, height, window);
+                minimap.paint(&frame, bounds, height, window);
                 // The picture first, then the marks over it: a grid line is
                 // there to be read against the spectrogram, not under it.
                 if let Some(texture) = texture
@@ -113,10 +113,7 @@ impl Shell {
                 }
                 axes::paint(&frame, spectrum_origin, &labels, colors, window, cx);
                 if let Some(guides) = &guides {
-                    let panel = Bounds::new(
-                        spectrum_origin,
-                        size(bounds.size.width - dx, bounds.size.height - dy),
-                    );
+                    let panel = Bounds::new(spectrum_origin, spectrum_size);
                     guides.paint(&frame, panel, &labels, window, cx);
                 }
             },
@@ -285,12 +282,12 @@ fn unit_tooltip(owner: WeakEntity<Shell>, index: usize, cx: &mut gpui::App) -> g
 fn plot_geometry(
     bounds: Bounds<Pixels>,
     frame: &axes::Frame,
-    labels: &axes::Labels,
+    labels: &dyn argand_core::axis::LabelMeasure,
     height: f32,
     minimap_columns: usize,
 ) -> navigation_ui::PlotGeometry {
     let orientation = frame.orientation;
-    let (dx, dy) = orientation.axes(px(0.), px(height));
+    let (dx, dy) = orientation.spectrum_offset(px(height));
     let spectrum = Bounds {
         origin: bounds.origin + point(dx + px(frame.plot.x), dy + px(frame.plot.y)),
         size: size(px(frame.plot.width), px(frame.plot.height)),
@@ -301,7 +298,16 @@ fn plot_geometry(
     );
     let right = Bounds::new(
         point(spectrum.right(), spectrum.top()),
-        size(bounds.right() - spectrum.right(), spectrum.size.height),
+        size(
+            bounds.right()
+                - spectrum.right()
+                - if orientation.vertical() {
+                    px(height)
+                } else {
+                    px(0.)
+                },
+            spectrum.size.height,
+        ),
     );
     let (time_ruler, frequency_ruler) = if orientation.vertical() {
         (right, bottom)
@@ -310,7 +316,7 @@ fn plot_geometry(
     };
     let minimap = if orientation.vertical() {
         Bounds::new(
-            point(bounds.left(), spectrum.top()),
+            point(bounds.right() - px(height) + px(1.), spectrum.top()),
             size(px((height - 1.).max(0.)), spectrum.size.height),
         )
     } else {
@@ -524,6 +530,55 @@ impl DeepPreview {
             window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
                 spectrogram::paint(texture.clone(), bounds, window);
             });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::orientation::Mode;
+    use argand_core::testutil::DejaVuSans;
+
+    #[test]
+    fn minimap_and_rulers_follow_layout_without_overlapping() {
+        let bounds = Bounds::new(point(px(100.), px(200.)), size(px(800.), px(600.)));
+        for orientation in [Mode::Horizontal, Mode::Vertical] {
+            for thickness in [48., 180.] {
+                let (dx, dy) = orientation.axes(px(0.), px(thickness));
+                let panel = size(bounds.size.width - dx, bounds.size.height - dy);
+                let extents = axes::Extents {
+                    orientation,
+                    time: crate::time_ruler::Ruler::CLOCK,
+                    seconds: (0., 10.),
+                    hertz: (-12_000., 12_000.),
+                };
+                let frame = axes::Frame::measure(panel, 1.25, extents, &DejaVuSans, None).unwrap();
+                let geometry = plot_geometry(bounds, &frame, &DejaVuSans, thickness, 1000);
+                assert_eq!(geometry.spectrum.left(), bounds.left() + px(frame.plot.x));
+                match orientation {
+                    Mode::Vertical => {
+                        assert_eq!(geometry.minimap.right(), bounds.right());
+                        assert_eq!(geometry.minimap.left(), bounds.right() - px(thickness - 1.));
+                        assert_eq!(
+                            geometry.time_ruler.right(),
+                            geometry.minimap.left() - px(1.)
+                        );
+                        assert_eq!(geometry.time_ruler.left(), geometry.spectrum.right());
+                        assert_eq!(geometry.minimap.top(), geometry.spectrum.top());
+                        assert_eq!(geometry.minimap.bottom(), geometry.spectrum.bottom());
+                        let frequency = geometry.unit_hints[1].unwrap().bounds;
+                        assert!(px(frequency.x) >= geometry.minimap.left());
+                        assert!(px(frequency.x + frequency.width) < bounds.right());
+                    }
+                    Mode::Horizontal => {
+                        assert_eq!(geometry.minimap.top(), bounds.top());
+                        assert_eq!(geometry.minimap.bottom(), geometry.spectrum.top() - px(1.));
+                        assert_eq!(geometry.minimap.left(), geometry.spectrum.left());
+                        assert_eq!(geometry.minimap.right(), geometry.spectrum.right());
+                    }
+                }
+            }
         }
     }
 }
