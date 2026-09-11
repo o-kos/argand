@@ -440,15 +440,18 @@ The crosshair appears only over the spectrogram. The View menu exposes the keybo
 
 | Key | Action |
 | --- | --- |
-| Ctrl+`+` or Ctrl+`=` / Ctrl+`-` | Zoom in / out about the view centre |
+| Ctrl+`=` / Ctrl+`-` (or keypad `+` / `-`) | Zoom in / out about the view centre |
 | Left / Right | Pan by one time-ruler division |
 | Ctrl+Left / Ctrl+Right | Pan by five time-ruler divisions |
 | Home / End | Move to the capture's beginning / end |
 | Ctrl+`0` | Fit the entire capture in time |
-| Ctrl+Shift+Up / Ctrl+Shift+Down | Zoom frequency in / out |
+| Ctrl+Shift+`+` / Ctrl+Shift+`-` | Zoom frequency in / out |
 | Ctrl+Shift+Home | Fit the full frequency range |
 | Up / Down | Pan by one frequency-ruler division |
 | Ctrl+Up / Ctrl+Down | Pan by five frequency-ruler divisions |
+
+On a top-row `=/+` key, Ctrl+`=` zooms time and Ctrl+Shift+`=` zooms
+frequency. Shift selects frequency for both top-row and keypad zoom keys.
 
 The minimum span is one FFT, with a screen-resolution representability floor
 for extreme sample indices. This floor is rechecked when the time-axis length changes, including on orientation
