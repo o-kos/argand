@@ -366,7 +366,7 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
     for scale in [1., 1.25, 2.] {
         let extents = Extents { orientation: Mode::Vertical, ..HFDL };
         let frame = Frame::measure(panel(800., 600.), scale, extents, &DejaVuSans, None).unwrap();
-        assert_eq!(frame.plot.x, 4.);
+        assert_eq!(frame.plot.x, 0.);
         assert!(frame.plot.y >= 4.);
         for tick in frame.time.iter().filter(|tick| !tick.label.is_empty()) {
             assert!(frame.plot.right() + LABEL_PAD + DejaVuSans.width(&tick.label, LABEL_SIZE) <= 796.);
@@ -379,8 +379,7 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
         let hints = frame.unit_hints(&DejaVuSans);
         assert_eq!(hints[0].unwrap().per_pixel, (extents.seconds.1 - extents.seconds.0) / (frame.plot.height * scale).round() as f64);
         assert_eq!(hints[1].unwrap().per_pixel, (extents.hertz.1 - extents.hertz.0) / (frame.plot.width * scale).round() as f64 / 1e6);
-        assert!(hints[1].unwrap().bounds.x >= 800.);
-        assert!(hints[1].unwrap().bounds.right() <= 848.);
+        assert!(hints[1].unwrap().bounds.x < frame.plot.x);
     }
 }
 

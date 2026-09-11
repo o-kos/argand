@@ -37,18 +37,6 @@ impl Mode {
         }
     }
 
-    /// The top minimap offsets a horizontal spectrum; the right minimap does not.
-    pub fn spectrum_offset<T: Default>(self, thickness: T) -> (T, T) {
-        (
-            T::default(),
-            if self.vertical() {
-                T::default()
-            } else {
-                thickness
-            },
-        )
-    }
-
     /// Time from the start, frequency from the top of an ordinary spectral image.
     pub fn fractions(self, x: f64, y: f64) -> (f64, f64) {
         match self {

@@ -1026,7 +1026,7 @@ impl Shell {
             divider
                 .top_0()
                 .bottom_0()
-                .right(px((height - 3.).max(0.)))
+                .left(px((height - 3.).max(0.)))
                 .w(px(5.))
                 .cursor(gpui::CursorStyle::ResizeLeftRight)
         } else {
@@ -1069,11 +1069,7 @@ impl Shell {
             return;
         }
         let delta = event.position - bounds.origin;
-        let requested = if orientation.vertical() {
-            f32::from(bounds.right() - event.position.x) / total
-        } else {
-            f32::from(delta.y) / total
-        };
+        let requested = f32::from(orientation.axes(delta.x, delta.y).1) / total;
         let height = panels::waveform_height(
             total,
             f32::from(cx.theme().font_size),
