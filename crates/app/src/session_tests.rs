@@ -117,6 +117,7 @@ fn a_session_survives_the_round_trip() {
     let dir = TempDir::new("roundtrip");
     let path = dir.join("session.toml");
     let session = Session {
+        show_grid: true,
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -170,6 +171,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
     let path = dir.join("session.toml");
 
     let first = Session {
+        show_grid: true,
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -228,6 +230,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
 
     let at = |ms: u64| Instant::now() + Duration::from_millis(ms);
     let moved = |x: f32| Session {
+        show_grid: true,
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -271,6 +274,7 @@ fn a_position_that_has_not_changed_is_not_written_again() {
     let dir = TempDir::new("idle");
     let path = dir.join("session.toml");
     let held = Session {
+        show_grid: true,
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -301,6 +305,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
 
     let start = Instant::now();
     let moved = |x: f32| Session {
+        show_grid: true,
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -324,6 +329,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let dir = TempDir::new("returned");
     let path = dir.join("session.toml");
     let at = |x: f32| Session {
+        show_grid: true,
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -362,6 +368,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
 
     let mut writer = Writer::new(path.clone(), Session::default());
     let moved = Session {
+        show_grid: true,
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -409,6 +416,7 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
     let mut writer = Writer::new(path.clone(), Session::default());
     let start = Instant::now();
     let at = |x: f32| Session {
+        show_grid: true,
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -672,8 +680,8 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 7"),
-        "the current session layout is version 7: {text}"
+        text.contains("version = 8"),
+        "the current session layout is version 8: {text}"
     );
 }
 
@@ -776,5 +784,23 @@ fn ruler_mode_round_trips_and_all_older_sessions_default_to_clock() {
         assert!(restored.writable);
         assert_eq!(restored.session.time_ruler, Mode::Clock);
         assert_eq!(restored.session.version, VERSION);
+    }
+}
+
+#[test]
+fn grid_visibility_round_trips_both_values_and_defaults_for_older_sessions() {
+    let dir = TempDir::new("grid-visibility");
+    let path = dir.join(FILE_NAME);
+    for show_grid in [false, true] {
+        let session = Session { show_grid, ..Session::default() };
+        assert!(session.save(&path));
+        assert_eq!(Session::load(&path).session.show_grid, show_grid);
+    }
+    for version in 1..VERSION {
+        std::fs::write(&path, format!("version = {version}\nwindow_state = \"maximized\"\n")).unwrap();
+        let restored = Session::load(&path);
+        assert!(restored.writable);
+        assert!(restored.session.show_grid);
+        assert_eq!(restored.session.window_state, WindowState::Maximized);
     }
 }

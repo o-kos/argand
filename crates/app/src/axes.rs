@@ -21,11 +21,11 @@ mod cursor_guides;
 pub use cursor_guides::{BadgeMetrics, CursorGuides};
 
 /// Room between a label and whatever it labels.
-const LABEL_PAD: f32 = 6.0;
+const LABEL_PAD: f32 = 9.0;
 /// Space between the complete axis layout and adjacent panels or window edges.
 const OUTER_PAD: f32 = 4.0;
 /// How far a tick's mark reaches out of the plot.
-const TICK_LEN: f32 = 3.0;
+const TICK_LEN: f32 = 6.0;
 /// The size the labels are drawn at.
 ///
 /// A shade under the window's smallest text: an axis is read by glancing at
@@ -234,7 +234,9 @@ impl Frame {
                 lead: 0,
                 trail: 0,
             },
-            &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).after_tick(LABEL_PAD),
+            &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across)
+                .after_tick(LABEL_PAD)
+                .keep_edge_marks(),
             held,
         );
         let frequency = axis::tick_layout(
@@ -424,7 +426,7 @@ impl LabelMeasure for Labels {
 #[derive(Debug, Clone, Copy)]
 pub struct Colors {
     /// Lines crossing the picture.
-    pub grid: Hsla,
+    pub grid: Option<Hsla>,
     /// The ticks outside it.
     pub tick: Hsla,
     pub label: Hsla,
@@ -456,9 +458,14 @@ pub fn paint(
 
     for tick in &frame.time {
         let x = plot.x + tick.offset as f32;
-        line(window, x, plot.y, 1.0, plot.height, colors.grid);
+        if let Some(grid) = colors.grid {
+            line(window, x, plot.y, 1.0, plot.height, grid);
+        }
         line(window, x, plot.bottom(), 1.0, TICK_LEN, colors.tick);
 
+        if tick.label.is_empty() {
+            continue;
+        }
         let shaped = labels.shape(&tick.label, colors.label);
         let left = x + LABEL_PAD;
         let top = labels.line_top(frame.time_row, &shaped);
@@ -468,9 +475,14 @@ pub fn paint(
     for tick in &frame.frequency {
         // Offset 0 is the lowest frequency, which is the bottom of the plot.
         let y = plot.bottom() - tick.offset as f32;
-        line(window, plot.x, y, plot.width, 1.0, colors.grid);
+        if let Some(grid) = colors.grid {
+            line(window, plot.x, y, plot.width, 1.0, grid);
+        }
         line(window, plot.right(), y, TICK_LEN, 1.0, colors.tick);
 
+        if tick.label.is_empty() {
+            continue;
+        }
         let shaped = labels.shape(&tick.label, colors.label);
         let left = plot.right() + LABEL_PAD;
         let _ = shaped.paint(

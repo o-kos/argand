@@ -166,13 +166,14 @@ fn time_labels_follow_ticks_without_overlapping_or_entering_the_right_gutter() {
 }
 
 fn assert_time_labels_fit(frame: &Frame) {
-    for tick in &frame.time {
+    let visible: Vec<_> = frame.time.iter().filter(|tick| !tick.label.is_empty()).collect();
+    for tick in &visible {
         let start = frame.plot.x + tick.offset as f32 + LABEL_PAD;
         let end = start + DejaVuSans.width(&tick.label, LABEL_SIZE);
         assert!(start > frame.plot.x + tick.offset as f32);
         assert!(end <= frame.plot.right(), "{tick:?}");
     }
-    for pair in frame.time.windows(2) {
+    for pair in visible.windows(2) {
         let clear = (pair[1].offset - pair[0].offset) as f32
             - DejaVuSans.width(&pair[0].label, LABEL_SIZE);
         assert!(clear >= DejaVuSans.width("00", LABEL_SIZE));
@@ -257,7 +258,7 @@ fn time_modes_preserve_plot_geometry_and_sample_origin() {
             let bounds = extents.time.bounds(extents.seconds);
             for tick in &frame.time {
                 assert!((bounds.0..=bounds.1).contains(&tick.value));
-                assert_eq!(tick.label.starts_with('#'), mode == Mode::Samples);
+                assert!(tick.label.is_empty() || tick.label.starts_with('#') == (mode == Mode::Samples));
             }
         }
     }
@@ -287,7 +288,7 @@ fn localized_time_labels_fit_and_units_do_not_resize_the_plot() {
             assert_eq!(frame.time_caption, mode.caption());
             assert!(!frame.time.is_empty());
             let mut end = 0.;
-            for tick in frame.time {
+            for tick in frame.time.into_iter().filter(|tick| !tick.label.is_empty()) {
                 assert!(!tick.label.contains(['#', 's']));
                 let left = tick.offset as f32 + LABEL_PAD;
                 assert!(left >= end);

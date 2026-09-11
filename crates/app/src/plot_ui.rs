@@ -41,7 +41,7 @@ impl Shell {
         let frequency_scheme = self.frequency_scheme;
         let view = cx.entity().downgrade();
         let guides = self.cursor_guides(extents, cx);
-        let colors = axis_colors(cx);
+        let colors = axis_colors(cx, self.session.show_grid);
 
         canvas(
             move |bounds, window, cx| {
@@ -230,10 +230,10 @@ impl Shell {
     }
 }
 
-fn axis_colors(cx: &gpui::App) -> axes::Colors {
+fn axis_colors(cx: &gpui::App, show_grid: bool) -> axes::Colors {
     axes::Colors {
         // Keep the picture visible through the overlaid grid.
-        grid: cx.theme().border.opacity(0.55),
+        grid: show_grid.then(|| cx.theme().border.opacity(0.55)),
         tick: cx.theme().muted_foreground,
         label: cx.theme().muted_foreground,
     }
