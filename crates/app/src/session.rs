@@ -72,14 +72,14 @@ pub const RECENT_LIMIT: usize = 10;
 /// whatever that version was recording. The number goes up whenever the layout
 /// gains something, so that an older binary sees a number it does not know and
 /// leaves the file rather than quietly rewriting it without what it could not
-/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility.
-pub const VERSION: u32 = 8;
+/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility; version 9 adds orientation.
+pub const VERSION: u32 = 9;
 
 /// Every layout this program can read, oldest first.
 ///
 /// An older file is read into the current shape and written back at
 /// [`VERSION`]: missing fields have defaults; legacy dynamic range values are ignored.
-const READABLE: [u32; 8] = [1, 2, 3, 4, 5, 6, 7, VERSION];
+const READABLE: [u32; 9] = [1, 2, 3, 4, 5, 6, 7, 8, VERSION];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -288,6 +288,8 @@ pub fn recent_labels(recent: &[Recent]) -> Vec<String> {
 /// Everything one run hands to the next.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
+    #[serde(default)]
+    pub orientation: crate::orientation::Mode,
     #[serde(default = "default_grid_visibility")]
     pub show_grid: bool,
     #[serde(default)]
@@ -315,6 +317,7 @@ impl Default for Session {
         Self {
             version: VERSION,
             show_grid: true,
+            orientation: crate::orientation::Mode::default(),
             time_ruler: crate::time_ruler::Mode::default(),
             analysis_settings: None,
             waveform_fraction: None,

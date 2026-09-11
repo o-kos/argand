@@ -415,15 +415,25 @@ and fall back to `system`, preserving the other configuration settings. This
 option is only available in the configuration file and applies to both numeric
 display and input; it does not change the interface language.
 
+The **Horizontal / Vertical** button beside View switches the complete spectral
+layout and remembers the mode. Vertical mode shows time from top to bottom,
+frequency from left to right and the full-capture minimap in a strip on the left.
+Switching preserves both physical viewports and reuses the retained transform,
+except when a longer time axis requires the representability adjustment described below.
+Ruler dragging, unit hints, Alt guides and minimap navigation follow the layout;
+arrow panning follows screen directions. In vertical mode Up/Down pan time and
+Left/Right pan frequency, with Ctrl taking five divisions. Zoom shortcuts keep
+their time/frequency meanings in both modes.
+
 Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
-Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally,
+Left-drag also pans. The time ruler uses the same gestures: wheel pans in time,
 Ctrl+wheel zooms. Shift+wheel pans frequency and Ctrl+Shift+wheel zooms frequency
 about the pointer. On the frequency ruler, drag or wheel to pan, and Ctrl+wheel to
 zoom. Its hand cursor appears only when the frequency range is narrowed.
 View → Show grid hides or shows the spectrogram grid and remembers the choice
 between sessions; ruler baselines, ticks and labels remain visible. Valid time
 marks remain at the plot edges even when their labels cannot fit.
-The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands:
+The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands (arrows below describe Horizontal mode):
 
 | Key | Action |
 | --- | --- |
@@ -438,7 +448,9 @@ The crosshair appears only over the spectrogram. The View menu exposes the keybo
 | Ctrl+Up / Ctrl+Down | Pan by five frequency-ruler divisions |
 
 The minimum span is one FFT, with a screen-resolution representability floor
-for extreme sample indices. This floor is rechecked when the plot width changes. Axes and held pictures move immediately; a new
+for extreme sample indices. This floor is rechecked when the time-axis length changes, including on orientation
+switches. At extreme indices, a longer axis can widen the view and recalculate its
+transform to keep adjacent time coordinates distinguishable. Axes and held pictures move immediately; a new
 completed image replaces the placeholder at the same physical coordinates. A retained
 wider picture fills known time on zoom-out while the replacement is calculated.
 Rapid navigation replaces pending requests instead of queuing transforms.

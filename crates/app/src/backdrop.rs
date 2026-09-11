@@ -107,7 +107,7 @@ impl Shell {
         {
             return;
         }
-        let Some(texture) = spectrogram::texture(&image) else {
+        let Some(texture) = spectrogram::texture(&image, self.session.orientation) else {
             return;
         };
         release(
@@ -144,6 +144,21 @@ impl Shell {
         }
     }
 
+    pub(super) fn orient_backdrop(&mut self, window: &mut Window) {
+        let Some(backdrop) = &mut self.backdrop else {
+            return;
+        };
+        if let Some(texture) = spectrogram::texture(&backdrop.image, self.session.orientation) {
+            release(
+                Some(std::mem::replace(&mut backdrop.texture, texture)),
+                window,
+            );
+        }
+        if let Some(deep) = backdrop.deep.take() {
+            deep.release(window);
+        }
+    }
+
     pub(super) fn prepare_backdrop(&mut self, window: &mut Window) {
         let Some(file) = &self.file else { return };
         let Some(settings) = file.displayed_settings else {
@@ -163,7 +178,7 @@ impl Shell {
         let Some(backdrop) = self.backdrop.as_mut() else {
             return;
         };
-        backdrop.prepare(shown, window);
+        backdrop.prepare(shown, self.session.orientation, window);
     }
 
     fn retain_wider_picture(&mut self, settings: Settings, window: &mut Window) {
@@ -190,7 +205,8 @@ impl Shell {
         {
             return;
         }
-        let Some(texture) = spectrogram::texture(&analysis.spectrogram) else {
+        let Some(texture) = spectrogram::texture(&analysis.spectrogram, self.session.orientation)
+        else {
             return;
         };
         let backdrop = Backdrop {
@@ -237,7 +253,12 @@ impl Backdrop {
         crate::navigation::level_in_view(&self.db, shown, x, y)
     }
 
-    fn prepare(&mut self, shown: (f64, f64), window: &mut Window) {
+    fn prepare(
+        &mut self,
+        shown: (f64, f64),
+        orientation: crate::orientation::Mode,
+        window: &mut Window,
+    ) {
         let held = (self.db.t0, self.db.t1);
         if crate::navigation::image_mapping(held, shown).1 <= 1024.0 {
             if let Some(deep) = self.deep.take() {
@@ -245,7 +266,8 @@ impl Backdrop {
             }
             return;
         }
-        let Some(deep) = plot_ui::DeepPreview::prepare(&self.image, shown, self.deep.as_deref())
+        let Some(deep) =
+            plot_ui::DeepPreview::prepare(&self.image, shown, orientation, self.deep.as_deref())
         else {
             return;
         };
@@ -264,24 +286,35 @@ impl Backdrop {
         window: &mut Window,
     ) {
         let held = crate::navigation::PictureView::grid(&self.db);
+        let orientation = frame.orientation;
+        let (dx, dy) = orientation.axes(px(0.), px(height));
         let plot = Bounds {
-            origin: origin + point(px(frame.plot.x), px(height + frame.plot.y)),
+            origin: origin + point(dx + px(frame.plot.x), dy + px(frame.plot.y)),
             size: size(px(frame.plot.width), px(frame.plot.height)),
         };
         for (left, top, right, bottom) in crate::navigation::uncovered_picture(shown, foreground) {
-            let clip = Bounds {
-                origin: plot.origin
-                    + point(plot.size.width * left as f32, plot.size.height * top as f32),
-                size: size(
-                    plot.size.width * (right - left) as f32,
-                    plot.size.height * (bottom - top) as f32,
-                ),
-            };
+            let clip = plot_ui::mapped_bounds(
+                plot,
+                [
+                    left as f32,
+                    top as f32,
+                    (right - left) as f32,
+                    (bottom - top) as f32,
+                ],
+                orientation,
+            );
             window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
                 if let Some(deep) = &self.deep {
-                    deep.paint(plot, shown, window);
+                    deep.paint(plot, shown, orientation, window);
                 } else {
-                    plot_ui::paint_held(self.texture.clone(), plot, held, shown, window);
+                    plot_ui::paint_held(
+                        self.texture.clone(),
+                        plot,
+                        held,
+                        shown,
+                        orientation,
+                        window,
+                    );
                 }
             });
         }
@@ -312,7 +345,7 @@ mod tests {
                 f0: 0.0,
                 f1: 1000.0,
             }),
-            texture: spectrogram::texture(&image).unwrap(),
+            texture: spectrogram::texture(&image, crate::orientation::Mode::Horizontal).unwrap(),
             image: Arc::new(image),
             settings: Settings::from_config(&Config::default()),
             complete,
