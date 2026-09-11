@@ -31,6 +31,7 @@ actions!(
 
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([
+        KeyBinding::new("ctrl-g", ToggleGrid, Some("Plot")),
         KeyBinding::new("ctrl-+", ZoomIn, Some("Plot")),
         KeyBinding::new("ctrl-=", ZoomIn, Some("Plot")),
         KeyBinding::new("ctrl--", ZoomOut, Some("Plot")),
@@ -66,7 +67,7 @@ pub(super) fn init(cx: &mut gpui::App) {
             return;
         }
         // GPUI consumes Shift for symbols; the window retains its physical state.
-        if let Some(action) = zoom_key(
+        if let Some(action) = plot_shortcut(
             &event.keystroke.key,
             event.keystroke.modifiers,
             window.modifiers().shift,
@@ -85,7 +86,7 @@ pub(super) fn init(cx: &mut gpui::App) {
     .detach();
 }
 
-fn zoom_key(
+fn plot_shortcut(
     key: &str,
     modifiers: gpui::Modifiers,
     physical_shift: bool,
@@ -94,6 +95,7 @@ fn zoom_key(
         return None;
     }
     match (key, modifiers.shift || physical_shift) {
+        ("g", false) => Some(Box::new(ToggleGrid)),
         ("+" | "=" | "add", false) => Some(Box::new(ZoomIn)),
         ("-" | "_" | "subtract", false) => Some(Box::new(ZoomOut)),
         ("+" | "=" | "add", true) => Some(Box::new(FrequencyZoomIn)),
@@ -918,19 +920,19 @@ mod tests {
         };
         for key in ["+", "=", "add"] {
             assert!(
-                zoom_key(key, control, false)
+                plot_shortcut(key, control, false)
                     .unwrap()
                     .as_any()
                     .is::<ZoomIn>()
             );
             assert!(
-                zoom_key(key, control, true)
+                plot_shortcut(key, control, true)
                     .unwrap()
                     .as_any()
                     .is::<FrequencyZoomIn>()
             );
             assert!(
-                zoom_key(key, shifted, false)
+                plot_shortcut(key, shifted, false)
                     .unwrap()
                     .as_any()
                     .is::<FrequencyZoomIn>()
@@ -938,19 +940,19 @@ mod tests {
         }
         for key in ["-", "_", "subtract"] {
             assert!(
-                zoom_key(key, control, false)
+                plot_shortcut(key, control, false)
                     .unwrap()
                     .as_any()
                     .is::<ZoomOut>()
             );
             assert!(
-                zoom_key(key, control, true)
+                plot_shortcut(key, control, true)
                     .unwrap()
                     .as_any()
                     .is::<FrequencyZoomOut>()
             );
             assert!(
-                zoom_key(key, shifted, false)
+                plot_shortcut(key, shifted, false)
                     .unwrap()
                     .as_any()
                     .is::<FrequencyZoomOut>()
@@ -967,10 +969,10 @@ mod tests {
                 ..control
             },
         ] {
-            assert!(zoom_key("+", modifiers, true).is_none());
+            assert!(plot_shortcut("+", modifiers, true).is_none());
         }
         for key in ["up", "down", "home", "0", "a"] {
-            assert!(zoom_key(key, control, true).is_none());
+            assert!(plot_shortcut(key, control, true).is_none());
         }
     }
 

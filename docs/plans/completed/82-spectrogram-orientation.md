@@ -103,3 +103,17 @@ Native Linux GPU tests passed in both orientations for top-row and keypad
 Ctrl/Shift zoom, exactly one axis update per keystroke, removed arrow alternatives,
 menu/settings focus isolation and restored plot focus after menu dismissal.
 Focused independent review was clean, with no findings to accept or decline.
+
+## Owner follow-up: grid shortcut
+
+- [x] Bind Ctrl+G to the existing ToggleGrid action in Plot context and document it
+- [x] Run local gate, rebuild release, verify native toggling and complete focused review
+
+Focused review identified inherited Plot bindings toggling the grid behind an
+open popup. Ctrl+G now uses the existing plot-shortcut focus guard; popup/input
+focus consumes it without dispatch, while direct menu actions remain unchanged.
+
+All 539 tests, formatting and strict Clippy passed; release rebuilt. Native Linux
+GPU checks verified both grid states in both orientations, persistence, matching
+menu checkmarks and Ctrl+G label, popup focus isolation and unchanged analysis
+counters. The final focused review was clean.

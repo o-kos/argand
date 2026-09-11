@@ -367,8 +367,8 @@ A pointer event updates both viewports before submitting one display request.
 Wheel handling uses the dominant nonzero delta component because Linux GPUI
 backends remap Shift+wheel to horizontal deltas; modifiers still select the axis.
 
-Zoom key interception is restricted to the focused Plot key context and runs
-before GPUI action matching. Descendant popup/input contexts swallow these zoom
+Grid and zoom key interception is restricted to the focused Plot key context and runs
+before GPUI action matching. Descendant popup/input contexts swallow these plot
 keys so inherited Plot bindings cannot navigate behind a focused control. It combines the keystroke Shift flag with the
 window's physical Shift state, which Linux symbol normalization otherwise loses.
 Ctrl plus/equal/minus targets time; adding Shift targets frequency, including
