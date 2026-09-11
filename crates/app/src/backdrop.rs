@@ -175,11 +175,11 @@ impl Shell {
         let Some(analysis) = file.document.analysis() else {
             return;
         };
-        let incoming = (analysis.db.t0, analysis.db.t1);
+        let incoming = crate::navigation::PictureView::grid(&analysis.db);
         if !complete
             && self
                 .extents()
-                .is_some_and(|extents| extents.seconds == incoming)
+                .is_some_and(|extents| extents.picture() == incoming)
         {
             return;
         }
@@ -207,20 +207,34 @@ impl Shell {
 }
 
 impl Backdrop {
-    fn should_replace(&self, incoming: (f64, f64), complete: bool, refreshing: bool) -> bool {
+    fn should_replace(
+        &self,
+        incoming: crate::navigation::PictureView,
+        complete: bool,
+        refreshing: bool,
+    ) -> bool {
         if refreshing {
             return false;
         }
-        let held = (self.db.t0, self.db.t1);
-        let wider = incoming.1 - incoming.0 > held.1 - held.0;
+        let held = crate::navigation::PictureView::grid(&self.db);
+        let width = |range: (f64, f64)| range.1 - range.0;
+        let wider = width(incoming.time) >= width(held.time)
+            && width(incoming.frequency) >= width(held.frequency)
+            && (width(incoming.time) > width(held.time)
+                || width(incoming.frequency) > width(held.frequency));
         wider || (held == incoming && complete && !self.complete)
     }
 
-    pub(super) fn level_at(&self, shown: (f64, f64), x: f64, y: f64) -> Option<f32> {
+    pub(super) fn level_at(
+        &self,
+        shown: crate::navigation::PictureView,
+        x: f64,
+        y: f64,
+    ) -> Option<f32> {
         if !self.complete {
             return None;
         }
-        crate::navigation::level_at(&self.db, shown, x, y)
+        crate::navigation::level_in_view(&self.db, shown, x, y)
     }
 
     fn prepare(&mut self, shown: (f64, f64), window: &mut Window) {
@@ -245,21 +259,22 @@ impl Backdrop {
         frame: &axes::Frame,
         origin: gpui::Point<Pixels>,
         height: f32,
-        shown: (f64, f64),
-        foreground: Option<(f64, f64)>,
+        shown: crate::navigation::PictureView,
+        foreground: Option<crate::navigation::PictureView>,
         window: &mut Window,
     ) {
-        let held = (self.db.t0, self.db.t1);
+        let held = crate::navigation::PictureView::grid(&self.db);
         let plot = Bounds {
             origin: origin + point(px(frame.plot.x), px(height + frame.plot.y)),
             size: size(px(frame.plot.width), px(frame.plot.height)),
         };
-        for (left, right) in crate::navigation::uncovered(shown, foreground) {
+        for (left, top, right, bottom) in crate::navigation::uncovered_picture(shown, foreground) {
             let clip = Bounds {
-                origin: origin + point(px(frame.plot.x + frame.plot.width * left as f32), px(0.)),
+                origin: plot.origin
+                    + point(plot.size.width * left as f32, plot.size.height * top as f32),
                 size: size(
-                    px(frame.plot.width * (right - left) as f32),
-                    px(height + frame.plot.y + frame.plot.height),
+                    plot.size.width * (right - left) as f32,
+                    plot.size.height * (bottom - top) as f32,
                 ),
             };
             window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
@@ -276,6 +291,13 @@ impl Backdrop {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn view(time: (f64, f64)) -> crate::navigation::PictureView {
+        crate::navigation::PictureView {
+            time,
+            frequency: (0., 1000.),
+        }
+    }
 
     fn picture(complete: bool) -> Backdrop {
         let mut image = argand_core::SpectrogramImage::new(2, 1);
@@ -300,30 +322,36 @@ mod tests {
 
     #[test]
     fn an_interrupted_preview_is_only_a_picture_not_a_numeric_level_source() {
-        assert_eq!(picture(false).level_at((0.0, 100.0), 0.25, 0.5), None);
-        assert_eq!(picture(true).level_at((0.0, 100.0), 0.25, 0.5), Some(-10.0));
-        assert_eq!(picture(true).level_at((100.0, 200.0), 0.25, 0.5), None);
+        assert_eq!(picture(false).level_at(view((0.0, 100.0)), 0.25, 0.5), None);
+        assert_eq!(
+            picture(true).level_at(view((0.0, 100.0)), 0.25, 0.5),
+            Some(-10.0)
+        );
+        assert_eq!(
+            picture(true).level_at(view((100.0, 200.0)), 0.25, 0.5),
+            None
+        );
     }
 
     #[test]
     fn narrower_panned_results_keep_the_widest_picture_and_completion_upgrades_a_preview() {
         let held = picture(false);
-        assert!(!held.should_replace((60.0, 110.0), true, false));
-        assert!(!held.should_replace((100.0, 150.0), true, false));
-        assert!(held.should_replace((0.0, 110.0), false, false));
-        assert!(held.should_replace((0.0, 100.0), true, false));
-        assert!(!picture(true).should_replace((0.0, 100.0), true, false));
+        assert!(!held.should_replace(view((60.0, 110.0)), true, false));
+        assert!(!held.should_replace(view((100.0, 150.0)), true, false));
+        assert!(held.should_replace(view((0.0, 110.0)), false, false));
+        assert!(held.should_replace(view((0.0, 100.0)), true, false));
+        assert!(!picture(true).should_replace(view((0.0, 100.0)), true, false));
     }
     #[test]
     fn pending_style_delivery_defers_wider_retention_and_preview_upgrade() {
         let held = picture(false);
         for incoming in [(0.0, 100.0), (0.0, 150.0)] {
             assert!(
-                !held.should_replace(incoming, true, true),
+                !held.should_replace(view(incoming), true, true),
                 "a render must not evict the source of the parked foreground delivery"
             );
             assert!(
-                held.should_replace(incoming, true, false),
+                held.should_replace(view(incoming), true, false),
                 "once the delivery is applied, the next render may retain the completed picture"
             );
         }

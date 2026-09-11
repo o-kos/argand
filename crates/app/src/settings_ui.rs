@@ -78,8 +78,13 @@ impl Shell {
         self.settings_window = None;
         self.analysis_hovered = false;
         let view = self.settings_view_backup.take();
-        if !accept && let Some(view) = view {
-            self.view = Some(view);
+        let frequency = self.settings_frequency_backup.take();
+        if !accept {
+            self.view = view;
+            if let Some(frequency) = frequency {
+                self.frequency = frequency;
+                self.frequency_scheme = None;
+            }
         }
         self.apply_settings(if accept { self.settings } else { backup }, cx);
     }
@@ -283,6 +288,7 @@ impl Shell {
         }
         self.settings_backup = Some(self.settings);
         self.settings_view_backup = self.view;
+        self.settings_frequency_backup = Some(self.frequency);
         self.analysis_hovered = false;
         cx.notify();
         let owner = cx.entity().downgrade();

@@ -416,8 +416,10 @@ option is only available in the configuration file and applies to both numeric
 display and input; it does not change the interface language.
 
 Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
-Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally, Ctrl+wheel zooms. Shift+wheel is reserved
-for frequency panning (#80) and currently leaves the time view unchanged.
+Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally,
+Ctrl+wheel zooms. Shift+wheel pans frequency and Ctrl+Shift+wheel zooms frequency
+about the pointer. On the frequency ruler, drag or wheel to pan, and Ctrl+wheel to
+zoom. Its hand cursor appears only when the frequency range is narrowed.
 The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands:
 
 | Key | Action |
@@ -426,14 +428,23 @@ The crosshair appears only over the spectrogram. The View menu exposes the keybo
 | Left / Right | Pan by one time-ruler division |
 | Ctrl+Left / Ctrl+Right | Pan by five time-ruler divisions |
 | Home / End | Move to the capture's beginning / end |
-| Ctrl+`0` | Fit the entire capture |
+| Ctrl+`0` | Fit the entire capture in time |
+| Ctrl+Shift+Up / Ctrl+Shift+Down | Zoom frequency in / out |
+| Ctrl+Shift+Home | Fit the full frequency range |
+| Up / Down | Pan by one frequency-ruler division |
+| Ctrl+Up / Ctrl+Down | Pan by five frequency-ruler divisions |
 
 The minimum span is one FFT, with a screen-resolution representability floor
 for extreme sample indices. This floor is rechecked when the plot width changes. Axes and held pictures move immediately; a new
 completed image replaces the placeholder at the same physical coordinates. A retained
 wider picture fills known time on zoom-out while the replacement is calculated.
 Rapid navigation replaces pending requests instead of queuing transforms.
-Every file opening starts at full capture, including reopening a recent file within
+Frequency navigation rebins the retained spectral values without reading the file
+or repeating FFTs. Its minimum span is one retained frequency cell (at most 2048
+cells across the full capture band); zooming cannot recover detail below that
+cache resolution. At extreme centre frequencies, floating-point precision can
+raise the minimum span. Time and frequency viewports are independent.
+Every file opening starts at the full time and frequency ranges, including reopening a recent file within
 the same run. Legacy saved zoom and position are ignored. Panning retains the ruler
 spacing and clock format; arrow steps round to the nearest sample without accumulating
 fractional-sample drift. Capture boundaries limit the last step.

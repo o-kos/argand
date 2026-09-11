@@ -106,6 +106,26 @@ impl Overview {
         height: usize,
         waveform_columns: Option<usize>,
     ) -> Result<Analysis, DspError> {
+        self.render_band(width, height, waveform_columns, self.meta.frequency_span())
+    }
+
+    /// Render a physical frequency interval from the retained cache without FFT work.
+    pub fn render_band(
+        &mut self,
+        width: usize,
+        height: usize,
+        waveform_columns: Option<usize>,
+        band: (f64, f64),
+    ) -> Result<Analysis, DspError> {
+        let full = self.meta.frequency_span();
+        if !band.0.is_finite()
+            || !band.1.is_finite()
+            || band.0 < full.0
+            || band.1 > full.1
+            || band.0 >= band.1
+        {
+            return Err(DspError::BadFrequencyBand);
+        }
         if width == 0 || height == 0 {
             return Err(DspError::BadOutputSize { width, height });
         }
@@ -113,14 +133,14 @@ impl Overview {
         if self
             .view_cache
             .as_ref()
-            .is_none_or(|cache| cache.dimensions() != (width, height))
+            .is_none_or(|cache| cache.dimensions() != (width, height) || cache.band != band)
         {
-            self.view_cache = Some(RenderCache::new(self, width, height));
+            self.view_cache = Some(RenderCache::new(self, width, height, band));
             self.dirty.fill(true);
         }
         let cache = self.view_cache.as_mut().expect("initialized view cache");
         cache.refresh(&self.store, &self.dirty);
-        let (f0, f1) = self.meta.frequency_span();
+        let (f0, f1) = band;
         let db = DbGrid {
             width,
             height,
@@ -170,6 +190,35 @@ struct Overlap {
 struct Overlaps(Vec<Vec<Overlap>>);
 
 impl Overlaps {
+    fn band(total: usize, source: usize, target: usize, band: (f64, f64)) -> Self {
+        let edges: Vec<_> = (0..=source).map(|i| (total * i / source) as f64).collect();
+        let boundary =
+            |i: usize| (band.0 + (band.1 - band.0) * i as f64 / target as f64) * total as f64;
+        Self(
+            (0..target)
+                .map(|i| {
+                    let lo = boundary(i);
+                    let hi = boundary(i + 1);
+                    let first = edges
+                        .partition_point(|&edge| edge <= lo)
+                        .saturating_sub(1)
+                        .min(source - 1);
+                    let last = edges.partition_point(|&edge| edge < hi).min(source);
+                    (first..last)
+                        .map(|cell| {
+                            let units = hi.min(edges[cell + 1]) - lo.max(edges[cell]);
+                            Overlap {
+                                cell,
+                                units,
+                                fraction: units / (edges[cell + 1] - edges[cell]),
+                            }
+                        })
+                        .collect()
+                })
+                .collect(),
+        )
+    }
+
     fn new(total: u64, source: usize, target: usize, ceiling: bool) -> Self {
         let boundary = |index: usize, parts: usize| {
             let product = u128::from(total) * index as u128;
@@ -213,6 +262,7 @@ impl Overlaps {
 }
 
 pub(super) struct RenderCache {
+    band: (f64, f64),
     time: Overlaps,
     repeats: Vec<usize>,
     frequency: Overlaps,
@@ -223,7 +273,7 @@ pub(super) struct RenderCache {
 }
 
 impl RenderCache {
-    fn new(state: &Overview, width: usize, height: usize) -> Self {
+    fn new(state: &Overview, width: usize, height: usize, band: (f64, f64)) -> Self {
         let time = Overlaps::new(state.columns.total_frames, state.request.width, width, true);
         let mut first = 0;
         let repeats = time
@@ -237,10 +287,23 @@ impl RenderCache {
                 first
             })
             .collect();
+        let full = state.meta.frequency_span();
+        let frequency = if band == full {
+            Overlaps::new(state.plan.bins as u64, state.request.height, height, false)
+        } else {
+            let span = full.1 - full.0;
+            Overlaps::band(
+                state.plan.bins,
+                state.request.height,
+                height,
+                ((band.0 - full.0) / span, (band.1 - full.0) / span),
+            )
+        };
         Self {
+            band,
             time,
             repeats,
-            frequency: Overlaps::new(state.plan.bins as u64, state.request.height, height, false),
+            frequency,
             values: vec![DB_FLOOR; width * height],
             image: SpectrogramImage::new(width, height),
             dirty: vec![true; width],

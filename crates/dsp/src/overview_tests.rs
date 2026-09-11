@@ -224,3 +224,41 @@ fn final_only_reads_samples_once_in_order_and_cancels_between_bounded_batches() 
     assert!(matches!(result, Err(DspError::Cancelled)));
     assert_eq!(source.reads.get(), 1);
 }
+
+#[test]
+fn frequency_bands_reuse_native_bins_for_both_reducers_and_preserve_full_render() {
+    for domain in [Domain::Real, Domain::Iq] {
+        for reduce in [Reduce::Max, Reduce::MeanPower] {
+            let values = match domain {
+                Domain::Real => real_tone(FFT * 8, TONE_HZ, 0.4),
+                Domain::Iq => iq_tone(FFT * 8, TONE_HZ, 0.4),
+            };
+            let mut source = VecSource::new(domain, values, 14000000.);
+            let full = source.meta.frequency_span();
+            let mut req = request(1, 1, SampleRange::new(0, source.meta.len_samples));
+            req.reduce = reduce;
+            let mut overview = analyze_overview(&mut source, &req, ProgressiveOptions::default(),
+                &|| Flow::Continue, &mut |_, _| Flow::Continue).unwrap();
+            let bins = overview.dimensions().1;
+            let original = overview.render(1, bins, None).unwrap();
+            for index in [0, bins / 2, bins - 1] {
+                let span = full.1 - full.0;
+                let band = (full.0 + index as f64 / bins as f64 * span,
+                    full.0 + (index + 1) as f64 / bins as f64 * span);
+                let zoomed = overview.render_band(1, 1, None, band).unwrap();
+                assert!((zoomed.db.values[0] - original.db.values[index]).abs() < 0.001,
+                    "{domain:?} {reduce:?} {index}: {} vs {}", zoomed.db.values[0], original.db.values[index]);
+                assert_eq!(zoomed.frames, original.frames);
+                assert_eq!(zoomed.psd.db, original.psd.db);
+                assert_eq!(zoomed.spectrogram.db_min, original.spectrogram.db_min);
+                assert_eq!(zoomed.spectrogram.db_max, original.spectrogram.db_max);
+            }
+            let restored = overview.render_band(1, bins, None, full).unwrap();
+            assert_eq!(restored.db.values, original.db.values);
+            assert_eq!(restored.spectrogram.rgba, original.spectrogram.rgba);
+            for invalid in [(full.1, full.0), (full.0 - 1., full.1), (full.0, f64::NAN)] {
+                assert!(matches!(overview.render_band(1, 1, None, invalid), Err(DspError::BadFrequencyBand)));
+            }
+        }
+    }
+}

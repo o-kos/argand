@@ -310,3 +310,20 @@ The time-ruler context menu retains its popup entity after closing. The shell
 tracks its DismissEvent explicitly, clears only the matching menu, and restores
 the pointer from the owning window through the ordinary plot filter. This keeps
 Alt guides and cursor feedback available without a mouse move after dismissal.
+
+
+## Frequency navigation (#80)
+
+`frequency.rs` owns a normalized, bounded frequency viewport independent of the time
+range. Each file opening resets it. Its minimum span is one retained frequency
+cell, with at most 2048 cells across the capture band and a physical-coordinate
+precision floor for extreme centre frequencies. The document mailbox treats
+frequency bounds as a display revision, never a new analysis generation.
+`Overview::render_band` rebins overlapping native-bin/cache-cell intervals in the
+value domain on the worker; full-band rendering retains its existing reduction
+policy. Held textures, the wider backdrop and numeric level lookup use both time
+and frequency extents. Frequency panning holds the tick scheme until zoom or a
+height change. Shift+wheel pans frequency; Ctrl+Shift+wheel zooms it. The frequency
+ruler supports drag/wheel pan and Ctrl+wheel zoom. Frequency keyboard zoom uses
+Ctrl+Shift+Up/Down/Home; Up/Down and Ctrl+Up/Down pan one/five divisions. No navigation
+state is persisted, and the full-capture minimap is independent of both viewports.
