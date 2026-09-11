@@ -13,6 +13,8 @@ promise applies to.
 
 ### Fixed
 
+- Remove the four-pixel top gap above the vertical spectrogram and minimap.
+
 - Restore Ctrl+Shift+plus/minus frequency zoom and prevent shifted symbol shortcuts from also zooming time. Top-row and keypad keys use the physical Shift state consistently.
 
 
