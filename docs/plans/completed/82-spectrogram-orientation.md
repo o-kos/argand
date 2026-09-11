@@ -57,3 +57,16 @@ screen direction in each orientation. Zoom shortcuts retain their named axes.
   errors were logged. Ordinary orientation switches did not repeat analysis.
 - Native Windows/macOS checks were not available locally; full three-platform CI
   runs when the Draft is accepted for final review.
+
+## Owner follow-up: readable frequency resolution
+
+- [x] Select frequency resolution units from Hz per device pixel, independently
+  of the ruler caption; trim redundant decimal zeros and retain numeric locale
+- [x] Cover sub-hertz values, unit thresholds and localized output
+- [x] Run local checks and focused independent review
+- [x] Rebuild release from the final code
+
+Focused review found redundant zeros in scientific frequency mantissas. The fix
+trims only the mantissa, preserving exponent and integer zeros; time hints retain
+their previous output. The final round was clean. All 536 tests, formatting and
+strict Clippy passed.

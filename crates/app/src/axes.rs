@@ -97,14 +97,36 @@ pub struct UnitHint {
 
 impl UnitHint {
     pub fn resolution(self) -> String {
-        let value = self.per_pixel;
-        let number = if value > 0. && !(1e-9..1e9).contains(&value) {
+        let frequency_scale = match self.units {
+            "Hz" => Some(1.),
+            "kHz" => Some(1e3),
+            "MHz" => Some(1e6),
+            "GHz" => Some(1e9),
+            _ => None,
+        };
+        let (value, units) = frequency_scale.map_or((self.per_pixel, self.units), |scale| {
+            let hertz = self.per_pixel * scale;
+            let (divisor, units) = [(1e9, "GHz"), (1e6, "MHz"), (1e3, "kHz")]
+                .into_iter()
+                .find(|(divisor, _)| hertz >= *divisor)
+                .unwrap_or((1., "Hz"));
+            (hertz / divisor, units)
+        });
+        let mut number = if value > 0. && !(1e-9..1e9).contains(&value) {
             format!("{value:.3e}")
         } else {
             let decimals = (3. - value.log10().floor()).clamp(0., 12.) as usize;
             format!("{value:.decimals$}")
         };
-        crate::numbers::text(&format!("Resolution: {number} {}/px", self.units))
+        if frequency_scale.is_some() && number.contains('.') {
+            let end = number.find('e').unwrap_or(number.len());
+            let keep = number[..end]
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .len();
+            number.replace_range(keep..end, "");
+        }
+        crate::numbers::text(&format!("Resolution: {number} {units}/px"))
     }
 }
 

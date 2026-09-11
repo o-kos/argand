@@ -11,6 +11,10 @@ promise applies to.
 
 ## [Unreleased]
 
+### Changed
+
+- Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
+
 ### Added
 
 - A persistent Horizontal/Vertical spectrogram button. Vertical mode places time downwards, frequency to the right and the minimap on the left; rulers, navigation and Alt guides follow the selected layout. Switching reuses the transform unless a longer time axis needs the existing coordinate-precision guard to widen an extreme-index range.
