@@ -280,7 +280,14 @@ counts one I/Q pair. Held schemes use the selected ruler's units; keyboard pan
 converts its step to samples once. Changing mode clears the held scheme, preserves
 the view and performs no analysis request. The Alt time badge uses the same mode;
 its sample index is computed relative to the integer view start and clamped to an
-existing sample. Status-bar time readouts remain in seconds. CLI defaults and
+existing sample. Alt badge widths are measured from the current extent endpoints
+with the same widest-digit font policy and pixel precision as readouts; pointer
+motion only changes centered text and position. The shell retains a lazy measurement
+cache keyed by extents, plot geometry, display scale and font; it is accessed only
+while Alt guides are visible. Numeric locale is immutable after startup.
+Guide lines overlap the rounded
+badge backgrounds, including across the gap below the spectral image.
+Status-bar time readouts remain in seconds. CLI defaults and
 CLI frequency axes are unchanged.
 
 `numbers.rs` formats GUI numbers with ICU/CLDR using the regional numeric locale

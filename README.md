@@ -441,7 +441,9 @@ The status bar shows pointer time from the capture start, physical frequency in 
 (including centre frequency), and the displayed grid cell's level in dBFS. Above
 the waveform and time ruler it shows time only. Uncovered placeholder areas have no level.
 Hold **Alt** over the spectrogram to project the cursor onto the time and frequency
-rulers, with rounded coordinate badges. White/black/white guide lines remain
+rulers, with rounded coordinate badges. Badge widths stay fixed for the current
+ruler range and precision, and the text is centered. White/black/white guide lines meet
+the badges and remain
 visible across palettes. Release Alt to hide the guides.
 File min/max values stay file-wide; they become available after the full-capture
 waveform scan, even if navigation interrupts the initial spectral analysis.

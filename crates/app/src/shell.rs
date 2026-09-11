@@ -301,6 +301,7 @@ struct Shell {
     tick_pan: Option<crate::navigation::TickPan>,
     plot_geometry: Option<navigation_ui::PlotGeometry>,
     pointer: Option<gpui::Point<Pixels>>,
+    badge_metrics: axes::BadgeMetrics,
     pan: Option<navigation_ui::Pan>,
     /// The picture currently on the GPU.
     ///
@@ -365,6 +366,7 @@ impl Shell {
             tick_pan: None,
             plot_geometry: None,
             pointer: None,
+            badge_metrics: axes::BadgeMetrics::default(),
             pan: None,
             texture: None,
             deep_preview: None,

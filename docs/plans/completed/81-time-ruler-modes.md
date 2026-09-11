@@ -194,3 +194,33 @@ Escape and an outside click without further pointer motion. Russian settings
 accept 45,5 dB and grouped FFT choices; hints show the same values, and the
 canonical saved FFT remains 4096. Arabic startup output includes localized
 default range digits. Restart preserves Samples mode while restoring full view.
+
+## Owner feedback: stable Alt coordinate badges
+
+- [x] Measure fixed time/frequency badge widths for the current ruler extents,
+  format and pixel precision, then center each cursor readout inside its badge.
+- [x] Extend guide lines to the rounded badge backgrounds without a ruler gap.
+- [x] Validate width bounds, native motion/edge behavior, the full gate, a fresh
+  release build and independent review.
+
+Validation: formatting, strict Clippy and all 519 local tests pass, followed by a
+fresh release build. Range sweeps cover all three time formats, clock/decimal
+rounding boundaries, grouping, large integer sample indices, signed frequencies
+and display scales 1, 1.25 and 2. Native Linux checks on a real Intel GPU with
+Russian numeric formatting cover real and I/Q files, all three formats, short
+and long readouts, positive/negative frequencies, and panel edges. Screenshots
+confirm stable badge widths, centered text and the time line reaching the badge
+across the ruler padding. Mode changes and pointer motion leave analysis counts
+unchanged.
+
+Review identified repeated endpoint measurement on every canvas redraw, including
+without Alt. Accepted: the shell now retains a shared lazy cache keyed by the
+ruler extents, plot geometry, display scale and font, accessed only while Alt
+guides are visible. Numeric locale is immutable after startup. A counting-measure
+test covers reuse across clones and invalidation of each changing input. The
+follow-up review found no substantive remaining issues; no findings were rejected
+or deferred.
+
+The rebuilt cache implementation also passed native mode/motion checks. Zoom
+changes second-readout precision and the reserved width; subsequent pointer
+motion retains that new width.

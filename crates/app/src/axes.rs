@@ -18,7 +18,7 @@ use gpui::{App, Bounds, Font, FontId, Hsla, Pixels, Point, Size, Window, fill, p
 
 #[path = "cursor_guides.rs"]
 mod cursor_guides;
-pub use cursor_guides::CursorGuides;
+pub use cursor_guides::{BadgeMetrics, CursorGuides};
 
 /// Room between a label and whatever it labels.
 const LABEL_PAD: f32 = 6.0;

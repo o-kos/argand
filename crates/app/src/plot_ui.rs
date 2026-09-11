@@ -164,6 +164,7 @@ impl Shell {
             .is_some();
         (self.pointer.is_some() && self.pan.is_none() && !menu_open).then_some(axes::CursorGuides {
             extents,
+            metrics: self.badge_metrics.clone(),
             ink: cx.theme().foreground,
             paper: cx.theme().background,
         })

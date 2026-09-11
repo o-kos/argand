@@ -79,6 +79,8 @@ promise applies to.
 
 ### Fixed
 
+- Alt coordinate badges keep a fixed width for the current ruler range and precision, center their text, and meet the guide lines without a gap.
+
 - FLAC seeks discard old decoder packets, preventing incomplete progressive analysis and full-capture waveform scans.
 
 - Time zoom keeps the current detail until a complete replacement is ready instead
