@@ -420,6 +420,9 @@ Left-drag also pans. The time ruler uses the same gestures: wheel pans horizonta
 Ctrl+wheel zooms. Shift+wheel pans frequency and Ctrl+Shift+wheel zooms frequency
 about the pointer. On the frequency ruler, drag or wheel to pan, and Ctrl+wheel to
 zoom. Its hand cursor appears only when the frequency range is narrowed.
+View → Show grid hides or shows the spectrogram grid and remembers the choice
+between sessions; ruler baselines, ticks and labels remain visible. Valid time
+marks remain at the plot edges even when their labels cannot fit.
 The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands:
 
 | Key | Action |

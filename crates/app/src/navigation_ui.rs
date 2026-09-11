@@ -6,6 +6,7 @@ use crate::navigation::{self, View};
 actions!(
     navigation,
     [
+        ToggleGrid,
         ClockRuler,
         SecondsRuler,
         SamplesRuler,
@@ -549,6 +550,11 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         content
+            .on_action(cx.listener(|shell, _: &ToggleGrid, _, cx| {
+                shell.session.show_grid = !shell.session.show_grid;
+                shell.save();
+                cx.notify();
+            }))
             .on_action(
                 cx.listener(|shell, _: &FrequencyZoomIn, _, cx| shell.zoom_frequency(0.5, 0.5, cx)),
             )
@@ -668,6 +674,7 @@ impl Shell {
         let focus = self.focus.clone();
         let owner = cx.entity().downgrade();
         let ruler = self.session.time_ruler;
+        let show_grid = self.session.show_grid;
         Button::new("view-menu")
             .ghost()
             .small()
@@ -678,6 +685,12 @@ impl Shell {
                 let submenu_focus = focus.clone();
                 let frequency_focus = focus.clone();
                 menu.action_context(focus.clone())
+                    .item(
+                        PopupMenuItem::new("Show grid")
+                            .checked(show_grid)
+                            .action(Box::new(ToggleGrid)),
+                    )
+                    .separator()
                     .submenu("Time scale format", window, cx, move |menu, _, _| {
                         time_scale_items(menu.action_context(submenu_focus.clone()), ruler)
                     })

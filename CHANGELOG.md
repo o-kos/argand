@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- View → Show grid toggles the spectrogram grid and remembers the choice between sessions. Both rulers have longer ticks; time ticks and grid lines remain visible when an edge label cannot fit.
+
 - Independent frequency zoom, pan and fit, with draggable frequency ruler, Shift+wheel panning and Ctrl+Shift+wheel zoom. Rulers and cursor guides follow the visible band immediately; cached redraws need no new FFTs. Every file opening restores the full frequency range.
 
 - Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap at the top of the frequency ruler; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
