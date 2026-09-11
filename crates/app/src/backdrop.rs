@@ -287,7 +287,7 @@ impl Backdrop {
     ) {
         let held = crate::navigation::PictureView::grid(&self.db);
         let orientation = frame.orientation;
-        let (dx, dy) = orientation.axes(px(0.), px(height));
+        let (dx, dy) = orientation.spectrum_offset(px(height));
         let plot = Bounds {
             origin: origin + point(dx + px(frame.plot.x), dy + px(frame.plot.y)),
             size: size(px(frame.plot.width), px(frame.plot.height)),
