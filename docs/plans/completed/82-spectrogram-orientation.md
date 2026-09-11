@@ -131,3 +131,19 @@ Formatting, strict Clippy and all 539 tests passed; release rebuilt. Focused
 independent review confirmed that application code exactly matches the previous
 left-side layout, documentation is consistent and no caption redesign was added.
 The review was clean. No new native GUI run was needed for this exact restoration.
+
+## Owner follow-up: remove the vertical top gap
+
+- [x] Reproduce the four-logical-pixel inset in the release and geometry test
+- [x] Align vertical spectrum and minimap to the panel top without changing unit placement
+- [x] Run local gate/release, verify native rendering and complete focused review
+
+The vertical layout retained an explicit outer top margin. The shared frame now
+starts at zero in both orientations; the existing vertical ruler test checks this
+at display scales 1, 1.25 and 2.
+
+All 539 tests, formatting and strict Clippy passed; release rebuilt. Native Linux
+GPU before/after captures show the four background rows replaced by spectrum
+pixels. Zoom and the Alt time badge near the top edge were checked. Focused review
+confirmed shared minimap alignment, retained edge-label filtering and unchanged
+horizontal geometry; no findings remained.

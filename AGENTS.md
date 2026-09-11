@@ -345,7 +345,8 @@ grid saves the choice and notifies the UI without requesting analysis.
 `orientation::Mode` maps physical time/frequency fractions and rectangles to the
 screen; spectral grids retain their original time-column/frequency-row order.
 Horizontal mode is the default. Vertical mode puts time downwards, frequency to
-the right and the independent minimap on the left. Uploaded BGRA pixels rotate
+the right and the independent minimap on the left. Both the vertical spectrum
+and minimap meet the panel top without an outer inset. Uploaded BGRA pixels rotate
 clockwise in vertical mode, including padded deep-preview strips; held pictures
 and backdrop coverage use the same orientation mapping. GPU retirement still
 waits two frame callbacks. Switching mode reuploads retained images and requests

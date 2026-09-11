@@ -242,8 +242,7 @@ impl Frame {
         let scale = if scale > 0. { scale } else { 1. };
         let ceil = |value: f32| (value * scale).ceil() / scale;
         let floor = |value: f32| (value * scale).floor() / scale;
-        let top = if vertical { ceil(OUTER_PAD) } else { 0. };
-        let height = floor(f32::from(panel.height) - foot) - top;
+        let height = floor(f32::from(panel.height) - foot);
         let (right_kind, right_min, right_max, right_held) = if vertical {
             (extents.time.mode.kind(), t0, t1, held)
         } else {
@@ -272,7 +271,7 @@ impl Frame {
         let right = floor(f32::from(panel.width) - OUTER_PAD - gutter);
         let plot = Rect {
             x: left,
-            y: top,
+            y: 0.,
             width: right - left,
             height,
         };

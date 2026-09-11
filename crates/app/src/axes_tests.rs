@@ -367,7 +367,7 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
         let extents = Extents { orientation: Mode::Vertical, ..HFDL };
         let frame = Frame::measure(panel(800., 600.), scale, extents, &DejaVuSans, None).unwrap();
         assert_eq!(frame.plot.x, 0.);
-        assert!(frame.plot.y >= 4.);
+        assert_eq!(frame.plot.y, 0., "vertical spectrum meets the panel top");
         for tick in frame.time.iter().filter(|tick| !tick.label.is_empty()) {
             assert!(frame.plot.right() + LABEL_PAD + DejaVuSans.width(&tick.label, LABEL_SIZE) <= 796.);
         }
