@@ -358,8 +358,10 @@ minimap rebinning and splitter layout use the corresponding screen dimension.
 The mode button persists session version 9. Arrow bindings use Horizontal/Vertical
 key contexts so panning follows the screen; named time/frequency zoom shortcuts
 retain their axes. In vertical mode time labels occupy the right gutter, frequency
-labels the bottom row, with time units at bottom-right and frequency units beside
-the bottom-left end in the minimap footer. The grid and time-format settings apply
+labels the bottom row, with time units at the top of the right gutter and frequency
+units at bottom-right. The time ruler reserves label clearance below its unit
+without moving the spectrum top or removing grid marks. Unit hitboxes retain an
+arrow cursor and exclude pan/zoom gestures; the time unit retains its context menu. The grid and time-format settings apply
 to both layouts.
 
 Spectrum left-drag pans both physical axes, including frequency-only zoom when

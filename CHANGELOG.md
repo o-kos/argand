@@ -22,6 +22,8 @@ promise applies to.
 
 ### Changed
 
+- In vertical mode, place frequency units at the lower right and time units at the top of the right ruler. Captions reserve space from numeric labels, keep unit/resolution hints and use an arrow cursor without starting navigation gestures.
+
 - Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
 
 ### Added
@@ -35,7 +37,7 @@ promise applies to.
 
 - Independent frequency zoom, pan and fit, with draggable frequency ruler, Shift+wheel panning and Ctrl+Shift+wheel zoom. Rulers and cursor guides follow the visible band immediately; cached redraws need no new FFTs. Every file opening restores the full frequency range.
 
-- Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap at the top of the frequency ruler in horizontal mode and in the left minimap footer in vertical mode; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
+- Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap at the top of the frequency ruler in horizontal mode and at the lower-right end of the frequency ruler in vertical mode; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
 - The default `theme = "system"` follows OS light/dark appearance changes; explicit `dark` and `light` overrides remain available.
 - A complete `argand.toml` template with English comments and explicit built-in defaults in the application installation assets.
 

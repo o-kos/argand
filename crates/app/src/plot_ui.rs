@@ -204,6 +204,7 @@ impl Shell {
         Some(
             div()
                 .id(hint.text)
+                .cursor(gpui::CursorStyle::Arrow)
                 .absolute()
                 .left(px(hint.bounds.x) - origin.x)
                 .top(px(hint.bounds.y) - origin.y)
