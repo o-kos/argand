@@ -363,8 +363,9 @@ fn unit_resolution_uses_device_pixels_current_view_and_caption_units() {
 #[test]
 fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() {
     use crate::orientation::Mode;
+    for mode in [crate::time_ruler::Mode::Clock, crate::time_ruler::Mode::Seconds, crate::time_ruler::Mode::Samples] {
     for scale in [1., 1.25, 2.] {
-        let extents = Extents { orientation: Mode::Vertical, ..HFDL };
+        let extents = Extents { orientation: Mode::Vertical, time: crate::time_ruler::Ruler { mode, view: crate::navigation::View { start: 0, len: 94_080 }, total: 94_080 }, ..HFDL };
         let frame = Frame::measure(panel(800., 600.), scale, extents, &DejaVuSans, None).unwrap();
         assert_eq!(frame.plot.x, 0.);
         assert_eq!(frame.plot.y, 0., "vertical spectrum meets the panel top");
@@ -377,10 +378,21 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
             assert!(tick.offset as f32 + half <= frame.plot.width);
         }
         let hints = frame.unit_hints(&DejaVuSans);
-        assert_eq!(hints[0].unwrap().per_pixel, (extents.seconds.1 - extents.seconds.0) / (frame.plot.height * scale).round() as f64);
+        assert_eq!(hints[0].unwrap().per_pixel, (extents.time.bounds(extents.seconds).1 - extents.time.bounds(extents.seconds).0) / (frame.plot.height * scale).round() as f64);
         assert_eq!(hints[1].unwrap().per_pixel, (extents.hertz.1 - extents.hertz.0) / (frame.plot.width * scale).round() as f64 / 1e6);
-        assert!(hints[1].unwrap().bounds.x < frame.plot.x);
+        let time_unit = hints[0].unwrap().bounds;
+        let frequency_unit = hints[1].unwrap().bounds;
+        assert_eq!(time_unit.y, 0.);
+        assert!(time_unit.x > frame.plot.right() + TICK_LEN);
+        assert!(frequency_unit.x > frame.plot.right());
+        assert!(frequency_unit.y > frame.plot.bottom() + TICK_LEN);
+        assert!(frequency_unit.x + frequency_unit.width <= 800.);
+        for tick in frame.time.iter().filter(|tick| !tick.label.is_empty()) {
+            assert!(tick.offset as f32 - DejaVuSans.digit_height(LABEL_SIZE) / 2.
+                >= time_unit.y + time_unit.height + LABEL_PAD);
+        }
     }
+}
 }
 
 #[test]

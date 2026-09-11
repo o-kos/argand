@@ -147,3 +147,16 @@ GPU before/after captures show the four background rows replaced by spectrum
 pixels. Zoom and the Alt time badge near the top edge were checked. Focused review
 confirmed shared minimap alignment, retained edge-label filtering and unchanged
 horizontal geometry; no findings remained.
+
+## Owner follow-up: vertical ruler unit positions
+
+- [x] Put frequency units at bottom-right and time units at the top of the right gutter
+- [x] Reserve time-label clearance without restoring a top gap in the spectrum
+- [x] Keep hints/context menu, arrow cursor and non-draggable caption hitboxes
+- [x] Run local gate/release, native hint/input checks and focused review
+
+All 540 tests, formatting and strict Clippy passed; release rebuilt. Geometry
+checks cover all three time formats at scales 1, 1.25 and 2. Native Linux GPU
+checks verified all three localized time hints and the frequency hint, arrow
+cursors at zoomed views, ignored caption drags/wheels and format changes through
+the top unit context menu. The independent review was clean.

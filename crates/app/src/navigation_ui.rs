@@ -140,6 +140,9 @@ impl PlotGeometry {
         let Some(position) = pointer else {
             return gpui::CursorStyle::Arrow;
         };
+        if self.unit_at(position) {
+            return gpui::CursorStyle::Arrow;
+        }
         if self.spectrum.contains(&position) {
             return gpui::CursorStyle::Crosshair;
         }
@@ -158,6 +161,16 @@ impl PlotGeometry {
         } else {
             gpui::CursorStyle::Arrow
         }
+    }
+
+    fn unit_at(self, position: gpui::Point<Pixels>) -> bool {
+        self.unit_hints.iter().flatten().any(|hint| {
+            Bounds::new(
+                point(px(hint.bounds.x), px(hint.bounds.y)),
+                gpui::size(px(hint.bounds.width), px(hint.bounds.height)),
+            )
+            .contains(&position)
+        })
     }
 
     pub fn time_length(self) -> f32 {
@@ -231,6 +244,9 @@ impl PlotGeometry {
     }
 
     fn drag_axes(self, position: gpui::Point<Pixels>) -> (bool, bool) {
+        if self.unit_at(position) {
+            return (false, false);
+        }
         let frequency_ruler = self.frequency_ruler.contains(&position);
         (
             self.navigation.contains(&position) && !frequency_ruler,
@@ -381,6 +397,7 @@ impl Shell {
         if !(geometry.navigation.contains(&event.position)
             || geometry.frequency_ruler.contains(&event.position))
             || self.splitter_dragging
+            || geometry.unit_at(event.position)
         {
             return;
         }
@@ -411,6 +428,7 @@ impl Shell {
         if !(geometry.navigation.contains(&event.position)
             || geometry.frequency_ruler.contains(&event.position))
             || self.splitter_dragging
+            || geometry.unit_at(event.position)
         {
             return;
         }
@@ -774,11 +792,7 @@ impl Shell {
                 } else {
                     panel.right() - geometry.time_ruler.left()
                 })
-                .h(if geometry.orientation.vertical() {
-                    panel.bottom() - geometry.time_ruler.top()
-                } else {
-                    geometry.time_ruler.size.height
-                })
+                .h(geometry.time_ruler.size.height)
                 .children(self.unit_hint(0, geometry.time_ruler.origin, cx))
                 .context_menu(move |menu, window, cx| {
                     let popup = cx.entity();
@@ -1162,6 +1176,37 @@ mod tests {
                     assert_eq!(horizontal, vertical);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn unit_captions_keep_arrow_cursor_and_do_not_start_dragging() {
+        let mut geometry = geometry();
+        for bounds in [geometry.time_ruler, geometry.frequency_ruler] {
+            geometry.unit_hints[0] = Some(axes::UnitHint {
+                bounds: axes::Rect {
+                    x: f32::from(bounds.left()),
+                    y: f32::from(bounds.top()),
+                    width: 20.,
+                    height: 12.,
+                },
+                text: "Time in seconds",
+                units: "s",
+                per_pixel: 1.,
+            });
+            let position = bounds.origin + point(px(2.), px(2.));
+            let viewport = Some((
+                View {
+                    start: 200,
+                    len: 300,
+                },
+                1000,
+            ));
+            assert_eq!(
+                geometry.cursor(Some(position), false, viewport, true),
+                gpui::CursorStyle::Arrow
+            );
+            assert_eq!(geometry.drag_axes(position), (false, false));
         }
     }
 

@@ -145,6 +145,7 @@ pub struct Frame {
     /// Where the ink of a time label is centred, under the plot.
     time_row: f32,
     time_caption: &'static str,
+    time_caption_row: f32,
     /// Where the ink of the caption is centred, over the gutter.
     caption_row: f32,
     caption_x: f32,
@@ -159,7 +160,7 @@ impl Frame {
             (
                 Some(self.time_caption),
                 self.plot.right() + LABEL_PAD,
-                self.time_row,
+                self.time_caption_row,
                 self.per_pixel.0,
             ),
             (
@@ -260,7 +261,7 @@ impl Frame {
                 length: height as i64,
                 min: right_min,
                 max: right_max,
-                lead: -(LABEL_PAD as i64),
+                lead: -((if vertical { row_height } else { 0. } + LABEL_PAD) as i64),
                 trail: -(LABEL_PAD as i64),
             },
             &right_labels,
@@ -317,16 +318,17 @@ impl Frame {
             caption,
             time_caption: extents.time.mode.caption(),
             time_row: bottom_row,
+            time_caption_row: if vertical {
+                row_height / 2.
+            } else {
+                bottom_row
+            },
             caption_row: if vertical {
                 bottom_row
             } else {
                 plot.y - measure.digit_height(LABEL_SIZE) / 2.
             },
-            caption_x: if vertical {
-                plot.x - LABEL_PAD - measure.width(caption.unwrap_or("Hz"), LABEL_SIZE)
-            } else {
-                plot.right() + LABEL_PAD
-            },
+            caption_x: plot.right() + LABEL_PAD,
             per_pixel: extents.per_pixel(plot, scale),
         })
     }
@@ -608,7 +610,7 @@ pub fn paint(
     let _ = shaped.paint(
         at(
             plot.right() + LABEL_PAD,
-            labels.line_top(frame.time_row, &shaped),
+            labels.line_top(frame.time_caption_row, &shaped),
         ),
         px(LINE_HEIGHT),
         window,
