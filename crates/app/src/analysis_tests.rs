@@ -551,3 +551,29 @@ fn unknown_length_flac_finishes_preview_and_refinement() {
         _ => panic!("analysis must finish"),
     }
 }
+
+#[test]
+fn frequency_navigation_rebins_without_restarting_analysis_and_rejects_stale_bands() {
+    let dir = TempDir::new("frequency-view");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
+    analyst.request(request());
+    let Some(Update::Ready { analysis: original, elapsed }) = next_result(&updates) else { panic!("ready"); };
+    let generation = analyst.mailbox.latest().unwrap().generation;
+    for band in [(-24000., -12000.), (0., 12000.), (6000., 6187.5), (-24000., 24000.)] {
+        analyst.request_view(request(), Some(band));
+        let delivery = updates.recv_blocking().unwrap();
+        assert!(analyst.accepts(&delivery));
+        assert_eq!(delivery.generation, Some(generation));
+        let Update::Ready { analysis, elapsed: cached } = &delivery.update else { panic!("only cached redraws"); };
+        assert_eq!((analysis.db.f0, analysis.db.f1), band);
+        assert_eq!((analysis.spectrogram.f0, analysis.spectrogram.f1), band);
+        assert_eq!(*cached, elapsed);
+        assert_eq!(analysis.frames, original.frames);
+        assert_eq!(analysis.psd.db, original.psd.db);
+        assert_eq!((analysis.db.t0, analysis.db.t1), (original.db.t0, original.db.t1));
+        analyst.request_view(request(), None);
+        assert!(!analyst.accepts(&delivery));
+        assert!(matches!(next(&updates), Some(Update::Ready { .. })));
+    }
+}

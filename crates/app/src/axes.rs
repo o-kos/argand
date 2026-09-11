@@ -44,6 +44,15 @@ pub struct Extents {
     pub hertz: (f64, f64),
 }
 
+impl Extents {
+    pub fn picture(self) -> crate::navigation::PictureView {
+        crate::navigation::PictureView {
+            time: self.seconds,
+            frequency: self.hertz,
+        }
+    }
+}
+
 /// A rectangle inside the panel, in the panel's own logical pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -92,6 +101,7 @@ pub struct Frame {
     pub time: Vec<Tick>,
     pub time_scheme: Option<axis::TickScheme>,
     pub frequency: Vec<Tick>,
+    pub frequency_scheme: Option<axis::TickScheme>,
     /// The unit the frequency labels are in, named once above them instead of
     /// on every tick.
     pub caption: Option<&'static str>,
@@ -163,6 +173,17 @@ impl Frame {
         measure: &dyn LabelMeasure,
         held: Option<axis::TickScheme>,
     ) -> Option<Self> {
+        Self::measure_view(panel, scale, extents, measure, held, None)
+    }
+
+    pub fn measure_view(
+        panel: Size<Pixels>,
+        scale: f32,
+        extents: Extents,
+        measure: &dyn LabelMeasure,
+        held: Option<axis::TickScheme>,
+        held_frequency: Option<axis::TickScheme>,
+    ) -> Option<Self> {
         let (t0, t1) = extents.time.bounds(extents.seconds);
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
@@ -216,23 +237,27 @@ impl Frame {
             &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).after_tick(LABEL_PAD),
             held,
         );
+        let frequency = axis::tick_layout(
+            AxisKind::Frequency,
+            Axis {
+                length: plot.height as i64,
+                min: f0,
+                max: f1,
+                lead: -(LABEL_PAD as i64),
+                trail: -(LABEL_PAD as i64),
+            },
+            &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down),
+            held_frequency,
+        );
+
         Some(Self {
             plot,
             time: time.ticks,
             time_scheme: time.scheme,
             // Frequency ink stays within the plot height, clear of both the
             // unit above and the time-label row below.
-            frequency: axis::ticks(
-                AxisKind::Frequency,
-                Axis {
-                    length: plot.height as i64,
-                    min: f0,
-                    max: f1,
-                    lead: -(LABEL_PAD as i64),
-                    trail: -(LABEL_PAD as i64),
-                },
-                &LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down),
-            ),
+            frequency: frequency.ticks,
+            frequency_scheme: frequency.scheme,
             caption,
             time_caption: extents.time.mode.caption(),
             time_row: plot.bottom() + LABEL_PAD + row_height / 2.0,

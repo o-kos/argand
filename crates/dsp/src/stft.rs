@@ -229,6 +229,8 @@ pub enum DspError {
     BadBatchSize(usize),
     #[error("output size must be at least 1x1, got {width}x{height}")]
     BadOutputSize { width: usize, height: usize },
+    #[error("frequency interval must be finite, increasing and inside the capture band")]
+    BadFrequencyBand,
     #[error("dynamic range must be finite and greater than zero, got {0}")]
     BadDynamicRange(f32),
     #[error(

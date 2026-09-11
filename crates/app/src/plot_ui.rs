@@ -22,11 +22,11 @@ impl Shell {
         let texture = self.texture.clone();
         let deep = self.deep_preview.clone();
         let backdrop = self.backdrop.clone();
-        let held_time = self
+        let held_view = self
             .file
             .as_ref()
             .and_then(|file| file.document.analysis())
-            .map(|analysis| (analysis.db.t0, analysis.db.t1));
+            .map(|analysis| crate::navigation::PictureView::grid(&analysis.db));
         let first_picture = self
             .file
             .as_ref()
@@ -38,6 +38,7 @@ impl Shell {
         let known = self.plot;
         let known_geometry = self.plot_geometry;
         let time_scheme = self.time_scheme;
+        let frequency_scheme = self.frequency_scheme;
         let view = cx.entity().downgrade();
         let guides = self.cursor_guides(extents, cx);
         let colors = axis_colors(cx);
@@ -49,8 +50,14 @@ impl Shell {
                 let height =
                     panels::waveform_height(f32::from(bounds.size.height), rem, fraction, scale);
                 let spectrum_size = size(bounds.size.width, bounds.size.height - px(height));
-                let frame =
-                    axes::Frame::measure(spectrum_size, scale, extents, &labels, time_scheme)?;
+                let frame = axes::Frame::measure_view(
+                    spectrum_size,
+                    scale,
+                    extents,
+                    &labels,
+                    time_scheme,
+                    frequency_scheme,
+                )?;
                 let measured = device_size(frame.plot, scale);
                 let geometry = plot_geometry(bounds, &frame, &labels, height, measured.width);
                 if known != Some(measured)
@@ -71,8 +78,8 @@ impl Shell {
                         &frame,
                         bounds.origin,
                         height,
-                        extents.seconds,
-                        held_time,
+                        extents.picture(),
+                        held_view,
                         window,
                     );
                 }
@@ -80,16 +87,16 @@ impl Shell {
                 // The picture first, then the marks over it: a grid line is
                 // there to be read against the spectrogram, not under it.
                 if let Some(texture) = texture
-                    && let Some(held) = held_time
+                    && let Some(held) = held_view
                 {
                     let plot = Bounds {
                         origin: spectrum_origin + point(px(frame.plot.x), px(frame.plot.y)),
                         size: size(px(frame.plot.width), px(frame.plot.height)),
                     };
                     if let Some(deep) = deep {
-                        deep.paint(plot, extents.seconds, window);
+                        deep.paint(plot, extents.picture(), window);
                     } else {
-                        paint_held(texture, plot, held, extents.seconds, window);
+                        paint_held(texture, plot, held, extents.picture(), window);
                     }
                     if let Some((opened_at, painted)) = &first_picture
                         && !painted.swap(true, Ordering::Relaxed)
@@ -155,12 +162,13 @@ impl Shell {
             .as_ref()
             .and_then(WeakEntity::upgrade)
             .is_some();
-        (self.pointer.is_some() && self.pan.is_none() && !menu_open).then_some(axes::CursorGuides {
-            extents,
-            metrics: self.badge_metrics.clone(),
-            ink: cx.theme().foreground,
-            paper: cx.theme().background,
-        })
+        (self.pointer.is_some() && self.pan.is_none() && self.frequency_pan.is_none() && !menu_open)
+            .then_some(axes::CursorGuides {
+                extents,
+                metrics: self.badge_metrics.clone(),
+                ink: cx.theme().foreground,
+                paper: cx.theme().background,
+            })
     }
 
     pub(super) fn unit_hint(
@@ -174,7 +182,8 @@ impl Shell {
             .as_ref()
             .and_then(WeakEntity::upgrade)
             .is_some();
-        if self.pan.is_some() || self.splitter_dragging || menu_open {
+        if self.pan.is_some() || self.frequency_pan.is_some() || self.splitter_dragging || menu_open
+        {
             return None;
         }
         let hint = self.plot_geometry?.unit_hints[index]?;
@@ -205,6 +214,12 @@ impl Shell {
         {
             self.time_scheme = None;
             self.tick_pan = None;
+        }
+        if self
+            .plot_geometry
+            .is_some_and(|old| old.spectrum.size.height != geometry.spectrum.size.height)
+        {
+            self.frequency_scheme = None;
         }
         self.panel_bounds = Some(bounds);
         self.plot_geometry = Some(geometry);
@@ -274,6 +289,7 @@ fn plot_geometry(
             })
         }),
         time_scheme: frame.time_scheme,
+        frequency_scheme: frame.frequency_scheme,
         minimap_columns,
         frequency_ruler: Bounds::new(
             point(spectrum.right(), spectrum.top()),
@@ -294,21 +310,30 @@ fn plot_geometry(
 pub(super) fn paint_held(
     texture: Arc<RenderImage>,
     plot: Bounds<Pixels>,
-    held: (f64, f64),
-    shown: (f64, f64),
+    held: crate::navigation::PictureView,
+    shown: crate::navigation::PictureView,
     window: &mut Window,
 ) {
-    if shown.0 >= shown.1 || held.1 <= shown.0 || held.0 >= shown.1 {
+    if !held.intersects(shown) {
         return;
     }
-    let (offset, stretch) = crate::navigation::image_mapping(held, shown);
+    let (offset, stretch) = crate::navigation::image_mapping(held.time, shown.time);
+    let (y, height) = frequency_mapping(held.frequency, shown.frequency);
     let image = Bounds {
-        origin: plot.origin + point(plot.size.width * offset as f32, px(0.)),
-        size: size(plot.size.width * stretch as f32, plot.size.height),
+        origin: plot.origin + point(plot.size.width * offset as f32, plot.size.height * y),
+        size: size(plot.size.width * stretch as f32, plot.size.height * height),
     };
     window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
         spectrogram::paint(texture, image, window);
     });
+}
+
+fn frequency_mapping(held: (f64, f64), shown: (f64, f64)) -> (f32, f32) {
+    let span = shown.1 - shown.0;
+    (
+        ((shown.1 - held.1) / span) as f32,
+        ((held.1 - held.0) / span) as f32,
+    )
 }
 
 fn defer_layout(
@@ -329,6 +354,7 @@ fn defer_layout(
 pub(super) struct DeepPreview {
     columns: std::ops::Range<usize>,
     held: (f64, f64),
+    frequency: (f64, f64),
     width: usize,
     strips: Vec<(usize, Arc<RenderImage>)>,
 }
@@ -384,6 +410,7 @@ impl DeepPreview {
         Some(Self {
             columns,
             held,
+            frequency: (image.f0, image.f1),
             width: image.width,
             strips,
         })
@@ -395,13 +422,29 @@ impl DeepPreview {
         }
     }
 
-    pub(super) fn paint(&self, plot: Bounds<Pixels>, shown: (f64, f64), window: &mut Window) {
+    pub(super) fn paint(
+        &self,
+        plot: Bounds<Pixels>,
+        shown: crate::navigation::PictureView,
+        window: &mut Window,
+    ) {
+        let held = crate::navigation::PictureView {
+            time: self.held,
+            frequency: self.frequency,
+        };
+        if !held.intersects(shown) {
+            return;
+        }
         for (column, texture) in &self.strips {
             let (left, right) =
-                crate::navigation::column_mapping(self.held, shown, self.width, *column);
+                crate::navigation::column_mapping(self.held, shown.time, self.width, *column);
+            let (y, height) = frequency_mapping(self.frequency, shown.frequency);
             let bounds = Bounds {
-                origin: plot.origin + point(plot.size.width * left as f32, px(0.)),
-                size: size(plot.size.width * (right - left) as f32, plot.size.height),
+                origin: plot.origin + point(plot.size.width * left as f32, plot.size.height * y),
+                size: size(
+                    plot.size.width * (right - left) as f32,
+                    plot.size.height * height,
+                ),
             };
             window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
                 spectrogram::paint(texture.clone(), bounds, window);

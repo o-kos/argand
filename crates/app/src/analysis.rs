@@ -57,6 +57,7 @@ struct Requested {
     view_revision: u64,
     analysis: AnalysisRequest,
     navigation: bool,
+    frequency: Option<(f64, f64)>,
 }
 
 pub struct Analyst {
@@ -144,13 +145,20 @@ fn open(path: PathBuf, hints: OpenHints) -> (Analyst, async_channel::Receiver<De
 }
 
 impl Analyst {
+    #[cfg(test)]
     pub fn request(&self, analysis: AnalysisRequest) -> bool {
+        self.request_view(analysis, None)
+    }
+
+    pub fn request_view(&self, analysis: AnalysisRequest, frequency: Option<(f64, f64)>) -> bool {
         let mut latest = self
             .mailbox
             .latest
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if latest.is_some_and(|previous| previous.analysis == analysis) {
+        if latest.is_some_and(|previous| {
+            previous.analysis == analysis && previous.frequency == frequency
+        }) {
             return !self.requests.is_closed();
         }
         let navigation = latest.is_some_and(|previous| {
@@ -172,6 +180,7 @@ impl Analyst {
             view_revision,
             analysis,
             navigation,
+            frequency,
         });
         drop(latest);
         match self.requests.try_send(()) {
@@ -339,6 +348,18 @@ impl Replies<'_> {
     }
 }
 
+fn render_view(
+    overview: &mut Overview,
+    width: usize,
+    view: AnalysisRequest,
+    frequency: Option<(f64, f64)>,
+) -> Result<Analysis, DspError> {
+    match frequency {
+        Some(band) => overview.render_band(width, view.height, view.waveform_columns, band),
+        None => overview.render(width, view.height, view.waveform_columns),
+    }
+}
+
 struct Cached {
     overview: Overview,
     generation: u64,
@@ -365,10 +386,7 @@ impl Cached {
         let rendered = self
             .overview
             .set_style(view.colormap, view.dynamic_range)
-            .and_then(|()| {
-                self.overview
-                    .render(width, view.height, view.waveform_columns)
-            });
+            .and_then(|()| render_view(&mut self.overview, width, view, request.frequency));
         let update = match rendered {
             Ok(analysis) => {
                 let elapsed = *self.elapsed.get_or_insert_with(|| {
@@ -434,7 +452,7 @@ fn compute(
             let view = latest.analysis;
             let rendered = overview
                 .set_style(view.colormap, view.dynamic_range)
-                .and_then(|()| overview.render(view.width, view.height, view.waveform_columns));
+                .and_then(|()| render_view(overview, view.width, view, latest.frequency));
             let analysis = match rendered {
                 Ok(analysis) => analysis,
                 Err(error) => {
