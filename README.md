@@ -389,8 +389,14 @@ Hover over a time or frequency unit caption to see its meaning and resolution
 per physical screen pixel. The values follow the current view, window size and
 display scale, using the numeric locale. Clock time uses seconds per pixel;
 sample mode reads "Time in samples" with samples per pixel. The frequency caption
-sits to the right of the minimap, aligned to the top of the frequency ruler, and
-its hint reads, for example, "Frequency in kHz".
+sits beside the minimap at the top of the frequency ruler in horizontal mode,
+and at the right end of the bottom frequency ruler in vertical mode. Vertical
+time units sit at the top of the right time ruler, with space reserved before
+its numeric labels. Unit captions keep the arrow cursor and do not initiate pan
+or zoom gestures. Its hint reads, for example,
+"Frequency in kHz". Frequency resolution independently
+selects Hz, kHz, MHz or GHz from its value, so a kHz ruler can report
+"Resolution: 0.496 Hz/px" without redundant trailing zeros.
 The time unit retains the ruler's right-click menu. Rulers show a hand only when
 they can be dragged; frequency dragging remains part of #80.
 
@@ -415,30 +421,47 @@ and fall back to `system`, preserving the other configuration settings. This
 option is only available in the configuration file and applies to both numeric
 display and input; it does not change the interface language.
 
+The **Horizontal / Vertical** button beside View switches the complete spectral
+layout and remembers the mode. Vertical mode shows time from top to bottom,
+frequency from left to right and the full-capture minimap in a strip on the left.
+Switching preserves both physical viewports and reuses the retained transform,
+except when a longer time axis requires the representability adjustment described below.
+Ruler dragging, unit hints, Alt guides and minimap navigation follow the layout;
+arrow panning follows screen directions. In vertical mode Up/Down pan time and
+Left/Right pan frequency, with Ctrl taking five divisions. Zoom shortcuts keep
+their time/frequency meanings in both modes.
+
 Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
-Left-drag also pans. The time ruler uses the same gestures: wheel pans horizontally,
+Left-drag on the spectrogram pans both time and frequency; each ruler constrains
+dragging to its own axis. The time ruler uses the same gestures: wheel pans in time,
 Ctrl+wheel zooms. Shift+wheel pans frequency and Ctrl+Shift+wheel zooms frequency
 about the pointer. On the frequency ruler, drag or wheel to pan, and Ctrl+wheel to
 zoom. Its hand cursor appears only when the frequency range is narrowed.
-View → Show grid hides or shows the spectrogram grid and remembers the choice
+Ctrl+G or View → Show grid hides or shows the spectrogram grid and remembers the choice
 between sessions; ruler baselines, ticks and labels remain visible. Valid time
 marks remain at the plot edges even when their labels cannot fit.
-The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands:
+The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands (arrows below describe Horizontal mode):
 
 | Key | Action |
 | --- | --- |
-| Ctrl+`+` or Ctrl+`=` / Ctrl+`-` | Zoom in / out about the view centre |
+| Ctrl+G | Show / hide the spectrogram grid |
+| Ctrl+`=` / Ctrl+`-` (or keypad `+` / `-`) | Zoom in / out about the view centre |
 | Left / Right | Pan by one time-ruler division |
 | Ctrl+Left / Ctrl+Right | Pan by five time-ruler divisions |
 | Home / End | Move to the capture's beginning / end |
 | Ctrl+`0` | Fit the entire capture in time |
-| Ctrl+Shift+Up / Ctrl+Shift+Down | Zoom frequency in / out |
+| Ctrl+Shift+`+` / Ctrl+Shift+`-` | Zoom frequency in / out |
 | Ctrl+Shift+Home | Fit the full frequency range |
 | Up / Down | Pan by one frequency-ruler division |
 | Ctrl+Up / Ctrl+Down | Pan by five frequency-ruler divisions |
 
+On a top-row `=/+` key, Ctrl+`=` zooms time and Ctrl+Shift+`=` zooms
+frequency. Shift selects frequency for both top-row and keypad zoom keys.
+
 The minimum span is one FFT, with a screen-resolution representability floor
-for extreme sample indices. This floor is rechecked when the plot width changes. Axes and held pictures move immediately; a new
+for extreme sample indices. This floor is rechecked when the time-axis length changes, including on orientation
+switches. At extreme indices, a longer axis can widen the view and recalculate its
+transform to keep adjacent time coordinates distinguishable. Axes and held pictures move immediately; a new
 completed image replaces the placeholder at the same physical coordinates. A retained
 wider picture fills known time on zoom-out while the replacement is calculated.
 Rapid navigation replaces pending requests instead of queuing transforms.

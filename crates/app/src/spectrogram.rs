@@ -23,16 +23,20 @@ const CHANNELS: usize = 4;
 ///
 /// `None` for a picture with no pixels, which is what a transform over an
 /// empty range produces: there is nothing to draw and nothing to upload.
-pub fn texture(image: &SpectrogramImage) -> Option<Arc<RenderImage>> {
+pub fn texture(
+    image: &SpectrogramImage,
+    orientation: crate::orientation::Mode,
+) -> Option<Arc<RenderImage>> {
     // A buffer of no bytes still satisfies the image crate, and an empty
     // texture reaches the atlas as a zero-sized allocation. Neither is a
     // picture, so the emptiness is answered here rather than passed on.
     if image.width == 0 || image.height == 0 {
         return None;
     }
-    let width = u32::try_from(image.width).ok()?.checked_add(2)?;
-    let height = u32::try_from(image.height).ok()?.checked_add(2)?;
-    let buffer = image::RgbaImage::from_raw(width, height, padded_bgra(image)?)?;
+    let (width, height) = orientation.axes(image.width, image.height);
+    let width = u32::try_from(width).ok()?.checked_add(2)?;
+    let height = u32::try_from(height).ok()?.checked_add(2)?;
+    let buffer = image::RgbaImage::from_raw(width, height, padded_bgra(image, orientation)?)?;
     Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
 }
 
@@ -56,14 +60,15 @@ pub fn paint(texture: Arc<RenderImage>, bounds: Bounds<Pixels>, window: &mut Win
     });
 }
 
-fn padded_bgra(image: &SpectrogramImage) -> Option<Vec<u8>> {
-    let stride = image.width.checked_mul(CHANNELS)?;
-    if image.rgba.len() != stride.checked_mul(image.height)? || stride == 0 || image.height == 0 {
+fn padded_bgra(image: &SpectrogramImage, orientation: crate::orientation::Mode) -> Option<Vec<u8>> {
+    let (width, height) = orientation.axes(image.width, image.height);
+    let stride = width.checked_mul(CHANNELS)?;
+    if image.rgba.len() != stride.checked_mul(height)? || stride == 0 || height == 0 {
         return None;
     }
     let padded_stride = stride.checked_add(2 * CHANNELS)?;
-    let mut padded = vec![0; padded_stride.checked_mul(image.height.checked_add(2)?)?];
-    let bytes = bgra(image);
+    let mut padded = vec![0; padded_stride.checked_mul(height.checked_add(2)?)?];
+    let bytes = bgra(image, orientation);
     for (y, row) in bytes.chunks_exact(stride).enumerate() {
         let start = (y + 1) * padded_stride;
         padded[start..start + CHANNELS].copy_from_slice(&row[..CHANNELS]);
@@ -73,15 +78,19 @@ fn padded_bgra(image: &SpectrogramImage) -> Option<Vec<u8>> {
     }
     padded.copy_within(padded_stride..2 * padded_stride, 0);
     padded.copy_within(
-        image.height * padded_stride..(image.height + 1) * padded_stride,
-        (image.height + 1) * padded_stride,
+        height * padded_stride..(height + 1) * padded_stride,
+        (height + 1) * padded_stride,
     );
     Some(padded)
 }
 
 /// A source column for a deeply zoomed placeholder. Copy only visible strips,
 /// bounded by `ceil(image.width / 1024) + 1`, rather than a stretched image.
-pub fn column_texture(image: &SpectrogramImage, column: usize) -> Option<Arc<RenderImage>> {
+pub fn column_texture(
+    image: &SpectrogramImage,
+    column: usize,
+    orientation: crate::orientation::Mode,
+) -> Option<Arc<RenderImage>> {
     if column >= image.width {
         return None;
     }
@@ -90,14 +99,26 @@ pub fn column_texture(image: &SpectrogramImage, column: usize) -> Option<Arc<Ren
         let offset = (row * image.width + column) * 4;
         strip.rgba[row * 4..row * 4 + 4].copy_from_slice(image.rgba.get(offset..offset + 4)?);
     }
-    texture(&strip)
+    texture(&strip, orientation)
 }
 
 /// The same pixels with red and blue exchanged.
-fn bgra(image: &SpectrogramImage) -> Vec<u8> {
-    let mut bytes = image.rgba.clone();
-    for pixel in bytes.chunks_exact_mut(CHANNELS) {
-        pixel.swap(0, 2);
+fn bgra(image: &SpectrogramImage, orientation: crate::orientation::Mode) -> Vec<u8> {
+    let mut bytes = vec![0; image.rgba.len()];
+    for (y, row) in image
+        .rgba
+        .chunks_exact(image.width.max(1) * CHANNELS)
+        .enumerate()
+    {
+        for (x, pixel) in row.chunks_exact(CHANNELS).enumerate() {
+            let index = if orientation.vertical() {
+                x * image.height + image.height - 1 - y
+            } else {
+                y * image.width + x
+            } * CHANNELS;
+            bytes[index..index + CHANNELS]
+                .copy_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+        }
     }
     bytes
 }

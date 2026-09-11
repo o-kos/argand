@@ -32,6 +32,7 @@ impl Shell {
             .as_ref()
             .map(|file| (file.opened_at, file.first_picture.clone()));
         let minimap = self.minimap_panel(cx);
+        let orientation = self.session.orientation;
         let fraction = self.session.waveform_fraction;
         let rem = f32::from(cx.theme().font_size);
         let known_bounds = self.panel_bounds;
@@ -47,9 +48,14 @@ impl Shell {
             move |bounds, window, cx| {
                 let scale = window.scale_factor();
                 let labels = axes::Labels::new(window);
-                let height =
-                    panels::waveform_height(f32::from(bounds.size.height), rem, fraction, scale);
-                let spectrum_size = size(bounds.size.width, bounds.size.height - px(height));
+                let height = panels::waveform_height(
+                    f32::from(orientation.axes(bounds.size.width, bounds.size.height).1),
+                    rem,
+                    fraction,
+                    scale,
+                );
+                let (dx, dy) = orientation.axes(px(0.), px(height));
+                let spectrum_size = size(bounds.size.width - dx, bounds.size.height - dy);
                 let frame = axes::Frame::measure_view(
                     spectrum_size,
                     scale,
@@ -58,7 +64,7 @@ impl Shell {
                     time_scheme,
                     frequency_scheme,
                 )?;
-                let measured = device_size(frame.plot, scale);
+                let measured = oriented_device_size(frame.plot, scale, orientation);
                 let geometry = plot_geometry(bounds, &frame, &labels, height, measured.width);
                 if known != Some(measured)
                     || known_bounds != Some(bounds)
@@ -72,7 +78,8 @@ impl Shell {
                 let Some((frame, labels, height)) = prepainted else {
                     return;
                 };
-                let spectrum_origin = bounds.origin + point(px(0.0), px(height));
+                let (dx, dy) = orientation.axes(px(0.), px(height));
+                let spectrum_origin = bounds.origin + point(dx, dy);
                 if let Some(backdrop) = &backdrop {
                     backdrop.paint(
                         &frame,
@@ -94,9 +101,9 @@ impl Shell {
                         size: size(px(frame.plot.width), px(frame.plot.height)),
                     };
                     if let Some(deep) = deep {
-                        deep.paint(plot, extents.picture(), window);
+                        deep.paint(plot, extents.picture(), orientation, window);
                     } else {
-                        paint_held(texture, plot, held, extents.picture(), window);
+                        paint_held(texture, plot, held, extents.picture(), orientation, window);
                     }
                     if let Some((opened_at, painted)) = &first_picture
                         && !painted.swap(true, Ordering::Relaxed)
@@ -108,7 +115,7 @@ impl Shell {
                 if let Some(guides) = &guides {
                     let panel = Bounds::new(
                         spectrum_origin,
-                        size(bounds.size.width, bounds.size.height - px(height)),
+                        size(bounds.size.width - dx, bounds.size.height - dy),
                     );
                     guides.paint(&frame, panel, &labels, window, cx);
                 }
@@ -123,12 +130,18 @@ impl Shell {
     ) -> Option<argand_core::axis::TickScheme> {
         let bounds = self.panel_bounds?;
         let height = panels::waveform_height(
-            f32::from(bounds.size.height),
+            f32::from(
+                self.session
+                    .orientation
+                    .axes(bounds.size.width, bounds.size.height)
+                    .1,
+            ),
             f32::from(window.rem_size()),
             self.session.waveform_fraction,
             window.scale_factor(),
         );
-        let panel = size(bounds.size.width, bounds.size.height - px(height));
+        let (dx, dy) = self.session.orientation.axes(px(0.), px(height));
+        let panel = size(bounds.size.width - dx, bounds.size.height - dy);
         axes::Frame::measure(
             panel,
             window.scale_factor(),
@@ -191,6 +204,7 @@ impl Shell {
         Some(
             div()
                 .id(hint.text)
+                .cursor(gpui::CursorStyle::Arrow)
                 .absolute()
                 .left(px(hint.bounds.x) - origin.x)
                 .top(px(hint.bounds.y) - origin.y)
@@ -210,14 +224,14 @@ impl Shell {
     ) {
         if self
             .plot_geometry
-            .is_some_and(|old| old.navigation.size.width != geometry.navigation.size.width)
+            .is_some_and(|old| old.time_length() != geometry.time_length())
         {
             self.time_scheme = None;
             self.tick_pan = None;
         }
         if self
             .plot_geometry
-            .is_some_and(|old| old.spectrum.size.height != geometry.spectrum.size.height)
+            .is_some_and(|old| old.frequency_length() != geometry.frequency_length())
         {
             self.frequency_scheme = None;
         }
@@ -276,35 +290,86 @@ fn plot_geometry(
     height: f32,
     minimap_columns: usize,
 ) -> navigation_ui::PlotGeometry {
+    let orientation = frame.orientation;
+    let (dx, dy) = orientation.axes(px(0.), px(height));
     let spectrum = Bounds {
-        origin: bounds.origin + point(px(frame.plot.x), px(height + frame.plot.y)),
+        origin: bounds.origin + point(dx + px(frame.plot.x), dy + px(frame.plot.y)),
         size: size(px(frame.plot.width), px(frame.plot.height)),
     };
+    let bottom = Bounds::new(
+        point(spectrum.left(), spectrum.bottom()),
+        size(spectrum.size.width, bounds.bottom() - spectrum.bottom()),
+    );
+    let right = Bounds::new(
+        point(spectrum.right(), spectrum.top()),
+        size(bounds.right() - spectrum.right(), spectrum.size.height),
+    );
+    let (time_ruler, frequency_ruler) = if orientation.vertical() {
+        (right, bottom)
+    } else {
+        (bottom, right)
+    };
+    let minimap = if orientation.vertical() {
+        Bounds::new(
+            point(bounds.left(), spectrum.top()),
+            size(px((height - 1.).max(0.)), spectrum.size.height),
+        )
+    } else {
+        Bounds::new(
+            point(spectrum.left(), bounds.top()),
+            size(spectrum.size.width, px((height - 1.).max(0.))),
+        )
+    };
     navigation_ui::PlotGeometry {
+        orientation,
         unit_hints: frame.unit_hints(labels).map(|hint| {
             hint.map(|mut hint| {
-                hint.bounds.x += f32::from(bounds.origin.x);
-                hint.bounds.y += f32::from(bounds.origin.y) + height;
+                hint.bounds.x += f32::from(bounds.origin.x + dx);
+                hint.bounds.y += f32::from(bounds.origin.y + dy);
                 hint
             })
         }),
         time_scheme: frame.time_scheme,
         frequency_scheme: frame.frequency_scheme,
         minimap_columns,
-        frequency_ruler: Bounds::new(
-            point(spectrum.right(), spectrum.top()),
-            size(bounds.right() - spectrum.right(), spectrum.size.height),
-        ),
+        time_ruler,
+        frequency_ruler,
         spectrum,
-        minimap: Bounds::new(
-            point(spectrum.left(), bounds.top()),
-            size(spectrum.size.width, px((height - 1.).max(0.))),
-        ),
-        navigation: Bounds {
-            origin: point(spectrum.left(), bounds.top()),
-            size: size(spectrum.size.width, bounds.size.height),
+        minimap,
+        navigation: if orientation.vertical() {
+            Bounds::new(
+                point(bounds.left(), spectrum.top()),
+                size(bounds.size.width, spectrum.size.height),
+            )
+        } else {
+            Bounds::new(
+                point(spectrum.left(), bounds.top()),
+                size(spectrum.size.width, bounds.size.height),
+            )
         },
     }
+}
+
+fn oriented_device_size(
+    plot: axes::Rect,
+    scale: f32,
+    orientation: crate::orientation::Mode,
+) -> PlotSize {
+    let physical = device_size(plot, scale);
+    let (width, height) = orientation.axes(physical.width, physical.height);
+    PlotSize { width, height }
+}
+
+pub(super) fn mapped_bounds(
+    plot: Bounds<Pixels>,
+    rectangle: [f32; 4],
+    orientation: crate::orientation::Mode,
+) -> Bounds<Pixels> {
+    let [x, y, width, height] = orientation.rect(rectangle);
+    Bounds::new(
+        plot.origin + point(plot.size.width * x, plot.size.height * y),
+        size(plot.size.width * width, plot.size.height * height),
+    )
 }
 
 pub(super) fn paint_held(
@@ -312,6 +377,7 @@ pub(super) fn paint_held(
     plot: Bounds<Pixels>,
     held: crate::navigation::PictureView,
     shown: crate::navigation::PictureView,
+    orientation: crate::orientation::Mode,
     window: &mut Window,
 ) {
     if !held.intersects(shown) {
@@ -319,10 +385,11 @@ pub(super) fn paint_held(
     }
     let (offset, stretch) = crate::navigation::image_mapping(held.time, shown.time);
     let (y, height) = frequency_mapping(held.frequency, shown.frequency);
-    let image = Bounds {
-        origin: plot.origin + point(plot.size.width * offset as f32, plot.size.height * y),
-        size: size(plot.size.width * stretch as f32, plot.size.height * height),
-    };
+    let image = mapped_bounds(
+        plot,
+        [offset as f32, y, stretch as f32, height],
+        orientation,
+    );
     window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
         spectrogram::paint(texture, image, window);
     });
@@ -355,6 +422,7 @@ pub(super) struct DeepPreview {
     columns: std::ops::Range<usize>,
     held: (f64, f64),
     frequency: (f64, f64),
+    orientation: crate::orientation::Mode,
     width: usize,
     strips: Vec<(usize, Arc<RenderImage>)>,
 }
@@ -379,9 +447,12 @@ impl Shell {
             self.release_deep_preview(window);
             return;
         }
-        if let Some(deep) =
-            DeepPreview::prepare(image, extents.seconds, self.deep_preview.as_deref())
-        {
+        if let Some(deep) = DeepPreview::prepare(
+            image,
+            extents.seconds,
+            self.session.orientation,
+            self.deep_preview.as_deref(),
+        ) {
             self.release_deep_preview(window);
             self.deep_preview = Some(Arc::new(deep));
         }
@@ -392,25 +463,31 @@ impl DeepPreview {
     pub(super) fn prepare(
         image: &argand_core::SpectrogramImage,
         shown: (f64, f64),
+        orientation: crate::orientation::Mode,
         previous: Option<&Self>,
     ) -> Option<Self> {
         let held = (image.t0, image.t1);
         let columns = crate::navigation::visible_columns(held, shown, image.width);
         if previous.is_some_and(|deep| {
-            deep.columns == columns && deep.held == held && deep.width == image.width
+            deep.columns == columns
+                && deep.held == held
+                && deep.width == image.width
+                && deep.orientation == orientation
         }) {
             return None;
         }
         let strips = columns
             .clone()
             .filter_map(|column| {
-                spectrogram::column_texture(image, column).map(|texture| (column, texture))
+                spectrogram::column_texture(image, column, orientation)
+                    .map(|texture| (column, texture))
             })
             .collect();
         Some(Self {
             columns,
             held,
             frequency: (image.f0, image.f1),
+            orientation,
             width: image.width,
             strips,
         })
@@ -426,6 +503,7 @@ impl DeepPreview {
         &self,
         plot: Bounds<Pixels>,
         shown: crate::navigation::PictureView,
+        orientation: crate::orientation::Mode,
         window: &mut Window,
     ) {
         let held = crate::navigation::PictureView {
@@ -439,13 +517,11 @@ impl DeepPreview {
             let (left, right) =
                 crate::navigation::column_mapping(self.held, shown.time, self.width, *column);
             let (y, height) = frequency_mapping(self.frequency, shown.frequency);
-            let bounds = Bounds {
-                origin: plot.origin + point(plot.size.width * left as f32, plot.size.height * y),
-                size: size(
-                    plot.size.width * (right - left) as f32,
-                    plot.size.height * height,
-                ),
-            };
+            let bounds = mapped_bounds(
+                plot,
+                [left as f32, y, (right - left) as f32, height],
+                orientation,
+            );
             window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
                 spectrogram::paint(texture.clone(), bounds, window);
             });

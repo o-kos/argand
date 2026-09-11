@@ -21,6 +21,7 @@ mod frequency;
 mod minimap;
 mod navigation;
 mod numbers;
+mod orientation;
 mod panels;
 mod profiling;
 mod recent;

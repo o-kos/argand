@@ -11,13 +11,33 @@ promise applies to.
 
 ## [Unreleased]
 
+### Fixed
+
+- Remove the four-pixel top gap above the vertical spectrogram and minimap.
+
+- Restore Ctrl+Shift+plus/minus frequency zoom and prevent shifted symbol shortcuts from also zooming time. Top-row and keypad keys use the physical Shift state consistently.
+
+
+- Spectrum dragging now pans both axes; ruler and minimap dragging remain constrained. Shift+wheel frequency pan and Ctrl+Shift+wheel frequency zoom also handle horizontal deltas emitted by Linux backends.
+
+### Changed
+
+- In vertical mode, place frequency units at the lower right and time units at the top of the right ruler. Captions reserve space from numeric labels, keep unit/resolution hints and use an arrow cursor without starting navigation gestures.
+
+- Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
+
 ### Added
+
+- Ctrl+G toggles spectrogram grid visibility using the same saved setting as View → Show grid.
+
+
+- A persistent Horizontal/Vertical spectrogram button. Vertical mode places time downwards, frequency to the right and the minimap on the left; rulers, navigation and Alt guides follow the selected layout. Switching reuses the transform unless a longer time axis needs the existing coordinate-precision guard to widen an extreme-index range.
 
 - View → Show grid toggles the spectrogram grid and remembers the choice between sessions. Both rulers have longer ticks; time ticks and grid lines remain visible when an edge label cannot fit.
 
 - Independent frequency zoom, pan and fit, with draggable frequency ruler, Shift+wheel panning and Ctrl+Shift+wheel zoom. Rulers and cursor guides follow the visible band immediately; cached redraws need no new FFTs. Every file opening restores the full frequency range.
 
-- Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap at the top of the frequency ruler; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
+- Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap at the top of the frequency ruler in horizontal mode and at the lower-right end of the frequency ruler in vertical mode; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
 - The default `theme = "system"` follows OS light/dark appearance changes; explicit `dark` and `light` overrides remain available.
 - A complete `argand.toml` template with English comments and explicit built-in defaults in the application installation assets.
 
