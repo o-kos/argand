@@ -22,6 +22,8 @@ promise applies to.
 
 ### Changed
 
+- Replace the application and desktop launcher icon with the B0 intertwined I/Q ribbons, including dedicated 16- and 24-pixel artwork.
+
 - Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with slightly stronger text and border contrast, platform-specific notation and matching menu-width measurement.
 
 - Enlarge and brighten the toolbar icons for better visibility within their buttons, with orientation before grid.

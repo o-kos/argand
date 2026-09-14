@@ -1,8 +1,8 @@
 # Application icon exploration
 
 Design work for [#41](https://github.com/o-kos/argand/issues/41), preserved for
-review from another machine. **No final icon has been approved.** The application
-still uses its existing artwork.
+review from another machine. **B0 and its optical small sizes are approved for an application trial.**
+Final release artwork remains pending.
 
 ## Start here
 
@@ -32,8 +32,9 @@ these requirements are explored. The owner explicitly allowed radical alternativ
 The owner selected **B, the intertwined I/Q direction**, for further development.
 In B0 the coral ribbon is unintentionally open: its returning segment is missing.
 B1 restores two closed loops; B2 simplifies the composition to two chain links.
-Continuing B1 was proposed during the discussion; the owner has not selected
-between B1 and B2 or accepted a final drawing. The dense center at 16 pixels
+The owner rejected B2 and currently prefers B0, requesting its missing coral
+return segment. B1 remains an alternative with mutual over-under crossings
+requested for its cyan and coral loops. No final drawing is approved. The dense center at 16 pixels
 still needs work. The topology and crossing geometry also need deliberate
 construction in the eventual vector master.
 
@@ -55,8 +56,32 @@ construction in the eventual vector master.
 
 | Sketch | Status | Original image |
 | --- | --- | --- |
-| B1 | Closed crossed loops; proposed continuation, not selected by the owner | [PNG](images/b1-closed-loops.png) |
-| B2 | Two links; simpler construction, but more like a chain symbol | [PNG](images/b2-two-links.png) |
+| B1 | Original closed loops; crossing revision requested | [PNG](images/b1-closed-loops.png) |
+| B2 | Rejected by the owner; retained only as an archive | [PNG](images/b2-two-links.png) |
+
+## Revised B0 and B1
+
+- [Experimental B0 optical sizes: 16 and 24 pixels](small-b0-v3/index.html), with original/revised comparisons on both backgrounds and 8× pixel enlargements
+
+The optical-size experiment redraws the rounded loops as closed vector paths,
+uses flat colors, and adjusts ribbon and outline widths separately for 16 and
+24 pixels. It is a new approximation of B0, not an exact trace or an approved
+final master. The owner accepted this redraw for the application trial. Its wider
+openings trade some visual weight for separation.
+
+- [All size previews on light and dark backgrounds](size-preview-v2/index.html)
+- [Comparison sheet, 16–256 pixels](size-preview-v2/comparison-16-256.png)
+- [Download all previews](size-preview-v2/previews.zip)
+
+Sizes: 16, 20, 24, 32, 40, 48, 64, 128, 256, 512 and 1024 pixels.
+These are Lanczos reductions of the v2 sketches, without optical corrections.
+The archive includes transparent PNGs and both opaque background variants.
+
+- [B0 v2: closed coral return](images/b0-closed-return-v2.png) preserves the rounded B0 silhouette and adds its missing return
+- [B1 v2: mutual weave](images/b1-mutual-weave-v2.png) alternates cyan over coral at the top and bottom, and coral over cyan at the left and right
+
+B0 is now used in the application trial; B1 remains an archived alternative.
+The original comparison sheets remain historical snapshots.
 
 ## Intermediate attempts
 
@@ -73,5 +98,8 @@ alternatives. Painted checkerboards are actual opaque image content, not alpha.
 
 Choose how to develop direction B, then refine small-size readability and agree
 the final silhouette, colours, outline and crossing geometry before creating
-production SVG, PNG, ICO, ICNS and monochrome assets. The sketches and comparison sheets are review material;
-they have not replaced any assets under `crates/app/assets/icons/`.
+the final vector master and monochrome assets. The application trial already
+uses B0 PNG, ICO and ICNS artwork under `crates/app/assets/icons/`. The scalable
+SVG is temporarily a self-contained raster wrapper. Run
+`python docs/design/app-icon/install-trial-artwork.py` to reproduce the trial
+assets with Pillow. The historical comparisons remain unchanged.

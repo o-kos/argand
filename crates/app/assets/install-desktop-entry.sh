@@ -26,7 +26,7 @@ else
 fi
 sed "s|^Exec=.*|$exec_line|" "$here/$id.desktop" > "$apps/$id.desktop"
 
-for size in 16 32 48 64 128 256 512 1024; do
+for size in 16 24 32 48 64 128 256 512 1024; do
     dir="$icons/${size}x${size}/apps"
     mkdir -p "$dir"
     cp "$here/icons/argand-$size.png" "$dir/$id.png"
