@@ -902,27 +902,47 @@ impl Shell {
                             window.show_window_menu(event.position)
                         })
                         .min_w_0()
-                        .child(self.title_contents(cx)),
+                        .child(self.title_contents(window, cx)),
                 )
                 .child(chrome::controls(corners.top_right, window, cx))
                 .into_any_element()
         } else {
             TitleBar::new()
-                .child(self.title_contents(cx))
+                .child(self.title_contents(window, cx))
                 .into_any_element()
         };
         div().flex_shrink_0().child(bar)
     }
 
-    fn title_contents(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn title_contents(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let leading = if cfg!(target_os = "macos") {
+            px(80.)
+        } else {
+            px(12.)
+        } + if !cfg!(target_os = "linux") && window.is_fullscreen() {
+            window.rem_size() * 0.75
+        } else {
+            px(0.)
+        };
+        let controls = if cfg!(target_os = "macos") {
+            px(0.)
+        } else {
+            gpui_component::TITLE_BAR_HEIGHT * 3.
+        };
+        let margin =
+            (leading + app_menu_ui::toolbar_width(window)).max(controls) + window.rem_size() * 0.75;
         div()
             .flex()
             .items_center()
-            .gap_3()
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(self.toolbar(cx))
+            .child(
+                div()
+                    .w(margin - leading)
+                    .flex_shrink_0()
+                    .child(self.toolbar(cx)),
+            )
             .child(
                 div()
                     .flex_1()
@@ -930,8 +950,10 @@ impl Shell {
                     .overflow_hidden()
                     .text_ellipsis()
                     .text_sm()
+                    .text_center()
                     .child(self.title()),
             )
+            .child(div().w(margin - controls).flex_shrink_0())
     }
 
     fn finish_splitter(&mut self, _: &gpui::MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {

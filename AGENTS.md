@@ -391,5 +391,6 @@ clicks close the chain, and the independent ruler context menu retains the stock
 PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
 The orientation icon depicts the current time-axis direction; its tooltip names
 the next mode. `assets.rs` adds embedded application artwork to the toolkit icons.
-Title-bar content uses a shrinking filename region beside fixed-width controls;
+Title-bar content centers the shrinking filename region on the full window with
+symmetric margins that include the toolbar and native controls;
 interactive controls consume drag and double-click gestures.

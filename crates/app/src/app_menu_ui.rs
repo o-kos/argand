@@ -3,7 +3,8 @@
 use super::{navigation_ui::*, *};
 use crate::app_menu::{self, Effect, Item, Kind, Menu};
 use gpui::{AnyElement, AsKeystroke, KeyDownEvent, ScrollHandle, deferred, img};
-use gpui_component::{Disableable, Icon, IconName, Selectable};
+use gpui_component::button::ButtonCustomVariant;
+use gpui_component::{Disableable, Icon, IconName};
 use std::{cell::Cell, rc::Rc};
 
 actions!(application_menu, [OpenApplicationMenu]);
@@ -202,10 +203,10 @@ impl Shell {
     pub(super) fn toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let anchor = self.application_menu_anchor.clone();
         let mut app = Button::new("application-menu-button")
-            .ghost()
+            .custom(toolbar_style(self.application_menu.is_some(), cx))
             .small()
             .w(px(30.))
-            .selected(self.application_menu.is_some())
+            .h(px(26.))
             .child(img("argand/app.png").size(px(22.)))
             .on_click(cx.listener(|shell, _, window, cx| {
                 shell.toggle_application_menu(&OpenApplicationMenu, window, cx)
@@ -250,9 +251,9 @@ impl Shell {
                     }
                     .to_owned(),
                     ToggleGrid,
+                    self.session.show_grid,
                     cx,
-                )
-                .selected(self.session.show_grid),
+                ),
             )
             .child(self.toolbar_button(
                 "spectrogram-orientation",
@@ -266,6 +267,7 @@ impl Shell {
                     self.session.orientation.toggled().label().to_lowercase()
                 ),
                 ToggleOrientation,
+                false,
                 cx,
             ))
     }
@@ -276,14 +278,32 @@ impl Shell {
         icon: &'static str,
         hint: String,
         action: impl Action,
+        selected: bool,
         cx: &mut Context<Self>,
-    ) -> Button {
+    ) -> impl IntoElement {
         let tooltip_action = action.boxed_clone();
+        let enabled = self.view.is_some();
+        let hover_foreground = toolbar_accent(cx);
         let mut button = Button::new(id)
-            .ghost()
+            .custom(toolbar_style(selected, cx))
             .small()
-            .icon(Icon::default().path(icon))
-            .disabled(self.view.is_none())
+            .w(px(26.))
+            .h(px(26.))
+            .px_0()
+            .child(
+                gpui::svg()
+                    .path(icon)
+                    .size(px(14.))
+                    .id((id, 0_usize))
+                    .text_color(cx.theme().foreground.darken(0.12))
+                    .when(enabled, |glyph| {
+                        glyph.group_hover(id, |style| style.text_color(hover_foreground))
+                    })
+                    .when(!enabled, |glyph| {
+                        glyph.text_color(cx.theme().muted_foreground.opacity(0.5))
+                    }),
+            )
+            .disabled(!enabled)
             .on_click(cx.listener(move |shell, _, window, cx| {
                 window.focus(&shell.focus);
                 window.dispatch_action(action.boxed_clone(), cx);
@@ -297,7 +317,7 @@ impl Shell {
             )
             .build(window, cx)
         });
-        button
+        div().group(id).child(button)
     }
 
     pub(super) fn application_menu_overlay(
@@ -560,4 +580,35 @@ fn menu_width(
         })
         .fold(150., f32::max)
         .min(420.)
+}
+
+pub(super) fn toolbar_width(window: &Window) -> Pixels {
+    // Three controls, separator, three gaps and the separator's two margins.
+    px(30. + 26. * 2. + 1.) + window.rem_size() * 1.25
+}
+
+fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {
+    if cx.theme().is_dark() {
+        cx.theme().blue_light
+    } else {
+        cx.theme().blue.darken(0.2)
+    }
+}
+
+fn toolbar_style(selected: bool, cx: &gpui::App) -> ButtonCustomVariant {
+    let accent = toolbar_accent(cx);
+    ButtonCustomVariant::new(cx)
+        .color(if selected {
+            accent.opacity(0.18)
+        } else {
+            cx.theme().title_bar.darken(0.035)
+        })
+        .foreground(cx.theme().foreground.darken(0.12))
+        .border(if selected {
+            accent.opacity(0.55)
+        } else {
+            cx.theme().border
+        })
+        .hover(accent.opacity(0.32))
+        .active(accent.opacity(0.44))
 }

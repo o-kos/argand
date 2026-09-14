@@ -85,3 +85,20 @@ capture, Recent activation, keyboard focus restoration, and frame resizing.
 Because Sway ignores maximize requests for floating windows, double-click testing
 verified the Wayland request itself: title text sends one maximize request;
 the application icon and both toolbar controls send none.
+
+
+## Owner feedback: centered title and stronger controls
+
+- Center the filename on the whole window using balanced layout margins that
+  include the platform title-bar padding and native controls. Keep truncation.
+- Give toolbar controls a slightly darker resting appearance, a visible border
+  and stronger theme-aware hover foreground/background, including active toggles.
+- Retain standard buttons and their focus/disabled behavior; use one custom
+  palette for the application button and both toolbar actions.
+
+Validation passed again: formatting, strict Clippy, all 546 tests and a rebuilt
+release. Linux GPU screenshots verified full-window centering, short/long titles,
+640x400 truncation, dark/light hover backgrounds and the active grid control.
+The shared-action and title-drag checks also passed. Independent review found that
+Icon captured its foreground before hover painting; applying group hover directly
+to the SVG fixed it. The final review round was clean; no findings were declined.
