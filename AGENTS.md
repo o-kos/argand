@@ -379,3 +379,22 @@ window's physical Shift state, which Linux symbol normalization otherwise loses.
 Ctrl plus/equal/minus targets time; adding Shift targets frequency, including
 underscore and keypad aliases. Named menu actions retain their explicit axes.
 Ctrl+Shift+Up/Down are not zoom bindings; arrow pan bindings stay unchanged.
+
+
+## Application menu and toolbar (#91)
+
+The application icon and Argand label form one button that opens a cascading File / View menu; F10 opens the same menu
+from the shell. `app_menu.rs` owns toolkit-neutral branch selection, hover and
+keyboard navigation. `app_menu_ui.rs` renders the overlay and dispatches existing
+actions after returning focus to the shell. Escape closes one level, outside
+clicks close the chain, and the independent ruler context menu retains the stock
+PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
+The orientation icon depicts the current time-axis direction; its tooltip names
+the next mode. `assets.rs` adds embedded application artwork to the toolkit icons.
+Title-bar content centers the shrinking filename region on the full window with
+symmetric margins that include the toolbar and native controls;
+interactive controls consume drag and double-click gestures.
+
+The centered client title contains only the filename. Set the native window title
+explicitly at startup and on each file opening: `Argand` or `filename – Argand`,
+so application switchers and window managers receive the same identity.

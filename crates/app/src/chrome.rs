@@ -76,6 +76,16 @@ pub struct Frame {
 }
 
 impl Frame {
+    pub fn content_bounds(&self, viewport: Size<Pixels>) -> Bounds<Pixels> {
+        Bounds::new(
+            point(self.padding.left, self.padding.top),
+            size(
+                viewport.width - self.padding.left - self.padding.right,
+                viewport.height - self.padding.top - self.padding.bottom,
+            ),
+        )
+    }
+
     pub fn for_window(window: &mut Window) -> Self {
         let decorated = cfg!(target_os = "linux")
             && matches!(window.window_decorations(), Decorations::Client { .. });
