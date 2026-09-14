@@ -133,10 +133,9 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     let shell = cx.new(|cx| Shell::new(config, writer, saved, window, cx));
                     // After the entity exists, so the task draining its
                     // updates has something to deliver them to.
+                    shell.update(cx, |shell, cx| shell.check_recent(window, cx));
                     if let Some(origin) = opening {
                         shell.update(cx, |shell, cx| shell.open(origin, window, cx));
-                    } else {
-                        shell.update(cx, |shell, cx| shell.check_recent(window, cx));
                     }
                     shell
                 });
@@ -319,7 +318,7 @@ struct Shell {
     focus: FocusHandle,
     open_menu: Option<WeakEntity<PopupMenu>>,
     menu_dismiss: Option<gpui::Subscription>,
-    startup_recent: Option<RecentFiles>,
+    recent_files: RecentFiles,
     recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
     _bounds: Subscription,
@@ -342,7 +341,12 @@ impl Shell {
         let focus = cx.focus_handle();
         window.focus(&focus);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
-        let activation = cx.observe_window_activation(window, |_, _, cx| cx.notify());
+        let activation = cx.observe_window_activation(window, |shell, window, cx| {
+            if window.is_window_active() {
+                shell.recent_files.refresh(&shell.session.recent);
+            }
+            cx.notify();
+        });
         sync_theme(config.theme, window, cx);
         let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
             sync_theme(shell.config.theme, window, cx);
@@ -358,6 +362,7 @@ impl Shell {
 
             config,
             writer,
+            recent_files: RecentFiles::new(&saved.recent),
             session: saved,
             file: None,
             plot: None,
@@ -380,7 +385,6 @@ impl Shell {
             focus,
             open_menu: None,
             menu_dismiss: None,
-            startup_recent: None,
             recent_updates: None,
             _bounds: bounds,
             _activation: activation,
@@ -404,8 +408,6 @@ impl Shell {
         self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
         self.settings_error = None;
-        self.recent_updates = None;
-        self.startup_recent = None;
 
         // Nothing of the previous file is left standing. Its picture would
         // otherwise be drawn under this one's axes until the first transform
@@ -466,14 +468,14 @@ impl Shell {
     }
 
     fn check_recent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let recent = RecentFiles::new(&self.session.recent);
-        let updates = recent.check();
-        self.startup_recent = Some(recent);
+        let updates = self.recent_files.updates();
+        self.recent_files.refresh(&self.session.recent);
         self.recent_updates = Some(cx.spawn_in(window, async move |shell, cx| {
-            while let Ok((index, exists)) = updates.recv().await {
+            while let Ok((path, exists)) = updates.recv().await {
                 if shell
                     .update_in(cx, |shell, _, cx| {
-                        shell.receive_recent(index, exists, cx);
+                        shell.recent_files.apply(path, exists);
+                        cx.notify();
                     })
                     .is_err()
                 {
@@ -483,21 +485,11 @@ impl Shell {
         }));
     }
 
-    fn receive_recent(&mut self, index: usize, exists: bool, cx: &mut Context<Self>) {
-        if let Some(recent) = self.startup_recent.as_mut() {
-            recent.apply(index, exists);
-            cx.notify();
-        }
-    }
-
     fn open_recent(&mut self, action: &OpenRecent, window: &mut Window, cx: &mut Context<Self>) {
         if self.file.is_some() {
             return;
         }
-        let entry = self
-            .startup_recent
-            .as_ref()
-            .and_then(|recent| recent.shortcut(action.index));
+        let entry = self.recent_files.shortcut(action.index);
         if let Some(entry) = entry {
             self.open(
                 Origin {
@@ -513,6 +505,7 @@ impl Shell {
     /// Put a file at the head of the recent list, and write the session out.
     fn remember_file(&mut self, origin: &Origin) {
         self.session.remember(&origin.path, &origin.hints);
+        self.recent_files.refresh(&self.session.recent);
         self.save();
     }
 
@@ -830,16 +823,19 @@ impl Shell {
     fn file_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().downgrade();
         let focus = self.focus.clone();
-        // Rebuilt from what the session holds when the menu is opened, so an
-        // entry added since the last time it was shown is in it.
-        let recent = self.recent_entries();
         Button::new("file-menu")
             .ghost()
             .small()
             .label("File")
             .dropdown_menu(move |mut menu, _, cx| {
                 let menu_view = cx.entity().downgrade();
-                let _ = view.update(cx, |shell, _| shell.open_menu = Some(menu_view));
+                let recent = view
+                    .update(cx, |shell, _| {
+                        shell.open_menu = Some(menu_view);
+                        shell.recent_files.refresh(&shell.session.recent);
+                        shell.recent_entries()
+                    })
+                    .unwrap_or_default();
                 menu = menu
                     .action_context(focus.clone())
                     .item(PopupMenuItem::new("Open file...").action(Box::new(ChooseFile)));
@@ -868,9 +864,9 @@ impl Shell {
     /// opened once as `iq_i16@2M` cannot be reopened from its path alone, so
     /// choosing it here does not ask for those flags a second time.
     fn recent_entries(&self) -> Vec<(String, Origin)> {
-        let labels = crate::session::recent_labels(&self.session.recent);
-        self.session
-            .recent
+        let recent = self.recent_files.visible();
+        let labels = crate::session::recent_labels(&recent);
+        recent
             .iter()
             .zip(labels)
             .map(|(entry, label)| {
@@ -1177,11 +1173,7 @@ impl Shell {
     }
 
     fn start_page(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let recent = self
-            .startup_recent
-            .as_ref()
-            .map(RecentFiles::visible)
-            .unwrap_or_default();
+        let recent = self.recent_files.visible();
         let labels = crate::session::recent_labels(&recent);
         let width = (window.viewport_size().width - px(96.)).min(px(560.));
         let empty = recent.is_empty();
