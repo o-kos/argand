@@ -1,0 +1,13 @@
+--- a/src/window.rs
++++ b/src/window.rs
+@@ -2003,8 +2003,9 @@
+         self.invalidator.replace_views(views);
+     }
+ 
++    /// Diagnostic hook to submit the most recently drawn scene immediately.
+     #[profiling::function]
+-    fn present(&self) {
++    pub fn present(&self) {
+         self.platform_window.draw(&self.rendered_frame.scene);
+         self.needs_present.set(false);
+         profiling::finish_frame!();

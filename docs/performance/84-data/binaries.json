@@ -1,0 +1,26 @@
+[
+  {
+    "variant": "baseline",
+    "sha256": "2ad6fced020962bd8150f3c8b56fe60aa3b2dc9fad9f61ffed2a10adeb46949e"
+  },
+  {
+    "variant": "phases",
+    "sha256": "359e62c6d7dc84e42a58ff44bdb680ea4b3caf879c3055e816a076638879533a"
+  },
+  {
+    "variant": "cache",
+    "sha256": "f0053de3598c518e06a8c371ab7b973329c171170e59aa6a82c5caf65ce5f0b7"
+  },
+  {
+    "variant": "combined",
+    "sha256": "13679e36540fa0db6d8e930e24a51b1b9fb36c0fffeaa52798d2c828f9ca7fd8"
+  },
+  {
+    "variant": "present",
+    "sha256": "96857eeaef1718e1ea76ef738673a139847792e1e32ce0708ab768f1f432e651"
+  },
+  {
+    "variant": "present-live",
+    "sha256": "98cc81f31b5f1ee90935e3083165254360bc9b6f38b49a5588caf07567c63180"
+  }
+]

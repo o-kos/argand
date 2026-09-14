@@ -1,0 +1,491 @@
+--- a/crates/app/src/axes.rs
++++ b/crates/app/src/axes.rs
+@@ -233,6 +233,7 @@
+         held: Option<axis::TickScheme>,
+         held_frequency: Option<axis::TickScheme>,
+     ) -> Option<Self> {
++        let _phase = crate::profiling::Phase::new("axes measure");
+         let orientation = extents.orientation;
+         let vertical = orientation.vertical();
+         let (t0, t1) = extents.time.bounds(extents.seconds);
+@@ -527,6 +528,7 @@
+     window: &mut Window,
+     cx: &mut App,
+ ) {
++    let _phase = crate::profiling::Phase::new("axes paint");
+     let plot = frame.plot;
+     let at = |x: f32, y: f32| point(origin.x + px(x), origin.y + px(y));
+     let line = |window: &mut Window, x: f32, y: f32, w: f32, h: f32, color: Hsla| {
+--- a/crates/app/src/navigation_ui.rs
++++ b/crates/app/src/navigation_ui.rs
+@@ -509,9 +509,10 @@
+     pub(super) fn pointer_moved(
+         &mut self,
+         event: &gpui::MouseMoveEvent,
+-        _: &mut Window,
++        window: &mut Window,
+         cx: &mut Context<Self>,
+     ) {
++        let _phase = crate::profiling::Phase::new("pointer move");
+         let pointer = self.plot_pointer(event.position);
+         if self.pan.is_none() && self.frequency_pan.is_none() && self.pointer == pointer {
+             return;
+@@ -546,10 +547,21 @@
+                 self.pan = None;
+             }
+         }
+-        if changed {
++        if self.pan.is_some_and(|pan| pan.minimap) {
++            tracing::trace!(target: "argand::ui_latency", x = f32::from(event.position.x),
++                y = f32::from(event.position.y), start = self.view.map(|view| view.start), "minimap moved");
++        }
++        if changed && !self.pan.is_some_and(|pan| pan.minimap) {
+             self.ask_for_a_picture();
+         }
+         cx.notify();
++        if self.pan.is_some_and(|pan| pan.minimap) {
++            window.defer(cx, |window, cx| {
++                let arena = window.draw(cx);
++                window.present();
++                arena.clear();
++            });
++        }
+     }
+ 
+     pub(super) fn finish_pan(
+@@ -558,8 +570,12 @@
+         _: &mut Window,
+         cx: &mut Context<Self>,
+     ) {
++        let minimap = self.pan.is_some_and(|pan| pan.minimap);
+         self.pan = None;
+         self.frequency_pan = None;
++        if minimap {
++            self.ask_for_a_picture();
++        }
+         cx.notify();
+     }
+ 
+--- a/crates/app/src/profiling.rs
++++ b/crates/app/src/profiling.rs
+@@ -28,3 +28,28 @@
+     })
+     .detach();
+ }
++
++/// Opt-in CPU phase timings; these do not include compositor presentation.
++pub struct Phase {
++    label: &'static str,
++    started: Option<Instant>,
++}
++
++impl Phase {
++    pub fn new(label: &'static str) -> Self {
++        Self {
++            label,
++            started: tracing::enabled!(target: "argand::ui_latency", tracing::Level::TRACE)
++                .then(Instant::now),
++        }
++    }
++}
++
++impl Drop for Phase {
++    fn drop(&mut self) {
++        if let Some(started) = self.started {
++            tracing::trace!(target: "argand::ui_latency", phase = self.label,
++                elapsed_us = started.elapsed().as_micros(), "UI phase completed");
++        }
++    }
++}
+--- a/crates/app/src/shell.rs
++++ b/crates/app/src/shell.rs
+@@ -46,6 +46,7 @@
+ use crate::recent::RecentFiles;
+ use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
+ use crate::spectrogram;
++use crate::spectrogram::retire as release;
+ use crate::{panels, waveform};
+ 
+ /// What the window is called, in its title bar and to the desktop environment.
+@@ -587,8 +588,8 @@
+         file._minimap_updates = Some(cx.spawn_in(window, async move |shell, cx| {
+             while let Ok(update) = updates.recv().await {
+                 if shell
+-                    .update_in(cx, |shell, _, cx| {
+-                        shell.receive_minimap(update, cx);
++                    .update_in(cx, |shell, window, cx| {
++                        shell.receive_minimap(update, window, cx);
+                     })
+                     .is_err()
+                 {
+@@ -601,8 +602,12 @@
+     fn receive_minimap(
+         &mut self,
+         update: anyhow::Result<Arc<crate::minimap::Snapshot>>,
++        window: &mut Window,
+         cx: &mut Context<Self>,
+     ) {
++        if let Some(waveform) = &self.waveform {
++            waveform.release(window);
++        }
+         let Some(file) = &mut self.file else { return };
+         match update {
+             Ok(snapshot) => {
+@@ -712,7 +717,9 @@
+ 
+     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
+     fn release(&mut self, window: &mut Window) {
+-        self.waveform = None;
++        if let Some(waveform) = self.waveform.take() {
++            waveform.release(window);
++        }
+         self.release_backdrop(window);
+         self.release_deep_preview(window);
+         release(self.texture.take(), window);
+@@ -1322,6 +1329,7 @@
+ 
+ impl Render for Shell {
+     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
++        let _phase = crate::profiling::Phase::new("shell render");
+         if self.upload_pending {
+             self.upload_pending = false;
+             self.upload(window);
+@@ -1503,26 +1511,6 @@
+     })
+ }
+ 
+-/// Hand one uploaded picture back to the toolkit.
+-///
+-/// An uploaded image stays in the window's texture atlas until gpui is told to
+-/// let go of it. A spectrogram is the size of the plot and a resize produces
+-/// one per step, so saying nothing fills the atlas with pictures nobody can
+-/// see any more.
+-fn release(texture: Option<Arc<RenderImage>>, window: &mut Window) {
+-    if let Some(texture) = texture {
+-        // Blade's atlas destroys an unreferenced texture immediately, while
+-        // the last submitted frame can still be sampling it. Draw its
+-        // replacement first: that draw waits for the preceding GPU frame.
+-        window.on_next_frame(move |window, _| {
+-            window.refresh();
+-            window.on_next_frame(move |window, cx| {
+-                cx.drop_image(texture, Some(window));
+-            });
+-        });
+-    }
+-}
+-
+ /// A laid-out rectangle in the pixels the display actually has.
+ ///
+ /// The transform is sized in these rather than in logical pixels, so a column
+--- a/crates/app/src/spectrogram.rs
++++ b/crates/app/src/spectrogram.rs
+@@ -15,6 +15,26 @@
+ 
+ use argand_core::SpectrogramImage;
+ use gpui::{Bounds, Corners, Pixels, RenderImage, Window, point, size};
++
++/// Hand one uploaded picture back to the toolkit.
++///
++/// An uploaded image stays in the window's texture atlas until gpui is told to
++/// let go of it. A spectrogram is the size of the plot and a resize produces
++/// one per step, so saying nothing fills the atlas with pictures nobody can
++/// see any more.
++pub fn retire(texture: Option<Arc<RenderImage>>, window: &mut Window) {
++    if let Some(texture) = texture {
++        // Blade's atlas destroys an unreferenced texture immediately, while
++        // the last submitted frame can still be sampling it. Draw its
++        // replacement first: that draw waits for the preceding GPU frame.
++        window.on_next_frame(move |window, _| {
++            window.refresh();
++            window.on_next_frame(move |window, cx| {
++                cx.drop_image(texture, Some(window));
++            });
++        });
++    }
++}
+ 
+ /// Bytes per pixel in both orders.
+ const CHANNELS: usize = 4;
+--- a/crates/app/src/waveform.rs
++++ b/crates/app/src/waveform.rs
+@@ -1,18 +1,19 @@
+-//! Full-capture minimap geometry is cached separately from the viewport overlay.
+-
+-use crate::{axes::Frame, minimap, navigation::View};
+-use gpui::{Bounds, Pixels, Point, Window, fill, point, px, rgb, size};
++//! Full-capture minimap textures are cached separately from viewport clipping.
++
++use crate::{axes::Frame, minimap, navigation::View, orientation::Mode, spectrogram};
++use gpui::{Bounds, Pixels, Point, RenderImage, Window, fill, point, px, size};
+ use std::sync::{Arc, Mutex};
+ 
+ pub struct Waveform {
+     snapshot: Arc<minimap::Snapshot>,
+-    cache: Mutex<Option<Spans>>,
+-}
+-
+-struct Spans {
++    cache: Mutex<Option<Cached>>,
++}
++
++struct Cached {
+     columns: usize,
+-    rows: i64,
+-    values: Vec<Option<(i64, i64)>>,
++    rows: usize,
++    orientation: Mode,
++    textures: [Arc<RenderImage>; 2],
+ }
+ 
+ impl Waveform {
+@@ -20,6 +21,17 @@
+         Self {
+             snapshot,
+             cache: Mutex::new(None),
++        }
++    }
++
++    pub fn release(&self, window: &mut Window) {
++        if let Some(cache) = self
++            .cache
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take()
++        {
++            cache.release(window);
+         }
+     }
+ 
+@@ -31,75 +43,117 @@
+         viewport: Option<(View, u64)>,
+         window: &mut Window,
+     ) {
++        let _phase = crate::profiling::Phase::new("waveform paint");
++        tracing::trace!(target: "argand::ui_latency", start = viewport.map(|(view, _)| view.start), "minimap painted");
+         let scale = window.scale_factor();
+-        let columns = (frame
+-            .orientation
+-            .axes(frame.plot.width, frame.plot.height)
+-            .0
+-            * scale)
+-            .round() as usize;
+-        let rows = ((height - 9.).max(0.) * scale).round() as i64;
+-        if rows == 0 {
++        let orientation = frame.orientation;
++        let columns =
++            (orientation.axes(frame.plot.width, frame.plot.height).0 * scale).round() as usize;
++        let rows = ((height - 9.).max(0.) * scale).round() as usize;
++        if rows == 0 || columns == 0 {
+             return;
+         }
+         let mut cache = self
+             .cache
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        if cache
+-            .as_ref()
+-            .is_none_or(|cache| cache.columns != columns || cache.rows != rows)
+-        {
+-            let envelope = minimap::rebin(&self.snapshot.envelope, columns);
+-            let half = ((rows - 1) / 2).max(1);
+-            *cache = Some(Spans {
+-                columns,
+-                rows,
+-                values: envelope
+-                    .pixel_spans(columns, half, self.snapshot.full_scale)
+-                    .collect(),
+-            });
++        if cache.as_ref().is_none_or(|cached| {
++            cached.columns != columns || cached.rows != rows || cached.orientation != orientation
++        }) {
++            if let Some(stale) = cache.take() {
++                stale.release(window);
++            }
++            *cache = Cached::new(&self.snapshot, columns, rows, orientation);
+         }
+         let Some(cache) = cache.as_ref() else { return };
++        let (dx, dy) = if orientation.vertical() {
++            (4., frame.plot.y)
++        } else {
++            (frame.plot.x, 4.)
++        };
++        let (width, height) = orientation.axes(columns as f32 / scale, rows as f32 / scale);
++        let bounds = Bounds::new(origin + point(px(dx), px(dy)), size(px(width), px(height)));
++        spectrogram::paint(cache.textures[0].clone(), bounds, window);
+         let (left, right) = viewport.map_or((0., 1.), |(view, total)| {
+             minimap::viewport(view, total, columns)
+         });
+-        let first = (left * columns as f64).round() as usize;
+-        let end = (right * columns as f64).round() as usize;
+-        let middle = rows / 2;
+-        for (column, span) in cache.values.iter().enumerate() {
+-            let Some((lo, hi)) = span else { continue };
+-            let top = (middle - hi).max(0);
+-            let bottom = (middle - lo + 1).min(rows);
+-            let bounds = if frame.orientation.vertical() {
+-                Bounds::new(
+-                    origin
+-                        + point(
+-                            px(4. + (rows - bottom) as f32 / scale),
+-                            px(frame.plot.y + column as f32 / scale),
+-                        ),
+-                    size(px((bottom - top) as f32 / scale), px(1. / scale)),
+-                )
++        let first = (left * columns as f64).round() as f32 / scale;
++        let end = (right * columns as f64).round() as f32 / scale;
++        let (dx, dy) = orientation.axes(first, 0.);
++        let (width, height) = orientation.axes(end - first, rows as f32 / scale);
++        let clip = Bounds::new(
++            bounds.origin + point(px(dx), px(dy)),
++            size(px(width), px(height)),
++        );
++        window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
++            spectrogram::paint(cache.textures[1].clone(), bounds, window);
++        });
++    }
++}
++
++impl Cached {
++    fn new(
++        snapshot: &minimap::Snapshot,
++        columns: usize,
++        rows: usize,
++        orientation: Mode,
++    ) -> Option<Self> {
++        let envelope = minimap::rebin(&snapshot.envelope, columns);
++        let half = ((rows.saturating_sub(1)) / 2).max(1) as i64;
++        let spans: Vec<_> = envelope
++            .pixel_spans(columns, half, snapshot.full_scale)
++            .collect();
++        let dark = raster(&spans, rows, orientation, [77, 60, 36, 255])?;
++        let bright = raster(&spans, rows, orientation, [255, 200, 120, 255])?;
++        Some(Self {
++            columns,
++            rows,
++            orientation,
++            textures: [dark, bright]
++                .map(|buffer| Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]))),
++        })
++    }
++
++    fn release(self, window: &mut Window) {
++        for texture in self.textures {
++            spectrogram::retire(Some(texture), window);
++        }
++    }
++}
++
++fn raster(
++    spans: &[Option<(i64, i64)>],
++    rows: usize,
++    orientation: Mode,
++    color: [u8; 4],
++) -> Option<image::RgbaImage> {
++    let (width, height) = orientation.axes(spans.len(), rows);
++    let width = u32::try_from(width).ok()?.checked_add(2)?;
++    let height = u32::try_from(height).ok()?.checked_add(2)?;
++    let mut image = image::RgbaImage::new(width, height);
++    let middle = rows as i64 / 2;
++    for (column, span) in spans.iter().enumerate() {
++        let Some((lo, hi)) = span else { continue };
++        let top = (middle - hi).max(0) as usize;
++        let bottom = (middle - lo + 1).min(rows as i64).max(0) as usize;
++        for row in top..bottom {
++            let (x, y) = if orientation.vertical() {
++                (rows - 1 - row, column)
+             } else {
+-                Bounds::new(
+-                    origin
+-                        + point(
+-                            px(frame.plot.x + column as f32 / scale),
+-                            px(4. + top as f32 / scale),
+-                        ),
+-                    size(px(1. / scale), px((bottom - top) as f32 / scale)),
+-                )
++                (column, row)
+             };
+-            window.paint_quad(fill(
+-                bounds,
+-                rgb(if (first..end).contains(&column) {
+-                    0x78c8ff
+-                } else {
+-                    0x243c4d
+-                }),
+-            ));
+-        }
+-    }
++            image.put_pixel(x as u32 + 1, y as u32 + 1, image::Rgba(color));
++        }
++    }
++    for x in 1..width - 1 {
++        image.put_pixel(x, 0, *image.get_pixel(x, 1));
++        image.put_pixel(x, height - 1, *image.get_pixel(x, height - 2));
++    }
++    for y in 0..height {
++        image.put_pixel(0, y, *image.get_pixel(1, y));
++        image.put_pixel(width - 1, y, *image.get_pixel(width - 2, y));
++    }
++    Some(image)
+ }
+ 
+ pub struct Panel {
+@@ -127,3 +181,59 @@
+         window.paint_quad(fill(bounds, self.separator));
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn cached_pixels_preserve_spans_rotation_transparency_and_edge_padding() {
++        for (orientation, color) in [
++            (Mode::Horizontal, [77, 60, 36, 255]),
++            (Mode::Horizontal, [255, 200, 120, 255]),
++            (Mode::Vertical, [77, 60, 36, 255]),
++            (Mode::Vertical, [255, 200, 120, 255]),
++        ] {
++            assert_raster(orientation, color);
++        }
++    }
++
++    fn assert_raster(orientation: Mode, color: [u8; 4]) {
++        let spans = [
++            Some((-2, 1)),
++            None,
++            Some((0, 0)),
++            Some((4, 4)),
++            Some((-4, -4)),
++        ];
++        let image = raster(&spans, 7, orientation, color).unwrap();
++        let expected = [2..6, 0..0, 3..4, 0..0, 0..0];
++        for (column, filled) in expected.iter().enumerate() {
++            for row in 0..7 {
++                let (x, y) = if orientation.vertical() {
++                    (6 - row, column)
++                } else {
++                    (column, row)
++                };
++                assert_eq!(
++                    image.get_pixel(x as u32 + 1, y as u32 + 1).0,
++                    if filled.contains(&row) { color } else { [0; 4] }
++                );
++            }
++        }
++        for x in 1..image.width() - 1 {
++            assert_eq!(image.get_pixel(x, 0), image.get_pixel(x, 1));
++            assert_eq!(
++                image.get_pixel(x, image.height() - 1),
++                image.get_pixel(x, image.height() - 2)
++            );
++        }
++        for y in 0..image.height() {
++            assert_eq!(image.get_pixel(0, y), image.get_pixel(1, y));
++            assert_eq!(
++                image.get_pixel(image.width() - 1, y),
++                image.get_pixel(image.width() - 2, y)
++            );
++        }
++    }
++}

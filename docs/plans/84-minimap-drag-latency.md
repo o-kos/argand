@@ -30,9 +30,9 @@ acceptance target. Minimap and spectrum currently share one GPUI canvas/frame.
 
 ## Implementation steps
 
-- [ ] Reproduce continuous-motion latency on the accepted baseline and record evidence
-- [ ] Profile event handling, frame preparation and presentation; identify contributors
-- [ ] Implement and measure the smallest correction meeting the continuous-motion target
+- [x] Reproduce continuous-motion latency on the accepted baseline and record evidence
+- [x] Profile event handling, frame preparation and presentation; identify contributors
+- [ ] ⚠️ Implement and measure the smallest production correction meeting the motion target
 - [ ] Verify steady grab offsets, reversals, bounds, outside release and file replacement
 - [ ] Cover real/IQ captures, both orientations and normal/high display scales
 - [ ] Document measurements, limitations and rendering invariants
@@ -46,3 +46,17 @@ acceptance target. Minimap and spectrum currently share one GPUI canvas/frame.
 - [ ] Native GPU before/after distributions for the issue's approximately 46-pixel viewport
 - [ ] No cursor escape on the stated interior centre-grab motion test
 - [ ] No loss of final analysis, navigation controls or cancellation
+
+## Investigation status
+
+[Measurements](../performance/84-minimap-latency.md) reproduce cursor escape on
+the accepted orientation implementation. Caching the waveform reduces its median
+CPU paint cost from 1.34 ms to 0.008 ms, but does not satisfy continuous-motion
+acceptance. Early scene preparation alone also fails the motion target. Adding immediate presentation through a temporary GPUI diagnostic hook produces
+zero cursor escapes in two horizontal real-signal runs (199 and 200 captures).
+The variant with ordinary during-drag FFT requests has one escape in 180 captures.
+The owner declined a custom GPUI dependency. Runtime experiments are preserved as
+reproduction-only patches in the measurement report and are not applied. A
+supported public submission API or another validated application-only solution is
+needed. The production fix and remaining validation matrix are unfinished; this
+plan remains active and the Draft PR must not be merged as a completed fix.

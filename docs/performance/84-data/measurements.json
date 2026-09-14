@@ -1,0 +1,137 @@
+[
+  {
+    "frames": 153,
+    "seconds": 6.534037587000057,
+    "baseline": [
+      765,
+      748,
+      794
+    ],
+    "median_error_px": 24.0,
+    "p95_error_px": 36.0,
+    "max_error_px": 48,
+    "cursor_outside_frames": 62,
+    "motion_px_s": 1200,
+    "variant": "baseline-run1"
+  },
+  {
+    "frames": 199,
+    "seconds": 6.521387352026068,
+    "baseline": [
+      765,
+      748,
+      794
+    ],
+    "median_error_px": 24.0,
+    "p95_error_px": 36.0,
+    "max_error_px": 48,
+    "cursor_outside_frames": 89,
+    "motion_px_s": 1200,
+    "variant": "phases-native-run1"
+  },
+  {
+    "frames": 198,
+    "seconds": 6.514787780935876,
+    "baseline": [
+      765,
+      748,
+      794
+    ],
+    "median_error_px": 24.0,
+    "p95_error_px": 36.0,
+    "max_error_px": 48,
+    "cursor_outside_frames": 81,
+    "motion_px_s": 1200,
+    "variant": "early-run1"
+  },
+  {
+    "frames": 196,
+    "seconds": 6.508614822058007,
+    "baseline": [
+      765,
+      748,
+      794
+    ],
+    "median_error_px": 24.0,
+    "p95_error_px": 48.0,
+    "max_error_px": 48,
+    "cursor_outside_frames": 79,
+    "motion_px_s": 1200,
+    "variant": "cache-run1"
+  },
+  {
+    "frames": 175,
+    "seconds": 6.515657968935557,
+    "baseline": [
+      765,
+      748,
+      794
+    ],
+    "median_error_px": 24.0,
+    "p95_error_px": 48.0,
+    "max_error_px": 48,
+    "cursor_outside_frames": 67,
+    "motion_px_s": 1200,
+    "variant": "cache-run2"
+  },
+  {
+    "frames": 197,
+    "seconds": 6.526196619030088,
+    "baseline": [
+      765,
+      748,
+      794
+    ],
+    "median_error_px": 24.0,
+    "p95_error_px": 24.0,
+    "max_error_px": 25,
+    "cursor_outside_frames": 57,
+    "motion_px_s": 1200,
+    "variant": "combined-run1"
+  },
+  {
+    "frames": 199,
+    "seconds": 6.501207228982821,
+    "baseline": [
+      765,
+      748,
+      794
+    ],
+    "median_error_px": 0.0,
+    "p95_error_px": 12.0,
+    "max_error_px": 13,
+    "cursor_outside_frames": 0,
+    "motion_px_s": 1200,
+    "variant": "present-run1"
+  },
+  {
+    "frames": 200,
+    "seconds": 6.516128354007378,
+    "baseline": [
+      765,
+      748,
+      794
+    ],
+    "median_error_px": 0.0,
+    "p95_error_px": 12.0,
+    "max_error_px": 13,
+    "cursor_outside_frames": 0,
+    "motion_px_s": 1200,
+    "variant": "present-run2"
+  },
+  {
+    "frames": 180,
+    "seconds": 6.519639748963527,
+    "baseline": [
+      765,
+      748,
+      794
+    ],
+    "median_error_px": 0.0,
+    "p95_error_px": 12.0,
+    "max_error_px": 24,
+    "cursor_outside_frames": 1,
+    "motion_px_s": 1200,
+    "variant": "present-live-run1"
+  }
+]
