@@ -102,3 +102,20 @@ release. Linux GPU screenshots verified full-window centering, short/long titles
 The shared-action and title-drag checks also passed. Independent review found that
 Icon captured its foreground before hover painting; applying group hover directly
 to the SVG fixed it. The final review round was clean; no findings were declined.
+
+
+## Owner feedback: application identity and muted glyphs
+
+- Use muted foreground for resting SVG controls and the brighter accent on hover.
+- Combine the artwork and Argand label into one application-menu button, measuring
+  the label to include its full width in the balanced title layout.
+- Show only the filename in the centered client title; leave it empty at startup.
+- Explicitly set the native title to `Argand` at startup and `filename – Argand`
+  on every file opening, including replacement without restarting the application.
+
+Validation passed: formatting, strict Clippy, all 546 tests and a fresh release.
+Linux GPU checks confirmed muted/accent SVG colours in both themes, icon and label
+activation of the same menu, centered filename-only text, and narrow-window
+truncation. Compositor window titles were verified at startup, after opening a
+file, and after replacing it through Recent without restarting. Independent review
+was clean, with no findings to accept or decline.

@@ -440,7 +440,7 @@ zoom. Its hand cursor appears only when the frequency range is narrowed.
 Ctrl+G, the grid toolbar button or View → Show grid hides or shows the spectrogram grid and remembers the choice
 between sessions; ruler baselines, ticks and labels remain visible. Valid time
 marks remain at the plot edges even when their labels cannot fit.
-Click the application icon at the left of the title bar, or press **F10**, to open
+Click the application button (icon and **Argand**) at the left of the title bar, or press **F10**, to open
 the File / View menu. Hover over a branch to open it; arrow keys navigate, Enter
 activates a command, and Escape closes one submenu at a time. Click outside to
 close the whole menu. File → Recent retains the opening options for each capture.

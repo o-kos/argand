@@ -200,14 +200,16 @@ impl Shell {
         self.menu_effect(effect, window, cx);
     }
 
-    pub(super) fn toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let anchor = self.application_menu_anchor.clone();
         let mut app = Button::new("application-menu-button")
             .custom(toolbar_style(self.application_menu.is_some(), cx))
             .small()
-            .w(px(30.))
+            .w(app_button_width(window, cx))
+            .px(px(6.))
             .h(px(26.))
             .child(img("argand/app.png").size(px(22.)))
+            .child(div().text_color(cx.theme().foreground).child(TITLE))
             .on_click(cx.listener(|shell, _, window, cx| {
                 shell.toggle_application_menu(&OpenApplicationMenu, window, cx)
             }))
@@ -295,7 +297,7 @@ impl Shell {
                     .path(icon)
                     .size(px(14.))
                     .id((id, 0_usize))
-                    .text_color(cx.theme().foreground.darken(0.12))
+                    .text_color(cx.theme().muted_foreground)
                     .when(enabled, |glyph| {
                         glyph.group_hover(id, |style| style.text_color(hover_foreground))
                     })
@@ -582,9 +584,24 @@ fn menu_width(
         .min(420.)
 }
 
-pub(super) fn toolbar_width(window: &Window) -> Pixels {
+pub(super) fn toolbar_width(window: &Window, cx: &gpui::App) -> Pixels {
     // Three controls, separator, three gaps and the separator's two margins.
-    px(30. + 26. * 2. + 1.) + window.rem_size() * 1.25
+    app_button_width(window, cx) + px(26. * 2. + 1.) + window.rem_size() * 1.25
+}
+
+fn app_button_width(window: &Window, cx: &gpui::App) -> Pixels {
+    let style = gpui::TextStyle {
+        font_family: cx.theme().font_family.clone(),
+        ..Default::default()
+    };
+    let label = window.text_system().shape_line(
+        TITLE.into(),
+        window.rem_size() * 0.875,
+        &[style.to_run(TITLE.len())],
+        None,
+    );
+    // Artwork, text gap, horizontal padding and border.
+    label.width.ceil() + px(22. + 12. + 2.) + window.rem_size() * 0.25
 }
 
 fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {

@@ -52,7 +52,7 @@ use crate::spectrogram;
 use crate::{panels, waveform};
 
 /// What the window is called, in its title bar and to the desktop environment.
-const TITLE: &str = "argand";
+const TITLE: &str = "Argand";
 /// Reverse-DNS identifier desktop environments group windows by.
 const APP_ID: &str = "io.github.o_kos.argand";
 
@@ -350,6 +350,7 @@ impl Shell {
         crate::profiling::watch_ui(cx);
         let focus = cx.focus_handle();
         window.focus(&focus);
+        window.set_window_title(TITLE);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
         let activation = cx.observe_window_activation(window, |shell, window, cx| {
             if window.is_window_active() {
@@ -424,6 +425,7 @@ impl Shell {
         }
         self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
+        window.set_window_title(&format!("{} – {TITLE}", origin.name()));
         self.settings_error = None;
 
         // Nothing of the previous file is left standing. Its picture would
@@ -851,12 +853,11 @@ impl Shell {
             .collect()
     }
 
-    /// The window's title: the application, and the file if there is one.
-    fn title(&self) -> String {
-        match self.file.as_ref() {
-            Some(file) => format!("{} - {TITLE}", file.document.origin().name()),
-            None => TITLE.to_owned(),
-        }
+    fn file_name(&self) -> String {
+        self.file
+            .as_ref()
+            .map(|file| file.document.origin().name())
+            .unwrap_or_default()
     }
 
     fn title_bar(
@@ -929,8 +930,8 @@ impl Shell {
         } else {
             gpui_component::TITLE_BAR_HEIGHT * 3.
         };
-        let margin =
-            (leading + app_menu_ui::toolbar_width(window)).max(controls) + window.rem_size() * 0.75;
+        let margin = (leading + app_menu_ui::toolbar_width(window, cx)).max(controls)
+            + window.rem_size() * 0.75;
         div()
             .flex()
             .items_center()
@@ -941,7 +942,7 @@ impl Shell {
                 div()
                     .w(margin - leading)
                     .flex_shrink_0()
-                    .child(self.toolbar(cx)),
+                    .child(self.toolbar(window, cx)),
             )
             .child(
                 div()
@@ -951,7 +952,7 @@ impl Shell {
                     .text_ellipsis()
                     .text_sm()
                     .text_center()
-                    .child(self.title()),
+                    .child(self.file_name()),
             )
             .child(div().w(margin - controls).flex_shrink_0())
     }
