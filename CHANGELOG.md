@@ -22,7 +22,7 @@ promise applies to.
 
 ### Changed
 
-- Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with platform-specific notation and matching menu-width measurement.
+- Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with slightly stronger text and border contrast, platform-specific notation and matching menu-width measurement.
 
 - Enlarge and brighten the toolbar icons for better visibility within their buttons, with orientation before grid.
 

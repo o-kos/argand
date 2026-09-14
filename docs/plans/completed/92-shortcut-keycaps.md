@@ -18,7 +18,8 @@ The ruler context menu has no registered shortcuts to display.
 ## Decisions
 
 - Reuse Kbd's frame, colours and platform-specific notation from crates.io.
-- Use the unmodified toolkit Kbd everywhere and measure that same element for menu layout.
+- Preserve the toolkit Kbd typography and geometry, with the owner-requested
+  contrast increase applied by one helper; measure that same element for menu layout.
 - Resolve shortcuts from registered bindings in the existing action context.
 - Preserve compact rows, right-aligned shortcuts, and viewport-bounded hints.
 
@@ -73,3 +74,18 @@ scale in the dark theme. Both analysis hint source files are unchanged from main
 Formatting, Clippy, all 554 tests and the release build passed again, followed by
 the light/dark native menu and hint checks at 100%, 125% and 200% scale.
 The follow-up review checked the toolkit style refinement and confirmed the fix.
+
+## Owner feedback: slightly stronger contrast
+
+Increase text and border contrast consistently across keycaps while retaining the
+original typography and geometry. Blend text 20% and borders 15% toward the theme
+foreground; this brightens dark-theme keycaps and strengthens light-theme contrast.
+The shared helper retains every built-in Kbd text default when overriding colour.
+
+- [x] Repeat the local gate, release build, visual comparison and independent review.
+
+Formatting, Clippy, all 554 tests and the release rebuild passed. The independent
+review confirmed that all pinned toolkit text defaults are retained, with no
+substantive findings. Native dark/light menu and hint screenshots show stronger
+contrast; pixel differences in the reference button are confined to the existing
+40 by 18 pixel keycap bounds, with the surrounding label unchanged.

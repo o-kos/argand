@@ -1364,7 +1364,7 @@ fn shortcut_tooltip(
     context: &'static str,
     width: Pixels,
 ) -> Tooltip {
-    Tooltip::element(move |window, _cx| {
+    Tooltip::element(move |window, cx| {
         let shortcut = action
             .as_deref()
             .and_then(|action| Kbd::binding_for_action(action, Some(context), window));
@@ -1374,7 +1374,9 @@ fn shortcut_tooltip(
             .items_center()
             .gap_3()
             .child(div().min_w_0().child(text.clone()))
-            .when_some(shortcut, |hint, shortcut| hint.child(shortcut))
+            .when_some(shortcut, |hint, shortcut| {
+                hint.child(shortcuts::keycap(shortcut, cx))
+            })
     })
 }
 

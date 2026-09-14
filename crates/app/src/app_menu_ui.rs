@@ -530,7 +530,9 @@ impl Shell {
                     .text_ellipsis()
                     .child(item.label.clone()),
             )
-            .when_some(shortcut, |row, shortcut| row.child(shortcut))
+            .when_some(shortcut, |row, shortcut| {
+                row.child(shortcuts::keycap(shortcut, cx))
+            })
             .when(matches!(item.kind, Kind::Branch(_)), |row| {
                 row.child(Icon::new(IconName::ChevronRight).size(px(14.)))
             })
