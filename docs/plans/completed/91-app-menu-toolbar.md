@@ -119,3 +119,13 @@ activation of the same menu, centered filename-only text, and narrow-window
 truncation. Compositor window titles were verified at startup, after opening a
 file, and after replacing it through Recent without restarting. Independent review
 was clean, with no findings to accept or decline.
+
+## Owner feedback: larger toolbar glyphs
+
+- [x] Increase grid and orientation SVGs from 14 to 20 logical pixels inside the
+  existing 26-pixel buttons, retaining their alignment and hover colours.
+- [x] Repeat the local gate, release build, visual check and independent review.
+
+Formatting, strict Clippy and all 546 tests passed; the release was rebuilt.
+Linux GPU screenshots confirmed centered, unclipped glyphs and hover colours in
+both themes. Independent review was clean, with no findings to accept or decline.

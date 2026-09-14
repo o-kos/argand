@@ -295,7 +295,7 @@ impl Shell {
             .child(
                 gpui::svg()
                     .path(icon)
-                    .size(px(14.))
+                    .size(px(20.))
                     .id((id, 0_usize))
                     .text_color(cx.theme().muted_foreground)
                     .when(enabled, |glyph| {
