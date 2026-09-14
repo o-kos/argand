@@ -42,7 +42,7 @@ remain available together with their comparisons and known limitations.
 - [x] Validate and install the local desktop entry, rebuild, and launch the trial.
 - [x] Restore the README logo using the current B0 asset (#76).
 - [x] Remove redundant session exports and place retained artwork sources beside application assets.
-- [ ] Verify the updated README image on GitHub and link #76 for automatic closure.
+- [x] Verify the updated README image on GitHub and link #76 for automatic closure.
 - [ ] Produce deterministic vector artwork and the complete application icon set.
 - [ ] Validate the selected icon in the application and supported delivery paths.
 - [ ] Update relevant documentation and move this plan to completed before final review.
@@ -111,6 +111,9 @@ and excluded from this PR.
   the follow-up round found no substantive issues.
 - All retained design links resolve. README preserves centered placement,
   160-by-160 display dimensions and descriptive alt text.
+- GitHub-rendered README HTML references the expected PNG with the same display
+  dimensions and alt text; the server asset blob matches the local file. PR #100
+  includes `Closes #76` so the issue closes when that PR merges.
 
 ## Preservation checkpoint
 
