@@ -125,6 +125,7 @@ impl Shell {
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
         }
+        self.recent_files.refresh(&self.session.recent);
         let focus = cx.focus_handle();
         window.focus(&focus);
         self.application_menu = Some(ApplicationMenu {

@@ -140,3 +140,17 @@ Formatting, strict Clippy and all 546 tests passed; the release was rebuilt.
 Linux GPU checks confirmed brighter resting icons in both themes and verified
 orientation/grid clicks at their new positions against the matching shortcuts.
 Independent review was clean, with no findings to accept or decline.
+
+## Integration with the shared recent-file availability snapshot (#94)
+
+- [x] Retain shared recent-file filtering while replacing the old File menu.
+- [x] Refresh availability in the background when opening the application menu,
+  including F10, and keep its displayed entries stable until dismissal.
+- [x] Verify the integrated tree and repeat independent review.
+
+Integration review caught the refresh previously owned by the removed File menu.
+The application-menu entry point now retains that trigger.
+The second review was clean. Formatting, strict Clippy and all 554 tests passed,
+followed by a release rebuild. Linux GPU checks verified removal and restoration
+of a temporary recent file through F10 and the application button without window
+reactivation, a stable open snapshot, and opening the restored entry.
