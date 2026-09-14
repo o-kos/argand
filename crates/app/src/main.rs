@@ -17,6 +17,7 @@ mod config;
 mod cpu;
 mod document;
 mod execution;
+mod frequency;
 mod minimap;
 mod navigation;
 mod numbers;

@@ -17,7 +17,14 @@ actions!(
         PanFarLeft,
         PanFarRight,
         GoStart,
-        GoEnd
+        GoEnd,
+        FrequencyZoomIn,
+        FrequencyZoomOut,
+        FitFrequency,
+        PanUp,
+        PanDown,
+        PanFarUp,
+        PanFarDown
     ]
 );
 
@@ -33,6 +40,13 @@ pub(super) fn init(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-right", PanFarRight, Some("Plot")),
         KeyBinding::new("home", GoStart, Some("Plot")),
         KeyBinding::new("end", GoEnd, Some("Plot")),
+        KeyBinding::new("ctrl-shift-up", FrequencyZoomIn, Some("Plot")),
+        KeyBinding::new("ctrl-shift-down", FrequencyZoomOut, Some("Plot")),
+        KeyBinding::new("ctrl-shift-home", FitFrequency, Some("Plot")),
+        KeyBinding::new("up", PanUp, Some("Plot")),
+        KeyBinding::new("down", PanDown, Some("Plot")),
+        KeyBinding::new("ctrl-up", PanFarUp, Some("Plot")),
+        KeyBinding::new("ctrl-down", PanFarDown, Some("Plot")),
     ]);
 }
 
@@ -40,6 +54,7 @@ pub(super) fn init(cx: &mut gpui::App) {
 pub(super) struct PlotGeometry {
     pub unit_hints: [Option<axes::UnitHint>; 2],
     pub time_scheme: Option<argand_core::axis::TickScheme>,
+    pub frequency_scheme: Option<argand_core::axis::TickScheme>,
     pub spectrum: Bounds<Pixels>,
     pub minimap: Bounds<Pixels>,
     pub minimap_columns: usize,
@@ -48,7 +63,8 @@ pub(super) struct PlotGeometry {
 }
 
 enum Scroll {
-    VerticalPending,
+    FrequencyPan(f64),
+    FrequencyZoom { factor: f64, anchor: f64 },
     Pan(f64),
     Zoom { factor: f64, anchor: f64 },
 }
@@ -59,6 +75,7 @@ impl PlotGeometry {
         pointer: Option<gpui::Point<Pixels>>,
         dragging: bool,
         viewport: Option<(View, u64)>,
+        frequency_zoomed: bool,
     ) -> gpui::CursorStyle {
         if dragging {
             return gpui::CursorStyle::ClosedHand;
@@ -77,7 +94,9 @@ impl PlotGeometry {
                 (left..=right).contains(&fraction)
             });
         let can_pan = viewport.is_some_and(|(view, total)| view.len < total);
-        if can_pan && (time_ruler || selected) {
+        if (can_pan && (time_ruler || selected))
+            || (frequency_zoomed && self.frequency_ruler.contains(&position))
+        {
             gpui::CursorStyle::OpenHand
         } else {
             gpui::CursorStyle::Arrow
@@ -97,8 +116,18 @@ impl PlotGeometry {
     ) -> Scroll {
         let horizontal = f32::from(delta.x).abs() > f32::from(delta.y).abs();
         let width = f32::from(self.navigation.size.width) as f64;
-        if modifiers.shift {
-            return Scroll::VerticalPending;
+        let frequency_ruler = self.frequency_ruler.contains(&position);
+        if modifiers.shift || frequency_ruler {
+            let height = f32::from(self.spectrum.size.height) as f64;
+            return if modifiers.control {
+                Scroll::FrequencyZoom {
+                    factor: 2.0_f64.powf(-f32::from(delta.y) as f64 / 160.0),
+                    anchor: (f32::from(self.spectrum.bottom() - position.y) as f64 / height)
+                        .clamp(0., 1.),
+                }
+            } else {
+                Scroll::FrequencyPan(f32::from(delta.y) as f64 / height)
+            };
         }
         if !modifiers.control {
             let distance = if horizontal { delta.x } else { delta.y };
@@ -125,15 +154,25 @@ impl Shell {
             return;
         };
         self.view = Some(View::full(total));
+        self.frequency = crate::frequency::View::default();
+        self.frequency_pan = None;
+        self.frequency_scheme = None;
         self.time_scheme = None;
         self.tick_pan = None;
         if self.settings_backup.is_some() {
             self.settings_view_backup = self.view;
+            self.settings_frequency_backup = Some(self.frequency);
         }
     }
 
     pub(super) fn bound_view(&mut self) {
         self.pan = None;
+        self.frequency_pan = None;
+        let bounded = self.frequency.zoom(1., 0.5, self.frequency_cells());
+        if bounded != self.frequency {
+            self.frequency = bounded;
+            self.frequency_scheme = None;
+        }
         if let Some(total) = self.sample_count()
             && let Some(view) = self.view
         {
@@ -234,16 +273,21 @@ impl Shell {
         let Some(geometry) = self.plot_geometry else {
             return;
         };
-        if !geometry.navigation.contains(&event.position) || self.splitter_dragging {
+        if !(geometry.navigation.contains(&event.position)
+            || geometry.frequency_ruler.contains(&event.position))
+            || self.splitter_dragging
+        {
             return;
         }
         if geometry.minimap.contains(&event.position) {
             return;
         }
         self.pan = None;
+        self.frequency_pan = None;
         let delta = event.delta.pixel_delta(px(40.));
         match geometry.scroll(event.position, delta, event.modifiers) {
-            Scroll::VerticalPending => {}
+            Scroll::FrequencyPan(fraction) => self.pan_frequency(fraction, cx),
+            Scroll::FrequencyZoom { factor, anchor } => self.zoom_frequency(factor, anchor, cx),
             Scroll::Pan(fraction) => self.pan_by(fraction, window, cx),
             Scroll::Zoom { factor, anchor } => self.zoom(factor, anchor, cx),
         }
@@ -259,10 +303,22 @@ impl Shell {
         let Some(geometry) = self.plot_geometry else {
             return;
         };
-        if !geometry.navigation.contains(&event.position) || self.splitter_dragging {
+        if !(geometry.navigation.contains(&event.position)
+            || geometry.frequency_ruler.contains(&event.position))
+            || self.splitter_dragging
+        {
             return;
         }
         window.focus(&self.focus);
+        if geometry.frequency_ruler.contains(&event.position) {
+            if self.frequency.span < 1. {
+                self.hold_frequency_scheme();
+                self.frequency_pan = Some((event.position, self.frequency));
+                self.pan = None;
+                cx.notify();
+            }
+            return;
+        }
         if self
             .view
             .zip(self.sample_count())
@@ -329,10 +385,21 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let pointer = self.plot_pointer(event.position);
-        if self.pan.is_none() && self.pointer == pointer {
+        if self.pan.is_none() && self.frequency_pan.is_none() && self.pointer == pointer {
             return;
         }
         self.pointer = pointer;
+        if let Some((origin, view)) = self.frequency_pan {
+            if event.dragging() {
+                if let Some(geometry) = self.plot_geometry {
+                    let fraction = f32::from(event.position.y - origin.y) as f64
+                        / f32::from(geometry.spectrum.size.height) as f64;
+                    self.navigate_frequency(view.pan(fraction), cx);
+                }
+            } else {
+                self.frequency_pan = None;
+            }
+        }
         if let Some(pan) = self.pan
             && let Some(total) = self.sample_count()
         {
@@ -358,6 +425,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         self.pan = None;
+        self.frequency_pan = None;
         cx.notify();
     }
 
@@ -384,16 +452,18 @@ impl Shell {
         let y = f32::from(pointer.y - geometry.spectrum.top()) as f64
             / f32::from(geometry.spectrum.size.height) as f64;
         let frequency = extents.hertz.1 - y * (extents.hertz.1 - extents.hertz.0);
+        let per_pixel = (extents.hertz.1 - extents.hertz.0) / self.plot?.height.max(1) as f64;
+        let frequency_decimals = (-per_pixel.log10()).ceil().clamp(1., 9.) as usize;
         let level = self
             .file
             .as_ref()?
             .document
             .analysis()
-            .and_then(|analysis| navigation::level_at(&analysis.db, extents.seconds, x, y))
+            .and_then(|analysis| navigation::level_in_view(&analysis.db, extents.picture(), x, y))
             .or_else(|| {
                 self.backdrop
                     .as_ref()
-                    .and_then(|backdrop| backdrop.level_at(extents.seconds, x, y))
+                    .and_then(|backdrop| backdrop.level_at(extents.picture(), x, y))
             })
             .map_or_else(
                 || "—".into(),
@@ -401,8 +471,76 @@ impl Shell {
             );
         Some(format!(
             "{} · {level}",
-            crate::numbers::text(&format!("{time:.decimals$} s · {frequency:.1} Hz"))
+            crate::numbers::text(&format!(
+                "{time:.decimals$} s · {frequency:.frequency_decimals$} Hz"
+            ))
         ))
+    }
+
+    fn frequency_cells(&self) -> usize {
+        let Some(meta) = self.file.as_ref().and_then(|file| file.document.meta()) else {
+            return 1;
+        };
+        let bins = if meta.is_iq() {
+            self.settings.fft_size
+        } else {
+            self.settings.fft_size / 2 + 1
+        };
+        crate::frequency::cells(meta.frequency_span(), bins)
+    }
+
+    fn navigate_frequency(&mut self, view: crate::frequency::View, cx: &mut Context<Self>) {
+        if self.frequency == view {
+            return;
+        }
+        if self.frequency.span != view.span {
+            self.frequency_scheme = None;
+        }
+        self.frequency = view;
+        if self.settings_backup.is_some() {
+            self.settings_frequency_backup = Some(view);
+        }
+        self.ask_for_a_picture();
+        tracing::debug!(
+            start = view.start,
+            span = view.span,
+            "frequency view requested"
+        );
+        cx.notify();
+    }
+
+    fn zoom_frequency(&mut self, factor: f64, anchor: f64, cx: &mut Context<Self>) {
+        if self.extents().is_some() {
+            self.navigate_frequency(
+                self.frequency.zoom(factor, anchor, self.frequency_cells()),
+                cx,
+            );
+        }
+    }
+
+    fn hold_frequency_scheme(&mut self) {
+        if self.frequency_scheme.is_none() {
+            self.frequency_scheme = self
+                .plot_geometry
+                .and_then(|geometry| geometry.frequency_scheme);
+        }
+    }
+
+    fn pan_frequency(&mut self, fraction: f64, cx: &mut Context<Self>) {
+        self.hold_frequency_scheme();
+        self.navigate_frequency(self.frequency.pan(fraction), cx);
+    }
+
+    fn frequency_ticks(&mut self, divisions: f64, cx: &mut Context<Self>) {
+        self.hold_frequency_scheme();
+        if let Some(scheme) = self.frequency_scheme
+            && let Some(extents) = self.extents()
+        {
+            self.pan_frequency(
+                divisions * scheme.step / (extents.hertz.1 - extents.hertz.0),
+                cx,
+            );
+        }
     }
 
     pub(super) fn navigation_actions(
@@ -411,6 +549,19 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         content
+            .on_action(
+                cx.listener(|shell, _: &FrequencyZoomIn, _, cx| shell.zoom_frequency(0.5, 0.5, cx)),
+            )
+            .on_action(
+                cx.listener(|shell, _: &FrequencyZoomOut, _, cx| shell.zoom_frequency(2., 0.5, cx)),
+            )
+            .on_action(cx.listener(|shell, _: &FitFrequency, _, cx| {
+                shell.navigate_frequency(crate::frequency::View::default(), cx)
+            }))
+            .on_action(cx.listener(|shell, _: &PanUp, _, cx| shell.frequency_ticks(1., cx)))
+            .on_action(cx.listener(|shell, _: &PanDown, _, cx| shell.frequency_ticks(-1., cx)))
+            .on_action(cx.listener(|shell, _: &PanFarUp, _, cx| shell.frequency_ticks(5., cx)))
+            .on_action(cx.listener(|shell, _: &PanFarDown, _, cx| shell.frequency_ticks(-5., cx)))
             .on_action(cx.listener(|shell, _: &ClockRuler, _, cx| {
                 shell.set_time_ruler(crate::time_ruler::Mode::Clock, cx)
             }))
@@ -525,11 +676,32 @@ impl Shell {
                 let popup = cx.entity().downgrade();
                 let _ = owner.update(cx, |shell, _| shell.open_menu = Some(popup));
                 let submenu_focus = focus.clone();
+                let frequency_focus = focus.clone();
                 menu.action_context(focus.clone())
                     .submenu("Time scale format", window, cx, move |menu, _, _| {
                         time_scale_items(menu.action_context(submenu_focus.clone()), ruler)
                     })
                     .separator()
+                    .submenu("Frequency", window, cx, move |menu, _, _| {
+                        menu.action_context(frequency_focus.clone())
+                            .item(PopupMenuItem::new("Zoom in").action(Box::new(FrequencyZoomIn)))
+                            .item(PopupMenuItem::new("Zoom out").action(Box::new(FrequencyZoomOut)))
+                            .item(
+                                PopupMenuItem::new("Fit frequency range")
+                                    .action(Box::new(FitFrequency)),
+                            )
+                            .separator()
+                            .item(PopupMenuItem::new("Pan up").action(Box::new(PanUp)))
+                            .item(PopupMenuItem::new("Pan down").action(Box::new(PanDown)))
+                            .item(
+                                PopupMenuItem::new("Pan five divisions up")
+                                    .action(Box::new(PanFarUp)),
+                            )
+                            .item(
+                                PopupMenuItem::new("Pan five divisions down")
+                                    .action(Box::new(PanFarDown)),
+                            )
+                    })
                     .item(PopupMenuItem::new("Zoom in").action(Box::new(ZoomIn)))
                     .item(PopupMenuItem::new("Zoom out").action(Box::new(ZoomOut)))
                     .item(PopupMenuItem::new("Fit capture").action(Box::new(FitCapture)))
@@ -579,6 +751,7 @@ mod tests {
         PlotGeometry {
             unit_hints: [None; 2],
             time_scheme: None,
+            frequency_scheme: None,
             minimap_columns: 100,
             frequency_ruler: Bounds::new(point(px(110.), px(50.)), size(px(30.), px(100.))),
             spectrum: Bounds::new(point(px(10.), px(50.)), size(px(100.), px(100.))),
@@ -605,20 +778,20 @@ mod tests {
             (50., 80., gpui::CursorStyle::Crosshair),
         ] {
             assert_eq!(
-                geometry.cursor(Some(point(px(x), px(y))), false, viewport),
+                geometry.cursor(Some(point(px(x), px(y))), false, viewport, false),
                 expected
             );
         }
         assert_eq!(
-            geometry.cursor(None, true, viewport),
+            geometry.cursor(None, true, viewport, false),
             gpui::CursorStyle::ClosedHand
         );
         assert_eq!(
-            geometry.cursor(None, false, viewport),
+            geometry.cursor(None, false, viewport, false),
             gpui::CursorStyle::Arrow
         );
         assert_eq!(
-            geometry.cursor(Some(point(px(50.), px(20.))), false, None),
+            geometry.cursor(Some(point(px(50.), px(20.))), false, None, false),
             gpui::CursorStyle::Arrow
         );
     }
@@ -649,7 +822,10 @@ mod tests {
             ),
         ] {
             let position = point(px(x), px(20.));
-            assert_eq!(geometry.cursor(Some(position), false, viewport), cursor);
+            assert_eq!(
+                geometry.cursor(Some(position), false, viewport, false),
+                cursor
+            );
             assert_eq!(
                 crate::minimap::click(geometry.minimap_fraction(position), interval, false, 1),
                 click
@@ -663,7 +839,7 @@ mod tests {
         for viewport in [None, Some((View::full(1000), 1000))] {
             for (x, y) in [(50., 20.), (50., 160.), (120., 80.)] {
                 assert_eq!(
-                    geometry.cursor(Some(point(px(x), px(y))), false, viewport),
+                    geometry.cursor(Some(point(px(x), px(y))), false, viewport, false),
                     gpui::CursorStyle::Arrow,
                 );
             }
@@ -695,8 +871,38 @@ mod tests {
             };
             assert!(matches!(
                 geometry.scroll(position, delta, shift),
-                Scroll::VerticalPending
+                Scroll::FrequencyPan(_)
             ));
         }
+    }
+    #[test]
+    fn frequency_ruler_and_shift_gestures_use_the_frequency_axis() {
+        let geometry = geometry();
+        let ruler = point(px(120.), px(75.));
+        assert_eq!(
+            geometry.cursor(Some(ruler), false, None, true),
+            gpui::CursorStyle::OpenHand
+        );
+        let delta = point(px(0.), px(40.));
+        assert!(
+            matches!(geometry.scroll(ruler, delta, gpui::Modifiers::default()), Scroll::FrequencyPan(f) if (f - 0.4).abs() < 1e-10)
+        );
+        let control = gpui::Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        assert!(matches!(
+            geometry.scroll(ruler, delta, control),
+            Scroll::FrequencyZoom { anchor: 0.75, .. }
+        ));
+        let shift_control = gpui::Modifiers {
+            shift: true,
+            control: true,
+            ..Default::default()
+        };
+        assert!(matches!(
+            geometry.scroll(point(px(60.), px(100.)), delta, shift_control),
+            Scroll::FrequencyZoom { anchor: 0.5, .. }
+        ));
     }
 }

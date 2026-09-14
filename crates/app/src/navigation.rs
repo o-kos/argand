@@ -148,6 +148,61 @@ pub fn column_mapping(
     (edge(column), edge(column + 1))
 }
 
+/// Physical bounds shared by held textures, numeric lookup and backdrop coverage.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PictureView {
+    pub time: (f64, f64),
+    pub frequency: (f64, f64),
+}
+
+impl PictureView {
+    pub fn intersects(self, other: Self) -> bool {
+        let overlap =
+            |a: (f64, f64), b: (f64, f64)| a.0 < a.1 && b.0 < b.1 && a.0 < b.1 && b.0 < a.1;
+        overlap(self.time, other.time) && overlap(self.frequency, other.frequency)
+    }
+
+    pub fn grid(grid: &DbGrid) -> Self {
+        Self {
+            time: (grid.t0, grid.t1),
+            frequency: (grid.f0, grid.f1),
+        }
+    }
+}
+
+pub fn level_in_view(grid: &DbGrid, shown: PictureView, across: f64, from_top: f64) -> Option<f32> {
+    let span = grid.f1 - grid.f0;
+    let y = (grid.f1 - shown.frequency.1) / span
+        + from_top * ((shown.frequency.1 - shown.frequency.0) / span);
+    if !(0.0..1.0).contains(&from_top) {
+        return None;
+    }
+    level_at(grid, shown.time, across, y)
+}
+
+/// Uncovered normalized rectangles, in screen coordinates, without overlapping strips.
+pub fn uncovered_picture(
+    shown: PictureView,
+    held: Option<PictureView>,
+) -> Vec<(f64, f64, f64, f64)> {
+    let mut rectangles: Vec<_> = uncovered(shown.time, held.map(|view| view.time))
+        .into_iter()
+        .map(|(left, right)| (left, 0., right, 1.))
+        .collect();
+    let Some(held) = held else { return rectangles };
+    let span = shown.time.1 - shown.time.0;
+    let left = ((held.time.0 - shown.time.0) / span).clamp(0., 1.);
+    let right = ((held.time.1 - shown.time.0) / span).clamp(0., 1.);
+    if left < right {
+        rectangles.extend(
+            uncovered(shown.frequency, Some(held.frequency))
+                .into_iter()
+                .map(|(low, high)| (left, 1. - high, right, 1. - low)),
+        );
+    }
+    rectangles
+}
+
 /// Use the shaded cell, with the highest frequency at the top of the image.
 pub fn level_at(grid: &DbGrid, shown: (f64, f64), across: f64, from_top: f64) -> Option<f32> {
     let span = grid.t1 - grid.t0;
@@ -192,4 +247,77 @@ pub fn uncovered(shown: (f64, f64), held: Option<(f64, f64)>) -> Vec<(f64, f64)>
 #[cfg(test)]
 mod tests {
     include!("navigation_tests.rs");
+}
+
+#[cfg(test)]
+mod frequency_tests {
+    use super::*;
+
+    #[test]
+    fn cropped_frequency_lookup_and_backdrop_holes_share_physical_coordinates() {
+        let grid = DbGrid {
+            width: 2,
+            height: 4,
+            values: vec![-10., -20., -30., -40., -50., -60., -70., -80.],
+            t0: 0.,
+            t1: 2.,
+            f0: -200.,
+            f1: 200.,
+        };
+        let shown = PictureView {
+            time: (0., 2.),
+            frequency: (-100., 100.),
+        };
+        assert_eq!(level_in_view(&grid, shown, 0.25, 0.25), grid.value(0, 2));
+        assert_eq!(level_in_view(&grid, shown, 0.75, 0.75), grid.value(1, 1));
+        let outside = PictureView {
+            frequency: (200., 400.),
+            ..shown
+        };
+        assert_eq!(level_in_view(&grid, outside, 0.5, 0.5), None);
+        let held = PictureView {
+            time: (0.5, 1.5),
+            frequency: (-50., 50.),
+        };
+        assert_eq!(
+            uncovered_picture(shown, Some(held)),
+            vec![
+                (0., 0., 0.25, 1.),
+                (0.75, 0., 1., 1.),
+                (0.25, 0.75, 0.75, 1.),
+                (0.25, 0., 0.75, 0.25),
+            ]
+        );
+    }
+    #[test]
+    fn distant_or_touching_windows_are_rejected_before_gpu_coordinate_mapping() {
+        let held = PictureView {
+            time: (0., 0.001),
+            frequency: (-12000., 12000.),
+        };
+        for shown in [
+            PictureView {
+                time: (1e12, 1e12 + 0.001),
+                ..held
+            },
+            PictureView {
+                time: (0.001, 0.002),
+                ..held
+            },
+            PictureView {
+                frequency: (12000., 13000.),
+                ..held
+            },
+            PictureView {
+                frequency: (0., 0.),
+                ..held
+            },
+        ] {
+            assert!(!held.intersects(shown));
+        }
+        assert!(held.intersects(PictureView {
+            time: (0.0005, 0.0015),
+            frequency: (1000., 2000.)
+        }));
+    }
 }

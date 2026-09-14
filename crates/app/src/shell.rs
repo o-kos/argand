@@ -263,6 +263,7 @@ struct Shell {
     analysis_hovered: bool,
     settings_backup: Option<Settings>,
     settings_view_backup: Option<crate::navigation::View>,
+    settings_frequency_backup: Option<crate::frequency::View>,
     settings_error: Option<String>,
 
     /// Absent when the platform offers nowhere to keep state, or when the file
@@ -296,6 +297,9 @@ struct Shell {
     /// overview without restarting analysis when only these dimensions change.
     plot: Option<PlotSize>,
     view: Option<crate::navigation::View>,
+    frequency: crate::frequency::View,
+    frequency_scheme: Option<argand_core::axis::TickScheme>,
+    frequency_pan: Option<(gpui::Point<Pixels>, crate::frequency::View)>,
     time_scheme: Option<argand_core::axis::TickScheme>,
     tick_pan: Option<crate::navigation::TickPan>,
     plot_geometry: Option<navigation_ui::PlotGeometry>,
@@ -358,6 +362,7 @@ impl Shell {
             analysis_hovered: false,
             settings_backup: None,
             settings_view_backup: None,
+            settings_frequency_backup: None,
             settings_error: None,
 
             config,
@@ -367,6 +372,9 @@ impl Shell {
             file: None,
             plot: None,
             view: None,
+            frequency: crate::frequency::View::default(),
+            frequency_scheme: None,
+            frequency_pan: None,
             time_scheme: None,
             tick_pan: None,
             plot_geometry: None,
@@ -639,7 +647,7 @@ impl Shell {
                 total: meta.len_samples,
             },
             seconds: self.view?.seconds(meta.sample_rate),
-            hertz: meta.frequency_span(),
+            hertz: self.frequency.hertz(meta.frequency_span()),
         })
     }
 
@@ -654,11 +662,12 @@ impl Shell {
         let Some(request) = self.request(&file.document) else {
             return;
         };
+        let frequency = self.extents().map(|extents| extents.hertz);
         let Some(file) = self.file.as_mut() else {
             return;
         };
         file.document.requested_range(request.range);
-        if !file.analyst.request(request) {
+        if !file.analyst.request_view(request, frequency) {
             tracing::warn!("the analysis thread has stopped; nothing more will be drawn");
         }
     }
@@ -1072,13 +1081,14 @@ impl Shell {
                         .map_or(gpui::CursorStyle::Arrow, |geometry| {
                             geometry.cursor(
                                 self.pointer,
-                                self.pan.is_some(),
+                                self.pan.is_some() || self.frequency_pan.is_some(),
                                 self.view.zip(
                                     self.file
                                         .as_ref()
                                         .and_then(|file| file.document.meta())
                                         .map(|meta| meta.len_samples),
                                 ),
+                                self.frequency.span < 1.,
                             )
                         }),
                 )
