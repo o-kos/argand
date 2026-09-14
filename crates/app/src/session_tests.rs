@@ -118,6 +118,7 @@ fn a_session_survives_the_round_trip() {
     let path = dir.join("session.toml");
     let session = Session {
         show_grid: true,
+        orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -172,6 +173,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
 
     let first = Session {
         show_grid: true,
+        orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -231,6 +233,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
     let at = |ms: u64| Instant::now() + Duration::from_millis(ms);
     let moved = |x: f32| Session {
         show_grid: true,
+        orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -275,6 +278,7 @@ fn a_position_that_has_not_changed_is_not_written_again() {
     let path = dir.join("session.toml");
     let held = Session {
         show_grid: true,
+        orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -306,6 +310,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
     let start = Instant::now();
     let moved = |x: f32| Session {
         show_grid: true,
+        orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -330,6 +335,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let path = dir.join("session.toml");
     let at = |x: f32| Session {
         show_grid: true,
+        orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -369,6 +375,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
     let mut writer = Writer::new(path.clone(), Session::default());
     let moved = Session {
         show_grid: true,
+        orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -417,6 +424,7 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
     let start = Instant::now();
     let at = |x: f32| Session {
         show_grid: true,
+        orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
         waveform_fraction: Some(0.25),
@@ -680,8 +688,8 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 8"),
-        "the current session layout is version 8: {text}"
+        text.contains("version = 9"),
+        "the current session layout is version 9: {text}"
     );
 }
 
@@ -801,6 +809,25 @@ fn grid_visibility_round_trips_both_values_and_defaults_for_older_sessions() {
         let restored = Session::load(&path);
         assert!(restored.writable);
         assert!(restored.session.show_grid);
+        assert_eq!(restored.session.window_state, WindowState::Maximized);
+    }
+}
+
+#[test]
+fn orientation_round_trips_and_older_sessions_keep_horizontal_default() {
+    use crate::orientation::Mode;
+    let dir = TempDir::new("orientation");
+    let path = dir.join(FILE_NAME);
+    for orientation in [Mode::Horizontal, Mode::Vertical] {
+        let session = Session { orientation, ..Session::default() };
+        assert!(session.save(&path));
+        assert_eq!(Session::load(&path).session.orientation, orientation);
+    }
+    for version in 1..VERSION {
+        std::fs::write(&path, format!("version = {version}\nwindow_state = \"maximized\"\n")).unwrap();
+        let restored = Session::load(&path);
+        assert!(restored.writable);
+        assert_eq!(restored.session.orientation, Mode::Horizontal);
         assert_eq!(restored.session.window_state, WindowState::Maximized);
     }
 }
