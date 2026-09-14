@@ -421,7 +421,7 @@ and fall back to `system`, preserving the other configuration settings. This
 option is only available in the configuration file and applies to both numeric
 display and input; it does not change the interface language.
 
-**Ctrl+T** or the **Horizontal / Vertical** button beside View switches the complete spectral
+**Ctrl+T** or the orientation icon in the title-bar toolbar switches the complete spectral
 layout and remembers the mode. Vertical mode shows time from top to bottom,
 frequency from left to right and the full-capture minimap in a strip on the left.
 Switching preserves both physical viewports and reuses the retained transform,
@@ -437,9 +437,16 @@ dragging to its own axis. The time ruler uses the same gestures: wheel pans in t
 Ctrl+wheel zooms. Shift+wheel pans frequency and Ctrl+Shift+wheel zooms frequency
 about the pointer. On the frequency ruler, drag or wheel to pan, and Ctrl+wheel to
 zoom. Its hand cursor appears only when the frequency range is narrowed.
-Ctrl+G or View → Show grid hides or shows the spectrogram grid and remembers the choice
+Ctrl+G, the grid toolbar button or View → Show grid hides or shows the spectrogram grid and remembers the choice
 between sessions; ruler baselines, ticks and labels remain visible. Valid time
 marks remain at the plot edges even when their labels cannot fit.
+Click the application button (icon and **Argand**) at the left of the title bar, or press **F10**, to open
+the File / View menu. Hover over a branch to open it; arrow keys navigate, Enter
+activates a command, and Escape closes one submenu at a time. Click outside to
+close the whole menu. File → Recent retains the opening options for each capture.
+The grid button shows its active state; the orientation icon shows the current
+time-axis direction, while its tooltip describes the next click.
+
 The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands (arrows below describe Horizontal mode):
 
 | Key | Action |
