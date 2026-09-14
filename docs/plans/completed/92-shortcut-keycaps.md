@@ -29,18 +29,28 @@ The ruler context menu has no registered shortcuts to display.
 
 ## Implementation steps
 
-- [ ] Share framed keycap presentation across menus and hints.
-- [ ] Measure framed shortcuts for menu widths and preserve label space.
-- [ ] Update the changelog and architecture notes.
-- [ ] Complete independent review and native validation.
-- [ ] Move this plan to docs/plans/completed before owner review.
+- [x] Share framed keycap presentation across menus and hints.
+- [x] Measure framed shortcuts for menu widths and preserve label space.
+- [x] Update the changelog and architecture notes.
+- [x] Complete independent review and native validation.
+- [x] Move this plan to docs/plans/completed before owner review.
 
 ## Validation
 
-- [ ] cargo fmt --all -- --check
-- [ ] cargo clippy --all-targets --locked
-- [ ] cargo test --locked
-- [ ] cargo build --release --locked after the local gate
-- [ ] Inspect light/dark themes, narrow menus, 100/125/200% display scale,
+- [x] cargo fmt --all -- --check
+- [x] cargo clippy --all-targets --locked
+- [x] cargo test --locked
+- [x] cargo build --release --locked after the local gate
+- [x] Inspect light/dark themes, narrow menus, 100/125/200% display scale,
   multi-modifier shortcuts and matching tooltip/menu rendering.
-- [ ] Verify keyboard/menu actions and focus still work.
+- [x] Verify keyboard/menu actions and focus still work.
+
+## Verification notes
+
+Formatting, strict Clippy and all 554 tests passed, followed by a fresh release
+build. Independent review was clean, with no findings to accept or decline.
+Linux GPU checks covered both themes at 100%, 125% and 200% output scale, nested
+menus in a 640x400 window, multi-modifier keycaps, analysis and toolbar hints,
+long-path start-page hints, menu/keyboard grid activation and settings focus.
+Platform-specific notation remains the toolkit formatter; native Windows/macOS
+appearance was reviewed through its source contract, not runtime-tested here.

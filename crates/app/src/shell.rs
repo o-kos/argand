@@ -31,6 +31,9 @@ use argand_dsp::AnalysisRequest;
 #[path = "app_menu_ui.rs"]
 mod app_menu_ui;
 
+#[path = "shortcuts.rs"]
+mod shortcuts;
+
 #[path = "backdrop.rs"]
 mod backdrop;
 
@@ -1361,28 +1364,18 @@ fn shortcut_tooltip(
     context: &'static str,
     width: Pixels,
 ) -> Tooltip {
-    Tooltip::element(move |window, cx| {
+    Tooltip::element(move |window, _cx| {
         let shortcut = action
             .as_deref()
             .and_then(|action| Kbd::binding_for_action(action, Some(context), window));
-        let color = if cx.theme().is_dark() {
-            cx.theme().blue_light
-        } else {
-            cx.theme().blue.darken(0.2)
-        };
         div()
             .max_w(width.min(window.viewport_size().width - px(48.)))
             .flex()
-            .items_start()
+            .items_center()
             .gap_3()
             .child(div().min_w_0().child(text.clone()))
             .when_some(shortcut, |hint, shortcut| {
-                hint.child(
-                    div()
-                        .flex_shrink_0()
-                        .text_color(color)
-                        .child(shortcut.appearance(false)),
-                )
+                hint.child(shortcuts::keycap(shortcut))
             })
     })
 }

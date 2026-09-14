@@ -380,7 +380,7 @@ impl Editor {
                 ))
                 .when_some(
                     Kbd::binding_for_action(&UseRecommendedRange, None, window),
-                    |button, kbd| button.child(kbd),
+                    |button, kbd| button.child(shortcuts::keycap(kbd)),
                 )
                 .on_click(cx.listener(|editor, _, window, cx| editor.recommend(window, cx)))
                 .into_any_element();
