@@ -22,8 +22,8 @@ run or be joined on the UI thread.
   startup with a file argument and subsequent successful file openings.
 - Refresh on startup, successful file opening, window activation and File-menu
   opening. Coalesce pending checks per path and identify results by path across
-  reordered history; old blocked paths must not prevent checking new paths. Keep popup entries stable until
-  dismissal; the next opening uses the latest completed availability snapshot.
+  reordered history; old blocked paths must not prevent checking new paths. Keep
+  popup entries stable until dismissal; the next opening uses the latest completed availability snapshot.
 - Refresh availability without changing saved history. Keep ordering, labels and
   opening hints paired after filtering, and reject obsolete check results.
 - Keep the current file visible; #59 remains a separate task.
@@ -34,10 +34,10 @@ run or be joined on the UI thread.
   old paths could permanently hide newly opened local files. Pending checks are
   bounded per distinct path instead; abandoned checks are not cancellable, and
   repeated changes to distinct blocked paths can retain additional detached threads.
-- Passing file availability through the analysis/DSP delivery pipeline would
-  couple menu refreshes to file analysis and still leave reappearing queued history
-  behind blocked checks. Independent per-path scheduling fixes the starvation at
-  its source without changing the analysis contract.
+- Passing existing regular-file metadata through analysis deliveries could
+  confirm a newly opened file, but would still leave other reappearing history
+  behind blocked checks. Independent per-path scheduling fixes starvation for
+  every current entry without changing the analysis contract.
 
 - Checking paths when rendering or synchronously opening the menu can block the
   UI on network mounts.
@@ -50,19 +50,19 @@ run or be joined on the UI thread.
 - [x] Use the same filtered entries for the menu, start page and its shortcuts.
 - [x] Cover unavailable files, empty results, reappearance and changed history.
 - [x] Update architectural context and the changelog.
-- [ ] Complete validation and external review; address substantive findings.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation and external review; address substantive findings.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo build --release --locked`, after the checks above pass
 - [x] Verify shared ordering, hints, refreshes and nonblocking checks with focused tests.
-- [ ] Verify native menu/start-page behavior where a real GPU session is available;
+- [x] Verify native menu/start-page behavior where a real GPU session is available;
   record any environment limitation precisely.
-- [ ] Read-only external review with GPT-5.6 Sol at High, repeated until clean.
+- [x] Read-only external review with GPT-5.6 Sol at High, repeated until clean.
 
 ## Validation notes
 
@@ -73,9 +73,26 @@ run or be joined on the UI thread.
 - Initial read-only review found one P2 starvation case in the global worker cap.
   Accepted and fixed through independent per-path scheduling with a regression
   test. The suggested analysis-delivery integration was declined for the reasons
-  above; the final round must challenge that alternative decision.
+  above. The final round challenged this decision: metadata reuse is valid for
+  opened files but does not solve starvation of other history. It found no
+  substantive remaining issue; per-path retention of stuck workers is documented.
 - Local environment: CachyOS, system-repository rustup and Vulkan headers, pinned
   Rust/Cargo 1.97.1 with rustfmt and Clippy; Intel Iris Xe using Mesa Vulkan.
+
+- Full local gate passed: formatting, Clippy and 527 tests. The release build
+  completed after the gate, using the same source as the clean review round.
+- Native smoke checks used the release binary on Intel Iris Xe, Linux/XWayland,
+  light theme at scale 1, and an isolated temporary session containing a missing
+  path, a directory, a real WAV and an I/Q raw file. The start page and File menu
+  showed only the two regular files in matching order; Escape then Alt+1 opened
+  the I/Q file with its saved `iq_i16@24k` hint and displayed a two-sided spectrum.
+  Starting directly with the real WAV also completed analysis. The saved history
+  retained the unavailable entries and raw hints.
+- Dynamic disappearance/reappearance, history replacement, blocked probes and
+  shutdown were validated by automated tests. Remaining extended native checks
+  (other themes/scales and Windows/macOS interaction) were not run locally.
+  Desktop automation was stopped when the window was used for manual capture
+  inspection; no claim of automated coverage is made for that interaction.
 
 ## Post-completion
 
