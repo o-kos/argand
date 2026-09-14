@@ -22,6 +22,8 @@ promise applies to.
 
 ### Changed
 
+- Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with slightly stronger text and border contrast, platform-specific notation and matching menu-width measurement.
+
 - Enlarge and brighten the toolbar icons for better visibility within their buttons, with orientation before grid.
 
 - In vertical mode, place frequency units at the lower right and time units at the top of the right ruler. Captions reserve space from numeric labels, keep unit/resolution hints and use an arrow cursor without starting navigation gestures.

@@ -2,7 +2,7 @@
 
 use super::{navigation_ui::*, *};
 use crate::app_menu::{self, Effect, Item, Kind, Menu};
-use gpui::{AnyElement, AsKeystroke, KeyDownEvent, ScrollHandle, deferred, img};
+use gpui::{AnyElement, KeyDownEvent, ScrollHandle, deferred, img};
 use gpui_component::button::ButtonCustomVariant;
 use gpui_component::{Disableable, Icon, IconName};
 use std::{cell::Cell, rc::Rc};
@@ -531,7 +531,7 @@ impl Shell {
                     .child(item.label.clone()),
             )
             .when_some(shortcut, |row, shortcut| {
-                row.child(shortcut.appearance(false))
+                row.child(shortcuts::keycap(shortcut, cx))
             })
             .when(matches!(item.kind, Kind::Branch(_)), |row| {
                 row.child(Icon::new(IconName::ChevronRight).size(px(14.)))
@@ -543,43 +543,36 @@ impl Shell {
 fn menu_width(
     items: &[Item<Command>],
     focus: &FocusHandle,
-    window: &Window,
-    cx: &gpui::App,
+    window: &mut Window,
+    cx: &mut gpui::App,
 ) -> f32 {
     let style = gpui::TextStyle {
         font_family: cx.theme().font_family.clone(),
         ..Default::default()
     };
-    let measure = |text: &str| {
-        f32::from(
-            window
-                .text_system()
-                .shape_line(
-                    text.to_owned().into(),
-                    window.rem_size() * 0.875,
-                    &[style.to_run(text.len())],
-                    None,
-                )
-                .width
-                .ceil(),
-        )
-    };
     items
         .iter()
         .map(|item| {
+            let label_width = f32::from(
+                window
+                    .text_system()
+                    .shape_line(
+                        item.label.clone().into(),
+                        window.rem_size() * 0.875,
+                        &[style.to_run(item.label.len())],
+                        None,
+                    )
+                    .width
+                    .ceil(),
+            );
             let shortcut = match &item.kind {
-                Kind::Command(Command::Action(action)) => window
-                    .highest_precedence_binding_for_action_in(action.as_ref(), focus)
-                    .and_then(|binding| {
-                        binding
-                            .keystrokes()
-                            .first()
-                            .map(|key| Kbd::format(key.as_keystroke()))
-                    })
-                    .map_or(0., |text| measure(&text) + 20.),
+                Kind::Command(Command::Action(action)) => {
+                    Kbd::binding_for_action_in(action.as_ref(), focus, window)
+                        .map_or(0., |key| f32::from(shortcuts::width(key, window, cx)) + 8.)
+                }
                 _ => 0.,
             };
-            measure(&item.label) + shortcut + 64.
+            label_width + shortcut + 64.
         })
         .fold(150., f32::max)
         .min(420.)
