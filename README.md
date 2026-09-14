@@ -421,7 +421,7 @@ and fall back to `system`, preserving the other configuration settings. This
 option is only available in the configuration file and applies to both numeric
 display and input; it does not change the interface language.
 
-The **Horizontal / Vertical** button beside View switches the complete spectral
+**Ctrl+T** or the **Horizontal / Vertical** button beside View switches the complete spectral
 layout and remembers the mode. Vertical mode shows time from top to bottom,
 frequency from left to right and the full-capture minimap in a strip on the left.
 Switching preserves both physical viewports and reuses the retained transform,
@@ -445,6 +445,7 @@ The crosshair appears only over the spectrogram. The View menu exposes the keybo
 | Key | Action |
 | --- | --- |
 | Ctrl+G | Show / hide the spectrogram grid |
+| Ctrl+T | Toggle Horizontal / Vertical spectrogram orientation |
 | Ctrl+`=` / Ctrl+`-` (or keypad `+` / `-`) | Zoom in / out about the view centre |
 | Left / Right | Pan by one time-ruler division |
 | Ctrl+Left / Ctrl+Right | Pan by five time-ruler divisions |

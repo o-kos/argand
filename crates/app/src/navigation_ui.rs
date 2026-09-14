@@ -7,6 +7,7 @@ actions!(
     navigation,
     [
         ToggleGrid,
+        ToggleOrientation,
         ClockRuler,
         SecondsRuler,
         SamplesRuler,
@@ -32,6 +33,7 @@ actions!(
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([
         KeyBinding::new("ctrl-g", ToggleGrid, Some("Plot")),
+        KeyBinding::new("ctrl-t", ToggleOrientation, Some("Plot")),
         KeyBinding::new("ctrl-+", ZoomIn, Some("Plot")),
         KeyBinding::new("ctrl-=", ZoomIn, Some("Plot")),
         KeyBinding::new("ctrl--", ZoomOut, Some("Plot")),
@@ -96,6 +98,7 @@ fn plot_shortcut(
     }
     match (key, modifiers.shift || physical_shift) {
         ("g", false) => Some(Box::new(ToggleGrid)),
+        ("t", false) => Some(Box::new(ToggleOrientation)),
         ("+" | "=" | "add", false) => Some(Box::new(ZoomIn)),
         ("-" | "_" | "subtract", false) => Some(Box::new(ZoomOut)),
         ("+" | "=" | "add", true) => Some(Box::new(FrequencyZoomIn)),
@@ -683,6 +686,9 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         content
+            .on_action(cx.listener(|shell, _: &ToggleOrientation, window, cx| {
+                shell.toggle_orientation(window, cx);
+            }))
             .on_action(cx.listener(|shell, _: &ToggleGrid, _, cx| {
                 shell.session.show_grid = !shell.session.show_grid;
                 shell.save();
@@ -803,32 +809,40 @@ impl Shell {
         )
     }
 
+    fn toggle_orientation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.session.orientation = self.session.orientation.toggled();
+        self.time_scheme = None;
+        self.frequency_scheme = None;
+        self.tick_pan = None;
+        self.pan = None;
+        self.frequency_pan = None;
+        self.splitter_dragging = false;
+        self.pointer = None;
+        self.plot_geometry = None;
+        self.upload(window);
+        self.upload_pending = false;
+        self.orient_backdrop(window);
+        self.save();
+        cx.notify();
+    }
+
     pub(super) fn orientation_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mode = self.session.orientation;
-        Button::new("spectrogram-orientation")
+        let mut button = Button::new("spectrogram-orientation")
             .ghost()
             .small()
             .label(mode.label())
-            .tooltip(format!(
-                "Switch to {} spectrogram",
-                mode.toggled().label().to_lowercase()
-            ))
-            .on_click(cx.listener(|shell, _, window, cx| {
-                shell.session.orientation = shell.session.orientation.toggled();
-                shell.time_scheme = None;
-                shell.frequency_scheme = None;
-                shell.tick_pan = None;
-                shell.pan = None;
-                shell.frequency_pan = None;
-                shell.splitter_dragging = false;
-                shell.pointer = None;
-                shell.plot_geometry = None;
-                shell.upload(window);
-                shell.upload_pending = false;
-                shell.orient_backdrop(window);
-                shell.save();
-                cx.notify();
-            }))
+            .on_click(cx.listener(|shell, _, window, cx| shell.toggle_orientation(window, cx)));
+        button.interactivity().tooltip(move |window, cx| {
+            shortcut_tooltip(
+                "Toggle spectrogram orientation".to_owned(),
+                Some(Box::new(ToggleOrientation)),
+                "Plot",
+                px(360.),
+            )
+            .build(window, cx)
+        });
+        button
     }
 
     pub(super) fn view_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {

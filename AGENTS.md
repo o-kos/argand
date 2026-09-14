@@ -355,7 +355,9 @@ floor requires expansion for a longer time axis. That exceptional range change
 restarts analysis just as an ordinary resize does.
 `PlotSize` always counts time columns and frequency rows; axes, hints, gestures,
 minimap rebinning and splitter layout use the corresponding screen dimension.
-The mode button persists session version 9. Arrow bindings use Horizontal/Vertical
+The mode button and Ctrl+T share one orientation action and persist session version 9.
+Its shortcut hint resolves the registered binding; the plot shortcut focus guard
+prevents toggling behind a focused popup or settings input. Arrow bindings use Horizontal/Vertical
 key contexts so panning follows the screen; named time/frequency zoom shortcuts
 retain their axes. In vertical mode time labels occupy the right gutter, frequency
 labels the bottom row, with time units at the top of the right gutter and frequency

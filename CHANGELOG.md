@@ -28,6 +28,8 @@ promise applies to.
 
 ### Added
 
+- Ctrl+T switches between Horizontal and Vertical spectrogram orientation and appears in the mode button tooltip.
+
 - Ctrl+G toggles spectrogram grid visibility using the same saved setting as View → Show grid.
 
 

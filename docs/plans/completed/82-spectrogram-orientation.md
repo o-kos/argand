@@ -160,3 +160,18 @@ checks cover all three time formats at scales 1, 1.25 and 2. Native Linux GPU
 checks verified all three localized time hints and the frequency hint, arrow
 cursors at zoomed views, ignored caption drags/wheels and format changes through
 the top unit context menu. The independent review was clean.
+
+## Owner follow-up: orientation shortcut
+
+- [x] Bind Ctrl+T to the same orientation toggle as the mode button
+- [x] Add the registered shortcut to the button hint and retain popup/input focus isolation
+- [x] Run local gate/release, native shortcut checks and focused review
+
+Native checks verified one toggle per key in both directions, button parity,
+mode restoration after restart and popup/settings focus isolation. An open
+button tooltip could retain an obsolete target direction after keyboard input;
+its direction-independent description now stays accurate. Focused review and
+the follow-up wording review were clean.
+
+All 540 tests, formatting and strict Clippy passed. The final release was rebuilt
+and its direction-independent tooltip with Ctrl+T was verified in the native window.
