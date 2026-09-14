@@ -98,6 +98,7 @@ pub struct LabelMetrics<'a> {
     size: f32,
     run: LabelRun,
     start_offset: Option<f32>,
+    keep_edge_marks: bool,
 }
 
 impl<'a> LabelMetrics<'a> {
@@ -107,6 +108,7 @@ impl<'a> LabelMetrics<'a> {
             size,
             run,
             start_offset: None,
+            keep_edge_marks: false,
         }
     }
 
@@ -114,6 +116,12 @@ impl<'a> LabelMetrics<'a> {
     /// `gap` is the distance from the tick to the start of the label.
     pub fn after_tick(mut self, gap: f32) -> Self {
         self.start_offset = Some(gap);
+        self
+    }
+
+    /// Keep valid marks when an edge label cannot fit, without changing spacing.
+    pub fn keep_edge_marks(mut self) -> Self {
+        self.keep_edge_marks = true;
         self
     }
 
@@ -228,6 +236,11 @@ pub fn tick_layout(
         let scheme = TickScheme { step, span };
         let placed = place(kind, axis, scheme, labels, false);
         if !placed.is_empty() && readable(&placed, labels.gap()) {
+            let placed = if labels.keep_edge_marks {
+                place(kind, axis, scheme, labels, true)
+            } else {
+                placed
+            };
             return TickLayout {
                 ticks: placed.into_iter().map(|p| p.tick).collect(),
                 scheme: Some(scheme),

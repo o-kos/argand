@@ -688,3 +688,21 @@ fn fractional_clock_readouts_keep_hours_and_carry_across_the_hour_boundary() {
     assert_eq!(format_time(-3723.456, 7200., 0.001), "-1:02:03.456");
     assert_eq!(format_time(3723.456, 30., 0.001), "62:03.456");
 }
+
+#[test]
+fn keeping_edge_marks_preserves_spacing_and_all_readable_labels_on_resize() {
+    let text = DejaVuSans;
+    for kind in [AxisKind::PreciseTime, AxisKind::Seconds, AxisKind::Samples] {
+        for length in [360, 480, 720, 1000, 1500] {
+            let extent = Axis { length, min: 0., max: 19. * 3600., lead: 0, trail: 0 };
+            let plain = tick_layout(kind, extent, &across(&text).after_tick(9.), None);
+            let marks = tick_layout(kind, extent, &across(&text).after_tick(9.).keep_edge_marks(), None);
+            assert_eq!(marks.scheme, plain.scheme);
+            let visible: Vec<_> = marks.ticks.iter().filter(|tick| !tick.label.is_empty()).cloned().collect();
+            assert_eq!(visible, plain.ticks);
+            let step = marks.scheme.unwrap().step;
+            assert_eq!(marks.ticks.last().unwrap().value, (extent.max / step).floor() * step);
+            assert!(marks.ticks.iter().all(|tick| (0..length).contains(&tick.offset)));
+        }
+    }
+}
