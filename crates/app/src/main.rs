@@ -10,6 +10,8 @@
 //! neither can stop it appearing: see [`config`] and [`session`].
 
 mod analysis;
+mod app_menu;
+mod assets;
 mod axes;
 mod chrome;
 mod cli;

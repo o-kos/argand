@@ -21,12 +21,15 @@ use gpui::{
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::kbd::Kbd;
-use gpui_component::menu::{DropdownMenu, PopupMenu, PopupMenuItem};
+use gpui_component::menu::{PopupMenu, PopupMenuItem};
 use gpui_component::tooltip::Tooltip;
 use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, ThemeMode, TitleBar};
 
 use crate::settings::Settings;
 use argand_dsp::AnalysisRequest;
+
+#[path = "app_menu_ui.rs"]
+mod app_menu_ui;
 
 #[path = "backdrop.rs"]
 mod backdrop;
@@ -76,12 +79,13 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
     // by path through an asset source. Without one they resolve to nothing and
     // the buttons render as blank space that still responds to a click.
     Application::new()
-        .with_assets(gpui_component_assets::Assets)
+        .with_assets(crate::assets::Assets)
         .run(move |cx| {
             gpui_component::init(cx);
             settings_ui::init(cx);
             navigation_ui::init(cx);
             cx.bind_keys([
+                KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
                 KeyBinding::new("tab", FocusNext, Some("Shell")),
                 KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
                 KeyBinding::new(
@@ -320,6 +324,8 @@ struct Shell {
     panel_bounds: Option<Bounds<Pixels>>,
     splitter_dragging: bool,
     focus: FocusHandle,
+    application_menu: Option<app_menu_ui::ApplicationMenu>,
+    application_menu_anchor: app_menu_ui::Anchor,
     open_menu: Option<WeakEntity<PopupMenu>>,
     menu_dismiss: Option<gpui::Subscription>,
     recent_files: RecentFiles,
@@ -391,6 +397,8 @@ impl Shell {
             panel_bounds: None,
             splitter_dragging: false,
             focus,
+            application_menu: None,
+            application_menu_anchor: Default::default(),
             open_menu: None,
             menu_dismiss: None,
             recent_updates: None,
@@ -408,6 +416,7 @@ impl Shell {
     /// transform, and that is a pass over the file that must not happen on the
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
+        self.dismiss_application_menu(window, cx);
         let editor = self.settings_window;
         self.finish_settings(false, cx);
         if let Some(editor) = editor {
@@ -777,6 +786,7 @@ impl Shell {
     }
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.dismiss_application_menu(window, cx);
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
         }
@@ -817,59 +827,6 @@ impl Shell {
                 });
             })
             .detach();
-    }
-
-    /// The menu in the title bar.
-    ///
-    /// The window draws its own title bar on every platform, so the menu is
-    /// drawn there too rather than handed to a platform menu bar that only one
-    /// of the three has.
-    fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .items_center()
-            .child(self.file_menu(cx))
-            .when(self.view.is_some(), |bar| {
-                bar.child(self.view_menu(cx))
-                    .child(self.orientation_button(cx))
-            })
-    }
-
-    fn file_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().downgrade();
-        let focus = self.focus.clone();
-        Button::new("file-menu")
-            .ghost()
-            .small()
-            .label("File")
-            .dropdown_menu(move |mut menu, _, cx| {
-                let menu_view = cx.entity().downgrade();
-                let recent = view
-                    .update(cx, |shell, _| {
-                        shell.open_menu = Some(menu_view);
-                        shell.recent_files.refresh(&shell.session.recent);
-                        shell.recent_entries()
-                    })
-                    .unwrap_or_default();
-                menu = menu
-                    .action_context(focus.clone())
-                    .item(PopupMenuItem::new("Open file...").action(Box::new(ChooseFile)));
-                if recent.is_empty() {
-                    return menu;
-                }
-                menu = menu.separator().label("Recent");
-                for (label, origin) in &recent {
-                    let view = view.clone();
-                    let origin = origin.clone();
-                    menu = menu.item(PopupMenuItem::new(label.clone()).on_click(
-                        move |_, window, cx| {
-                            let origin = origin.clone();
-                            let _ = view.update(cx, |shell, cx| shell.open(origin, window, cx));
-                        },
-                    ));
-                }
-                menu
-            })
     }
 
     /// The recent list as a menu shows it: a name to read, and everything it
@@ -944,37 +901,37 @@ impl Shell {
                         .on_mouse_down(MouseButton::Right, |event, window, _| {
                             window.show_window_menu(event.position)
                         })
-                        .child(self.menu(cx)),
+                        .min_w_0()
+                        .child(self.title_contents(cx)),
                 )
                 .child(chrome::controls(corners.top_right, window, cx))
                 .into_any_element()
         } else {
-            TitleBar::new().child(self.menu(cx)).into_any_element()
+            TitleBar::new()
+                .child(self.title_contents(cx))
+                .into_any_element()
         };
-        div().relative().flex_shrink_0().child(bar).child(
-            // This non-interactive overlay spans the whole bar, including
-            // the controls, and leaves its drag/double-click hitbox intact.
-            div()
-                .absolute()
-                .left(px(128.0))
-                .right(px(128.0))
-                .top_0()
-                .h_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .overflow_hidden()
-                .text_sm()
-                .child(
-                    div()
-                        .w_full()
-                        .min_w_0()
-                        .text_center()
-                        .line_clamp(1)
-                        .text_ellipsis()
-                        .child(self.title()),
-                ),
-        )
+        div().flex_shrink_0().child(bar)
+    }
+
+    fn title_contents(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .gap_3()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .child(self.toolbar(cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .text_sm()
+                    .child(self.title()),
+            )
     }
 
     fn finish_splitter(&mut self, _: &gpui::MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -1346,6 +1303,7 @@ impl Render for Shell {
                 .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_pan))
                 .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_splitter))
+                .on_action(cx.listener(Self::toggle_application_menu))
                 .on_action(cx.listener(Self::open_recent))
                 .on_action(cx.listener(Self::edit_analysis))
                 .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
@@ -1364,7 +1322,13 @@ impl Render for Shell {
                 .child(self.content(window, cx))
                 .child(self.status_bar(corners, cx));
         let content = self.navigation_actions(content, cx);
-        frame.render(content, cx)
+        let overlay =
+            self.application_menu_overlay(frame.content_bounds(window.viewport_size()), window, cx);
+        div()
+            .relative()
+            .size_full()
+            .child(frame.render(content, cx))
+            .children(overlay)
     }
 }
 

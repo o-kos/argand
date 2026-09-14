@@ -273,9 +273,10 @@ impl Shell {
     pub(super) fn edit_analysis(
         &mut self,
         _: &EditAnalysis,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.dismiss_application_menu(window, cx);
         if self.settings_window.is_some_and(|handle| {
             handle
                 .update(cx, |_, window, _| window.activate_window())
