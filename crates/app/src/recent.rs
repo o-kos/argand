@@ -1,34 +1,82 @@
-//! Availability of start-page captures, checked without blocking the window.
+//! Shared recent-file availability, checked without blocking the window.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::session::{RECENT_LIMIT, Recent};
 
+type Availability = (PathBuf, bool);
+type Probe = Arc<dyn Fn(&Path) -> bool + Send + Sync>;
+
 pub struct RecentFiles {
     entries: Vec<Recent>,
-    available: Vec<bool>,
+    available: HashSet<PathBuf>,
+    pending: HashSet<PathBuf>,
+    sender: async_channel::Sender<Availability>,
+    receiver: async_channel::Receiver<Availability>,
+    probe: Probe,
 }
 
 impl RecentFiles {
     pub fn new(entries: &[Recent]) -> Self {
-        let entries: Vec<_> = entries.iter().take(RECENT_LIMIT).cloned().collect();
+        let (sender, receiver) = async_channel::unbounded();
         Self {
-            available: vec![false; entries.len()],
-            entries,
+            entries: entries.iter().take(RECENT_LIMIT).cloned().collect(),
+            available: HashSet::new(),
+            pending: HashSet::new(),
+            sender,
+            receiver,
+            probe: Arc::new(|path| path.is_file()),
         }
     }
 
-    pub fn check(&self) -> async_channel::Receiver<(usize, bool)> {
-        check_paths(
-            self.entries.iter().map(|entry| entry.path.clone()),
-            Arc::new(|path| path.is_file()),
-        )
+    pub fn updates(&self) -> async_channel::Receiver<Availability> {
+        self.receiver.clone()
     }
 
-    pub fn apply(&mut self, index: usize, exists: bool) {
-        if let Some(available) = self.available.get_mut(index) {
-            *available = exists;
+    pub fn refresh(&mut self, entries: &[Recent]) {
+        self.entries = entries.iter().take(RECENT_LIMIT).cloned().collect();
+        self.available
+            .retain(|path| self.entries.iter().any(|entry| entry.path == *path));
+        for path in self
+            .entries
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect::<Vec<_>>()
+        {
+            self.start_check(path);
+        }
+    }
+
+    pub fn apply(&mut self, path: PathBuf, exists: bool) {
+        self.pending.remove(&path);
+        if exists && self.entries.iter().any(|entry| entry.path == path) {
+            self.available.insert(path);
+        } else {
+            self.available.remove(&path);
+        }
+    }
+
+    fn start_check(&mut self, path: PathBuf) {
+        if !self.pending.insert(path.clone()) {
+            return;
+        }
+        let sender = self.sender.clone();
+        let probe = self.probe.clone();
+        let checked = path.clone();
+        // One outstanding probe per path, even if history changes. A stuck old
+        // path must not prevent a newly opened local file from being checked.
+        if let Err(error) = std::thread::Builder::new()
+            .name("argand-recent".to_owned())
+            .spawn(move || {
+                let exists = probe(&checked);
+                let _ = sender.send_blocking((checked, exists));
+            })
+        {
+            self.pending.remove(&path);
+            self.available.remove(&path);
+            tracing::warn!(%error, "cannot check a recent file");
         }
     }
 
@@ -42,33 +90,10 @@ impl RecentFiles {
     pub fn visible(&self) -> Vec<Recent> {
         self.entries
             .iter()
-            .zip(&self.available)
-            .filter(|(_, available)| **available)
-            .map(|(entry, _)| entry.clone())
+            .filter(|entry| self.available.contains(&entry.path))
+            .cloned()
             .collect()
     }
-}
-
-fn check_paths(
-    paths: impl Iterator<Item = PathBuf>,
-    probe: Arc<dyn Fn(&Path) -> bool + Send + Sync>,
-) -> async_channel::Receiver<(usize, bool)> {
-    let (sender, receiver) = async_channel::unbounded();
-    for (index, path) in paths.enumerate() {
-        let sender = sender.clone();
-        let probe = probe.clone();
-        // A network stat may never return. Independent, detached workers keep
-        // other results and process shutdown free of that filesystem's timeout.
-        if let Err(error) = std::thread::Builder::new()
-            .name("argand-recent".to_owned())
-            .spawn(move || {
-                let _ = sender.send_blocking((index, probe(&path)));
-            })
-        {
-            tracing::warn!(%error, "cannot check a recent file");
-        }
-    }
-    receiver
 }
 
 #[cfg(test)]

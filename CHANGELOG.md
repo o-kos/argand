@@ -79,6 +79,11 @@ promise applies to.
 
 ### Fixed
 
+- File > Recent now shares the start page's available-file list, hiding missing
+  files and directories without removing saved history or raw opening hints.
+  Availability refreshes in the background when returning to the window or
+  opening File; an already open menu keeps its entries stable until reopened.
+
 - Alt coordinate badges keep a fixed width for the current ruler range and precision, center their text, and meet the guide lines without a gap.
 
 - FLAC seeks discard old decoder packets, preventing incomplete progressive analysis and full-capture waveform scans.
