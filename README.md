@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icons/argand.svg" width="160" height="160" alt="Argand logo">
+  <img src="crates/app/assets/icons/argand-512.png" width="160" height="160" alt="Argand logo">
 </p>
 
 <p align="center">

@@ -1,13 +1,13 @@
 # Issue #41: Application icon exploration
 
-Related issue: #41.
+Related issues: #41 and #76.
 
 ## Overview
 
-Preserve the icon exploration for review from another machine. The owner has
-chosen direction B for further exploration but has not approved a final icon.
-The owner approved B0 and its optical small sizes for an application trial.
-The final vector master and release approval remain pending.
+Preserve the icon exploration and integrate the selected B0 design. The owner
+accepted B0 and its optical small sizes after the application trial and requested
+the README logo fix (#76) in this same PR. The final vector master and remaining
+delivery work are still pending.
 
 ## Context
 
@@ -27,17 +27,22 @@ remain available together with their comparisons and known limitations.
 - Keep PNG comparison sheets viewable directly on GitHub and provide a local
   HTML page using relative image paths for actual-size inspection.
 - Preserve intermediate attempts, including defective ones, with explicit labels.
-- The application trial now replaces the colored application assets. The independently
-  tracked README logo fix (#76) and monochrome/tray artwork remain outside this trial.
+- The application trial replaces the colored application assets. Following owner
+  acceptance, #76 is included in this PR: the README uses the tracked B0 PNG with
+  its centered 160-by-160 layout and descriptive alt text preserved. Monochrome/tray
+  artwork remains pending.
 
 ## Implementation steps
 
 - [x] Archive all concepts, B iterations, comparison sheets and discussion notes.
 - [x] Validate image integrity, references and portability; push a Draft PR.
 - [x] Agree B0 and its small-size adaptation for an application trial.
-- [ ] Obtain final design approval after the application trial.
+- [x] Obtain final design approval after the application trial.
 - [x] Install B0 colored assets in the source tree and add the 24-pixel desktop size.
 - [x] Validate and install the local desktop entry, rebuild, and launch the trial.
+- [x] Restore the README logo using the current B0 asset (#76).
+- [x] Remove redundant session exports and place retained artwork sources beside application assets.
+- [ ] Verify the updated README image on GitHub and link #76 for automatic closure.
 - [ ] Produce deterministic vector artwork and the complete application icon set.
 - [ ] Validate the selected icon in the application and supported delivery paths.
 - [ ] Update relevant documentation and move this plan to completed before final review.
@@ -57,14 +62,14 @@ requires the standard gate, independent review and a current release build.
 ## Small-size experiment
 
 B0 has experimental 16- and 24-pixel vector redraws in
-`docs/design/app-icon/small-b0-v3/`, compared with unmodified raster reductions
+`crates/app/assets/icons/source/`, compared with unmodified raster reductions
 on light and dark backgrounds. Flat colors and size-specific ribbon/outline
 widths open the gaps. The owner accepted these variants for the application trial. The final-master
 task remains open.
 
 ## Application trial
 
-`install-trial-artwork.py` reproduces the colored PNG, ICO and ICNS assets.
+`crates/app/assets/icons/generate.py` reproduces the colored PNG, ICO and ICNS assets.
 16 and 24 pixels use the optical redraws; larger sizes retain the selected B0
 raster sketch. The toolbar embeds the 24-pixel artwork for its 22-pixel slot.
 The scalable theme SVG temporarily embeds the same raster to prevent desktop
@@ -83,7 +88,29 @@ the current release binary and refreshes the desktop/icon caches.
 - The desktop entry passed `desktop-file-validate` before and after installation.
   Every installed PNG and the scalable SVG matches the source tree byte-for-byte.
 - The fresh release binary was launched successfully for owner inspection.
-  Visual acceptance of the live window and desktop appearance remains with the owner.
+  The owner accepted the appearance and requested only the README logo update
+  in this feedback round.
+
+## Session cleanup
+
+At the owner's request, the two preview directories, per-background PNG copies,
+ZIP archive, preview generators and prompt notes were removed. The selected
+raster and optical SVG sources now live beside the application artwork under
+`crates/app/assets/icons/source/`. The colocated generator reproduces every
+existing application asset byte-for-byte. Two comparison sheets and the original
+concept archive remain in `docs/design/app-icon/`; the HTML page references
+retained images directly. Local VS Code build-shortcut settings are preserved
+and excluded from this PR.
+
+## Cleanup validation
+
+- Formatting, strict Clippy and the full tests passed; the release build followed.
+- Every generated application asset remains byte-identical after moving the sources.
+- Independent review found one stale instruction to download only the design
+  directory. It now requires the full repository. No findings were declined;
+  the follow-up round found no substantive issues.
+- All retained design links resolve. README preserves centered placement,
+  160-by-160 display dimensions and descriptive alt text.
 
 ## Preservation checkpoint
 

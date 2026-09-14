@@ -1,14 +1,15 @@
 # Application icon exploration
 
 Design work for [#41](https://github.com/o-kos/argand/issues/41), preserved for
-review from another machine. **B0 and its optical small sizes are approved for an application trial.**
-Final release artwork remains pending.
+review from another machine. **The owner accepted B0 and its optical small sizes after the application trial.**
+The README now uses the same B0 artwork. The final vector master and remaining
+release artwork are still pending.
 
 ## Start here
 
 - [Initial A–D comparison](initial-comparison.png)
 - [Development of B: original, closed loops and two links](b-comparison.png)
-- [Local comparison page](index.html): after cloning or downloading this directory,
+- [Local comparison page](index.html): after cloning or downloading the full repository,
   open `index.html` in a browser at 100% zoom. All references are relative and no
   network access is needed. GitHub displays HTML source rather than running it.
 
@@ -29,14 +30,10 @@ referencing the PNG sketches, **not vector source artwork for the icons**.
 The earlier #41 baseline shift and vertical-axis tail decisions are on hold while
 these requirements are explored. The owner explicitly allowed radical alternatives.
 
-The owner selected **B, the intertwined I/Q direction**, for further development.
-In B0 the coral ribbon is unintentionally open: its returning segment is missing.
-B1 restores two closed loops; B2 simplifies the composition to two chain links.
-The owner rejected B2 and currently prefers B0, requesting its missing coral
-return segment. B1 remains an alternative with mutual over-under crossings
-requested for its cyan and coral loops. No final drawing is approved. The dense center at 16 pixels
-still needs work. The topology and crossing geometry also need deliberate
-construction in the eventual vector master.
+The owner selected **B0 with a closed coral return**, then accepted the separate
+16- and 24-pixel optical redraws after trying them in the application. B2 was
+rejected; B1 remains an archived alternative. A final full-size vector master
+and updated monochrome/tray artwork remain pending.
 
 ## Initial directions
 
@@ -59,29 +56,21 @@ construction in the eventual vector master.
 | B1 | Original closed loops; crossing revision requested | [PNG](images/b1-closed-loops.png) |
 | B2 | Rejected by the owner; retained only as an archive | [PNG](images/b2-two-links.png) |
 
-## Revised B0 and B1
+## Selected artwork and comparisons
 
-- [Experimental B0 optical sizes: 16 and 24 pixels](small-b0-v3/index.html), with original/revised comparisons on both backgrounds and 8× pixel enlargements
+- [B0 source](../../../crates/app/assets/icons/source/argand.png)
+- [Optical SVG sources: 16 pixels](../../../crates/app/assets/icons/source/argand-16.svg) and [24 pixels](../../../crates/app/assets/icons/source/argand-24.svg)
+- [B1 revision: mutual weave](images/b1-mutual-weave-v2.png)
+- [B0/B1 comparison, 16–256 pixels](selected-comparison.png): historical raster reductions before optical corrections
+- [Optical-size comparison](optical-comparison.png): original reductions beside the accepted 16/24-pixel redraws
+- [Local comparison page](index.html): uses the original assets on CSS backgrounds, including larger sizes
 
-The optical-size experiment redraws the rounded loops as closed vector paths,
-uses flat colors, and adjusts ribbon and outline widths separately for 16 and
-24 pixels. It is a new approximation of B0, not an exact trace or an approved
-final master. The owner accepted this redraw for the application trial. Its wider
-openings trade some visual weight for separation.
-
-- [All size previews on light and dark backgrounds](size-preview-v2/index.html)
-- [Comparison sheet, 16–256 pixels](size-preview-v2/comparison-16-256.png)
-- [Download all previews](size-preview-v2/previews.zip)
-
-Sizes: 16, 20, 24, 32, 40, 48, 64, 128, 256, 512 and 1024 pixels.
-These are Lanczos reductions of the v2 sketches, without optical corrections.
-The archive includes transparent PNGs and both opaque background variants.
-
-- [B0 v2: closed coral return](images/b0-closed-return-v2.png) preserves the rounded B0 silhouette and adds its missing return
-- [B1 v2: mutual weave](images/b1-mutual-weave-v2.png) alternates cyan over coral at the top and bottom, and coral over cyan at the left and right
-
-B0 is now used in the application trial; B1 remains an archived alternative.
-The original comparison sheets remain historical snapshots.
+Production PNG, ICO, ICNS and scalable SVG assets live in
+`crates/app/assets/icons/`. The selected source and optical SVGs are retained
+there under `source/`; the build script uses these files directly. Redundant
+per-background PNG exports, the ZIP download, preview generators and prompt
+notes were removed at the owner's request. The original concept archive and
+the two useful comparison sheets remain available.
 
 ## Intermediate attempts
 
@@ -94,12 +83,10 @@ alternatives. Painted checkerboards are actual opaque image content, not alpha.
 | 02 | Transparent background restored, but coral return segment still missing | [PNG](images/b-intermediate-02-transparent.png) |
 | 03 | Extra internal strips and painted checkerboard background | [PNG](images/b-intermediate-03-extra-strips.png) |
 
-## Next discussion
+## Rebuilding the application artwork
 
-Choose how to develop direction B, then refine small-size readability and agree
-the final silhouette, colours, outline and crossing geometry before creating
-the final vector master and monochrome assets. The application trial already
-uses B0 PNG, ICO and ICNS artwork under `crates/app/assets/icons/`. The scalable
-SVG is temporarily a self-contained raster wrapper. Run
-`python docs/design/app-icon/install-trial-artwork.py` to reproduce the trial
-assets with Pillow. The historical comparisons remain unchanged.
+Run `python crates/app/assets/icons/generate.py` with Pillow and `rsvg-convert`
+installed. It reproduces the current colored PNG, ICO, ICNS and scalable SVG
+assets byte-for-byte. Large artwork still uses the selected raster; the scalable
+SVG is a self-contained raster wrapper, not the pending full-size vector master.
+The README references the tracked 512-pixel PNG at a display size of 160 pixels.
