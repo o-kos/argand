@@ -129,3 +129,14 @@ was clean, with no findings to accept or decline.
 Formatting, strict Clippy and all 546 tests passed; the release was rebuilt.
 Linux GPU screenshots confirmed centered, unclipped glyphs and hover colours in
 both themes. Independent review was clean, with no findings to accept or decline.
+
+## Owner feedback: toolbar order and enabled contrast
+
+- [x] Place orientation before grid and use foreground at 85% opacity for enabled
+  glyphs, keeping the accent hover and subdued disabled state.
+- [x] Repeat the local gate, release build, visual check and independent review.
+
+Formatting, strict Clippy and all 546 tests passed; the release was rebuilt.
+Linux GPU checks confirmed brighter resting icons in both themes and verified
+orientation/grid clicks at their new positions against the matching shortcuts.
+Independent review was clean, with no findings to accept or decline.

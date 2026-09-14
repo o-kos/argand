@@ -242,21 +242,6 @@ impl Shell {
             .on_double_click(|_, _, cx| cx.stop_propagation())
             .child(app)
             .child(div().w(px(1.)).h(px(16.)).mx_1().bg(cx.theme().border))
-            .child(
-                self.toolbar_button(
-                    "toggle-grid",
-                    "argand/grid.svg",
-                    if self.session.show_grid {
-                        "Hide grid"
-                    } else {
-                        "Show grid"
-                    }
-                    .to_owned(),
-                    ToggleGrid,
-                    self.session.show_grid,
-                    cx,
-                ),
-            )
             .child(self.toolbar_button(
                 "spectrogram-orientation",
                 if self.session.orientation.vertical() {
@@ -272,6 +257,21 @@ impl Shell {
                 false,
                 cx,
             ))
+            .child(
+                self.toolbar_button(
+                    "toggle-grid",
+                    "argand/grid.svg",
+                    if self.session.show_grid {
+                        "Hide grid"
+                    } else {
+                        "Show grid"
+                    }
+                    .to_owned(),
+                    ToggleGrid,
+                    self.session.show_grid,
+                    cx,
+                ),
+            )
     }
 
     fn toolbar_button(
@@ -297,7 +297,7 @@ impl Shell {
                     .path(icon)
                     .size(px(20.))
                     .id((id, 0_usize))
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(cx.theme().foreground.opacity(0.85))
                     .when(enabled, |glyph| {
                         glyph.group_hover(id, |style| style.text_color(hover_foreground))
                     })
