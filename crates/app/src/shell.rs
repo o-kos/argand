@@ -1374,9 +1374,7 @@ fn shortcut_tooltip(
             .items_center()
             .gap_3()
             .child(div().min_w_0().child(text.clone()))
-            .when_some(shortcut, |hint, shortcut| {
-                hint.child(shortcuts::keycap(shortcut))
-            })
+            .when_some(shortcut, |hint, shortcut| hint.child(shortcut))
     })
 }
 

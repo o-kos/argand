@@ -420,7 +420,7 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                         ))
                         .when_some(
                             Kbd::binding_for_action(&UseRecommendedRange, None, window),
-                            |button, kbd| button.child(shortcuts::keycap(kbd)),
+                            |button, kbd| button.child(kbd),
                         )
                         .on_click(move |_, _, cx| {
                             let _ = apply_owner.update(cx, |shell, cx| {
@@ -447,7 +447,7 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                             .label("Edit settings…")
                             .when_some(
                                 Kbd::binding_for_action(&EditAnalysis, Some("Shell"), window),
-                                |button, kbd| button.child(shortcuts::keycap(kbd)),
+                                |button, kbd| button.child(kbd),
                             )
                             .on_click(move |_, window, cx| {
                                 let _ = edit_owner.update(cx, |shell, cx| {

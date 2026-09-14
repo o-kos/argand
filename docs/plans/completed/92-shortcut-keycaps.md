@@ -18,7 +18,7 @@ The ruler context menu has no registered shortcuts to display.
 ## Decisions
 
 - Reuse Kbd's frame, colours and platform-specific notation from crates.io.
-- Centralize keycap styling and measurement so menu layout matches painting.
+- Use the unmodified toolkit Kbd everywhere and measure that same element for menu layout.
 - Resolve shortcuts from registered bindings in the existing action context.
 - Preserve compact rows, right-aligned shortcuts, and viewport-bounded hints.
 
@@ -48,9 +48,28 @@ The ruler context menu has no registered shortcuts to display.
 ## Verification notes
 
 Formatting, strict Clippy and all 554 tests passed, followed by a fresh release
-build. Independent review was clean, with no findings to accept or decline.
+build. The first review missed the text-style regression identified in owner
+feedback below; the follow-up review confirmed its cause and found no remaining
+substantive issues. No findings were declined.
 Linux GPU checks covered both themes at 100%, 125% and 200% output scale, nested
 menus in a 640x400 window, multi-modifier keycaps, analysis and toolbar hints,
 long-path start-page hints, menu/keyboard grid activation and settings focus.
 Platform-specific notation remains the toolkit formatter; native Windows/macOS
 appearance was reviewed through its source contract, not runtime-tested here.
+
+## Owner feedback: preserve the original reference
+
+The initial helper overrode font weight and whitespace on Kbd. Its final style
+refinement replaces the entire text refinement, dropping the built-in small font,
+muted foreground and compact line height. This altered both the new keycaps and
+the reference itself. Remove all overrides and leave the existing analysis hints
+unchanged from main. Measure and render the original Kbd directly.
+
+- [x] Compare with an actual pre-change main build, repeat checks and review.
+
+A fresh build of main supplied the original visual reference. The corrected
+Edit settings button and keycap match that screenshot pixel for pixel at 100%
+scale in the dark theme. Both analysis hint source files are unchanged from main.
+Formatting, Clippy, all 554 tests and the release build passed again, followed by
+the light/dark native menu and hint checks at 100%, 125% and 200% scale.
+The follow-up review checked the toolkit style refinement and confirmed the fix.
