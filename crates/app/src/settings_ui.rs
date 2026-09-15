@@ -2,8 +2,16 @@
 
 use super::*;
 use argand_dsp::DynamicRange;
+use gpui_component::button::ButtonCustomVariant;
+use std::{cell::Cell, rc::Rc};
 #[path = "settings_editor.rs"]
 mod editor;
+
+pub(super) type Anchor = Rc<Cell<Bounds<Pixels>>>;
+
+const POPUP_WIDTH: Pixels = px(440.);
+const POPUP_HEIGHT: Pixels = px(540.);
+const POPUP_MARGIN: Pixels = px(8.);
 
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([KeyBinding::new(
@@ -62,20 +70,26 @@ impl Shell {
         cx.notify();
     }
 
-    fn cancel_settings_window(&mut self, id: gpui::WindowId, cx: &mut Context<Self>) {
+    fn cancel_settings_popup(&mut self, id: gpui::WindowId, cx: &mut Context<Self>) {
         if self
-            .settings_window
+            .settings_popup
             .is_some_and(|handle| handle.window_id() == id)
         {
+            self.settings_popup = None;
             self.finish_settings(false, cx);
         }
+    }
+
+    fn attach_settings_popup(&mut self, handle: gpui::WindowHandle<gpui_component::Root>) -> bool {
+        let keep = self.settings_backup.is_some();
+        self.settings_popup = keep.then_some(handle);
+        keep
     }
 
     pub(super) fn finish_settings(&mut self, accept: bool, cx: &mut Context<Self>) {
         let Some(backup) = self.settings_backup.take() else {
             return;
         };
-        self.settings_window = None;
         self.analysis_hovered = false;
         let view = self.settings_view_backup.take();
         let frequency = self.settings_frequency_backup.take();
@@ -114,6 +128,14 @@ impl Shell {
         if matches!(file.document.status(), Status::Failed(_))
             || file.displayed_settings != Some(self.settings)
         {
+            return None;
+        }
+        file.document.range_recommendation()
+    }
+
+    fn displayed_range_recommendation(&self) -> Option<f32> {
+        let file = self.file.as_ref()?;
+        if matches!(file.document.status(), Status::Failed(_)) {
             return None;
         }
         file.document.range_recommendation()
@@ -216,58 +238,76 @@ impl Shell {
                 DynamicRange::Fixed(db) => format!("{} dB", crate::numbers::number(db)),
                 DynamicRange::Auto => "auto".into(),
             });
-        let hint_owner = cx.entity().downgrade();
-        let warning = self.range_recommendation().is_some();
+        let warning = self.displayed_range_recommendation().is_some();
         let foreground = if self.analysis_hovered {
             cx.theme().foreground
         } else {
             cx.theme().muted_foreground
         };
+        let anchor = self.settings_anchor.clone();
+        let trigger = Button::new("analysis-settings")
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .hover(cx.theme().secondary_hover)
+                    .active(cx.theme().secondary_hover),
+            )
+            .small()
+            .h_5()
+            .px_2()
+            .when(self.analysis_hovered, |button| {
+                button.bg(cx.theme().secondary_hover)
+            })
+            .on_hover(cx.listener(|shell, hovered, _, cx| {
+                shell.analysis_hovered = *hovered;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .flex()
+                    .gap_1()
+                    .text_xs()
+                    .text_color(foreground)
+                    .child(format!(
+                        "{} · {} ·",
+                        crate::numbers::number(displayed.fft_size),
+                        displayed.window
+                    ))
+                    .child(
+                        div()
+                            .id("analysis-range")
+                            .when(warning, |range| {
+                                range
+                                    .text_color(advice_color(cx))
+                                    .cursor_pointer()
+                                    .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                                        window.prevent_default();
+                                        cx.stop_propagation();
+                                    })
+                                    .on_click(|_, window, cx| {
+                                        cx.stop_propagation();
+                                        window.dispatch_action(Box::new(UseRecommendedRange), cx);
+                                    })
+                            })
+                            .child(if warning {
+                                format!("⚠ {range}")
+                            } else {
+                                range
+                            }),
+                    ),
+            )
+            .on_click(
+                cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
+            )
+            .child(
+                canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {})
+                    .absolute()
+                    .size_full(),
+            );
         div()
             .id("analysis-summary")
             .border_l_1()
             .border_color(cx.theme().border)
-            .when(self.settings_backup.is_none(), |panel| {
-                panel.hoverable_tooltip(move |_, cx| live_analysis_tooltip(hint_owner.clone(), cx))
-            })
-            .child(
-                Button::new("analysis-settings")
-                    .ghost()
-                    .small()
-                    .h_5()
-                    .px_2()
-                    .when(self.analysis_hovered, |button| {
-                        button.bg(cx.theme().secondary_hover)
-                    })
-                    .on_hover(cx.listener(|shell, hovered, _, cx| {
-                        shell.analysis_hovered = *hovered;
-                        cx.notify();
-                    }))
-                    .on_click(cx.listener(|shell, _, window, cx| {
-                        shell.edit_analysis(&EditAnalysis, window, cx)
-                    }))
-                    .child(
-                        div()
-                            .flex()
-                            .gap_1()
-                            .text_xs()
-                            .text_color(foreground)
-                            .child(format!(
-                                "{} · {} ·",
-                                crate::numbers::number(displayed.fft_size),
-                                displayed.window
-                            ))
-                            .child(
-                                div()
-                                    .when(warning, |s| s.text_color(advice_color(cx)))
-                                    .child(if warning {
-                                        format!("⚠ {range}")
-                                    } else {
-                                        range
-                                    }),
-                            ),
-                    ),
-            )
+            .child(trigger)
     }
 
     pub(super) fn edit_analysis(
@@ -277,7 +317,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         self.dismiss_application_menu(window, cx);
-        if self.settings_window.is_some_and(|handle| {
+        if self.settings_popup.is_some_and(|handle| {
             handle
                 .update(cx, |_, window, _| window.activate_window())
                 .is_ok()
@@ -297,33 +337,59 @@ impl Shell {
         let range = self
             .displayed_range()
             .map_or(110.0, |range| range.effective_db);
+        let parent = window.bounds();
+        let viewport = window.viewport_size();
+        let trigger = self.settings_anchor.get();
+        let popup_size = size(
+            POPUP_WIDTH.min(viewport.width - POPUP_MARGIN * 2.),
+            POPUP_HEIGHT.min(viewport.height - POPUP_MARGIN * 2.),
+        );
+        let available_x = (viewport.width - popup_size.width - POPUP_MARGIN).max(POPUP_MARGIN);
+        let x = trigger.origin.x.clamp(POPUP_MARGIN, available_x);
+        let y = (trigger.origin.y - popup_size.height - POPUP_MARGIN).max(POPUP_MARGIN);
+        let bounds = Bounds::new(parent.origin + point(x, y), popup_size);
         let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                None,
-                size(px(460.), px(560.)),
-                cx,
-            ))),
-            window_min_size: Some(size(px(440.), px(540.))),
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: None,
+            kind: if cfg!(target_os = "windows") {
+                WindowKind::PopUp
+            } else {
+                WindowKind::Floating
+            },
+            is_movable: false,
+            is_resizable: false,
+            is_minimizable: false,
+            display_id: window.display(cx).map(|display| display.id()),
+            window_min_size: Some(popup_size),
             window_decorations: Some(WindowDecorations::Client),
-            titlebar: Some(TitleBar::title_bar_options()),
             app_id: Some(APP_ID.into()),
             ..Default::default()
         };
         cx.defer(move |cx| {
+            if owner
+                .upgrade()
+                .is_none_or(|shell| shell.read(cx).settings_backup.is_none())
+            {
+                return;
+            }
             let form_owner = owner.clone();
             let opened = cx.open_window(options, move |window, cx| {
-                window.set_window_title("Analysis settings · argand");
                 let form =
                     cx.new(|cx| editor::Editor::new(form_owner, settings, range, window, cx));
                 cx.new(|cx| gpui_component::Root::new(form, window, cx))
             });
             match opened {
                 Ok(handle) => {
-                    let _ = owner.update(cx, |shell, _| shell.settings_window = Some(handle));
+                    let keep = owner
+                        .update(cx, |shell, _| shell.attach_settings_popup(handle))
+                        .unwrap_or(false);
+                    if !keep {
+                        let _ = handle.update(cx, |_, window, _| window.remove_window());
+                    }
                 }
                 Err(error) => {
                     let _ = owner.update(cx, |shell, cx| shell.finish_settings(false, cx));
-                    tracing::error!(%error, "cannot open analysis settings");
+                    tracing::error!(%error, "cannot open analysis settings popup");
                 }
             }
         });
@@ -348,115 +414,6 @@ pub(super) fn detail_row(
                 .child(label.into()),
         )
         .child(div().flex_1().min_w_0().text_right().child(value.into()))
-}
-
-fn live_analysis_tooltip(owner: WeakEntity<Shell>, cx: &mut gpui::App) -> gpui::AnyView {
-    cx.new(|cx| {
-        if let Some(owner) = owner.upgrade() {
-            cx.observe(&owner, |_, _, cx| cx.notify()).detach();
-        }
-        analysis_tooltip(owner)
-    })
-    .into()
-}
-
-fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
-    Tooltip::element(move |window, cx| {
-        let Some(shell) = owner.upgrade() else {
-            return div();
-        };
-        let shell = shell.read(cx);
-        let settings = shell
-            .file
-            .as_ref()
-            .and_then(|f| f.displayed_settings)
-            .unwrap_or(shell.settings);
-        let mode = match settings.dynamic_range {
-            DynamicRange::Default => "Absolute full scale",
-            DynamicRange::Auto => "Automatic",
-            DynamicRange::Fixed(_) => "Below measured peak",
-        };
-        let recommendation = shell.range_recommendation();
-        let range = shell
-            .displayed_range()
-            .map(|r| format!("{} dB", crate::numbers::number(r.effective_db)))
-            .unwrap_or_else(|| crate::numbers::text(&settings.dynamic_range.to_string()));
-        let fft = crate::numbers::number(settings.fft_size);
-        let overlap = format!("{}%", crate::numbers::number(settings.overlap));
-        let edit_owner = owner.clone();
-        let apply_owner = owner.clone();
-        div()
-            .w(px(300.).min(window.viewport_size().width - px(48.)))
-            .py_2()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(div().font_weight(FontWeight::SEMIBOLD).child("Spectrogram"))
-            .child(detail_row("FFT size", fft, cx))
-            .child(detail_row("Window", settings.window.to_string(), cx))
-            .child(detail_row("Overlap", overlap, cx))
-            .child(detail_row("Aggregation", settings.aggregation.label(), cx))
-            .child(detail_row("Range mode", mode, cx))
-            .child(detail_row("Range", range, cx))
-            .child(detail_row(
-                "Colour scheme",
-                settings.colormap.to_string(),
-                cx,
-            ))
-            .when_some(recommendation, |hint, db| {
-                hint.child(
-                    div()
-                        .text_xs()
-                        .text_color(advice_color(cx))
-                        .child("Low signal level leaves the upper half of the colour scale unused"),
-                )
-                .child(
-                    Button::new("hint-recommendation")
-                        .ghost()
-                        .small()
-                        .label(format!(
-                            "Use recommended: {} dB",
-                            crate::numbers::number(db)
-                        ))
-                        .when_some(
-                            Kbd::binding_for_action(&UseRecommendedRange, None, window),
-                            |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
-                        )
-                        .on_click(move |_, _, cx| {
-                            let _ = apply_owner.update(cx, |shell, cx| {
-                                shell.set_settings(
-                                    Settings {
-                                        dynamic_range: DynamicRange::Fixed(db),
-                                        ..shell.settings
-                                    },
-                                    cx,
-                                )
-                            });
-                        }),
-                )
-            })
-            .child(
-                div()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .pt_2()
-                    .child(
-                        Button::new("edit-analysis-hint")
-                            .ghost()
-                            .small()
-                            .label("Edit settings…")
-                            .when_some(
-                                Kbd::binding_for_action(&EditAnalysis, Some("Shell"), window),
-                                |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
-                            )
-                            .on_click(move |_, window, cx| {
-                                let _ = edit_owner.update(cx, |shell, cx| {
-                                    shell.edit_analysis(&EditAnalysis, window, cx)
-                                });
-                            }),
-                    ),
-            )
-    })
 }
 
 fn advice_color(cx: &gpui::App) -> gpui::Hsla {

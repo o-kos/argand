@@ -17,7 +17,7 @@ use gpui::{
     FontWeight, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
     PathPromptOptions, Pixels, Render, RenderImage, StatefulInteractiveElement, Styled,
     Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
-    WindowOptions, actions, canvas, div, point, prelude::FluentBuilder, px, size,
+    WindowKind, WindowOptions, actions, canvas, div, point, prelude::FluentBuilder, px, size,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::kbd::Kbd;
@@ -266,7 +266,8 @@ struct Shell {
     /// analysis request built below.
     config: Config,
     settings: Settings,
-    settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
+    settings_popup: Option<gpui::WindowHandle<gpui_component::Root>>,
+    settings_anchor: settings_ui::Anchor,
     analysis_hovered: bool,
     settings_backup: Option<Settings>,
     settings_view_backup: Option<crate::navigation::View>,
@@ -368,7 +369,8 @@ impl Shell {
         let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
             settings,
-            settings_window: None,
+            settings_popup: None,
+            settings_anchor: Default::default(),
             analysis_hovered: false,
             settings_backup: None,
             settings_view_backup: None,
@@ -421,10 +423,10 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
-        let editor = self.settings_window;
+        let popup = self.settings_popup;
         self.finish_settings(false, cx);
-        if let Some(editor) = editor {
-            let _ = editor.update(cx, |_, window, _| window.remove_window());
+        if let Some(popup) = popup {
+            let _ = popup.update(cx, |_, window, _| window.remove_window());
         }
         self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
