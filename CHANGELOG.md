@@ -13,6 +13,8 @@ promise applies to.
 
 ### Fixed
 
+- Show vertical time-ruler labels near both ends when they fit between the unit captions.
+
 - Restore the README logo using the current B0 application artwork.
 
 - Remove the four-pixel top gap above the vertical spectrogram and minimap.

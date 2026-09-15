@@ -362,8 +362,9 @@ prevents toggling behind a focused popup or settings input. Arrow bindings use H
 key contexts so panning follows the screen; named time/frequency zoom shortcuts
 retain their axes. In vertical mode time labels occupy the right gutter, frequency
 labels the bottom row, with time units at the top of the right gutter and frequency
-units at bottom-right. The time ruler reserves label clearance below its unit
-without moving the spectrum top or removing grid marks. Unit hitboxes retain an
+units at bottom-right. The time ruler fits numeric ink between the top time-unit and bottom frequency-unit
+captions with four logical pixels of clearance, including the painted half-pixel
+center offset, without moving the spectrum top or removing grid marks. Unit hitboxes retain an
 arrow cursor and exclude pan/zoom gestures; the time unit retains its context menu. The grid and time-format settings apply
 to both layouts.
 
