@@ -27,16 +27,19 @@ defaults:
 jobs:
   linux:
     name: linux
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Test Ubuntu source isolation
+        run: python3 .github/scripts/test-ubuntu-packages.py
 
       # What GPUI links against. The runner has no GPU and cannot run the
       # application, but it still has to build it.
       - name: Install the system libraries GPUI needs
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
+          sudo bash .github/scripts/install-ubuntu-packages.sh \
+            /etc/apt/sources.list.d/ubuntu.sources \
             libasound2-dev \
             libfontconfig-dev \
             libvulkan-dev \
