@@ -387,10 +387,7 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
         assert!(frequency_unit.x > frame.plot.right());
         assert!(frequency_unit.y > frame.plot.bottom() + TICK_LEN);
         assert!(frequency_unit.x + frequency_unit.width <= 800.);
-        for tick in frame.time.iter().filter(|tick| !tick.label.is_empty()) {
-            assert!(tick.offset as f32 - DejaVuSans.digit_height(LABEL_SIZE) / 2.
-                >= time_unit.y + time_unit.height + LABEL_PAD);
-        }
+        assert_vertical_time_clearance(&frame);
     }
 }
 }
@@ -417,4 +414,59 @@ fn frequency_resolution_selects_units_independently_of_the_ruler() {
     let localized = crate::numbers::Numbers::new("ru-RU")
         .text(&UnitHint { per_pixel: 0.000496, units: "kHz", ..hint }.resolution());
     assert_eq!(localized, "Resolution: 0,496 Hz/px");
+}
+
+#[test]
+fn vertical_m39_time_labels_use_the_space_between_unit_captions() {
+    let extents = Extents {
+        orientation: crate::orientation::Mode::Vertical,
+        time: crate::time_ruler::Ruler::CLOCK,
+        seconds: (0., 424_703. / 7200.),
+        hertz: (0., 3600.),
+    };
+    for scale in [1., 1.25, 1.5, 2.] {
+        let frame = Frame::measure(panel(1152., 720.), scale, extents, &DejaVuSans, None).unwrap();
+        for value in [2., 58.] {
+            let tick = frame.time.iter().find(|tick| tick.value == value).unwrap();
+            assert!(!tick.label.is_empty(), "missing label at {value}s, scale {scale}");
+        }
+        assert!(frame.time.iter().find(|tick| tick.value == 0.).unwrap().label.is_empty(),
+            "the time unit occupies the zero label's space");
+        assert_vertical_time_clearance(&frame);
+    }
+}
+
+fn assert_vertical_time_clearance(frame: &Frame) {
+    let half_ink = DejaVuSans.digit_height(LABEL_SIZE) / 2.;
+    let top = frame.time_caption_row + half_ink;
+    let bottom = frame.caption_row - half_ink;
+    let mut previous_end = f32::NEG_INFINITY;
+    for tick in frame.time.iter().filter(|tick| !tick.label.is_empty()) {
+        let center = tick.offset as f32 + 0.5;
+        assert!(center - half_ink >= top + OUTER_PAD);
+        assert!(center + half_ink <= bottom - OUTER_PAD);
+        assert!(center - half_ink - previous_end >= DejaVuSans.width("00", LABEL_SIZE));
+        previous_end = center + half_ink;
+    }
+}
+
+#[test]
+fn vertical_time_labels_clear_captions_when_resized_and_panned() {
+    for height in [60., 100., 240., 719.5, 1000.] {
+        for scale in [1., 1.25, 2.] {
+            let extents = Extents {
+                orientation: crate::orientation::Mode::Vertical,
+                seconds: (0., 424_703. / 7200.),
+                hertz: (0., 3600.),
+                ..HFDL
+            };
+            let frame = Frame::measure(panel(400., height), scale, extents, &DejaVuSans, None).unwrap();
+            assert_vertical_time_clearance(&frame);
+            for start in [0.1, 1., 5.9, 30.] {
+                let panned = Extents { seconds: (start, start + extents.seconds.1), ..extents };
+                let frame = Frame::measure(panel(400., height), scale, panned, &DejaVuSans, frame.time_scheme).unwrap();
+                assert_vertical_time_clearance(&frame);
+            }
+        }
+    }
 }

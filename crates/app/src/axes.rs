@@ -255,14 +255,15 @@ impl Frame {
         } else {
             right_labels
         };
+        let (lead, trail) = right_label_room(vertical, height, row_height, measure);
         let right_ticks = axis::tick_layout(
             right_kind,
             Axis {
                 length: height as i64,
                 min: right_min,
                 max: right_max,
-                lead: -((if vertical { row_height } else { 0. } + LABEL_PAD) as i64),
-                trail: -(LABEL_PAD as i64),
+                lead,
+                trail,
             },
             &right_labels,
             right_held,
@@ -332,6 +333,25 @@ impl Frame {
             per_pixel: extents.per_pixel(plot, scale),
         })
     }
+}
+
+fn right_label_room(
+    vertical: bool,
+    height: f32,
+    row_height: f32,
+    measure: &dyn LabelMeasure,
+) -> (i64, i64) {
+    if !vertical {
+        return (-(LABEL_PAD as i64), -(LABEL_PAD as i64));
+    }
+    let half_ink = measure.digit_height(LABEL_SIZE) / 2.;
+    // Match the painted ink and the numeric labels' half-pixel center offset.
+    let first = row_height / 2. + half_ink + OUTER_PAD - 0.5;
+    let last = height + LABEL_PAD + row_height / 2. - half_ink - OUTER_PAD - 0.5;
+    (
+        -(first.ceil() as i64),
+        last.floor() as i64 - (height as i64 - 1),
+    )
 }
 
 fn ruler_gutter(
