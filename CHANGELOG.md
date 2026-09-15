@@ -13,6 +13,8 @@ promise applies to.
 
 ### Fixed
 
+- Restore the README logo using the current B0 application artwork.
+
 - Remove the four-pixel top gap above the vertical spectrogram and minimap.
 
 - Restore Ctrl+Shift+plus/minus frequency zoom and prevent shifted symbol shortcuts from also zooming time. Top-row and keypad keys use the physical Shift state consistently.
@@ -21,6 +23,8 @@ promise applies to.
 - Spectrum dragging now pans both axes; ruler and minimap dragging remain constrained. Shift+wheel frequency pan and Ctrl+Shift+wheel frequency zoom also handle horizontal deltas emitted by Linux backends.
 
 ### Changed
+
+- Replace the application and desktop launcher icon with the B0 intertwined I/Q ribbons, including dedicated 16- and 24-pixel artwork.
 
 - Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with slightly stronger text and border contrast, platform-specific notation and matching menu-width measurement.
 

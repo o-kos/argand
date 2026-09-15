@@ -8,7 +8,7 @@ pub struct Assets;
 const ARTWORK: &[(&str, &[u8])] = &[
     (
         "argand/app.png",
-        include_bytes!("../assets/icons/argand-32.png"),
+        include_bytes!("../assets/icons/argand-24.png"),
     ),
     (
         "argand/grid.svg",
