@@ -558,15 +558,15 @@ and decoded original sample minima/maxima, separately for I and Q. Extrema becom
 available after the complete waveform pass; decoding precision limits their precision.
 
 FFT sizes are powers of two from 2 to 1,048,576; overlap is rounded to a whole-sample hop.
-Hover over the analysis group, for example `2048 · hann · 110 dB`, for its details.
-Click it, choose **Edit settings…** in the hint, or press Ctrl+, (Cmd+, on macOS)
-to open the analysis settings window. Standard dropdowns select FFT size, window,
+Click the analysis group, for example `2048 · hann · 110 dB`, or press Ctrl+,
+(Cmd+, on macOS) to open its settings popup. Standard dropdowns select FFT size, window,
 aggregation and colour scheme; numeric fields edit overlap and fixed dynamic range.
 Tab and Shift+Tab move between controls, arrows navigate lists or step numbers,
-Enter confirms a choice or numeric edit, and Escape closes a list before closing
-the settings window and cancels its changes. Numeric edits also commit when focus leaves the field.
-Changes preview immediately; **OK** keeps them, while **Cancel**, Escape or closing
-the window restores the settings present when it opened. **Reset to defaults** previews
+Enter confirms a choice or numeric edit, and Escape closes an open list first;
+otherwise it closes the popup and cancels its changes. Numeric edits also commit
+when focus leaves the field.
+Changes preview immediately; **OK** keeps them, while **Cancel**, Escape, clicking
+outside or moving focus away restores the settings and view present when it opened. **Reset to defaults** previews
 the defaults from `argand.toml`, or built-in defaults when no configuration is present.
 
 Range modes are absolute full scale (0 to -110 dBFS), a fixed span below the measured
@@ -574,9 +574,9 @@ peak, and automatic. The effective range remains visible as a readout outside th
 The status text is muted and brightens on hover. Only a nonzero signal whose spectral
 peak falls in the lower half of the absolute scale produces a yellow range warning.
 A narrower recommendation by itself is not a warning; silence and peak-relative modes
-are excluded. The hover hint and settings window offer the measured recommended
-range used by `aspec`, and apply it with one action or Ctrl+R (Cmd+R on macOS).
-A yellow ⚠ accompanies the highlighted range. Opening the editor hides the hint.
+are excluded. The settings popup offers the measured recommended range used by
+`aspec`; click the yellow status-bar dB value to apply it directly, or use Ctrl+R
+(Cmd+R on macOS). A yellow ⚠ accompanies the highlighted range.
 
 Colour and range changes reuse cached values without a new FFT, including during
 refinement. Transform changes cancel obsolete work and retain the previous picture

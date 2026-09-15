@@ -1,4 +1,4 @@
-//! A separate toolkit root gives native inputs their focus and editing context.
+//! The Root-backed content of the transient analysis-settings popup.
 
 use super::*;
 use gpui::{Entity, Focusable};
@@ -42,6 +42,7 @@ pub(super) struct Editor {
     overlap: Entity<InputState>,
     range: Entity<InputState>,
     error: Option<String>,
+    closing: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -94,6 +95,11 @@ impl Editor {
                 cx.notify();
             }));
         }
+        subscriptions.push(cx.observe_window_activation(window, |editor, window, cx| {
+            if !window.is_window_active() {
+                editor.close(false, window, cx);
+            }
+        }));
         if let Some(shell) = owner.upgrade() {
             subscriptions.push(
                 cx.observe_release_in(&shell, window, |_, _, window, _| window.remove_window()),
@@ -104,7 +110,7 @@ impl Editor {
         cx.on_release(move |_, cx| {
             cx.defer(move |cx| {
                 let _ = closing_owner.update(cx, |shell, cx| {
-                    shell.cancel_settings_window(closing_id, cx);
+                    shell.cancel_settings_popup(closing_id, cx);
                 });
             });
         })
@@ -121,18 +127,23 @@ impl Editor {
             overlap,
             range,
             error: None,
+            closing: false,
             _subscriptions: subscriptions,
         }
     }
 
     fn close(&mut self, accept: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.closing {
+            return;
+        }
         if accept && !self.commit_numbers(window, cx) {
             return;
         }
+        self.closing = true;
         let _ = self
             .owner
             .update(cx, |shell, cx| shell.finish_settings(accept, cx));
-        window.remove_window();
+        window.on_next_frame(|window, _| window.remove_window());
     }
 
     fn commit_numbers(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -451,7 +462,14 @@ impl Render for Editor {
                     editor.close(false, window, cx)
                 }),
             )
-            .child(TitleBar::new().child(div().text_sm().child("Analysis settings")))
+            .child(
+                div()
+                    .px_5()
+                    .pt_4()
+                    .pb_2()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("Analysis settings"),
+            )
             .child(
                 div()
                     .id("settings-form")
