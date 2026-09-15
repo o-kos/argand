@@ -145,6 +145,15 @@ Acquire::http::Timeout "2";
         self.assertEqual(cached.returncode, 0, cached.stderr)
         self.assert_failed(self.install(), "Unable to locate package")
 
+    def test_install_does_not_use_runner_archive_cache(self):
+        blocked = self.work / "blocked-archives"
+        blocked.write_text("The runner archive cache must remain untouched.\n")
+        with self.config.open("a") as config:
+            config.write(f'Dir::Cache::archives "{blocked}";\n')
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(blocked.read_text(), "The runner archive cache must remain untouched.\n")
+
     def test_required_package_hash_failure_is_fatal(self):
         (self.repo / "fixture.deb").write_bytes(b"corrupt package")
         self.assert_failed(self.install(), "Hash Sum mismatch")

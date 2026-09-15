@@ -16,11 +16,12 @@ workspace=$(mktemp -d)
 trap 'rm -rf "$workspace"' EXIT
 # APT's download user must be able to traverse the temporary list directory.
 chmod 755 "$workspace"
-mkdir "$workspace/sources.list.d" "$workspace/lists"
+mkdir "$workspace/sources.list.d" "$workspace/lists" "$workspace/archives"
 options=(
     -o "Dir::Etc::sourcelist=$sources"
     -o "Dir::Etc::sourceparts=$workspace/sources.list.d"
     -o "Dir::State::lists=$workspace/lists"
+    -o "Dir::Cache::archives=$workspace/archives"
     -o 'Dir::Cache::pkgcache='
     -o 'Dir::Cache::srcpkgcache='
     -o 'APT::Update::Error-Mode=any'

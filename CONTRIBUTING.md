@@ -170,7 +170,7 @@ An unexplained suppression that nobody re-reads turns the whole gate into a form
 Drafts receive quick Linux feedback; full runs include all three platforms.
 Linux uses `ubuntu-24.04` and its `/etc/apt/sources.list.d/ubuntu.sources` definition.
 `install-ubuntu-packages.sh` restricts both APT operations to that source and fresh
-package lists; it preserves the runner's signing configuration and fails on every
+package lists and archives; it preserves the runner's signing configuration and fails on every
 required-source update error. Unrelated feeds and their cached indexes are excluded
 without rewriting the runner's configuration. Revisit this source-file contract
 when upgrading the Linux image. `test-ubuntu-packages.py` runs before installation
