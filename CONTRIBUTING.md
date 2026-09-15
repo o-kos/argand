@@ -168,6 +168,13 @@ An unexplained suppression that nobody re-reads turns the whole gate into a form
 
 `.github/workflows/ci.yml` implements the [remote CI tiers](#remote-ci-tiers).
 Drafts receive quick Linux feedback; full runs include all three platforms.
+Linux uses `ubuntu-24.04` and its `/etc/apt/sources.list.d/ubuntu.sources` definition.
+`install-ubuntu-packages.sh` restricts both APT operations to that source and fresh
+package lists; it preserves the runner's signing configuration and fails on every
+required-source update error. Unrelated feeds and their cached indexes are excluded
+without rewriting the runner's configuration. Revisit this source-file contract
+when upgrading the Linux image. `test-ubuntu-packages.py` runs before installation
+in both CI tiers, using signed local repositories and download-only APT operations.
 The aggregate `ci/full` is the required check after the staged protection migration.
 
 No runner has a GPU, so no job opens a window. What the three of them cover is that the workspace builds on every supported platform and that everything not needing a window passes; the application's own configuration and geometry logic is written to be testable without one.

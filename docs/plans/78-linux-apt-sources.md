@@ -16,7 +16,9 @@ remain fatal.
 
 ## Decisions
 
-- Reuse the runner's Ubuntu source definition, preserving its mirror, suites,
+- Pin the Linux job to Ubuntu 24.04, whose deb822 source is
+  `/etc/apt/sources.list.d/ubuntu.sources`; upgrading the image requires checking
+  this explicit contract. Reuse that definition, preserving its mirror, suites,
   components and signing configuration.
 - Restrict both update and installation to that source and fresh package lists.
 - Fail on any required-source update error, missing source configuration or
@@ -29,18 +31,23 @@ remain fatal.
 
 ## Implementation steps
 
-- [ ] Isolate Ubuntu sources and package lists for dependency installation.
-- [ ] Add failure-path coverage and wire it into Linux quick/full CI.
-- [ ] Document the source policy and validate it with real APT.
+- [x] Isolate Ubuntu sources and package lists for dependency installation.
+- [x] Add failure-path coverage and wire it into Linux quick/full CI.
+- [x] Document the source policy and validate it with real APT; all seven GPUI
+  dependency packages installed successfully in an Ubuntu 24.04 container.
 - [ ] Complete local checks and independent review.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] Regression checks for broken unrelated sources and required-source failures.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] Eight real-APT regression tests pass as an unprivileged user in Ubuntu 24.04:
+  a broken unrelated index, stale third-party indexes, required index/package hash
+  failures, unsigned metadata, unavailable required feed, missing package, and
+  absent/empty source definition. Tests use signed local fixtures and download-only
+  mode; they do not install packages on the host.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the standard checks
 - [ ] External review returns no substantive findings.
 
