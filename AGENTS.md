@@ -118,6 +118,35 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 - Every lint suppression must be agreed with the project owner before it is pushed. This covers `#[allow(...)]`, `#[expect(...)]`, `-A` flags, and lint levels relaxed in `Cargo.toml` or `clippy.toml`. Refactor first; a suppression is the last resort, never the quick one. When one is genuinely unavoidable, ask for it explicitly, state what was tried, and use `#[expect(..., reason = "...")]` so it fails once it stops being needed. A suppression that nobody re-reads turns the whole gate into a formality.
 - Never state or imply in commit messages, Pull Requests, issues, or release notes that an AI tool was used during development.
 
+## Agent roles and model selection
+
+Claude plans and arbitrates; the `codex` CLI implements and reviews. The two roles
+never share a model, so a review is never the implementer agreeing with itself.
+
+- Claude owns the plan in `docs/plans/`, the Issue and Pull Request text, the
+  architecture and the acceptance reasoning, and talks to the owner. It runs the
+  local gate itself and reads the diff before showing anything to the owner.
+- Codex implements against that plan and reviews the Draft Pull Request. It commits
+  code, tests and the plan checkboxes its own work completes.
+- Claude arbitrates a technical disagreement between implementer and reviewer and
+  records the decision in the Pull Request. Anything that changes product behaviour,
+  UX or an Issue's acceptance criteria goes to the owner instead.
+- Three review rounds are the limit. Substantive findings still standing after the
+  third mean the task was stated badly, so Claude rewrites the plan rather than
+  starting a fourth round.
+
+Declare the class in the plan before the implementer is given the task, never after
+seeing the result.
+
+| Class | Applies to | Implementer | Reviewer |
+| --- | --- | --- | --- |
+| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 files | `gpt-6-astra` xhigh | `gpt-5.6-sol` xhigh |
+| B | A feature or fix in one or two GUI modules with local, known invariants and concrete acceptance criteria | `gpt-6-astra` high | `gpt-5.6-sol` high |
+| C | Documentation, README, configuration, renames, single-file changes with no behavioural consequence | `gpt-5.6-terra` high | `gpt-5.6-sol` high |
+
+Any of class A's signals puts the Issue in class A. Use the same implementer and
+reviewer model and reasoning effort for every round of one Pull Request.
+
 ## Git workflow
 
 - Follow the complete process in `CONTRIBUTING.md`.
@@ -129,7 +158,7 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 - Route findings discovered during implementation or review in this order, as detailed in `CONTRIBUTING.md`: first keep branch regressions and anything required by the active Issue in the current work; otherwise raise material or urgent unrelated problems as normal Issues; only otherwise create a separate Issue labelled `backlog` for a minor-impact, pre-existing, non-urgent problem that is unrelated to the active objective and does not affect current functionality or acceptance criteria. Link the source Issue or Pull Request, and never use backlog to defer security, correctness, or data-safety work.
 - Move a finished plan to `docs/plans/completed/` before final review.
 - Before the owner is asked to review a Pull Request, put it through an external review with the `codex` CLI and act on the findings. Iterate until a round returns nothing substantive. When asking the owner to review the Pull Request, always provide a brief summary of the automatic review: the findings, which were accepted and how they were addressed, which were rejected and why, and whether the final round was clean. A second reviewer that never disagrees is worth nothing: ask it to challenge the reasoning behind anything you decline, rather than to confirm it.
-- Choose the external reviewer based on who implements the Issue: if Claude implements it, review the Draft Pull Request with Codex GPT-6 Astra at High reasoning effort; if Codex GPT-6 Astra implements it, review the Draft Pull Request with Codex GPT-5.6 Sol at High reasoning effort. Use the same reviewer model and reasoning effort for subsequent review rounds.
+- Take the implementer and the reviewer for the Issue's class from "Agent roles and model selection".
 - Rebuild the release binary once the standard checks pass and before the owner is asked to accept the Pull Request. Any behaviour shown to the owner must come from a binary built from the current code, never from a stale `target/release/`.
 - `main` is protected. Merge only through a Pull Request using squash merge after all checks pass and all review conversations are resolved.
 
