@@ -32,6 +32,14 @@ promise applies to.
 
 ### Changed
 
+- Turn the analysis status hint into the settings surface instead of opening a
+  separate window or dialog. Dashed-underlined values reveal local choice lists
+  and numeric steppers. The hint stays open across previews; Enter accepts all
+  edits, while Escape restores the settings from when it opened. Numeric
+  steppers repeat while held without moving the hint as analysis status changes.
+  A compact heading identifies the surface, Reset is aligned to the right, and
+  the status-bar summary keeps the same muted colour on hover as its neighbour.
+
 - Replace the application and desktop launcher icon with the B0 intertwined I/Q ribbons, including dedicated 16- and 24-pixel artwork.
 
 - Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with slightly stronger text and border contrast, platform-specific notation and matching menu-width measurement.
@@ -43,6 +51,8 @@ promise applies to.
 - Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
 
 ### Added
+
+- Click the yellow status-bar dB value to apply the recommended range, just like Ctrl+R / Cmd+R. Its warning remains on the retained value until the recoloured frame arrives, avoiding an intermediate unmarked old range.
 
 - Ctrl+T switches between Horizontal and Vertical spectrogram orientation and appears in the mode button tooltip.
 

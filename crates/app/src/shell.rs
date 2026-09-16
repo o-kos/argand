@@ -13,7 +13,7 @@ use std::sync::{
 use std::time::Instant;
 
 use gpui::{
-    Action, AppContext, Application, Bounds, Context, Corners, ExternalPaths, FocusHandle,
+    Action, AppContext, Application, Bounds, Context, Corners, Entity, ExternalPaths, FocusHandle,
     FontWeight, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
     PathPromptOptions, Pixels, Render, RenderImage, StatefulInteractiveElement, Styled,
     Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
@@ -266,11 +266,11 @@ struct Shell {
     /// analysis request built below.
     config: Config,
     settings: Settings,
-    settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
-    analysis_hovered: bool,
-    settings_backup: Option<Settings>,
-    settings_view_backup: Option<crate::navigation::View>,
-    settings_frequency_backup: Option<crate::frequency::View>,
+    settings_popup: Option<Entity<settings_ui::Editor>>,
+    settings_pinned: bool,
+    settings_trigger_hovered: bool,
+    settings_surface_hovered: bool,
+    settings_hover_generation: u64,
     settings_error: Option<String>,
 
     /// Absent when the platform offers nowhere to keep state, or when the file
@@ -368,11 +368,11 @@ impl Shell {
         let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
             settings,
-            settings_window: None,
-            analysis_hovered: false,
-            settings_backup: None,
-            settings_view_backup: None,
-            settings_frequency_backup: None,
+            settings_popup: None,
+            settings_pinned: false,
+            settings_trigger_hovered: false,
+            settings_surface_hovered: false,
+            settings_hover_generation: 0,
             settings_error: None,
 
             config,
@@ -421,11 +421,11 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
-        let editor = self.settings_window;
-        self.finish_settings(false, cx);
-        if let Some(editor) = editor {
-            let _ = editor.update(cx, |_, window, _| window.remove_window());
+        if let Some(editor) = self.settings_popup.take() {
+            self.settings = editor.read(cx).original_settings();
         }
+        self.close_settings(cx);
+        window.focus(&self.focus);
         self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
         window.set_window_title(&format!("{} – {TITLE}", origin.name()));
@@ -793,6 +793,7 @@ impl Shell {
     }
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.cancel_settings_preview(cx);
         self.dismiss_application_menu(window, cx);
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
