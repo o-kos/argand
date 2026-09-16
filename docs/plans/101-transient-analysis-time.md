@@ -2,9 +2,11 @@
 
 Resolves #101.
 
-Complexity class **B**: implementer `gpt-6-astra` at high reasoning effort,
-reviewer `gpt-5.6-sol` at high reasoning effort, per "Agent roles and model
-selection" in `AGENTS.md`.
+Complexity class **A**: implementer `gpt-6-astra` at xhigh reasoning effort,
+reviewer `gpt-5.6-sol` at xhigh reasoning effort, per "Agent roles and model
+selection" in `AGENTS.md`. Raised from B before implementation began, after the
+owner added the cursor-readout work and five planning rounds showed the input
+model is harder than it looked.
 
 ## Overview
 
@@ -16,6 +18,14 @@ on the first deliberate input after that.
 The whole ready status goes, not only its tooltip: the `ready in 1.234 s` text, the
 `Analysis time` hint behind it, and the bare `ready` word. A new completed analysis
 shows its own timing again, so opening a file runs the cycle from the start.
+
+The cursor readout appearing also dismisses it: the two share the status bar and
+compete for the same glance.
+
+The readout itself is re-laid out at the owner's request. Today it is one field
+reading `0.123 s · 1234.5 Hz · -42.3 dBFS`, where a negative level and a long
+frequency both sit behind a `·` and are hard to pick out. Frequency comes first,
+then time, and the level moves to a field of its own.
 
 Out of scope: the `opening...`, `analysing... N%` and failure states, which are not
 timing and must keep showing; the status bar's other groups; the cursor readout; and
@@ -58,6 +68,18 @@ the status shown when no file is open.
   (`navigation_ui.rs:419`) after it navigates, and the menu overlay
   (`app_menu_ui.rs:402`) which swallows it outright. Neither is reachable from a
   handler placed on the shell root with `div`.
+- `navigation_ui.rs:566` builds the readout as a single string,
+  `"{time} s · {frequency} Hz · {level}"`, and `settings_ui.rs` draws it in one
+  `#cursor-readout` element. It returns `None` unless the pointer is inside the
+  navigation area, time only outside the spectrum, and `—` where no level is known.
+- `self.pointer` is assigned at `navigation_ui.rs:519` and `:778`, and cleared at
+  `:820`, `shell.rs:445` and `app_menu_ui.rs:137`.
+- All 35 key bindings are single keystrokes, so the pending-chord path that skips the
+  keystroke observers (`window.rs:3829`) is unreachable here.
+- `gpui_component::PopupMenu` handles its keys through `on_action`, not
+  `on_key_down`, and the action path notifies the keystroke observers at
+  `window.rs:3837`. The main window is not wrapped in a `Root` and carries no other
+  widget that consumes keys, so no third-party code hides a keystroke from us.
 - PR #106 (`fix/102-status-range-click`, open) rewrites most of `settings_ui.rs`.
 
 ## Decisions
@@ -84,14 +106,18 @@ the status shown when no file is open.
   `Self::wheel` and the menu overlay cannot hide an event from them.
 - **The keyboard is observed with `App::observe_keystrokes`, not
   `Window::on_key_event`.** A keystroke bound to an action never reaches a key
-  listener, and F10 is exactly that case. The keystroke observers are notified on
-  every path, so one subscription covers bound shortcuts and plain keys alike. The
-  shell retains the `Subscription` beside the one it already keeps for window
-  appearance.
-
-  These three observation points are complete for what they observe and do not grow
-  when another element starts consuming input, which is what made the earlier
-  per-handler approach wrong.
+  listener, and F10 is exactly that case. The keystroke observers are notified on the
+  action path, so one subscription covers every bound shortcut, including the arrow
+  keys that pan the spectrum and the zoom commands.
+- **Our two own interceptors call the same dismissal directly.** `intercept_keystrokes`
+  (`navigation_ui.rs:63`, Ctrl+G, Ctrl+T and the zoom keys in the Plot context) and
+  `application_menu_key` (`app_menu_ui.rs:160`, the keys that drive an open menu)
+  both stop propagation before the observers run. Each gains one call. They are the
+  only two, they are ours, and the context notes above establish that nothing else in
+  the main window swallows a keystroke.
+- **The readout appearing dismisses the timing too**, set where `self.pointer` is
+  assigned rather than while drawing, so rendering stays free of side effects and the
+  timing does not come back when the pointer leaves.
 
   This replaces two earlier versions of this decision, both wrong. The first assumed
   a wheel event handled by a plot bubbles to the shell root; `Self::wheel` stops it.
@@ -101,6 +127,9 @@ the status shown when no file is open.
   handler and fails silently when one is forgotten. Observing before the bubble pass
   begins is complete by construction.
 
+- **The readout becomes two fields**: `#cursor-readout` keeps frequency and time in
+  that order, and the level moves to its own `#cursor-level` field beside it. A field
+  boundary separates the level far better than another `·`, which is the complaint.
 - **Nothing about the measurement changes.** `Status::Ready { elapsed }` keeps its
   value, the analysis result is untouched, and the status is still `Ready` — only its
   presentation is suppressed.
@@ -137,6 +166,14 @@ the status shown when no file is open.
       `DispatchPhase::Capture` and leaving `propagate_event` untouched.
 - [ ] ➕ Observe the keyboard with a retained `App::observe_keystrokes` subscription,
       so a keystroke consumed by a bound action still dismisses the timing.
+- [ ] ➕ Call the same dismissal from `intercept_keystrokes` and from
+      `application_menu_key`, the only two places that stop a keystroke before the
+      observers run.
+- [ ] ➕ Dismiss the timing where `self.pointer` is assigned, when the pointer is
+      somewhere the readout reports.
+- [ ] ➕ Put frequency before time in the readout and move the level into its own
+      status-bar field, keeping the existing precision rules and the `—` for an
+      unknown level.
 - [ ] Draw through the new decision in `settings_ui.rs`, keeping the change to the
       `#analysis-status` element minimal.
 - [ ] Update the status-bar paragraph of `AGENTS.md` to state that the ready status
@@ -158,6 +195,10 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       scroll do the same; confirm moving the pointer alone does not; confirm the
       gesture that dismissed it still did what it was meant to do — a pan still pans,
       a shortcut still fires; confirm F10 dismisses it while still opening the menu;
+      confirm Ctrl+G and the arrow keys that pan the spectrum dismiss it; confirm
+      moving the pointer over the spectrogram dismisses it; read the new readout at a
+      megahertz sample rate and confirm frequency, time and a negative level are each
+      easy to pick out;
       confirm a wheel scroll over an open application menu
       dismisses it too, while the menu keeps swallowing the scroll; open another file
       and confirm the timing appears again;
