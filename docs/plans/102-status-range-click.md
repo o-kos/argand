@@ -62,10 +62,14 @@ but retained dialog-only state and OK/Cancel actions.
 
 - [x] Add the warned-range click target and preserve parent-button behavior.
 - [x] Replace the analysis dialog with an interactive hover hint and local controls.
+- [x] ➕ Align numeric input values with every other value without active-state movement.
+- [ ] ⚠️ Replace or redesign the unapproved hand-rolled numeric editor. Its fake caret
+  does not support cursor navigation or standard text editing, and its current stepper
+  layout is unacceptable. Do not choose another custom control without prior owner approval.
 - [x] Update the changelog and interaction documentation.
-- [x] Verify hover, click/shortcut behavior and local editing in a native window.
-- [x] Complete local checks and external review.
-- [x] Move this plan to `docs/plans/completed/` before final review.
+- [ ] Verify hover, click/shortcut behavior and local editing in a native window.
+- [ ] Complete local checks and external review.
+- [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -73,14 +77,14 @@ but retained dialog-only state and OK/Cancel actions.
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after standard checks
-- [x] Native verification on a low-amplitude capture: warning click applies advice
+- [ ] Native verification on a low-amplitude capture: warning click applies advice
   without opening settings, keyboard advice remains available, and hovering the
   summary opens the interactive hint. Confirm dashed editable values, local
   controls, retained previews, Enter acceptance, Escape rollback, reset,
   click-out, focus-loss, choice-list behavior, stable stepper geometry and
   press-and-hold repetition. Confirm the compact heading, right-aligned reset
   command and stable status-bar colour.
-- [x] External review returns no substantive findings.
+- [ ] External review returns no substantive findings.
 
 ## Post-completion
 

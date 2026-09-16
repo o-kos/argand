@@ -743,6 +743,7 @@ impl Editor {
                 .justify_end()
                 .gap_1()
                 .child(down)
+                .child(up)
                 .child(
                     div()
                         .id(("settings-number", field as usize))
@@ -764,7 +765,6 @@ impl Editor {
                             editor.activate(control, window, cx)
                         })),
                 )
-                .child(up)
                 .into_any_element()
         } else {
             div()
@@ -774,6 +774,7 @@ impl Editor {
                 .items_center()
                 .justify_end()
                 .gap_1()
+                .child(div().size_5())
                 .child(div().size_5())
                 .child(
                     div()
@@ -786,7 +787,6 @@ impl Editor {
                         .text_color(cx.theme().muted_foreground)
                         .child(format!("{display} {suffix}")),
                 )
-                .child(div().size_5())
                 .into_any_element()
         };
         form_row(label, field, cx).into_any_element()

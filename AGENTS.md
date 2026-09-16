@@ -116,6 +116,7 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
     Hoist the shared condition, or split the function so each half has one job.
 - Every lint suppression must be agreed with the project owner before it is pushed. This covers `#[allow(...)]`, `#[expect(...)]`, `-A` flags, and lint levels relaxed in `Cargo.toml` or `clippy.toml`. Refactor first; a suppression is the last resort, never the quick one. When one is genuinely unavoidable, ask for it explicitly, state what was tried, and use `#[expect(..., reason = "...")]` so it fails once it stops being needed. A suppression that nobody re-reads turns the whole gate into a formality.
+- Do not introduce, replace or hand-roll a custom UI control without the project owner's explicit prior approval. Before requesting approval, explain in detail which existing toolkit or platform controls were evaluated, why each one cannot satisfy the requirement, which standard behaviours would have to be reimplemented (including focus, keyboard navigation, cursor movement, selection, clipboard, IME, accessibility and theming), and the resulting regression and maintenance costs. Prefer styling or composing existing controls; layout inconvenience is not sufficient justification for a custom control.
 - Never state or imply in commit messages, Pull Requests, issues, or release notes that an AI tool was used during development.
 
 ## Agent roles and model selection
