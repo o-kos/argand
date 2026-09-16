@@ -2,16 +2,13 @@
 
 use super::*;
 use argand_dsp::DynamicRange;
+use gpui::{Corner, Focusable};
 use gpui_component::button::ButtonCustomVariant;
-use std::{cell::Cell, rc::Rc};
+use gpui_component::popover::Popover;
+use std::time::Duration;
 #[path = "settings_editor.rs"]
 mod editor;
-
-pub(super) type Anchor = Rc<Cell<Bounds<Pixels>>>;
-
-const POPUP_WIDTH: Pixels = px(440.);
-const POPUP_HEIGHT: Pixels = px(540.);
-const POPUP_MARGIN: Pixels = px(8.);
+pub(super) use editor::Editor;
 
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([KeyBinding::new(
@@ -37,6 +34,22 @@ pub(super) fn init(cx: &mut gpui::App) {
 
 impl Shell {
     fn set_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
+        self.update_settings(settings, true, cx);
+    }
+
+    fn preview_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
+        self.update_settings(settings, false, cx);
+    }
+
+    fn restore_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
+        self.apply_settings(settings, false, cx);
+    }
+
+    fn focus_shell(&self, window: &mut Window) {
+        window.focus(&self.focus);
+    }
+
+    fn update_settings(&mut self, settings: Settings, persist: bool, cx: &mut Context<Self>) {
         let samples = self
             .file
             .as_ref()
@@ -47,10 +60,10 @@ impl Shell {
             cx.notify();
             return;
         }
-        self.apply_settings(settings, cx);
+        self.apply_settings(settings, persist, cx);
     }
 
-    fn apply_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
+    fn apply_settings(&mut self, settings: Settings, persist: bool, cx: &mut Context<Self>) {
         self.settings_error = None;
         tracing::debug!(?settings, "analysis settings requested");
         if let Some(file) = &mut self.file
@@ -62,7 +75,7 @@ impl Shell {
         }
         self.settings = settings;
         self.bound_view();
-        if self.settings_backup.is_none() {
+        if persist {
             self.session.analysis_settings = Some(settings);
             self.save();
         }
@@ -70,48 +83,133 @@ impl Shell {
         cx.notify();
     }
 
-    fn cancel_settings_popup(&mut self, id: gpui::WindowId, cx: &mut Context<Self>) {
-        if self
+    fn accept_settings(&mut self, cx: &mut Context<Self>) {
+        self.session.analysis_settings = Some(self.settings);
+        self.save();
+        self.close_settings(cx);
+    }
+
+    fn pin_settings(&mut self, editor: Entity<Editor>, cx: &mut Context<Self>) {
+        let current = self
             .settings_popup
-            .is_some_and(|handle| handle.window_id() == id)
-        {
-            self.settings_popup = None;
-            self.finish_settings(false, cx);
+            .as_ref()
+            .is_some_and(|current| current.entity_id() == editor.entity_id());
+        if !current {
+            self.settings_popup = Some(editor);
+        }
+        self.settings_pinned = true;
+        self.settings_hover_generation = self.settings_hover_generation.wrapping_add(1);
+        cx.notify();
+    }
+
+    fn pin_hovered_settings(
+        &mut self,
+        editor: Entity<Editor>,
+        cx: &mut Context<Self>,
+    ) -> Option<FocusHandle> {
+        if !self.settings_trigger_hovered {
+            return None;
+        }
+        self.pin_settings(editor.clone(), cx);
+        Some(editor.read(cx).focus_handle(cx))
+    }
+
+    pub(super) fn close_settings(&mut self, cx: &mut Context<Self>) {
+        self.settings_popup = None;
+        self.settings_pinned = false;
+        self.settings_trigger_hovered = false;
+        self.settings_surface_hovered = false;
+        self.settings_hover_generation = self.settings_hover_generation.wrapping_add(1);
+        self.settings_error = None;
+        cx.notify();
+    }
+
+    pub(super) fn cancel_settings_preview(&mut self, cx: &mut Context<Self>) {
+        let original = self
+            .settings_popup
+            .as_ref()
+            .map(|editor| editor.read(cx).original_settings());
+        if let Some(original) = original.filter(|original| *original != self.settings) {
+            self.restore_settings(original, cx);
+        }
+        self.close_settings(cx);
+    }
+
+    pub(super) const fn settings_are_pinned(&self) -> bool {
+        self.settings_pinned
+    }
+
+    fn hover_settings_trigger(
+        &mut self,
+        hovered: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings_trigger_hovered = hovered;
+        self.settings_hover_generation = self.settings_hover_generation.wrapping_add(1);
+        if hovered {
+            self.start_settings_popup(false, window, cx);
+        } else {
+            self.schedule_hover_close(window, cx);
         }
     }
 
-    fn attach_settings_popup(&mut self, handle: gpui::WindowHandle<gpui_component::Root>) -> bool {
-        let keep = self.settings_backup.is_some();
-        self.settings_popup = keep.then_some(handle);
-        keep
+    fn hover_settings_surface(
+        &mut self,
+        hovered: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings_surface_hovered = hovered;
+        self.settings_hover_generation = self.settings_hover_generation.wrapping_add(1);
+        if !hovered {
+            self.schedule_hover_close(window, cx);
+        }
     }
 
-    pub(super) fn finish_settings(&mut self, accept: bool, cx: &mut Context<Self>) {
-        let Some(backup) = self.settings_backup.take() else {
+    fn schedule_hover_close(&mut self, window: &Window, cx: &mut Context<Self>) {
+        if self.settings_pinned || self.settings_trigger_hovered || self.settings_surface_hovered {
             return;
-        };
-        self.analysis_hovered = false;
-        let view = self.settings_view_backup.take();
-        let frequency = self.settings_frequency_backup.take();
-        if !accept {
-            self.view = view;
-            if let Some(frequency) = frequency {
-                self.frequency = frequency;
-                self.frequency_scheme = None;
-            }
         }
-        self.apply_settings(if accept { self.settings } else { backup }, cx);
+        let generation = self.settings_hover_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn_in(window, async move |shell, cx| {
+            executor.timer(Duration::from_millis(180)).await;
+            let _ = shell.update_in(cx, |shell, _, cx| {
+                if shell.hover_close_ready(generation, cx) {
+                    shell.close_settings(cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn hover_close_ready(&self, generation: u64, cx: &gpui::App) -> bool {
+        let repeating = self
+            .settings_popup
+            .as_ref()
+            .is_some_and(|editor| editor.read(cx).is_repeating());
+        !self.settings_pinned
+            && !self.settings_trigger_hovered
+            && !self.settings_surface_hovered
+            && self.settings_hover_generation == generation
+            && !repeating
     }
 
     pub(super) fn use_recommended_range(&mut self, cx: &mut Context<Self>) {
         if let Some(db) = self.range_recommendation() {
-            self.set_settings(
-                Settings {
-                    dynamic_range: DynamicRange::Fixed(db),
-                    ..self.settings
-                },
-                cx,
-            );
+            let settings = Settings {
+                dynamic_range: DynamicRange::Fixed(db),
+                ..self.settings
+            };
+            if self.settings_pinned {
+                self.preview_settings(settings, cx);
+            } else {
+                self.set_settings(settings, cx);
+                if let Some(editor) = &self.settings_popup {
+                    editor.update(cx, |editor, _| editor.rebase(settings));
+                }
+            }
         }
     }
 
@@ -239,75 +337,153 @@ impl Shell {
                 DynamicRange::Auto => "auto".into(),
             });
         let warning = self.displayed_range_recommendation().is_some();
-        let foreground = if self.analysis_hovered {
-            cx.theme().foreground
-        } else {
-            cx.theme().muted_foreground
-        };
-        let anchor = self.settings_anchor.clone();
+        let transform = div()
+            .id("analysis-transform")
+            .on_hover(cx.listener(|shell, hovered, window, cx| {
+                shell.hover_settings_trigger(*hovered, window, cx);
+            }))
+            .child(format!(
+                "{} · {} ·",
+                crate::numbers::number(displayed.fft_size),
+                displayed.window
+            ));
+        let range = div()
+            .id("analysis-range")
+            .when(!warning, |range| {
+                range.on_hover(cx.listener(|shell, hovered, window, cx| {
+                    shell.hover_settings_trigger(*hovered, window, cx);
+                }))
+            })
+            .when(warning, |range| {
+                range
+                    .text_color(advice_color(cx))
+                    .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                        window.prevent_default();
+                        cx.stop_propagation();
+                    })
+                    .on_click(|_, window, cx| {
+                        cx.stop_propagation();
+                        window.dispatch_action(Box::new(UseRecommendedRange), cx);
+                    })
+            })
+            .child(if warning {
+                format!("⚠ {range}")
+            } else {
+                range
+            });
+        let content = div()
+            .id("analysis-settings-hint-trigger")
+            .h_5()
+            .px_2()
+            .flex()
+            .items_center()
+            .gap_1()
+            .text_xs()
+            .text_color(cx.theme().muted_foreground)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|shell, _, window, cx| {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                    if let Some(focus) = shell.start_settings_popup(true, window, cx) {
+                        window.focus(&focus);
+                    }
+                }),
+            )
+            .on_click(|_, _, cx| cx.stop_propagation())
+            .child(transform)
+            .child(range);
         let trigger = Button::new("analysis-settings")
             .custom(
                 ButtonCustomVariant::new(cx)
-                    .hover(cx.theme().secondary_hover)
-                    .active(cx.theme().secondary_hover),
+                    .hover(cx.theme().secondary)
+                    .active(cx.theme().secondary),
             )
             .small()
             .h_5()
-            .px_2()
-            .when(self.analysis_hovered, |button| {
-                button.bg(cx.theme().secondary_hover)
-            })
-            .on_hover(cx.listener(|shell, hovered, _, cx| {
-                shell.analysis_hovered = *hovered;
-                cx.notify();
-            }))
-            .child(
-                div()
-                    .flex()
-                    .gap_1()
-                    .text_xs()
-                    .text_color(foreground)
-                    .child(format!(
-                        "{} · {} ·",
-                        crate::numbers::number(displayed.fft_size),
-                        displayed.window
-                    ))
-                    .child(
-                        div()
-                            .id("analysis-range")
-                            .when(warning, |range| {
-                                range
-                                    .text_color(advice_color(cx))
-                                    .cursor_pointer()
-                                    .on_mouse_down(MouseButton::Left, |_, window, cx| {
-                                        window.prevent_default();
-                                        cx.stop_propagation();
-                                    })
-                                    .on_click(|_, window, cx| {
-                                        cx.stop_propagation();
-                                        window.dispatch_action(Box::new(UseRecommendedRange), cx);
-                                    })
-                            })
-                            .child(if warning {
-                                format!("⚠ {range}")
-                            } else {
-                                range
-                            }),
-                    ),
-            )
-            .on_click(
-                cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
-            )
-            .child(
-                canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {})
-                    .absolute()
-                    .size_full(),
-            );
+            .px_0()
+            .child(content);
         div()
             .id("analysis-summary")
             .border_l_1()
             .border_color(cx.theme().border)
-            .child(trigger)
+            .child(self.settings_popover(trigger, cx))
+    }
+
+    fn settings_popover<T>(&self, trigger: T, cx: &mut Context<Self>) -> impl IntoElement
+    where
+        T: gpui_component::Selectable + IntoElement + 'static,
+    {
+        let owner = cx.entity().downgrade();
+        let editor = self.settings_popup.clone();
+        let dismiss_editor = editor.clone();
+        let focus = editor
+            .as_ref()
+            .map(|editor| editor.read(cx).focus_handle(cx));
+        Popover::new("analysis-settings-popover")
+            .anchor(Corner::BottomLeft)
+            .appearance(false)
+            .open(editor.is_some())
+            .trigger(trigger)
+            .on_open_change(move |open, window, cx| {
+                if *open {
+                    let focus = owner
+                        .update(cx, |shell, cx| shell.start_settings_popup(true, window, cx))
+                        .ok()
+                        .flatten();
+                    if let Some(focus) = focus {
+                        window.focus(&focus);
+                    }
+                } else if let Some(editor) = &dismiss_editor {
+                    let focus = owner
+                        .update(cx, |shell, cx| {
+                            shell.pin_hovered_settings(editor.clone(), cx)
+                        })
+                        .ok()
+                        .flatten();
+                    if let Some(focus) = focus {
+                        window.focus(&focus);
+                    } else {
+                        editor.update(cx, |editor, cx| editor.dismiss(cx));
+                    }
+                } else {
+                    let _ = owner.update(cx, |shell, cx| shell.close_settings(cx));
+                }
+            })
+            .when_some(focus, |popup, focus| popup.track_focus(&focus))
+            .content(move |_, _, _| {
+                editor.clone().map_or_else(
+                    || div().into_any_element(),
+                    |editor| editor.into_any_element(),
+                )
+            })
+    }
+
+    fn start_settings_popup(
+        &mut self,
+        pinned: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<FocusHandle> {
+        if let Some(editor) = &self.settings_popup {
+            if pinned {
+                self.settings_pinned = true;
+                self.settings_hover_generation = self.settings_hover_generation.wrapping_add(1);
+            }
+            return Some(editor.read(cx).focus_handle(cx));
+        }
+        let owner = cx.entity().downgrade();
+        let settings = self.settings;
+        let range = self
+            .displayed_range()
+            .map_or(110.0, |range| range.effective_db);
+        let editor = cx.new(|cx| Editor::new(owner, settings, range, window, cx));
+        let focus = editor.read(cx).focus_handle(cx);
+        self.settings_popup = Some(editor);
+        self.settings_pinned = pinned;
+        cx.notify();
+        Some(focus)
     }
 
     pub(super) fn edit_analysis(
@@ -317,82 +493,9 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         self.dismiss_application_menu(window, cx);
-        if self.settings_popup.is_some_and(|handle| {
-            handle
-                .update(cx, |_, window, _| window.activate_window())
-                .is_ok()
-        }) {
-            return;
+        if let Some(focus) = self.start_settings_popup(true, window, cx) {
+            window.focus(&focus);
         }
-        if self.settings_backup.is_some() {
-            return;
-        }
-        self.settings_backup = Some(self.settings);
-        self.settings_view_backup = self.view;
-        self.settings_frequency_backup = Some(self.frequency);
-        self.analysis_hovered = false;
-        cx.notify();
-        let owner = cx.entity().downgrade();
-        let settings = self.settings;
-        let range = self
-            .displayed_range()
-            .map_or(110.0, |range| range.effective_db);
-        let parent = window.bounds();
-        let viewport = window.viewport_size();
-        let trigger = self.settings_anchor.get();
-        let popup_size = size(
-            POPUP_WIDTH.min(viewport.width - POPUP_MARGIN * 2.),
-            POPUP_HEIGHT.min(viewport.height - POPUP_MARGIN * 2.),
-        );
-        let available_x = (viewport.width - popup_size.width - POPUP_MARGIN).max(POPUP_MARGIN);
-        let x = trigger.origin.x.clamp(POPUP_MARGIN, available_x);
-        let y = (trigger.origin.y - popup_size.height - POPUP_MARGIN).max(POPUP_MARGIN);
-        let bounds = Bounds::new(parent.origin + point(x, y), popup_size);
-        let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: None,
-            kind: if cfg!(target_os = "windows") {
-                WindowKind::PopUp
-            } else {
-                WindowKind::Floating
-            },
-            is_movable: false,
-            is_resizable: false,
-            is_minimizable: false,
-            display_id: window.display(cx).map(|display| display.id()),
-            window_min_size: Some(popup_size),
-            window_decorations: Some(WindowDecorations::Client),
-            app_id: Some(APP_ID.into()),
-            ..Default::default()
-        };
-        cx.defer(move |cx| {
-            if owner
-                .upgrade()
-                .is_none_or(|shell| shell.read(cx).settings_backup.is_none())
-            {
-                return;
-            }
-            let form_owner = owner.clone();
-            let opened = cx.open_window(options, move |window, cx| {
-                let form =
-                    cx.new(|cx| editor::Editor::new(form_owner, settings, range, window, cx));
-                cx.new(|cx| gpui_component::Root::new(form, window, cx))
-            });
-            match opened {
-                Ok(handle) => {
-                    let keep = owner
-                        .update(cx, |shell, _| shell.attach_settings_popup(handle))
-                        .unwrap_or(false);
-                    if !keep {
-                        let _ = handle.update(cx, |_, window, _| window.remove_window());
-                    }
-                }
-                Err(error) => {
-                    let _ = owner.update(cx, |shell, cx| shell.finish_settings(false, cx));
-                    tracing::error!(%error, "cannot open analysis settings popup");
-                }
-            }
-        });
     }
 }
 

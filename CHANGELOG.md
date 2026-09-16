@@ -26,9 +26,13 @@ promise applies to.
 
 ### Changed
 
-- Edit analysis settings directly in a transient status-bar popup instead of a
-  separate window and duplicated read-only hint. Clicking or focusing outside
-  cancels the preview and restores the opening settings and view.
+- Turn the analysis status hint into the settings surface instead of opening a
+  separate window or dialog. Dashed-underlined values reveal local choice lists
+  and numeric steppers. The hint stays open across previews; Enter accepts all
+  edits, while Escape restores the settings from when it opened. Numeric
+  steppers repeat while held without moving the hint as analysis status changes.
+  A compact heading identifies the surface, Reset is aligned to the right, and
+  the status-bar summary keeps the same muted colour on hover as its neighbour.
 
 - Replace the application and desktop launcher icon with the B0 intertwined I/Q ribbons, including dedicated 16- and 24-pixel artwork.
 
