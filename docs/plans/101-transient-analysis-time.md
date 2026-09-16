@@ -37,9 +37,12 @@ the status shown when no file is open.
   `propagate_event`. `div`'s `on_scroll_wheel` and `on_mouse_down` register bubble
   handlers, so a `stop_propagation` in them cannot suppress a capture-phase listener.
 - `Window::on_mouse_event` and `Window::on_key_event` register window-level listeners
-  that receive the `DispatchPhase`, so one of each can observe everything. Both must
-  be called during paint. `MouseDownEvent` and `ScrollWheelEvent` both implement
-  `MouseEvent`, and `KeyDownEvent` implements `KeyEvent`.
+  that receive the `DispatchPhase`. Both must be called during paint. Each is generic
+  over one concrete event type and downcasts to exactly that type
+  (`window.rs:3421`), so a registration for `MouseDownEvent` never sees a
+  `ScrollWheelEvent`. One registration per event type is required. A generic wrapper
+  cannot be written in this crate: `MouseEvent` extends a sealed `InputEvent`
+  (`interactive.rs:9`).
 - The wheel is stopped in two separate bubble handlers: `Self::wheel`
   (`navigation_ui.rs:419`) after it navigates, and the menu overlay
   (`app_menu_ui.rs:402`) which swallows it outright. Neither is reachable from a
@@ -62,10 +65,16 @@ the status shown when no file is open.
   what to draw, so it is tested without a window and `settings_ui.rs` gains one
   condition rather than a branch. That also keeps the footprint in `settings_ui.rs`
   small, which matters while PR #106 is rewriting that file.
-- **Input is observed once, at window level, in the capture phase.** One
-  `Window::on_mouse_event` covers both the mouse button and the wheel, and one
-  `Window::on_key_event` covers keys; each acts only when the phase is `Capture` and
-  never touches `propagate_event`, so nothing it sees is consumed or altered.
+- **Input is observed at window level, in the capture phase, from one place.** Three
+  registrations are needed because each is generic over a single event type: one
+  `Window::on_mouse_event` for `MouseDownEvent`, one for `ScrollWheelEvent`, and one
+  `Window::on_key_event` for `KeyDownEvent`. They are registered together during
+  paint and share one dismissal method. Each acts only when the phase is `Capture`
+  and never touches `propagate_event`, so nothing it sees is consumed or altered.
+
+  Three registrations in one place is not the same trap as a call added to each
+  handler that stops propagation: these are complete for their event types and do not
+  grow when another element starts consuming input.
 
   This replaces two earlier versions of this decision, both wrong. The first assumed
   a wheel event handled by a plot bubbles to the shell root; `Self::wheel` stops it.
@@ -103,9 +112,10 @@ the status shown when no file is open.
       unaffected by the flag; an undismissed ready state is unchanged from today.
 - [ ] Hold the dismissed flag in `Shell` and clear it where `Status::Ready` is
       assigned, so each completed analysis shows its timing once.
-- [ ] Observe input during paint with one `Window::on_mouse_event` and one
-      `Window::on_key_event`, acting only in `DispatchPhase::Capture` and leaving
-      `propagate_event` untouched.
+- [ ] Observe input during paint from one place, with `Window::on_mouse_event` for
+      `MouseDownEvent` and for `ScrollWheelEvent` and `Window::on_key_event` for
+      `KeyDownEvent`, all acting only in `DispatchPhase::Capture`, sharing one
+      dismissal method and leaving `propagate_event` untouched.
 - [ ] Draw through the new decision in `settings_ui.rs`, keeping the change to the
       `#analysis-status` element minimal.
 - [ ] Update the status-bar paragraph of `AGENTS.md` to state that the ready status
