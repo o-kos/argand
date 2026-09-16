@@ -46,6 +46,9 @@ content.
 ## Implementation steps
 
 - [x] Update the badge URL and its `alt` text in `README.md` to 1.97.
+- [x] ➕ Correct the CI guidance in `CONTRIBUTING.md` to name the toolchain,
+      workspace minimum, and README badge, and require their major/minor versions
+      to agree.
 - [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
