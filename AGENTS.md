@@ -140,12 +140,14 @@ seeing the result.
 
 | Class | Applies to | Implementer | Reviewer |
 | --- | --- | --- | --- |
-| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 files | `gpt-6-astra` xhigh | `gpt-5.6-sol` xhigh |
+| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 code files | `gpt-6-astra` xhigh | `gpt-5.6-sol` xhigh |
 | B | A feature or fix in one or two GUI modules with local, known invariants and concrete acceptance criteria | `gpt-6-astra` high | `gpt-5.6-sol` high |
 | C | Documentation, README, configuration, renames, single-file changes with no behavioural consequence | `gpt-5.6-terra` high | `gpt-5.6-sol` high |
 
-Any of class A's signals puts the Issue in class A. Use the same implementer and
-reviewer model and reasoning effort for every round of one Pull Request.
+Any of class A's signals puts the Issue in class A. The file count considers code
+only: the plan, `CHANGELOG.md` and `AGENTS.md` change in nearly every Pull Request
+and say nothing about how hard the work is. Use the same implementer and reviewer
+model and reasoning effort for every round of one Pull Request.
 
 ## Git workflow
 
