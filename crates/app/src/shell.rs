@@ -524,9 +524,9 @@ impl Shell {
         }
     }
 
-    /// Put a file at the head of the recent list, and write the session out.
     fn remember_file(&mut self, origin: &Origin) {
         self.session.remember(&origin.path, &origin.hints);
+        self.recent_files.set_current(&origin.path);
         self.recent_files.refresh(&self.session.recent);
         self.save();
     }

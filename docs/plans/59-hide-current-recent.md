@@ -70,33 +70,38 @@ hints, and the native file chooser.
 
 ## Implementation steps
 
-- [ ] Extract the path normalisation `session::remember` performs so the same
+- [x] Extract the path normalisation `session::remember` performs so the same
       function can be applied to the currently loaded file.
-- [ ] Hold the current path in `RecentFiles` and exclude it from `visible()`.
-- [ ] Record it from `shell.rs::remember_file`, so it is set only after a
+- [x] Hold the current path in `RecentFiles` and exclude it from `visible()`.
+- [x] Record it from `shell.rs::remember_file`, so it is set only after a
       successful open and replaced when another file is opened.
-- [ ] Cover in `crates/app/src/recent_tests.rs`: the loaded file is absent from
+- [x] Cover in `crates/app/src/recent_tests.rs`: the loaded file is absent from
       `visible()` while the others keep their order and labels; opening another file
       brings the previous one back in its normal recent position; a file opened by a
       relative path is still matched; `entries` and the saved history are unchanged
       throughout; `shortcut` indices address the filtered list.
-- [ ] Update the recent-files paragraph of `AGENTS.md` to state that the loaded file
+- [x] Update the recent-files paragraph of `AGENTS.md` to state that the loaded file
       is filtered from the shared snapshot.
-- [ ] Complete validation.
+- [x] ➕ Add an Unreleased changelog entry as required by `CONTRIBUTING.md`.
+- [ ] Complete validation. Owner validation on a real GPU session remains pending.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Owner validation on a real GPU session: open a file and confirm it is absent
       from File > Recent and from the start page; open a second file and confirm the
       first returns in its normal position; confirm Alt+1 opens the first row shown;
       restart and confirm the history is intact.
+
+Automated validation passed on 2026-09-16. The full test suite passed 559 tests
+with no failures or ignored tests. Cargo reported a future-incompatibility notice
+for the existing `proc-macro-error2 v2.0.1` dependency.
 
 ## Post-completion
 
