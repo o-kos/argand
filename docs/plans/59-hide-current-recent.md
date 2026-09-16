@@ -83,6 +83,12 @@ hints, and the native file chooser.
 - [x] Update the recent-files paragraph of `AGENTS.md` to state that the loaded file
       is filtered from the shared snapshot.
 - [x] ➕ Add an Unreleased changelog entry as required by `CONTRIBUTING.md`.
+- [x] ➕ Clear the current path when `Shell::open` tears down the previous file,
+      so pending or failed opens do not leave an unloaded file hidden.
+- [x] ➕ Restore the `remember_file` doc comment to describe history promotion,
+      hiding the loaded file and session persistence.
+- [x] ➕ Cover clearing and replacing the current path without a window, including
+      restored recent order, disambiguated labels and shortcut targets.
 - [ ] Complete validation. Owner validation on a real GPU session remains pending.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -99,8 +105,8 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       first returns in its normal position; confirm Alt+1 opens the first row shown;
       restart and confirm the history is intact.
 
-Automated validation passed on 2026-09-16. The full test suite passed 559 tests
-with no failures or ignored tests. Cargo reported a future-incompatibility notice
+Automated validation passed on 2026-09-16 after the second-round fixes. The full
+test suite passed 560 tests with no failures or ignored tests. Cargo reported a future-incompatibility notice
 for the existing `proc-macro-error2 v2.0.1` dependency.
 
 ## Post-completion

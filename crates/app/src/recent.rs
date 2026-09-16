@@ -41,6 +41,10 @@ impl RecentFiles {
         self.current = Some(normalize_recent_path(path));
     }
 
+    pub fn clear_current(&mut self) {
+        self.current = None;
+    }
+
     pub fn refresh(&mut self, entries: &[Recent]) {
         self.entries = entries.iter().take(RECENT_LIMIT).cloned().collect();
         self.available

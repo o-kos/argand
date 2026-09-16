@@ -438,6 +438,7 @@ impl Shell {
         self.release(window);
         self.plot = None;
         self.view = None;
+        self.recent_files.clear_current();
         self.time_scheme = None;
         self.tick_pan = None;
         self.plot_geometry = None;
@@ -524,6 +525,7 @@ impl Shell {
         }
     }
 
+    /// Put the opened file first in history, hide it from Recent, and save the session.
     fn remember_file(&mut self, origin: &Origin) {
         self.session.remember(&origin.path, &origin.hints);
         self.recent_files.set_current(&origin.path);

@@ -126,6 +126,43 @@ fn a_relative_current_path_matches_history_and_labels_use_the_filtered_list() {
 }
 
 #[test]
+fn clearing_then_replacing_the_current_path_restores_order_labels_and_shortcuts() {
+    let entries: Vec<_> = ["one/a.raw", "two/a.raw", "three/b.wav"]
+        .map(|path| entry(normalize_recent_path(Path::new(path))))
+        .into();
+    let mut recent = RecentFiles::new(&entries);
+    for entry in &entries {
+        recent.apply(entry.path.clone(), true);
+    }
+    recent.set_current(&entries[0].path);
+    assert_eq!(recent.visible(), entries[1..]);
+
+    recent.clear_current();
+    assert_eq!(recent.visible(), entries);
+    assert_eq!(
+        recent_labels(&recent.visible()),
+        [
+            format!("a.raw - {}", entries[0].path.parent().unwrap().display()),
+            format!("a.raw - {}", entries[1].path.parent().unwrap().display()),
+            "b.wav".to_owned(),
+        ]
+    );
+    for (index, expected) in entries.iter().enumerate() {
+        assert_eq!(recent.shortcut(index).as_ref(), Some(expected));
+    }
+    assert!(recent.shortcut(3).is_none());
+    assert_eq!(recent.entries, entries);
+
+    recent.set_current(&entries[1].path);
+    assert_eq!(recent.visible(), [entries[0].clone(), entries[2].clone()]);
+    assert_eq!(recent_labels(&recent.visible()), ["a.raw", "b.wav"]);
+    assert_eq!(recent.shortcut(0), Some(entries[0].clone()));
+    assert_eq!(recent.shortcut(1), Some(entries[2].clone()));
+    assert!(recent.shortcut(2).is_none());
+    assert_eq!(recent.entries, entries);
+}
+
+#[test]
 fn completion_order_does_not_change_recent_order_or_saved_raw_hints() {
     let hints = argand_io::OpenHints {
         raw: Some("iq_i16@24k".parse().unwrap()),
