@@ -11,6 +11,58 @@ const ALL: [Colormap; 6] = [
 ];
 
 #[test]
+fn waveform_ink_separates_active_and_muted_lightness_in_both_themes() {
+    const MIN_LIGHTNESS_SEPARATION: f64 = 0.39;
+    const RGB_ROUNDING_TOLERANCE: f64 = 1.0 / 255.0;
+    for map in ALL {
+        for (dark, active_lightness, muted_lightness) in
+            [(true, 0.68, 0.26), (false, 0.36, 0.76)]
+        {
+            let ink = map.waveform_ink(dark);
+            let active = HSL::from_rgb(&unpack(ink.active));
+            let muted = HSL::from_rgb(&unpack(ink.muted));
+            assert!(
+                (active.l - muted.l).abs() >= MIN_LIGHTNESS_SEPARATION,
+                "{map} dark={dark} ink={ink:?}"
+            );
+            assert!((active.l - active_lightness).abs() <= RGB_ROUNDING_TOLERANCE);
+            assert!((muted.l - muted_lightness).abs() <= RGB_ROUNDING_TOLERANCE);
+        }
+    }
+}
+
+#[test]
+fn waveform_ink_preserves_signature_hue_with_bounded_saturation() {
+    for (map, signature) in ALL.into_iter().zip([
+        0x4DA4D5, 0x9AA3AD, 0xF98E09, 0x5EC962, 0xA537FD, 0xE03A22,
+    ]) {
+        let signature = HSL::from_rgb(&unpack(signature));
+        for dark in [true, false] {
+            let ink = map.waveform_ink(dark);
+            let active = HSL::from_rgb(&unpack(ink.active));
+            let muted = HSL::from_rgb(&unpack(ink.muted));
+            for colour in [active, muted] {
+                let hue_distance = (colour.h - signature.h + 180.0).rem_euclid(360.0) - 180.0;
+                assert!(hue_distance.abs() <= 3.0, "{map} dark={dark}");
+            }
+            assert!((active.s - signature.s.min(0.85)).abs() <= 0.01);
+            assert!((muted.s - active.s * 0.5).abs() <= 0.01);
+        }
+    }
+}
+
+#[test]
+fn oceanic_dark_waveform_ink_stays_close_to_the_previous_colours() {
+    const MAX_CHANNEL_DISTANCE: u8 = 32;
+    let ink = Colormap::Oceanic.waveform_ink(true);
+    for (actual, previous) in [(ink.active, 0x78C8FF), (ink.muted, 0x243C4D)] {
+        for (actual, previous) in unpack(actual).into_iter().zip(unpack(previous)) {
+            assert!(actual.abs_diff(previous) <= MAX_CHANNEL_DISTANCE);
+        }
+    }
+}
+
+#[test]
 fn every_name_round_trips() {
     for name in COLORMAP_NAMES {
         assert_eq!(Colormap::from_str(name).unwrap().to_string(), name);

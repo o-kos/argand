@@ -181,7 +181,7 @@ No runner has a GPU, so no job opens a window. What the three of them cover is t
 
 The commands are not restated in the workflow with different flags. Formatting and lint configuration lives in the repository, where `cargo` finds it on its own, so what runs locally and what blocks the merge cannot drift apart. Tighten a rule by changing that configuration, not the workflow.
 
-The toolchain comes from `rust-toolchain.toml`, which is the only place the Rust version is written down. Tests that need real captures skip when `tests/signals/` is absent, so a clean CI checkout runs the rest of the suite.
+The exact toolchain comes from `rust-toolchain.toml`; the workspace's minimum Rust version is declared in `Cargo.toml` and repeated in the Rust badge in `README.md`. The declared minimum and the badge must agree with the toolchain's major and minor version. Tests that need real captures skip when `tests/signals/` is absent, so a clean CI checkout runs the rest of the suite.
 
 ## External review
 

@@ -13,6 +13,12 @@ promise applies to.
 
 ### Fixed
 
+- Correct the README Rust version badge to state Rust 1.97+.
+
+- Hide the currently loaded file from Recent lists while preserving saved history and opening hints.
+
+- Match the minimap waveform colour to the displayed spectrogram palette and keep the active and muted spans distinct in both interface themes.
+
 - Show vertical time-ruler labels near both ends when they fit between the unit captions.
 
 - Restore the README logo using the current B0 application artwork.
