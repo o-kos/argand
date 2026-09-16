@@ -32,9 +32,14 @@ the status shown when no file is open.
   `status().message()` and, when present, a tooltip from `status().hint()`. When no
   file is open it substitutes the literal `ready`.
 - GPUI offers `capture_any_mouse_down` and `capture_key_down` on `div`, which run in
-  the capture phase before the event reaches any child and do not consume it unless
-  the handler stops propagation. There is no `capture_scroll_wheel`; only
-  `on_scroll_wheel` exists, in the bubble phase.
+  the capture phase before the event reaches any child. A child's `stop_propagation`
+  happens in the later bubble phase and cannot suppress them.
+- There is no `capture_scroll_wheel`. The only wheel handlers are
+  `shell.rs:1099`, which calls `Self::wheel`, and a menu overlay in
+  `app_menu_ui.rs:402`. `Self::wheel` ends with `cx.stop_propagation()`
+  (`navigation_ui.rs:419`), so a wheel event over a plot or the time ruler never
+  reaches a handler on the shell root. It returns early, without stopping
+  propagation, for the minimap and when there is no geometry.
 - PR #106 (`fix/102-status-range-click`, open) rewrites most of `settings_ui.rs`.
 
 ## Decisions
@@ -53,11 +58,19 @@ the status shown when no file is open.
   what to draw, so it is tested without a window and `settings_ui.rs` gains one
   condition rather than a branch. That also keeps the footprint in `settings_ui.rs`
   small, which matters while PR #106 is rewriting that file.
-- **Input is observed in the capture phase and never consumed.** The handlers only
-  clear a flag; they must not call `stop_propagation`, so no gesture, shortcut or
-  action changes behaviour. The wheel is observed with `on_scroll_wheel` because
-  GPUI has no capture variant; a wheel event already handled by a plot still bubbles
-  to the shell root, and the plot handlers do not stop propagation.
+- **Input is observed without ever being consumed.** The handlers only clear a flag
+  and must not call `stop_propagation`, so no gesture, shortcut or action changes
+  behaviour. Mouse buttons and keys are observed on the shell root in the capture
+  phase, which a child cannot suppress.
+- **The wheel needs two observation points, because GPUI has no capture variant for
+  it.** `Self::wheel` stops propagation once it has navigated, so a wheel event over
+  a plot would never reach the root. The dismissal is therefore invoked from
+  `Self::wheel` itself, before it navigates, and from an `on_scroll_wheel` handler on
+  the shell root that catches everything `Self::wheel` returns from early or never
+  sees. Both call one method, so the two paths cannot disagree.
+
+  This corrects an error in the first version of this plan, which assumed a wheel
+  event handled by a plot still bubbles to the root. It does not.
 - **Nothing about the measurement changes.** `Status::Ready { elapsed }` keeps its
   value, the analysis result is untouched, and the status is still `Ready` — only its
   presentation is suppressed.
@@ -83,12 +96,16 @@ the status shown when no file is open.
       unaffected by the flag; an undismissed ready state is unchanged from today.
 - [ ] Hold the dismissed flag in `Shell` and clear it where `Status::Ready` is
       assigned, so each completed analysis shows its timing once.
-- [ ] Set it from capture-phase mouse-down and key-down handlers and from the wheel
-      handler on the shell root, without consuming any event.
+- [ ] Set it from capture-phase mouse-down and key-down handlers on the shell root,
+      without consuming any event.
+- [ ] ➕ Set it from `Self::wheel` before it navigates, and from an `on_scroll_wheel`
+      handler on the shell root for the events `Self::wheel` does not stop, both
+      through one method.
 - [ ] Draw through the new decision in `settings_ui.rs`, keeping the change to the
       `#analysis-status` element minimal.
 - [ ] Update the status-bar paragraph of `AGENTS.md` to state that the ready status
       and its timing hint are transient and dismissed by deliberate input.
+- [ ] ➕ Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
