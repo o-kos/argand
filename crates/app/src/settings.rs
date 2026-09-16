@@ -33,6 +33,10 @@ fn spelled<T: std::fmt::Display, S: Serializer>(
 }
 
 impl Settings {
+    pub fn minimap_colormap(self, displayed: Option<Self>) -> Colormap {
+        displayed.unwrap_or(self).colormap
+    }
+
     pub fn from_config(config: &Config) -> Self {
         Self {
             fft_size: config.stft.fft_size,
@@ -144,6 +148,23 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn minimap_colormap_waits_for_the_picture_and_falls_back_before_the_first() {
+        let original = Settings {
+            colormap: Colormap::Oceanic,
+            ..Settings::from_config(&Config::default())
+        };
+        let preview = Settings {
+            colormap: Colormap::Inferno,
+            ..original
+        };
+        assert_eq!(preview.minimap_colormap(None), Colormap::Inferno);
+        assert_eq!(preview.minimap_colormap(Some(original)), Colormap::Oceanic);
+        assert_eq!(preview.minimap_colormap(Some(preview)), Colormap::Inferno);
+        assert_eq!(original.minimap_colormap(Some(preview)), Colormap::Inferno);
+        assert_eq!(original.minimap_colormap(Some(original)), Colormap::Oceanic);
+    }
 
     #[test]
     fn confirming_numeric_edits_validates_both_fields_without_losing_either() {

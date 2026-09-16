@@ -84,23 +84,24 @@ interface theme palette, and the spectral dynamic range.
 
 ## Implementation steps
 
-- [ ] Add `Colormap::waveform_ink` to `crates/core/src/colormap.rs`, returning active
+- [x] Add `Colormap::waveform_ink` to `crates/core/src/colormap.rs`, returning active
       and muted RGB for a given interface theme, with the signature colours and
       lightness constants above as named items.
-- [ ] Cover it in `crates/core/src/colormap_tests.rs`: every ramp answers for both
+- [x] Cover it in `crates/core/src/colormap_tests.rs`: every ramp answers for both
       themes; active and muted differ from each other in lightness by a stated
       minimum in both themes; the derived Oceanic dark ink stays within a stated
       distance of the colour it replaces.
-- [ ] Replace the two literals in `crates/app/src/waveform.rs` with ink carried on
+- [x] Replace the two literals in `crates/app/src/waveform.rs` with ink carried on
       `waveform::Panel`, leaving the `Spans` cache and its invalidation untouched.
-- [ ] Resolve the ink in `crates/app/src/plot_ui.rs::minimap_panel` from the
+- [x] Resolve the ink in `crates/app/src/plot_ui.rs::minimap_panel` from the
       displayed colormap, falling back to the requested one when no picture has been
       displayed yet, and from `cx.theme().mode.is_dark()`.
-- [ ] Add a toolkit-free test that the resolved colormap follows the displayed
+- [x] Add a toolkit-free test that the resolved colormap follows the displayed
       settings while a preview with a different ramp is pending, and follows the
       requested settings before any picture exists.
-- [ ] Update the "Full-capture waveform minimap (#79)" section of `AGENTS.md` to
+- [x] Update the "Full-capture waveform minimap (#79)" section of `AGENTS.md` to
       state that minimap ink derives from the displayed ramp and the interface theme.
+- [x] ➕ Add the required user-visible fix entry to `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -108,14 +109,20 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Owner validation on a real GPU session, in both interface themes: open a
       capture, step through all six ramps in the settings editor, confirm the minimap
       follows the spectrogram rather than leading it, confirm Cancel restores both,
       and confirm the dimmed outside-viewport span stays visible after zooming in.
+
+Local validation passed with 560 tests, zero failures and zero ignored tests.
+Cargo reported a future-incompatibility notice for the unchanged dependency
+`proc-macro-error2 v2.0.1`. Owner GPU validation remains pending, so the overall
+validation task stays open. The owner requested that the plan remain here until
+the later review stage.
 
 ## Post-completion
 

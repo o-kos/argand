@@ -1,7 +1,7 @@
 //! Full-capture minimap geometry is cached separately from the viewport overlay.
 
 use crate::{axes::Frame, minimap, navigation::View};
-use gpui::{Bounds, Pixels, Point, Window, fill, point, px, rgb, size};
+use gpui::{Bounds, Pixels, Point, Rgba, Window, fill, point, px, size};
 use std::sync::{Arc, Mutex};
 
 pub struct Waveform {
@@ -13,6 +13,12 @@ struct Spans {
     columns: usize,
     rows: i64,
     values: Vec<Option<(i64, i64)>>,
+}
+
+#[derive(Clone, Copy)]
+pub struct Ink {
+    pub active: Rgba,
+    pub muted: Rgba,
 }
 
 impl Waveform {
@@ -29,6 +35,7 @@ impl Waveform {
         origin: Point<Pixels>,
         height: f32,
         viewport: Option<(View, u64)>,
+        ink: Ink,
         window: &mut Window,
     ) {
         let scale = window.scale_factor();
@@ -92,11 +99,11 @@ impl Waveform {
             };
             window.paint_quad(fill(
                 bounds,
-                rgb(if (first..end).contains(&column) {
-                    0x78c8ff
+                if (first..end).contains(&column) {
+                    ink.active
                 } else {
-                    0x243c4d
-                }),
+                    ink.muted
+                },
             ));
         }
     }
@@ -106,12 +113,13 @@ pub struct Panel {
     pub waveform: Option<Arc<Waveform>>,
     pub viewport: Option<(View, u64)>,
     pub separator: gpui::Hsla,
+    pub ink: Ink,
 }
 
 impl Panel {
     pub fn paint(&self, frame: &Frame, origin: Point<Pixels>, height: f32, window: &mut Window) {
         if let Some(waveform) = &self.waveform {
-            waveform.paint(frame, origin, height, self.viewport, window);
+            waveform.paint(frame, origin, height, self.viewport, self.ink, window);
         }
         let bounds = if frame.orientation.vertical() {
             Bounds::new(

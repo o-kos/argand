@@ -288,8 +288,10 @@ The shell no longer requests or retains per-range spectral waveforms. File hints
 accept extrema from the complete minimap; a read failure clears its picture and
 appears in the file hint, without discarding the spectrum.
 `waveform.rs` caches conservatively rebinned pixel spans by device width and height.
-Navigation changes only waveform ink: bright inside the requested time viewport,
-dark outside, with no border or fill. Full capture has no dimmed portion. Sample
+Minimap ink derives from the displayed spectral colormap and the interface theme,
+falling back to the requested colormap before the first spectral picture arrives.
+Navigation changes only waveform ink, active inside the requested time viewport
+and muted outside, with no border or fill. Full capture has no dimmed portion. Sample
 bounds retain a one-device-pixel minimum visible width. The minimap has no grid.
 An outside click invokes the same one-division pan as Left/Right; Ctrl+click invokes
 five divisions. Inside clicks, including double-clicks, only arm dragging. An outside double-click
