@@ -31,15 +31,19 @@ the status shown when no file is open.
 - `crates/app/src/settings_ui.rs` draws the `#analysis-status` element: the text from
   `status().message()` and, when present, a tooltip from `status().hint()`. When no
   file is open it substitutes the literal `ready`.
-- GPUI offers `capture_any_mouse_down` and `capture_key_down` on `div`, which run in
-  the capture phase before the event reaches any child. A child's `stop_propagation`
-  happens in the later bubble phase and cannot suppress them.
-- There is no `capture_scroll_wheel`. The only wheel handlers are
-  `shell.rs:1099`, which calls `Self::wheel`, and a menu overlay in
-  `app_menu_ui.rs:402`. `Self::wheel` ends with `cx.stop_propagation()`
-  (`navigation_ui.rs:419`), so a wheel event over a plot or the time ruler never
-  reaches a handler on the shell root. It returns early, without stopping
-  propagation, for the minimap and when there is no geometry.
+- GPUI dispatches mouse events in two passes over the window's listeners
+  (`window.rs:3694`): a capture pass front-to-back over every listener, then a bubble
+  pass. Either stops early only if something in that same pass clears
+  `propagate_event`. `div`'s `on_scroll_wheel` and `on_mouse_down` register bubble
+  handlers, so a `stop_propagation` in them cannot suppress a capture-phase listener.
+- `Window::on_mouse_event` and `Window::on_key_event` register window-level listeners
+  that receive the `DispatchPhase`, so one of each can observe everything. Both must
+  be called during paint. `MouseDownEvent` and `ScrollWheelEvent` both implement
+  `MouseEvent`, and `KeyDownEvent` implements `KeyEvent`.
+- The wheel is stopped in two separate bubble handlers: `Self::wheel`
+  (`navigation_ui.rs:419`) after it navigates, and the menu overlay
+  (`app_menu_ui.rs:402`) which swallows it outright. Neither is reachable from a
+  handler placed on the shell root with `div`.
 - PR #106 (`fix/102-status-range-click`, open) rewrites most of `settings_ui.rs`.
 
 ## Decisions
@@ -58,19 +62,19 @@ the status shown when no file is open.
   what to draw, so it is tested without a window and `settings_ui.rs` gains one
   condition rather than a branch. That also keeps the footprint in `settings_ui.rs`
   small, which matters while PR #106 is rewriting that file.
-- **Input is observed without ever being consumed.** The handlers only clear a flag
-  and must not call `stop_propagation`, so no gesture, shortcut or action changes
-  behaviour. Mouse buttons and keys are observed on the shell root in the capture
-  phase, which a child cannot suppress.
-- **The wheel needs two observation points, because GPUI has no capture variant for
-  it.** `Self::wheel` stops propagation once it has navigated, so a wheel event over
-  a plot would never reach the root. The dismissal is therefore invoked from
-  `Self::wheel` itself, before it navigates, and from an `on_scroll_wheel` handler on
-  the shell root that catches everything `Self::wheel` returns from early or never
-  sees. Both call one method, so the two paths cannot disagree.
+- **Input is observed once, at window level, in the capture phase.** One
+  `Window::on_mouse_event` covers both the mouse button and the wheel, and one
+  `Window::on_key_event` covers keys; each acts only when the phase is `Capture` and
+  never touches `propagate_event`, so nothing it sees is consumed or altered.
 
-  This corrects an error in the first version of this plan, which assumed a wheel
-  event handled by a plot still bubbles to the root. It does not.
+  This replaces two earlier versions of this decision, both wrong. The first assumed
+  a wheel event handled by a plot bubbles to the shell root; `Self::wheel` stops it.
+  The second added a second observation point in `Self::wheel` itself, which still
+  missed the menu overlay swallowing the wheel outright. Chasing each element that
+  stops propagation is the wrong shape: it needs a new call site for every future
+  handler and fails silently when one is forgotten. Observing before the bubble pass
+  begins is complete by construction.
+
 - **Nothing about the measurement changes.** `Status::Ready { elapsed }` keeps its
   value, the analysis result is untouched, and the status is still `Ready` — only its
   presentation is suppressed.
@@ -85,6 +89,9 @@ the status shown when no file is open.
   survive long enough to be read.
 - **Keeping the `ready` word after dismissal.** The owner asked for the whole status
   to go.
+- **Adding a dismissal call to each handler that stops the wheel** -- `Self::wheel`
+  and the menu overlay today. It works, but it needs a new call site whenever another
+  handler starts consuming input, and forgetting one fails silently.
 
 ## Implementation steps
 
@@ -96,11 +103,9 @@ the status shown when no file is open.
       unaffected by the flag; an undismissed ready state is unchanged from today.
 - [ ] Hold the dismissed flag in `Shell` and clear it where `Status::Ready` is
       assigned, so each completed analysis shows its timing once.
-- [ ] Set it from capture-phase mouse-down and key-down handlers on the shell root,
-      without consuming any event.
-- [ ] ➕ Set it from `Self::wheel` before it navigates, and from an `on_scroll_wheel`
-      handler on the shell root for the events `Self::wheel` does not stop, both
-      through one method.
+- [ ] Observe input during paint with one `Window::on_mouse_event` and one
+      `Window::on_key_event`, acting only in `DispatchPhase::Capture` and leaving
+      `propagate_event` untouched.
 - [ ] Draw through the new decision in `settings_ui.rs`, keeping the change to the
       `#analysis-status` element minimal.
 - [ ] Update the status-bar paragraph of `AGENTS.md` to state that the ready status
@@ -121,7 +126,9 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       click and confirm the whole ready status goes; confirm a keystroke and a wheel
       scroll do the same; confirm moving the pointer alone does not; confirm the
       gesture that dismissed it still did what it was meant to do — a pan still pans,
-      a shortcut still fires; open another file and confirm the timing appears again;
+      a shortcut still fires; confirm a wheel scroll over an open application menu
+      dismisses it too, while the menu keeps swallowing the scroll; open another file
+      and confirm the timing appears again;
       confirm `analysing...` and a failure message are never suppressed.
 
 ## Post-completion
