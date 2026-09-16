@@ -102,8 +102,8 @@ interface theme palette, and the spectral dynamic range.
 - [x] Update the "Full-capture waveform minimap (#79)" section of `AGENTS.md` to
       state that minimap ink derives from the displayed ramp and the interface theme.
 - [x] ➕ Add the required user-visible fix entry to `CHANGELOG.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -113,7 +113,7 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Owner validation on a real GPU session, in both interface themes: open a
+- [x] Owner validation on a real GPU session, in both interface themes: open a
       capture, step through all six ramps in the settings editor, confirm the minimap
       follows the spectrogram rather than leading it, confirm Cancel restores both,
       and confirm the dimmed outside-viewport span stays visible after zooming in.
