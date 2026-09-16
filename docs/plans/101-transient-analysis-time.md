@@ -153,32 +153,32 @@ the status shown when no file is open.
 
 ## Implementation steps
 
-- [ ] Add the presentation decision to `Status` in `document.rs`: given a dismissed
+- [x] Add the presentation decision to `Status` in `document.rs`: given a dismissed
       flag, answer with the message and hint to draw, or nothing for a dismissed
       ready state, leaving every other state unaffected.
-- [ ] Cover it in `document_tests.rs`: a dismissed ready state draws nothing while
+- [x] Cover it in `document_tests.rs`: a dismissed ready state draws nothing while
       `Ready { elapsed }` keeps its value; `Opening`, `Analyzing` and `Failed` are
       unaffected by the flag; an undismissed ready state is unchanged from today.
-- [ ] Hold the dismissed flag in `Shell` and clear it where `Status::Ready` is
+- [x] Hold the dismissed flag in `Shell` and clear it where `Status::Ready` is
       assigned, so each completed analysis shows its timing once.
-- [ ] Observe the mouse during paint with `Window::on_mouse_event` for
+- [x] Observe the mouse during paint with `Window::on_mouse_event` for
       `MouseDownEvent` and for `ScrollWheelEvent`, acting only in
       `DispatchPhase::Capture` and leaving `propagate_event` untouched.
-- [ ] ➕ Observe the keyboard with a retained `App::observe_keystrokes` subscription,
+- [x] ➕ Observe the keyboard with a retained `App::observe_keystrokes` subscription,
       so a keystroke consumed by a bound action still dismisses the timing.
-- [ ] ➕ Call the same dismissal from `intercept_keystrokes` and from
+- [x] ➕ Call the same dismissal from `intercept_keystrokes` and from
       `application_menu_key`, the only two places that stop a keystroke before the
       observers run.
-- [ ] ➕ Dismiss the timing where `self.pointer` is assigned, when the pointer is
+- [x] ➕ Dismiss the timing where `self.pointer` is assigned, when the pointer is
       somewhere the readout reports.
-- [ ] ➕ Put frequency before time in the readout and move the level into its own
+- [x] ➕ Put frequency before time in the readout and move the level into its own
       status-bar field, keeping the existing precision rules and the `—` for an
       unknown level.
-- [ ] Draw through the new decision in `settings_ui.rs`, keeping the change to the
+- [x] Draw through the new decision in `settings_ui.rs`, keeping the change to the
       `#analysis-status` element minimal.
-- [ ] Update the status-bar paragraph of `AGENTS.md` to state that the ready status
+- [x] Update the status-bar paragraph of `AGENTS.md` to state that the ready status
       and its timing hint are transient and dismissed by deliberate input.
-- [ ] ➕ Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
+- [x] ➕ Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -186,10 +186,10 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Owner validation on a real GPU session: open a file, read the timing, then
       click and confirm the whole ready status goes; confirm a keystroke and a wheel
       scroll do the same; confirm moving the pointer alone does not; confirm the
@@ -203,6 +203,17 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       dismisses it too, while the menu keeps swallowing the scroll; open another file
       and confirm the timing appears again;
       confirm `analysing...` and a failure message are never suppressed.
+
+Local formatting, Clippy, tests and the subsequent release build passed.
+The test suites reported 563 passed and
+zero failures, including the three new status and dismissal tests. The five
+optional real-capture fixtures and the half-hour capture are absent in this
+worktree, so their end-to-end cases skip the capture checks. Cargo reports a
+future-incompatibility warning for the existing `proc-macro-error2 v2.0.1`
+dependency.
+
+Owner validation on a real GPU remains pending, so the complete-validation step
+is still open. The plan stays in this directory for the implementation handoff.
 
 ## Post-completion
 

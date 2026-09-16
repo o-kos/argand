@@ -74,6 +74,7 @@ pub(super) fn init(cx: &mut gpui::App) {
             event.keystroke.modifiers,
             window.modifiers().shift,
         ) {
+            Shell::dismiss_window_ready_status(window, cx);
             // A popup can inherit Plot bindings; do not navigate behind it.
             if event
                 .context_stack
@@ -517,6 +518,9 @@ impl Shell {
             return;
         }
         self.pointer = pointer;
+        if !self.ready_status_dismissed && self.cursor_readout().is_some() {
+            self.dismiss_ready_status(cx);
+        }
         let mut changed = false;
         if let Some((origin, view)) = self.frequency_pan {
             if event.dragging() {
@@ -563,7 +567,7 @@ impl Shell {
         cx.notify();
     }
 
-    pub(super) fn cursor_readout(&self) -> Option<String> {
+    pub(super) fn cursor_readout(&self) -> Option<(String, Option<String>)> {
         let geometry = self.plot_geometry?;
         let pointer = self.pointer?;
         if !geometry.navigation.contains(&pointer) {
@@ -580,7 +584,7 @@ impl Shell {
             (extents.seconds.1 - extents.seconds.0) / self.view_columns() as f64,
         );
         if !geometry.spectrum.contains(&pointer) {
-            return Some(crate::numbers::text(&format!("{time:.decimals$} s")));
+            return Some((crate::numbers::text(&format!("{time:.decimals$} s")), None));
         }
         let frequency = extents.hertz.1 - y * (extents.hertz.1 - extents.hertz.0);
         let per_pixel = (extents.hertz.1 - extents.hertz.0) / self.plot?.height.max(1) as f64;
@@ -600,11 +604,11 @@ impl Shell {
                 || "—".into(),
                 |db| crate::numbers::text(&format!("{db:.1} dBFS")),
             );
-        Some(format!(
-            "{} · {level}",
+        Some((
             crate::numbers::text(&format!(
-                "{time:.decimals$} s · {frequency:.frequency_decimals$} Hz"
-            ))
+                "{frequency:.frequency_decimals$} Hz · {time:.decimals$} s"
+            )),
+            Some(level),
         ))
     }
 
@@ -776,6 +780,9 @@ impl Shell {
         {
             self.open_menu = None;
             self.pointer = self.plot_pointer(window.mouse_position());
+            if !self.ready_status_dismissed && self.cursor_readout().is_some() {
+                self.dismiss_ready_status(cx);
+            }
             cx.notify();
         }
     }

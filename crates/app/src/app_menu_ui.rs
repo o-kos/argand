@@ -197,6 +197,7 @@ impl Shell {
         if let (Some(index), Some(scroll)) = (menu.model.selected(level), menu.scroll.get(level)) {
             scroll.scroll_to_item(index);
         }
+        self.dismiss_ready_status(cx);
         cx.stop_propagation();
         self.menu_effect(effect, window, cx);
     }

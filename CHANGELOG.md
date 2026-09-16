@@ -32,6 +32,10 @@ promise applies to.
 
 ### Changed
 
+- Hide the completed-analysis status and its timing hint after a mouse button press, a key press, a wheel scroll or the cursor readout appearing. Each completed analysis shows its timing again.
+
+- Show cursor frequency before time and place the signal level in a separate status-bar field.
+
 - Replace the application and desktop launcher icon with the B0 intertwined I/Q ribbons, including dedicated 16- and 24-pixel artwork.
 
 - Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with slightly stronger text and border contrast, platform-specific notation and matching menu-width measurement.
