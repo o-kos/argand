@@ -457,19 +457,7 @@ impl Session {
     /// every stored entry on every open, and would still be wrong for one that
     /// has since moved.
     pub fn remember(&mut self, path: &Path, hints: &OpenHints) {
-        // Absolute, because the list outlives the directory the application
-        // was started in. `argand dump.bin` stored literally would, from
-        // somewhere else, either fail to open or -- worse -- open a different
-        // `dump.bin` with the first one's layout hints.
-        //
-        // Made absolute rather than canonical: a link is a name a person chose
-        // and expects to see again, and resolving it would also require the
-        // file still to be there, which is not a condition for remembering
-        // where it was.
-        let path = std::path::absolute(path).unwrap_or_else(|error| {
-            tracing::warn!(path = %path.display(), %error, "cannot resolve the path; remembering it as given");
-            path.to_owned()
-        });
+        let path = normalize_recent_path(path);
         // TOML is UTF-8 by definition and a filename on Linux is any bytes, so
         // a path that is not one cannot be written. Refusing it here costs the
         // entry; letting it into the list would cost every later save,
@@ -497,6 +485,14 @@ impl Session {
         let dir = dirs::state_dir().or_else(dirs::data_local_dir)?;
         Some(dir.join("argand").join(FILE_NAME))
     }
+}
+
+pub fn normalize_recent_path(path: &Path) -> PathBuf {
+    // History outlives the working directory and preserves chosen symlink names.
+    std::path::absolute(path).unwrap_or_else(|error| {
+        tracing::warn!(path = %path.display(), %error, "cannot resolve the path; remembering it as given");
+        path.to_owned()
+    })
 }
 
 /// Turns a stream of window positions into occasional writes.

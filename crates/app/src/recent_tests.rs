@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use argand_io::testutil::TempDir;
 
-use crate::session::Hints;
+use crate::session::{Hints, Session, recent_labels};
 
 fn entry(path: impl Into<PathBuf>) -> Recent {
     Recent {
@@ -24,6 +24,141 @@ fn only_verified_regular_files_are_visible_and_history_is_unchanged() {
     recent.refresh(&entries);
     receive_checks(&mut recent, entries.len());
     assert_eq!(recent.visible(), vec![entry(file)]);
+    assert_eq!(recent.entries, entries);
+}
+
+#[test]
+fn the_loaded_file_is_hidden_without_changing_history_or_shortcut_order() {
+    let mut session = Session::default();
+    let hints = argand_io::OpenHints {
+        raw: Some("iq_i16@24k".parse().unwrap()),
+        ..Default::default()
+    };
+    for i in (0..RECENT_LIMIT).rev() {
+        session.remember(Path::new(&format!("capture-{i}.raw")), &hints);
+    }
+    let saved = session.clone();
+    let mut recent = RecentFiles::new(&session.recent);
+    recent.set_current(&session.recent[0].path);
+    for entry in session.recent.iter().rev() {
+        recent.apply(entry.path.clone(), true);
+    }
+    let visible = recent.visible();
+    assert_eq!(visible, session.recent[1..]);
+    let labels: Vec<_> = (1..RECENT_LIMIT)
+        .map(|i| format!("capture-{i}.raw"))
+        .collect();
+    assert_eq!(recent_labels(&visible), labels);
+    for (index, expected) in visible.iter().enumerate() {
+        assert_eq!(recent.shortcut(index).as_ref(), Some(expected));
+    }
+    assert!(recent.shortcut(9).is_none());
+    assert!(recent.shortcut(usize::MAX).is_none());
+    assert_eq!(recent.entries, saved.recent);
+    assert_eq!(session, saved);
+
+    let mut restarted = RecentFiles::new(&session.recent);
+    for entry in &session.recent {
+        restarted.apply(entry.path.clone(), true);
+    }
+    assert_eq!(restarted.visible(), saved.recent);
+}
+
+#[test]
+fn opening_another_file_restores_the_previous_file_in_recent_order() {
+    let mut session = Session::default();
+    for name in ["third.raw", "second.raw", "first.raw"] {
+        session.remember(Path::new(name), &argand_io::OpenHints::default());
+    }
+    let mut recent = RecentFiles::new(&session.recent);
+    recent.probe = Arc::new(|_| true);
+    recent.set_current(Path::new("first.raw"));
+    recent.refresh(&session.recent);
+    receive_checks(&mut recent, 3);
+    let saved = session.clone();
+    assert_eq!(recent.visible(), saved.recent[1..]);
+    assert_eq!(recent.entries, saved.recent);
+    assert_eq!(session, saved);
+
+    session.remember(Path::new("second.raw"), &argand_io::OpenHints::default());
+    let saved = session.clone();
+    recent.set_current(Path::new("second.raw"));
+    recent.refresh(&session.recent);
+    assert_eq!(recent.visible(), saved.recent[1..]);
+    receive_checks(&mut recent, 3);
+    assert_eq!(recent.visible(), saved.recent[1..]);
+    assert_eq!(recent_labels(&recent.visible()), ["first.raw", "third.raw"]);
+    assert_eq!(recent.shortcut(0), Some(saved.recent[1].clone()));
+    assert_eq!(recent.shortcut(1), Some(saved.recent[2].clone()));
+    assert!(recent.shortcut(2).is_none());
+    assert_eq!(recent.entries, saved.recent);
+    assert_eq!(session, saved);
+}
+
+#[test]
+fn a_relative_current_path_matches_history_and_labels_use_the_filtered_list() {
+    let mut session = Session::default();
+    for name in ["three/b.wav", "two/a.raw", "./one/a.raw"] {
+        session.remember(Path::new(name), &argand_io::OpenHints::default());
+    }
+    let saved = session.clone();
+    assert!(saved.recent[0].path.is_absolute());
+    let mut recent = RecentFiles::new(&session.recent);
+    for entry in &session.recent {
+        recent.apply(entry.path.clone(), true);
+    }
+    assert_eq!(
+        recent_labels(&recent.visible()),
+        [
+            format!("a.raw - {}", saved.recent[0].path.parent().unwrap().display()),
+            format!("a.raw - {}", saved.recent[1].path.parent().unwrap().display()),
+            "b.wav".to_owned(),
+        ]
+    );
+    recent.set_current(Path::new("one/./a.raw"));
+    assert_eq!(recent.visible(), saved.recent[1..]);
+    assert_eq!(recent_labels(&recent.visible()), ["a.raw", "b.wav"]);
+    assert_eq!(recent.shortcut(0), Some(saved.recent[1].clone()));
+    assert_eq!(recent.shortcut(1), Some(saved.recent[2].clone()));
+    assert!(recent.shortcut(2).is_none());
+    assert_eq!(recent.entries, saved.recent);
+    assert_eq!(session, saved);
+}
+
+#[test]
+fn clearing_then_replacing_the_current_path_restores_order_labels_and_shortcuts() {
+    let entries: Vec<_> = ["one/a.raw", "two/a.raw", "three/b.wav"]
+        .map(|path| entry(normalize_recent_path(Path::new(path))))
+        .into();
+    let mut recent = RecentFiles::new(&entries);
+    for entry in &entries {
+        recent.apply(entry.path.clone(), true);
+    }
+    recent.set_current(&entries[0].path);
+    assert_eq!(recent.visible(), entries[1..]);
+
+    recent.clear_current();
+    assert_eq!(recent.visible(), entries);
+    assert_eq!(
+        recent_labels(&recent.visible()),
+        [
+            format!("a.raw - {}", entries[0].path.parent().unwrap().display()),
+            format!("a.raw - {}", entries[1].path.parent().unwrap().display()),
+            "b.wav".to_owned(),
+        ]
+    );
+    for (index, expected) in entries.iter().enumerate() {
+        assert_eq!(recent.shortcut(index).as_ref(), Some(expected));
+    }
+    assert!(recent.shortcut(3).is_none());
+    assert_eq!(recent.entries, entries);
+
+    recent.set_current(&entries[1].path);
+    assert_eq!(recent.visible(), [entries[0].clone(), entries[2].clone()]);
+    assert_eq!(recent_labels(&recent.visible()), ["a.raw", "b.wav"]);
+    assert_eq!(recent.shortcut(0), Some(entries[0].clone()));
+    assert_eq!(recent.shortcut(1), Some(entries[2].clone()));
+    assert!(recent.shortcut(2).is_none());
     assert_eq!(recent.entries, entries);
 }
 
