@@ -89,8 +89,8 @@ hints, and the native file chooser.
       hiding the loaded file and session persistence.
 - [x] ➕ Cover clearing and replacing the current path without a window, including
       restored recent order, disambiguated labels and shortcut targets.
-- [ ] Complete validation. Owner validation on a real GPU session remains pending.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -100,7 +100,7 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Owner validation on a real GPU session: open a file and confirm it is absent
+- [x] Owner validation on a real GPU session: open a file and confirm it is absent
       from File > Recent and from the start page; open a second file and confirm the
       first returns in its normal position; confirm Alt+1 opens the first row shown;
       restart and confirm the history is intact.
