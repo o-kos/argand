@@ -36,13 +36,24 @@ the status shown when no file is open.
   pass. Either stops early only if something in that same pass clears
   `propagate_event`. `div`'s `on_scroll_wheel` and `on_mouse_down` register bubble
   handlers, so a `stop_propagation` in them cannot suppress a capture-phase listener.
-- `Window::on_mouse_event` and `Window::on_key_event` register window-level listeners
-  that receive the `DispatchPhase`. Both must be called during paint. Each is generic
-  over one concrete event type and downcasts to exactly that type
-  (`window.rs:3421`), so a registration for `MouseDownEvent` never sees a
-  `ScrollWheelEvent`. One registration per event type is required. A generic wrapper
-  cannot be written in this crate: `MouseEvent` extends a sealed `InputEvent`
+- `Window::on_mouse_event` registers a window-level listener that receives the
+  `DispatchPhase`, and must be called during paint. It is generic over one concrete
+  event type and downcasts to exactly that type (`window.rs:3421`), so a registration
+  for `MouseDownEvent` never sees a `ScrollWheelEvent`. A generic wrapper cannot be
+  written in this crate: `MouseEvent` extends a sealed `InputEvent`
   (`interactive.rs:9`).
+- Key dispatch resolves bound actions *before* the key event reaches any listener.
+  When an action consumes the keystroke, `dispatch_key_event` returns at
+  `window.rs:3841` without ever calling `finish_dispatch_key_event`, so
+  `Window::on_key_event` never runs. F10 opens the application menu through
+  `OpenApplicationMenu` and would be missed.
+- `App::observe_keystrokes` (`app.rs:1628`) is the one keyboard hook that sees
+  everything. `dispatch_keystroke_observers` is called on all three paths: after an
+  action consumed the keystroke (`window.rs:3837`), after ordinary key dispatch
+  (`window.rs:3869`), and on replay (`window.rs:3959`). It returns a `Subscription`,
+  which the shell must retain, as it already does for the window appearance. An
+  incomplete chord is the one keystroke it does not report: that path returns at
+  `window.rs:3829` before the observers.
 - The wheel is stopped in two separate bubble handlers: `Self::wheel`
   (`navigation_ui.rs:419`) after it navigates, and the menu overlay
   (`app_menu_ui.rs:402`) which swallows it outright. Neither is reachable from a
@@ -65,16 +76,22 @@ the status shown when no file is open.
   what to draw, so it is tested without a window and `settings_ui.rs` gains one
   condition rather than a branch. That also keeps the footprint in `settings_ui.rs`
   small, which matters while PR #106 is rewriting that file.
-- **Input is observed at window level, in the capture phase, from one place.** Three
-  registrations are needed because each is generic over a single event type: one
-  `Window::on_mouse_event` for `MouseDownEvent`, one for `ScrollWheelEvent`, and one
-  `Window::on_key_event` for `KeyDownEvent`. They are registered together during
-  paint and share one dismissal method. Each acts only when the phase is `Capture`
-  and never touches `propagate_event`, so nothing it sees is consumed or altered.
+- **The mouse is observed at window level in the capture phase**, with one
+  `Window::on_mouse_event` for `MouseDownEvent` and one for `ScrollWheelEvent`,
+  registered together during paint. Each acts only when the phase is `Capture` and
+  never touches `propagate_event`, so nothing it sees is consumed or altered. The
+  capture pass runs over every window listener before any bubble handler, so
+  `Self::wheel` and the menu overlay cannot hide an event from them.
+- **The keyboard is observed with `App::observe_keystrokes`, not
+  `Window::on_key_event`.** A keystroke bound to an action never reaches a key
+  listener, and F10 is exactly that case. The keystroke observers are notified on
+  every path, so one subscription covers bound shortcuts and plain keys alike. The
+  shell retains the `Subscription` beside the one it already keeps for window
+  appearance.
 
-  Three registrations in one place is not the same trap as a call added to each
-  handler that stops propagation: these are complete for their event types and do not
-  grow when another element starts consuming input.
+  These three observation points are complete for what they observe and do not grow
+  when another element starts consuming input, which is what made the earlier
+  per-handler approach wrong.
 
   This replaces two earlier versions of this decision, both wrong. The first assumed
   a wheel event handled by a plot bubbles to the shell root; `Self::wheel` stops it.
@@ -98,6 +115,9 @@ the status shown when no file is open.
   survive long enough to be read.
 - **Keeping the `ready` word after dismissal.** The owner asked for the whole status
   to go.
+- **`Window::on_key_event` for the keyboard.** It never runs for a keystroke a bound
+  action consumed, so every shortcut in the application -- F10 among them -- would
+  fail to dismiss the timing.
 - **Adding a dismissal call to each handler that stops the wheel** -- `Self::wheel`
   and the menu overlay today. It works, but it needs a new call site whenever another
   handler starts consuming input, and forgetting one fails silently.
@@ -112,10 +132,11 @@ the status shown when no file is open.
       unaffected by the flag; an undismissed ready state is unchanged from today.
 - [ ] Hold the dismissed flag in `Shell` and clear it where `Status::Ready` is
       assigned, so each completed analysis shows its timing once.
-- [ ] Observe input during paint from one place, with `Window::on_mouse_event` for
-      `MouseDownEvent` and for `ScrollWheelEvent` and `Window::on_key_event` for
-      `KeyDownEvent`, all acting only in `DispatchPhase::Capture`, sharing one
-      dismissal method and leaving `propagate_event` untouched.
+- [ ] Observe the mouse during paint with `Window::on_mouse_event` for
+      `MouseDownEvent` and for `ScrollWheelEvent`, acting only in
+      `DispatchPhase::Capture` and leaving `propagate_event` untouched.
+- [ ] ➕ Observe the keyboard with a retained `App::observe_keystrokes` subscription,
+      so a keystroke consumed by a bound action still dismisses the timing.
 - [ ] Draw through the new decision in `settings_ui.rs`, keeping the change to the
       `#analysis-status` element minimal.
 - [ ] Update the status-bar paragraph of `AGENTS.md` to state that the ready status
@@ -136,7 +157,8 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       click and confirm the whole ready status goes; confirm a keystroke and a wheel
       scroll do the same; confirm moving the pointer alone does not; confirm the
       gesture that dismissed it still did what it was meant to do — a pan still pans,
-      a shortcut still fires; confirm a wheel scroll over an open application menu
+      a shortcut still fires; confirm F10 dismisses it while still opening the menu;
+      confirm a wheel scroll over an open application menu
       dismisses it too, while the menu keeps swallowing the scroll; open another file
       and confirm the timing appears again;
       confirm `analysing...` and a failure message are never suppressed.
