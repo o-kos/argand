@@ -45,19 +45,20 @@ content.
 
 ## Implementation steps
 
-- [ ] Update the badge URL and its `alt` text in `README.md` to 1.97.
-- [ ] Complete validation.
+- [x] Update the badge URL and its `alt` text in `README.md` to 1.97.
+- [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] Confirm the rendered badge reads 1.97 and still links to `rust-toolchain.toml`,
-      and that no other occurrence of 1.88 remains in the repository's documentation.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] Confirm the rendered badge reads 1.97 and still links to `rust-toolchain.toml`.
+      No other current documentation claims Rust 1.88 as required; historical
+      completed plans retain contextual references.
 
 ## Post-completion
 

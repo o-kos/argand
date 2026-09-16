@@ -6,7 +6,7 @@
   <a href="https://github.com/o-kos/argand/actions/workflows/ci.yml"><img src="https://github.com/o-kos/argand/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/o-kos/argand/releases/latest"><img src="https://img.shields.io/github/v/release/o-kos/argand?sort=semver" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/o-kos/argand" alt="MIT licence"></a>
-  <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-1.88%2B-dea584" alt="Rust 1.88+"></a>
+  <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-1.97%2B-dea584" alt="Rust 1.97+"></a>
 </p>
 
 # Argand
