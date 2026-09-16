@@ -153,6 +153,11 @@ impl Shell {
     }
 
     fn minimap_panel(&self, cx: &gpui::App) -> waveform::Panel {
+        let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
+        let ink = self
+            .settings
+            .minimap_colormap(displayed)
+            .waveform_ink(cx.theme().mode.is_dark());
         waveform::Panel {
             waveform: self.waveform.clone(),
             viewport: self.view.zip(
@@ -162,6 +167,10 @@ impl Shell {
                     .map(|meta| meta.len_samples),
             ),
             separator: cx.theme().border,
+            ink: waveform::Ink {
+                active: gpui::rgb(ink.active),
+                muted: gpui::rgb(ink.muted),
+            },
         }
     }
 

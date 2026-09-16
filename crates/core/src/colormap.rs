@@ -8,6 +8,25 @@ pub const GRADIENT_SIZE: usize = 256;
 
 pub type Gradient = [[u8; 3]; GRADIENT_SIZE];
 
+const OCEANIC_SIGNATURE: u32 = 0x4DA4D5;
+const GRAYSCALE_SIGNATURE: u32 = 0x9AA3AD;
+const INFERNO_SIGNATURE: u32 = 0xF98E09;
+const VIRIDIS_SIGNATURE: u32 = 0x5EC962;
+const SYNTHWAVE_SIGNATURE: u32 = 0xA537FD;
+const SUNSET_SIGNATURE: u32 = 0xE03A22;
+const WAVEFORM_SATURATION_LIMIT: f64 = 0.85;
+const MUTED_SATURATION_FACTOR: f64 = 0.5;
+const DARK_ACTIVE_LIGHTNESS: f64 = 0.68;
+const DARK_MUTED_LIGHTNESS: f64 = 0.26;
+const LIGHT_ACTIVE_LIGHTNESS: f64 = 0.36;
+const LIGHT_MUTED_LIGHTNESS: f64 = 0.76;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WaveformInk {
+    pub active: u32,
+    pub muted: u32,
+}
+
 /// Colour ramps for magnitude-to-pixel mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -30,6 +49,42 @@ pub const COLORMAP_NAMES: [&str; 6] = [
 ];
 
 impl Colormap {
+    pub fn waveform_ink(self, dark: bool) -> WaveformInk {
+        let signature = match self {
+            Self::Oceanic => OCEANIC_SIGNATURE,
+            Self::Grayscale => GRAYSCALE_SIGNATURE,
+            Self::Inferno => INFERNO_SIGNATURE,
+            Self::Viridis => VIRIDIS_SIGNATURE,
+            Self::Synthwave => SYNTHWAVE_SIGNATURE,
+            Self::Sunset => SUNSET_SIGNATURE,
+        };
+        let colour = HSL::from_rgb(&unpack(signature));
+        let saturation = colour.s.min(WAVEFORM_SATURATION_LIMIT);
+        let (active_lightness, muted_lightness) = if dark {
+            (DARK_ACTIVE_LIGHTNESS, DARK_MUTED_LIGHTNESS)
+        } else {
+            (LIGHT_ACTIVE_LIGHTNESS, LIGHT_MUTED_LIGHTNESS)
+        };
+        WaveformInk {
+            active: pack(
+                HSL {
+                    h: colour.h,
+                    s: saturation,
+                    l: active_lightness,
+                }
+                .to_rgb(),
+            ),
+            muted: pack(
+                HSL {
+                    h: colour.h,
+                    s: saturation * MUTED_SATURATION_FACTOR,
+                    l: muted_lightness,
+                }
+                .to_rgb(),
+            ),
+        }
+    }
+
     /// Anchor colours, dark (weakest) to bright (strongest).
     pub const fn stops(self) -> &'static [u32] {
         match self {
@@ -97,6 +152,10 @@ impl Colormap {
         }
         gradient
     }
+}
+
+fn pack((r, g, b): (u8, u8, u8)) -> u32 {
+    (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)
 }
 
 const fn unpack(rgb: u32) -> [u8; 3] {
