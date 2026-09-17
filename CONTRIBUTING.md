@@ -185,15 +185,13 @@ The exact toolchain comes from `rust-toolchain.toml`; the workspace's minimum Ru
 
 ## External review
 
-Choose the external reviewer based on who implements the Issue:
+The implementer and the reviewer for an Issue come from its complexity class, which
+the plan declares before the work is handed over. "Agent roles and model selection"
+in `AGENTS.md` holds the table; it is the single place that decides, and this section
+does not repeat it.
 
-| Issue implementer | Required Draft Pull Request reviewer | CLI model | Reasoning effort |
-| --- | --- | --- | --- |
-| Claude | Codex GPT-6 Astra | `gpt-6-astra` | High |
-| Codex GPT-6 Astra | Codex GPT-5.6 Sol | `gpt-5.6-sol` | High |
-
-Select the required model and reasoning effort explicitly when invoking the `codex`
-CLI, and use them for every subsequent review round.
+Select the model and reasoning effort explicitly when invoking the `codex` CLI, and
+use the same pair for every subsequent review round of that Pull Request.
 
 Before presenting implementation results for owner review, including Draft feedback,
 the Pull Request goes through a review by a second
@@ -201,7 +199,7 @@ agent. Run it read-only so that the changes stay deliberate and this repository'
 rules -- in particular that suppressions need the owner's agreement -- are not bypassed
 by an agent that has not read them:
 
-Set `review_model` to the CLI model from the matching row above, then run:
+Set `review_model` to the reviewer model for the Issue's class, then run:
 
 ```sh
 codex exec -s read-only --model "${review_model:?Set review_model from the table above}" \
