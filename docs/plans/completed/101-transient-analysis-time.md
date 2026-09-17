@@ -224,8 +224,8 @@ so sample-mode readouts keep the same full-capture meaning.
       guide badges use, so both honour the time-ruler mode and the frequency unit of
       the axes. Keep the extents selection, the outside-spectrum case and the level
       field as they are.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -235,7 +235,7 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Owner validation on a real GPU session: open a file, read the timing, then
+- [x] Owner validation on a real GPU session: open a file, read the timing, then
       click and confirm the whole ready status goes; confirm a keystroke and a wheel
       scroll do the same; confirm moving the pointer alone does not; confirm the
       gesture that dismissed it still did what it was meant to do — a pan still pans,
