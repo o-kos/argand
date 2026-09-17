@@ -507,6 +507,13 @@ impl Shell {
             .map(|_| position)
     }
 
+    fn set_pointer(&mut self, pointer: Option<gpui::Point<Pixels>>, cx: &mut Context<Self>) {
+        self.pointer = pointer;
+        if !self.ready_status_dismissed && self.cursor_readout().is_some() {
+            self.dismiss_ready_status(cx);
+        }
+    }
+
     pub(super) fn pointer_moved(
         &mut self,
         event: &gpui::MouseMoveEvent,
@@ -517,10 +524,7 @@ impl Shell {
         if self.pan.is_none() && self.frequency_pan.is_none() && self.pointer == pointer {
             return;
         }
-        self.pointer = pointer;
-        if !self.ready_status_dismissed && self.cursor_readout().is_some() {
-            self.dismiss_ready_status(cx);
-        }
+        self.set_pointer(pointer, cx);
         let mut changed = false;
         if let Some((origin, view)) = self.frequency_pan {
             if event.dragging() {
@@ -779,10 +783,7 @@ impl Shell {
             .is_some_and(|open| open.entity_id() == menu.entity_id())
         {
             self.open_menu = None;
-            self.pointer = self.plot_pointer(window.mouse_position());
-            if !self.ready_status_dismissed && self.cursor_readout().is_some() {
-                self.dismiss_ready_status(cx);
-            }
+            self.set_pointer(self.plot_pointer(window.mouse_position()), cx);
             cx.notify();
         }
     }

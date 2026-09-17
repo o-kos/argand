@@ -601,9 +601,10 @@ impl Shell {
         let Some(file) = self.file.as_mut() else {
             return;
         };
-        let effect = file
-            .document
-            .apply(delivery.update, &mut self.ready_status_dismissed);
+        let effect = file.document.apply(delivery.update);
+        if matches!(file.document.status(), Status::Ready { .. }) {
+            self.ready_status_dismissed = false;
+        }
         if effect == Effect::Analysis {
             file.displayed_settings = Some(self.settings);
         }

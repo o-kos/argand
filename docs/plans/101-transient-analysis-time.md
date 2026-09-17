@@ -91,9 +91,9 @@ the status shown when no file is open.
 - **The whole ready status is dismissed together**, text and hint, as the owner
   directed. Hiding only the tooltip would leave the number on screen permanently,
   which is the complaint.
-- **Dismissal is reset where `Status::Ready` is assigned**, not on file opening. Every
-  completed analysis then gets to show its own timing once, which is what the Issue
-  asks for and which covers opening a file as one case among several.
+- **Dismissal is reset in `Shell` after `Document::apply` leaves `Status::Ready`**,
+  not on file opening. Only `Update::Ready` leaves that status, so every completed
+  analysis gets to show its timing once while the presentation flag stays in `Shell`.
 - **The decision is a method on `Status`** taking the dismissed flag and returning
   what to draw, so it is tested without a window and `settings_ui.rs` gains one
   condition rather than a branch. That also keeps the footprint in `settings_ui.rs`
@@ -159,8 +159,10 @@ the status shown when no file is open.
 - [x] Cover it in `document_tests.rs`: a dismissed ready state draws nothing while
       `Ready { elapsed }` keeps its value; `Opening`, `Analyzing` and `Failed` are
       unaffected by the flag; an undismissed ready state is unchanged from today.
-- [x] Hold the dismissed flag in `Shell` and clear it where `Status::Ready` is
-      assigned, so each completed analysis shows its timing once.
+- [x] Hold the dismissed flag in `Shell` and clear it after `Document::apply` leaves
+      `Status::Ready`, so each completed analysis shows its timing once.
+- [x] ➕ Restore the original `Document::apply` signature after review, keep the
+      dismissal reset in `Shell`, and test that only ready updates leave ready status.
 - [x] Observe the mouse during paint with `Window::on_mouse_event` for
       `MouseDownEvent` and for `ScrollWheelEvent`, acting only in
       `DispatchPhase::Capture` and leaving `propagate_event` untouched.
@@ -171,6 +173,8 @@ the status shown when no file is open.
       observers run.
 - [x] ➕ Dismiss the timing where `self.pointer` is assigned, when the pointer is
       somewhere the readout reports.
+- [x] ➕ Centralize pointer assignment and readout dismissal in one helper used by
+      pointer motion and time-menu dismissal, as requested in review.
 - [x] ➕ Put frequency before time in the readout and move the level into its own
       status-bar field, keeping the existing precision rules and the `—` for an
       unknown level.
@@ -204,9 +208,10 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       and confirm the timing appears again;
       confirm `analysing...` and a failure message are never suppressed.
 
-Local formatting, Clippy, tests and the subsequent release build passed.
+Local formatting, Clippy, tests and the subsequent release build passed again
+after both round-two review fixes.
 The test suites reported 563 passed and
-zero failures, including the three new status and dismissal tests. The five
+zero failures, including the three status presentation and ready-transition tests. The five
 optional real-capture fixtures and the half-hour capture are absent in this
 worktree, so their end-to-end cases skip the capture checks. Cargo reports a
 future-incompatibility warning for the existing `proc-macro-error2 v2.0.1`

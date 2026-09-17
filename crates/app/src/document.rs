@@ -206,7 +206,7 @@ impl Document {
     /// This is the whole sequence a file goes through, in one place and with
     /// no toolkit in sight, so what the window shows at each step is decided
     /// here and merely drawn there.
-    pub fn apply(&mut self, update: Update, ready_dismissed: &mut bool) -> Effect {
+    pub fn apply(&mut self, update: Update) -> Effect {
         if let Update::Snapshot { analysis, .. } | Update::Ready { analysis, .. } = &update {
             self.range_recommendation = crate::settings::low_signal_recommendation(analysis);
         }
@@ -236,7 +236,6 @@ impl Document {
                 self.remember_extrema(&analysis);
                 self.analysis = Some(analysis);
                 self.status = Status::Ready { elapsed };
-                *ready_dismissed = false;
                 Effect::Analysis
             }
             Update::Failed(error) => {

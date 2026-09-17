@@ -70,19 +70,19 @@ fn opening_a_file_is_what_lets_a_request_be_built_for_it() {
     let mut document = opening();
     // The span to analyse is the length the file just reported, so the window
     // is told to build a request rather than merely to redraw.
-    assert_eq!(document.apply(Update::Opened(meta(), FileInfo::default()), &mut false), Effect::Opened);
+    assert_eq!(document.apply(Update::Opened(meta(), FileInfo::default())), Effect::Opened);
     assert_eq!(document.meta().map(|m| m.len_samples), Some(48_000));
 }
 
 #[test]
 fn a_finished_analysis_is_what_the_window_draws_from() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()), &mut false);
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     assert_eq!(
         document.apply(Update::Ready {
             analysis: analysis(64),
             elapsed: Duration::from_millis(1250)
-        }, &mut false),
+        }),
         Effect::Analysis
     );
     assert_eq!(
@@ -97,7 +97,7 @@ fn a_finished_analysis_is_what_the_window_draws_from() {
     document.apply(Update::Ready {
         analysis: analysis(128),
         elapsed: Duration::from_millis(2500),
-    }, &mut false);
+    });
     assert_eq!(document.status().message(), "ready in 2.5s");
     assert_eq!(document.analysis().map(|a| a.spectrogram.width), Some(128));
 }
@@ -105,11 +105,11 @@ fn a_finished_analysis_is_what_the_window_draws_from() {
 #[test]
 fn a_new_transform_leaves_the_previous_picture_up_while_it_runs() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()), &mut false);
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     document.apply(Update::Ready {
         analysis: analysis(64),
         elapsed: Duration::from_millis(1250),
-    }, &mut false);
+    });
 
     // A resize asks for a wider picture. Blanking the window until it arrives
     // would be a worse answer than a slightly stale spectrogram.
@@ -117,7 +117,7 @@ fn a_new_transform_leaves_the_previous_picture_up_while_it_runs() {
         document.apply(Update::Progress {
             done: 10,
             total: 40
-        }, &mut false),
+        }),
         Effect::Status
     );
     assert_eq!(
@@ -135,7 +135,7 @@ fn a_failure_is_something_to_read_rather_than_something_to_crash_on() {
     let mut document = opening();
     let error = anyhow::anyhow!("unrecognised container").context("opening hfdl.iqw");
 
-    assert_eq!(document.apply(Update::Failed(error), &mut false), Effect::Status);
+    assert_eq!(document.apply(Update::Failed(error)), Effect::Status);
     let Status::Failed(message) = document.status() else {
         panic!("the document should be showing a failure");
     };
@@ -150,17 +150,17 @@ fn a_failure_is_something_to_read_rather_than_something_to_crash_on() {
 #[test]
 fn a_transform_that_has_not_reported_yet_has_no_fraction_to_show() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()), &mut false);
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     assert_eq!(document.status().message(), "analysing...");
 
-    document.apply(Update::Progress { done: 1, total: 40 }, &mut false);
+    document.apply(Update::Progress { done: 1, total: 40 });
     assert_eq!(document.status().message(), "analysing... 2%");
 }
 
 #[test]
 fn the_status_bar_separates_metadata_and_keeps_rf_context() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()), &mut false);
+    document.apply(Update::Opened(meta(), FileInfo::default()));
 
     assert_eq!(
         document.summary().unwrap().iter().map(|field| (field.value.as_str(), field.hint.title)).collect::<Vec<_>>(),
@@ -174,7 +174,7 @@ fn a_baseband_capture_has_no_centre_frequency_worth_printing() {
     document.apply(Update::Opened(SignalMeta {
         center_freq: 0.0,
         ..meta()
-    }, FileInfo::default()), &mut false);
+    }, FileInfo::default()));
 
     assert_eq!(
         document.summary().unwrap().iter().map(|field| field.value.as_str()).collect::<Vec<_>>(),
@@ -210,7 +210,7 @@ fn metadata_duration_counts_iq_pairs_and_real_samples_once() {
             sample_type: SampleType::new(domain, SampleFormat::I16),
             len_samples: 5_312_160,
             ..meta()
-        }, FileInfo::default()), &mut false);
+        }, FileInfo::default()));
         let fields = document.summary().unwrap();
         assert_eq!(fields[1].value, label);
         assert_eq!(fields[3].value, "3m41.34s");
@@ -234,7 +234,7 @@ fn compact_duration_trims_zero_units_and_fractional_zeros_after_rounding() {
 #[test]
 fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()), &mut false);
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     let fields = document.summary().unwrap();
     assert_eq!(fields[0].hint.value, "wav");
     assert_eq!(fields[1].hint.value, "iq · i16");
@@ -258,16 +258,16 @@ fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
 fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
     let mut document = opening();
     assert!(document.status().hint().is_none());
-    document.apply(Update::Opened(meta(), FileInfo::default()), &mut false);
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     assert!(document.status().hint().is_none());
-    document.apply(Update::Ready { analysis: analysis(64), elapsed: Duration::from_millis(1250) }, &mut false);
+    document.apply(Update::Ready { analysis: analysis(64), elapsed: Duration::from_millis(1250) });
     let hint = document.status().hint().unwrap();
     assert_eq!(hint.title, "Analysis time");
     assert_eq!(hint.value, "1.250 s");
     assert!(hint.explanation.contains("excluding file opening and window drawing"));
-    document.apply(Update::Progress { done: 1, total: 40 }, &mut false);
+    document.apply(Update::Progress { done: 1, total: 40 });
     assert!(document.status().hint().is_none());
-    document.apply(Update::Failed(anyhow::anyhow!("read failed")), &mut false);
+    document.apply(Update::Failed(anyhow::anyhow!("read failed")));
     assert!(document.status().hint().is_none());
 }
 
@@ -306,39 +306,33 @@ fn dismissal_never_hides_opening_progress_or_failure() {
 }
 
 #[test]
-fn each_completed_analysis_resets_dismissal_at_the_ready_transition() {
+fn only_ready_updates_leave_the_document_ready() {
     let mut document = opening();
-    let mut dismissed = true;
-    document.apply(Update::Opened(meta(), FileInfo::default()), &mut dismissed);
-    assert!(dismissed);
+    assert!(!matches!(document.status(), Status::Ready { .. }));
 
-    for millis in [1250, 2500] {
-        document.apply(Update::Progress { done: 1, total: 4 }, &mut dismissed);
-        assert!(dismissed);
-        document.apply(Update::Snapshot {
+    for update in [
+        Update::Opened(meta(), FileInfo::default()),
+        Update::Progress { done: 1, total: 4 },
+        Update::Snapshot {
             analysis: analysis(64),
             coverage: argand_dsp::Coverage { refined_columns: 1, width: 4 },
-        }, &mut dismissed);
-        assert!(dismissed);
-        let elapsed = Duration::from_millis(millis);
-        document.apply(Update::Ready { analysis: analysis(64), elapsed }, &mut dismissed);
-        assert!(!dismissed);
-        assert!(document.status().presentation(dismissed).is_some());
-        dismissed = true;
-        assert!(document.status().presentation(dismissed).is_none());
+        },
+        Update::Failed(anyhow::anyhow!("read failed")),
+    ] {
+        let elapsed = Duration::from_millis(1250);
+        document.apply(Update::Ready { analysis: analysis(64), elapsed });
         assert_eq!(document.status(), &Status::Ready { elapsed });
         assert_eq!(document.analysis().unwrap().spectrogram.width, 64);
-    }
 
-    document.apply(Update::Failed(anyhow::anyhow!("read failed")), &mut dismissed);
-    assert!(dismissed);
-    assert!(document.status().presentation(dismissed).is_some());
+        document.apply(update);
+        assert!(!matches!(document.status(), Status::Ready { .. }));
+    }
 }
 
 #[test]
 fn completed_minimap_extrema_survive_navigation_and_no_waveform_spectral_results() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()), &mut false);
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     let mut envelope = argand_core::WaveformEnvelope::new(2, 2);
     envelope.min = vec![-0.8, -0.5, -0.3, -0.4];
     envelope.max = vec![0.7, 0.6, 0.2, 0.9];
@@ -351,7 +345,7 @@ fn completed_minimap_extrema_survive_navigation_and_no_waveform_spectral_results
     assert_eq!(document.sample_extrema, extrema);
     for range in [argand_core::SampleRange::new(1000, 2048), argand_core::SampleRange::new(0, 48000)] {
         document.requested_range(range);
-        document.apply(Update::Ready { analysis: analysis(32), elapsed: Duration::ZERO }, &mut false);
+        document.apply(Update::Ready { analysis: analysis(32), elapsed: Duration::ZERO });
         assert_eq!(document.sample_extrema, extrema);
     }
     assert!(opening().sample_extrema.is_none());
@@ -361,7 +355,7 @@ fn completed_minimap_extrema_survive_navigation_and_no_waveform_spectral_results
 fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
     let mut document = opening();
     document.origin.hints.gain_db = 20.0;
-    document.apply(Update::Opened(meta(), FileInfo { bytes: Some(192044), sample_units: Some((3276.8, 0.0)) }), &mut false);
+    document.apply(Update::Opened(meta(), FileInfo { bytes: Some(192044), sample_units: Some((3276.8, 0.0)) }));
     let field = document.file_summary().unwrap();
     assert_eq!(field.value, "wav · iq i16 · 24 kHz · 2s");
     assert!(field.hint.value.contains("I/Q pairs: 48,000"));
@@ -371,7 +365,7 @@ fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
     result.db.t1 = 2.0;
     result.waveform = Some(argand_core::WaveformEnvelope { columns: 2, channels: 2,
         min: vec![-5.0, -2.5, 0.0, 0.0], max: vec![1.25, 0.625, 0.0, 0.0], t0: 0.0, t1: 2.0 });
-    document.apply(Update::Ready { analysis: result, elapsed: Duration::from_secs(1) }, &mut false);
+    document.apply(Update::Ready { analysis: result, elapsed: Duration::from_secs(1) });
     let hint = document.file_summary().unwrap().hint.value;
     assert!(hint.contains("I min / max: -16,384 / 4,096"), "{hint}");
     assert!(hint.contains("Q min / max: -8,192 / 2,048"), "{hint}");
@@ -379,7 +373,7 @@ fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
     zoomed.db.t0 = 0.5;
     document.requested_range(argand_core::SampleRange::new(12_000, 12_000));
     zoomed.waveform = Some(argand_core::WaveformEnvelope::new(2, 2));
-    document.apply(Update::Ready { analysis: zoomed, elapsed: Duration::from_secs(1) }, &mut false);
+    document.apply(Update::Ready { analysis: zoomed, elapsed: Duration::from_secs(1) });
     assert_eq!(document.file_summary().unwrap().hint.value, hint, "a zoom must not replace file-wide extrema");
 }
 
@@ -388,19 +382,19 @@ fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
 fn file_wide_extrema_use_integer_range_provenance() {
     let mut document = opening();
     let total = (1_u64 << 54) + 1;
-    document.apply(Update::Opened(SignalMeta { len_samples: total, ..meta() }, FileInfo::default()), &mut false);
+    document.apply(Update::Opened(SignalMeta { len_samples: total, ..meta() }, FileInfo::default()));
     document.requested_range(argand_core::SampleRange::new(0, total - 1));
     let mut partial = analysis(2);
     partial.db.t1 = total as f64 / meta().sample_rate;
     partial.waveform = Some(argand_core::WaveformEnvelope::new(2, 2));
-    document.apply(Update::Ready { analysis: partial, elapsed: Duration::ZERO }, &mut false);
+    document.apply(Update::Ready { analysis: partial, elapsed: Duration::ZERO });
     assert!(document.sample_extrema.is_none());
 }
 
 #[test]
 fn minimap_failure_replaces_pending_extrema_hint() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()), &mut false);
+    document.apply(Update::Opened(meta(), FileInfo::default()));
     document.minimap_failed("test read failure".into());
     let hint = document.file_summary().unwrap().hint.value;
     assert!(hint.contains("Waveform unavailable: test read failure"), "{hint}");
