@@ -118,6 +118,7 @@ fn a_session_survives_the_round_trip() {
     let path = dir.join("session.toml");
     let session = Session {
         show_grid: true,
+        show_scale_ui: true,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -173,6 +174,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
 
     let first = Session {
         show_grid: true,
+        show_scale_ui: true,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -233,6 +235,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
     let at = |ms: u64| Instant::now() + Duration::from_millis(ms);
     let moved = |x: f32| Session {
         show_grid: true,
+        show_scale_ui: true,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -278,6 +281,7 @@ fn a_position_that_has_not_changed_is_not_written_again() {
     let path = dir.join("session.toml");
     let held = Session {
         show_grid: true,
+        show_scale_ui: true,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -310,6 +314,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
     let start = Instant::now();
     let moved = |x: f32| Session {
         show_grid: true,
+        show_scale_ui: true,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -335,6 +340,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let path = dir.join("session.toml");
     let at = |x: f32| Session {
         show_grid: true,
+        show_scale_ui: true,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -375,6 +381,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
     let mut writer = Writer::new(path.clone(), Session::default());
     let moved = Session {
         show_grid: true,
+        show_scale_ui: true,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -424,6 +431,7 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
     let start = Instant::now();
     let at = |x: f32| Session {
         show_grid: true,
+        show_scale_ui: true,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -688,8 +696,8 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 9"),
-        "the current session layout is version 9: {text}"
+        text.contains("version = 10"),
+        "the current session layout is version 10: {text}"
     );
 }
 

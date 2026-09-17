@@ -32,6 +32,8 @@ promise applies to.
 
 ### Changed
 
+- Simplify File and View: recent captures appear directly in File, and View keeps grid, orientation, Fit time, Fit frequency and time-scale format controls. Frequency fit now uses Ctrl+Shift+0 instead of Ctrl+Shift+Home.
+
 - Replace the application and desktop launcher icon with the B0 intertwined I/Q ribbons, including dedicated 16- and 24-pixel artwork.
 
 - Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with slightly stronger text and border contrast, platform-specific notation and matching menu-width measurement.
@@ -43,6 +45,10 @@ promise applies to.
 - Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
 
 ### Added
+
+- Translucent `[+|-]` zoom pairs in the spectrogram's corners: bottom-left zooms time, top-right zooms frequency, mirrored in vertical orientation; View → Show scale controls (Ctrl+Alt+U) hides or shows them.
+- Small zoom-in/out button pairs on both rulers, following the spectrogram orientation, with keyboard shortcut hints and reserved label space.
+- File → Settings opens the existing analysis settings editor.
 
 - Ctrl+T switches between Horizontal and Vertical spectrogram orientation and appears in the mode button tooltip.
 

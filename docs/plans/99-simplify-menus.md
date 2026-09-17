@@ -107,25 +107,30 @@ Owner decisions from 2026-09-17:
 
 ## Implementation steps
 
-- [ ] Restructure `application_items`/`application_view_items` in
+- [x] Restructure `application_items`/`application_view_items` in
       `crates/app/src/app_menu_ui.rs` to the final layout; inline recent
       rows with adaptive separators; add `Settings`; drop pan/zoom
       entries.
-- [ ] Rebind `FitFrequency` to `ctrl-shift-0` in
+- [x] Rebind `FitFrequency` to `ctrl-shift-0` in
       `crates/app/src/navigation_ui.rs` (binding + interceptor +
       `plot_shortcut` tests); rename menu labels.
-- [ ] Reserve ruler-end button zones in the axis frame layout
+- [x] Reserve ruler-end button zones in the axis frame layout
       (`crates/app/src/axes.rs`, toolkit-neutral, tested without GPU).
-- [ ] Render the two zoom pairs (new small module or `plot_ui.rs`),
+- [x] Render the two zoom pairs (new small module or `plot_ui.rs`),
       reusing the shared button styling and tooltip helper; disabled
       without a file; both orientations.
-- [ ] Update README (shortcut table, View menu references, Settings
+      Revised on owner feedback: translucent unrounded `[+|-]` pairs sit on
+      the spectrogram's corners (bottom-left time, top-right frequency,
+      mirrored in vertical mode); View → Show scale controls (Ctrl+Alt+U,
+      session version 10) hides or shows them; the ruler-end reservation was
+      reverted.
+- [x] Update README (shortcut table, View menu references, Settings
       entry, Ctrl+Shift+0 IME note), AGENTS.md "Current status" menu
       description, `CHANGELOG.md` `[Unreleased]`.
-- [ ] Tests: menu structure without toolkit types (extend `app_menu.rs`
+- [x] Tests: menu structure without toolkit types (extend `app_menu.rs`
       tests where applicable), interceptor tests for `ctrl-shift-0`,
       axis frame reservation tests.
-- [ ] Full gate: `cargo fmt --all -- --check`; `cargo clippy
+- [x] Full gate: `cargo fmt --all -- --check`; `cargo clippy
       --all-targets --locked`; `cargo test --locked`; `cargo build
       --release --locked` last.
 - [ ] GPU screenshots of both orientations, both themes, with/without
@@ -138,11 +143,11 @@ Owner decisions from 2026-09-17:
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Menu-model tests, interceptor tests, axis-frame layout tests.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Menu-model tests, interceptor tests, axis-frame layout tests.
 - [ ] Manual GPU checks: menus, ruler buttons, both orientations and
       themes, recent-empty/recent-present, Settings entry, shortcut
       hints match actual behaviour.

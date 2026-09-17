@@ -1,6 +1,10 @@
 //! Synchronized plot painting and measured pointer geometry.
 
+use super::navigation_ui::*;
 use super::*;
+use gpui::Div;
+use gpui_component::button::ButtonCustomVariant;
+use gpui_component::{Disableable, Icon, IconName};
 
 impl Shell {
     /// The spectrogram panel: the picture, and the axes around it.
@@ -224,6 +228,51 @@ impl Shell {
         )
     }
 
+    pub(super) fn ruler_zoom_buttons(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+        if !self.session.show_scale_ui {
+            return None;
+        }
+        let geometry = self.plot_geometry?;
+        let origin = self.panel_bounds?.origin;
+        let enabled = self.view.is_some();
+        let [time, frequency] = geometry.zoom_zones;
+        Some(
+            div()
+                .id("ruler-zoom-buttons")
+                .absolute()
+                .inset_0()
+                .children(time.map(|zone| {
+                    zoom_pair(
+                        ZoomPair {
+                            zone,
+                            zoom_in: "Zoom in time",
+                            zoom_out: "Zoom out time",
+                        },
+                        ZoomIn,
+                        ZoomOut,
+                        enabled,
+                        origin,
+                        cx,
+                    )
+                }))
+                .children(frequency.map(|zone| {
+                    zoom_pair(
+                        ZoomPair {
+                            zone,
+                            zoom_in: "Zoom in frequency",
+                            zoom_out: "Zoom out frequency",
+                        },
+                        FrequencyZoomIn,
+                        FrequencyZoomOut,
+                        enabled,
+                        origin,
+                        cx,
+                    )
+                }))
+                .into_any_element(),
+        )
+    }
+
     fn layout_panels(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -260,6 +309,167 @@ fn axis_colors(cx: &gpui::App, show_grid: bool) -> axes::Colors {
         tick: cx.theme().muted_foreground,
         label: cx.theme().muted_foreground,
     }
+}
+
+/// One corner pair's shared look: translucent paper over the picture, no
+/// rounding, one border around both squares -- `[+|-]`.
+fn spectrum_button_style(cx: &gpui::App) -> ButtonCustomVariant {
+    ButtonCustomVariant::new(cx)
+        .color(cx.theme().background.opacity(0.55))
+        .border(cx.theme().border.opacity(0.75))
+}
+
+/// The corner zoom zones, translated into panel coordinates: the time pair in
+/// the spectrum's leading corner, the frequency pair in its trailing one.
+///
+/// Each zone is exactly the pair's frame, `[+|-]`: two squares and their
+/// shared divider inside one unrounded border.
+fn corner_zones(spectrum: Bounds<Pixels>, vertical: bool) -> [Option<axes::Rect>; 2] {
+    const MIN_SPAN: f32 = SCALE_PAIR + SCALE_BUTTON;
+    let small = |span: f32| (span >= MIN_SPAN).then_some(span);
+    let left = f32::from(spectrum.left());
+    let top = f32::from(spectrum.top());
+    let right = left + f32::from(spectrum.size.width);
+    let bottom = top + f32::from(spectrum.size.height);
+    if vertical {
+        [
+            small(bottom - top).map(|_| axes::Rect {
+                x: right - SCALE_BUTTON,
+                y: bottom - SCALE_PAIR,
+                width: SCALE_BUTTON,
+                height: SCALE_PAIR,
+            }),
+            small(right - left).map(|_| axes::Rect {
+                x: left,
+                y: top,
+                width: SCALE_PAIR,
+                height: SCALE_BUTTON,
+            }),
+        ]
+    } else {
+        [
+            small(right - left).map(|_| axes::Rect {
+                x: left,
+                y: bottom - SCALE_BUTTON,
+                width: SCALE_PAIR,
+                height: SCALE_BUTTON,
+            }),
+            small(bottom - top).map(|_| axes::Rect {
+                x: right - SCALE_PAIR,
+                y: top,
+                width: SCALE_BUTTON,
+                height: SCALE_PAIR,
+            }),
+        ]
+    }
+}
+
+struct ZoomPair {
+    zone: axes::Rect,
+    zoom_in: &'static str,
+    zoom_out: &'static str,
+}
+
+/// The square overlay side of one corner pair: 22 logical pixels; the whole
+/// pair `[+|-]` spans 45 pixels including its one-pixel divider.
+const SCALE_BUTTON: f32 = 22.0;
+const SCALE_DIVIDER: f32 = 1.0;
+const SCALE_PAIR: f32 = 2.0 * SCALE_BUTTON + SCALE_DIVIDER;
+
+fn zoom_pair(
+    pair: ZoomPair,
+    in_action: impl Action,
+    out_action: impl Action,
+    enabled: bool,
+    origin: gpui::Point<Pixels>,
+    cx: &mut Context<Shell>,
+) -> Div {
+    let frame = cx.theme().border.opacity(0.75);
+    let paper = cx.theme().background.opacity(0.55);
+    let horizontal = pair.zone.width > pair.zone.height;
+    let zoom_in = half_button(
+        IconName::Plus,
+        pair.zoom_in,
+        in_action,
+        enabled,
+        SCALE_BUTTON,
+        cx,
+    );
+    let zoom_out = half_button(
+        IconName::Minus,
+        pair.zoom_out,
+        out_action,
+        enabled,
+        SCALE_BUTTON,
+        cx,
+    );
+    let divider = if horizontal {
+        div().w(px(SCALE_DIVIDER)).h_full().bg(frame)
+    } else {
+        div().h(px(SCALE_DIVIDER)).w_full().bg(frame)
+    };
+    let bar = if horizontal {
+        div().flex().items_center().child(zoom_in).child(divider)
+    } else {
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .child(zoom_in)
+            .child(divider)
+    };
+    div()
+        .absolute()
+        .left(px(pair.zone.x) - origin.x)
+        .top(px(pair.zone.y) - origin.y)
+        .w(px(pair.zone.width))
+        .h(px(pair.zone.height))
+        .border_1()
+        .border_color(frame)
+        .bg(paper)
+        .overflow_hidden()
+        .cursor(gpui::CursorStyle::Arrow)
+        .child(bar.child(zoom_out))
+}
+
+/// One clickable half of a corner pair, sized by the pair's flow layout.
+fn half_button(
+    icon: IconName,
+    hint: &'static str,
+    action: impl Action + 'static,
+    enabled: bool,
+    side: f32,
+    cx: &mut Context<Shell>,
+) -> gpui_component::button::Button {
+    let tooltip_action = Box::new(action) as Box<dyn Action>;
+    let hover_tooltip = tooltip_action.boxed_clone();
+    let glyph = if enabled {
+        cx.theme().foreground.opacity(0.85)
+    } else {
+        cx.theme().muted_foreground.opacity(0.5)
+    };
+    let mut button = Button::new(hint)
+        .custom(spectrum_button_style(cx))
+        .small()
+        .w(px(side))
+        .h(px(side))
+        .px_0()
+        .child(Icon::new(icon).size(px(12.)).text_color(glyph))
+        .disabled(!enabled)
+        .on_click(cx.listener(move |shell, _, window, cx| {
+            window.focus(&shell.focus);
+            window.dispatch_action(tooltip_action.boxed_clone(), cx);
+        }));
+    button.interactivity().tooltip(move |window, cx| {
+        shortcut_tooltip(
+            hint.to_owned(),
+            Some(hover_tooltip.boxed_clone()),
+            "Plot",
+            px(240.),
+        )
+        .build(window, cx)
+    });
+    button
 }
 
 fn unit_tooltip(owner: WeakEntity<Shell>, index: usize, cx: &mut gpui::App) -> gpui::AnyView {
@@ -338,6 +548,7 @@ fn plot_geometry(
                 hint
             })
         }),
+        zoom_zones: corner_zones(spectrum, orientation.vertical()),
         time_scheme: frame.time_scheme,
         frequency_scheme: frame.frequency_scheme,
         minimap_columns,
@@ -534,6 +745,55 @@ impl DeepPreview {
             window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
                 spectrogram::paint(texture.clone(), bounds, window);
             });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spectrum() -> Bounds<Pixels> {
+        Bounds::new(point(px(30.), px(20.)), size(px(640.), px(300.)))
+    }
+
+    #[test]
+    fn corner_zones_hug_the_spectrum_edges() {
+        let spectrum = spectrum();
+        let [time, frequency] = corner_zones(spectrum, false);
+        let time = time.unwrap();
+        assert_eq!(
+            (time.x, time.y, time.width, time.height),
+            (30., 20. + 300. - SCALE_BUTTON, SCALE_PAIR, SCALE_BUTTON)
+        );
+        let frequency = frequency.unwrap();
+        assert_eq!(
+            (frequency.x, frequency.y, frequency.width, frequency.height),
+            (30. + 640. - SCALE_PAIR, 20., SCALE_BUTTON, SCALE_PAIR)
+        );
+        let [time, frequency] = corner_zones(spectrum, true);
+        let time = time.unwrap();
+        assert_eq!(
+            (time.x, time.y, time.width, time.height),
+            (
+                30. + 640. - SCALE_BUTTON,
+                20. + 300. - SCALE_PAIR,
+                SCALE_BUTTON,
+                SCALE_PAIR
+            )
+        );
+        let frequency = frequency.unwrap();
+        assert_eq!(
+            (frequency.x, frequency.y, frequency.width, frequency.height),
+            (30., 20., SCALE_PAIR, SCALE_BUTTON)
+        );
+    }
+
+    #[test]
+    fn corner_zones_vanish_on_small_spectrums() {
+        let tiny = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(40.)));
+        for zone in corner_zones(tiny, false) {
+            assert!(zone.is_none(), "a 40-pixel spectrum fits no pair");
         }
     }
 }

@@ -182,6 +182,16 @@ impl<T: Clone> Menu<T> {
     }
 }
 
+pub fn file_items<T>(open: Item<T>, recent: Vec<Item<T>>, settings: Item<T>) -> Vec<Item<T>> {
+    let mut items = vec![open, Item::separator()];
+    if !recent.is_empty() {
+        items.extend(recent);
+        items.push(Item::separator());
+    }
+    items.push(settings);
+    items
+}
+
 /// Keep a popup inside the viewport, flipping children to the left when needed.
 pub fn place(parent: [f32; 4], desired: [f32; 2], viewport: [f32; 2], child: bool) -> [f32; 4] {
     let [vw, vh] = viewport.map(|v| v.max(1.));
@@ -276,6 +286,41 @@ mod tests {
         menu.hover(1, 0);
         menu.hover(1, 2);
         assert_eq!(menu.enter(true), Effect::None);
+    }
+
+    #[test]
+    fn recent_rows_are_inline_and_their_separators_collapse_when_empty() {
+        let items = file_items(
+            Item::command("Open file...", 1),
+            vec![Item::command("Capture", 2), Item::command("Capture", 5)],
+            Item::command("Settings", 3),
+        );
+        let kinds: Vec<&str> = items
+            .iter()
+            .map(|item| match item.kind {
+                Kind::Command(_) => "command",
+                Kind::Branch(_) => "branch",
+                Kind::Separator => "separator",
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "command",
+                "separator",
+                "command",
+                "command",
+                "separator",
+                "command"
+            ]
+        );
+        let empty = file_items(
+            Item::command("Open file...", 1),
+            Vec::new(),
+            Item::command("Settings", 3),
+        );
+        assert_eq!(empty.len(), 3);
+        assert!(matches!(empty[1].kind, Kind::Separator));
     }
 
     #[test]

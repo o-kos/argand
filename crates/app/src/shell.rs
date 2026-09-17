@@ -1116,6 +1116,7 @@ impl Shell {
                     self.panel_bounds
                         .and_then(|bounds| self.unit_hint(1, bounds.origin, cx)),
                 )
+                .children(self.ruler_zoom_buttons(cx))
                 .into_any_element(),
             // Physical labels need the metadata; their boundaries can appear immediately.
             Showing::Opening => div()

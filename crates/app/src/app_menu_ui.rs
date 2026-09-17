@@ -48,10 +48,11 @@ impl Shell {
             .collect();
         let file = Item::branch(
             "File",
-            vec![
+            app_menu::file_items(
                 command("Open file...", ChooseFile),
-                Item::branch("Recent", recent),
-            ],
+                recent,
+                command("Settings", EditAnalysis),
+            ),
         );
         let mut items = vec![file];
         if self.view.is_some() {
@@ -65,8 +66,12 @@ impl Shell {
         let ruler = self.session.time_ruler;
         vec![
             command("Show grid", ToggleGrid).checked(self.session.show_grid),
+            command("Show scale controls", ToggleScaleUi).checked(self.session.show_scale_ui),
             command("Vertical orientation", ToggleOrientation)
                 .checked(self.session.orientation.vertical()),
+            Item::separator(),
+            command("Fit time", FitCapture),
+            command("Fit frequency", FitFrequency),
             Item::separator(),
             Item::branch(
                 "Time scale format",
@@ -77,30 +82,6 @@ impl Shell {
                     command("Sample numbers", SamplesRuler).checked(ruler == Mode::Samples),
                 ],
             ),
-            Item::branch(
-                "Frequency",
-                vec![
-                    command("Zoom in", FrequencyZoomIn),
-                    command("Zoom out", FrequencyZoomOut),
-                    command("Fit frequency range", FitFrequency),
-                    Item::separator(),
-                    command("Higher frequency", PanUp),
-                    command("Lower frequency", PanDown),
-                    command("Five frequency divisions higher", PanFarUp),
-                    command("Five frequency divisions lower", PanFarDown),
-                ],
-            ),
-            Item::separator(),
-            command("Zoom in", ZoomIn),
-            command("Zoom out", ZoomOut),
-            command("Fit capture", FitCapture),
-            Item::separator(),
-            command("Earlier in time", PanLeft),
-            command("Later in time", PanRight),
-            command("Five time divisions earlier", PanFarLeft),
-            command("Five time divisions later", PanFarRight),
-            command("Go to start", GoStart),
-            command("Go to end", GoEnd),
         ]
     }
 
@@ -606,7 +587,7 @@ fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {
     }
 }
 
-fn toolbar_style(selected: bool, cx: &gpui::App) -> ButtonCustomVariant {
+pub(super) fn toolbar_style(selected: bool, cx: &gpui::App) -> ButtonCustomVariant {
     let accent = toolbar_accent(cx);
     ButtonCustomVariant::new(cx)
         .color(if selected {

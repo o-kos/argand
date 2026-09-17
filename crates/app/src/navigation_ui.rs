@@ -7,6 +7,7 @@ actions!(
     navigation,
     [
         ToggleGrid,
+        ToggleScaleUi,
         ToggleOrientation,
         ClockRuler,
         SecondsRuler,
@@ -33,6 +34,7 @@ actions!(
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([
         KeyBinding::new("ctrl-g", ToggleGrid, Some("Plot")),
+        KeyBinding::new("ctrl-alt-u", ToggleScaleUi, Some("Plot")),
         KeyBinding::new("ctrl-t", ToggleOrientation, Some("Plot")),
         KeyBinding::new("ctrl-+", ZoomIn, Some("Plot")),
         KeyBinding::new("ctrl-=", ZoomIn, Some("Plot")),
@@ -54,7 +56,7 @@ pub(super) fn init(cx: &mut gpui::App) {
         KeyBinding::new("end", GoEnd, Some("Plot")),
         KeyBinding::new("ctrl-shift-+", FrequencyZoomIn, Some("Plot")),
         KeyBinding::new("ctrl-shift--", FrequencyZoomOut, Some("Plot")),
-        KeyBinding::new("ctrl-shift-home", FitFrequency, Some("Plot")),
+        KeyBinding::new("ctrl-shift-0", FitFrequency, Some("Plot")),
         KeyBinding::new("up", PanUp, Some("Plot && Horizontal")),
         KeyBinding::new("down", PanDown, Some("Plot && Horizontal")),
         KeyBinding::new("ctrl-up", PanFarUp, Some("Plot && Horizontal")),
@@ -103,6 +105,7 @@ fn plot_shortcut(
         ("-" | "_" | "subtract", false) => Some(Box::new(ZoomOut)),
         ("+" | "=" | "add", true) => Some(Box::new(FrequencyZoomIn)),
         ("-" | "_" | "subtract", true) => Some(Box::new(FrequencyZoomOut)),
+        ("0" | ")", true) => Some(Box::new(FitFrequency)),
         _ => None,
     }
 }
@@ -112,6 +115,7 @@ pub(super) struct PlotGeometry {
     pub orientation: crate::orientation::Mode,
     pub time_ruler: Bounds<Pixels>,
     pub unit_hints: [Option<axes::UnitHint>; 2],
+    pub zoom_zones: [Option<axes::Rect>; 2],
     pub time_scheme: Option<argand_core::axis::TickScheme>,
     pub frequency_scheme: Option<argand_core::axis::TickScheme>,
     pub spectrum: Bounds<Pixels>,
@@ -143,7 +147,7 @@ impl PlotGeometry {
         let Some(position) = pointer else {
             return gpui::CursorStyle::Arrow;
         };
-        if self.unit_at(position) {
+        if self.controls_at(position) {
             return gpui::CursorStyle::Arrow;
         }
         if self.spectrum.contains(&position) {
@@ -167,13 +171,19 @@ impl PlotGeometry {
     }
 
     fn unit_at(self, position: gpui::Point<Pixels>) -> bool {
-        self.unit_hints.iter().flatten().any(|hint| {
-            Bounds::new(
-                point(px(hint.bounds.x), px(hint.bounds.y)),
-                gpui::size(px(hint.bounds.width), px(hint.bounds.height)),
-            )
-            .contains(&position)
-        })
+        self.unit_hints
+            .iter()
+            .flatten()
+            .any(|hint| rect_contains(hint.bounds, position))
+    }
+
+    fn controls_at(self, position: gpui::Point<Pixels>) -> bool {
+        self.unit_at(position)
+            || self
+                .zoom_zones
+                .iter()
+                .flatten()
+                .any(|zone| rect_contains(*zone, position))
     }
 
     pub fn time_length(self) -> f32 {
@@ -247,7 +257,7 @@ impl PlotGeometry {
     }
 
     fn drag_axes(self, position: gpui::Point<Pixels>) -> (bool, bool) {
-        if self.unit_at(position) {
+        if self.controls_at(position) {
             return (false, false);
         }
         let frequency_ruler = self.frequency_ruler.contains(&position);
@@ -400,7 +410,7 @@ impl Shell {
         if !(geometry.navigation.contains(&event.position)
             || geometry.frequency_ruler.contains(&event.position))
             || self.splitter_dragging
-            || geometry.unit_at(event.position)
+            || geometry.controls_at(event.position)
         {
             return;
         }
@@ -431,7 +441,7 @@ impl Shell {
         if !(geometry.navigation.contains(&event.position)
             || geometry.frequency_ruler.contains(&event.position))
             || self.splitter_dragging
-            || geometry.unit_at(event.position)
+            || geometry.controls_at(event.position)
         {
             return;
         }
@@ -694,6 +704,11 @@ impl Shell {
                 shell.save();
                 cx.notify();
             }))
+            .on_action(cx.listener(|shell, _: &ToggleScaleUi, _, cx| {
+                shell.session.show_scale_ui = !shell.session.show_scale_ui;
+                shell.save();
+                cx.notify();
+            }))
             .on_action(
                 cx.listener(|shell, _: &FrequencyZoomIn, _, cx| shell.zoom_frequency(0.5, 0.5, cx)),
             )
@@ -827,6 +842,14 @@ impl Shell {
     }
 }
 
+fn rect_contains(rect: axes::Rect, position: gpui::Point<Pixels>) -> bool {
+    Bounds::new(
+        point(px(rect.x), px(rect.y)),
+        gpui::size(px(rect.width), px(rect.height)),
+    )
+    .contains(&position)
+}
+
 fn time_scale_items(
     menu: gpui_component::menu::PopupMenu,
     mode: crate::time_ruler::Mode,
@@ -903,6 +926,21 @@ mod tests {
                     .is::<FrequencyZoomOut>()
             );
         }
+        for key in ["0", ")"] {
+            assert!(
+                plot_shortcut(key, control, true)
+                    .unwrap()
+                    .as_any()
+                    .is::<FitFrequency>()
+            );
+            assert!(
+                plot_shortcut(key, shifted, false)
+                    .unwrap()
+                    .as_any()
+                    .is::<FitFrequency>()
+            );
+        }
+        assert!(plot_shortcut("0", control, false).is_none());
         for modifiers in [
             gpui::Modifiers::default(),
             gpui::Modifiers {
@@ -915,8 +953,9 @@ mod tests {
             },
         ] {
             assert!(plot_shortcut("+", modifiers, true).is_none());
+            assert!(plot_shortcut(")", modifiers, true).is_none());
         }
-        for key in ["up", "down", "home", "0", "a"] {
+        for key in ["up", "down", "home", "a"] {
             assert!(plot_shortcut(key, control, true).is_none());
         }
     }
@@ -926,6 +965,7 @@ mod tests {
             orientation: crate::orientation::Mode::Horizontal,
             time_ruler: Bounds::new(point(px(10.), px(150.)), size(px(100.), px(20.))),
             unit_hints: [None; 2],
+            zoom_zones: [None, None],
             time_scheme: None,
             frequency_scheme: None,
             minimap_columns: 100,
@@ -1139,6 +1179,43 @@ mod tests {
             );
             assert_eq!(geometry.drag_axes(position), (false, false));
         }
+    }
+
+    #[test]
+    fn ruler_zoom_buttons_keep_the_arrow_cursor_and_do_not_start_dragging() {
+        let mut geometry = geometry();
+        geometry.zoom_zones = [
+            Some(axes::Rect {
+                x: 10.,
+                y: 158.,
+                width: 44.,
+                height: 20.,
+            }),
+            Some(axes::Rect {
+                x: 119.,
+                y: 106.,
+                width: 20.,
+                height: 44.,
+            }),
+        ];
+        let viewport = Some((
+            View {
+                start: 200,
+                len: 300,
+            },
+            1000,
+        ));
+        for position in [point(px(20.), px(166.)), point(px(128.), px(130.))] {
+            assert_eq!(
+                geometry.cursor(Some(position), false, viewport, true),
+                gpui::CursorStyle::Arrow
+            );
+            assert_eq!(geometry.drag_axes(position), (false, false));
+        }
+        assert_eq!(
+            geometry.cursor(Some(point(px(60.), px(160.))), false, viewport, true),
+            gpui::CursorStyle::OpenHand
+        );
     }
 
     #[test]
