@@ -151,6 +151,34 @@ the status shown when no file is open.
   and the menu overlay today. It works, but it needs a new call site whenever another
   handler starts consuming input, and forgetting one fails silently.
 
+## Owner follow-up after the first GPU review
+
+Three changes requested after seeing the running build. They belong here rather than
+in a new Issue: two of them correct the readout this plan just re-laid out.
+
+- **No `ready` before a file is open.** `settings_ui.rs` substitutes a literal
+  `ready` when there is no file. Nothing has been analysed at that point, so the
+  status group shows nothing at all until a file is opened.
+- **The status bar reads the same as the Alt guide badges.** Those badges already
+  format both coordinates correctly, in `cursor_guides.rs`: `Readout::at` asks
+  `time_ruler::Ruler::readout` for the time, which honours the clock, seconds and
+  `#`-prefixed sample modes, and derives the frequency unit from
+  `axis::caption(AxisKind::Frequency, ..)`, dividing by the matching factor and
+  choosing precision from the span per device pixel.
+- **The status bar follows the rulers.** That is the same requirement seen from the
+  other side, and reusing the badge formatter satisfies it by construction: switch
+  the time ruler to samples and the status bar says `#1234567` too.
+
+`navigation_ui.rs::cursor_readout` currently formats its own `{time:.n$} s` and
+`{frequency:.n$} Hz`, which is the second implementation that must go. It keeps the
+parts the badges have no equivalent for: choosing the extents (the minimap substitutes
+the full capture duration), reporting time alone outside the spectrum, and the dBFS
+level with its `—` for an unknown value.
+
+The two must agree by sharing one formatter, not by being written to match. If
+`Readout::at` needs something `cursor_readout` cannot supply, widen it as little as
+possible; do not copy its formatting.
+
 ## Implementation steps
 
 - [x] Add the presentation decision to `Status` in `document.rs`: given a dismissed
@@ -183,6 +211,12 @@ the status shown when no file is open.
 - [x] Update the status-bar paragraph of `AGENTS.md` to state that the ready status
       and its timing hint are transient and dismissed by deliberate input.
 - [x] ➕ Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
+- [ ] ➕ Show no status group at all before a file is open, in place of the literal
+      `ready`.
+- [ ] ➕ Format the status bar's time and frequency through the same code the Alt
+      guide badges use, so both honour the time-ruler mode and the frequency unit of
+      the axes. Keep the extents selection, the outside-spectrum case and the level
+      field as they are.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -202,7 +236,9 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       confirm Ctrl+G and the arrow keys that pan the spectrum dismiss it; confirm
       moving the pointer over the spectrogram dismisses it; read the new readout at a
       megahertz sample rate and confirm frequency, time and a negative level are each
-      easy to pick out;
+      easy to pick out; switch the time ruler through clock, seconds and samples and
+      confirm the status bar follows each one and matches the Alt badge for the same
+      point; confirm the status bar shows nothing before a file is opened;
       confirm a wheel scroll over an open application menu
       dismisses it too, while the menu keeps swallowing the scroll; open another file
       and confirm the timing appears again;
