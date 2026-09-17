@@ -178,9 +178,9 @@ fn badge_bounds(anchor: Point<Pixels>, panel: Size<Pixels>, width: f32) -> Rect 
     }
 }
 
-struct Readout {
-    time: String,
-    frequency: String,
+pub(crate) struct Readout {
+    pub time: String,
+    pub frequency: String,
 }
 
 impl Readout {
@@ -201,14 +201,28 @@ impl Readout {
             (y - plot.y) as f64 / plot.height as f64,
         );
         let (time_length, frequency_length) = extents.orientation.axes(plot.width, plot.height);
+        Some(Self::from_fractions(
+            (time_fraction, frequency_fraction),
+            extents,
+            (
+                (time_length * scale) as f64,
+                (frequency_length * scale) as f64,
+            ),
+        ))
+    }
+
+    pub fn from_fractions(
+        (time_fraction, frequency_fraction): (f64, f64),
+        extents: Extents,
+        (time_pixels, frequency_pixels): (f64, f64),
+    ) -> Self {
         let time_span = extents.seconds.1 - extents.seconds.0;
         let time = extents.seconds.0 + time_fraction * time_span;
         let frequency_span = extents.hertz.1 - extents.hertz.0;
         let frequency = extents.hertz.1 - frequency_fraction * frequency_span;
-        let time_label =
-            extents
-                .time
-                .readout(time, time_span, (time_length * scale) as f64, time_fraction);
+        let time_label = extents
+            .time
+            .readout(time, time_span, time_pixels, time_fraction);
         let unit =
             axis::caption(AxisKind::Frequency, extents.hertz.0, extents.hertz.1).unwrap_or("Hz");
         let divisor = match unit {
@@ -217,23 +231,91 @@ impl Readout {
             "kHz" => 1e3,
             _ => 1.,
         };
-        let precision = crate::navigation::time_precision(
-            frequency_span / (frequency_length * scale) as f64 / divisor,
-        );
-        Some(Self {
+        let precision =
+            crate::navigation::time_precision(frequency_span / frequency_pixels / divisor);
+        Self {
             time: time_label,
             frequency: crate::numbers::text(&format!(
                 "{:.*} {unit}",
                 precision,
                 frequency / divisor
             )),
-        })
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_readout_honours_all_ruler_modes_and_frequency_units() {
+        use crate::time_ruler::Mode;
+
+        for (mode, time) in [
+            (Mode::Clock, "0:12.0005000"),
+            (Mode::Seconds, "12.0005000 s"),
+            (Mode::Samples, "#24,001,000"),
+        ] {
+            for (hertz, frequency) in [
+                ((-0.5, 0.5), "-0.250 Hz"),
+                ((-24000., 24000.), "-12.000 kHz"),
+                ((99e6, 101e6), "99.500 MHz"),
+                ((1e9, 3e9), "1.500 GHz"),
+            ] {
+                let extents = Extents {
+                    orientation: crate::orientation::Mode::Horizontal,
+                    time: crate::time_ruler::Ruler {
+                        mode,
+                        view: crate::navigation::View {
+                            start: 24_000_000,
+                            len: 2000,
+                        },
+                        total: 48_000_000,
+                    },
+                    seconds: (12., 12.001),
+                    hertz,
+                };
+                let readout = Readout::from_fractions((0.5, 0.75), extents, (1000., 500.));
+                assert_eq!(readout.time, time);
+                assert_eq!(readout.frequency, frequency);
+            }
+        }
+    }
+
+    #[test]
+    fn badge_and_fraction_readouts_match_at_device_pixel_precision() {
+        use crate::orientation::Mode;
+
+        let plot = Rect {
+            x: 10.,
+            y: 20.,
+            width: 500.25,
+            height: 250.125,
+        };
+        let pointer = point(px(plot.x + plot.width / 2.), px(plot.y + plot.height / 2.));
+        for orientation in [Mode::Horizontal, Mode::Vertical] {
+            let extents = Extents {
+                orientation,
+                time: crate::time_ruler::Ruler::CLOCK,
+                seconds: (0., 0.5),
+                hertz: (0., 0.5),
+            };
+            let (time_length, frequency_length) = orientation.axes(plot.width, plot.height);
+            for scale in [1., 1.25, 2.] {
+                let pixels = (
+                    (time_length * scale) as f64,
+                    (frequency_length * scale) as f64,
+                );
+                let badge = Readout::at(plot, pointer, extents, scale).unwrap();
+                let readout = Readout::from_fractions((0.5, 0.5), extents, pixels);
+                assert_eq!(readout.time, badge.time);
+                assert_eq!(readout.frequency, badge.frequency);
+                let outside = Readout::from_fractions((0.5, -1.), extents, pixels);
+                assert_eq!(outside.time, badge.time);
+            }
+        }
+    }
 
     #[test]
     fn physical_values_follow_requested_extents_and_inverted_frequency_axis() {

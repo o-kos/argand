@@ -179,6 +179,13 @@ The two must agree by sharing one formatter, not by being written to match. If
 `Readout::at` needs something `cursor_readout` cannot supply, widen it as little as
 possible; do not copy its formatting.
 
+`Readout::at` and the status bar now both call `Readout::from_fractions`, which
+contains the original formatting body and accepts physical-axis fractions and
+device-pixel lengths. The badge keeps its existing spectrum hit test. Plot geometry
+retains the display scale so the status bar supplies the same unrounded pixel
+lengths. The minimap substitutes the full sample range as well as the full duration,
+so sample-mode readouts keep the same full-capture meaning.
+
 ## Implementation steps
 
 - [x] Add the presentation decision to `Status` in `document.rs`: given a dismissed
@@ -211,9 +218,9 @@ possible; do not copy its formatting.
 - [x] Update the status-bar paragraph of `AGENTS.md` to state that the ready status
       and its timing hint are transient and dismissed by deliberate input.
 - [x] ➕ Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
-- [ ] ➕ Show no status group at all before a file is open, in place of the literal
+- [x] ➕ Show no status group at all before a file is open, in place of the literal
       `ready`.
-- [ ] ➕ Format the status bar's time and frequency through the same code the Alt
+- [x] ➕ Format the status bar's time and frequency through the same code the Alt
       guide badges use, so both honour the time-ruler mode and the frequency unit of
       the axes. Keep the extents selection, the outside-spectrum case and the level
       field as they are.
@@ -255,6 +262,14 @@ dependency.
 
 Owner validation on a real GPU remains pending, so the complete-validation step
 is still open. The plan stays in this directory for the implementation handoff.
+
+The owner follow-up passed formatting, Clippy, all 569 tests and the subsequent
+`cargo build --release --locked`. The two added
+regressions cover all time-ruler modes, Hz through GHz, both orientations and
+fractional display scales, including agreement between badge and fraction readouts.
+All five optional real-capture fixtures and the half-hour capture were available
+for this run and their end-to-end checks ran. GPU validation of the follow-up
+remains pending.
 
 ## Post-completion
 

@@ -18,6 +18,7 @@ use gpui::{App, Bounds, Font, FontId, Hsla, Pixels, Point, Size, Window, fill, p
 
 #[path = "cursor_guides.rs"]
 mod cursor_guides;
+pub(crate) use cursor_guides::Readout;
 pub use cursor_guides::{BadgeMetrics, CursorGuides};
 
 /// Room between a label and whatever it labels.

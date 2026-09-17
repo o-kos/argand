@@ -128,14 +128,11 @@ impl Shell {
             .file
             .as_ref()
             .and_then(|file| file.document.file_summary());
-        let status = self.file.as_ref().map_or_else(
-            || Some(("ready".into(), None)),
-            |file| {
-                file.document
-                    .status()
-                    .presentation(self.ready_status_dismissed)
-            },
-        );
+        let status = self.file.as_ref().and_then(|file| {
+            file.document
+                .status()
+                .presentation(self.ready_status_dismissed)
+        });
         div()
             .flex()
             .items_center()
