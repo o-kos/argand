@@ -272,6 +272,64 @@ fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
 }
 
 #[test]
+fn ready_presentation_is_transient_without_changing_the_measurement() {
+    let elapsed = Duration::from_millis(1250);
+    let status = Status::Ready { elapsed };
+    let (message, hint) = status.presentation(false).unwrap();
+    assert_eq!(message, "ready in 1.25s");
+    let hint = hint.unwrap();
+    assert_eq!(hint.title, "Analysis time");
+    assert_eq!(hint.value, "1.250 s");
+    assert_eq!(hint.explanation, "Includes sample reading, transforms and image preparation, excluding file opening and window drawing");
+    assert!(hint.rows.is_empty());
+
+    assert!(status.presentation(true).is_none());
+    assert_eq!(status, Status::Ready { elapsed });
+    assert_eq!(status.message(), message);
+    assert_eq!(status.hint().unwrap().value, hint.value);
+}
+
+#[test]
+fn dismissal_never_hides_opening_progress_or_failure() {
+    for (status, expected) in [
+        (Status::Opening, "opening..."),
+        (Status::Analyzing { done: 0, total: 0 }, "analysing..."),
+        (Status::Analyzing { done: 1, total: 4 }, "analysing... 25%"),
+        (Status::Failed("read failed".into()), "cannot be read"),
+    ] {
+        for dismissed in [false, true] {
+            let (message, hint) = status.presentation(dismissed).unwrap();
+            assert_eq!(message, expected);
+            assert!(hint.is_none());
+        }
+    }
+}
+
+#[test]
+fn only_ready_updates_leave_the_document_ready() {
+    let mut document = opening();
+    assert!(!matches!(document.status(), Status::Ready { .. }));
+
+    for update in [
+        Update::Opened(meta(), FileInfo::default()),
+        Update::Progress { done: 1, total: 4 },
+        Update::Snapshot {
+            analysis: analysis(64),
+            coverage: argand_dsp::Coverage { refined_columns: 1, width: 4 },
+        },
+        Update::Failed(anyhow::anyhow!("read failed")),
+    ] {
+        let elapsed = Duration::from_millis(1250);
+        document.apply(Update::Ready { analysis: analysis(64), elapsed });
+        assert_eq!(document.status(), &Status::Ready { elapsed });
+        assert_eq!(document.analysis().unwrap().spectrogram.width, 64);
+
+        document.apply(update);
+        assert!(!matches!(document.status(), Status::Ready { .. }));
+    }
+}
+
+#[test]
 fn completed_minimap_extrema_survive_navigation_and_no_waveform_spectral_results() {
     let mut document = opening();
     document.apply(Update::Opened(meta(), FileInfo::default()));

@@ -128,14 +128,11 @@ impl Shell {
             .file
             .as_ref()
             .and_then(|file| file.document.file_summary());
-        let status = self
-            .file
-            .as_ref()
-            .map_or_else(|| "ready".into(), |file| file.document.status().message());
-        let hint = self
-            .file
-            .as_ref()
-            .and_then(|file| file.document.status().hint());
+        let status = self.file.as_ref().and_then(|file| {
+            file.document
+                .status()
+                .presentation(self.ready_status_dismissed)
+        });
         div()
             .flex()
             .items_center()
@@ -171,7 +168,7 @@ impl Shell {
             })
             .child(self.analysis_control(cx))
             .child(div().flex_1().min_w_0())
-            .when_some(self.cursor_readout(), |bar, text| {
+            .when_some(self.cursor_readout(), |bar, (text, level)| {
                 bar.child(
                     div()
                         .id("cursor-readout")
@@ -181,25 +178,39 @@ impl Shell {
                         .whitespace_nowrap()
                         .child(text),
                 )
-            })
-            .child(
-                div()
-                    .id("analysis-status")
-                    .min_w_0()
-                    .max_w(px(140.))
-                    .when_some(hint, |status, hint| {
-                        status.tooltip(move |window, cx| {
-                            metadata_tooltip(hint.clone()).build(window, cx)
-                        })
-                    })
-                    .child(
+                .when_some(level, |bar, level| {
+                    bar.child(
                         div()
-                            .overflow_hidden()
-                            .text_ellipsis()
+                            .id("cursor-level")
+                            .border_l_1()
+                            .border_color(cx.theme().border)
+                            .px_2()
+                            .flex_shrink_0()
                             .whitespace_nowrap()
-                            .child(status),
-                    ),
-            )
+                            .child(level),
+                    )
+                })
+            })
+            .when_some(status, |bar, (status, hint)| {
+                bar.child(
+                    div()
+                        .id("analysis-status")
+                        .min_w_0()
+                        .max_w(px(140.))
+                        .when_some(hint, |status, hint| {
+                            status.tooltip(move |window, cx| {
+                                metadata_tooltip(hint.clone()).build(window, cx)
+                            })
+                        })
+                        .child(
+                            div()
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .child(status),
+                        ),
+                )
+            })
     }
 
     fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {

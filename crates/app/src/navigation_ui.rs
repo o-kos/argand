@@ -74,6 +74,7 @@ pub(super) fn init(cx: &mut gpui::App) {
             event.keystroke.modifiers,
             window.modifiers().shift,
         ) {
+            Shell::dismiss_window_ready_status(window, cx);
             // A popup can inherit Plot bindings; do not navigate behind it.
             if event
                 .context_stack
@@ -110,6 +111,7 @@ fn plot_shortcut(
 #[derive(Clone, Copy, PartialEq)]
 pub(super) struct PlotGeometry {
     pub orientation: crate::orientation::Mode,
+    pub scale: f32,
     pub time_ruler: Bounds<Pixels>,
     pub unit_hints: [Option<axes::UnitHint>; 2],
     pub time_scheme: Option<argand_core::axis::TickScheme>,
@@ -506,6 +508,13 @@ impl Shell {
             .map(|_| position)
     }
 
+    fn set_pointer(&mut self, pointer: Option<gpui::Point<Pixels>>, cx: &mut Context<Self>) {
+        self.pointer = pointer;
+        if !self.ready_status_dismissed && self.cursor_readout().is_some() {
+            self.dismiss_ready_status(cx);
+        }
+    }
+
     pub(super) fn pointer_moved(
         &mut self,
         event: &gpui::MouseMoveEvent,
@@ -516,7 +525,7 @@ impl Shell {
         if self.pan.is_none() && self.frequency_pan.is_none() && self.pointer == pointer {
             return;
         }
-        self.pointer = pointer;
+        self.set_pointer(pointer, cx);
         let mut changed = false;
         if let Some((origin, view)) = self.frequency_pan {
             if event.dragging() {
@@ -563,7 +572,7 @@ impl Shell {
         cx.notify();
     }
 
-    pub(super) fn cursor_readout(&self) -> Option<String> {
+    pub(super) fn cursor_readout(&self) -> Option<(String, Option<String>)> {
         let geometry = self.plot_geometry?;
         let pointer = self.pointer?;
         if !geometry.navigation.contains(&pointer) {
@@ -573,18 +582,23 @@ impl Shell {
         if geometry.minimap.contains(&pointer) {
             let meta = self.file.as_ref()?.document.meta()?;
             extents.seconds = (0., meta.duration_seconds());
+            extents.time.view = View {
+                start: 0,
+                len: meta.len_samples,
+            };
         }
         let (x, y) = geometry.fractions(pointer);
-        let time = extents.seconds.0 + x * (extents.seconds.1 - extents.seconds.0);
-        let decimals = navigation::time_precision(
-            (extents.seconds.1 - extents.seconds.0) / self.view_columns() as f64,
+        let readout = axes::Readout::from_fractions(
+            (x, y),
+            extents,
+            (
+                (geometry.time_length() * geometry.scale) as f64,
+                (geometry.frequency_length() * geometry.scale) as f64,
+            ),
         );
         if !geometry.spectrum.contains(&pointer) {
-            return Some(crate::numbers::text(&format!("{time:.decimals$} s")));
+            return Some((readout.time, None));
         }
-        let frequency = extents.hertz.1 - y * (extents.hertz.1 - extents.hertz.0);
-        let per_pixel = (extents.hertz.1 - extents.hertz.0) / self.plot?.height.max(1) as f64;
-        let frequency_decimals = (-per_pixel.log10()).ceil().clamp(1., 9.) as usize;
         let level = self
             .file
             .as_ref()?
@@ -600,11 +614,9 @@ impl Shell {
                 || "—".into(),
                 |db| crate::numbers::text(&format!("{db:.1} dBFS")),
             );
-        Some(format!(
-            "{} · {level}",
-            crate::numbers::text(&format!(
-                "{time:.decimals$} s · {frequency:.frequency_decimals$} Hz"
-            ))
+        Some((
+            format!("{} · {}", readout.frequency, readout.time),
+            Some(level),
         ))
     }
 
@@ -775,7 +787,7 @@ impl Shell {
             .is_some_and(|open| open.entity_id() == menu.entity_id())
         {
             self.open_menu = None;
-            self.pointer = self.plot_pointer(window.mouse_position());
+            self.set_pointer(self.plot_pointer(window.mouse_position()), cx);
             cx.notify();
         }
     }
@@ -924,6 +936,7 @@ mod tests {
     fn geometry() -> PlotGeometry {
         PlotGeometry {
             orientation: crate::orientation::Mode::Horizontal,
+            scale: 1.,
             time_ruler: Bounds::new(point(px(10.), px(150.)), size(px(100.), px(20.))),
             unit_hints: [None; 2],
             time_scheme: None,
