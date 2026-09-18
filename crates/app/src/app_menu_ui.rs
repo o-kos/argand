@@ -206,24 +206,40 @@ impl Shell {
             .on_click(cx.listener(|shell, _, window, cx| {
                 shell.toggle_application_menu(&OpenApplicationMenu, window, cx)
             }));
-        app.interactivity().tooltip(|window, cx| {
-            shortcut_tooltip(
-                "Application menu".to_owned(),
-                Some(Box::new(OpenApplicationMenu)),
-                "Shell",
-                px(240.),
-            )
-            .build(window, cx)
+        // No hint while the menu is open: the button is pressed, and the
+        // click that opened it hides a visible hint instead of explaining
+        // it. The hint returns when the menu is gone.
+        let shell = cx.entity().downgrade();
+        app.interactivity().tooltip(move |window, cx| {
+            let open = shell
+                .upgrade()
+                .is_some_and(|shell| shell.read(cx).application_menu.is_some());
+            if open {
+                gpui::AnyView::from(cx.new(|_| NoTooltip))
+            } else {
+                shortcut_tooltip(
+                    "Application menu".to_owned(),
+                    Some(Box::new(OpenApplicationMenu)),
+                    "Shell",
+                    px(240.),
+                )
+                .build(window, cx)
+            }
         });
         // The anchor wraps the button instead of living inside it: inside,
         // an absolute fill resolves against the button's padded content box
         // and sits above the button's true bottom edge, which is what the
-        // menu measures against.
-        let app = div().relative().flex_shrink_0().child(app).child(
-            canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {})
-                .absolute()
-                .size_full(),
-        );
+        // menu measures against. The positioning styles go on a plain div;
+        // canvas does not honour them itself and would flow under the
+        // button, dragging the anchor a button-height down.
+        let app =
+            div()
+                .relative()
+                .flex_shrink_0()
+                .child(app)
+                .child(div().absolute().inset_0().child(
+                    canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {}).size_full(),
+                ));
         div()
             .id("title-toolbar")
             .occlude()
@@ -636,4 +652,13 @@ pub(super) fn toolbar_style(selected: bool, cx: &gpui::App) -> ButtonCustomVaria
         })
         .hover(accent.opacity(0.32))
         .active(accent.opacity(0.44))
+}
+
+/// The tooltip stand-in for the pressed application button: renders nothing.
+struct NoTooltip;
+
+impl gpui::Render for NoTooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        gpui::div()
+    }
 }
