@@ -312,6 +312,7 @@ struct Shell {
     tick_pan: Option<crate::navigation::TickPan>,
     plot_geometry: Option<navigation_ui::PlotGeometry>,
     pointer: Option<gpui::Point<Pixels>>,
+    pressed_zoom: Option<&'static str>,
     badge_metrics: axes::BadgeMetrics,
     pan: Option<navigation_ui::Pan>,
     /// The picture currently on the GPU.
@@ -395,6 +396,7 @@ impl Shell {
             tick_pan: None,
             plot_geometry: None,
             pointer: None,
+            pressed_zoom: None,
             badge_metrics: axes::BadgeMetrics::default(),
             pan: None,
             texture: None,
@@ -467,6 +469,9 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
+        // A new capture replaces everything the old one held, including a
+        // corner half still marked pressed at the moment of the swap.
+        self.pressed_zoom = None;
         let editor = self.settings_window;
         self.finish_settings(false, cx);
         if let Some(editor) = editor {
@@ -843,6 +848,9 @@ impl Shell {
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
+        // The chooser takes the pointer and the release happens over the
+        // dialog: a corner half held at this moment would stay pressed.
+        self.pressed_zoom = None;
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
         }
@@ -1165,6 +1173,7 @@ impl Shell {
                     self.panel_bounds
                         .and_then(|bounds| self.unit_hint(1, bounds.origin, cx)),
                 )
+                .children(self.ruler_zoom_buttons(cx))
                 .into_any_element(),
             // Physical labels need the metadata; their boundaries can appear immediately.
             Showing::Opening => div()
@@ -1417,9 +1426,10 @@ fn shortcut_tooltip(
     width: Pixels,
 ) -> Tooltip {
     Tooltip::element(move |window, cx| {
-        let shortcut = action
-            .as_deref()
-            .and_then(|action| Kbd::binding_for_action(action, Some(context), window));
+        let shortcut = action.as_deref().and_then(|action| {
+            shortcuts::zoom_keycap(action)
+                .or_else(|| Kbd::binding_for_action(action, Some(context), window))
+        });
         div()
             .max_w(width.min(window.viewport_size().width - px(48.)))
             .flex()

@@ -5,6 +5,9 @@ pub struct Item<T> {
     pub label: String,
     pub checked: bool,
     pub enabled: bool,
+    /// The quick digit the row promises; the renderer shows it as a keycap
+    /// and the matching key activates the row while its level is open.
+    pub number: Option<u8>,
     pub kind: Kind<T>,
 }
 
@@ -21,6 +24,7 @@ impl<T> Item<T> {
             label: label.into(),
             checked: false,
             enabled: true,
+            number: None,
             kind: Kind::Command(command),
         }
     }
@@ -30,6 +34,7 @@ impl<T> Item<T> {
             label: label.into(),
             checked: false,
             enabled: !items.is_empty(),
+            number: None,
             kind: Kind::Branch(items),
         }
     }
@@ -39,12 +44,18 @@ impl<T> Item<T> {
             label: String::new(),
             checked: false,
             enabled: false,
+            number: None,
             kind: Kind::Separator,
         }
     }
 
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
+        self
+    }
+
+    pub fn numbered(mut self, number: u8) -> Self {
+        self.number = Some(number);
         self
     }
 }
@@ -180,6 +191,35 @@ impl<T: Clone> Menu<T> {
             _ => Effect::None,
         }
     }
+
+    /// Activate the open level's row carrying `number`, the way the keycap
+    /// on that row promises. Only enabled commands qualify: a missing,
+    /// disabled, unnumbered or non-command digit does nothing and leaves
+    /// the selection alone.
+    pub fn activate_numbered(&mut self, number: u8, execute: bool) -> Effect<T> {
+        let level = self.depth() - 1;
+        let Some(index) = self.items(level).iter().position(|item| {
+            item.number == Some(number) && item.enabled && matches!(item.kind, Kind::Command(_))
+        }) else {
+            return Effect::None;
+        };
+        self.select(level, index);
+        if self.selected(level) == Some(index) {
+            self.enter(execute)
+        } else {
+            Effect::None
+        }
+    }
+}
+
+pub fn file_items<T>(open: Item<T>, recent: Vec<Item<T>>, settings: Item<T>) -> Vec<Item<T>> {
+    let mut items = vec![open, Item::separator()];
+    if !recent.is_empty() {
+        items.extend(recent);
+        items.push(Item::separator());
+    }
+    items.push(settings);
+    items
 }
 
 /// Keep a popup inside the viewport, flipping children to the left when needed.
@@ -276,6 +316,107 @@ mod tests {
         menu.hover(1, 0);
         menu.hover(1, 2);
         assert_eq!(menu.enter(true), Effect::None);
+    }
+
+    #[test]
+    fn recent_rows_are_inline_and_their_separators_collapse_when_empty() {
+        let items = file_items(
+            Item::command("Open file...", 1),
+            vec![Item::command("Capture", 2), Item::command("Capture", 5)],
+            Item::command("Settings", 3),
+        );
+        let kinds: Vec<&str> = items
+            .iter()
+            .map(|item| match item.kind {
+                Kind::Command(_) => "command",
+                Kind::Branch(_) => "branch",
+                Kind::Separator => "separator",
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "command",
+                "separator",
+                "command",
+                "command",
+                "separator",
+                "command"
+            ]
+        );
+        let empty = file_items(
+            Item::command("Open file...", 1),
+            Vec::new(),
+            Item::command("Settings", 3),
+        );
+        assert_eq!(empty.len(), 3);
+        assert!(matches!(empty[1].kind, Kind::Separator));
+    }
+
+    #[test]
+    fn numbered_recent_rows_activate_by_their_digit() {
+        let mut menu = Menu::new(vec![Item::branch(
+            "File",
+            file_items(
+                Item::command("Open file...", 1),
+                vec![
+                    Item::command("a", 2).numbered(1),
+                    Item::command("b", 3).numbered(2),
+                ],
+                Item::command("Settings", 4),
+            ),
+        )]);
+        menu.hover(0, 0);
+        assert_eq!(menu.depth(), 2);
+        assert_eq!(menu.activate_numbered(2, true), Effect::Activate(3));
+        assert_eq!(menu.selected(1), Some(3));
+    }
+
+    #[test]
+    fn missing_disabled_and_root_level_digits_do_nothing() {
+        let mut disabled = Item::command("b", 3).numbered(2);
+        disabled.enabled = false;
+        let mut menu = Menu::new(vec![Item::branch(
+            "File",
+            file_items(
+                Item::command("Open file...", 1),
+                vec![Item::command("a", 2).numbered(1), disabled],
+                Item::command("Settings", 4),
+            ),
+        )]);
+        // Digits mean nothing before the branch is open.
+        assert_eq!(menu.activate_numbered(1, true), Effect::None);
+        menu.hover(0, 0);
+        // An unknown digit and a disabled row both stay inert.
+        assert_eq!(menu.activate_numbered(9, true), Effect::None);
+        assert_eq!(menu.activate_numbered(2, true), Effect::None);
+        assert_eq!(menu.selected(1), None);
+    }
+
+    #[test]
+    fn digits_never_touch_separators_branches_or_the_selection() {
+        let numbered_branch = Item::branch("Sub", vec![Item::command("leaf", 5)]).numbered(1);
+        let numbered_separator = Item::separator().numbered(2);
+        let mut numbered_disabled = Item::command("b", 3).numbered(3);
+        numbered_disabled.enabled = false;
+        let mut menu = Menu::new(vec![Item::branch(
+            "File",
+            vec![
+                Item::command("Open file...", 4),
+                numbered_branch,
+                numbered_separator,
+                numbered_disabled,
+            ],
+        )]);
+        menu.hover(0, 0);
+        menu.select(1, 0);
+        // A digit on a branch, a separator or a disabled row changes
+        // nothing: no expansion, no selection reset.
+        for digit in [1, 2, 3] {
+            assert_eq!(menu.activate_numbered(digit, true), Effect::None);
+            assert_eq!(menu.depth(), 2);
+            assert_eq!(menu.selected(1), Some(0));
+        }
     }
 
     #[test]

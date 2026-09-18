@@ -443,28 +443,47 @@ marks remain at the plot edges even when their labels cannot fit.
 Click the application button (icon and **Argand**) at the left of the title bar, or press **F10**, to open
 the File / View menu. Hover over a branch to open it; arrow keys navigate, Enter
 activates a command, and Escape closes one submenu at a time. Click outside to
-close the whole menu. File → Recent retains the opening options for each capture.
+close the whole menu. Recent captures appear directly in File and retain their
+opening options; unavailable files and the current capture are omitted. The
+first nine carry digit keycaps — pressing that digit while the File list is
+open opens the capture. File →
+Settings opens the same analysis settings as Ctrl+, (Cmd+, on macOS).
 The grid button shows its active state; the orientation icon shows the current
 time-axis direction, while its tooltip describes the next click.
 
-The crosshair appears only over the spectrogram. The View menu exposes the keyboard commands (arrows below describe Horizontal mode):
+View contains grid, scale controls and orientation toggles, Fit time, Fit
+frequency and Time scale format. When View → Show scale controls is on (default),
+the spectrogram carries a translucent `[+|-]` pair in its bottom-left and
+top-right corners, held eight logical pixels clear of the picture: the
+bottom-left pair zooms time, the top-right pair zooms frequency, in both
+orientations. Each pair has rounded corners. Both dispatch the
+registered zoom actions, show the corresponding keyboard shortcut on hover, and
+disappear on small spectrograms.
+
+The crosshair appears only over the spectrogram. Keyboard navigation remains
+available independently of the menu (arrows below describe Horizontal mode):
 
 | Key | Action |
 | --- | --- |
 | Ctrl+G | Show / hide the spectrogram grid |
+| Ctrl+U | Show / hide the corner scale controls |
 | Ctrl+T | Toggle Horizontal / Vertical spectrogram orientation |
-| Ctrl+`=` / Ctrl+`-` (or keypad `+` / `-`) | Zoom in / out about the view centre |
+| Ctrl+Plus / Ctrl+Minus (Ctrl+= alias, keypad +/−) | Zoom time in / out about the view centre |
 | Left / Right | Pan by one time-ruler division |
 | Ctrl+Left / Ctrl+Right | Pan by five time-ruler divisions |
 | Home / End | Move to the capture's beginning / end |
 | Ctrl+`0` | Fit the entire capture in time |
-| Ctrl+Shift+`+` / Ctrl+Shift+`-` | Zoom frequency in / out |
-| Ctrl+Shift+Home | Fit the full frequency range |
+| Ctrl+Shift+Plus / Ctrl+Shift+Minus | Zoom frequency in / out |
+| Ctrl+Shift+`0` | Fit the full frequency range |
 | Up / Down | Pan by one frequency-ruler division |
 | Ctrl+Up / Ctrl+Down | Pan by five frequency-ruler divisions |
 
-On a top-row `=/+` key, Ctrl+`=` zooms time and Ctrl+Shift+`=` zooms
-frequency. Shift selects frequency for both top-row and keypad zoom keys.
+Zoom keys come in uniform pairs: Ctrl+Plus and Ctrl+Minus zoom time,
+Ctrl+Shift+Plus and Ctrl+Shift+Minus zoom frequency. `Ctrl+=` is the same
+physical key as Ctrl+Plus and works identically; keypad `+/−` behave the same
+as their top-row keys. Ctrl+Shift+`0` fits frequency using either top-row or
+keypad zero. Some Windows IME/language-switching configurations intercept this
+shortcut; use View → Fit frequency when it does not reach the application.
 
 The minimum span is one FFT, with a screen-resolution representability floor
 for extreme sample indices. This floor is rechecked when the time-axis length changes, including on orientation

@@ -44,14 +44,23 @@ impl Shell {
         let recent = self
             .recent_entries()
             .into_iter()
-            .map(|(label, origin)| Item::command(label, Command::Open(origin)))
+            .enumerate()
+            .map(|(index, (label, origin))| {
+                let item = Item::command(label, Command::Open(origin));
+                if index < 9 {
+                    item.numbered((index + 1) as u8)
+                } else {
+                    item
+                }
+            })
             .collect();
         let file = Item::branch(
             "File",
-            vec![
+            app_menu::file_items(
                 command("Open file...", ChooseFile),
-                Item::branch("Recent", recent),
-            ],
+                recent,
+                command("Settings", EditAnalysis),
+            ),
         );
         let mut items = vec![file];
         if self.view.is_some() {
@@ -65,8 +74,12 @@ impl Shell {
         let ruler = self.session.time_ruler;
         vec![
             command("Show grid", ToggleGrid).checked(self.session.show_grid),
+            command("Show scale controls", ToggleScaleUi).checked(self.session.show_scale_ui),
             command("Vertical orientation", ToggleOrientation)
                 .checked(self.session.orientation.vertical()),
+            Item::separator(),
+            command("Fit time", FitCapture),
+            command("Fit frequency", FitFrequency),
             Item::separator(),
             Item::branch(
                 "Time scale format",
@@ -77,30 +90,6 @@ impl Shell {
                     command("Sample numbers", SamplesRuler).checked(ruler == Mode::Samples),
                 ],
             ),
-            Item::branch(
-                "Frequency",
-                vec![
-                    command("Zoom in", FrequencyZoomIn),
-                    command("Zoom out", FrequencyZoomOut),
-                    command("Fit frequency range", FitFrequency),
-                    Item::separator(),
-                    command("Higher frequency", PanUp),
-                    command("Lower frequency", PanDown),
-                    command("Five frequency divisions higher", PanFarUp),
-                    command("Five frequency divisions lower", PanFarDown),
-                ],
-            ),
-            Item::separator(),
-            command("Zoom in", ZoomIn),
-            command("Zoom out", ZoomOut),
-            command("Fit capture", FitCapture),
-            Item::separator(),
-            command("Earlier in time", PanLeft),
-            command("Later in time", PanRight),
-            command("Five time divisions earlier", PanFarLeft),
-            command("Five time divisions later", PanFarRight),
-            command("Go to start", GoStart),
-            command("Go to end", GoEnd),
         ]
     }
 
@@ -191,6 +180,9 @@ impl Shell {
             "enter" | "space" => menu.model.enter(true),
             "left" | "escape" => menu.model.back(),
             "tab" | "f10" => Effect::Dismiss,
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => menu
+                .model
+                .activate_numbered(stroke.key.parse().unwrap_or(0), true),
             _ => return,
         };
         let level = menu.model.depth() - 1;
@@ -214,21 +206,41 @@ impl Shell {
             .child(div().text_color(cx.theme().foreground).child(TITLE))
             .on_click(cx.listener(|shell, _, window, cx| {
                 shell.toggle_application_menu(&OpenApplicationMenu, window, cx)
-            }))
-            .child(
-                canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {})
-                    .absolute()
-                    .size_full(),
-            );
-        app.interactivity().tooltip(|window, cx| {
-            shortcut_tooltip(
-                "Application menu".to_owned(),
-                Some(Box::new(OpenApplicationMenu)),
-                "Shell",
-                px(240.),
-            )
-            .build(window, cx)
+            }));
+        // No hint while the menu is open: the button is pressed, and the
+        // click that opened it hides a visible hint instead of explaining
+        // it. The hint returns when the menu is gone.
+        let shell = cx.entity().downgrade();
+        app.interactivity().tooltip(move |window, cx| {
+            let open = shell
+                .upgrade()
+                .is_some_and(|shell| shell.read(cx).application_menu.is_some());
+            if open {
+                gpui::AnyView::from(cx.new(|_| NoTooltip))
+            } else {
+                shortcut_tooltip(
+                    "Application menu".to_owned(),
+                    Some(Box::new(OpenApplicationMenu)),
+                    "Shell",
+                    px(240.),
+                )
+                .build(window, cx)
+            }
         });
+        // The anchor wraps the button instead of living inside it: inside,
+        // an absolute fill resolves against the button's padded content box
+        // and sits above the button's true bottom edge, which is what the
+        // menu measures against. The positioning styles go on a plain div;
+        // canvas does not honour them itself and would flow under the
+        // button, dragging the anchor a button-height down.
+        let app =
+            div()
+                .relative()
+                .flex_shrink_0()
+                .child(app)
+                .child(div().absolute().inset_0().child(
+                    canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {}).size_full(),
+                ));
         div()
             .id("title-toolbar")
             .occlude()
@@ -520,9 +532,24 @@ impl Shell {
                 shell.menu_effect(effect, window, cx);
                 cx.stop_propagation();
             }))
-            .child(div().w(px(14.)).flex_shrink_0().when(item.checked, |slot| {
-                slot.child(Icon::new(IconName::Check).size(px(14.)))
-            }))
+            .child(
+                // Checked rows take a check mark; numbered recent rows carry
+                // their digit the way the start page's list does: a muted,
+                // localized figure leading the label.
+                div()
+                    .w(px(14.))
+                    .flex_shrink_0()
+                    .when(item.checked, |slot| {
+                        slot.child(Icon::new(IconName::Check).size(px(14.)))
+                    })
+                    .when_some(item.number, |slot, number| {
+                        slot.w_6()
+                            .flex()
+                            .items_center()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(crate::numbers::number(number))
+                    }),
+            )
             .child(
                 div()
                     .min_w_0()
@@ -573,7 +600,10 @@ fn menu_width(
                 }
                 _ => 0.,
             };
-            label_width + shortcut + 64.
+            // A numbered row's leading column is 24 pixels, ten wider than
+            // the check slot.
+            let numbered = if item.number.is_some() { 10. } else { 0. };
+            label_width + numbered + shortcut + 64.
         })
         .fold(150., f32::max)
         .min(420.)
@@ -599,7 +629,7 @@ fn app_button_width(window: &Window, cx: &gpui::App) -> Pixels {
     label.width.ceil() + px(22. + 12. + 2.) + window.rem_size() * 0.25
 }
 
-fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {
+pub(super) fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {
     if cx.theme().is_dark() {
         cx.theme().blue_light
     } else {
@@ -607,7 +637,7 @@ fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {
     }
 }
 
-fn toolbar_style(selected: bool, cx: &gpui::App) -> ButtonCustomVariant {
+pub(super) fn toolbar_style(selected: bool, cx: &gpui::App) -> ButtonCustomVariant {
     let accent = toolbar_accent(cx);
     ButtonCustomVariant::new(cx)
         .color(if selected {
@@ -623,4 +653,13 @@ fn toolbar_style(selected: bool, cx: &gpui::App) -> ButtonCustomVariant {
         })
         .hover(accent.opacity(0.32))
         .active(accent.opacity(0.44))
+}
+
+/// The tooltip stand-in for the pressed application button: renders nothing.
+struct NoTooltip;
+
+impl gpui::Render for NoTooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        gpui::div()
+    }
 }

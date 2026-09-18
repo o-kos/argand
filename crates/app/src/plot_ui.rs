@@ -1,6 +1,9 @@
 //! Synchronized plot painting and measured pointer geometry.
 
+use super::navigation_ui::*;
 use super::*;
+use gpui::Div;
+use gpui_component::{Icon, IconName};
 
 impl Shell {
     /// The spectrogram panel: the picture, and the axes around it.
@@ -14,6 +17,25 @@ impl Shell {
     ///
     /// The measurement is deferred rather than applied on the spot: prepaint is
     /// not a moment at which the entity being painted can be borrowed again.
+    /// The held picture view and the once-only first-paint marker, both
+    /// taken from the open file when there is one.
+    fn first_paint_state(
+        &self,
+    ) -> (
+        Option<crate::navigation::PictureView>,
+        Option<(Instant, Arc<AtomicBool>)>,
+    ) {
+        (
+            self.file
+                .as_ref()
+                .and_then(|file| file.document.analysis())
+                .map(|analysis| crate::navigation::PictureView::grid(&analysis.db)),
+            self.file
+                .as_ref()
+                .map(|file| (file.opened_at, file.first_picture.clone())),
+        )
+    }
+
     pub(super) fn spectrogram(
         &self,
         extents: axes::Extents,
@@ -22,15 +44,7 @@ impl Shell {
         let texture = self.texture.clone();
         let deep = self.deep_preview.clone();
         let backdrop = self.backdrop.clone();
-        let held_view = self
-            .file
-            .as_ref()
-            .and_then(|file| file.document.analysis())
-            .map(|analysis| crate::navigation::PictureView::grid(&analysis.db));
-        let first_picture = self
-            .file
-            .as_ref()
-            .map(|file| (file.opened_at, file.first_picture.clone()));
+        let (held_view, first_picture) = self.first_paint_state();
         let minimap = self.minimap_panel(cx);
         let orientation = self.session.orientation;
         let fraction = self.session.waveform_fraction;
@@ -43,6 +57,7 @@ impl Shell {
         let view = cx.entity().downgrade();
         let guides = self.cursor_guides(extents, cx);
         let colors = axis_colors(cx, self.session.show_grid);
+        let scale_ui_visible = self.session.show_scale_ui;
 
         canvas(
             move |bounds, window, cx| {
@@ -65,7 +80,8 @@ impl Shell {
                     frequency_scheme,
                 )?;
                 let measured = oriented_device_size(frame.plot, scale, orientation);
-                let geometry = plot_geometry(bounds, &frame, &labels, height, scale);
+                let geometry =
+                    plot_geometry(bounds, &frame, &labels, height, scale, scale_ui_visible);
                 if known != Some(measured)
                     || known_bounds != Some(bounds)
                     || known_geometry != Some(geometry)
@@ -184,7 +200,16 @@ impl Shell {
             .as_ref()
             .and_then(WeakEntity::upgrade)
             .is_some();
-        (self.pointer.is_some() && self.pan.is_none() && self.frequency_pan.is_none() && !menu_open)
+        // The corner scale buttons take the pointer for themselves: no
+        // Alt guides over them.
+        let over_buttons = self
+            .plot_geometry
+            .is_some_and(|geometry| geometry.over_scale_buttons(self.pointer));
+        (self.pointer.is_some()
+            && self.pan.is_none()
+            && self.frequency_pan.is_none()
+            && !menu_open
+            && !over_buttons)
             .then_some(axes::CursorGuides {
                 extents,
                 metrics: self.badge_metrics.clone(),
@@ -220,6 +245,59 @@ impl Shell {
                 .w(px(hint.bounds.width))
                 .h(px(hint.bounds.height))
                 .tooltip(move |_, cx| unit_tooltip(owner.clone(), index, cx))
+                .into_any_element(),
+        )
+    }
+
+    pub(super) fn ruler_zoom_buttons(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+        if !self.session.show_scale_ui {
+            return None;
+        }
+        let geometry = self.plot_geometry?;
+        let origin = self.panel_bounds?.origin;
+        let enabled = self.view.is_some();
+        let [time, frequency] = geometry.zoom_zones;
+        Some(
+            div()
+                .id("ruler-zoom-buttons")
+                .absolute()
+                .inset_0()
+                .children(time.map(|zone| {
+                    zoom_pair(
+                        ZoomPair {
+                            zone,
+                            zoom_in: "Zoom in time",
+                            zoom_out: "Zoom out time",
+                        },
+                        ZoomIn,
+                        ZoomOut,
+                        enabled,
+                        [
+                            self.pressed_zoom == Some("Zoom in time"),
+                            self.pressed_zoom == Some("Zoom out time"),
+                        ],
+                        origin,
+                        cx,
+                    )
+                }))
+                .children(frequency.map(|zone| {
+                    zoom_pair(
+                        ZoomPair {
+                            zone,
+                            zoom_in: "Zoom in frequency",
+                            zoom_out: "Zoom out frequency",
+                        },
+                        FrequencyZoomIn,
+                        FrequencyZoomOut,
+                        enabled,
+                        [
+                            self.pressed_zoom == Some("Zoom in frequency"),
+                            self.pressed_zoom == Some("Zoom out frequency"),
+                        ],
+                        origin,
+                        cx,
+                    )
+                }))
                 .into_any_element(),
         )
     }
@@ -262,6 +340,215 @@ fn axis_colors(cx: &gpui::App, show_grid: bool) -> axes::Colors {
     }
 }
 
+/// The corner zoom zones, translated into panel coordinates: the time pair in
+/// the spectrum's bottom-left corner, the frequency pair in its top-right
+/// one, in both orientations, held [`SCALE_INSET`] clear of the picture's
+/// edges.
+///
+/// The pairs exist only while the scale-controls toggle shows them, and both
+/// appear or vanish together: they need the same clear span on *both* sides
+/// of the picture, because below it they would overlap in the middle. The
+/// span holds one pair plus the other pair's button, clear of both edges.
+///
+/// Each present zone is exactly the pair's frame, `[+|-]`: two squares and
+/// their shared divider inside one border.
+fn corner_zones(spectrum: Bounds<Pixels>, visible: bool) -> [Option<axes::Rect>; 2] {
+    const MIN_SPAN: f32 = 2.0 * SCALE_INSET + SCALE_PAIR + SCALE_BUTTON;
+    if !visible {
+        return [None, None];
+    }
+    let left = f32::from(spectrum.left());
+    let top = f32::from(spectrum.top());
+    let right = left + f32::from(spectrum.size.width);
+    let bottom = top + f32::from(spectrum.size.height);
+    if right - left < MIN_SPAN || bottom - top < MIN_SPAN {
+        return [None, None];
+    }
+    [
+        Some(axes::Rect {
+            x: left + SCALE_INSET,
+            y: bottom - SCALE_INSET - SCALE_BUTTON,
+            width: SCALE_PAIR,
+            height: SCALE_BUTTON,
+        }),
+        Some(axes::Rect {
+            x: right - SCALE_INSET - SCALE_BUTTON,
+            y: top + SCALE_INSET,
+            width: SCALE_BUTTON,
+            height: SCALE_PAIR,
+        }),
+    ]
+}
+
+struct ZoomPair {
+    zone: axes::Rect,
+    zoom_in: &'static str,
+    zoom_out: &'static str,
+}
+
+/// The square overlay side of one corner pair: 22 logical pixels; the whole
+/// pair `[+|-]` spans 45 pixels including its one-pixel divider.
+const SCALE_BUTTON: f32 = 22.0;
+const SCALE_DIVIDER: f32 = 1.0;
+const SCALE_PAIR: f32 = 2.0 * SCALE_BUTTON + SCALE_DIVIDER;
+/// The gap between a corner pair and the spectrum's edges, in logical pixels.
+const SCALE_INSET: f32 = 8.0;
+/// The radius of a pair's outward corner, away from the picture's edges.
+const SCALE_ROUNDING: f32 = 6.0;
+
+fn zoom_pair(
+    pair: ZoomPair,
+    in_action: impl Action,
+    out_action: impl Action,
+    enabled: bool,
+    pressed: [bool; 2],
+    origin: gpui::Point<Pixels>,
+    cx: &mut Context<Shell>,
+) -> Div {
+    let frame = cx.theme().border.opacity(0.75);
+    let paper = cx.theme().background.opacity(0.55);
+    let horizontal = pair.zone.width > pair.zone.height;
+    let zoom_in = half_button(
+        IconName::Plus,
+        pair.zoom_in,
+        in_action,
+        enabled,
+        pressed[0],
+        horizontal,
+        cx,
+    );
+    let zoom_out = half_button(
+        IconName::Minus,
+        pair.zoom_out,
+        out_action,
+        enabled,
+        pressed[1],
+        horizontal,
+        cx,
+    );
+    let divider = if horizontal {
+        div().w(px(SCALE_DIVIDER)).h_full().bg(frame)
+    } else {
+        div().h(px(SCALE_DIVIDER)).w_full().bg(frame)
+    };
+    let bar = if horizontal {
+        div()
+            .flex()
+            .w_full()
+            .h_full()
+            .child(zoom_in)
+            .child(divider)
+            .child(zoom_out)
+    } else {
+        div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .h_full()
+            .child(zoom_in)
+            .child(divider)
+            .child(zoom_out)
+    };
+    div()
+        .absolute()
+        .left(px(pair.zone.x) - origin.x)
+        .top(px(pair.zone.y) - origin.y)
+        .w(px(pair.zone.width))
+        .h(px(pair.zone.height))
+        .border_1()
+        .border_color(frame)
+        .bg(paper)
+        .overflow_hidden()
+        .cursor(gpui::CursorStyle::Arrow)
+        .rounded(px(SCALE_ROUNDING))
+        .child(bar)
+}
+
+/// One clickable half of a corner pair: it fills its side of the shared
+/// frame, centers its glyph, presses while held, and dispatches the pair's
+/// zoom action.
+fn half_button(
+    icon: IconName,
+    hint: &'static str,
+    action: impl Action + 'static,
+    enabled: bool,
+    pressed: bool,
+    horizontal: bool,
+    cx: &mut Context<Shell>,
+) -> gpui::Stateful<Div> {
+    let tooltip_action = Box::new(action) as Box<dyn Action>;
+    let glyph = if enabled {
+        cx.theme().foreground.opacity(0.85)
+    } else {
+        cx.theme().muted_foreground.opacity(0.5)
+    };
+    let accent = super::app_menu_ui::toolbar_accent(cx);
+    let hover = accent.opacity(0.32);
+    let press = accent.opacity(0.44);
+    let mut half = div()
+        .id(hint)
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor(gpui::CursorStyle::Arrow)
+        .child(Icon::new(icon).size(px(12.)).text_color(glyph));
+    half = if horizontal {
+        half.flex_1().h_full()
+    } else {
+        half.flex_1().w_full()
+    };
+    half = if enabled && pressed {
+        // Pressed wins outright: a hover refinement would repaint the same
+        // shade the pointer already shows while it holds the button down.
+        half.bg(press)
+    } else if enabled {
+        half.hover(move |style| style.bg(hover))
+    } else {
+        half
+    };
+    if enabled {
+        let click = tooltip_action.boxed_clone();
+        half = half
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |shell, _, _, cx| {
+                    shell.pressed_zoom = Some(hint);
+                    cx.notify();
+                }),
+            )
+            .on_click(cx.listener(move |shell, _, window, cx| {
+                window.focus(&shell.focus);
+                window.dispatch_action(click.boxed_clone(), cx);
+            }));
+    }
+    half = half
+        .on_mouse_up(
+            MouseButton::Left,
+            cx.listener(|shell, _, _, cx| {
+                if shell.pressed_zoom.take().is_some() {
+                    cx.notify();
+                }
+            }),
+        )
+        .on_mouse_up_out(
+            MouseButton::Left,
+            cx.listener(|shell, _, _, cx| {
+                if shell.pressed_zoom.take().is_some() {
+                    cx.notify();
+                }
+            }),
+        );
+    half.tooltip(move |window, cx| {
+        shortcut_tooltip(
+            hint.to_owned(),
+            Some(tooltip_action.boxed_clone()),
+            "Plot",
+            px(240.),
+        )
+        .build(window, cx)
+    })
+}
+
 fn unit_tooltip(owner: WeakEntity<Shell>, index: usize, cx: &mut gpui::App) -> gpui::AnyView {
     cx.new(|cx| {
         if let Some(owner) = owner.upgrade() {
@@ -298,6 +585,7 @@ fn plot_geometry(
     labels: &axes::Labels,
     height: f32,
     scale: f32,
+    scale_ui_visible: bool,
 ) -> navigation_ui::PlotGeometry {
     let orientation = frame.orientation;
     let (dx, dy) = orientation.axes(px(0.), px(height));
@@ -339,6 +627,7 @@ fn plot_geometry(
                 hint
             })
         }),
+        zoom_zones: corner_zones(spectrum, scale_ui_visible),
         time_scheme: frame.time_scheme,
         frequency_scheme: frame.frequency_scheme,
         minimap_columns: oriented_device_size(frame.plot, scale, orientation).width,
@@ -536,5 +825,78 @@ impl DeepPreview {
                 spectrogram::paint(texture.clone(), bounds, window);
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spectrum() -> Bounds<Pixels> {
+        Bounds::new(point(px(30.), px(20.)), size(px(640.), px(300.)))
+    }
+
+    #[test]
+    fn corner_zones_sit_in_bottom_left_and_top_right_in_both_orientations() {
+        let spectrum = spectrum();
+        let [time, frequency] = corner_zones(spectrum, true);
+        let time = time.unwrap();
+        assert_eq!(
+            (time.x, time.y, time.width, time.height),
+            (
+                30. + SCALE_INSET,
+                20. + 300. - SCALE_INSET - SCALE_BUTTON,
+                SCALE_PAIR,
+                SCALE_BUTTON
+            )
+        );
+        let frequency = frequency.unwrap();
+        assert_eq!(
+            (frequency.x, frequency.y, frequency.width, frequency.height),
+            (
+                30. + 640. - SCALE_INSET - SCALE_BUTTON,
+                20. + SCALE_INSET,
+                SCALE_BUTTON,
+                SCALE_PAIR
+            )
+        );
+    }
+
+    #[test]
+    fn hidden_scale_controls_leave_no_zones() {
+        for zone in corner_zones(spectrum(), false) {
+            assert!(zone.is_none(), "a hidden toggle leaves no pair");
+        }
+    }
+
+    #[test]
+    fn corner_zones_vanish_together_on_small_spectrums() {
+        let tiny = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(40.)));
+        for zone in corner_zones(tiny, true) {
+            assert!(zone.is_none(), "a 40-pixel spectrum fits no pair");
+        }
+        // Either side alone being too small drops both pairs: a narrow but
+        // tall spectrum keeps no frequency pair.
+        let narrow = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(400.)));
+        for zone in corner_zones(narrow, true) {
+            assert!(zone.is_none(), "a 40-pixel side fits no pair");
+        }
+        // Below the minimum the two corner pairs would overlap in the
+        // middle of the picture, so the minimum is exact.
+        let cramped = Bounds::new(point(px(0.), px(0.)), size(px(82.), px(82.)));
+        for zone in corner_zones(cramped, true) {
+            assert!(zone.is_none(), "an 82-pixel spectrum still overlaps");
+        }
+        let snug = Bounds::new(point(px(0.), px(0.)), size(px(83.), px(83.)));
+        let [time, frequency] = corner_zones(snug, true);
+        let (time, frequency) = (time.unwrap(), frequency.unwrap());
+        assert!(
+            time.x + time.width <= frequency.x || frequency.x + frequency.width <= time.x,
+            "the horizontal spans do not overlap"
+        );
+        assert!(
+            frequency.y + frequency.height <= time.y || time.y + time.height <= frequency.y,
+            "the vertical spans do not overlap"
+        );
     }
 }
