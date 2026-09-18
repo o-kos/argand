@@ -46,7 +46,7 @@ promise applies to.
 
 ### Added
 
-- Translucent `[+|-]` zoom pairs in the spectrogram's corners: bottom-left zooms time, top-right zooms frequency, with rounded outer corners; View → Show scale controls (Ctrl+Alt+U) hides or shows them. Zoom tooltips use uniform key names: Ctrl+Plus, Ctrl+Shift+Plus, Ctrl+Minus, Ctrl+Shift+Minus.
+- Translucent `[+|-]` zoom pairs in the spectrogram's corners: bottom-left zooms time, top-right zooms frequency, with rounded corners; View → Show scale controls (Ctrl+Alt+U) hides or shows them. Zoom tooltips use uniform key names: Ctrl+Plus, Ctrl+Shift+Plus, Ctrl+Minus, Ctrl+Shift+Minus.
 - Small zoom-in/out button pairs on both rulers, following the spectrogram orientation, with keyboard shortcut hints and reserved label space.
 - File → Settings opens the existing analysis settings editor.
 

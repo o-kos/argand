@@ -406,7 +406,7 @@ fn zoom_pair(
             .child(divider)
             .child(zoom_out)
     };
-    let mut group = div()
+    div()
         .absolute()
         .left(px(pair.zone.x) - origin.x)
         .top(px(pair.zone.y) - origin.y)
@@ -417,13 +417,8 @@ fn zoom_pair(
         .bg(paper)
         .overflow_hidden()
         .cursor(gpui::CursorStyle::Arrow)
-        .child(bar);
-    group = if horizontal {
-        group.rounded_bl(px(SCALE_ROUNDING))
-    } else {
-        group.rounded_tr(px(SCALE_ROUNDING))
-    };
-    group
+        .rounded(px(SCALE_ROUNDING))
+        .child(bar)
 }
 
 /// One clickable half of a corner pair: it fills its side of the shared

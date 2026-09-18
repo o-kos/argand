@@ -454,7 +454,7 @@ frequency and Time scale format. When View → Show scale controls is on (defaul
 the spectrogram carries a translucent `[+|-]` pair in its bottom-left and
 top-right corners, held eight logical pixels clear of the picture: the
 bottom-left pair zooms time, the top-right pair zooms frequency, in both
-orientations. Each pair has one rounded outer corner. Both dispatch the
+orientations. Each pair has rounded corners. Both dispatch the
 registered zoom actions, show the corresponding keyboard shortcut on hover, and
 disappear on small spectrograms.
 

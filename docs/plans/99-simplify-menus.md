@@ -120,7 +120,7 @@ Owner decisions from 2026-09-17:
       reusing the shared button styling and tooltip helper; disabled
       without a file; both orientations.
       Revised on owner feedback: translucent `[+|-]` pairs with rounded
-      outer corners sit on the spectrogram itself — time in the bottom-left
+      corners sit on the spectrogram itself — time in the bottom-left
       corner, frequency in the top-right one, in both orientations, eight
       logical pixels clear of the picture's edges; View → Show scale
       controls (Ctrl+Alt+U, session version 10) hides or shows them; the
