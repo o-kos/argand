@@ -38,6 +38,10 @@ impl RangeState {
     }
 }
 
+fn range_actionable(displayed: Option<Settings>, requested: Settings, range: RangeState) -> bool {
+    displayed == Some(requested) && range.next_range().is_some()
+}
+
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([KeyBinding::new(
         if cfg!(target_os = "macos") {
@@ -127,9 +131,7 @@ impl Shell {
         let state =
             RangeState::from_range(self.range_recommendation(), self.settings.dynamic_range);
         if let Some(dynamic_range) = state.next_range() {
-            if dynamic_range == DynamicRange::Default {
-                self.range_hovered = false;
-            }
+            self.range_hovered = false;
             self.set_settings(
                 Settings {
                     dynamic_range,
@@ -260,62 +262,69 @@ impl Shell {
             })
     }
 
-    fn range_control(&self, displayed: Settings, cx: &mut Context<Self>) -> impl IntoElement {
+    fn range_control(
+        &self,
+        displayed: Option<Settings>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let visible = displayed.unwrap_or(self.settings);
         let range_text = self
             .displayed_range()
             .map(|range| format!("{} dB", crate::numbers::number(range.effective_db)))
-            .unwrap_or_else(|| match displayed.dynamic_range {
+            .unwrap_or_else(|| match visible.dynamic_range {
                 DynamicRange::Default => crate::numbers::text("110 dB"),
                 DynamicRange::Fixed(db) => format!("{} dB", crate::numbers::number(db)),
                 DynamicRange::Auto => "auto".into(),
             });
-        let range_state = RangeState::from_range(
-            self.displayed_range_recommendation(),
-            displayed.dynamic_range,
-        );
+        let range_state =
+            RangeState::from_range(self.displayed_range_recommendation(), visible.dynamic_range);
         let range_label = match range_state {
             RangeState::Warned(_) => format!("⚠ {range_text}"),
             RangeState::Corrected | RangeState::Full => range_text,
         };
-        let actionable = range_state.next_range().is_some();
-        let range_content = match range_state {
-            RangeState::Warned(_) | RangeState::Corrected => {
-                let (foreground, hover_foreground) = match range_state {
-                    RangeState::Warned(_) => (advice_color(cx), advice_hover_color(cx)),
-                    RangeState::Corrected => (cx.theme().muted_foreground, cx.theme().foreground),
-                    RangeState::Full => (cx.theme().muted_foreground, cx.theme().muted_foreground),
-                };
-                Button::new("analysis-range")
-                    .ghost()
-                    .small()
-                    .h_5()
-                    .px_2()
-                    .text_color(foreground)
-                    .on_hover(cx.listener(move |shell, hovered, _, cx| {
-                        shell.range_hovered = *hovered;
-                        cx.notify();
-                    }))
-                    .when(self.range_hovered, |button| {
-                        button
-                            .bg(cx.theme().secondary_hover)
-                            .text_color(hover_foreground)
-                    })
-                    .on_click(move |_, window, cx| {
-                        window.dispatch_action(Box::new(UseRecommendedRange), cx);
-                    })
-                    .child(div().text_xs().whitespace_nowrap().child(range_label))
-                    .into_any_element()
-            }
-            RangeState::Full => div()
+        let actionable = range_actionable(displayed, self.settings, range_state);
+        let foreground = match range_state {
+            RangeState::Warned(_) => advice_color(cx),
+            RangeState::Corrected | RangeState::Full => cx.theme().muted_foreground,
+        };
+        let range_content = if actionable {
+            let hover_foreground = match range_state {
+                RangeState::Warned(_) => advice_hover_color(cx),
+                RangeState::Corrected => cx.theme().foreground,
+                RangeState::Full => cx.theme().muted_foreground,
+            };
+            Button::new("analysis-range")
+                .ghost()
+                .small()
+                .h_5()
+                .px_2()
+                .text_color(foreground)
+                .on_hover(cx.listener(move |shell, hovered, _, cx| {
+                    shell.range_hovered = *hovered;
+                    cx.notify();
+                }))
+                .when(self.range_hovered && actionable, |button| {
+                    button
+                        .bg(cx.theme().secondary_hover)
+                        .text_color(hover_foreground)
+                })
+                .on_click(move |_, window, cx| {
+                    window.dispatch_action(Box::new(UseRecommendedRange), cx);
+                })
+                .child(div().text_xs().whitespace_nowrap().child(range_label))
+                .into_any_element()
+        } else {
+            div()
                 .id("analysis-range")
                 .h_5()
                 .px_2()
                 .flex()
                 .items_center()
                 .text_xs()
+                .text_color(foreground)
                 .whitespace_nowrap()
                 .child(range_label)
-                .into_any_element(),
+                .into_any_element()
         };
         let range_hint = range_state.hint();
         div()
@@ -331,11 +340,8 @@ impl Shell {
     }
 
     fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let displayed = self
-            .file
-            .as_ref()
-            .and_then(|file| file.displayed_settings)
-            .unwrap_or(self.settings);
+        let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
+        let visible = displayed.unwrap_or(self.settings);
         let hint_owner = cx.entity().downgrade();
         let foreground = if self.analysis_hovered {
             cx.theme().foreground
@@ -359,8 +365,8 @@ impl Shell {
             )
             .child(div().text_xs().text_color(foreground).child(format!(
                 "{} · {}",
-                crate::numbers::number(displayed.fft_size),
-                displayed.window
+                crate::numbers::number(visible.fft_size),
+                visible.window
             )));
         if self.settings_backup.is_none() {
             summary
@@ -496,7 +502,6 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
         let fft = crate::numbers::number(settings.fft_size);
         let overlap = format!("{}%", crate::numbers::number(settings.overlap));
         let edit_owner = owner.clone();
-        let apply_owner = owner.clone();
         div()
             .w(px(300.).min(window.viewport_size().width - px(48.)))
             .py_2()
@@ -534,16 +539,8 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                             Kbd::binding_for_action(&UseRecommendedRange, None, window),
                             |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
                         )
-                        .on_click(move |_, _, cx| {
-                            let _ = apply_owner.update(cx, |shell, cx| {
-                                shell.set_settings(
-                                    Settings {
-                                        dynamic_range: DynamicRange::Fixed(db),
-                                        ..shell.settings
-                                    },
-                                    cx,
-                                )
-                            });
+                        .on_click(move |_, window, cx| {
+                            window.dispatch_action(Box::new(UseRecommendedRange), cx);
                         }),
                 )
             })
@@ -610,5 +607,19 @@ mod tests {
             RangeState::from_range(Some(38.0), DynamicRange::Auto).next_range(),
             Some(DynamicRange::Fixed(38.0))
         );
+    }
+
+    #[test]
+    fn pending_picture_suspends_an_otherwise_available_range_action() {
+        let displayed = Settings::from_config(&Config::default());
+        let requested = Settings {
+            dynamic_range: DynamicRange::Fixed(42.0),
+            ..displayed
+        };
+        let warned = RangeState::from_range(Some(42.0), displayed.dynamic_range);
+
+        assert!(range_actionable(Some(displayed), displayed, warned));
+        assert!(!range_actionable(Some(displayed), requested, warned));
+        assert!(!range_actionable(None, requested, warned));
     }
 }

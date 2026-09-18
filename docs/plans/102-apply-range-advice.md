@@ -224,14 +224,14 @@ else.
 - [x] ➕ Give the warned and corrected states a button-like hover with background and
       brighter text, and leave the full state inert.
 - [x] ➕ Remove the pointer cursor from the level item in every state.
-- [ ] ➕ Offer no action while the displayed picture does not match the requested
+- [x] ➕ Offer no action while the displayed picture does not match the requested
       settings: keep the appearance, drop the keycap, the click and the hover
       background.
-- [ ] ➕ Compute the hover effect from the flag and the state being actionable, so a
+- [x] ➕ Compute the hover effect from the flag and the state being actionable, so a
       flag left over from an asynchronous state change cannot show.
-- [ ] ➕ Make `live_analysis_tooltip` dispatch `UseRecommendedRange` instead of
+- [x] ➕ Make `live_analysis_tooltip` dispatch `UseRecommendedRange` instead of
       setting the range itself.
-- [ ] Complete validation.
+- [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
