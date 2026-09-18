@@ -94,6 +94,33 @@ belong here.
 - **The warned value gets its own hover colour**, derived from the advice colour
   rather than from the theme foreground, so it stays recognisably the warning.
 
+## Second follow-up: split the summary into two status items
+
+The first follow-up treated the symptoms of a structure that cannot work. The warned
+value is a child of the settings button, so both own the pointer: entering the value
+first raises the button's hover state and then lowers it again, which reads as the FFT
+text flashing white and going out. Any fix at that level is a matter of which handler
+runs first.
+
+The owner's decision is to split the group into two independent status items, side by
+side, each with its own hover state, colour and click.
+
+- **`2048 · hann`** keeps everything about the transform. It is the settings button:
+  clicking it opens the settings window, hovering it raises its own foreground and
+  background, and it carries the analysis hover hint.
+- **`40 dB`** carries only the level. When a recommendation applies it is the advice
+  colour, shows a pointer, brightens under the pointer and applies the advice on
+  click. Otherwise it is plain muted text that does nothing: no pointer, no hover
+  reaction, no click.
+- Neither shows the other's hover state, and the hint lives only on the first.
+
+This removes the reason for `range_advice_hovered`, for suppressing the hint after a
+click, and for stopping propagation on the value: nothing contains it any more.
+
+The brightening must be visible. The first attempt raised lightness by 0.12 from the
+advice colour and the owner could not see a difference; choose a step that reads
+clearly on the warning colour in both interface themes.
+
 ## Implementation steps
 
 - [x] Make the warned range in `analysis_control` a click target that stops
@@ -113,6 +140,13 @@ belong here.
       colour, in both interface themes.
 - [x] ➕ Keep the summary's hover hint from appearing as a result of clicking the
       warned value.
+- [ ] ➕ Split the analysis summary into two status items: the transform group as the
+      settings button with the hint, and the level as its own item.
+- [ ] ➕ Give the level item its own warned behaviour -- advice colour, pointer,
+      visible hover brightening, click applies the advice -- and make it inert plain
+      text when there is no recommendation.
+- [ ] ➕ Remove `range_advice_hovered`, the hint suppression and the propagation stop,
+      which the split makes unnecessary.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -131,7 +165,10 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       value stops being clickable. Confirm the four follow-up points: the FFT text
       does not brighten while the pointer is over the warned value, the warned value
       itself brightens, applying the advice goes straight from `⚠ 110 dB` to `40 dB`
-      with nothing in between, and no settings hint appears after the click.
+      with nothing in between, and no settings hint appears after the click. Confirm
+      the split: hovering the level never changes the transform group and hovering the
+      transform group never changes the level; the level brightens visibly under the
+      pointer; and an unwarned level does nothing on click and shows no pointer.
 
 ## Post-completion
 
