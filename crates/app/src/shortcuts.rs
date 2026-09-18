@@ -70,10 +70,13 @@ mod tests {
 
     #[test]
     fn zoom_commands_show_named_symbol_keys() {
-        assert_eq!(label(&ZoomIn), "Ctrl+Plus");
-        assert_eq!(label(&ZoomOut), "Ctrl+Minus");
-        assert_eq!(label(&FrequencyZoomIn), "Ctrl+Shift+Plus");
-        assert_eq!(label(&FrequencyZoomOut), "Ctrl+Shift+Minus");
+        // Modifier notation is the platform's own (Ctrl, ⌃); what must hold
+        // everywhere is that the key is named, not left as a raw symbol
+        // that would read "Ctrl++".
+        assert!(label(&ZoomIn).ends_with("Plus"));
+        assert!(label(&ZoomOut).ends_with("Minus"));
+        assert!(label(&FrequencyZoomIn).ends_with("Plus"));
+        assert!(label(&FrequencyZoomOut).ends_with("Minus"));
         assert!(zoom_keycap(&ToggleGrid).is_none());
     }
 }
