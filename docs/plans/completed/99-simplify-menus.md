@@ -155,13 +155,18 @@ Owner decisions from 2026-09-17:
 - [x] Full gate: `cargo fmt --all -- --check`; `cargo clippy
       --all-targets --locked`; `cargo test --locked`; `cargo build
       --release --locked` last.
-- [ ] GPU screenshots of both orientations, both themes, with/without
+- [x] GPU screenshots of both orientations, both themes, with/without
       recent files, empty recent; present to owner for placement
-      sign-off.
-- [ ] External review round(s) via `codex` CLI per CONTRIBUTING (owner
-      said work alone; confirm before this step whether to run it or
-      waive).
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+      sign-off. The owner signed off on placement, translucency and the
+      start-page-style digit column; the open-menu flush placement was
+      additionally verified by pixel measurement.
+- [x] External review round(s) via `codex` CLI per CONTRIBUTING. The
+      original scope closed clean after three rounds; the follow-up
+      scope's accepted findings (numbered-activation side effects, a
+      stuck pressed mark on the chooser and document-open paths) were
+      fixed, the review-model note was settled by the owner, and the
+      closing round returned no substantive findings.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
