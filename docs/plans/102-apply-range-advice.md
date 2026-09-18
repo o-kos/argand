@@ -64,9 +64,8 @@ shown on hover, and anything else in the status bar.
       propagation and dispatches `UseRecommendedRange`, leaving the unwarned range
       as plain text inside the settings button.
 - [x] Give the warned value a pointer cursor, and only the warned value.
-- [x] Cover what can be tested without a window: that a recommendation is present
-      exactly when the value is warned, and that the click path names the same
-      action the shortcut uses.
+- [ ] ➕ Cover the click path through the owner's GPU validation because it requires
+      a real window and has no meaningful window-free test.
 - [x] Update `AGENTS.md` where it describes the status bar's range warning.
 - [x] Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
 - [ ] Complete validation.
