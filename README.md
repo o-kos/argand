@@ -444,7 +444,9 @@ Click the application button (icon and **Argand**) at the left of the title bar,
 the File / View menu. Hover over a branch to open it; arrow keys navigate, Enter
 activates a command, and Escape closes one submenu at a time. Click outside to
 close the whole menu. Recent captures appear directly in File and retain their
-opening options; unavailable files and the current capture are omitted. File →
+opening options; unavailable files and the current capture are omitted. The
+first nine carry digit keycaps — pressing that digit while the File list is
+open opens the capture. File →
 Settings opens the same analysis settings as Ctrl+, (Cmd+, on macOS).
 The grid button shows its active state; the orientation icon shows the current
 time-axis direction, while its tooltip describes the next click.

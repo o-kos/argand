@@ -5,6 +5,9 @@ pub struct Item<T> {
     pub label: String,
     pub checked: bool,
     pub enabled: bool,
+    /// The quick digit the row promises; the renderer shows it as a keycap
+    /// and the matching key activates the row while its level is open.
+    pub number: Option<u8>,
     pub kind: Kind<T>,
 }
 
@@ -21,6 +24,7 @@ impl<T> Item<T> {
             label: label.into(),
             checked: false,
             enabled: true,
+            number: None,
             kind: Kind::Command(command),
         }
     }
@@ -30,6 +34,7 @@ impl<T> Item<T> {
             label: label.into(),
             checked: false,
             enabled: !items.is_empty(),
+            number: None,
             kind: Kind::Branch(items),
         }
     }
@@ -39,12 +44,18 @@ impl<T> Item<T> {
             label: String::new(),
             checked: false,
             enabled: false,
+            number: None,
             kind: Kind::Separator,
         }
     }
 
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
+        self
+    }
+
+    pub fn numbered(mut self, number: u8) -> Self {
+        self.number = Some(number);
         self
     }
 }
@@ -178,6 +189,26 @@ impl<T: Clone> Menu<T> {
                 ..
             }) if execute => Effect::Activate(command.clone()),
             _ => Effect::None,
+        }
+    }
+
+    /// Activate the open level's row carrying `number`, the way the keycap
+    /// on that row promises. A missing, disabled or unnumbered digit does
+    /// nothing.
+    pub fn activate_numbered(&mut self, number: u8, execute: bool) -> Effect<T> {
+        let level = self.depth() - 1;
+        let Some(index) = self
+            .items(level)
+            .iter()
+            .position(|item| item.number == Some(number))
+        else {
+            return Effect::None;
+        };
+        self.select(level, index);
+        if self.selected(level) == Some(index) {
+            self.enter(execute)
+        } else {
+            Effect::None
         }
     }
 }
@@ -321,6 +352,46 @@ mod tests {
         );
         assert_eq!(empty.len(), 3);
         assert!(matches!(empty[1].kind, Kind::Separator));
+    }
+
+    #[test]
+    fn numbered_recent_rows_activate_by_their_digit() {
+        let mut menu = Menu::new(vec![Item::branch(
+            "File",
+            file_items(
+                Item::command("Open file...", 1),
+                vec![
+                    Item::command("a", 2).numbered(1),
+                    Item::command("b", 3).numbered(2),
+                ],
+                Item::command("Settings", 4),
+            ),
+        )]);
+        menu.hover(0, 0);
+        assert_eq!(menu.depth(), 2);
+        assert_eq!(menu.activate_numbered(2, true), Effect::Activate(3));
+        assert_eq!(menu.selected(1), Some(3));
+    }
+
+    #[test]
+    fn missing_disabled_and_root_level_digits_do_nothing() {
+        let mut disabled = Item::command("b", 3).numbered(2);
+        disabled.enabled = false;
+        let mut menu = Menu::new(vec![Item::branch(
+            "File",
+            file_items(
+                Item::command("Open file...", 1),
+                vec![Item::command("a", 2).numbered(1), disabled],
+                Item::command("Settings", 4),
+            ),
+        )]);
+        // Digits mean nothing before the branch is open.
+        assert_eq!(menu.activate_numbered(1, true), Effect::None);
+        menu.hover(0, 0);
+        // An unknown digit and a disabled row both stay inert.
+        assert_eq!(menu.activate_numbered(9, true), Effect::None);
+        assert_eq!(menu.activate_numbered(2, true), Effect::None);
+        assert_eq!(menu.selected(1), None);
     }
 
     #[test]

@@ -424,9 +424,15 @@ Ctrl+Shift+Up/Down are not zoom bindings; arrow pan bindings stay unchanged.
 
 File contains Open file, availability-filtered recent rows directly in the menu,
 and Settings (`EditAnalysis`). Empty recent lists leave one separator between
-Open and Settings. View appears only with a file and contains grid, scale
+Open and Settings. The first nine recent rows carry digit keycaps, and pressing
+that digit while the File list is open activates the row
+(`app_menu::Menu::activate_numbered`). View appears only with a file and
+contains grid, scale
 controls, orientation, Fit time, Fit frequency and Time scale format; pan/zoom
 commands remain available through keys and gestures rather than menu rows.
+The menu anchor wraps the application button (`toolbar` in `app_menu_ui.rs`),
+not its padded interior, so the dropdown drops from the button's outer edge
+and never covers it.
 `plot_ui.rs` draws translucent `[+|-]` zoom pairs over the spectrogram itself:
 the time pair in its bottom-left corner, the frequency pair in its top-right
 one, identically in both orientations, eight logical pixels clear of the

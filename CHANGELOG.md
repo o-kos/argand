@@ -32,7 +32,7 @@ promise applies to.
 
 ### Changed
 
-- Simplify File and View: recent captures appear directly in File, and View keeps grid, orientation, Fit time, Fit frequency and time-scale format controls. Frequency fit now uses Ctrl+Shift+0 instead of Ctrl+Shift+Home.
+- Simplify File and View: recent captures appear directly in File, and View keeps grid, orientation, Fit time, Fit frequency and time-scale format controls. The first nine recent rows carry digit keycaps; the digit opens that capture while the File list is open. Frequency fit now uses Ctrl+Shift+0 instead of Ctrl+Shift+Home, and the File menu drops from the application button's edge without covering it.
 
 - Replace the application and desktop launcher icon with the B0 intertwined I/Q ribbons, including dedicated 16- and 24-pixel artwork.
 

@@ -2,7 +2,7 @@
 
 use super::{navigation_ui::*, *};
 use crate::app_menu::{self, Effect, Item, Kind, Menu};
-use gpui::{AnyElement, KeyDownEvent, ScrollHandle, deferred, img};
+use gpui::{AnyElement, KeyDownEvent, Keystroke, ScrollHandle, deferred, img};
 use gpui_component::button::ButtonCustomVariant;
 use gpui_component::{Disableable, Icon, IconName};
 use std::{cell::Cell, rc::Rc};
@@ -44,7 +44,15 @@ impl Shell {
         let recent = self
             .recent_entries()
             .into_iter()
-            .map(|(label, origin)| Item::command(label, Command::Open(origin)))
+            .enumerate()
+            .map(|(index, (label, origin))| {
+                let item = Item::command(label, Command::Open(origin));
+                if index < 9 {
+                    item.numbered((index + 1) as u8)
+                } else {
+                    item
+                }
+            })
             .collect();
         let file = Item::branch(
             "File",
@@ -172,6 +180,9 @@ impl Shell {
             "enter" | "space" => menu.model.enter(true),
             "left" | "escape" => menu.model.back(),
             "tab" | "f10" => Effect::Dismiss,
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => menu
+                .model
+                .activate_numbered(stroke.key.parse().unwrap_or(0), true),
             _ => return,
         };
         let level = menu.model.depth() - 1;
@@ -194,12 +205,7 @@ impl Shell {
             .child(div().text_color(cx.theme().foreground).child(TITLE))
             .on_click(cx.listener(|shell, _, window, cx| {
                 shell.toggle_application_menu(&OpenApplicationMenu, window, cx)
-            }))
-            .child(
-                canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {})
-                    .absolute()
-                    .size_full(),
-            );
+            }));
         app.interactivity().tooltip(|window, cx| {
             shortcut_tooltip(
                 "Application menu".to_owned(),
@@ -209,6 +215,15 @@ impl Shell {
             )
             .build(window, cx)
         });
+        // The anchor wraps the button instead of living inside it: inside,
+        // an absolute fill resolves against the button's padded content box
+        // and sits above the button's true bottom edge, which is what the
+        // menu measures against.
+        let app = div().relative().flex_shrink_0().child(app).child(
+            canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {})
+                .absolute()
+                .size_full(),
+        );
         div()
             .id("title-toolbar")
             .occlude()
@@ -514,6 +529,11 @@ impl Shell {
             .when_some(shortcut, |row, shortcut| {
                 row.child(shortcuts::keycap(shortcut, cx))
             })
+            .when_some(
+                item.number
+                    .and_then(|number| Keystroke::parse(&number.to_string()).ok()),
+                |row, stroke| row.child(shortcuts::keycap(Kbd::new(stroke), cx)),
+            )
             .when(matches!(item.kind, Kind::Branch(_)), |row| {
                 row.child(Icon::new(IconName::ChevronRight).size(px(14.)))
             })
