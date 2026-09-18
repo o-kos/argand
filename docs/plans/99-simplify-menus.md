@@ -166,7 +166,7 @@ Owner decisions from 2026-09-17:
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] Menu-model tests, interceptor tests, corner-zone geometry tests.
-- [ ] Manual GPU checks: menus, corner scale controls, both orientations
+- [x] Manual GPU checks: menus, corner scale controls, both orientations
       and themes, recent-empty/recent-present, Settings entry, shortcut
       hints match actual behaviour.
 
