@@ -178,11 +178,12 @@ keycap in the hint, no click handler, no hover background. Nothing can diverge,
 because nothing is offered. Once the picture catches up, the state and its action are
 computed from the same range again.
 
-**Hover must not survive a state it no longer belongs to.** Clearing the flag inside
-the action handler covers only transitions the user drives. A state change arriving
-from the analysis thread leaves the flag set, and the next actionable state appears
-pre-highlighted with the pointer elsewhere. The hover effect is therefore computed as
-the flag and the state being actionable, so a stale flag cannot show.
+**Hover tracks the pointer through every state.** Both the actionable button and the
+inert item record hover entry and exit, so the flag remains accurate while analysis
+changes the state. The hover effect is the flag and the state being actionable. A
+pointer resting on the item therefore highlights a newly actionable state, while a
+pointer that left during an inert state cannot leave a highlight behind. The action
+handler does not clear the flag itself.
 
 **The advice has exactly one application path.** `live_analysis_tooltip` still sets
 `DynamicRange::Fixed(db)` directly instead of dispatching `UseRecommendedRange`. That
@@ -227,8 +228,9 @@ else.
 - [x] ➕ Offer no action while the displayed picture does not match the requested
       settings: keep the appearance, drop the keycap, the click and the hover
       background.
-- [x] ➕ Compute the hover effect from the flag and the state being actionable, so a
-      flag left over from an asynchronous state change cannot show.
+- [x] ➕ Keep the hover flag synchronized in actionable and inert states, compute the
+      hover effect from the flag and the state being actionable, and do not clear the
+      flag in the action handler.
 - [x] ➕ Make `live_analysis_tooltip` dispatch `UseRecommendedRange` instead of
       setting the range itself.
 - [x] Complete validation.

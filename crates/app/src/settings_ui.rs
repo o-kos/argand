@@ -131,7 +131,6 @@ impl Shell {
         let state =
             RangeState::from_range(self.range_recommendation(), self.settings.dynamic_range);
         if let Some(dynamic_range) = state.next_range() {
-            self.range_hovered = false;
             self.set_settings(
                 Settings {
                     dynamic_range,
@@ -323,6 +322,10 @@ impl Shell {
                 .text_xs()
                 .text_color(foreground)
                 .whitespace_nowrap()
+                .on_hover(cx.listener(move |shell, hovered, _, cx| {
+                    shell.range_hovered = *hovered;
+                    cx.notify();
+                }))
                 .child(range_label)
                 .into_any_element()
         };
