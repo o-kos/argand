@@ -160,6 +160,36 @@ terminal period, matching the house style for explanations:
 - Corrected: `Range narrowed from the full scale`
 - Full: `Full scale, nothing trimmed`
 
+## Consolidated model after three review findings
+
+The plan grew in layers as the owner refined the interaction, and the last layer
+contradicted the first. The external review found three consequences. This section
+replaces the reasoning in the earlier follow-ups; where they disagree, this wins.
+
+**One source of truth for the state, two readers with different needs.** The display
+must follow the picture on screen, or applying the advice flickers through an
+unmarked value. The action must follow the requested settings, or a click can request
+what is already requested. Both remain true, but they may never contradict each other
+in what the user is offered.
+
+The rule: while the displayed picture does not match the requested settings, the
+level item keeps its appearance from the picture and offers no action at all -- no
+keycap in the hint, no click handler, no hover background. Nothing can diverge,
+because nothing is offered. Once the picture catches up, the state and its action are
+computed from the same range again.
+
+**Hover must not survive a state it no longer belongs to.** Clearing the flag inside
+the action handler covers only transitions the user drives. A state change arriving
+from the analysis thread leaves the flag set, and the next actionable state appears
+pre-highlighted with the pointer elsewhere. The hover effect is therefore computed as
+the flag and the state being actionable, so a stale flag cannot show.
+
+**The advice has exactly one application path.** `live_analysis_tooltip` still sets
+`DynamicRange::Fixed(db)` directly instead of dispatching `UseRecommendedRange`. That
+is the duplicate path Issue #102 rules out, and with Ctrl+R now a toggle it would
+diverge at the first change to either side. It dispatches the action like everything
+else.
+
 ## Implementation steps
 
 - [x] Make the warned range in `analysis_control` a click target that stops
@@ -194,7 +224,14 @@ terminal period, matching the house style for explanations:
 - [x] ➕ Give the warned and corrected states a button-like hover with background and
       brighter text, and leave the full state inert.
 - [x] ➕ Remove the pointer cursor from the level item in every state.
-- [x] Complete validation.
+- [ ] ➕ Offer no action while the displayed picture does not match the requested
+      settings: keep the appearance, drop the keycap, the click and the hover
+      background.
+- [ ] ➕ Compute the hover effect from the flag and the state being actionable, so a
+      flag left over from an asynchronous state change cannot show.
+- [ ] ➕ Make `live_analysis_tooltip` dispatch `UseRecommendedRange` instead of
+      setting the range itself.
+- [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
@@ -220,7 +257,10 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       carry the Ctrl+R keycap and the full one does not; Ctrl+R applies the advice,
       then restores the full range, then does nothing; clicking does the same as
       Ctrl+R in each state; the hover background appears on the warned and corrected
-      states only; and the cursor never becomes a hand anywhere on the item.
+      states only; and the cursor never becomes a hand anywhere on the item. Confirm
+      that applying the advice on a large capture, where the new picture takes a
+      moment, never offers an action that does something other than the hint says,
+      and that the item never appears highlighted with the pointer elsewhere.
 
 ## Post-completion
 
