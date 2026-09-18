@@ -423,6 +423,9 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
+        // A new capture replaces everything the old one held, including a
+        // corner half still marked pressed at the moment of the swap.
+        self.pressed_zoom = None;
         let editor = self.settings_window;
         self.finish_settings(false, cx);
         if let Some(editor) = editor {
@@ -796,6 +799,9 @@ impl Shell {
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
+        // The chooser takes the pointer and the release happens over the
+        // dialog: a corner half held at this moment would stay pressed.
+        self.pressed_zoom = None;
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
         }

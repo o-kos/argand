@@ -16,11 +16,14 @@ same discoverable zoom the keyboard has.
 Issue class: **A** — the plan first declared **B**, which was a
 misjudgment: the class-A thresholds (roughly 400 lines or five code
 files) were already foreseeable, and `AGENTS.md` lets any class-A signal
-decide. Reclassified to **A** once the diff crossed them. Process note,
+decide. Reclassified to **A** once the diff crossed them. Process notes,
 recorded here and in the Pull Request: the class-A implementer model
-(`gpt-5.6-sol` high) was not used because the owner directed Claude to
-implement this issue in session; the external reviewer does follow
-class A (`gpt-5.6-terra` high).
+(`gpt-6-astra` xhigh) was not used because the owner directed Claude to
+implement this issue in session. The review model also deviated: the
+first review loops ran on `gpt-5.6-terra` high because the implementer
+worked from a stale `AGENTS.md` text and dismissed the reviewer's
+correction; per the class table the class-A reviewer is
+`gpt-5.6-sol` xhigh, which runs the closing round.
 
 ## Context
 
