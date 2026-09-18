@@ -503,9 +503,15 @@ fn half_button(
     } else {
         half.flex_1().w_full()
     };
-    half = half
-        .when(enabled, |half| half.hover(move |style| style.bg(hover)))
-        .when(enabled && pressed, |half| half.bg(press));
+    half = if enabled && pressed {
+        // Pressed wins outright: a hover refinement would repaint the same
+        // shade the pointer already shows while it holds the button down.
+        half.bg(press)
+    } else if enabled {
+        half.hover(move |style| style.bg(hover))
+    } else {
+        half
+    };
     if enabled {
         let click = tooltip_action.boxed_clone();
         half = half
