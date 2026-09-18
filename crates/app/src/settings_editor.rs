@@ -152,21 +152,24 @@ impl Editor {
         self.error.is_none()
     }
 
-    fn recommend(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let db = self
+    fn toggle_range(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let recommendation = self
             .owner
             .upgrade()
             .and_then(|shell| shell.read(cx).range_recommendation());
-        if let Some(db) = db {
+        let state = RangeState::from_range(recommendation, self.settings.dynamic_range);
+        if let Some(dynamic_range) = state.next_range() {
             self.apply(
                 Settings {
-                    dynamic_range: DynamicRange::Fixed(db),
+                    dynamic_range,
                     ..self.settings
                 },
                 window,
                 cx,
             );
-            self.range.focus_handle(cx).focus(window);
+            if matches!(dynamic_range, DynamicRange::Fixed(_)) {
+                self.range.focus_handle(cx).focus(window);
+            }
         }
     }
 
@@ -382,7 +385,7 @@ impl Editor {
                     Kbd::binding_for_action(&UseRecommendedRange, None, window),
                     |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
                 )
-                .on_click(cx.listener(|editor, _, window, cx| editor.recommend(window, cx)))
+                .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
                 .into_any_element();
         }
         div()
@@ -444,7 +447,7 @@ impl Render for Editor {
             .flex_col()
             .key_context("AnalysisEditor")
             .on_action(cx.listener(|editor, _: &UseRecommendedRange, window, cx| {
-                editor.recommend(window, cx)
+                editor.toggle_range(window, cx)
             }))
             .on_action(
                 cx.listener(|editor, _: &CloseSettings, window, cx| {
