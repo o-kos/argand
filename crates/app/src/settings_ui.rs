@@ -5,6 +5,9 @@ use argand_dsp::DynamicRange;
 #[path = "settings_editor.rs"]
 mod editor;
 
+const LOW_SIGNAL_LEVEL_HINT: &str =
+    "Low signal level leaves the upper half of the colour scale unused";
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum RangeState {
     Warned(f32),
@@ -23,7 +26,7 @@ impl RangeState {
 
     const fn hint(self) -> &'static str {
         match self {
-            Self::Warned(_) => "Spectrum peak sits low in this range",
+            Self::Warned(_) => LOW_SIGNAL_LEVEL_HINT,
             Self::Corrected => "Range narrowed from the full scale",
             Self::Full => "Full scale, nothing trimmed",
         }
@@ -172,6 +175,7 @@ impl Shell {
         corners: Corners<Pixels>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let has_file = self.file.is_some();
         let file = self
             .file
             .as_ref()
@@ -214,7 +218,10 @@ impl Shell {
                         ),
                 )
             })
-            .child(self.analysis_control(cx))
+            .when(!has_file, |bar| {
+                bar.child(div().px_2().whitespace_nowrap().child("No signal loaded"))
+            })
+            .when(has_file, |bar| bar.child(self.analysis_control(cx)))
             .child(div().flex_1().min_w_0())
             .when_some(self.cursor_readout(), |bar, (text, level)| {
                 bar.child(
@@ -528,7 +535,7 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                     div()
                         .text_xs()
                         .text_color(advice_color(cx))
-                        .child("Low signal level leaves the upper half of the colour scale unused"),
+                        .child(LOW_SIGNAL_LEVEL_HINT),
                 )
                 .child(
                     Button::new("hint-recommendation")
