@@ -124,6 +124,42 @@ The brightening must be visible. The first attempt raised lightness by 0.12 from
 advice colour and the owner could not see a difference; choose a step that reads
 clearly on the warning colour in both interface themes.
 
+## Third follow-up: three states for the level item
+
+Owner request after the split. The level item gains a hint of its own, different in
+each of its three states, and behaves like a button where it acts.
+
+The states are read from the current range, with no remembered history:
+
+| State | Shown | Hint | Action |
+| --- | --- | --- | --- |
+| Warned | `⚠ 110 dB` in the advice colour | says the range should be narrowed, carries the Ctrl+R keycap | applies the advice |
+| Corrected | `40 dB`, ordinary text | says this is a corrected range, carries the Ctrl+R keycap | restores the full range |
+| Full | `110 dB`, ordinary text | says this is the full range, no keycap | none |
+
+- **Corrected means any explicit range**, `DynamicRange::Fixed(_)`, whether it came
+  from the advice or from the settings editor. Full means `DynamicRange::Default`.
+  Nothing is remembered about how the value got there, so the three states are a
+  function of the current range alone.
+- **Ctrl+R becomes a toggle.** With a recommendation it applies it, as now. Without
+  one, on an explicit range, it restores `DynamicRange::Default`. On the full range
+  it does nothing. The click on the level item does exactly what Ctrl+R does in that
+  state, since they must not diverge.
+- **`auto` behaves as the full range does**: informational hint, no action.
+- **The warned and corrected states hover like a button**, with the same background
+  the settings button uses and brighter text; the full state does not react.
+- **No pointer cursor anywhere on this item.** The hover background is the
+  affordance, as it is for the neighbouring button.
+- Hints use the existing `shortcut_tooltip`, which takes the text and an optional
+  action and renders the keycap itself. Do not add a new tooltip mechanism.
+
+Suggested wording, to be corrected by the owner if it reads wrong. One sentence, no
+terminal period, matching the house style for explanations:
+
+- Warned: `Spectrum peak sits low in this range`
+- Corrected: `Range narrowed from the full scale`
+- Full: `Full scale, nothing trimmed`
+
 ## Implementation steps
 
 - [x] Make the warned range in `analysis_control` a click target that stops
@@ -150,6 +186,14 @@ clearly on the warning colour in both interface themes.
       text when there is no recommendation.
 - [x] ➕ Remove `range_advice_hovered`, the hint suppression and the propagation stop,
       which the split makes unnecessary.
+- [ ] ➕ Give the level item a hint per state through `shortcut_tooltip`, with the
+      Ctrl+R keycap in the warned and corrected states and none in the full state.
+- [ ] ➕ Make Ctrl+R a toggle: apply the advice when one exists, otherwise restore
+      the full range from an explicit one, and do nothing on the full range. The
+      click follows the same rule.
+- [ ] ➕ Give the warned and corrected states a button-like hover with background and
+      brighter text, and leave the full state inert.
+- [ ] ➕ Remove the pointer cursor from the level item in every state.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -172,6 +216,11 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       the split: hovering the level never changes the transform group and hovering the
       transform group never changes the level; the level brightens visibly under the
       pointer; and an unwarned level does nothing on click and shows no pointer.
+      Confirm the three states: each shows its own hint, the warned and corrected ones
+      carry the Ctrl+R keycap and the full one does not; Ctrl+R applies the advice,
+      then restores the full range, then does nothing; clicking does the same as
+      Ctrl+R in each state; the hover background appears on the warned and corrected
+      states only; and the cursor never becomes a hand anywhere on the item.
 
 ## Post-completion
 
