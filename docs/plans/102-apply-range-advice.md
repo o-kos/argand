@@ -104,14 +104,14 @@ belong here.
       a real window and has no meaningful window-free test.
 - [x] Update `AGENTS.md` where it describes the status bar's range warning.
 - [x] Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
-- [ ] ➕ Tie the warning's colour, marker and click target to the displayed picture
+- [x] ➕ Tie the warning's colour, marker and click target to the displayed picture
       so applying the advice is one visible change, with no unmarked intermediate
       value. Leave the action's own check as it is.
-- [ ] ➕ Stop the pointer over the warned value from raising the summary's hover
+- [x] ➕ Stop the pointer over the warned value from raising the summary's hover
       state, so the FFT text does not brighten.
-- [ ] ➕ Give the warned value a brighter hover colour derived from the advice
+- [x] ➕ Give the warned value a brighter hover colour derived from the advice
       colour, in both interface themes.
-- [ ] ➕ Keep the summary's hover hint from appearing as a result of clicking the
+- [x] ➕ Keep the summary's hover hint from appearing as a result of clicking the
       warned value.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.

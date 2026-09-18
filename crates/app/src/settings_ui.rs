@@ -77,6 +77,7 @@ impl Shell {
         };
         self.settings_window = None;
         self.analysis_hovered = false;
+        self.range_advice_hovered = false;
         let view = self.settings_view_backup.take();
         let frequency = self.settings_frequency_backup.take();
         if !accept {
@@ -117,6 +118,10 @@ impl Shell {
             return None;
         }
         file.document.range_recommendation()
+    }
+
+    fn displayed_range_recommendation(&self) -> Option<f32> {
+        self.file.as_ref()?.document.range_recommendation()
     }
 
     pub(super) fn status_bar(
@@ -228,23 +233,38 @@ impl Shell {
                 DynamicRange::Auto => "auto".into(),
             });
         let hint_owner = cx.entity().downgrade();
-        let range = match self.range_recommendation() {
-            Some(_) => div()
-                .id("recommended-range")
-                .cursor_pointer()
-                .text_color(advice_color(cx))
-                .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                    cx.stop_propagation();
-                })
-                .on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    window.dispatch_action(Box::new(UseRecommendedRange), cx);
-                })
-                .child(format!("⚠ {range}"))
-                .into_any_element(),
-            None => div().child(range).into_any_element(),
-        };
-        let foreground = if self.analysis_hovered {
+        let warning = self.displayed_range_recommendation().is_some();
+        let range = div()
+            .id("analysis-range")
+            .on_hover(cx.listener(move |shell, hovered, _, cx| {
+                shell.range_advice_hovered = warning && *hovered;
+                cx.notify();
+            }))
+            .when(warning, |range| {
+                range
+                    .cursor_pointer()
+                    .text_color(advice_color(cx))
+                    .hover(|style| style.text_color(advice_hover_color(cx)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|shell, _, _, cx| {
+                            shell.range_advice_hovered = true;
+                            cx.notify();
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        window.dispatch_action(Box::new(UseRecommendedRange), cx);
+                    })
+            })
+            .child(if warning {
+                format!("⚠ {range}")
+            } else {
+                range
+            });
+        let summary_hovered = self.analysis_hovered && !self.range_advice_hovered;
+        let foreground = if summary_hovered {
             cx.theme().foreground
         } else {
             cx.theme().muted_foreground
@@ -253,16 +273,21 @@ impl Shell {
             .id("analysis-summary")
             .border_l_1()
             .border_color(cx.theme().border)
-            .when(self.settings_backup.is_none(), |panel| {
-                panel.hoverable_tooltip(move |_, cx| live_analysis_tooltip(hint_owner.clone(), cx))
-            })
+            .when(
+                self.settings_backup.is_none() && !self.range_advice_hovered,
+                |panel| {
+                    panel.hoverable_tooltip(move |_, cx| {
+                        live_analysis_tooltip(hint_owner.clone(), cx)
+                    })
+                },
+            )
             .child(
                 Button::new("analysis-settings")
                     .ghost()
                     .small()
                     .h_5()
                     .px_2()
-                    .when(self.analysis_hovered, |button| {
+                    .when(summary_hovered, |button| {
                         button.bg(cx.theme().secondary_hover)
                     })
                     .on_hover(cx.listener(|shell, hovered, _, cx| {
@@ -309,6 +334,7 @@ impl Shell {
         self.settings_view_backup = self.view;
         self.settings_frequency_backup = Some(self.frequency);
         self.analysis_hovered = false;
+        self.range_advice_hovered = false;
         cx.notify();
         let owner = cx.entity().downgrade();
         let settings = self.settings;
@@ -483,4 +509,9 @@ fn advice_color(cx: &gpui::App) -> gpui::Hsla {
     } else {
         gpui::rgb(0x946200).into()
     }
+}
+
+fn advice_hover_color(cx: &gpui::App) -> gpui::Hsla {
+    let color = advice_color(cx);
+    gpui::hsla(color.h, color.s, (color.l + 0.12).min(1.0), color.a)
 }
