@@ -464,7 +464,7 @@ available independently of the menu (arrows below describe Horizontal mode):
 | Key | Action |
 | --- | --- |
 | Ctrl+G | Show / hide the spectrogram grid |
-| Ctrl+Alt+U | Show / hide the corner scale controls |
+| Ctrl+U | Show / hide the corner scale controls |
 | Ctrl+T | Toggle Horizontal / Vertical spectrogram orientation |
 | Ctrl+Plus / Ctrl+Minus (Ctrl+= alias, keypad +/−) | Zoom time in / out about the view centre |
 | Left / Right | Pan by one time-ruler division |

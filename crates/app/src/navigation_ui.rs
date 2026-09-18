@@ -34,7 +34,7 @@ actions!(
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([
         KeyBinding::new("ctrl-g", ToggleGrid, Some("Plot")),
-        KeyBinding::new("ctrl-alt-u", ToggleScaleUi, Some("Plot")),
+        KeyBinding::new("ctrl-u", ToggleScaleUi, Some("Plot")),
         KeyBinding::new("ctrl-t", ToggleOrientation, Some("Plot")),
         KeyBinding::new("ctrl-+", ZoomIn, Some("Plot")),
         KeyBinding::new("ctrl--", ZoomOut, Some("Plot")),

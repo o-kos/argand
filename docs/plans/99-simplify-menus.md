@@ -123,7 +123,7 @@ Owner decisions from 2026-09-17:
       corners sit on the spectrogram itself — time in the bottom-left
       corner, frequency in the top-right one, in both orientations, eight
       logical pixels clear of the picture's edges; View → Show scale
-      controls (Ctrl+Alt+U, session version 10) hides or shows them; the
+      controls (Ctrl+U, session version 10) hides or shows them; the
       ruler-end reservation was reverted. Zoom shortcuts are documented
       uniformly as Ctrl+Plus/Minus and Ctrl+Shift+Plus/Minus (Ctrl+= is the
       same key as Ctrl+Plus).

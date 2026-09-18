@@ -433,7 +433,7 @@ one, identically in both orientations, eight logical pixels clear of the
 picture's edges (`corner_zones`). Each pair is one framed container with
 rounded corners (22-pixel squares, one-pixel divider) dispatching the
 registered zoom actions with shortcut tooltips. View → Show scale controls
-(`ToggleScaleUi`, Ctrl+Alt+U, session version 10, default on) hides or shows
+(`ToggleScaleUi`, Ctrl+U, session version 10, default on) hides or shows
 every pair; pairs vanish when either spectrum side is too small. Pair zones use
 an arrow cursor and exclude pan, drag and wheel navigation.
 
