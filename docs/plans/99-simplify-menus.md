@@ -9,11 +9,14 @@ The application menu carries entries that duplicate obvious gestures
 splits recent files into a submenu nobody needs. Time and frequency
 fit/zoom commands are named and grouped inconsistently. This change
 rewrites the menu tree, inlines recent files into File, adds a Settings
-entry, moves fit commands to symmetric shortcuts, and puts small zoom
-button pairs on both rulers so pointer users get the same discoverable
-zoom the keyboard has.
+entry, moves fit commands to symmetric shortcuts, and puts translucent
+zoom button pairs on the spectrogram's corners so pointer users get the
+same discoverable zoom the keyboard has.
 
-Issue class: **B**.
+Issue class: **A** — reclassified during implementation. The plan first
+declared **B**, but the diff passed the class-A thresholds of roughly
+400 lines or five code files, and per `AGENTS.md` any class-A signal
+decides the class; the external reviewer model follows class A.
 
 ## Context
 
@@ -29,14 +32,15 @@ Issue class: **B**.
 - The plot keystroke interceptor in `navigation_ui.rs`
   (`plot_shortcut`) exists because GPUI consumes Shift for symbol keys;
   any new symbolic binding needs an interceptor arm and tests.
-- Ruler geometry: horizontal mode puts the time ruler at the bottom with
-  its unit caption at the right end, and the frequency ruler on the
-  right with its unit caption at the top; vertical mode mirrors this
-  (time ruler right with unit at top, frequency ruler bottom with unit
-  at bottom-right). Button pairs go at the opposite ends.
-- Axis layout already reserves caption space toolkit-neutrally
-  (`axes::Frame`, tested in `axes_tests.rs` with the fixture font); the
-  button-zone reservation follows that pattern.
+- The pairs sit on the spectrogram itself: the time pair in its
+  bottom-left corner, the frequency pair in its top-right one,
+  identically in both orientations, held clear of the picture's edges.
+  An earlier revision placed them on the rulers with a reserved
+  axis-frame zone; that reservation was reverted when the owner moved
+  the pairs onto the picture.
+- Axis layout stays toolkit-neutral (`axes::Frame`, tested in
+  `axes_tests.rs` with the fixture font); the corner zones are computed
+  from the measured plot rectangle in `plot_ui.rs` and tested there.
 - The settings window opens through the `EditAnalysis` action
   (`ctrl-,` / `cmd-,`), shared by the status bar control.
 
@@ -98,8 +102,8 @@ Owner decisions from 2026-09-17:
 
 - Keeping pan/zoom entries in View with consolidated grouping: the
   keyboard, wheel and drag paths already cover them, and the issue asks
-  for a concise menu; the ruler buttons restore pointer discoverability
-  for zoom.
+  for a concise menu; the corner scale controls restore pointer
+  discoverability for zoom.
 - `Ctrl+Shift+Home` alias alongside `Ctrl+Shift+0`: an alias would
   reintroduce the inconsistency the issue complains about and complicate
   menu keycaps.
@@ -120,6 +124,8 @@ Owner decisions from 2026-09-17:
       `plot_shortcut` tests); rename menu labels.
 - [x] Reserve ruler-end button zones in the axis frame layout
       (`crates/app/src/axes.rs`, toolkit-neutral, tested without GPU).
+      The reservation was later reverted together with the ruler
+      placement.
 - [x] Render the two zoom pairs (new small module or `plot_ui.rs`),
       reusing the shared button styling and tooltip helper; disabled
       without a file; both orientations.
@@ -154,15 +160,15 @@ Owner decisions from 2026-09-17:
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [x] Menu-model tests, interceptor tests, axis-frame layout tests.
-- [ ] Manual GPU checks: menus, ruler buttons, both orientations and
-      themes, recent-empty/recent-present, Settings entry, shortcut
+- [x] Menu-model tests, interceptor tests, corner-zone geometry tests.
+- [ ] Manual GPU checks: menus, corner scale controls, both orientations
+      and themes, recent-empty/recent-present, Settings entry, shortcut
       hints match actual behaviour.
 
 ## Post-completion
 
-- Owner reviews ruler button placement on screenshots before the Pull
-  Request goes Ready; placement tweaks stay in this branch.
+- Owner reviews corner scale control placement on screenshots before the
+  Pull Request goes Ready; placement tweaks stay in this branch.
 - Windows check that `Ctrl+Shift+0` reaches the application on common
   IME setups is part of downstream platform validation.
 

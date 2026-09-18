@@ -335,14 +335,14 @@ fn axis_colors(cx: &gpui::App, show_grid: bool) -> axes::Colors {
 /// edges.
 ///
 /// The pairs exist only while the scale-controls toggle shows them, and both
-/// appear or vanish together: either needs the same clear span on *both*
-/// sides of the picture, so a spectrum too small for one is too small for
-/// the other.
+/// appear or vanish together: they need the same clear span on *both* sides
+/// of the picture, because below it they would overlap in the middle. The
+/// span holds one pair plus the other pair's button, clear of both edges.
 ///
 /// Each present zone is exactly the pair's frame, `[+|-]`: two squares and
 /// their shared divider inside one border.
 fn corner_zones(spectrum: Bounds<Pixels>, visible: bool) -> [Option<axes::Rect>; 2] {
-    const MIN_SPAN: f32 = 2.0 * SCALE_INSET + SCALE_PAIR;
+    const MIN_SPAN: f32 = 2.0 * SCALE_INSET + SCALE_PAIR + SCALE_BUTTON;
     if !visible {
         return [None, None];
     }
@@ -829,9 +829,22 @@ mod tests {
         for zone in corner_zones(narrow, true) {
             assert!(zone.is_none(), "a 40-pixel side fits no pair");
         }
-        let snug = Bounds::new(point(px(0.), px(0.)), size(px(61.), px(61.)));
-        for zone in corner_zones(snug, true) {
-            assert!(zone.is_some(), "the exact minimum span still fits");
+        // Below the minimum the two corner pairs would overlap in the
+        // middle of the picture, so the minimum is exact.
+        let cramped = Bounds::new(point(px(0.), px(0.)), size(px(82.), px(82.)));
+        for zone in corner_zones(cramped, true) {
+            assert!(zone.is_none(), "an 82-pixel spectrum still overlaps");
         }
+        let snug = Bounds::new(point(px(0.), px(0.)), size(px(83.), px(83.)));
+        let [time, frequency] = corner_zones(snug, true);
+        let (time, frequency) = (time.unwrap(), frequency.unwrap());
+        assert!(
+            time.x + time.width <= frequency.x || frequency.x + frequency.width <= time.x,
+            "the horizontal spans do not overlap"
+        );
+        assert!(
+            frequency.y + frequency.height <= time.y || time.y + time.height <= frequency.y,
+            "the vertical spans do not overlap"
+        );
     }
 }
