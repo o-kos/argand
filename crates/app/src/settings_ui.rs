@@ -5,6 +5,39 @@ use argand_dsp::DynamicRange;
 #[path = "settings_editor.rs"]
 mod editor;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum RangeState {
+    Warned(f32),
+    Corrected,
+    Full,
+}
+
+impl RangeState {
+    fn from_range(recommendation: Option<f32>, range: DynamicRange) -> Self {
+        match (recommendation, range) {
+            (Some(db), _) => Self::Warned(db),
+            (None, DynamicRange::Fixed(_)) => Self::Corrected,
+            (None, DynamicRange::Default | DynamicRange::Auto) => Self::Full,
+        }
+    }
+
+    const fn hint(self) -> &'static str {
+        match self {
+            Self::Warned(_) => "Spectrum peak sits low in this range",
+            Self::Corrected => "Range narrowed from the full scale",
+            Self::Full => "Full scale, nothing trimmed",
+        }
+    }
+
+    const fn next_range(self) -> Option<DynamicRange> {
+        match self {
+            Self::Warned(db) => Some(DynamicRange::Fixed(db)),
+            Self::Corrected => Some(DynamicRange::Default),
+            Self::Full => None,
+        }
+    }
+}
+
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([KeyBinding::new(
         if cfg!(target_os = "macos") {
@@ -77,6 +110,7 @@ impl Shell {
         };
         self.settings_window = None;
         self.analysis_hovered = false;
+        self.range_hovered = false;
         let view = self.settings_view_backup.take();
         let frequency = self.settings_frequency_backup.take();
         if !accept {
@@ -90,10 +124,15 @@ impl Shell {
     }
 
     pub(super) fn use_recommended_range(&mut self, cx: &mut Context<Self>) {
-        if let Some(db) = self.range_recommendation() {
+        let state =
+            RangeState::from_range(self.range_recommendation(), self.settings.dynamic_range);
+        if let Some(dynamic_range) = state.next_range() {
+            if dynamic_range == DynamicRange::Default {
+                self.range_hovered = false;
+            }
             self.set_settings(
                 Settings {
-                    dynamic_range: DynamicRange::Fixed(db),
+                    dynamic_range,
                     ..self.settings
                 },
                 cx,
@@ -221,45 +260,83 @@ impl Shell {
             })
     }
 
+    fn range_control(&self, displayed: Settings, cx: &mut Context<Self>) -> impl IntoElement {
+        let range_text = self
+            .displayed_range()
+            .map(|range| format!("{} dB", crate::numbers::number(range.effective_db)))
+            .unwrap_or_else(|| match displayed.dynamic_range {
+                DynamicRange::Default => crate::numbers::text("110 dB"),
+                DynamicRange::Fixed(db) => format!("{} dB", crate::numbers::number(db)),
+                DynamicRange::Auto => "auto".into(),
+            });
+        let range_state = RangeState::from_range(
+            self.displayed_range_recommendation(),
+            displayed.dynamic_range,
+        );
+        let range_label = match range_state {
+            RangeState::Warned(_) => format!("⚠ {range_text}"),
+            RangeState::Corrected | RangeState::Full => range_text,
+        };
+        let actionable = range_state.next_range().is_some();
+        let range_content = match range_state {
+            RangeState::Warned(_) | RangeState::Corrected => {
+                let (foreground, hover_foreground) = match range_state {
+                    RangeState::Warned(_) => (advice_color(cx), advice_hover_color(cx)),
+                    RangeState::Corrected => (cx.theme().muted_foreground, cx.theme().foreground),
+                    RangeState::Full => (cx.theme().muted_foreground, cx.theme().muted_foreground),
+                };
+                Button::new("analysis-range")
+                    .ghost()
+                    .small()
+                    .h_5()
+                    .px_2()
+                    .text_color(foreground)
+                    .on_hover(cx.listener(move |shell, hovered, _, cx| {
+                        shell.range_hovered = *hovered;
+                        cx.notify();
+                    }))
+                    .when(self.range_hovered, |button| {
+                        button
+                            .bg(cx.theme().secondary_hover)
+                            .text_color(hover_foreground)
+                    })
+                    .on_click(move |_, window, cx| {
+                        window.dispatch_action(Box::new(UseRecommendedRange), cx);
+                    })
+                    .child(div().text_xs().whitespace_nowrap().child(range_label))
+                    .into_any_element()
+            }
+            RangeState::Full => div()
+                .id("analysis-range")
+                .h_5()
+                .px_2()
+                .flex()
+                .items_center()
+                .text_xs()
+                .whitespace_nowrap()
+                .child(range_label)
+                .into_any_element(),
+        };
+        let range_hint = range_state.hint();
+        div()
+            .id("analysis-range-item")
+            .border_l_1()
+            .border_color(cx.theme().border)
+            .tooltip(move |window, cx| {
+                let action =
+                    actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui::Action>);
+                shortcut_tooltip(range_hint.to_owned(), action, "Shell", px(320.)).build(window, cx)
+            })
+            .child(range_content)
+    }
+
     fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let displayed = self
             .file
             .as_ref()
             .and_then(|file| file.displayed_settings)
             .unwrap_or(self.settings);
-        let range = self
-            .displayed_range()
-            .map(|range| format!("{} dB", crate::numbers::number(range.effective_db)))
-            .unwrap_or_else(|| match self.settings.dynamic_range {
-                DynamicRange::Default => crate::numbers::text("110 dB"),
-                DynamicRange::Fixed(db) => format!("{} dB", crate::numbers::number(db)),
-                DynamicRange::Auto => "auto".into(),
-            });
         let hint_owner = cx.entity().downgrade();
-        let warning = self.displayed_range_recommendation().is_some();
-        let range = div()
-            .id("analysis-range")
-            .border_l_1()
-            .border_color(cx.theme().border)
-            .h_5()
-            .px_2()
-            .flex()
-            .items_center()
-            .whitespace_nowrap()
-            .when(warning, |range| {
-                range
-                    .cursor_pointer()
-                    .text_color(advice_color(cx))
-                    .hover(|style| style.text_color(advice_hover_color(cx)))
-                    .on_click(move |_, window, cx| {
-                        window.dispatch_action(Box::new(UseRecommendedRange), cx);
-                    })
-            })
-            .child(if warning {
-                format!("⚠ {range}")
-            } else {
-                range
-            });
         let foreground = if self.analysis_hovered {
             cx.theme().foreground
         } else {
@@ -301,7 +378,7 @@ impl Shell {
                     .border_color(cx.theme().border)
                     .child(summary),
             )
-            .child(range)
+            .child(self.range_control(displayed, cx))
     }
 
     pub(super) fn edit_analysis(
@@ -325,6 +402,7 @@ impl Shell {
         self.settings_view_backup = self.view;
         self.settings_frequency_backup = Some(self.frequency);
         self.analysis_hovered = false;
+        self.range_hovered = false;
         cx.notify();
         let owner = cx.entity().downgrade();
         let settings = self.settings;
@@ -504,4 +582,33 @@ fn advice_color(cx: &gpui::App) -> gpui::Hsla {
 fn advice_hover_color(cx: &gpui::App) -> gpui::Hsla {
     let color = advice_color(cx);
     gpui::hsla(color.h, color.s, (color.l + 0.24).min(1.0), color.a)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn range_state_applies_advice_then_restores_full_scale() {
+        let advised = RangeState::from_range(Some(42.0), DynamicRange::Default)
+            .next_range()
+            .unwrap();
+        assert_eq!(advised, DynamicRange::Fixed(42.0));
+
+        let restored = RangeState::from_range(None, advised).next_range().unwrap();
+        assert_eq!(restored, DynamicRange::Default);
+        assert_eq!(RangeState::from_range(None, restored).next_range(), None);
+    }
+
+    #[test]
+    fn automatic_range_has_no_toggle_without_advice() {
+        assert_eq!(
+            RangeState::from_range(None, DynamicRange::Auto).next_range(),
+            None
+        );
+        assert_eq!(
+            RangeState::from_range(Some(38.0), DynamicRange::Auto).next_range(),
+            Some(DynamicRange::Fixed(38.0))
+        );
+    }
 }

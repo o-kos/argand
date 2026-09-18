@@ -186,15 +186,15 @@ terminal period, matching the house style for explanations:
       text when there is no recommendation.
 - [x] ➕ Remove `range_advice_hovered`, the hint suppression and the propagation stop,
       which the split makes unnecessary.
-- [ ] ➕ Give the level item a hint per state through `shortcut_tooltip`, with the
+- [x] ➕ Give the level item a hint per state through `shortcut_tooltip`, with the
       Ctrl+R keycap in the warned and corrected states and none in the full state.
-- [ ] ➕ Make Ctrl+R a toggle: apply the advice when one exists, otherwise restore
+- [x] ➕ Make Ctrl+R a toggle: apply the advice when one exists, otherwise restore
       the full range from an explicit one, and do nothing on the full range. The
       click follows the same rule.
-- [ ] ➕ Give the warned and corrected states a button-like hover with background and
+- [x] ➕ Give the warned and corrected states a button-like hover with background and
       brighter text, and leave the full state inert.
-- [ ] ➕ Remove the pointer cursor from the level item in every state.
-- [ ] Complete validation.
+- [x] ➕ Remove the pointer cursor from the level item in every state.
+- [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
