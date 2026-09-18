@@ -58,6 +58,42 @@ shown on hover, and anything else in the status bar.
 - **Reusing the popover work from PR #106.** It is blocked on a decision about
   `Root` and carries an unapproved custom control; this Issue does not depend on it.
 
+## Owner follow-up after the first GPU review
+
+Four defects seen in the running build. All are in the same status-bar element and
+belong here.
+
+- **The FFT text brightens when the pointer is over the warned value.** The value is
+  a child of the settings button, whose `on_hover` sets `analysis_hovered` and lifts
+  the whole summary to the foreground colour. Hovering the warned value must not
+  light up the rest of the summary, because the click there does something else
+  entirely.
+- **The warned value does not react to the pointer.** It is a click target and must
+  brighten under the pointer, in both interface themes, without turning into the
+  plain foreground colour that would make it look like the rest of the summary.
+- **Applying the advice flickers through an intermediate state.** `⚠ 110 dB`
+  becomes `110 dB` and only then `40 dB`. The cause is in `range_recommendation`:
+  it returns `None` as soon as `file.displayed_settings != Some(self.settings)`, which
+  is true the instant the click applies the new settings, while the displayed value
+  still comes from the old picture. The warning is tied to the requested settings
+  where it should be tied to the displayed picture.
+- **The settings hint appears after the click.** The summary's hover tooltip must not
+  open as a result of applying the advice.
+
+## Follow-up decisions
+
+- **Split the warning's two readers.** Display -- the colour, the `⚠` and the click
+  target -- follows the displayed picture, so it survives until the replacement
+  arrives and then changes together with the number, as one visible step. The action
+  keeps the existing strict check, so a click during the gap cannot request settings
+  that are already requested. Do not make the value flicker back by tying display to
+  the requested settings again.
+- **Hovering the warned value suppresses the summary hover state** rather than
+  reordering the elements. The status bar's layout and the settings button must not
+  change for this.
+- **The warned value gets its own hover colour**, derived from the advice colour
+  rather than from the theme foreground, so it stays recognisably the warning.
+
 ## Implementation steps
 
 - [x] Make the warned range in `analysis_control` a click target that stops
@@ -68,6 +104,15 @@ shown on hover, and anything else in the status bar.
       a real window and has no meaningful window-free test.
 - [x] Update `AGENTS.md` where it describes the status bar's range warning.
 - [x] Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
+- [ ] ➕ Tie the warning's colour, marker and click target to the displayed picture
+      so applying the advice is one visible change, with no unmarked intermediate
+      value. Leave the action's own check as it is.
+- [ ] ➕ Stop the pointer over the warned value from raising the summary's hover
+      state, so the FFT text does not brighten.
+- [ ] ➕ Give the warned value a brighter hover colour derived from the advice
+      colour, in both interface themes.
+- [ ] ➕ Keep the summary's hover hint from appearing as a result of clicking the
+      warned value.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -83,7 +128,10 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
       value applies the advice on click and does not open settings; the pointer shows
       the affordance only while it is yellow; clicking the rest of the summary still
       opens settings; Ctrl+R still works; and once the range is no longer warned the
-      value stops being clickable.
+      value stops being clickable. Confirm the four follow-up points: the FFT text
+      does not brighten while the pointer is over the warned value, the warned value
+      itself brightens, applying the advice goes straight from `⚠ 110 dB` to `40 dB`
+      with nothing in between, and no settings hint appears after the click.
 
 ## Post-completion
 
