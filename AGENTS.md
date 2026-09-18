@@ -140,12 +140,27 @@ seeing the result.
 
 | Class | Applies to | Implementer | Reviewer |
 | --- | --- | --- | --- |
-| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 files | `gpt-6-astra` xhigh | `gpt-5.6-sol` xhigh |
-| B | A feature or fix in one or two GUI modules with local, known invariants and concrete acceptance criteria | `gpt-6-astra` high | `gpt-5.6-sol` high |
-| C | Documentation, README, configuration, renames, single-file changes with no behavioural consequence | `gpt-5.6-terra` high | `gpt-5.6-sol` high |
+| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 code files | `gpt-5.6-sol` high | `gpt-5.6-terra` high |
+| B | A feature or fix in one or two GUI modules with local, known invariants and concrete acceptance criteria | `gpt-5.6-sol` high | `gpt-5.6-terra` high |
+| C | Documentation, README, configuration, renames, single-file changes with no behavioural consequence | `gpt-5.6-terra` high | `gpt-5.6-luna` high |
 
-Any of class A's signals puts the Issue in class A. Use the same implementer and
-reviewer model and reasoning effort for every round of one Pull Request.
+`gpt-6-astra` is not scheduled by class. Ask the owner for it, with the reason, and
+use it only once agreed. It costs roughly 1.4M tokens per run against 0.9M for
+`gpt-5.6-sol` and 0.55M for `gpt-5.6-terra`, measured over this repository's own
+sessions, and the model is not what decides most outcomes: a run wasted on a mistaken
+plan costs the same as a useful one.
+
+A change that touches no code -- documentation, a plan, configuration, release notes
+-- is reviewed by `gpt-5.6-luna`. Reserve the stronger reviewers for code.
+
+Any of class A's signals puts the Issue in class A. The file count considers code
+only: the plan, `CHANGELOG.md` and `AGENTS.md` change in nearly every Pull Request
+and say nothing about how hard the work is. Use the same implementer and reviewer
+model and reasoning effort for every round of one Pull Request.
+
+The cheapest saving is not the model. Read the parts of a framework a plan depends on
+before writing it, so an implementer does not spend a full run discovering the plan
+was wrong, and do not open a review round on a change with nothing to review.
 
 ## Git workflow
 
