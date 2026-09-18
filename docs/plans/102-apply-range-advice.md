@@ -96,6 +96,9 @@ belong here.
 
 ## Second follow-up: split the summary into two status items
 
+This follow-up supersedes the earlier nesting, propagation and unchanged-layout
+decisions while retaining the displayed-picture and strict-action split.
+
 The first follow-up treated the symptoms of a structure that cannot work. The warned
 value is a child of the settings button, so both own the pointer: entering the value
 first raises the button's hover state and then lowers it again, which reads as the FFT
@@ -140,12 +143,12 @@ clearly on the warning colour in both interface themes.
       colour, in both interface themes.
 - [x] ➕ Keep the summary's hover hint from appearing as a result of clicking the
       warned value.
-- [ ] ➕ Split the analysis summary into two status items: the transform group as the
+- [x] ➕ Split the analysis summary into two status items: the transform group as the
       settings button with the hint, and the level as its own item.
-- [ ] ➕ Give the level item its own warned behaviour -- advice colour, pointer,
+- [x] ➕ Give the level item its own warned behaviour -- advice colour, pointer,
       visible hover brightening, click applies the advice -- and make it inert plain
       text when there is no recommendation.
-- [ ] ➕ Remove `range_advice_hovered`, the hint suppression and the propagation stop,
+- [x] ➕ Remove `range_advice_hovered`, the hint suppression and the propagation stop,
       which the split makes unnecessary.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
