@@ -206,7 +206,16 @@ impl Shell {
             .as_ref()
             .and_then(WeakEntity::upgrade)
             .is_some();
-        (self.pointer.is_some() && self.pan.is_none() && self.frequency_pan.is_none() && !menu_open)
+        // The corner scale buttons take the pointer for themselves: no
+        // Alt guides over them.
+        let over_buttons = self
+            .plot_geometry
+            .is_some_and(|geometry| geometry.over_scale_buttons(self.pointer));
+        (self.pointer.is_some()
+            && self.pan.is_none()
+            && self.frequency_pan.is_none()
+            && !menu_open
+            && !over_buttons)
             .then_some(axes::CursorGuides {
                 extents,
                 metrics: self.badge_metrics.clone(),
@@ -269,6 +278,10 @@ impl Shell {
                         ZoomIn,
                         ZoomOut,
                         enabled,
+                        [
+                            self.pressed_zoom == Some("Zoom in time"),
+                            self.pressed_zoom == Some("Zoom out time"),
+                        ],
                         origin,
                         cx,
                     )
@@ -283,6 +296,10 @@ impl Shell {
                         FrequencyZoomIn,
                         FrequencyZoomOut,
                         enabled,
+                        [
+                            self.pressed_zoom == Some("Zoom in frequency"),
+                            self.pressed_zoom == Some("Zoom out frequency"),
+                        ],
                         origin,
                         cx,
                     )
@@ -390,6 +407,7 @@ fn zoom_pair(
     in_action: impl Action,
     out_action: impl Action,
     enabled: bool,
+    pressed: [bool; 2],
     origin: gpui::Point<Pixels>,
     cx: &mut Context<Shell>,
 ) -> Div {
@@ -401,6 +419,7 @@ fn zoom_pair(
         pair.zoom_in,
         in_action,
         enabled,
+        pressed[0],
         horizontal,
         cx,
     );
@@ -409,6 +428,7 @@ fn zoom_pair(
         pair.zoom_out,
         out_action,
         enabled,
+        pressed[1],
         horizontal,
         cx,
     );
@@ -451,12 +471,14 @@ fn zoom_pair(
 }
 
 /// One clickable half of a corner pair: it fills its side of the shared
-/// frame, centers its glyph, and dispatches the pair's zoom action.
+/// frame, centers its glyph, presses while held, and dispatches the pair's
+/// zoom action.
 fn half_button(
     icon: IconName,
     hint: &'static str,
     action: impl Action + 'static,
     enabled: bool,
+    pressed: bool,
     horizontal: bool,
     cx: &mut Context<Shell>,
 ) -> gpui::Stateful<Div> {
@@ -466,7 +488,9 @@ fn half_button(
     } else {
         cx.theme().muted_foreground.opacity(0.5)
     };
-    let hover = cx.theme().foreground.opacity(0.08);
+    let accent = super::app_menu_ui::toolbar_accent(cx);
+    let hover = accent.opacity(0.32);
+    let press = accent.opacity(0.44);
     let mut half = div()
         .id(hint)
         .flex()
@@ -479,14 +503,41 @@ fn half_button(
     } else {
         half.flex_1().w_full()
     };
-    half = half.when(enabled, |half| half.hover(move |style| style.bg(hover)));
+    half = half
+        .when(enabled, |half| half.hover(move |style| style.bg(hover)))
+        .when(enabled && pressed, |half| half.bg(press));
     if enabled {
         let click = tooltip_action.boxed_clone();
-        half = half.on_click(cx.listener(move |shell, _, window, cx| {
-            window.focus(&shell.focus);
-            window.dispatch_action(click.boxed_clone(), cx);
-        }));
+        half = half
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |shell, _, _, cx| {
+                    shell.pressed_zoom = Some(hint);
+                    cx.notify();
+                }),
+            )
+            .on_click(cx.listener(move |shell, _, window, cx| {
+                window.focus(&shell.focus);
+                window.dispatch_action(click.boxed_clone(), cx);
+            }));
     }
+    half = half
+        .on_mouse_up(
+            MouseButton::Left,
+            cx.listener(|shell, _, _, cx| {
+                if shell.pressed_zoom.take().is_some() {
+                    cx.notify();
+                }
+            }),
+        )
+        .on_mouse_up_out(
+            MouseButton::Left,
+            cx.listener(|shell, _, _, cx| {
+                if shell.pressed_zoom.take().is_some() {
+                    cx.notify();
+                }
+            }),
+        );
     half.tooltip(move |window, cx| {
         shortcut_tooltip(
             hint.to_owned(),

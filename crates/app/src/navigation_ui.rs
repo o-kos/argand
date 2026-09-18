@@ -185,6 +185,17 @@ impl PlotGeometry {
                 .any(|zone| rect_contains(*zone, position))
     }
 
+    /// Whether the pointer sits on a corner scale button, wherever it is.
+    /// Guides and gestures keep off these squares.
+    pub fn over_scale_buttons(self, pointer: Option<gpui::Point<Pixels>>) -> bool {
+        pointer.is_some_and(|position| {
+            self.zoom_zones
+                .iter()
+                .flatten()
+                .any(|zone| rect_contains(*zone, position))
+        })
+    }
+
     pub fn time_length(self) -> f32 {
         f32::from(
             self.orientation
@@ -973,6 +984,23 @@ mod tests {
             navigation: Bounds::new(point(px(10.), px(10.)), size(px(100.), px(160.))),
             minimap: Bounds::new(point(px(10.), px(10.)), size(px(100.), px(30.))),
         }
+    }
+
+    #[test]
+    fn scale_button_zones_take_the_pointer() {
+        let mut geometry = geometry();
+        geometry.zoom_zones = [
+            Some(axes::Rect {
+                x: 10.,
+                y: 125.,
+                width: 45.,
+                height: 22.,
+            }),
+            None,
+        ];
+        assert!(geometry.over_scale_buttons(Some(point(px(30.), px(135.)))));
+        assert!(!geometry.over_scale_buttons(Some(point(px(60.), px(135.)))));
+        assert!(!geometry.over_scale_buttons(None));
     }
 
     #[test]

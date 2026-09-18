@@ -628,7 +628,7 @@ fn app_button_width(window: &Window, cx: &gpui::App) -> Pixels {
     label.width.ceil() + px(22. + 12. + 2.) + window.rem_size() * 0.25
 }
 
-fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {
+pub(super) fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {
     if cx.theme().is_dark() {
         cx.theme().blue_light
     } else {
