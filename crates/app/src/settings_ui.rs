@@ -77,7 +77,6 @@ impl Shell {
         };
         self.settings_window = None;
         self.analysis_hovered = false;
-        self.range_advice_hovered = false;
         let view = self.settings_view_backup.take();
         let frequency = self.settings_frequency_backup.take();
         if !accept {
@@ -121,7 +120,11 @@ impl Shell {
     }
 
     fn displayed_range_recommendation(&self) -> Option<f32> {
-        self.file.as_ref()?.document.range_recommendation()
+        let file = self.file.as_ref()?;
+        if matches!(file.document.status(), Status::Failed(_)) {
+            return None;
+        }
+        file.document.range_recommendation()
     }
 
     pub(super) fn status_bar(
@@ -236,25 +239,19 @@ impl Shell {
         let warning = self.displayed_range_recommendation().is_some();
         let range = div()
             .id("analysis-range")
-            .on_hover(cx.listener(move |shell, hovered, _, cx| {
-                shell.range_advice_hovered = warning && *hovered;
-                cx.notify();
-            }))
+            .border_l_1()
+            .border_color(cx.theme().border)
+            .h_5()
+            .px_2()
+            .flex()
+            .items_center()
+            .whitespace_nowrap()
             .when(warning, |range| {
                 range
                     .cursor_pointer()
                     .text_color(advice_color(cx))
                     .hover(|style| style.text_color(advice_hover_color(cx)))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|shell, _, _, cx| {
-                            shell.range_advice_hovered = true;
-                            cx.notify();
-                            cx.stop_propagation();
-                        }),
-                    )
                     .on_click(move |_, window, cx| {
-                        cx.stop_propagation();
                         window.dispatch_action(Box::new(UseRecommendedRange), cx);
                     })
             })
@@ -263,54 +260,48 @@ impl Shell {
             } else {
                 range
             });
-        let summary_hovered = self.analysis_hovered && !self.range_advice_hovered;
-        let foreground = if summary_hovered {
+        let foreground = if self.analysis_hovered {
             cx.theme().foreground
         } else {
             cx.theme().muted_foreground
         };
+        let mut summary = Button::new("analysis-settings")
+            .ghost()
+            .small()
+            .h_5()
+            .px_2()
+            .when(self.analysis_hovered, |button| {
+                button.bg(cx.theme().secondary_hover)
+            })
+            .on_hover(cx.listener(|shell, hovered, _, cx| {
+                shell.analysis_hovered = *hovered;
+                cx.notify();
+            }))
+            .on_click(
+                cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
+            )
+            .child(div().text_xs().text_color(foreground).child(format!(
+                "{} · {}",
+                crate::numbers::number(displayed.fft_size),
+                displayed.window
+            )));
+        if self.settings_backup.is_none() {
+            summary
+                .interactivity()
+                .hoverable_tooltip(move |_, cx| live_analysis_tooltip(hint_owner.clone(), cx));
+        }
         div()
-            .id("analysis-summary")
-            .border_l_1()
-            .border_color(cx.theme().border)
-            .when(
-                self.settings_backup.is_none() && !self.range_advice_hovered,
-                |panel| {
-                    panel.hoverable_tooltip(move |_, cx| {
-                        live_analysis_tooltip(hint_owner.clone(), cx)
-                    })
-                },
-            )
+            .flex()
+            .items_center()
+            .gap_2()
             .child(
-                Button::new("analysis-settings")
-                    .ghost()
-                    .small()
-                    .h_5()
-                    .px_2()
-                    .when(summary_hovered, |button| {
-                        button.bg(cx.theme().secondary_hover)
-                    })
-                    .on_hover(cx.listener(|shell, hovered, _, cx| {
-                        shell.analysis_hovered = *hovered;
-                        cx.notify();
-                    }))
-                    .on_click(cx.listener(|shell, _, window, cx| {
-                        shell.edit_analysis(&EditAnalysis, window, cx)
-                    }))
-                    .child(
-                        div()
-                            .flex()
-                            .gap_1()
-                            .text_xs()
-                            .text_color(foreground)
-                            .child(format!(
-                                "{} · {} ·",
-                                crate::numbers::number(displayed.fft_size),
-                                displayed.window
-                            ))
-                            .child(range),
-                    ),
+                div()
+                    .id("analysis-summary")
+                    .border_l_1()
+                    .border_color(cx.theme().border)
+                    .child(summary),
             )
+            .child(range)
     }
 
     pub(super) fn edit_analysis(
@@ -334,7 +325,6 @@ impl Shell {
         self.settings_view_backup = self.view;
         self.settings_frequency_backup = Some(self.frequency);
         self.analysis_hovered = false;
-        self.range_advice_hovered = false;
         cx.notify();
         let owner = cx.entity().downgrade();
         let settings = self.settings;
@@ -513,5 +503,5 @@ fn advice_color(cx: &gpui::App) -> gpui::Hsla {
 
 fn advice_hover_color(cx: &gpui::App) -> gpui::Hsla {
     let color = advice_color(cx);
-    gpui::hsla(color.h, color.s, (color.l + 0.12).min(1.0), color.a)
+    gpui::hsla(color.h, color.s, (color.l + 0.24).min(1.0), color.a)
 }
