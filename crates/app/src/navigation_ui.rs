@@ -716,6 +716,11 @@ impl Shell {
             }))
             .on_action(cx.listener(|shell, _: &ToggleScaleUi, _, cx| {
                 shell.session.show_scale_ui = !shell.session.show_scale_ui;
+                // Hiding the controls while one is held would leave the
+                // pressed mark stuck on whichever half returns.
+                if !shell.session.show_scale_ui {
+                    shell.pressed_zoom = None;
+                }
                 shell.save();
                 cx.notify();
             }))

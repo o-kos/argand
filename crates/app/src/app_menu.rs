@@ -193,15 +193,14 @@ impl<T: Clone> Menu<T> {
     }
 
     /// Activate the open level's row carrying `number`, the way the keycap
-    /// on that row promises. A missing, disabled or unnumbered digit does
-    /// nothing.
+    /// on that row promises. Only enabled commands qualify: a missing,
+    /// disabled, unnumbered or non-command digit does nothing and leaves
+    /// the selection alone.
     pub fn activate_numbered(&mut self, number: u8, execute: bool) -> Effect<T> {
         let level = self.depth() - 1;
-        let Some(index) = self
-            .items(level)
-            .iter()
-            .position(|item| item.number == Some(number))
-        else {
+        let Some(index) = self.items(level).iter().position(|item| {
+            item.number == Some(number) && item.enabled && matches!(item.kind, Kind::Command(_))
+        }) else {
             return Effect::None;
         };
         self.select(level, index);
@@ -392,6 +391,32 @@ mod tests {
         assert_eq!(menu.activate_numbered(9, true), Effect::None);
         assert_eq!(menu.activate_numbered(2, true), Effect::None);
         assert_eq!(menu.selected(1), None);
+    }
+
+    #[test]
+    fn digits_never_touch_separators_branches_or_the_selection() {
+        let numbered_branch = Item::branch("Sub", vec![Item::command("leaf", 5)]).numbered(1);
+        let numbered_separator = Item::separator().numbered(2);
+        let mut numbered_disabled = Item::command("b", 3).numbered(3);
+        numbered_disabled.enabled = false;
+        let mut menu = Menu::new(vec![Item::branch(
+            "File",
+            vec![
+                Item::command("Open file...", 4),
+                numbered_branch,
+                numbered_separator,
+                numbered_disabled,
+            ],
+        )]);
+        menu.hover(0, 0);
+        menu.select(1, 0);
+        // A digit on a branch, a separator or a disabled row changes
+        // nothing: no expansion, no selection reset.
+        for digit in [1, 2, 3] {
+            assert_eq!(menu.activate_numbered(digit, true), Effect::None);
+            assert_eq!(menu.depth(), 2);
+            assert_eq!(menu.selected(1), Some(0));
+        }
     }
 
     #[test]
