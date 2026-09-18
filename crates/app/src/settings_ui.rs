@@ -233,8 +233,7 @@ impl Shell {
                 .id("recommended-range")
                 .cursor_pointer()
                 .text_color(advice_color(cx))
-                .on_mouse_down(MouseButton::Left, |_, window, cx| {
-                    window.prevent_default();
+                .on_mouse_down(MouseButton::Left, |_, _, cx| {
                     cx.stop_propagation();
                 })
                 .on_click(move |_, window, cx| {
