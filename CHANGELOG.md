@@ -13,6 +13,8 @@ promise applies to.
 
 ### Fixed
 
+- Make the hinted spectrogram range in the status bar apply an available recommendation or restore the full range on click and Ctrl+R / Cmd+R without opening analysis settings.
+
 - Correct the README Rust version badge to state Rust 1.97+.
 
 - Hide the currently loaded file from Recent lists while preserving saved history and opening hints.

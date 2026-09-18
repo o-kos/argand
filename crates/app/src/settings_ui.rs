@@ -1,9 +1,29 @@
 //! Status-bar file details and live analysis controls.
 
 use super::*;
+use crate::settings::{DisplayedRange, RangeState};
 use argand_dsp::DynamicRange;
 #[path = "settings_editor.rs"]
 mod editor;
+
+fn low_signal_level_hint(db: f32) -> String {
+    format!(
+        "Low signal level leaves the upper half of the colour scale unused, so use the recommended {} dB range",
+        crate::numbers::number(db)
+    )
+}
+
+fn range_hint(state: RangeState) -> String {
+    match state {
+        RangeState::Warned(db) => low_signal_level_hint(db),
+        RangeState::Corrected => "Range narrowed from the full scale".into(),
+        RangeState::Full => "Full scale, nothing trimmed".into(),
+    }
+}
+
+fn range_actionable(displayed: Option<Settings>, requested: Settings, range: RangeState) -> bool {
+    displayed == Some(requested) && range.next_range().is_some()
+}
 
 pub(super) fn init(cx: &mut gpui::App) {
     cx.bind_keys([KeyBinding::new(
@@ -77,6 +97,7 @@ impl Shell {
         };
         self.settings_window = None;
         self.analysis_hovered = false;
+        self.range_hovered = false;
         let view = self.settings_view_backup.take();
         let frequency = self.settings_frequency_backup.take();
         if !accept {
@@ -90,10 +111,12 @@ impl Shell {
     }
 
     pub(super) fn use_recommended_range(&mut self, cx: &mut Context<Self>) {
-        if let Some(db) = self.range_recommendation() {
+        let state =
+            RangeState::from_request(self.range_recommendation(), self.settings.dynamic_range);
+        if let Some(dynamic_range) = state.next_range() {
             self.set_settings(
                 Settings {
-                    dynamic_range: DynamicRange::Fixed(db),
+                    dynamic_range,
                     ..self.settings
                 },
                 cx,
@@ -101,12 +124,12 @@ impl Shell {
         }
     }
 
-    fn displayed_range(&self) -> Option<argand_dsp::DynamicRangeResult> {
-        self.file
-            .as_ref()?
-            .document
-            .analysis()
-            .map(|analysis| analysis.dynamic_range)
+    fn displayed_range(&self) -> Option<DisplayedRange> {
+        let file = self.file.as_ref()?;
+        if matches!(file.document.status(), Status::Failed(_)) {
+            return None;
+        }
+        file.document.displayed_range()
     }
 
     fn range_recommendation(&self) -> Option<f32> {
@@ -116,7 +139,7 @@ impl Shell {
         {
             return None;
         }
-        file.document.range_recommendation()
+        file.document.displayed_range()?.state.recommendation()
     }
 
     pub(super) fn status_bar(
@@ -124,6 +147,7 @@ impl Shell {
         corners: Corners<Pixels>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let has_file = self.file.is_some();
         let file = self
             .file
             .as_ref()
@@ -166,7 +190,10 @@ impl Shell {
                         ),
                 )
             })
-            .child(self.analysis_control(cx))
+            .when(!has_file, |bar| {
+                bar.child(div().px_2().whitespace_nowrap().child("No signal loaded"))
+            })
+            .when(has_file, |bar| bar.child(self.analysis_control(cx)))
             .child(div().flex_1().min_w_0())
             .when_some(self.cursor_readout(), |bar, (text, level)| {
                 bar.child(
@@ -213,72 +240,135 @@ impl Shell {
             })
     }
 
-    fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let displayed = self
-            .file
-            .as_ref()
-            .and_then(|file| file.displayed_settings)
-            .unwrap_or(self.settings);
-        let range = self
-            .displayed_range()
+    fn range_control(
+        &self,
+        displayed: Option<Settings>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let visible = displayed.unwrap_or(self.settings);
+        let displayed_range = self.displayed_range();
+        let range_text = displayed_range
             .map(|range| format!("{} dB", crate::numbers::number(range.effective_db)))
-            .unwrap_or_else(|| match self.settings.dynamic_range {
+            .unwrap_or_else(|| match visible.dynamic_range {
                 DynamicRange::Default => crate::numbers::text("110 dB"),
                 DynamicRange::Fixed(db) => format!("{} dB", crate::numbers::number(db)),
                 DynamicRange::Auto => "auto".into(),
             });
+        let range_state = displayed_range.map_or_else(
+            || RangeState::from_request(None, visible.dynamic_range),
+            |range| range.state,
+        );
+        let range_label = match range_state {
+            RangeState::Warned(_) => format!("⚠ {range_text}"),
+            RangeState::Corrected | RangeState::Full => range_text,
+        };
+        let actionable = range_actionable(displayed, self.settings, range_state);
+        let foreground = match range_state {
+            RangeState::Warned(_) => advice_color(cx),
+            RangeState::Corrected | RangeState::Full => cx.theme().muted_foreground,
+        };
+        let range_content = if actionable {
+            let hover_foreground = match range_state {
+                RangeState::Warned(_) => advice_hover_color(cx),
+                RangeState::Corrected => cx.theme().foreground,
+                RangeState::Full => cx.theme().muted_foreground,
+            };
+            Button::new("analysis-range")
+                .ghost()
+                .small()
+                .h_5()
+                .px_2()
+                .text_color(foreground)
+                .on_hover(cx.listener(move |shell, hovered, _, cx| {
+                    shell.range_hovered = *hovered;
+                    cx.notify();
+                }))
+                .when(self.range_hovered && actionable, |button| {
+                    button
+                        .bg(cx.theme().secondary_hover)
+                        .text_color(hover_foreground)
+                })
+                .on_click(move |_, window, cx| {
+                    window.dispatch_action(Box::new(UseRecommendedRange), cx);
+                })
+                .child(div().text_xs().whitespace_nowrap().child(range_label))
+                .into_any_element()
+        } else {
+            div()
+                .id("analysis-range")
+                .h_5()
+                .px_2()
+                .flex()
+                .items_center()
+                .text_xs()
+                .text_color(foreground)
+                .whitespace_nowrap()
+                .on_hover(cx.listener(move |shell, hovered, _, cx| {
+                    shell.range_hovered = *hovered;
+                    cx.notify();
+                }))
+                .child(range_label)
+                .into_any_element()
+        };
+        let range_hint = range_hint(range_state);
+        div()
+            .id("analysis-range-item")
+            .border_l_1()
+            .border_color(cx.theme().border)
+            .tooltip(move |window, cx| {
+                let action =
+                    actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui::Action>);
+                shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.)).build(window, cx)
+            })
+            .child(range_content)
+    }
+
+    fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
+        let visible = displayed.unwrap_or(self.settings);
         let hint_owner = cx.entity().downgrade();
-        let warning = self.range_recommendation().is_some();
         let foreground = if self.analysis_hovered {
             cx.theme().foreground
         } else {
             cx.theme().muted_foreground
         };
-        div()
-            .id("analysis-summary")
-            .border_l_1()
-            .border_color(cx.theme().border)
-            .when(self.settings_backup.is_none(), |panel| {
-                panel.hoverable_tooltip(move |_, cx| live_analysis_tooltip(hint_owner.clone(), cx))
+        let mut summary = Button::new("analysis-settings")
+            .ghost()
+            .small()
+            .h_5()
+            .px_2()
+            .when(self.analysis_hovered, |button| {
+                button.bg(cx.theme().secondary_hover)
             })
-            .child(
-                Button::new("analysis-settings")
-                    .ghost()
-                    .small()
-                    .h_5()
-                    .px_2()
-                    .when(self.analysis_hovered, |button| {
-                        button.bg(cx.theme().secondary_hover)
-                    })
-                    .on_hover(cx.listener(|shell, hovered, _, cx| {
-                        shell.analysis_hovered = *hovered;
-                        cx.notify();
-                    }))
-                    .on_click(cx.listener(|shell, _, window, cx| {
-                        shell.edit_analysis(&EditAnalysis, window, cx)
-                    }))
-                    .child(
-                        div()
-                            .flex()
-                            .gap_1()
-                            .text_xs()
-                            .text_color(foreground)
-                            .child(format!(
-                                "{} · {} ·",
-                                crate::numbers::number(displayed.fft_size),
-                                displayed.window
-                            ))
-                            .child(
-                                div()
-                                    .when(warning, |s| s.text_color(advice_color(cx)))
-                                    .child(if warning {
-                                        format!("⚠ {range}")
-                                    } else {
-                                        range
-                                    }),
-                            ),
-                    ),
+            .on_hover(cx.listener(|shell, hovered, _, cx| {
+                shell.analysis_hovered = *hovered;
+                cx.notify();
+            }))
+            .on_click(
+                cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
             )
+            .child(div().text_xs().text_color(foreground).child(format!(
+                "{} · {}",
+                crate::numbers::number(visible.fft_size),
+                visible.window
+            )));
+        if self.settings_backup.is_none() {
+            summary
+                .interactivity()
+                .hoverable_tooltip(move |_, cx| live_analysis_tooltip(hint_owner.clone(), cx));
+        }
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .id("analysis-summary")
+                    .border_l_1()
+                    .border_color(cx.theme().border)
+                    .child(summary),
+            )
+            .child(self.range_control(displayed, cx))
     }
 
     pub(super) fn edit_analysis(
@@ -302,6 +392,7 @@ impl Shell {
         self.settings_view_backup = self.view;
         self.settings_frequency_backup = Some(self.frequency);
         self.analysis_hovered = false;
+        self.range_hovered = false;
         cx.notify();
         let owner = cx.entity().downgrade();
         let settings = self.settings;
@@ -395,7 +486,6 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
         let fft = crate::numbers::number(settings.fft_size);
         let overlap = format!("{}%", crate::numbers::number(settings.overlap));
         let edit_owner = owner.clone();
-        let apply_owner = owner.clone();
         div()
             .w(px(300.).min(window.viewport_size().width - px(48.)))
             .py_2()
@@ -419,7 +509,7 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                     div()
                         .text_xs()
                         .text_color(advice_color(cx))
-                        .child("Low signal level leaves the upper half of the colour scale unused"),
+                        .child(low_signal_level_hint(db)),
                 )
                 .child(
                     Button::new("hint-recommendation")
@@ -433,16 +523,8 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                             Kbd::binding_for_action(&UseRecommendedRange, None, window),
                             |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
                         )
-                        .on_click(move |_, _, cx| {
-                            let _ = apply_owner.update(cx, |shell, cx| {
-                                shell.set_settings(
-                                    Settings {
-                                        dynamic_range: DynamicRange::Fixed(db),
-                                        ..shell.settings
-                                    },
-                                    cx,
-                                )
-                            });
+                        .on_click(move |_, window, cx| {
+                            window.dispatch_action(Box::new(UseRecommendedRange), cx);
                         }),
                 )
             })
@@ -475,5 +557,55 @@ fn advice_color(cx: &gpui::App) -> gpui::Hsla {
         gpui::rgb(0xfacc15).into()
     } else {
         gpui::rgb(0x946200).into()
+    }
+}
+
+fn advice_hover_color(cx: &gpui::App) -> gpui::Hsla {
+    let color = advice_color(cx);
+    gpui::hsla(color.h, color.s, (color.l + 0.24).min(1.0), color.a)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn range_state_applies_advice_then_restores_full_scale() {
+        let advised = RangeState::from_request(Some(42.0), DynamicRange::Default)
+            .next_range()
+            .unwrap();
+        assert_eq!(advised, DynamicRange::Fixed(42.0));
+
+        let restored = RangeState::from_request(None, advised)
+            .next_range()
+            .unwrap();
+        assert_eq!(restored, DynamicRange::Default);
+        assert_eq!(RangeState::from_request(None, restored).next_range(), None);
+    }
+
+    #[test]
+    fn automatic_range_has_no_toggle_without_advice() {
+        assert_eq!(
+            RangeState::from_request(None, DynamicRange::Auto).next_range(),
+            None
+        );
+        assert_eq!(
+            RangeState::from_request(Some(38.0), DynamicRange::Auto).next_range(),
+            None
+        );
+    }
+
+    #[test]
+    fn pending_picture_suspends_an_otherwise_available_range_action() {
+        let displayed = Settings::from_config(&Config::default());
+        let requested = Settings {
+            dynamic_range: DynamicRange::Fixed(42.0),
+            ..displayed
+        };
+        let warned = RangeState::from_request(Some(42.0), displayed.dynamic_range);
+
+        assert!(range_actionable(Some(displayed), displayed, warned));
+        assert!(!range_actionable(Some(displayed), requested, warned));
+        assert!(!range_actionable(None, requested, warned));
     }
 }

@@ -18,6 +18,7 @@ use argand_io::OpenHints;
 
 use crate::analysis::{FileInfo, Update};
 use crate::numbers;
+use crate::settings::DisplayedRange;
 
 fn format_hz(value: f64) -> String {
     numbers::text(&argand_core::format_hz(value))
@@ -142,6 +143,18 @@ pub enum Effect {
     Analysis,
 }
 
+struct AnalysisSnapshot {
+    result: Box<Analysis>,
+    range: DisplayedRange,
+}
+
+impl AnalysisSnapshot {
+    fn new(result: Box<Analysis>) -> Self {
+        let range = DisplayedRange::from_analysis(&result);
+        Self { result, range }
+    }
+}
+
 /// One open file.
 pub struct Document {
     origin: Origin,
@@ -149,12 +162,11 @@ pub struct Document {
     meta: Option<SignalMeta>,
     /// The last analysis produced for it, kept across a re-analysis so the
     /// window has something to draw while the next one runs.
-    analysis: Option<Box<Analysis>>,
+    analysis: Option<AnalysisSnapshot>,
     requested_range: Option<argand_core::SampleRange>,
     status: Status,
     file_info: FileInfo,
     sample_extrema: Option<Vec<(f32, f32)>>,
-    range_recommendation: Option<f32>,
     minimap_error: Option<String>,
 }
 
@@ -170,7 +182,6 @@ impl Document {
             status: Status::Opening,
             file_info: FileInfo::default(),
             sample_extrema: None,
-            range_recommendation: None,
             minimap_error: None,
         }
     }
@@ -184,11 +195,13 @@ impl Document {
     }
 
     pub fn analysis(&self) -> Option<&Analysis> {
-        self.analysis.as_deref()
+        self.analysis
+            .as_ref()
+            .map(|snapshot| snapshot.result.as_ref())
     }
 
-    pub const fn range_recommendation(&self) -> Option<f32> {
-        self.range_recommendation
+    pub(crate) fn displayed_range(&self) -> Option<DisplayedRange> {
+        self.analysis.as_ref().map(|snapshot| snapshot.range)
     }
 
     /// Set before the worker request; the shell rejects obsolete generations
@@ -207,9 +220,6 @@ impl Document {
     /// no toolkit in sight, so what the window shows at each step is decided
     /// here and merely drawn there.
     pub fn apply(&mut self, update: Update) -> Effect {
-        if let Update::Snapshot { analysis, .. } | Update::Ready { analysis, .. } = &update {
-            self.range_recommendation = crate::settings::low_signal_recommendation(analysis);
-        }
         match update {
             Update::Opened(meta, info) => {
                 self.file_info = info;
@@ -225,7 +235,7 @@ impl Document {
                 Effect::Status
             }
             Update::Snapshot { analysis, coverage } => {
-                self.analysis = Some(analysis);
+                self.analysis = Some(AnalysisSnapshot::new(analysis));
                 self.status = Status::Analyzing {
                     done: coverage.refined_columns as u64,
                     total: coverage.width as u64,
@@ -234,7 +244,7 @@ impl Document {
             }
             Update::Ready { analysis, elapsed } => {
                 self.remember_extrema(&analysis);
-                self.analysis = Some(analysis);
+                self.analysis = Some(AnalysisSnapshot::new(analysis));
                 self.status = Status::Ready { elapsed };
                 Effect::Analysis
             }
