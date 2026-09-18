@@ -22,8 +22,9 @@ recorded here and in the Pull Request: the class-A implementer model
 implement this issue in session. The review model also deviated: the
 first review loops ran on `gpt-5.6-terra` high because the implementer
 worked from a stale `AGENTS.md` text and dismissed the reviewer's
-correction; per the class table the class-A reviewer is
-`gpt-5.6-sol` xhigh, which runs the closing round.
+correction; the class table names `gpt-5.6-sol` xhigh as the class-A
+reviewer, and the owner directed the review rounds to continue on
+`gpt-5.6-terra` high regardless.
 
 ## Context
 
