@@ -3,8 +3,7 @@
 use super::navigation_ui::*;
 use super::*;
 use gpui::Div;
-use gpui_component::button::ButtonCustomVariant;
-use gpui_component::{Disableable, Icon, IconName};
+use gpui_component::{Icon, IconName};
 
 impl Shell {
     /// The spectrogram panel: the picture, and the axes around it.
@@ -311,14 +310,6 @@ fn axis_colors(cx: &gpui::App, show_grid: bool) -> axes::Colors {
     }
 }
 
-/// One corner pair's shared look: translucent paper over the picture, no
-/// rounding, one border around both squares -- `[+|-]`.
-fn spectrum_button_style(cx: &gpui::App) -> ButtonCustomVariant {
-    ButtonCustomVariant::new(cx)
-        .color(cx.theme().background.opacity(0.55))
-        .border(cx.theme().border.opacity(0.75))
-}
-
 /// The corner zoom zones, translated into panel coordinates: the time pair in
 /// the spectrum's bottom-left corner, the frequency pair in its top-right
 /// one, in both orientations, held [`SCALE_INSET`] clear of the picture's
@@ -381,7 +372,7 @@ fn zoom_pair(
         pair.zoom_in,
         in_action,
         enabled,
-        SCALE_BUTTON,
+        horizontal,
         cx,
     );
     let zoom_out = half_button(
@@ -389,7 +380,7 @@ fn zoom_pair(
         pair.zoom_out,
         out_action,
         enabled,
-        SCALE_BUTTON,
+        horizontal,
         cx,
     );
     let divider = if horizontal {
@@ -398,14 +389,22 @@ fn zoom_pair(
         div().h(px(SCALE_DIVIDER)).w_full().bg(frame)
     };
     let bar = if horizontal {
-        div().flex().items_center().child(zoom_in).child(divider)
+        div()
+            .flex()
+            .w_full()
+            .h_full()
+            .child(zoom_in)
+            .child(divider)
+            .child(zoom_out)
     } else {
         div()
             .flex()
             .flex_col()
-            .items_center()
+            .w_full()
+            .h_full()
             .child(zoom_in)
             .child(divider)
+            .child(zoom_out)
     };
     let mut group = div()
         .absolute()
@@ -417,53 +416,62 @@ fn zoom_pair(
         .border_color(frame)
         .bg(paper)
         .overflow_hidden()
-        .cursor(gpui::CursorStyle::Arrow);
+        .cursor(gpui::CursorStyle::Arrow)
+        .child(bar);
     group = if horizontal {
         group.rounded_bl(px(SCALE_ROUNDING))
     } else {
         group.rounded_tr(px(SCALE_ROUNDING))
     };
-    group.child(bar.child(zoom_out))
+    group
 }
 
-/// One clickable half of a corner pair, sized by the pair's flow layout.
+/// One clickable half of a corner pair: it fills its side of the shared
+/// frame, centers its glyph, and dispatches the pair's zoom action.
 fn half_button(
     icon: IconName,
     hint: &'static str,
     action: impl Action + 'static,
     enabled: bool,
-    side: f32,
+    horizontal: bool,
     cx: &mut Context<Shell>,
-) -> gpui_component::button::Button {
+) -> gpui::Stateful<Div> {
     let tooltip_action = Box::new(action) as Box<dyn Action>;
-    let hover_tooltip = tooltip_action.boxed_clone();
     let glyph = if enabled {
         cx.theme().foreground.opacity(0.85)
     } else {
         cx.theme().muted_foreground.opacity(0.5)
     };
-    let mut button = Button::new(hint)
-        .custom(spectrum_button_style(cx))
-        .small()
-        .w(px(side))
-        .h(px(side))
-        .px_0()
-        .child(Icon::new(icon).size(px(12.)).text_color(glyph))
-        .disabled(!enabled)
-        .on_click(cx.listener(move |shell, _, window, cx| {
+    let hover = cx.theme().foreground.opacity(0.08);
+    let mut half = div()
+        .id(hint)
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor(gpui::CursorStyle::Arrow)
+        .child(Icon::new(icon).size(px(12.)).text_color(glyph));
+    half = if horizontal {
+        half.flex_1().h_full()
+    } else {
+        half.flex_1().w_full()
+    };
+    half = half.when(enabled, |half| half.hover(move |style| style.bg(hover)));
+    if enabled {
+        let click = tooltip_action.boxed_clone();
+        half = half.on_click(cx.listener(move |shell, _, window, cx| {
             window.focus(&shell.focus);
-            window.dispatch_action(tooltip_action.boxed_clone(), cx);
+            window.dispatch_action(click.boxed_clone(), cx);
         }));
-    button.interactivity().tooltip(move |window, cx| {
+    }
+    half.tooltip(move |window, cx| {
         shortcut_tooltip(
             hint.to_owned(),
-            Some(hover_tooltip.boxed_clone()),
+            Some(tooltip_action.boxed_clone()),
             "Plot",
             px(240.),
         )
         .build(window, cx)
-    });
-    button
+    })
 }
 
 fn unit_tooltip(owner: WeakEntity<Shell>, index: usize, cx: &mut gpui::App) -> gpui::AnyView {

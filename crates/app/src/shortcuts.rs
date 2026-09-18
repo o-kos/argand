@@ -1,7 +1,34 @@
 //! Shared keycap colours and measurement, preserving the toolkit typography.
 
-use gpui::{App, AvailableSpace, IntoElement, Pixels, Styled, Window, relative, size};
+use gpui::{
+    Action, App, AvailableSpace, IntoElement, Keystroke, Pixels, Styled, Window, relative, size,
+};
 use gpui_component::{ActiveTheme, kbd::Kbd};
+
+/// Uniform keycap names for the symbol zoom keys.
+///
+/// A literal `+` or `-` formats as "Ctrl++" and reads as noise, so the four
+/// zoom commands display named keys instead: Ctrl+Plus, Ctrl+Shift+Plus,
+/// Ctrl+Minus, Ctrl+Shift+Minus.
+pub(super) fn zoom_keycap(action: &dyn Action) -> Option<Kbd> {
+    zoom_key_stroke(action).map(Kbd::new)
+}
+
+fn zoom_key_stroke(action: &dyn Action) -> Option<Keystroke> {
+    use super::navigation_ui::{FrequencyZoomIn, FrequencyZoomOut, ZoomIn, ZoomOut};
+    let stroke = if action.as_any().is::<ZoomIn>() {
+        "ctrl-plus"
+    } else if action.as_any().is::<ZoomOut>() {
+        "ctrl-minus"
+    } else if action.as_any().is::<FrequencyZoomIn>() {
+        "ctrl-shift-plus"
+    } else if action.as_any().is::<FrequencyZoomOut>() {
+        "ctrl-shift-minus"
+    } else {
+        return None;
+    };
+    Keystroke::parse(stroke).ok()
+}
 
 pub(super) fn keycap(shortcut: Kbd, cx: &App) -> Kbd {
     let theme = cx.theme();
@@ -25,4 +52,28 @@ pub(super) fn width(shortcut: Kbd, window: &mut Window, cx: &mut App) -> Pixels 
         )
         .width
         .ceil()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::navigation_ui::{
+        FrequencyZoomIn, FrequencyZoomOut, ToggleGrid, ZoomIn, ZoomOut,
+    };
+    use super::*;
+
+    fn label(action: &dyn Action) -> String {
+        match zoom_key_stroke(action) {
+            Some(stroke) => Kbd::format(&stroke),
+            None => String::new(),
+        }
+    }
+
+    #[test]
+    fn zoom_commands_show_named_symbol_keys() {
+        assert_eq!(label(&ZoomIn), "Ctrl+Plus");
+        assert_eq!(label(&ZoomOut), "Ctrl+Minus");
+        assert_eq!(label(&FrequencyZoomIn), "Ctrl+Shift+Plus");
+        assert_eq!(label(&FrequencyZoomOut), "Ctrl+Shift+Minus");
+        assert!(zoom_keycap(&ToggleGrid).is_none());
+    }
 }

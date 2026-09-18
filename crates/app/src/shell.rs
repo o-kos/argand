@@ -1368,9 +1368,10 @@ fn shortcut_tooltip(
     width: Pixels,
 ) -> Tooltip {
     Tooltip::element(move |window, cx| {
-        let shortcut = action
-            .as_deref()
-            .and_then(|action| Kbd::binding_for_action(action, Some(context), window));
+        let shortcut = action.as_deref().and_then(|action| {
+            shortcuts::zoom_keycap(action)
+                .or_else(|| Kbd::binding_for_action(action, Some(context), window))
+        });
         div()
             .max_w(width.min(window.viewport_size().width - px(48.)))
             .flex()

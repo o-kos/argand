@@ -410,8 +410,11 @@ Grid and zoom key interception is restricted to the focused Plot key context and
 before GPUI action matching. Descendant popup/input contexts swallow these plot
 keys so inherited Plot bindings cannot navigate behind a focused control. It combines the keystroke Shift flag with the
 window's physical Shift state, which Linux symbol normalization otherwise loses.
-Ctrl plus/equal/minus targets time; adding Shift targets frequency, including
-underscore and keypad aliases. Ctrl+Shift+0 fits frequency; the interceptor handles
+Ctrl plus/minus targets time; adding Shift targets frequency, including
+underscore and keypad aliases; a top-row `=` keystroke is accepted silently as
+the same physical key as `+`, and the keycaps show the four zoom commands
+uniformly as Ctrl+Plus, Ctrl+Shift+Plus, Ctrl+Minus, Ctrl+Shift+Minus
+(`shortcuts::zoom_keycap`). Ctrl+Shift+0 fits frequency; the interceptor handles
 both `0` and the US shifted `)` with physical Shift state, leaving unshifted Ctrl+0
 to the time-fit binding. Named menu actions retain their explicit axes.
 Ctrl+Shift+Up/Down are not zoom bindings; arrow pan bindings stay unchanged.

@@ -37,7 +37,6 @@ pub(super) fn init(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-alt-u", ToggleScaleUi, Some("Plot")),
         KeyBinding::new("ctrl-t", ToggleOrientation, Some("Plot")),
         KeyBinding::new("ctrl-+", ZoomIn, Some("Plot")),
-        KeyBinding::new("ctrl-=", ZoomIn, Some("Plot")),
         KeyBinding::new("ctrl--", ZoomOut, Some("Plot")),
         KeyBinding::new("ctrl-0", FitCapture, Some("Plot")),
         KeyBinding::new("left", PanLeft, Some("Plot && Horizontal")),
