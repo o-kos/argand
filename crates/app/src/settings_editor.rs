@@ -157,7 +157,7 @@ impl Editor {
             .owner
             .upgrade()
             .and_then(|shell| shell.read(cx).range_recommendation());
-        let state = RangeState::from_range(recommendation, self.settings.dynamic_range);
+        let state = RangeState::from_request(recommendation, self.settings.dynamic_range);
         if let Some(dynamic_range) = state.next_range() {
             self.apply(
                 Settings {
@@ -182,7 +182,7 @@ impl Editor {
 
     fn update_effective_range(
         &mut self,
-        range: Option<argand_dsp::DynamicRangeResult>,
+        range: Option<DisplayedRange>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {

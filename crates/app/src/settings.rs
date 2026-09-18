@@ -1,12 +1,62 @@
 //! Effective analysis settings, independent of the window and configuration file.
 
 use argand_core::{Colormap, SampleRange, SignalMeta};
-use argand_dsp::{AnalysisRequest, DynamicRange, StftConfig, Window};
+use argand_dsp::{Analysis, AnalysisRequest, DynamicRange, StftConfig, Window};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::config::{Aggregation, Config};
 
 pub const MAX_FFT_SIZE: usize = 1 << 20;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct DisplayedRange {
+    pub effective_db: f32,
+    pub state: RangeState,
+}
+
+impl DisplayedRange {
+    pub(crate) fn from_analysis(analysis: &Analysis) -> Self {
+        Self {
+            effective_db: analysis.dynamic_range.effective_db,
+            state: RangeState::from_request(
+                low_signal_recommendation(analysis),
+                analysis.dynamic_range.requested,
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum RangeState {
+    Warned(f32),
+    Corrected,
+    Full,
+}
+
+impl RangeState {
+    pub(crate) fn from_request(recommendation: Option<f32>, range: DynamicRange) -> Self {
+        match (range, recommendation) {
+            (DynamicRange::Default, Some(db)) => Self::Warned(db),
+            (DynamicRange::Fixed(_), _) => Self::Corrected,
+            (DynamicRange::Default | DynamicRange::Auto, _) => Self::Full,
+        }
+    }
+
+    pub(crate) const fn recommendation(self) -> Option<f32> {
+        match self {
+            Self::Warned(db) => Some(db),
+            Self::Corrected | Self::Full => None,
+        }
+    }
+
+    pub(crate) const fn next_range(self) -> Option<DynamicRange> {
+        match self {
+            Self::Warned(db) => Some(DynamicRange::Fixed(db)),
+            Self::Corrected => Some(DynamicRange::Default),
+            Self::Full => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
@@ -302,6 +352,42 @@ fn visibility_advice(
 #[cfg(test)]
 mod visibility_tests {
     use super::*;
+    use argand_core::{DbGrid, Psd, SpectrogramImage};
+
+    fn analysis(
+        requested: DynamicRange,
+        effective_db: f32,
+        recommended_db: f32,
+        peak_db: f32,
+    ) -> Analysis {
+        Analysis {
+            spectrogram: SpectrogramImage::new(1, 1),
+            db: DbGrid {
+                width: 1,
+                height: 1,
+                values: vec![peak_db],
+                t0: 0.0,
+                t1: 1.0,
+                f0: 0.0,
+                f1: 1.0,
+            },
+            psd: Psd {
+                freqs_hz: Vec::new(),
+                db: Vec::new(),
+                segments: 0,
+            },
+            waveform: None,
+            time_peak: 0.01,
+            frames: 1,
+            enbw_hz: 1.0,
+            dynamic_range: argand_dsp::DynamicRangeResult {
+                requested,
+                effective_db,
+                recommended_db,
+            },
+        }
+    }
+
     #[test]
     fn a_narrow_recommendation_does_not_make_a_normal_signal_a_warning() {
         let range = argand_dsp::DynamicRangeResult {
@@ -323,5 +409,28 @@ mod visibility_tests {
                 None
             );
         }
+    }
+
+    #[test]
+    fn displayed_value_and_state_advance_as_one_analysis_snapshot() {
+        let warned =
+            DisplayedRange::from_analysis(&analysis(DynamicRange::Default, 110.0, 40.0, -60.0));
+        assert_eq!(
+            warned,
+            DisplayedRange {
+                effective_db: 110.0,
+                state: RangeState::Warned(40.0),
+            }
+        );
+
+        let corrected =
+            DisplayedRange::from_analysis(&analysis(DynamicRange::Fixed(40.0), 40.0, 40.0, -60.0));
+        assert_eq!(
+            corrected,
+            DisplayedRange {
+                effective_db: 40.0,
+                state: RangeState::Corrected,
+            }
+        );
     }
 }

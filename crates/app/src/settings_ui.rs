@@ -1,43 +1,23 @@
 //! Status-bar file details and live analysis controls.
 
 use super::*;
+use crate::settings::{DisplayedRange, RangeState};
 use argand_dsp::DynamicRange;
 #[path = "settings_editor.rs"]
 mod editor;
 
-const LOW_SIGNAL_LEVEL_HINT: &str =
-    "Low signal level leaves the upper half of the colour scale unused";
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum RangeState {
-    Warned(f32),
-    Corrected,
-    Full,
+fn low_signal_level_hint(db: f32) -> String {
+    format!(
+        "Low signal level leaves the upper half of the colour scale unused, so use the recommended {} dB range",
+        crate::numbers::number(db)
+    )
 }
 
-impl RangeState {
-    fn from_range(recommendation: Option<f32>, range: DynamicRange) -> Self {
-        match (recommendation, range) {
-            (Some(db), _) => Self::Warned(db),
-            (None, DynamicRange::Fixed(_)) => Self::Corrected,
-            (None, DynamicRange::Default | DynamicRange::Auto) => Self::Full,
-        }
-    }
-
-    const fn hint(self) -> &'static str {
-        match self {
-            Self::Warned(_) => LOW_SIGNAL_LEVEL_HINT,
-            Self::Corrected => "Range narrowed from the full scale",
-            Self::Full => "Full scale, nothing trimmed",
-        }
-    }
-
-    const fn next_range(self) -> Option<DynamicRange> {
-        match self {
-            Self::Warned(db) => Some(DynamicRange::Fixed(db)),
-            Self::Corrected => Some(DynamicRange::Default),
-            Self::Full => None,
-        }
+fn range_hint(state: RangeState) -> String {
+    match state {
+        RangeState::Warned(db) => low_signal_level_hint(db),
+        RangeState::Corrected => "Range narrowed from the full scale".into(),
+        RangeState::Full => "Full scale, nothing trimmed".into(),
     }
 }
 
@@ -132,7 +112,7 @@ impl Shell {
 
     pub(super) fn use_recommended_range(&mut self, cx: &mut Context<Self>) {
         let state =
-            RangeState::from_range(self.range_recommendation(), self.settings.dynamic_range);
+            RangeState::from_request(self.range_recommendation(), self.settings.dynamic_range);
         if let Some(dynamic_range) = state.next_range() {
             self.set_settings(
                 Settings {
@@ -144,12 +124,12 @@ impl Shell {
         }
     }
 
-    fn displayed_range(&self) -> Option<argand_dsp::DynamicRangeResult> {
-        self.file
-            .as_ref()?
-            .document
-            .analysis()
-            .map(|analysis| analysis.dynamic_range)
+    fn displayed_range(&self) -> Option<DisplayedRange> {
+        let file = self.file.as_ref()?;
+        if matches!(file.document.status(), Status::Failed(_)) {
+            return None;
+        }
+        file.document.displayed_range()
     }
 
     fn range_recommendation(&self) -> Option<f32> {
@@ -159,15 +139,7 @@ impl Shell {
         {
             return None;
         }
-        file.document.range_recommendation()
-    }
-
-    fn displayed_range_recommendation(&self) -> Option<f32> {
-        let file = self.file.as_ref()?;
-        if matches!(file.document.status(), Status::Failed(_)) {
-            return None;
-        }
-        file.document.range_recommendation()
+        file.document.displayed_range()?.state.recommendation()
     }
 
     pub(super) fn status_bar(
@@ -274,16 +246,18 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let visible = displayed.unwrap_or(self.settings);
-        let range_text = self
-            .displayed_range()
+        let displayed_range = self.displayed_range();
+        let range_text = displayed_range
             .map(|range| format!("{} dB", crate::numbers::number(range.effective_db)))
             .unwrap_or_else(|| match visible.dynamic_range {
                 DynamicRange::Default => crate::numbers::text("110 dB"),
                 DynamicRange::Fixed(db) => format!("{} dB", crate::numbers::number(db)),
                 DynamicRange::Auto => "auto".into(),
             });
-        let range_state =
-            RangeState::from_range(self.displayed_range_recommendation(), visible.dynamic_range);
+        let range_state = displayed_range.map_or_else(
+            || RangeState::from_request(None, visible.dynamic_range),
+            |range| range.state,
+        );
         let range_label = match range_state {
             RangeState::Warned(_) => format!("⚠ {range_text}"),
             RangeState::Corrected | RangeState::Full => range_text,
@@ -336,7 +310,7 @@ impl Shell {
                 .child(range_label)
                 .into_any_element()
         };
-        let range_hint = range_state.hint();
+        let range_hint = range_hint(range_state);
         div()
             .id("analysis-range-item")
             .border_l_1()
@@ -344,7 +318,7 @@ impl Shell {
             .tooltip(move |window, cx| {
                 let action =
                     actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui::Action>);
-                shortcut_tooltip(range_hint.to_owned(), action, "Shell", px(320.)).build(window, cx)
+                shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.)).build(window, cx)
             })
             .child(range_content)
     }
@@ -535,7 +509,7 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                     div()
                         .text_xs()
                         .text_color(advice_color(cx))
-                        .child(LOW_SIGNAL_LEVEL_HINT),
+                        .child(low_signal_level_hint(db)),
                 )
                 .child(
                     Button::new("hint-recommendation")
@@ -597,25 +571,27 @@ mod tests {
 
     #[test]
     fn range_state_applies_advice_then_restores_full_scale() {
-        let advised = RangeState::from_range(Some(42.0), DynamicRange::Default)
+        let advised = RangeState::from_request(Some(42.0), DynamicRange::Default)
             .next_range()
             .unwrap();
         assert_eq!(advised, DynamicRange::Fixed(42.0));
 
-        let restored = RangeState::from_range(None, advised).next_range().unwrap();
+        let restored = RangeState::from_request(None, advised)
+            .next_range()
+            .unwrap();
         assert_eq!(restored, DynamicRange::Default);
-        assert_eq!(RangeState::from_range(None, restored).next_range(), None);
+        assert_eq!(RangeState::from_request(None, restored).next_range(), None);
     }
 
     #[test]
     fn automatic_range_has_no_toggle_without_advice() {
         assert_eq!(
-            RangeState::from_range(None, DynamicRange::Auto).next_range(),
+            RangeState::from_request(None, DynamicRange::Auto).next_range(),
             None
         );
         assert_eq!(
-            RangeState::from_range(Some(38.0), DynamicRange::Auto).next_range(),
-            Some(DynamicRange::Fixed(38.0))
+            RangeState::from_request(Some(38.0), DynamicRange::Auto).next_range(),
+            None
         );
     }
 
@@ -626,7 +602,7 @@ mod tests {
             dynamic_range: DynamicRange::Fixed(42.0),
             ..displayed
         };
-        let warned = RangeState::from_range(Some(42.0), displayed.dynamic_range);
+        let warned = RangeState::from_request(Some(42.0), displayed.dynamic_range);
 
         assert!(range_actionable(Some(displayed), displayed, warned));
         assert!(!range_actionable(Some(displayed), requested, warned));
