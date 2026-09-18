@@ -82,6 +82,13 @@ pub enum Status {
 }
 
 impl Status {
+    pub fn presentation(&self, dismissed: bool) -> Option<(String, Option<MetadataHint>)> {
+        if dismissed && matches!(self, Self::Ready { .. }) {
+            return None;
+        }
+        Some((self.message(), self.hint()))
+    }
+
     pub fn hint(&self) -> Option<MetadataHint> {
         let Self::Ready { elapsed } = self else {
             return None;

@@ -268,6 +268,7 @@ struct Shell {
     settings: Settings,
     settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
     analysis_hovered: bool,
+    ready_status_dismissed: bool,
     settings_backup: Option<Settings>,
     settings_view_backup: Option<crate::navigation::View>,
     settings_frequency_backup: Option<crate::frequency::View>,
@@ -338,6 +339,7 @@ struct Shell {
     _bounds: Subscription,
     _activation: Subscription,
     _appearance: Subscription,
+    _keystrokes: Subscription,
 }
 
 impl Shell {
@@ -366,11 +368,15 @@ impl Shell {
         let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
             sync_theme(shell.config.theme, window, cx);
         });
+        let keystrokes = gpui::App::observe_keystrokes(cx, |_, window, cx| {
+            Self::dismiss_window_ready_status(window, cx);
+        });
         let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
             settings,
             settings_window: None,
             analysis_hovered: false,
+            ready_status_dismissed: false,
             settings_backup: None,
             settings_view_backup: None,
             settings_frequency_backup: None,
@@ -411,7 +417,47 @@ impl Shell {
             _bounds: bounds,
             _activation: activation,
             _appearance: appearance,
+            _keystrokes: keystrokes,
         }
+    }
+
+    fn dismiss_ready_status(&mut self, cx: &mut Context<Self>) {
+        if self.ready_status_dismissed
+            || !self
+                .file
+                .as_ref()
+                .is_some_and(|file| matches!(file.document.status(), Status::Ready { .. }))
+        {
+            return;
+        }
+        self.ready_status_dismissed = true;
+        cx.notify();
+    }
+
+    fn dismiss_window_ready_status(window: &Window, cx: &mut gpui::App) {
+        if let Some(Some(shell)) = window.root::<Self>() {
+            shell.update(cx, Self::dismiss_ready_status);
+        }
+    }
+
+    fn ready_input_observer() -> impl IntoElement {
+        canvas(
+            |_, _, _| (),
+            |_, _, window, _| {
+                window.on_mouse_event(|_: &gpui::MouseDownEvent, phase, window, cx| {
+                    if phase == gpui::DispatchPhase::Capture {
+                        Self::dismiss_window_ready_status(window, cx);
+                    }
+                });
+                window.on_mouse_event(|_: &gpui::ScrollWheelEvent, phase, window, cx| {
+                    if phase == gpui::DispatchPhase::Capture {
+                        Self::dismiss_window_ready_status(window, cx);
+                    }
+                });
+            },
+        )
+        .absolute()
+        .size_full()
     }
 
     /// Open a file, replacing whatever was open before it.
@@ -561,6 +607,9 @@ impl Shell {
             return;
         };
         let effect = file.document.apply(delivery.update);
+        if matches!(file.document.status(), Status::Ready { .. }) {
+            self.ready_status_dismissed = false;
+        }
         if effect == Effect::Analysis {
             file.displayed_settings = Some(self.settings);
         }
@@ -1366,6 +1415,7 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, cx))
             .children(overlay)
+            .child(Self::ready_input_observer())
     }
 }
 

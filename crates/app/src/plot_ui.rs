@@ -80,14 +80,8 @@ impl Shell {
                     frequency_scheme,
                 )?;
                 let measured = oriented_device_size(frame.plot, scale, orientation);
-                let geometry = plot_geometry(
-                    bounds,
-                    &frame,
-                    &labels,
-                    height,
-                    measured.width,
-                    scale_ui_visible,
-                );
+                let geometry =
+                    plot_geometry(bounds, &frame, &labels, height, scale, scale_ui_visible);
                 if known != Some(measured)
                     || known_bounds != Some(bounds)
                     || known_geometry != Some(geometry)
@@ -590,7 +584,7 @@ fn plot_geometry(
     frame: &axes::Frame,
     labels: &axes::Labels,
     height: f32,
-    minimap_columns: usize,
+    scale: f32,
     scale_ui_visible: bool,
 ) -> navigation_ui::PlotGeometry {
     let orientation = frame.orientation;
@@ -625,6 +619,7 @@ fn plot_geometry(
     };
     navigation_ui::PlotGeometry {
         orientation,
+        scale,
         unit_hints: frame.unit_hints(labels).map(|hint| {
             hint.map(|mut hint| {
                 hint.bounds.x += f32::from(bounds.origin.x + dx);
@@ -635,7 +630,7 @@ fn plot_geometry(
         zoom_zones: corner_zones(spectrum, scale_ui_visible),
         time_scheme: frame.time_scheme,
         frequency_scheme: frame.frequency_scheme,
-        minimap_columns,
+        minimap_columns: oriented_device_size(frame.plot, scale, orientation).width,
         time_ruler,
         frequency_ruler,
         spectrum,

@@ -50,7 +50,7 @@ content.
       workspace minimum, and README badge, and require their major/minor versions
       to agree.
 - [x] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
