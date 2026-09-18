@@ -60,15 +60,15 @@ shown on hover, and anything else in the status bar.
 
 ## Implementation steps
 
-- [ ] Make the warned range in `analysis_control` a click target that stops
+- [x] Make the warned range in `analysis_control` a click target that stops
       propagation and dispatches `UseRecommendedRange`, leaving the unwarned range
       as plain text inside the settings button.
-- [ ] Give the warned value a pointer cursor, and only the warned value.
-- [ ] Cover what can be tested without a window: that a recommendation is present
+- [x] Give the warned value a pointer cursor, and only the warned value.
+- [x] Cover what can be tested without a window: that a recommendation is present
       exactly when the value is warned, and that the click path names the same
       action the shortcut uses.
-- [ ] Update `AGENTS.md` where it describes the status bar's range warning.
-- [ ] Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
+- [x] Update `AGENTS.md` where it describes the status bar's range warning.
+- [x] Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -76,10 +76,10 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Owner validation on a real GPU session with a low-amplitude capture: the yellow
       value applies the advice on click and does not open settings; the pointer shows
       the affordance only while it is yellow; clicking the rest of the summary still
