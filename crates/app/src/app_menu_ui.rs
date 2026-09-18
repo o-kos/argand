@@ -2,7 +2,7 @@
 
 use super::{navigation_ui::*, *};
 use crate::app_menu::{self, Effect, Item, Kind, Menu};
-use gpui::{AnyElement, KeyDownEvent, Keystroke, ScrollHandle, deferred, img};
+use gpui::{AnyElement, KeyDownEvent, ScrollHandle, deferred, img};
 use gpui_component::button::ButtonCustomVariant;
 use gpui_component::{Disableable, Icon, IconName};
 use std::{cell::Cell, rc::Rc};
@@ -515,9 +515,24 @@ impl Shell {
                 shell.menu_effect(effect, window, cx);
                 cx.stop_propagation();
             }))
-            .child(div().w(px(14.)).flex_shrink_0().when(item.checked, |slot| {
-                slot.child(Icon::new(IconName::Check).size(px(14.)))
-            }))
+            .child(
+                // Checked rows take a check mark; numbered recent rows carry
+                // their digit the way the start page's list does: a muted,
+                // localized figure leading the label.
+                div()
+                    .w(px(14.))
+                    .flex_shrink_0()
+                    .when(item.checked, |slot| {
+                        slot.child(Icon::new(IconName::Check).size(px(14.)))
+                    })
+                    .when_some(item.number, |slot, number| {
+                        slot.w_6()
+                            .flex()
+                            .items_center()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(crate::numbers::number(number))
+                    }),
+            )
             .child(
                 div()
                     .min_w_0()
@@ -529,11 +544,6 @@ impl Shell {
             .when_some(shortcut, |row, shortcut| {
                 row.child(shortcuts::keycap(shortcut, cx))
             })
-            .when_some(
-                item.number
-                    .and_then(|number| Keystroke::parse(&number.to_string()).ok()),
-                |row, stroke| row.child(shortcuts::keycap(Kbd::new(stroke), cx)),
-            )
             .when(matches!(item.kind, Kind::Branch(_)), |row| {
                 row.child(Icon::new(IconName::ChevronRight).size(px(14.)))
             })
@@ -573,7 +583,10 @@ fn menu_width(
                 }
                 _ => 0.,
             };
-            label_width + shortcut + 64.
+            // A numbered row's leading column is 24 pixels, ten wider than
+            // the check slot.
+            let numbered = if item.number.is_some() { 10. } else { 0. };
+            label_width + numbered + shortcut + 64.
         })
         .fold(150., f32::max)
         .min(420.)
