@@ -191,6 +191,22 @@ is the duplicate path Issue #102 rules out, and with Ctrl+R now a toggle it woul
 diverge at the first change to either side. It dispatches the action like everything
 else.
 
+## Fourth follow-up: one displayed analysis snapshot
+
+The displayed number, warning recommendation and range mode remained three separate
+reads. Even though each one described a picture, their independent update paths could
+compose a transient state that no analysis produced.
+
+The document now retains a range presentation beside the analysis that produced it.
+Both are constructed from the incoming analysis before the snapshot replaces the old
+one. The status item reads the effective number and warned, corrected or full state
+from that one presentation. Requested settings are still consulted only to decide
+whether the displayed action is currently available, and the action handler still
+uses requested settings.
+
+The shared low-signal hint now includes the recommended dB value, so both the range
+hint and analysis hint name what the shared action applies.
+
 ## Implementation steps
 
 - [x] Make the warned range in `analysis_control` a click target that stops
@@ -237,6 +253,12 @@ else.
       `No signal loaded` label before a file is open.
 - [x] ➕ Use one shared low-signal explanation for the warned level hint and the
       analysis hint so their wording cannot drift.
+- [x] ➕ Store the effective number, requested mode and recommendation as one
+      presentation beside the accepted analysis snapshot, and derive the displayed
+      state only from that presentation.
+- [x] ➕ Add a window-free regression test that advances from a warned default
+      snapshot to a corrected fixed snapshot as one value-and-state change.
+- [x] ➕ Include the recommended dB value in the shared warned explanation.
 - [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
