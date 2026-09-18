@@ -228,7 +228,23 @@ impl Shell {
                 DynamicRange::Auto => "auto".into(),
             });
         let hint_owner = cx.entity().downgrade();
-        let warning = self.range_recommendation().is_some();
+        let range = match range_warning_action(self.range_recommendation()) {
+            Some(action) => div()
+                .id("recommended-range")
+                .cursor_pointer()
+                .text_color(advice_color(cx))
+                .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                })
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    window.dispatch_action(Box::new(action.clone()), cx);
+                })
+                .child(format!("⚠ {range}"))
+                .into_any_element(),
+            None => div().child(range).into_any_element(),
+        };
         let foreground = if self.analysis_hovered {
             cx.theme().foreground
         } else {
@@ -268,15 +284,7 @@ impl Shell {
                                 crate::numbers::number(displayed.fft_size),
                                 displayed.window
                             ))
-                            .child(
-                                div()
-                                    .when(warning, |s| s.text_color(advice_color(cx)))
-                                    .child(if warning {
-                                        format!("⚠ {range}")
-                                    } else {
-                                        range
-                                    }),
-                            ),
+                            .child(range),
                     ),
             )
     }
@@ -475,5 +483,25 @@ fn advice_color(cx: &gpui::App) -> gpui::Hsla {
         gpui::rgb(0xfacc15).into()
     } else {
         gpui::rgb(0x946200).into()
+    }
+}
+
+fn range_warning_action(recommendation: Option<f32>) -> Option<UseRecommendedRange> {
+    recommendation.map(|_| UseRecommendedRange)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn warned_range_dispatches_the_shortcut_action() {
+        for recommendation in [None, Some(70.0)] {
+            let action = range_warning_action(recommendation);
+            assert_eq!(action.is_some(), recommendation.is_some());
+            if let Some(action) = action {
+                assert_eq!(action.name(), UseRecommendedRange.name());
+            }
+        }
     }
 }

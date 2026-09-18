@@ -13,6 +13,8 @@ promise applies to.
 
 ### Fixed
 
+- Apply the recommended spectrogram range when clicking its yellow status-bar warning without opening analysis settings.
+
 - Correct the README Rust version badge to state Rust 1.97+.
 
 - Hide the currently loaded file from Recent lists while preserving saved history and opening hints.
