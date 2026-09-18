@@ -13,10 +13,14 @@ entry, moves fit commands to symmetric shortcuts, and puts translucent
 zoom button pairs on the spectrogram's corners so pointer users get the
 same discoverable zoom the keyboard has.
 
-Issue class: **A** — reclassified during implementation. The plan first
-declared **B**, but the diff passed the class-A thresholds of roughly
-400 lines or five code files, and per `AGENTS.md` any class-A signal
-decides the class; the external reviewer model follows class A.
+Issue class: **A** — the plan first declared **B**, which was a
+misjudgment: the class-A thresholds (roughly 400 lines or five code
+files) were already foreseeable, and `AGENTS.md` lets any class-A signal
+decide. Reclassified to **A** once the diff crossed them. Process note,
+recorded here and in the Pull Request: the class-A implementer model
+(`gpt-5.6-sol` high) was not used because the owner directed Claude to
+implement this issue in session; the external reviewer does follow
+class A (`gpt-5.6-terra` high).
 
 ## Context
 
@@ -58,9 +62,10 @@ Owner decisions from 2026-09-17:
   |   |- <recent files, inline>       (only when non-empty; availability-filtered, max 10)
   |   |---
   |   `- Settings                     Ctrl+,
-  `- View                             (only with an open file)
-      |- Show grid                    Ctrl+G  (checked)
-      |- Vertical orientation         Ctrl+T  (checked)
+      `- View                             (only with an open file)
+          |- Show grid                    Ctrl+G  (checked)
+          |- Show scale controls          Ctrl+U  (checked)
+          |- Vertical orientation         Ctrl+T  (checked)
       |---
       |- Fit time                     Ctrl+0
       |- Fit frequency                Ctrl+Shift+0
@@ -142,7 +147,7 @@ Owner decisions from 2026-09-17:
       description, `CHANGELOG.md` `[Unreleased]`.
 - [x] Tests: menu structure without toolkit types (extend `app_menu.rs`
       tests where applicable), interceptor tests for `ctrl-shift-0`,
-      axis frame reservation tests.
+      corner-zone geometry and keycap-naming tests.
 - [x] Full gate: `cargo fmt --all -- --check`; `cargo clippy
       --all-targets --locked`; `cargo test --locked`; `cargo build
       --release --locked` last.
