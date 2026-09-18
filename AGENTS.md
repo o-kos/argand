@@ -424,10 +424,11 @@ and Settings (`EditAnalysis`). Empty recent lists leave one separator between
 Open and Settings. View appears only with a file and contains grid, scale
 controls, orientation, Fit time, Fit frequency and Time scale format; pan/zoom
 commands remain available through keys and gestures rather than menu rows.
-`plot_ui.rs` draws translucent, unrounded `[+|-]` zoom pairs over the
-spectrogram itself: the time pair hugs its leading corner, the frequency pair
-its trailing one, mirrored by orientation (`corner_zones`). Each pair is one
-framed container (22-pixel squares, one-pixel divider) dispatching the
+`plot_ui.rs` draws translucent `[+|-]` zoom pairs over the spectrogram itself:
+the time pair in its bottom-left corner, the frequency pair in its top-right
+one, identically in both orientations, eight logical pixels clear of the
+picture's edges (`corner_zones`). Each pair is one framed container with a
+rounded outer corner (22-pixel squares, one-pixel divider) dispatching the
 registered zoom actions with shortcut tooltips. View → Show scale controls
 (`ToggleScaleUi`, Ctrl+Alt+U, session version 10, default on) hides or shows
 every pair; pairs vanish when either spectrum side is too small. Pair zones use

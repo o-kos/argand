@@ -320,48 +320,33 @@ fn spectrum_button_style(cx: &gpui::App) -> ButtonCustomVariant {
 }
 
 /// The corner zoom zones, translated into panel coordinates: the time pair in
-/// the spectrum's leading corner, the frequency pair in its trailing one.
+/// the spectrum's bottom-left corner, the frequency pair in its top-right
+/// one, in both orientations, held [`SCALE_INSET`] clear of the picture's
+/// edges.
 ///
 /// Each zone is exactly the pair's frame, `[+|-]`: two squares and their
-/// shared divider inside one unrounded border.
-fn corner_zones(spectrum: Bounds<Pixels>, vertical: bool) -> [Option<axes::Rect>; 2] {
-    const MIN_SPAN: f32 = SCALE_PAIR + SCALE_BUTTON;
+/// shared divider inside one border.
+fn corner_zones(spectrum: Bounds<Pixels>) -> [Option<axes::Rect>; 2] {
+    const MIN_SPAN: f32 = 2.0 * SCALE_INSET + SCALE_PAIR;
     let small = |span: f32| (span >= MIN_SPAN).then_some(span);
     let left = f32::from(spectrum.left());
     let top = f32::from(spectrum.top());
     let right = left + f32::from(spectrum.size.width);
     let bottom = top + f32::from(spectrum.size.height);
-    if vertical {
-        [
-            small(bottom - top).map(|_| axes::Rect {
-                x: right - SCALE_BUTTON,
-                y: bottom - SCALE_PAIR,
-                width: SCALE_BUTTON,
-                height: SCALE_PAIR,
-            }),
-            small(right - left).map(|_| axes::Rect {
-                x: left,
-                y: top,
-                width: SCALE_PAIR,
-                height: SCALE_BUTTON,
-            }),
-        ]
-    } else {
-        [
-            small(right - left).map(|_| axes::Rect {
-                x: left,
-                y: bottom - SCALE_BUTTON,
-                width: SCALE_PAIR,
-                height: SCALE_BUTTON,
-            }),
-            small(bottom - top).map(|_| axes::Rect {
-                x: right - SCALE_PAIR,
-                y: top,
-                width: SCALE_BUTTON,
-                height: SCALE_PAIR,
-            }),
-        ]
-    }
+    [
+        small(right - left).map(|_| axes::Rect {
+            x: left + SCALE_INSET,
+            y: bottom - SCALE_INSET - SCALE_BUTTON,
+            width: SCALE_PAIR,
+            height: SCALE_BUTTON,
+        }),
+        small(bottom - top).map(|_| axes::Rect {
+            x: right - SCALE_INSET - SCALE_BUTTON,
+            y: top + SCALE_INSET,
+            width: SCALE_BUTTON,
+            height: SCALE_PAIR,
+        }),
+    ]
 }
 
 struct ZoomPair {
@@ -375,6 +360,10 @@ struct ZoomPair {
 const SCALE_BUTTON: f32 = 22.0;
 const SCALE_DIVIDER: f32 = 1.0;
 const SCALE_PAIR: f32 = 2.0 * SCALE_BUTTON + SCALE_DIVIDER;
+/// The gap between a corner pair and the spectrum's edges, in logical pixels.
+const SCALE_INSET: f32 = 8.0;
+/// The radius of a pair's outward corner, away from the picture's edges.
+const SCALE_ROUNDING: f32 = 6.0;
 
 fn zoom_pair(
     pair: ZoomPair,
@@ -418,7 +407,7 @@ fn zoom_pair(
             .child(zoom_in)
             .child(divider)
     };
-    div()
+    let mut group = div()
         .absolute()
         .left(px(pair.zone.x) - origin.x)
         .top(px(pair.zone.y) - origin.y)
@@ -428,8 +417,13 @@ fn zoom_pair(
         .border_color(frame)
         .bg(paper)
         .overflow_hidden()
-        .cursor(gpui::CursorStyle::Arrow)
-        .child(bar.child(zoom_out))
+        .cursor(gpui::CursorStyle::Arrow);
+    group = if horizontal {
+        group.rounded_bl(px(SCALE_ROUNDING))
+    } else {
+        group.rounded_tr(px(SCALE_ROUNDING))
+    };
+    group.child(bar.child(zoom_out))
 }
 
 /// One clickable half of a corner pair, sized by the pair's flow layout.
@@ -548,7 +542,7 @@ fn plot_geometry(
                 hint
             })
         }),
-        zoom_zones: corner_zones(spectrum, orientation.vertical()),
+        zoom_zones: corner_zones(spectrum),
         time_scheme: frame.time_scheme,
         frequency_scheme: frame.frequency_scheme,
         minimap_columns,
@@ -758,41 +752,35 @@ mod tests {
     }
 
     #[test]
-    fn corner_zones_hug_the_spectrum_edges() {
+    fn corner_zones_sit_in_bottom_left_and_top_right_in_both_orientations() {
         let spectrum = spectrum();
-        let [time, frequency] = corner_zones(spectrum, false);
-        let time = time.unwrap();
-        assert_eq!(
-            (time.x, time.y, time.width, time.height),
-            (30., 20. + 300. - SCALE_BUTTON, SCALE_PAIR, SCALE_BUTTON)
-        );
-        let frequency = frequency.unwrap();
-        assert_eq!(
-            (frequency.x, frequency.y, frequency.width, frequency.height),
-            (30. + 640. - SCALE_PAIR, 20., SCALE_BUTTON, SCALE_PAIR)
-        );
-        let [time, frequency] = corner_zones(spectrum, true);
+        let [time, frequency] = corner_zones(spectrum);
         let time = time.unwrap();
         assert_eq!(
             (time.x, time.y, time.width, time.height),
             (
-                30. + 640. - SCALE_BUTTON,
-                20. + 300. - SCALE_PAIR,
-                SCALE_BUTTON,
-                SCALE_PAIR
+                30. + SCALE_INSET,
+                20. + 300. - SCALE_INSET - SCALE_BUTTON,
+                SCALE_PAIR,
+                SCALE_BUTTON
             )
         );
         let frequency = frequency.unwrap();
         assert_eq!(
             (frequency.x, frequency.y, frequency.width, frequency.height),
-            (30., 20., SCALE_PAIR, SCALE_BUTTON)
+            (
+                30. + 640. - SCALE_INSET - SCALE_BUTTON,
+                20. + SCALE_INSET,
+                SCALE_BUTTON,
+                SCALE_PAIR
+            )
         );
     }
 
     #[test]
     fn corner_zones_vanish_on_small_spectrums() {
         let tiny = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(40.)));
-        for zone in corner_zones(tiny, false) {
+        for zone in corner_zones(tiny) {
             assert!(zone.is_none(), "a 40-pixel spectrum fits no pair");
         }
     }

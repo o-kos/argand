@@ -119,11 +119,14 @@ Owner decisions from 2026-09-17:
 - [x] Render the two zoom pairs (new small module or `plot_ui.rs`),
       reusing the shared button styling and tooltip helper; disabled
       without a file; both orientations.
-      Revised on owner feedback: translucent unrounded `[+|-]` pairs sit on
-      the spectrogram's corners (bottom-left time, top-right frequency,
-      mirrored in vertical mode); View → Show scale controls (Ctrl+Alt+U,
-      session version 10) hides or shows them; the ruler-end reservation was
-      reverted.
+      Revised on owner feedback: translucent `[+|-]` pairs with rounded
+      outer corners sit on the spectrogram itself — time in the bottom-left
+      corner, frequency in the top-right one, in both orientations, eight
+      logical pixels clear of the picture's edges; View → Show scale
+      controls (Ctrl+Alt+U, session version 10) hides or shows them; the
+      ruler-end reservation was reverted. Zoom shortcuts are documented
+      uniformly as Ctrl+Plus/Minus and Ctrl+Shift+Plus/Minus (Ctrl+= is the
+      same key as Ctrl+Plus).
 - [x] Update README (shortcut table, View menu references, Settings
       entry, Ctrl+Shift+0 IME note), AGENTS.md "Current status" menu
       description, `CHANGELOG.md` `[Unreleased]`.
