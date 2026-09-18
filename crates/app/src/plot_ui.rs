@@ -17,6 +17,25 @@ impl Shell {
     ///
     /// The measurement is deferred rather than applied on the spot: prepaint is
     /// not a moment at which the entity being painted can be borrowed again.
+    /// The held picture view and the once-only first-paint marker, both
+    /// taken from the open file when there is one.
+    fn first_paint_state(
+        &self,
+    ) -> (
+        Option<crate::navigation::PictureView>,
+        Option<(Instant, Arc<AtomicBool>)>,
+    ) {
+        (
+            self.file
+                .as_ref()
+                .and_then(|file| file.document.analysis())
+                .map(|analysis| crate::navigation::PictureView::grid(&analysis.db)),
+            self.file
+                .as_ref()
+                .map(|file| (file.opened_at, file.first_picture.clone())),
+        )
+    }
+
     pub(super) fn spectrogram(
         &self,
         extents: axes::Extents,
@@ -25,15 +44,7 @@ impl Shell {
         let texture = self.texture.clone();
         let deep = self.deep_preview.clone();
         let backdrop = self.backdrop.clone();
-        let held_view = self
-            .file
-            .as_ref()
-            .and_then(|file| file.document.analysis())
-            .map(|analysis| crate::navigation::PictureView::grid(&analysis.db));
-        let first_picture = self
-            .file
-            .as_ref()
-            .map(|file| (file.opened_at, file.first_picture.clone()));
+        let (held_view, first_picture) = self.first_paint_state();
         let minimap = self.minimap_panel(cx);
         let orientation = self.session.orientation;
         let fraction = self.session.waveform_fraction;
@@ -46,6 +57,7 @@ impl Shell {
         let view = cx.entity().downgrade();
         let guides = self.cursor_guides(extents, cx);
         let colors = axis_colors(cx, self.session.show_grid);
+        let scale_ui_visible = self.session.show_scale_ui;
 
         canvas(
             move |bounds, window, cx| {
@@ -68,7 +80,14 @@ impl Shell {
                     frequency_scheme,
                 )?;
                 let measured = oriented_device_size(frame.plot, scale, orientation);
-                let geometry = plot_geometry(bounds, &frame, &labels, height, measured.width);
+                let geometry = plot_geometry(
+                    bounds,
+                    &frame,
+                    &labels,
+                    height,
+                    measured.width,
+                    scale_ui_visible,
+                );
                 if known != Some(measured)
                     || known_bounds != Some(bounds)
                     || known_geometry != Some(geometry)
@@ -315,23 +334,33 @@ fn axis_colors(cx: &gpui::App, show_grid: bool) -> axes::Colors {
 /// one, in both orientations, held [`SCALE_INSET`] clear of the picture's
 /// edges.
 ///
-/// Each zone is exactly the pair's frame, `[+|-]`: two squares and their
-/// shared divider inside one border.
-fn corner_zones(spectrum: Bounds<Pixels>) -> [Option<axes::Rect>; 2] {
+/// The pairs exist only while the scale-controls toggle shows them, and both
+/// appear or vanish together: either needs the same clear span on *both*
+/// sides of the picture, so a spectrum too small for one is too small for
+/// the other.
+///
+/// Each present zone is exactly the pair's frame, `[+|-]`: two squares and
+/// their shared divider inside one border.
+fn corner_zones(spectrum: Bounds<Pixels>, visible: bool) -> [Option<axes::Rect>; 2] {
     const MIN_SPAN: f32 = 2.0 * SCALE_INSET + SCALE_PAIR;
-    let small = |span: f32| (span >= MIN_SPAN).then_some(span);
+    if !visible {
+        return [None, None];
+    }
     let left = f32::from(spectrum.left());
     let top = f32::from(spectrum.top());
     let right = left + f32::from(spectrum.size.width);
     let bottom = top + f32::from(spectrum.size.height);
+    if right - left < MIN_SPAN || bottom - top < MIN_SPAN {
+        return [None, None];
+    }
     [
-        small(right - left).map(|_| axes::Rect {
+        Some(axes::Rect {
             x: left + SCALE_INSET,
             y: bottom - SCALE_INSET - SCALE_BUTTON,
             width: SCALE_PAIR,
             height: SCALE_BUTTON,
         }),
-        small(bottom - top).map(|_| axes::Rect {
+        Some(axes::Rect {
             x: right - SCALE_INSET - SCALE_BUTTON,
             y: top + SCALE_INSET,
             width: SCALE_BUTTON,
@@ -505,6 +534,7 @@ fn plot_geometry(
     labels: &axes::Labels,
     height: f32,
     minimap_columns: usize,
+    scale_ui_visible: bool,
 ) -> navigation_ui::PlotGeometry {
     let orientation = frame.orientation;
     let (dx, dy) = orientation.axes(px(0.), px(height));
@@ -545,7 +575,7 @@ fn plot_geometry(
                 hint
             })
         }),
-        zoom_zones: corner_zones(spectrum),
+        zoom_zones: corner_zones(spectrum, scale_ui_visible),
         time_scheme: frame.time_scheme,
         frequency_scheme: frame.frequency_scheme,
         minimap_columns,
@@ -757,7 +787,7 @@ mod tests {
     #[test]
     fn corner_zones_sit_in_bottom_left_and_top_right_in_both_orientations() {
         let spectrum = spectrum();
-        let [time, frequency] = corner_zones(spectrum);
+        let [time, frequency] = corner_zones(spectrum, true);
         let time = time.unwrap();
         assert_eq!(
             (time.x, time.y, time.width, time.height),
@@ -781,10 +811,27 @@ mod tests {
     }
 
     #[test]
-    fn corner_zones_vanish_on_small_spectrums() {
+    fn hidden_scale_controls_leave_no_zones() {
+        for zone in corner_zones(spectrum(), false) {
+            assert!(zone.is_none(), "a hidden toggle leaves no pair");
+        }
+    }
+
+    #[test]
+    fn corner_zones_vanish_together_on_small_spectrums() {
         let tiny = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(40.)));
-        for zone in corner_zones(tiny) {
+        for zone in corner_zones(tiny, true) {
             assert!(zone.is_none(), "a 40-pixel spectrum fits no pair");
+        }
+        // Either side alone being too small drops both pairs: a narrow but
+        // tall spectrum keeps no frequency pair.
+        let narrow = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(400.)));
+        for zone in corner_zones(narrow, true) {
+            assert!(zone.is_none(), "a 40-pixel side fits no pair");
+        }
+        let snug = Bounds::new(point(px(0.), px(0.)), size(px(61.), px(61.)));
+        for zone in corner_zones(snug, true) {
+            assert!(zone.is_some(), "the exact minimum span still fits");
         }
     }
 }

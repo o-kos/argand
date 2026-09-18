@@ -1218,6 +1218,27 @@ mod tests {
     }
 
     #[test]
+    fn hidden_scale_controls_leave_the_spectrum_navigation_alone() {
+        // Hidden pairs leave no zones behind, so the corner area they would
+        // cover pans and drags like the rest of the picture.
+        let geometry = geometry();
+        let corner = point(px(25.), px(135.));
+        assert!(geometry.spectrum.contains(&corner));
+        let viewport = Some((
+            View {
+                start: 200,
+                len: 300,
+            },
+            1000,
+        ));
+        assert_eq!(
+            geometry.cursor(Some(corner), false, viewport, true),
+            gpui::CursorStyle::Crosshair
+        );
+        assert_eq!(geometry.drag_axes(corner), (true, true));
+    }
+
+    #[test]
     fn spectrum_drags_both_axes_but_rulers_and_minimap_stay_constrained() {
         let geometry = geometry();
         assert_eq!(geometry.drag_axes(point(px(60.), px(80.))), (true, true));

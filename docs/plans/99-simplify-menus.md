@@ -89,6 +89,10 @@ Owner decisions from 2026-09-17:
   `ZoomIn`/`ZoomOut`/`FrequencyZoomIn`/`FrequencyZoomOut` actions (zoom
   about view centre) so buttons, keys and hints cannot diverge. Buttons
   are disabled without an open file.
+  **Superseded during implementation**: the owner rejected the ruler
+  placement; the pairs moved onto the spectrogram's corners with a
+  Show-scale-controls toggle — see the revision note under
+  Implementation steps.
 
 ## Rejected alternatives
 
