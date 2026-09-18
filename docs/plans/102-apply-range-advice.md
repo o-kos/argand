@@ -156,7 +156,7 @@ The states are read from the current range, with no remembered history:
 Suggested wording, to be corrected by the owner if it reads wrong. One sentence, no
 terminal period, matching the house style for explanations:
 
-- Warned: `Spectrum peak sits low in this range`
+- Warned: `Low signal level leaves the upper half of the colour scale unused`
 - Corrected: `Range narrowed from the full scale`
 - Full: `Full scale, nothing trimmed`
 
@@ -233,6 +233,10 @@ else.
       flag in the action handler.
 - [x] ➕ Make `live_analysis_tooltip` dispatch `UseRecommendedRange` instead of
       setting the range itself.
+- [x] ➕ Replace the transform and level items with a non-interactive
+      `No signal loaded` label before a file is open.
+- [x] ➕ Use one shared low-signal explanation for the warned level hint and the
+      analysis hint so their wording cannot drift.
 - [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
