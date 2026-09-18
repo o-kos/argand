@@ -228,8 +228,8 @@ impl Shell {
                 DynamicRange::Auto => "auto".into(),
             });
         let hint_owner = cx.entity().downgrade();
-        let range = match range_warning_action(self.range_recommendation()) {
-            Some(action) => div()
+        let range = match self.range_recommendation() {
+            Some(_) => div()
                 .id("recommended-range")
                 .cursor_pointer()
                 .text_color(advice_color(cx))
@@ -239,7 +239,7 @@ impl Shell {
                 })
                 .on_click(move |_, window, cx| {
                     cx.stop_propagation();
-                    window.dispatch_action(Box::new(action.clone()), cx);
+                    window.dispatch_action(Box::new(UseRecommendedRange), cx);
                 })
                 .child(format!("⚠ {range}"))
                 .into_any_element(),
@@ -483,25 +483,5 @@ fn advice_color(cx: &gpui::App) -> gpui::Hsla {
         gpui::rgb(0xfacc15).into()
     } else {
         gpui::rgb(0x946200).into()
-    }
-}
-
-fn range_warning_action(recommendation: Option<f32>) -> Option<UseRecommendedRange> {
-    recommendation.map(|_| UseRecommendedRange)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn warned_range_dispatches_the_shortcut_action() {
-        for recommendation in [None, Some(70.0)] {
-            let action = range_warning_action(recommendation);
-            assert_eq!(action.is_some(), recommendation.is_some());
-            if let Some(action) = action {
-                assert_eq!(action.name(), UseRecommendedRange.name());
-            }
-        }
     }
 }
