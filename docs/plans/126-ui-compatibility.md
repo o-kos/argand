@@ -136,9 +136,13 @@ binds every Linux click on maximize/restore directly to `zoom_window()`, and fix
 the non-close visual states to global secondary theme tokens. `Root` also owns the
 private `window_border`, whose resize calculation uses reported `window_bounds()`.
 Current upstream retains the same title-bar implementation, and its open #2496
-reports stale caption-button hover on GPUI 0.2.2 / gpui-component 0.5.2. Treat the
-frame as NO-GO unless a supported upstream API or dependency version demonstrably
-meets the gate; do not copy the private controls or patch the registry here.
+reports stale caption-button hover on GPUI 0.2.2 / gpui-component 0.5.2. The resize
+and bare-title failures are regressions of the standard Root fixture, not defects
+of the current production frame. Treat the standard candidate as NO-GO unless a
+supported upstream API or dependency version demonstrably meets the gate; do not
+copy the private controls or patch the registry here. Test a deliberate global
+secondary hover/active palette adjustment before classifying caption contrast as
+a component blocker; it affects ordinary controls throughout the window.
 
 ### Initial checkpoint results
 

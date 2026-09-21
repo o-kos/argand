@@ -112,26 +112,30 @@ dependency update/patch or UX exception needs a separate, concrete owner decisio
 
 ## Owner frame report and source disposition
 
-After the isolated sequences above, the owner exercised the current frame on the
-primary GNOME/Wayland desktop and rejected it: resize cursor lifetime and boundary
-alignment were incorrect, diagonal resize was impractical, dark minimize/maximize
-hover and pressed feedback was effectively absent, and a double-click on maximize
-performed maximize followed by restore. This report has no captured coordinates or
-screenshots, so it is a failure report and acceptance blocker, not a completed R2,
-R3 or B1 measurement row.
+After the isolated sequences above, the owner compared the standard Root/frame
+fixture with current production on the primary GNOME/Wayland desktop. The standard
+candidate had incorrect resize cursor lifetime and boundary alignment, an
+impractical diagonal target and unreliable bare-title double-click. Those problems
+are not present in the current production frame. Current production still has two
+separate defects: dark minimize/maximize hover and pressed feedback is effectively
+absent, and maximize-button double-click performs maximize followed by restore.
+This report has no captured coordinates or screenshots, so it is an acceptance
+blocker, not a completed R2, R3 or B1 measurement row.
 
 The locked `gpui-component` source explains why #126 cannot repair these through
 standard public composition. `window_border` is inserted privately by `Root` and
 uses reported `window_bounds()` for resize edges. `TitleBar` keeps its window
 controls private; on Linux each maximize/restore click calls `zoom_window()`, while
-hover and active colors are fixed to the global secondary theme tokens. Styling the
-outer `TitleBar` does not expose those controls. The current upstream title-bar
-source retains this structure, and upstream issue
+hover and active colors use the global secondary theme tokens. Styling the outer
+`TitleBar` does not expose those controls, but changing the shared semantic palette
+is a valid candidate if every affected control is checked. The current upstream
+title-bar source retains this structure, and upstream issue
 [#2496](https://github.com/longbridge/gpui-component/issues/2496) independently
 tracks stale caption-button hover on GPUI 0.2.2 / gpui-component 0.5.2.
 
 Therefore the stock frame is a second explicit NO-GO reason alongside the Popover
-panic. Do not proceed to #127, copy the private controls, mutate global theme tokens
-to disguise one control, patch Cargo registry sources or claim a visual pass. A
-future positive result requires a supported upstream API/version and fresh native
-evidence for every owner-gate case.
+panic because it regresses current resize and bare-title behavior. Do not proceed
+to #127, copy the private controls, patch Cargo registry sources or claim a visual
+pass. Test shared hover/active tokens as a whole-interface palette change, not a
+one-control disguise. A future positive result requires supported behavior and
+fresh native evidence for every owner-gate case.
