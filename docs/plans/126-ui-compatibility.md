@@ -53,10 +53,16 @@ Inspected locked APIs (GPUI 0.2.2 / gpui-component 0.5.1):
   of application DSP scheduling.
 - Provide controls for light/dark theme and a predictable reset of probe counters.
   Use standard controls for these too. Do not add global navigation interceptors.
-- Record actual window state/viewport versus restore dimensions in the fixture
-  or its logs to make frame failures reproducible without modifying the toolkit.
+- Record actual window state/viewport and the reported WindowBounds variant/bounds
+  to make frame failures reproducible without modifying the toolkit. Reported
+  bounds are not guaranteed restore geometry on every backend; record actual
+  before/after sizes separately when testing maximize/restore transitions.
 - No production file loading or session persistence in the probe. No implicit
   writes to user configuration and no dependency, registry-cache or lint changes.
+- Review corrections make observation explicit: label toolkit bounds as reported,
+  not guaranteed restore geometry; provide focused plot key counts and a passive
+  hint target/Alt-guide probe. NumberInput uses a small fixture-only bounded value
+  adapter for Step events and invalid feedback, not product FFT policy.
 - Native runs are explicit. Do not control existing user windows or stop services.
   An isolated GPU-backed compositor is useful for scoped tests but is not evidence
   for unexercised desktop/compositor or Windows/macOS behavior.
@@ -64,32 +70,32 @@ Inspected locked APIs (GPUI 0.2.2 / gpui-component 0.5.1):
 ## Implementation steps
 
 - [x] Inspect required toolkit interfaces and commit this scoped plan before coding.
-- [ ] Implement and compile the standalone standard-control verification example.
-- [ ] Add deterministic tests for example-owned counter/state transitions where
+- [x] Implement and compile the standalone standard-control verification example.
+- [x] Add deterministic tests for example-owned counter/state transitions where
       meaningful; tests must not merely restate toolkit behavior without a window.
-- [ ] Complete `docs/ui/126-compatibility/inventory.md`, mapping every production
+- [x] Complete `docs/ui/126-compatibility/inventory.md`, mapping every production
       render/input entry point to standard, custom-domain, custom-control or adapter
       ownership and recording supported candidates/verified limitations.
-- [ ] Write `docs/ui/126-compatibility/README.md` with runnable commands, test cases,
+- [x] Write `docs/ui/126-compatibility/README.md` with runnable commands, test cases,
       source evidence, native results and a go/no-go decision for #127.
-- [ ] Exercise the current application baseline and fixture on available native
+- [x] Exercise the current application baseline and fixture on available native
       environments without confusing historical screenshots with current evidence.
 - [ ] Obtain missing native coverage before marking the compatibility gate complete;
       list unavailable cases as not exercised. Unresolved frame failures block #127.
-- [ ] Run local gate, rebuild current releases/examples, inspect the diff and complete
+- [x] Run local gate, rebuild current releases/examples, inspect the diff and complete
       external review before presenting the implementation for owner acceptance.
-- [ ] Publish/update a Draft PR linked to #126. Do not close #124 or start #127 here.
+- [x] Publish/update a Draft PR linked to #126. Do not close #124 or start #127 here.
 - [ ] Move this plan to completed only once all required compatibility evidence and
       decisions exist; a working fixture with incomplete evidence stays an open Draft.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo test -p argand --example ui_compatibility --locked`
-- [ ] `cargo build --release --locked`, after checks pass
-- [ ] `cargo build -p argand --example ui_compatibility --release --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo test -p argand --example ui_compatibility --locked`
+- [x] `cargo build --release --locked`, after checks pass
+- [x] `cargo build -p argand --example ui_compatibility --release --locked`
 - [ ] Native R1/R2/R3: Root identity, single frame, move/resize edges/corners,
       maximize/restore/fullscreen/tiling and title-bar gesture isolation.
 - [ ] Native F2/F3: cursor/selection, clipboard, undo, IME, numeric validation,
@@ -105,6 +111,12 @@ Inspected locked APIs (GPUI 0.2.2 / gpui-component 0.5.1):
       merge; Draft quick CI alone is not the compatibility gate.
 
 ## Post-completion
+
+Current blocker: opening the stock Select inside Popover reproducibly panics in
+the locked GPUI deferred drawing path. See
+[native evidence](../ui/126-compatibility/native-results.md). The compatibility
+gate is **NO-GO**, not complete; remaining platform/input checks are outstanding.
+Do not patch dependencies or substitute a custom control under this task.
 
 Link evidence from #124 and #126. Proceed to #127 only after an accepted positive
 compatibility result; seek an explicit decision if the stock frame cannot meet the
