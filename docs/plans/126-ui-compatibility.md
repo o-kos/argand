@@ -77,14 +77,15 @@ Inspected locked APIs (GPUI 0.2.2 / gpui-component 0.5.1):
       render/input entry point to standard, custom-domain, custom-control or adapter
       ownership and recording supported candidates/verified limitations.
 - [x] Write `docs/ui/126-compatibility/README.md` with runnable commands, test cases,
-      source evidence, native results and a go/no-go decision for #127.
+      source evidence, native results and a go/no-go decision for the locked stack.
 - [x] Exercise the current application baseline and fixture on available native
       environments without confusing historical screenshots with current evidence.
 - [ ] Obtain missing native coverage before marking the compatibility gate complete;
-      list unavailable cases as not exercised. Unresolved frame failures block #127.
+      list unavailable cases as not exercised. Unresolved failures block direct
+      production Root adoption on the locked stack and feed #137's migration oracle.
 - [x] Run local gate, rebuild current releases/examples, inspect the diff and complete
       external review before presenting the implementation for owner acceptance.
-- [x] Publish/update a Draft PR linked to #126. Do not close #124 or start #127 here.
+- [x] Publish/update a Draft PR linked to #126. Do not close #124 or implement #137 here.
 - [ ] Move this plan to completed only once all required compatibility evidence and
       decisions exist; a working fixture with incomplete evidence stays an open Draft.
 
@@ -121,8 +122,9 @@ the bounded Linux sequence: the standard modal composition works in those cases,
 while the explicitly enabled Popover reproducer still panics. Do not infer UX
 equivalence, complete input coverage or cross-platform compatibility from this.
 
-**Owner gate:** the current frame appearance is explicitly not approved. Before
-#127, demonstrate that resize cursors match the visible edges and reset on entry,
+**Owner gate:** the stock fixture frame appearance is explicitly not approved.
+Before production Root migration, demonstrate that resize cursors match the visible
+edges and reset on entry,
 right and diagonal resize targets are practical, bare-title double-click toggles
 once and reliably, and dark-theme minimize/maximize controls have distinct
 default/hover/pressed states.
@@ -178,6 +180,6 @@ the locked GPUI deferred drawing path. See
 gate is **NO-GO**, not complete; remaining platform/input checks are outstanding.
 Do not patch dependencies or substitute a custom control under this task.
 
-Link evidence from #124 and #126. Proceed to #127 only after an accepted positive
-compatibility result; seek an explicit decision if the stock frame cannot meet the
-functional contract. The other seven implementation stages remain separate work.
+Link evidence from #124 and #126. Proceed through #137 to the aligned GPUI Kit /
+GPUI 0.3.x stack, then use #127 for borderless production Root ownership while
+retaining the Argand frame. The other implementation stages remain separate work.

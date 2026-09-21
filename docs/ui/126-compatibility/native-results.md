@@ -105,10 +105,11 @@ above is not proof about every supported hoverable-tooltip composition.
 
 ## Decision
 
-NO-GO for production migration (#127). The runnable failure is useful checkpoint
-evidence, not a completed compatibility gate. Continue #126 with supported toolkit
-composition investigation and explicit remaining native checks. Any required
-dependency update/patch or UX exception needs a separate, concrete owner decision.
+NO-GO for direct production migration on the locked graph. The runnable failure is
+useful checkpoint evidence, not a completed compatibility gate. #137 owns the
+approved GPUI Kit / GPUI 0.3.x dependency migration and must repeat the relevant
+fixture checks before #127 adopts borderless Root. No toolkit patch or UX exception
+is implied by that migration decision.
 
 ## Owner frame report and source disposition
 
@@ -140,8 +141,8 @@ tracks stale caption-button hover on GPUI 0.2.2 / gpui-component 0.5.2.
 
 Therefore the stock frame is a second explicit NO-GO reason alongside the Popover
 panic because it regresses current resize and bare-title behavior. The accepted
-maximize double-click and planned palette correction are not NO-GO reasons. Do not proceed
-to #127, copy the private controls, patch Cargo registry sources or claim a visual
-pass. Test shared hover/active tokens as a whole-interface palette change, not a
-one-control disguise. A future positive result requires supported behavior and
-fresh native evidence for every owner-gate case.
+maximize double-click and planned palette correction are not NO-GO reasons. Do not
+adopt the locked Root in production, copy the private controls, patch Cargo registry
+sources or claim a visual pass. Test shared hover/active tokens as a whole-interface
+palette change, not a one-control disguise. #137 must establish supported borderless
+Root behavior and fresh native evidence before #127 changes production ownership.

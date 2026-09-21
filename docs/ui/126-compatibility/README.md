@@ -9,8 +9,8 @@ Source survey: [control inventory](inventory.md).
 The production UI is unchanged. The runnable fixture and inventory exist; the
 checkpoint remains incomplete. Build results and native evidence are separate.
 
-**Decision: NO-GO for #127 with the current evidence.** Opening the stock Select
-inside the stock Popover reproducibly panics with `cannot call defer_draw during
+**Decision: NO-GO for direct production Root/frame adoption on the locked graph.**
+Opening the stock Select inside the stock Popover reproducibly panics with `cannot call defer_draw during
 deferred drawing` on the locked GPUI 0.2.2 / gpui-component 0.5.1 graph. See the
 [native reproduction](native-results.md). The stock frame also fails the owner's
 acceptance gate: its resize targeting/cursor lifetime and bare-title gestures
@@ -18,8 +18,9 @@ regress behavior that works in the current production frame. The owner accepts
 maximize/restore responding to both clicks of a double-click. Dark caption contrast
 uses global secondary theme tokens and will be tested as a palette correction
 rather than treated as a per-control API blocker.
-No toolkit patch, dependency change, custom control or product-behavior change has
-been authorized as a fallback by this report.
+The owner subsequently authorized #137 to migrate through GPUI Kit 0.6.x to its
+aligned GPUI 0.3.x family. This report remains the before-migration oracle; it does
+not authorize a toolkit patch, custom control or product-behavior change.
 
 The owner has explicitly not approved the current frame appearance. The exact gate
 is recorded in the Issue and plan; unresolved items keep this checkpoint at NO-GO.
@@ -119,5 +120,6 @@ rather than being bypassed. A clean implementation review is not a compatibility
 
 Keep #126 open until the runnable fixture, local checks, independent review and
 required native evidence are complete. If native frame behavior fails, provide a
-minimal reproduction and ask for a specific decision before #127. If any platform
-cannot be exercised, record it as outstanding rather than marking the gate passed.
+minimal reproduction and carry it into #137 before production Root adoption. If
+any platform cannot be exercised, record it as outstanding rather than marking
+the gate passed.

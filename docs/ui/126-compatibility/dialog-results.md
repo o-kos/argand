@@ -67,8 +67,9 @@ Dialog configuration without a toolkit patch or a custom ordinary control.
 This narrows the failure to the tested composition; it does not prove that a
 non-modal anchored editor is impossible or authorize replacing one with a modal.
 
-The checkpoint remains **NO-GO for #127**: anchored Popover composition/focus,
+The checkpoint remains **NO-GO for direct production adoption on the locked
+graph**: anchored Popover composition/focus,
 passive hints, full frame/gesture coverage, IME, complete keyboard traversal,
 Windows/macOS and other required matrix cases remain unresolved or unexercised.
-The owner has explicitly not approved the frame appearance. Discuss and agree
-that appearance before starting #127, independently of technical results.
+The owner rejected the stock frame and retained the Argand frame. #137 must repeat
+these component checks on the migrated graph before #127 adopts borderless Root.
