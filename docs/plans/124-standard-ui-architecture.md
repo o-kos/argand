@@ -54,9 +54,9 @@ documentation-review rule; this does not downgrade the future implementation.
 ```text
 Application window
   Root + standard window frame (one owner)
-    Shell: document/analysis coordination, title bar, status, window commands
+    Shell: document/analysis and GPU-resource ownership, title/status, window commands
       PlotView: plot focus, pointer/readout state, hitboxes and gesture lifecycle
-        existing canvas/textures, axes, waveform and minimap
+        existing canvas paints Shell-supplied snapshots, axes, waveform and minimap
         standard zoom controls
       toolkit overlays: menus, hints and editing popovers
 ```
@@ -68,10 +68,16 @@ Do not create a generic widget framework or one entity per drawn tick/primitive.
 - Keep analysis workers, generations, view requests and accepted snapshots under
   document/application coordination. Plot interactions submit typed view intents;
   they do not duplicate analysis state or mutate the worker directly.
-- Keep the existing texture upload/coalescing/retirement owner where practical.
-  Passing render snapshots into PlotView must not shorten texture lifetimes or
-  create duplicate caches. Name the window when retiring a texture and retain the
-  intervening-redraw contract.
+- Shell remains the sole upload/coalescing/retirement owner for foreground,
+  backdrop and deep-preview textures. PlotView receives immutable render snapshots
+  with shared image references; it never uploads, retires or caches another copy.
+  Before scheduling retirement of an old image, Shell synchronously replaces or
+  clears PlotView's old snapshot and invalidates its rendering, so a later frame
+  cannot paint that image again. Preserve the existing two `on_next_frame` callbacks
+  with the originating window. Removing/replacing PlotView cancels its gestures and
+  drops its snapshot; Shell keeps resource ownership and performs any retirement.
+  Window teardown keeps current window-bound cleanup, with no callbacks targeting
+  a replacement window. Test replacement while old frames are still in flight.
 - UI-only gesture/focus state moves to PlotView. Session persistence remains
   centralized; do not persist hover, focus or pressed state.
 - Exactly one standard frame owns decoration insets and resizing. Keep supported
@@ -81,6 +87,21 @@ Do not create a generic widget framework or one entity per drawn tick/primitive.
   cannot meet functional requirements, stop that phase with a reproducible
   limitation and seek an owner decision. No silent fork, cache edit, dependency
   upgrade, second frame or return to custom ordinary controls.
+
+### Root-to-Shell bridge
+
+Create `Entity<Shell>` inside the window construction closure and give it to Root
+as the child view; Root owns that child strongly. The window handle becomes
+`WindowHandle<Root>`. Window/application callbacks retain `WeakEntity<Shell>` and
+the originating typed window handle, never a second strong owner or a process-wide
+Shell registry. Enter the captured window through its handle and update the weak
+Shell there; a closed window or dropped Shell makes the callback a no-op.
+
+Replace `window.root::<Shell>()` in ready-status observation with an explicitly
+captured weak owner for that window. Register observers/actions once, not during
+render; preserve intentional global commands and editor-local action precedence.
+Test commands from plot, menu and settings-window focus, then after window closure,
+to catch wrong-window dispatch, leaked ownership and duplicate handling.
 
 ### Event contracts
 
@@ -113,6 +134,7 @@ implementation or the word "custom" is not a justification.
 | Existing implementation | Standard candidate / target | Verification or exception decision |
 | --- | --- | --- |
 | Custom frame and Linux window controls (`chrome.rs`) | Root frame and supported title-bar controls | Replace; checkpoint resize/tiling/platform behavior first |
+| Title-bar drag and double-click handlers (`shell.rs`) | TitleBar's native move/zoom behavior | Replace duplicate handlers; controls must not start a window move or maximize |
 | Zoom halves and `pressed_zoom` (`plot_ui.rs`, shell routing) | Button with shared group styling | Replace; remove custom pressed/release/reset state; retain geometry, translucency and enabled rules |
 | Main cascading menu (`app_menu.rs`, `app_menu_ui.rs`) | PopupMenu and supported composition | Prototype one-level Escape, hover switching, keyboard selection, viewport placement; unresolved mismatch needs separate owner decision |
 | Waveform/spectrum splitter (`shell.rs`, `panels.rs`) | Resizable panels/handle | Compare both orientations, minimum sizes, 1-pixel separator, persisted fraction and non-restarting resize; replace if compatible, otherwise justify a narrow handle |
@@ -120,11 +142,28 @@ implementation or the word "custom" is not a justification.
 | Settings form | Existing NumberInput / Select / Button | Retain; prove in-window compatibility without changing #108 workflow here |
 | Ruler context menu | Existing PopupMenu | Retain and verify focus return/navigation isolation |
 | Metadata/analysis/shortcut hints and keycaps | Existing Tooltip / Kbd | Keep standard composition; centralize surface contracts, not per-call-site guards |
+| Ready-input capture canvas (`shell.rs`) | GPUI window event observation | Retain only a minimal passive registration adapter if no supported non-canvas hook exists; document verified API constraint and test status dismissal without consumption/navigation |
+| Global symbolic-key interceptor (`navigation_ui.rs`) | Plot-scoped bindings/key handling | Remove application-global consumption; any needed normalization adapter must be gated by focused PlotView before recognizing or consuming keys |
 | Spectrogram, waveform, axes, minimap and cursor badges | Existing domain canvas/texture rendering | Retain domain drawing; document domain requirement and interaction boundaries; ordinary controls over it remain standard |
 | Rejected numeric editor in PR #106 | NumberInput / Input | Do not port; reconnect #108 only after the infrastructure is ready |
 
 Inventory all current render and input entry points before claiming completeness;
 append discovered controls to this table with their disposition.
+
+The table is a migration inventory, not a claim that its pending exceptions have
+already been justified. Audit all `Render` implementations, control constructors,
+`on_mouse*`, `on_scroll*`, `on_key*`, `on_action`, `intercept_keystrokes` and window
+event registrations in `crates/app/src`; map each custom interaction to a row.
+Infrastructure observers/adapters are recorded separately from ordinary controls.
+
+Domain-drawing justification: the existing GPUI canvas/image primitives are the
+standard foundation to retain, not an alternative being bypassed. Button, Tooltip
+and Resizable do not implement calibrated I/Q textures, physical tick placement,
+waveform envelopes or capture minimaps. Argand owns physical coordinate mapping,
+sampling and overlay geometry; existing axes/navigation/render tests plus the
+orientation, cursor and resize native cases cover those responsibilities. The
+approved architecture retains this domain drawing; any newly discovered ordinary
+control within it still needs replacement or a separately accepted exception.
 
 ## Rejected alternatives
 
@@ -160,6 +199,8 @@ append discovered controls to this table with their disposition.
 
 ### 2. Root and single-frame migration
 
+- [ ] Implement and test the explicit Root-to-Shell weak-owner bridge before changing
+      root lookups or application command targets; verify closed-window no-ops.
 - [ ] Adopt Root in the main window and remove duplicate custom frame/inset handlers.
 - [ ] Update typed window handles, Shell root lookups, theme/font setup, Tab traversal,
       ready-status observation and window-level actions without duplicate registration.
@@ -172,6 +213,11 @@ append discovered controls to this table with their disposition.
       move plot focus, pointer/readout and gesture state out of Shell.
 - [ ] Route keyboard navigation through plot focus and commands through explicit
       targets; keep required symbolic-key normalization scoped to plot input.
+- [ ] Remove or localize the global `cx.intercept_keystrokes` plot handler. If the
+      toolkit only exposes a global registration, gate it on the active PlotView
+      focus before matching, dispatching or stopping propagation; this is a scoped
+      adapter, not a global navigation bypass. Verify focused Input/Select symbols,
+      Control commands and IME remain untouched; test both top-row and keypad zoom.
 - [ ] Preserve accepted snapshot labels, resize mailbox behavior and texture retirement.
 - [ ] Apply the surface contracts centrally and test dismissal, release outside,
       focus loss, overlay opening during drag and document replacement.
@@ -191,7 +237,7 @@ append discovered controls to this table with their disposition.
 
 ### 5. Integration and handoff
 
-- [ ] Update AGENTS current status to the implemented ownership (remove old Root ban),
+- [ ] Update AGENTS current status from its pre-#124 description to implemented ownership,
       relevant documentation and user-visible changelog entries only for shipped changes.
 - [ ] Run the full validation below and external class-A review; resolve substantive
       findings within the repository's three-round limit.
@@ -199,6 +245,32 @@ append discovered controls to this table with their disposition.
       every in-scope implementation and validation task is complete.
 
 ## Validation
+
+Record one row per executed case in the PR or a linked repository report:
+`case ID | revision/build | OS/backend/compositor + display scale/theme/orientation |
+preconditions | input sequence | expected | observed | pass/fail/not exercised |
+evidence link`. Split parameter combinations into separate rows; a screenshot
+supports painting, while an event trace or witnessed input sequence supports
+interaction. `Not exercised` is outstanding coverage, not success. CI builds are
+listed separately from native cases. At minimum include these atomic oracles:
+
+| Case | Action / setup | Expected result |
+| --- | --- | --- |
+| R1 | Inspect main/editor roots and frame registration | One top-level Root per application window; only standard frame code owns inset/resize setup; no custom frame or second shadow |
+| R2 | Resize each edge/corner, maximize/restore, fullscreen and supported tiling | Visible edge tracks pointer; expanded windows expose no stray resize zones; restored content has one frame's insets |
+| R3 | Click toolbar control, then drag/double-click bare title | Control runs once without moving/zooming window; bare title retains platform move/zoom behavior |
+| F1 | Focus plot and issue each navigation binding | Exactly one intended view change; no duplicate analysis generation from a single action |
+| F2 | Focus input/select and type symbols, edit text, use clipboard/undo/IME | Control receives input; no plot pan/zoom/grid/orientation action and no swallowed editing shortcut |
+| F3 | Dismiss nested menu/select/editor | Accepted one-level dismissal order and focus restoration; next key reaches the restored target |
+| P1 | Open menu/popover over plot and click/wheel/drag its controls | Surface handles input; plot view and drag state remain unchanged |
+| P2 | Enter and leave a passive hint, with and without Alt | Arrow and no underlying readout/guides while covered; immediate restoration on exit; baseline click/wheel behavior unchanged |
+| P3 | Start drag, release outside, lose focus, open overlay or replace document | Gesture ends or cancels as specified; later pointer motion cannot resume it |
+| O1 | Click/wheel/type while ready status is shown, including over a menu | Status disappears; original target still handles the input once; observer does not navigate |
+| G1 | Replace snapshots during progressive updates and resize | Plot stops referencing retired snapshots before retirement; two-frame window-specific release retained; no stale image or accumulating uploads |
+| S1 | Preview settings then cancel; replace file; restart after accepted settings | Existing rollback, accepted/displayed labels, persistence and full-range-on-open rules preserved |
+
+Keep the full parameter coverage below; these oracles make its expected outcomes
+explicit rather than replacing the matrix with a few successful screenshots.
 
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --all-targets --locked` (workspace warnings denied)
