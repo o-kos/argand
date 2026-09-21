@@ -16,6 +16,15 @@ deferred drawing` on the locked GPUI 0.2.2 / gpui-component 0.5.1 graph. See the
 No toolkit patch, dependency change, custom control or product-behavior change has
 been authorized as a fallback by this report.
 
+The owner has explicitly not approved the current frame appearance. Discuss and
+agree its visual contract before starting #127, even if technical checks pass.
+The #126 fixture is not the approved production frame design.
+
+The [Dialog follow-up](dialog-results.md) demonstrates a working **modal** standard
+NumberInput/Select composition on the sampled Linux configuration, including
+nested Escape, prior plot focus return and input isolation. This is not a fix for
+Popover or an approved change from an anchored editor to a modal workflow.
+
 ## Verification environment
 
 The sandbox reports Linux and an accessible Wayland socket but hides `/dev/dri`.
@@ -39,8 +48,20 @@ substitute for its in-window input checks.
 cargo run -p argand --example ui_compatibility --release --locked
 ```
 
+Use **Modal Dialog** for the separate standard modal-composition experiment. It
+retains its own NumberInput/Select state; it is not an approved production editor.
+The known-crashing Popover composition is disabled in normal launches. To expose
+its explicitly labelled failure probe, run:
+
+```sh
+cargo run -p argand --example ui_compatibility --release --locked -- --popover-crash-probe
+```
+
+Opening that probe and then its Reducer dropdown is expected to terminate the
+fixture on the locked graph. It is not necessary for trying the Dialog candidate.
+
 The fixture uses standard Root/frame, TitleBar, Button, NumberInput, Select,
-Popover, PopupMenu, Tooltip and resizable components. Plot counters observe probe
+Dialog, opt-in Popover, PopupMenu, Tooltip and resizable components. Plot counters observe probe
 events, not production worker generations. Preserve the stock behavior when
 recording a failure; do not patch the toolkit to make the checkpoint pass.
 
@@ -62,11 +83,19 @@ event traces or witnessed input sequences are required for interaction claims.
 | P2 | Passive hint: arrow and no underlying readout/Alt guides; baseline click/wheel compatibility | Target arrow observed, but plot Alt guides remained visible; moving into tooltip position dismissed it | Limited revised-build sequence; full covered-surface/click/wheel checks remain outstanding; #122 unchanged |
 | B1 | Standard Button normal/hover/pressed/disabled/focus, release outside | Native run not exercised | Dark/light and narrow layouts required |
 | Z1 | Resizable panels: both orientations, live sizes vs callback count, release outside/focus loss | Horizontal live dimensions changed before release; vertical/lifecycle not exercised | Witnessed multi-motion drag and before/held/released screenshots in native report; not a full Z1 pass |
+| Dialog comparison | Separate modal NumberInput/Select, nested Escape, keyboard/mouse isolation, retention | Limited Linux sequence passed; original Popover still fails with explicit opt-in | [Exact build, input ledger and limits](dialog-results.md); does not supersede anchored-editor F2/F3 acceptance |
+| Compact fixture | Toolbar wraps; window metrics have a separate row | Observed at 720×520 content size in light mode; dark modal dropdown also opens | [Compact evidence](dialog-results.md); no frame appearance approval or R2 pass |
 | Cross-platform | Repeat required cases on Linux, Windows and macOS | Windows/macOS not exercised | No cross-platform native evidence is available in this environment |
 
 ## Local checks and review
 
-The corrected fixture passed the full local formatting, all-target Clippy and
+The Dialog continuation passed formatting, all-target Clippy, workspace tests and
+**nine** example tests, followed by both release builds. Independent code review
+of the bounded continuation found no substantive findings; the subsequent final
+evidence review was also clean. No findings were rejected. Its new native ledger
+is separate from the initial results below.
+
+The initial corrected fixture passed the full local formatting, all-target Clippy and
 workspace test gate, its eight example tests, and both production/example release
 builds. The existing proc-macro-error2 future-incompatibility notice is not a
 new lint suppression. These checks validate the fixture build, not native compatibility.

@@ -12,7 +12,7 @@ use gpui::{
 };
 use gpui_component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, IndexPath, Root, Selectable as _, Theme,
-    ThemeMode, TitleBar,
+    ThemeMode, TitleBar, WindowExt as _,
     button::{Button, ButtonVariants as _},
     input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction},
     label::Label,
@@ -35,17 +35,29 @@ struct Fixture {
     model: ProbeModel,
     number_input: Entity<InputState>,
     select_input: ChoiceState,
+    dialog_number_input: Entity<InputState>,
+    dialog_select_input: ChoiceState,
     horizontal_panels: Entity<ResizableState>,
     vertical_panels: Entity<ResizableState>,
     plot_focus: FocusHandle,
     plot_bounds: Option<Bounds<Pixels>>,
+    popover_crash_probe: bool,
     _subscriptions: Vec<Subscription>,
 }
 
 impl Fixture {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(popover_crash_probe: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let number_input = cx.new(|cx| InputState::new(window, cx).default_value("2048"));
         let select_input = cx.new(|cx| {
+            SelectState::new(
+                vec!["Peak (MAX)".into(), "Mean power".into()],
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        let dialog_number_input = cx.new(|cx| InputState::new(window, cx).default_value("2048"));
+        let dialog_select_input = cx.new(|cx| {
             SelectState::new(
                 vec!["Peak (MAX)".into(), "Mean power".into()],
                 Some(IndexPath::new(0)),
@@ -58,9 +70,13 @@ impl Fixture {
         let plot_focus = cx.focus_handle().tab_stop(true);
         let number_focus = number_input.focus_handle(cx);
         let select_focus = select_input.focus_handle(cx);
+        let dialog_number_focus = dialog_number_input.focus_handle(cx);
+        let dialog_select_focus = dialog_select_input.focus_handle(cx);
         let subscriptions = vec![
             cx.observe(&number_input, |_, _, cx| cx.notify()),
             cx.observe(&select_input, |_, _, cx| cx.notify()),
+            cx.observe(&dialog_number_input, |_, _, cx| cx.notify()),
+            cx.observe(&dialog_select_input, |_, _, cx| cx.notify()),
             cx.observe(&horizontal_panels, |_, _, cx| cx.notify()),
             cx.observe(&vertical_panels, |_, _, cx| cx.notify()),
             cx.subscribe(&number_input, |fixture, input, event: &InputEvent, cx| {
@@ -78,22 +94,36 @@ impl Fixture {
                     fixture.handle_number_step(input, event, window, cx);
                 },
             ),
+            cx.subscribe_in(
+                &dialog_number_input,
+                window,
+                |fixture, input, event: &NumberInputEvent, window, cx| {
+                    fixture.handle_dialog_number_step(input, event, window, cx);
+                },
+            ),
             cx.on_focus(&plot_focus, window, |_, _, cx| cx.notify()),
             cx.on_blur(&plot_focus, window, |_, _, cx| cx.notify()),
             cx.on_focus(&number_focus, window, |_, _, cx| cx.notify()),
             cx.on_blur(&number_focus, window, |_, _, cx| cx.notify()),
             cx.on_focus(&select_focus, window, |_, _, cx| cx.notify()),
             cx.on_blur(&select_focus, window, |_, _, cx| cx.notify()),
+            cx.on_focus(&dialog_number_focus, window, |_, _, cx| cx.notify()),
+            cx.on_blur(&dialog_number_focus, window, |_, _, cx| cx.notify()),
+            cx.on_focus(&dialog_select_focus, window, |_, _, cx| cx.notify()),
+            cx.on_blur(&dialog_select_focus, window, |_, _, cx| cx.notify()),
         ];
 
         Self {
             model: ProbeModel::default(),
             number_input,
             select_input,
+            dialog_number_input,
+            dialog_select_input,
             horizontal_panels,
             vertical_panels,
             plot_focus,
             plot_bounds: None,
+            popover_crash_probe,
             _subscriptions: subscriptions,
         }
     }
@@ -211,16 +241,37 @@ impl Fixture {
         cx.notify();
     }
 
+    fn handle_dialog_number_step(
+        &mut self,
+        input: &Entity<InputState>,
+        event: &NumberInputEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let NumberInputEvent::Step(action) = event;
+        let direction = match action {
+            StepAction::Decrement => NumberStep::Decrement,
+            StepAction::Increment => NumberStep::Increment,
+        };
+        self.model.record_dialog_number_step();
+        let text = input.read(cx).value();
+        if let Some(value) = model::step_number_value(text.as_ref(), direction) {
+            input.update(cx, |input, cx| input.set_value(value, window, cx));
+        }
+        cx.notify();
+    }
+
     fn record_resize_callback(&mut self, orientation: Orientation, cx: &mut Context<Self>) {
         self.model.record_resize_callback(orientation);
         cx.notify();
     }
 
-    fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let dark = cx.theme().mode.is_dark();
         let orientation = self.model.orientation;
         div()
             .flex()
+            .flex_wrap()
             .items_center()
             .gap_2()
             .px_3()
@@ -229,9 +280,18 @@ impl Fixture {
             .border_color(cx.theme().border)
             .child(self.theme_button(dark, cx))
             .child(self.orientation_button(orientation, cx))
-            .child(self.editor_popover(cx))
+            .child(
+                Button::new("open-dialog-editor")
+                    .primary()
+                    .icon(Icon::new(IconName::Settings2))
+                    .label("Modal Dialog")
+                    .tooltip("Open the supported standard Dialog composition probe")
+                    .on_click(cx.listener(|fixture, _, window, cx| {
+                        fixture.open_dialog_editor(window, cx);
+                    })),
+            )
+            .child(self.popover_probe_control(cx))
             .child(self.nested_menu(cx))
-            .child(div().flex_1())
             .child(
                 Button::new("reset-counters")
                     .outline()
@@ -239,12 +299,6 @@ impl Fixture {
                     .label("Reset counters")
                     .tooltip("Reset event and callback counts; retained control state is unchanged")
                     .on_click(cx.listener(|fixture, _, _, cx| fixture.reset_counters(cx))),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(window_summary(window)),
             )
     }
 
@@ -267,6 +321,89 @@ impl Fixture {
             .on_click(cx.listener(|fixture, _, _, cx| fixture.toggle_orientation(cx)))
     }
 
+    fn popover_probe_control(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        if self.popover_crash_probe {
+            return self.editor_popover(cx).into_any_element();
+        }
+        Button::new("disabled-popover-crash-probe")
+            .icon(Icon::new(IconName::TriangleAlert))
+            .label("Popover crash probe disabled")
+            .tooltip("Relaunch with --popover-crash-probe to enable the known-crashing stock composition")
+            .disabled(true)
+            .into_any_element()
+    }
+
+    fn popover_probe_notice(&self, cx: &App) -> impl IntoElement {
+        let (message, color) = if self.popover_crash_probe {
+            (
+                "DANGER: --popover-crash-probe is enabled. Opening Retained editor and then its Select can terminate the fixture in the locked nested-deferred path.",
+                cx.theme().danger,
+            )
+        } else {
+            (
+                "Known stock Popover + Select crash is isolated by default. Relaunch with --popover-crash-probe only for the explicit failure reproduction; the modal Dialog is a comparison, not an approved UX replacement.",
+                cx.theme().muted_foreground,
+            )
+        };
+        div()
+            .px_3()
+            .py_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .text_xs()
+            .text_color(color)
+            .child(message)
+    }
+
+    fn window_metrics(&self, window: &Window, cx: &App) -> impl IntoElement {
+        div()
+            .px_3()
+            .py_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .text_xs()
+            .text_color(cx.theme().muted_foreground)
+            .child(window_summary(window))
+    }
+
+    fn open_dialog_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let number_input = self.dialog_number_input.clone();
+        let select_input = self.dialog_select_input.clone();
+        window.open_dialog(cx, move |dialog, window, cx| {
+            let validation = model::validate_number(number_input.read(cx).value().as_ref());
+            let focus_owner = control_focus_owner(&number_input, &select_input, window, cx);
+            let confirmed_number = number_input.clone();
+            dialog
+                .confirm()
+                .title("Standard modal Dialog comparison")
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(
+                                    "Public Dialog composition only. Retained values survive close/reopen; focus restoration is left to WindowExt.",
+                                ),
+                        )
+                        .child(control_row(
+                            "Probe value",
+                            NumberInput::new(&number_input).suffix("units"),
+                            cx,
+                        ))
+                        .child(number_feedback(validation, cx))
+                        .child(control_row("Reducer", Select::new(&select_input), cx))
+                        .child(detail("Actual focus", focus_owner, cx)),
+                )
+                .on_ok(move |_, _, cx| {
+                    model::validate_number(confirmed_number.read(cx).value().as_ref()).is_valid()
+                })
+        });
+    }
+
     fn editor_popover(&self, cx: &mut Context<Self>) -> Popover {
         let number_input = self.number_input.clone();
         let select_input = self.select_input.clone();
@@ -276,8 +413,8 @@ impl Fixture {
             .track_focus(&number_input.focus_handle(cx))
             .trigger(
                 Button::new("open-editor-popover")
-                    .icon(Icon::new(IconName::Settings2))
-                    .label("Retained editor"),
+                    .icon(Icon::new(IconName::TriangleAlert))
+                    .label("Retained editor crash probe"),
             )
             .content(move |_, _, cx| {
                 div()
@@ -631,6 +768,20 @@ impl Fixture {
             return "plot";
         }
         if self
+            .dialog_number_input
+            .focus_handle(cx)
+            .contains_focused(window, cx)
+        {
+            return "dialog number input";
+        }
+        if self
+            .dialog_select_input
+            .focus_handle(cx)
+            .contains_focused(window, cx)
+        {
+            return "dialog select focus scope";
+        }
+        if self
             .number_input
             .focus_handle(cx)
             .contains_focused(window, cx)
@@ -691,6 +842,13 @@ impl Fixture {
             .read(cx)
             .selected_value()
             .map_or_else(|| "none".into(), Clone::clone);
+        let dialog_number = self.dialog_number_input.read(cx).value();
+        let dialog_validation = model::validate_number(dialog_number.as_ref());
+        let dialog_selected = self
+            .dialog_select_input
+            .read(cx)
+            .selected_value()
+            .map_or_else(|| "none".into(), Clone::clone);
         div()
             .flex()
             .flex_col()
@@ -711,6 +869,14 @@ impl Fixture {
                 cx,
             ))
             .child(detail("Reducer", selected, cx))
+            .child(detail("Dialog number text", dialog_number, cx))
+            .child(detail("Dialog validation", dialog_validation.message(), cx))
+            .child(detail(
+                "Dialog step events",
+                self.model.counters.dialog_number_step_events,
+                cx,
+            ))
+            .child(detail("Dialog reducer", dialog_selected, cx))
     }
 
     fn button_states(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -775,13 +941,35 @@ impl Render for Fixture {
                         .child("Argand UI compatibility fixture"),
                 ),
             )
-            .child(self.toolbar(window, cx))
+            .child(self.toolbar(cx))
+            .child(self.popover_probe_notice(cx))
+            .child(self.window_metrics(window, cx))
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .child(self.resizable_group(window, cx)),
             )
+            .children(Root::render_dialog_layer(window, cx))
+    }
+}
+
+fn control_focus_owner(
+    number_input: &Entity<InputState>,
+    select_input: &ChoiceState,
+    window: &Window,
+    cx: &App,
+) -> &'static str {
+    if number_input.focus_handle(cx).contains_focused(window, cx) {
+        return "number input";
+    }
+    if select_input.focus_handle(cx).contains_focused(window, cx) {
+        return "select focus scope";
+    }
+    if window.focused(cx).is_some() {
+        "dialog container / other"
+    } else {
+        "none"
     }
 }
 
@@ -958,9 +1146,10 @@ fn window_summary(window: &Window) -> String {
 }
 
 fn main() {
+    let popover_crash_probe = std::env::args().any(|argument| argument == "--popover-crash-probe");
     Application::new()
         .with_assets(gpui_component_assets::Assets)
-        .run(|cx| {
+        .run(move |cx| {
             gpui_component::init(cx);
             cx.bind_keys([KeyBinding::new("p", PlotProbeKey, Some(PLOT_KEY_CONTEXT))]);
             Theme::change(ThemeMode::Light, None, cx);
@@ -968,7 +1157,7 @@ fn main() {
             cx.spawn(async move |cx| {
                 cx.open_window(options, |window, cx| {
                     window.set_window_title("Argand UI compatibility fixture");
-                    let fixture = cx.new(|cx| Fixture::new(window, cx));
+                    let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, window, cx));
                     cx.new(|cx| Root::new(fixture, window, cx))
                 })?;
                 Ok::<_, anyhow::Error>(())

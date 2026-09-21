@@ -96,25 +96,30 @@ The initial partial checkpoint is published and its independent review is clean;
 it did not pass the compatibility gate. Continue the same Class A scope and model
 pair with the following bounded experiment before any production migration:
 
-- [ ] Keep the stock Popover/Select failure reproducible, behind an explicitly
+- [x] Keep the stock Popover/Select failure reproducible, behind an explicitly
       labelled, opt-in crash probe; ordinary fixture use must not open it accidentally.
-- [ ] Add a separate standard Root-backed Dialog candidate with retained NumberInput
+- [x] Add a separate standard Root-backed Dialog candidate with retained NumberInput
       and Select entities and exactly one Root dialog layer. Use public APIs only.
       Observe live validation and actual focus; do not force focus back to hide a
       toolkit failure. A modal Dialog is a different UX, not an approved replacement
       for an anchored editor or a change to #108 acceptance.
-- [ ] Move window metrics out of the crowded toolbar and keep fixture controls
+- [x] Move window metrics out of the crowded toolbar and keep fixture controls
       usable at the declared minimum size. This is fixture layout, not frame design.
-- [ ] Exercise dropdown selection, nested Escape, retained values, focus return,
+- [x] Exercise dropdown selection, nested Escape, retained values, focus return,
       plot key isolation and pointer/wheel isolation in the isolated GPU-backed
       Linux environment; report each result separately and retain prior evidence.
-- [ ] Repeat local gates, release builds and independent review for this continuation;
+- [x] Repeat local gates, release builds and independent review for this continuation;
       update the Draft report without claiming full cross-platform compatibility.
 
 Source basis: locked Popover and Select both call `deferred`, which GPUI rejects
 when nested. `Root::render_dialog_layer` composes Dialog without an outer deferred
 draw; `WindowExt::open_dialog`/`close_dialog` save and restore prior focus. These
 source observations are hypotheses for native validation, not passing test cases.
+
+The [follow-up native ledger](../ui/126-compatibility/dialog-results.md) records
+the bounded Linux sequence: the standard modal composition works in those cases,
+while the explicitly enabled Popover reproducer still panics. Do not infer UX
+equivalence, complete input coverage or cross-platform compatibility from this.
 
 **Owner gate:** the current frame appearance is explicitly not approved. Discuss
 and agree its visual contract with the owner before starting #127, independently

@@ -113,6 +113,7 @@ pub struct Counters {
     pub button_actions: u64,
     pub plot_key_actions: u64,
     pub number_step_events: u64,
+    pub dialog_number_step_events: u64,
     pub resize_callbacks: [u64; 2],
 }
 
@@ -198,16 +199,13 @@ impl ProbeModel {
     pub fn step_number(&mut self, text: &str, direction: NumberStep) -> Option<String> {
         self.counters.number_step_events += 1;
         self.number_validation = validate_number(text);
-        let NumberValidation::Valid(value) = self.number_validation else {
-            return None;
-        };
-        let delta = match direction {
-            NumberStep::Decrement => -PROBE_NUMBER_STEP,
-            NumberStep::Increment => PROBE_NUMBER_STEP,
-        };
-        let value = (value + delta).clamp(PROBE_NUMBER_MIN, PROBE_NUMBER_MAX);
-        self.number_validation = NumberValidation::Valid(value);
-        Some(value.to_string())
+        let value = step_number_value(text, direction)?;
+        self.number_validation = validate_number(&value);
+        Some(value)
+    }
+
+    pub fn record_dialog_number_step(&mut self) {
+        self.counters.dialog_number_step_events += 1;
     }
 
     pub fn record_resize_callback(&mut self, orientation: Orientation) {
@@ -223,7 +221,7 @@ impl ProbeModel {
     }
 }
 
-fn validate_number(text: &str) -> NumberValidation {
+pub fn validate_number(text: &str) -> NumberValidation {
     let Ok(value) = text.trim().parse::<i64>() else {
         return NumberValidation::NotInteger;
     };
@@ -231,6 +229,21 @@ fn validate_number(text: &str) -> NumberValidation {
         return NumberValidation::OutOfRange;
     }
     NumberValidation::Valid(value)
+}
+
+pub fn step_number_value(text: &str, direction: NumberStep) -> Option<String> {
+    let NumberValidation::Valid(value) = validate_number(text) else {
+        return None;
+    };
+    let delta = match direction {
+        NumberStep::Decrement => -PROBE_NUMBER_STEP,
+        NumberStep::Increment => PROBE_NUMBER_STEP,
+    };
+    Some(
+        (value + delta)
+            .clamp(PROBE_NUMBER_MIN, PROBE_NUMBER_MAX)
+            .to_string(),
+    )
 }
 
 #[cfg(test)]
@@ -334,6 +347,24 @@ mod tests {
         assert_eq!(model.step_number("invalid", NumberStep::Decrement), None);
         assert_eq!(model.number_validation, NumberValidation::NotInteger);
         assert_eq!(model.counters.number_step_events, 3);
+    }
+
+    #[test]
+    fn stateless_number_steps_support_an_independent_dialog_input() {
+        assert_eq!(
+            step_number_value("2048", NumberStep::Decrement),
+            Some("1984".into())
+        );
+        assert_eq!(
+            step_number_value("64", NumberStep::Decrement),
+            Some("64".into())
+        );
+        assert_eq!(step_number_value("invalid", NumberStep::Increment), None);
+
+        let mut model = ProbeModel::default();
+        model.record_dialog_number_step();
+        assert_eq!(model.counters.dialog_number_step_events, 1);
+        assert_eq!(model.counters.number_step_events, 0);
     }
 
     #[test]

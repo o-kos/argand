@@ -2,6 +2,10 @@
 
 Date: 2026-09-21. This is a limited Linux run, not the full architecture matrix.
 
+This file preserves the initial and post-review Popover observations. The later
+standard modal Dialog comparison, its exact build and witnessed input sequence
+are recorded separately in [dialog-results.md](dialog-results.md).
+
 ## Build and environment
 
 - Production source is unchanged from the main revision underlying PR #125.
@@ -19,6 +23,10 @@ Date: 2026-09-21. This is a limited Linux run, not the full architecture matrix.
   `ad4d473cb1b386c427982a2a06e47b70047cb0fc610a8364e7d42119fa951bc9`.
 
 ## Reproduced blocker: Select inside Popover
+
+The following sequence records the initial build. In the follow-up fixture,
+launch with `--popover-crash-probe` and use **Retained editor crash probe** to
+expose this same stock composition; normal launches leave it disabled.
 
 1. Run `cargo run -p argand --example ui_compatibility --release --locked`.
 2. Click **Retained editor**. Standard NumberInput and Select render in the popup.
