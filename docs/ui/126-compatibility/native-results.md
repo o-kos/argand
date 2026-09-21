@@ -109,3 +109,29 @@ NO-GO for production migration (#127). The runnable failure is useful checkpoint
 evidence, not a completed compatibility gate. Continue #126 with supported toolkit
 composition investigation and explicit remaining native checks. Any required
 dependency update/patch or UX exception needs a separate, concrete owner decision.
+
+## Owner frame report and source disposition
+
+After the isolated sequences above, the owner exercised the current frame on the
+primary GNOME/Wayland desktop and rejected it: resize cursor lifetime and boundary
+alignment were incorrect, diagonal resize was impractical, dark minimize/maximize
+hover and pressed feedback was effectively absent, and a double-click on maximize
+performed maximize followed by restore. This report has no captured coordinates or
+screenshots, so it is a failure report and acceptance blocker, not a completed R2,
+R3 or B1 measurement row.
+
+The locked `gpui-component` source explains why #126 cannot repair these through
+standard public composition. `window_border` is inserted privately by `Root` and
+uses reported `window_bounds()` for resize edges. `TitleBar` keeps its window
+controls private; on Linux each maximize/restore click calls `zoom_window()`, while
+hover and active colors are fixed to the global secondary theme tokens. Styling the
+outer `TitleBar` does not expose those controls. The current upstream title-bar
+source retains this structure, and upstream issue
+[#2496](https://github.com/longbridge/gpui-component/issues/2496) independently
+tracks stale caption-button hover on GPUI 0.2.2 / gpui-component 0.5.2.
+
+Therefore the stock frame is a second explicit NO-GO reason alongside the Popover
+panic. Do not proceed to #127, copy the private controls, mutate global theme tokens
+to disguise one control, patch Cargo registry sources or claim a visual pass. A
+future positive result requires a supported upstream API/version and fresh native
+evidence for every owner-gate case.

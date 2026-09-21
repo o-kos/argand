@@ -121,9 +121,24 @@ the bounded Linux sequence: the standard modal composition works in those cases,
 while the explicitly enabled Popover reproducer still panics. Do not infer UX
 equivalence, complete input coverage or cross-platform compatibility from this.
 
-**Owner gate:** the current frame appearance is explicitly not approved. Discuss
-and agree its visual contract with the owner before starting #127, independently
-of technical compatibility results. Do not redesign the production frame in #126.
+**Owner gate:** the current frame appearance is explicitly not approved. Before
+#127, demonstrate that resize cursors match the visible edges and reset on entry,
+right and diagonal resize targets are practical, bare-title double-click toggles
+once and reliably, maximize-button double-click performs only one transition, and
+dark-theme minimize/maximize controls have distinct default/hover/pressed states.
+Record geometry, pointer coordinates and screenshots; the owner must approve the
+appearance independently of technical compatibility results. Do not redesign the
+production frame in #126.
+
+Locked-source inspection after the owner report found no application-level repair
+through the public standard component. `TitleBar` keeps `ControlIcon` private,
+binds every Linux click on maximize/restore directly to `zoom_window()`, and fixes
+the non-close visual states to global secondary theme tokens. `Root` also owns the
+private `window_border`, whose resize calculation uses reported `window_bounds()`.
+Current upstream retains the same title-bar implementation, and its open #2496
+reports stale caption-button hover on GPUI 0.2.2 / gpui-component 0.5.2. Treat the
+frame as NO-GO unless a supported upstream API or dependency version demonstrably
+meets the gate; do not copy the private controls or patch the registry here.
 
 ### Initial checkpoint results
 
