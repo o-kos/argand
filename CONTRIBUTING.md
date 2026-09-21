@@ -70,6 +70,30 @@ the label does not itself promise that an Issue is scheduled.
 
 ## Implementing the plan
 
+### UI component selection
+
+Prefer standard gpui-component controls and GPUI interaction mechanisms. Inspect the
+locked toolkit implementation and try its supported styling, composition and
+configuration before proposing a custom equivalent. Different colors, spacing or
+geometry are not by themselves a reason to replace standard interaction behavior.
+
+For every proposed custom control, add a separate entry to the active plan naming:
+
+- the standard alternative and the exact, verified limitation;
+- why supported composition or styling cannot meet the requirement;
+- the behavior and maintenance cost the application would take over;
+- focus, keyboard, pointer, disabled-state and regression validation;
+- the owner's decision before implementation.
+
+Apply the same audit to retained custom controls during UI reorganization. Domain
+canvases such as a spectrogram are valid custom drawing; distinguish them from
+ordinary controls embedded over the drawing. Do not hand-write text editing or
+ordinary button behavior to bypass an unresolved root, focus or styling problem.
+Reviewers must challenge unsupported exceptions and verify that replacements remove
+the obsolete implementation. Changes to established UX need a separate owner decision.
+
+### Implementation and validation
+
 Keep commits atomic and write commit messages in English. When a plan task is completed, change its checkbox to `[x]` in the same commit as the corresponding work whenever practical.
 
 Update the plan as reality changes:
