@@ -21,8 +21,68 @@ fn range_hint(state: RangeState) -> String {
     }
 }
 
-fn range_actionable(displayed: Option<Settings>, requested: Settings, range: RangeState) -> bool {
-    displayed == Some(requested) && range.next_range().is_some()
+fn next_range_action(
+    displayed: Option<Settings>,
+    requested: Settings,
+    range: Option<DisplayedRange>,
+    analysis_failed: bool,
+) -> Option<DynamicRange> {
+    if analysis_failed || displayed != Some(requested) {
+        return None;
+    }
+    range?.state.next_range()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct RangePresentation {
+    displayed: Option<DisplayedRange>,
+    next_action: Option<DynamicRange>,
+}
+
+#[derive(Clone, Copy)]
+struct ControlForegrounds {
+    normal: gpui::Hsla,
+    hovered: gpui::Hsla,
+    active: gpui::Hsla,
+}
+
+impl ControlForegrounds {
+    fn between(normal: gpui::Hsla, hovered: gpui::Hsla) -> Self {
+        Self {
+            normal,
+            hovered,
+            active: normal.mix(hovered, 0.5),
+        }
+    }
+
+    fn current(self, hovered: bool) -> gpui::Hsla {
+        if hovered { self.hovered } else { self.normal }
+    }
+
+    fn button_style(self, cx: &gpui::App) -> ButtonCustomVariant {
+        ButtonCustomVariant::new(cx)
+            .foreground(self.active)
+            .hover(cx.theme().secondary_hover)
+            .active(cx.theme().secondary_active)
+    }
+}
+
+fn document_range_presentation(
+    document: &Document,
+    displayed_settings: Option<Settings>,
+    requested: Settings,
+) -> RangePresentation {
+    let displayed = document.displayed_range();
+    let next_action = next_range_action(
+        displayed_settings,
+        requested,
+        displayed,
+        matches!(document.status(), Status::Failed(_)),
+    );
+    RangePresentation {
+        displayed,
+        next_action,
+    }
 }
 
 pub(super) fn init(cx: &mut gpui::App) {
@@ -111,9 +171,7 @@ impl Shell {
     }
 
     pub(super) fn use_recommended_range(&mut self, cx: &mut Context<Self>) {
-        let state =
-            RangeState::from_request(self.range_recommendation(), self.settings.dynamic_range);
-        if let Some(dynamic_range) = state.next_range() {
+        if let Some(dynamic_range) = self.next_range_action() {
             self.set_settings(
                 Settings {
                     dynamic_range,
@@ -125,21 +183,27 @@ impl Shell {
     }
 
     fn displayed_range(&self) -> Option<DisplayedRange> {
+        self.range_presentation()?.displayed
+    }
+
+    fn next_range_action(&self) -> Option<DynamicRange> {
+        self.range_presentation()?.next_action
+    }
+
+    fn range_presentation(&self) -> Option<RangePresentation> {
         let file = self.file.as_ref()?;
-        if matches!(file.document.status(), Status::Failed(_)) {
-            return None;
-        }
-        file.document.displayed_range()
+        Some(document_range_presentation(
+            &file.document,
+            file.displayed_settings,
+            self.settings,
+        ))
     }
 
     fn range_recommendation(&self) -> Option<f32> {
-        let file = self.file.as_ref()?;
-        if matches!(file.document.status(), Status::Failed(_))
-            || file.displayed_settings != Some(self.settings)
-        {
-            return None;
+        match self.next_range_action() {
+            Some(DynamicRange::Fixed(db)) => Some(db),
+            Some(DynamicRange::Default | DynamicRange::Auto) | None => None,
         }
-        file.document.displayed_range()?.state.recommendation()
     }
 
     pub(super) fn status_bar(
@@ -246,7 +310,8 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let visible = displayed.unwrap_or(self.settings);
-        let displayed_range = self.displayed_range();
+        let presentation = self.range_presentation();
+        let displayed_range = presentation.and_then(|presentation| presentation.displayed);
         let range_text = displayed_range
             .map(|range| format!("{} dB", crate::numbers::number(range.effective_db)))
             .unwrap_or_else(|| match visible.dynamic_range {
@@ -262,19 +327,20 @@ impl Shell {
             RangeState::Warned(_) => format!("⚠ {range_text}"),
             RangeState::Corrected | RangeState::Full => range_text,
         };
-        let actionable = range_actionable(displayed, self.settings, range_state);
-        let foreground = match range_state {
-            RangeState::Warned(_) => advice_color(cx),
-            RangeState::Corrected | RangeState::Full => cx.theme().muted_foreground,
+        let actionable =
+            presentation.is_some_and(|presentation| presentation.next_action.is_some());
+        let foregrounds = match range_state {
+            RangeState::Warned(_) => {
+                ControlForegrounds::between(advice_color(cx), advice_hover_color(cx))
+            }
+            RangeState::Corrected | RangeState::Full => {
+                ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground)
+            }
         };
+        let foreground = foregrounds.current(self.range_hovered && actionable);
         let range_content = if actionable {
-            let hover_foreground = match range_state {
-                RangeState::Warned(_) => advice_hover_color(cx),
-                RangeState::Corrected => cx.theme().foreground,
-                RangeState::Full => cx.theme().muted_foreground,
-            };
             Button::new("analysis-range")
-                .ghost()
+                .custom(foregrounds.button_style(cx))
                 .small()
                 .h_5()
                 .px_2()
@@ -284,9 +350,7 @@ impl Shell {
                     cx.notify();
                 }))
                 .when(self.range_hovered && actionable, |button| {
-                    button
-                        .bg(cx.theme().secondary_hover)
-                        .text_color(hover_foreground)
+                    button.bg(cx.theme().secondary_hover)
                 })
                 .on_click(move |_, window, cx| {
                     window.dispatch_action(Box::new(UseRecommendedRange), cx);
@@ -327,16 +391,15 @@ impl Shell {
         let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
         let visible = displayed.unwrap_or(self.settings);
         let hint_owner = cx.entity().downgrade();
-        let foreground = if self.analysis_hovered {
-            cx.theme().foreground
-        } else {
-            cx.theme().muted_foreground
-        };
+        let foregrounds =
+            ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground);
+        let foreground = foregrounds.current(self.analysis_hovered);
         let mut summary = Button::new("analysis-settings")
-            .ghost()
+            .custom(foregrounds.button_style(cx))
             .small()
             .h_5()
             .px_2()
+            .text_color(foreground)
             .when(self.analysis_hovered, |button| {
                 button.bg(cx.theme().secondary_hover)
             })
@@ -347,7 +410,7 @@ impl Shell {
             .on_click(
                 cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
             )
-            .child(div().text_xs().text_color(foreground).child(format!(
+            .child(div().text_xs().child(format!(
                 "{} · {}",
                 crate::numbers::number(visible.fft_size),
                 visible.window
@@ -568,6 +631,55 @@ fn advice_hover_color(cx: &gpui::App) -> gpui::Hsla {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::{FileInfo, Update};
+    use argand_core::{
+        DbGrid, Domain, Psd, SampleFormat, SampleType, SignalMeta, SpectrogramImage,
+    };
+    use argand_dsp::{Analysis, DynamicRangeResult};
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    fn warned_analysis() -> Box<Analysis> {
+        Box::new(Analysis {
+            spectrogram: SpectrogramImage::new(1, 1),
+            db: DbGrid {
+                width: 1,
+                height: 1,
+                values: vec![-60.0],
+                t0: 0.0,
+                t1: 1.0,
+                f0: 0.0,
+                f1: 1.0,
+            },
+            psd: Psd {
+                freqs_hz: Vec::new(),
+                db: Vec::new(),
+                segments: 0,
+            },
+            waveform: None,
+            time_peak: 0.01,
+            frames: 1,
+            enbw_hz: 1.0,
+            dynamic_range: DynamicRangeResult {
+                requested: DynamicRange::Default,
+                effective_db: 110.0,
+                recommended_db: 42.0,
+            },
+        })
+    }
+
+    #[test]
+    fn control_foregrounds_keep_distinct_normal_hover_and_pressed_steps() {
+        let normal = gpui::hsla(0.15, 0.8, 0.4, 1.0);
+        let hovered = gpui::hsla(0.15, 0.8, 0.8, 1.0);
+        let foregrounds = ControlForegrounds::between(normal, hovered);
+
+        assert_eq!(foregrounds.current(false), normal);
+        assert_eq!(foregrounds.current(true), hovered);
+        assert_eq!(foregrounds.active, normal.mix(hovered, 0.5));
+        assert_ne!(foregrounds.active, normal);
+        assert_ne!(foregrounds.active, hovered);
+    }
 
     #[test]
     fn range_state_applies_advice_then_restores_full_scale() {
@@ -602,10 +714,79 @@ mod tests {
             dynamic_range: DynamicRange::Fixed(42.0),
             ..displayed
         };
-        let warned = RangeState::from_request(Some(42.0), displayed.dynamic_range);
+        let warned = Some(DisplayedRange {
+            effective_db: 110.0,
+            state: RangeState::Warned(42.0),
+        });
 
-        assert!(range_actionable(Some(displayed), displayed, warned));
-        assert!(!range_actionable(Some(displayed), requested, warned));
-        assert!(!range_actionable(None, requested, warned));
+        assert_eq!(
+            next_range_action(Some(displayed), displayed, warned, false),
+            Some(DynamicRange::Fixed(42.0))
+        );
+        assert_eq!(
+            next_range_action(Some(displayed), requested, warned, false),
+            None
+        );
+        assert_eq!(next_range_action(None, requested, warned, false), None);
+    }
+
+    #[test]
+    fn failed_analysis_suspends_the_retained_range_action() {
+        let settings = Settings::from_config(&Config::default());
+        let mut document = Document::opening(Origin::new(PathBuf::from("test.iqw")));
+        document.apply(Update::Opened(
+            SignalMeta {
+                sample_rate: 24_000.0,
+                center_freq: 0.0,
+                sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
+                len_samples: 48_000,
+                container: "raw",
+                divisor: 32_768.0,
+                source: PathBuf::from("test.iqw"),
+            },
+            FileInfo::default(),
+        ));
+        document.apply(Update::Ready {
+            analysis: warned_analysis(),
+            elapsed: Duration::ZERO,
+        });
+        let ready = document_range_presentation(&document, Some(settings), settings);
+        assert_eq!(
+            ready,
+            RangePresentation {
+                displayed: Some(DisplayedRange {
+                    effective_db: 110.0,
+                    state: RangeState::Warned(42.0),
+                }),
+                next_action: Some(DynamicRange::Fixed(42.0)),
+            }
+        );
+
+        document.apply(Update::Failed(anyhow::anyhow!("replacement failed")));
+        assert_eq!(
+            document_range_presentation(&document, Some(settings), settings),
+            RangePresentation {
+                displayed: ready.displayed,
+                next_action: None,
+            }
+        );
+    }
+
+    #[test]
+    fn corrected_range_action_restores_full_scale_only_when_current() {
+        let corrected = Settings {
+            dynamic_range: DynamicRange::Fixed(42.0),
+            ..Settings::from_config(&Config::default())
+        };
+        let range = Some(DisplayedRange {
+            effective_db: 42.0,
+            state: RangeState::Corrected,
+        });
+
+        assert_eq!(
+            next_range_action(Some(corrected), corrected, range, false),
+            Some(DynamicRange::Default)
+        );
+        assert_eq!(next_range_action(None, corrected, range, false), None);
     }
 }

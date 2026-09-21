@@ -153,12 +153,11 @@ impl Editor {
     }
 
     fn toggle_range(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let recommendation = self
+        let dynamic_range = self
             .owner
             .upgrade()
-            .and_then(|shell| shell.read(cx).range_recommendation());
-        let state = RangeState::from_request(recommendation, self.settings.dynamic_range);
-        if let Some(dynamic_range) = state.next_range() {
+            .and_then(|shell| shell.read(cx).next_range_action());
+        if let Some(dynamic_range) = dynamic_range {
             self.apply(
                 Settings {
                     dynamic_range,

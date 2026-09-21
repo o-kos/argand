@@ -19,7 +19,7 @@ use gpui::{
     Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
     WindowOptions, actions, canvas, div, point, prelude::FluentBuilder, px, size,
 };
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::kbd::Kbd;
 use gpui_component::menu::{PopupMenu, PopupMenuItem};
 use gpui_component::tooltip::Tooltip;

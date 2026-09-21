@@ -207,13 +207,46 @@ uses requested settings.
 The shared low-signal hint now includes the recommended dB value, so both the range
 hint and analysis hint name what the shared action applies.
 
+## Review follow-up: retain the snapshot presentation through failure
+
+The independent review of the displayed-analysis change found one remaining path to
+the intermediate unmarked value. A failed re-analysis keeps the previous picture and
+snapshot in `Document`, but the status UI discarded that snapshot presentation while
+the status was `Failed` and synthesized the value from the old displayed settings.
+That produced `⚠ 110 dB`, then `110 dB`, then `40 dB` if a queued replacement later
+succeeded.
+
+The failure now retains the value and state of the last accepted picture, just as the
+picture itself is retained. It offers no action, keycap or hover affordance while the
+analysis is failed. A window-free regression test drives the document through warned,
+failed and corrected deliveries, and the action-model test covers the failed state.
+
+The follow-up review found that the visual item used that availability check but the
+global and editor Ctrl+R handlers still reconstructed an action from requested
+settings. The finding was accepted. One shared computation now supplies the click,
+both shortcut handlers, keycap and hover availability, so pending or failed analysis
+cannot leave an active shortcut behind an inert item.
+
+The third and final review found no P0 or P1 defects. Its two P2 findings were
+accepted: the regression now exercises the same document-to-presentation wiring as
+the shell instead of testing retention and action inputs separately, and the GPU
+checklist no longer carries the superseded pointer-cursor requirement. Per the
+three-round limit, no fourth review is opened.
+
+Owner validation then exposed a remaining visual transition: hovering the warning
+lightened its foreground almost to white before the corrected result arrived. The
+range and transform buttons now share an explicit three-step foreground progression:
+normal, hover, and the midpoint between them while pressed. The warned range moves
+from yellow to light yellow to medium-light yellow; ordinary controls move from muted
+to foreground to their midpoint.
+
 ## Implementation steps
 
 - [x] Make the warned range in `analysis_control` a click target that stops
       propagation and dispatches `UseRecommendedRange`, leaving the unwarned range
       as plain text inside the settings button.
 - [x] Give the warned value a pointer cursor, and only the warned value.
-- [ ] ➕ Cover the click path through the owner's GPU validation because it requires
+- [x] ➕ Cover the click path through the owner's GPU validation because it requires
       a real window and has no meaningful window-free test.
 - [x] Update `AGENTS.md` where it describes the status bar's range warning.
 - [x] Add the user-visible entry `CONTRIBUTING.md` requires to `CHANGELOG.md`.
@@ -259,8 +292,18 @@ hint and analysis hint name what the shared action applies.
 - [x] ➕ Add a window-free regression test that advances from a warned default
       snapshot to a corrected fixed snapshot as one value-and-state change.
 - [x] ➕ Include the recommended dB value in the shared warned explanation.
+- [x] ➕ Retain the last accepted range presentation through a failed re-analysis
+      instead of synthesizing an unmarked value from displayed settings.
+- [x] ➕ Keep the retained failed presentation non-actionable and cover both the
+      delivery sequence and action availability with window-free tests.
+- [x] ➕ Gate the global and editor Ctrl+R handlers with the same current-snapshot
+      availability computation as the status item.
+- [x] ➕ Cover retained failed display and disabled action together through the
+      presentation wiring used by the shell.
+- [x] ➕ Give warned and ordinary status buttons explicit normal, hover and pressed
+      foreground colours, with the pressed colour midway between the first two.
 - [x] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 Use `➕` for tasks discovered after implementation begins and `⚠️` for blocked tasks.
 
@@ -270,9 +313,9 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Owner validation on a real GPU session with a low-amplitude capture: the yellow
-      value applies the advice on click and does not open settings; the pointer shows
-      the affordance only while it is yellow; clicking the rest of the summary still
+- [x] Owner validation on a real GPU session with a low-amplitude capture: the yellow
+      value applies the advice on click and does not open settings; its hover
+      background shows the affordance; clicking the rest of the summary still
       opens settings; Ctrl+R still works; and once the range is no longer warned the
       value stops being clickable. Confirm the four follow-up points: the FFT text
       does not brighten while the pointer is over the warned value, the warned value

@@ -42,13 +42,6 @@ impl RangeState {
         }
     }
 
-    pub(crate) const fn recommendation(self) -> Option<f32> {
-        match self {
-            Self::Warned(db) => Some(db),
-            Self::Corrected | Self::Full => None,
-        }
-    }
-
     pub(crate) const fn next_range(self) -> Option<DynamicRange> {
         match self {
             Self::Warned(db) => Some(DynamicRange::Fixed(db)),
