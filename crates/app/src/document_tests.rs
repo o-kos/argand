@@ -131,6 +131,51 @@ fn a_new_transform_leaves_the_previous_picture_up_while_it_runs() {
 }
 
 #[test]
+fn a_failed_reanalysis_keeps_the_previous_range_presentation_until_replacement() {
+    let mut document = opening();
+    document.apply(Update::Opened(meta(), FileInfo::default()));
+
+    let mut warned = analysis(64);
+    warned.db.values.fill(-60.0);
+    document.apply(Update::Ready {
+        analysis: warned,
+        elapsed: Duration::ZERO,
+    });
+    assert_eq!(
+        document.displayed_range(),
+        Some(DisplayedRange {
+            effective_db: 110.0,
+            state: crate::settings::RangeState::Warned(60.0),
+        })
+    );
+
+    document.apply(Update::Failed(anyhow::anyhow!("replacement failed")));
+    assert_eq!(
+        document.displayed_range(),
+        Some(DisplayedRange {
+            effective_db: 110.0,
+            state: crate::settings::RangeState::Warned(60.0),
+        })
+    );
+
+    let mut corrected = analysis(64);
+    corrected.db.values.fill(-60.0);
+    corrected.dynamic_range.requested = DynamicRange::Fixed(60.0);
+    corrected.dynamic_range.effective_db = 60.0;
+    document.apply(Update::Ready {
+        analysis: corrected,
+        elapsed: Duration::ZERO,
+    });
+    assert_eq!(
+        document.displayed_range(),
+        Some(DisplayedRange {
+            effective_db: 60.0,
+            state: crate::settings::RangeState::Corrected,
+        })
+    );
+}
+
+#[test]
 fn a_failure_is_something_to_read_rather_than_something_to_crash_on() {
     let mut document = opening();
     let error = anyhow::anyhow!("unrecognised container").context("opening hfdl.iqw");

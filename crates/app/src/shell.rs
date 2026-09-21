@@ -19,7 +19,7 @@ use gpui::{
     Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
     WindowOptions, actions, canvas, div, point, prelude::FluentBuilder, px, size,
 };
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::kbd::Kbd;
 use gpui_component::menu::{PopupMenu, PopupMenuItem};
 use gpui_component::tooltip::Tooltip;
@@ -268,6 +268,7 @@ struct Shell {
     settings: Settings,
     settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
     analysis_hovered: bool,
+    range_hovered: bool,
     ready_status_dismissed: bool,
     settings_backup: Option<Settings>,
     settings_view_backup: Option<crate::navigation::View>,
@@ -376,6 +377,7 @@ impl Shell {
             settings,
             settings_window: None,
             analysis_hovered: false,
+            range_hovered: false,
             ready_status_dismissed: false,
             settings_backup: None,
             settings_view_backup: None,
