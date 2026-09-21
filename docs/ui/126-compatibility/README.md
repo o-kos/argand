@@ -14,10 +14,10 @@ inside the stock Popover reproducibly panics with `cannot call defer_draw during
 deferred drawing` on the locked GPUI 0.2.2 / gpui-component 0.5.1 graph. See the
 [native reproduction](native-results.md). The stock frame also fails the owner's
 acceptance gate: its resize targeting/cursor lifetime and bare-title gestures
-regress behavior that works in the current production frame. Maximize-button
-double-click remains a current-production defect too. Dark caption contrast uses
-global secondary theme tokens and must be tested as a palette correction rather
-than treated as a per-control API blocker.
+regress behavior that works in the current production frame. The owner accepts
+maximize/restore responding to both clicks of a double-click. Dark caption contrast
+uses global secondary theme tokens and will be tested as a palette correction
+rather than treated as a per-control API blocker.
 No toolkit patch, dependency change, custom control or product-behavior change has
 been authorized as a fallback by this report.
 
@@ -81,12 +81,12 @@ event traces or witnessed input sequences are required for interaction claims.
 | Baseline | Current production app: frame, navigation, hints, menu Escape and splitter behavior | Current release opened and rendered m39.wav; interaction matrix outstanding | See native report; startup is not a navigation/frame pass |
 | R1 | One top-level Root and one frame, no duplicate border/shadow/insets | Fixture opened with one visible title/frame; remaining geometry checks outstanding | Static Root composition and limited light/dark screenshots only |
 | R2 | Resize all edges/corners, maximize/restore/fullscreen/tiling; cursors match visible edges and reset immediately | FAIL in the standard Root fixture from owner use: stale cursor, displaced right edge and impractical diagonal target; the current production frame does not exhibit these failures | Stock `window_border` is private and calculates against reported `window_bounds()`; capture viewport, pointer and pre/post geometry before reconsidering |
-| R3 | Bare title drags/zooms reliably; controls act once without dragging/zooming window | Standard fixture bare-title double-click was unreliable; maximize-button double-click maximizes and immediately restores in current production too | Both implementations invoke `zoom_window()` for each maximize click; retain current working bare-title behavior and collect exact standard-fixture evidence |
+| R3 | Bare title drags/zooms reliably; toolbar controls do not trigger title gestures | Standard fixture bare-title double-click was unreliable; maximize-button double-click toggles twice in current production but is explicitly accepted | Retain current working bare-title behavior and collect exact standard-fixture evidence; the accepted button sequence is not a blocker |
 | F2 | In-popover input: caret, selection, clipboard, undo/redo, numeric validation, IME and Tab traversal | Ctrl+A/type/Enter/Escape/reopen retained 4096; remaining cases not exercised | Keyboard sequence in native report is not a full F2 pass |
 | F3 | Nested Select/menu Escape, dismissal and next-key focus destination | FAIL: opening Select in Popover panics, including revised build; Escape did not restore prior plot focus | Native reproduction and revised focus sequence; nested-menu keyboard cases remain unexercised |
 | P1 | Click/wheel/drag controls over the plot; plot counters must not change unintentionally | Native run not exercised | Visible probe counters required |
 | P2 | Passive hint: arrow and no underlying readout/Alt guides; baseline click/wheel compatibility | Target arrow observed, but plot Alt guides remained visible; moving into tooltip position dismissed it | Limited revised-build sequence; full covered-surface/click/wheel checks remain outstanding; #122 unchanged |
-| B1 | Standard Button and caption-control normal/hover/pressed/disabled/focus, release outside | Dark minimize and maximize/restore feedback is not visibly distinct in current production | Both current and standard controls use global secondary tokens; test a coherent palette correction across all affected controls before calling this a TitleBar limitation |
+| B1 | Standard Button and caption-control normal/hover/pressed/disabled/focus, release outside | Dark minimize and maximize/restore feedback is not visibly distinct in current production; owner selected a shared-theme correction | Both current and standard controls use global secondary tokens; validate the coherent palette correction across all affected controls |
 | Z1 | Resizable panels: both orientations, live sizes vs callback count, release outside/focus loss | Horizontal live dimensions changed before release; vertical/lifecycle not exercised | Witnessed multi-motion drag and before/held/released screenshots in native report; not a full Z1 pass |
 | Dialog comparison | Separate modal NumberInput/Select, nested Escape, keyboard/mouse isolation, retention | Limited Linux sequence passed; original Popover still fails with explicit opt-in | [Exact build, input ledger and limits](dialog-results.md); does not supersede anchored-editor F2/F3 acceptance |
 | Compact fixture | Toolbar wraps; window metrics have a separate row | Observed at 720×520 content size in light mode; dark modal dropdown also opens | [Compact evidence](dialog-results.md); no frame appearance approval or R2 pass |

@@ -124,8 +124,8 @@ equivalence, complete input coverage or cross-platform compatibility from this.
 **Owner gate:** the current frame appearance is explicitly not approved. Before
 #127, demonstrate that resize cursors match the visible edges and reset on entry,
 right and diagonal resize targets are practical, bare-title double-click toggles
-once and reliably, maximize-button double-click performs only one transition, and
-dark-theme minimize/maximize controls have distinct default/hover/pressed states.
+once and reliably, and dark-theme minimize/maximize controls have distinct
+default/hover/pressed states.
 Record geometry, pointer coordinates and screenshots; the owner must approve the
 appearance independently of technical compatibility results. Do not redesign the
 production frame in #126.
@@ -143,6 +143,10 @@ supported upstream API or dependency version demonstrably meets the gate; do not
 copy the private controls or patch the registry here. Test a deliberate global
 secondary hover/active palette adjustment before classifying caption contrast as
 a component blocker; it affects ordinary controls throughout the window.
+
+Owner decision: maximize/restore responding to both clicks of a double-click is an
+accepted, non-blocking behavior. Caption contrast is a shared-theme task, not a
+reason to retain or replace a window-control implementation by itself.
 
 ### Initial checkpoint results
 

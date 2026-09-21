@@ -122,6 +122,11 @@ absent, and maximize-button double-click performs maximize followed by restore.
 This report has no captured coordinates or screenshots, so it is an acceptance
 blocker, not a completed R2, R3 or B1 measurement row.
 
+The owner accepts the maximize-button double-click sequence as non-blocking and
+selected a shared semantic-theme change for caption contrast. Those two current
+production observations therefore do not block frame acceptance. The unresolved
+standard-fixture resize and bare-title regressions still do.
+
 The locked `gpui-component` source explains why #126 cannot repair these through
 standard public composition. `window_border` is inserted privately by `Root` and
 uses reported `window_bounds()` for resize edges. `TitleBar` keeps its window
@@ -134,7 +139,8 @@ title-bar source retains this structure, and upstream issue
 tracks stale caption-button hover on GPUI 0.2.2 / gpui-component 0.5.2.
 
 Therefore the stock frame is a second explicit NO-GO reason alongside the Popover
-panic because it regresses current resize and bare-title behavior. Do not proceed
+panic because it regresses current resize and bare-title behavior. The accepted
+maximize double-click and planned palette correction are not NO-GO reasons. Do not proceed
 to #127, copy the private controls, patch Cargo registry sources or claim a visual
 pass. Test shared hover/active tokens as a whole-interface palette change, not a
 one-control disguise. A future positive result requires supported behavior and
