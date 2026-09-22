@@ -1154,11 +1154,24 @@ fn main() {
             cx.bind_keys([KeyBinding::new("p", PlotProbeKey, Some(PLOT_KEY_CONTEXT))]);
             Theme::change(ThemeMode::Light, None, cx);
             let options = window_options(cx);
+            // The borderless window is offset a little so both compositions
+            // are on screen together: the stock Root beside the borderless
+            // one is the before/after the #137 checkpoint asks for.
+            let mut borderless_options = window_options(cx);
+            if let Some(WindowBounds::Windowed(ref mut bounds)) = borderless_options.window_bounds {
+                bounds.origin.x += px(48.);
+                bounds.origin.y += px(48.);
+            }
             cx.spawn(async move |cx| {
                 cx.open_window(options, |window, cx| {
                     window.set_window_title("Argand UI compatibility fixture");
                     let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, window, cx));
                     cx.new(|cx| Root::new(fixture, window, cx))
+                })?;
+                cx.open_window(borderless_options, |window, cx| {
+                    window.set_window_title("Argand fixture: borderless Root");
+                    let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, window, cx));
+                    cx.new(|cx| Root::new(fixture, window, cx).bordered(false))
                 })?;
                 Ok::<_, anyhow::Error>(())
             })
