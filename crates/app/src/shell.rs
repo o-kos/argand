@@ -6,8 +6,6 @@
 //! [`crate::analysis`], none of which know about a toolkit and all of which are
 //! tested without one. This module converts between those answers and GPUI.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -137,12 +135,6 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     "placing the window"
                 );
 
-                // The shell is created first; Root strongly owns it as the
-                // window's root view. The slot carries the weak shell out of
-                // the constructor, which cannot return anything itself.
-                let shell_slot: Rc<RefCell<Option<WeakEntity<Shell>>>> =
-                    Rc::new(RefCell::new(None));
-                let slot = Rc::clone(&shell_slot);
                 let opened = cx.open_window(options, move |window, cx| {
                     tracing::debug!(
                         decorations = ?window.window_decorations(),
@@ -155,7 +147,6 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     if let Some(origin) = opening {
                         shell.update(cx, |shell, cx| shell.open(origin, window, cx));
                     }
-                    *slot.borrow_mut() = Some(shell.downgrade());
                     // The frame paints its own shadow into the client inset: Root's full-window
                     // theme background must not cover it with an opaque ring.
                     cx.new(|cx| {
@@ -164,23 +155,31 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                             .bg(gpui_kit::transparent_black())
                     })
                 });
-                let shell = shell_slot.borrow_mut().take();
 
                 // A window that will not open is the end of the run, and a task
                 // whose error nobody reads would end it silently: there is nothing
                 // else this program does.
-                let Err(error) = &opened else {
-                    if let Some(shell) = shell {
-                        cx.update(|cx| Shell::bind_choose_file(shell, cx));
+                match &opened {
+                    Ok(handle) => cx.update(|cx| bind_window_choose_file(handle, cx)),
+                    Err(error) => {
+                        tracing::error!(%error, "cannot open a window");
+                        cx.update(|cx| cx.quit());
                     }
-                    return Ok::<(), anyhow::Error>(());
-                };
-                tracing::error!(%error, "cannot open a window");
-                cx.update(|cx| cx.quit());
+                }
                 Ok::<(), anyhow::Error>(())
             })
             .detach();
         });
+}
+
+/// Bind the shell's own actions once its window has opened.
+fn bind_window_choose_file(handle: &gpui_kit::WindowHandle<Root>, cx: &mut gpui_kit::App) {
+    let shell = handle
+        .read_with(cx, |root, _| root.view().clone())
+        .ok()
+        .and_then(|view| view.downcast::<Shell>().ok());
+    let Some(shell) = shell else { return };
+    Shell::bind_choose_file(shell.downgrade(), cx);
 }
 
 /// Where and how the window opens.
@@ -392,9 +391,8 @@ impl Shell {
         let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
             sync_theme(shell.config.theme, window, cx);
         });
-        let shell = cx.entity().downgrade();
-        let keystrokes = gpui_kit::App::observe_keystrokes(cx, move |_, _, cx| {
-            let _ = shell.update(cx, Self::dismiss_ready_status);
+        let keystrokes = gpui_kit::App::observe_keystrokes(cx, |_, window, cx| {
+            Self::dismiss_window_ready_status(window, cx);
         });
         let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
@@ -460,11 +458,11 @@ impl Shell {
         cx.notify();
     }
 
-    /// Dismiss the ready status in the window a global event arrived for.
+    /// Dismiss the ready status in the window an event arrived for.
     ///
     /// The window root is a `Root` whose child is the shell; this is the one
-    /// place that resolves the shell through it, for interceptors registered
-    /// before any window exists and aimed at whichever window they hit.
+    /// place that resolves the shell through it, for observers that fire for
+    /// whichever window an event hit rather than the window that registered them.
     fn dismiss_window_ready_status(window: &Window, cx: &mut gpui_kit::App) {
         if let Some(Some(root)) = window.root::<Root>() {
             root.update(cx, |root, cx| {

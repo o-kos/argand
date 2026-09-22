@@ -472,6 +472,9 @@ impl Shell {
             window_decorations: Some(WindowDecorations::Client),
             titlebar: Some(TitleBar::title_bar_options()),
             app_id: Some(APP_ID.into()),
+            // The frame draws its shadow into the client inset; an opaque
+            // surface would show that ring as a solid border instead.
+            window_background: WindowBackgroundAppearance::Transparent,
             ..Default::default()
         };
         cx.defer(move |cx| {
