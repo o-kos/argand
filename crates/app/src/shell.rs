@@ -25,8 +25,9 @@ use gpui_kit::{
     Action, AppContext, Bounds, Context, Corners, ExternalPaths, FocusHandle, FontWeight,
     InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement, PathPromptOptions,
     Pixels, Render, RenderImage, StatefulInteractiveElement, Styled, Subscription, Task,
-    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations, WindowOptions, actions,
-    canvas, div, point, prelude::FluentBuilder, px, size,
+    TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds,
+    WindowDecorations, WindowOptions, actions, canvas, div, point, prelude::FluentBuilder, px,
+    size,
 };
 
 use crate::settings::Settings;
@@ -203,6 +204,9 @@ fn window_options(saved: &Session, displays: &[Geometry]) -> WindowOptions {
         }),
         app_id: Some(APP_ID.into()),
         window_min_size: Some(size(px(640.0), px(400.0))),
+        // The frame draws its shadow into the client inset; an opaque
+        // surface would show that ring as a solid border instead.
+        window_background: WindowBackgroundAppearance::Transparent,
         ..Default::default()
     }
 }

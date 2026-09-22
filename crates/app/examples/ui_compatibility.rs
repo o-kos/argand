@@ -25,8 +25,8 @@ use gpui_kit::{
     Anchor, App, AppContext as _, Bounds, Context, CursorStyle, Entity, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent,
     ParentElement as _, Pixels, Point, Render, StatefulInteractiveElement as _, Styled as _,
-    Subscription, Window, WindowBounds, WindowDecorations, WindowOptions, actions, canvas, div,
-    hsla, px, size,
+    Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+    WindowOptions, actions, canvas, div, hsla, px, size,
 };
 use model::{NumberStep, NumberValidation, Orientation, PlotPoint, ProbeModel, ZoomDirection};
 
@@ -1218,6 +1218,7 @@ fn window_options(cx: &App) -> WindowOptions {
         window_decorations: Some(WindowDecorations::Client),
         titlebar: Some(TitleBar::title_bar_options()),
         app_id: Some(APP_ID.into()),
+        window_background: WindowBackgroundAppearance::Transparent,
         ..Default::default()
     }
 }
