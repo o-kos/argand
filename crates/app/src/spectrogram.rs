@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use argand_core::SpectrogramImage;
-use gpui::{Bounds, Corners, Pixels, RenderImage, Window, point, size};
+use gpui_kit::{Bounds, Corners, Pixels, RenderImage, Window, point, size};
 
 /// Bytes per pixel in both orders.
 const CHANNELS: usize = 4;
@@ -53,8 +53,10 @@ pub fn paint(texture: Arc<RenderImage>, bounds: Bounds<Pixels>, window: &mut Win
             bounds.size.height + padding.y * 2.0,
         ),
     };
-    window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
-        if let Err(error) = window.paint_image(padded, Corners::default(), texture, 0, false) {
+    window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
+        if let Err(error) =
+            window.paint_image(padded, padded, Corners::default(), texture, 0, false)
+        {
             tracing::warn!(%error, "cannot draw the spectrogram");
         }
     });

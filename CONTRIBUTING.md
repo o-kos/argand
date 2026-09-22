@@ -73,7 +73,7 @@ the label does not itself promise that an Issue is scheduled.
 ### UI component selection
 
 Prefer standard gpui-component controls and GPUI interaction mechanisms. Inspect the
-locked toolkit implementation and try its supported styling, composition and
+toolkit implementation and try its supported styling, composition and
 configuration before proposing a custom equivalent. Different colors, spacing or
 geometry are not by themselves a reason to replace standard interaction behavior.
 

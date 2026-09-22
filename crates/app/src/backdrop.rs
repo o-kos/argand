@@ -279,7 +279,7 @@ impl Backdrop {
     pub(super) fn paint(
         &self,
         frame: &axes::Frame,
-        origin: gpui::Point<Pixels>,
+        origin: gpui_kit::Point<Pixels>,
         height: f32,
         shown: crate::navigation::PictureView,
         foreground: Option<crate::navigation::PictureView>,
@@ -303,7 +303,7 @@ impl Backdrop {
                 ],
                 orientation,
             );
-            window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
+            window.with_content_mask(Some(gpui_kit::ContentMask { bounds: clip }), |window| {
                 if let Some(deep) = &self.deep {
                     deep.paint(plot, shown, orientation, window);
                 } else {

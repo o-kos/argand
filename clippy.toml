@@ -11,7 +11,9 @@ too-many-arguments-threshold = 7
 too-many-lines-threshold = 100
 
 # Clippy's own default, and it earns its keep as a backstop rather than a
-# day-to-day check: nothing in the workspace currently reaches it.
+# day-to-day check: nothing in the workspace currently reaches it. The
+# gpui-pre family enables tracing's log shim, whose expansion adds one
+# nesting point per tracing event call to the measured score.
 cognitive-complexity-threshold = 25
 
 # Five, not the four originally proposed. At four the lint fires on `if`/`else`

@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use gpui::Context;
+use gpui_kit::Context;
 
 pub fn watch_ui<T: 'static>(cx: &Context<T>) {
     if !tracing::enabled!(target: "argand::ui_latency", tracing::Level::TRACE) {

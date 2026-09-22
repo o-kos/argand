@@ -2,9 +2,9 @@
 
 use super::{navigation_ui::*, *};
 use crate::app_menu::{self, Effect, Item, Kind, Menu};
-use gpui::{AnyElement, KeyDownEvent, ScrollHandle, deferred, img};
-use gpui_component::button::ButtonCustomVariant;
-use gpui_component::{Disableable, Icon, IconName};
+use gpui_kit::component::button::ButtonCustomVariant;
+use gpui_kit::component::{Disableable, Icon, IconName};
+use gpui_kit::{AnyElement, KeyDownEvent, ScrollHandle, deferred, img};
 use std::{cell::Cell, rc::Rc};
 
 actions!(application_menu, [OpenApplicationMenu]);
@@ -95,7 +95,7 @@ impl Shell {
 
     pub(super) fn dismiss_application_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.application_menu.take().is_some() {
-            window.focus(&self.focus);
+            window.focus(&self.focus, cx);
             self.title_drag_pending = false;
             cx.notify();
         }
@@ -112,11 +112,11 @@ impl Shell {
             return;
         }
         if let Some(menu) = self.open_menu.take() {
-            let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
+            let _ = menu.update(cx, |_, cx| cx.emit(gpui_kit::DismissEvent));
         }
         self.recent_files.refresh(&self.session.recent);
         let focus = cx.focus_handle();
-        window.focus(&focus);
+        window.focus(&focus, cx);
         self.application_menu = Some(ApplicationMenu {
             model: Menu::new(self.application_items()),
             focus,
@@ -198,6 +198,8 @@ impl Shell {
         let anchor = self.application_menu_anchor.clone();
         let mut app = Button::new("application-menu-button")
             .custom(toolbar_style(self.application_menu.is_some(), cx))
+            .border_1()
+            .border_color(toolbar_border(self.application_menu.is_some(), cx))
             .small()
             .w(app_button_width(window, cx))
             .px(px(6.))
@@ -216,7 +218,7 @@ impl Shell {
                 .upgrade()
                 .is_some_and(|shell| shell.read(cx).application_menu.is_some());
             if open {
-                gpui::AnyView::from(cx.new(|_| NoTooltip))
+                gpui_kit::AnyView::from(cx.new(|_| NoTooltip))
             } else {
                 shortcut_tooltip(
                     "Application menu".to_owned(),
@@ -302,12 +304,14 @@ impl Shell {
         let hover_foreground = toolbar_accent(cx);
         let mut button = Button::new(id)
             .custom(toolbar_style(selected, cx))
+            .border_1()
+            .border_color(toolbar_border(selected, cx))
             .small()
             .w(px(26.))
             .h(px(26.))
             .px_0()
             .child(
-                gpui::svg()
+                gpui_kit::svg()
                     .path(icon)
                     .size(px(20.))
                     .id((id, 0_usize))
@@ -321,7 +325,7 @@ impl Shell {
             )
             .disabled(!enabled)
             .on_click(cx.listener(move |shell, _, window, cx| {
-                window.focus(&shell.focus);
+                window.focus(&shell.focus, cx);
                 window.dispatch_action(action.boxed_clone(), cx);
             }));
         button.interactivity().tooltip(move |window, cx| {
@@ -572,9 +576,9 @@ fn menu_width(
     items: &[Item<Command>],
     focus: &FocusHandle,
     window: &mut Window,
-    cx: &mut gpui::App,
+    cx: &mut gpui_kit::App,
 ) -> f32 {
-    let style = gpui::TextStyle {
+    let style = gpui_kit::TextStyle {
         font_family: cx.theme().font_family.clone(),
         ..Default::default()
     };
@@ -609,13 +613,13 @@ fn menu_width(
         .min(420.)
 }
 
-pub(super) fn toolbar_width(window: &Window, cx: &gpui::App) -> Pixels {
+pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App) -> Pixels {
     // Three controls, separator, three gaps and the separator's two margins.
     app_button_width(window, cx) + px(26. * 2. + 1.) + window.rem_size() * 1.25
 }
 
-fn app_button_width(window: &Window, cx: &gpui::App) -> Pixels {
-    let style = gpui::TextStyle {
+fn app_button_width(window: &Window, cx: &gpui_kit::App) -> Pixels {
+    let style = gpui_kit::TextStyle {
         font_family: cx.theme().font_family.clone(),
         ..Default::default()
     };
@@ -629,7 +633,7 @@ fn app_button_width(window: &Window, cx: &gpui::App) -> Pixels {
     label.width.ceil() + px(22. + 12. + 2.) + window.rem_size() * 0.25
 }
 
-pub(super) fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {
+pub(super) fn toolbar_accent(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     if cx.theme().is_dark() {
         cx.theme().blue_light
     } else {
@@ -637,7 +641,7 @@ pub(super) fn toolbar_accent(cx: &gpui::App) -> gpui::Hsla {
     }
 }
 
-pub(super) fn toolbar_style(selected: bool, cx: &gpui::App) -> ButtonCustomVariant {
+pub(super) fn toolbar_style(selected: bool, cx: &gpui_kit::App) -> ButtonCustomVariant {
     let accent = toolbar_accent(cx);
     ButtonCustomVariant::new(cx)
         .color(if selected {
@@ -646,20 +650,26 @@ pub(super) fn toolbar_style(selected: bool, cx: &gpui::App) -> ButtonCustomVaria
             cx.theme().title_bar.darken(0.035)
         })
         .foreground(cx.theme().foreground.darken(0.12))
-        .border(if selected {
-            accent.opacity(0.55)
-        } else {
-            cx.theme().border
-        })
         .hover(accent.opacity(0.32))
         .active(accent.opacity(0.44))
+}
+
+/// The selected-state outline. `ButtonCustomVariant` no longer carries a
+/// border, so the button carries it through its own style refinement, which
+/// the component applies after its theme styles.
+pub(super) fn toolbar_border(selected: bool, cx: &gpui_kit::App) -> gpui_kit::Hsla {
+    if selected {
+        toolbar_accent(cx).opacity(0.55)
+    } else {
+        cx.theme().border
+    }
 }
 
 /// The tooltip stand-in for the pressed application button: renders nothing.
 struct NoTooltip;
 
-impl gpui::Render for NoTooltip {
+impl gpui_kit::Render for NoTooltip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        gpui::div()
+        gpui_kit::div()
     }
 }

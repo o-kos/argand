@@ -1,9 +1,9 @@
 //! Shared keycap colours and measurement, preserving the toolkit typography.
 
-use gpui::{
+use gpui_kit::component::{ActiveTheme, kbd::Kbd};
+use gpui_kit::{
     Action, App, AvailableSpace, IntoElement, Keystroke, Pixels, Styled, Window, relative, size,
 };
-use gpui_component::{ActiveTheme, kbd::Kbd};
 
 /// Uniform keycap names for the symbol zoom keys.
 ///

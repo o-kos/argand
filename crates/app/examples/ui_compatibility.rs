@@ -1,16 +1,15 @@
 //! Runnable stock-control compatibility probe for Issue #126.
+//!
+//! Since #137 the example opens two windows: the stock Root composition from
+//! the locked-stack baseline, and a borderless `Root::bordered(false)` window
+//! whose frame is the production `argand::chrome::Frame`, which is what #127
+//! will adopt.
 
 #[path = "ui_compatibility/model.rs"]
 mod model;
 
-use gpui::{
-    App, AppContext as _, Application, Bounds, Context, Corner, CursorStyle, Entity, FocusHandle,
-    Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent,
-    MouseMoveEvent, ParentElement as _, Pixels, Point, Render, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Window, WindowBounds, WindowDecorations, WindowOptions, actions,
-    canvas, div, hsla, px, size,
-};
-use gpui_component::{
+use argand::chrome;
+use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, IndexPath, Root, Selectable as _, Theme,
     ThemeMode, TitleBar, WindowExt as _,
     button::{Button, ButtonVariants as _},
@@ -21,6 +20,13 @@ use gpui_component::{
     resizable::{ResizablePanelGroup, ResizableState, h_resizable, resizable_panel, v_resizable},
     select::{Select, SelectState},
     tooltip::Tooltip,
+};
+use gpui_kit::{
+    Anchor, App, AppContext as _, Bounds, Context, CursorStyle, Entity, FocusHandle, Focusable,
+    InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent,
+    ParentElement as _, Pixels, Point, Render, StatefulInteractiveElement as _, Styled as _,
+    Subscription, Window, WindowBounds, WindowDecorations, WindowOptions, actions, canvas, div,
+    hsla, px, size,
 };
 use model::{NumberStep, NumberValidation, Orientation, PlotPoint, ProbeModel, ZoomDirection};
 
@@ -42,11 +48,18 @@ struct Fixture {
     plot_focus: FocusHandle,
     plot_bounds: Option<Bounds<Pixels>>,
     popover_crash_probe: bool,
+    /// Render inside the production chrome frame instead of the stock TitleBar.
+    borderless: bool,
     _subscriptions: Vec<Subscription>,
 }
 
 impl Fixture {
-    fn new(popover_crash_probe: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(
+        popover_crash_probe: bool,
+        borderless: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let number_input = cx.new(|cx| InputState::new(window, cx).default_value("2048"));
         let select_input = cx.new(|cx| {
             SelectState::new(
@@ -114,6 +127,8 @@ impl Fixture {
         ];
 
         Self {
+            borderless,
+
             model: ProbeModel::default(),
             number_input,
             select_input,
@@ -184,7 +199,7 @@ impl Fixture {
         let Some(point) = self.plot_point(event.position) else {
             return;
         };
-        self.plot_focus.focus(window);
+        self.plot_focus.focus(window, cx);
         self.model.press_pointer(point);
         cx.notify();
     }
@@ -321,7 +336,7 @@ impl Fixture {
             .on_click(cx.listener(|fixture, _, _, cx| fixture.toggle_orientation(cx)))
     }
 
-    fn popover_probe_control(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn popover_probe_control(&self, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
         if self.popover_crash_probe {
             return self.editor_popover(cx).into_any_element();
         }
@@ -374,7 +389,7 @@ impl Fixture {
             let focus_owner = control_focus_owner(&number_input, &select_input, window, cx);
             let confirmed_number = number_input.clone();
             dialog
-                .confirm()
+                .button_props(gpui_kit::component::dialog::DialogButtonProps::default().show_cancel(true))
                 .title("Standard modal Dialog comparison")
                 .child(
                     div()
@@ -409,7 +424,7 @@ impl Fixture {
         let select_input = self.select_input.clone();
         let number_validation = self.model.number_validation;
         Popover::new("retained-editor-popover")
-            .anchor(Corner::TopLeft)
+            .anchor(Anchor::TopLeft)
             .track_focus(&number_input.focus_handle(cx))
             .trigger(
                 Button::new("open-editor-popover")
@@ -542,7 +557,7 @@ impl Fixture {
                     fixture.pointer_pressed(event, window, cx);
                 }),
             )
-            .on_click(cx.listener(|fixture, event: &gpui::ClickEvent, _, cx| {
+            .on_click(cx.listener(|fixture, event: &gpui_kit::ClickEvent, _, cx| {
                 fixture.pointer_clicked(event.position(), cx);
             }))
             .on_scroll_wheel(cx.listener(|fixture, _, _, cx| {
@@ -563,7 +578,7 @@ impl Fixture {
                     .py_1()
                     .rounded_sm()
                     .bg(hsla(0.0, 0.0, 0.02, 0.76))
-                    .text_color(gpui::white())
+                    .text_color(gpui_kit::white())
                     .text_xs()
                     .child(if show_alt_guides {
                         self.model
@@ -924,23 +939,26 @@ impl Fixture {
 
 impl Render for Fixture {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .bg(cx.theme().background)
-            .text_color(cx.theme().foreground)
-            .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
-            .child(
-                TitleBar::new().child(
+        let titlebar = (!self.borderless).then(|| {
+            TitleBar::new()
+                .child(
                     div()
                         .flex()
                         .items_center()
                         .h_full()
                         .text_sm()
                         .child("Argand UI compatibility fixture"),
-                ),
-            )
+                )
+                .into_any_element()
+        });
+        let column = div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
+            .children(titlebar)
             .child(self.toolbar(cx))
             .child(self.popover_probe_notice(cx))
             .child(self.window_metrics(window, cx))
@@ -950,7 +968,17 @@ impl Render for Fixture {
                     .min_h_0()
                     .child(self.resizable_group(window, cx)),
             )
-            .children(Root::render_dialog_layer(window, cx))
+            .children(Root::render_dialog_layer(window, cx));
+        // The borderless window is framed by the production chrome -- the
+        // composition #127 will adopt -- while the stock window keeps the
+        // TitleBar baseline the locked-stack checkpoint measured.
+        if self.borderless {
+            chrome::Frame::for_window(window)
+                .render(column, cx)
+                .into_any_element()
+        } else {
+            column.into_any_element()
+        }
     }
 }
 
@@ -1003,7 +1031,7 @@ fn number_feedback(validation: NumberValidation, cx: &App) -> impl IntoElement {
 
 fn menu_action(
     label: &'static str,
-    owner: gpui::WeakEntity<Fixture>,
+    owner: gpui_kit::WeakEntity<Fixture>,
     action: &'static str,
 ) -> PopupMenuItem {
     PopupMenuItem::new(label).on_click(move |_, _, cx| {
@@ -1015,7 +1043,7 @@ fn menu_action(
 
 fn plot_bounds_observer(
     known_bounds: Option<Bounds<Pixels>>,
-    owner: gpui::WeakEntity<Fixture>,
+    owner: gpui_kit::WeakEntity<Fixture>,
 ) -> impl IntoElement {
     canvas(
         move |bounds, _, cx| {
@@ -1041,14 +1069,14 @@ fn plot_bands() -> impl Iterator<Item = impl IntoElement> {
         div()
             .absolute()
             .left_0()
-            .top(gpui::relative(index as f32 / 12.0))
+            .top(gpui_kit::relative(index as f32 / 12.0))
             .w_full()
-            .h(gpui::relative(1.0 / 12.0))
+            .h(gpui_kit::relative(1.0 / 12.0))
             .bg(hsla(hue, 0.68, 0.12 + index as f32 * 0.012, 1.0))
     })
 }
 
-fn plot_grid(bounds: Option<Bounds<Pixels>>, cx: &App) -> Vec<gpui::AnyElement> {
+fn plot_grid(bounds: Option<Bounds<Pixels>>, cx: &App) -> Vec<gpui_kit::AnyElement> {
     let Some(bounds) = bounds else {
         return Vec::new();
     };
@@ -1085,7 +1113,7 @@ fn plot_grid(bounds: Option<Bounds<Pixels>>, cx: &App) -> Vec<gpui::AnyElement> 
 fn section_title(title: &'static str, cx: &App) -> impl IntoElement {
     div()
         .text_sm()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
         .text_color(cx.theme().foreground)
         .child(title)
 }
@@ -1147,18 +1175,31 @@ fn window_summary(window: &Window) -> String {
 
 fn main() {
     let popover_crash_probe = std::env::args().any(|argument| argument == "--popover-crash-probe");
-    Application::new()
-        .with_assets(gpui_component_assets::Assets)
+    gpui_kit::application()
+        .with_assets(gpui_kit::assets::Assets)
         .run(move |cx| {
-            gpui_component::init(cx);
+            gpui_kit::init(cx);
             cx.bind_keys([KeyBinding::new("p", PlotProbeKey, Some(PLOT_KEY_CONTEXT))]);
             Theme::change(ThemeMode::Light, None, cx);
             let options = window_options(cx);
+            // The borderless window is offset a little so both compositions
+            // are on screen together: the stock Root beside the borderless
+            // one is the before/after the #137 checkpoint asks for.
+            let mut borderless_options = window_options(cx);
+            if let Some(WindowBounds::Windowed(ref mut bounds)) = borderless_options.window_bounds {
+                bounds.origin.x += px(48.);
+                bounds.origin.y += px(48.);
+            }
             cx.spawn(async move |cx| {
                 cx.open_window(options, |window, cx| {
                     window.set_window_title("Argand UI compatibility fixture");
-                    let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, window, cx));
+                    let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, false, window, cx));
                     cx.new(|cx| Root::new(fixture, window, cx))
+                })?;
+                cx.open_window(borderless_options, |window, cx| {
+                    window.set_window_title("Argand fixture: borderless Root");
+                    let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, true, window, cx));
+                    cx.new(|cx| Root::new(fixture, window, cx).bordered(false))
                 })?;
                 Ok::<_, anyhow::Error>(())
             })

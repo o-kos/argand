@@ -14,7 +14,9 @@
 //! running one. [`Labels`] and [`paint`] need both.
 
 use argand_core::axis::{self, Axis, AxisKind, LabelMeasure, LabelMetrics, LabelRun, Tick};
-use gpui::{App, Bounds, Font, FontId, Hsla, Pixels, Point, Size, Window, fill, point, px, size};
+use gpui_kit::{
+    App, Bounds, Font, FontId, Hsla, Pixels, Point, Size, Window, fill, point, px, size,
+};
 
 #[path = "cursor_guides.rs"]
 mod cursor_guides;
@@ -402,7 +404,7 @@ fn ruler_gutter(
 /// chosen for a user interface, which is why it is named here rather than
 /// solved.
 pub struct Labels {
-    text: std::sync::Arc<gpui::WindowTextSystem>,
+    text: std::sync::Arc<gpui_kit::WindowTextSystem>,
     font: Font,
     font_id: FontId,
     /// The digit every other digit is measured as.
@@ -431,8 +433,8 @@ impl Labels {
     }
 
     /// One label, shaped and ready to paint.
-    fn shape(&self, text: &str, color: Hsla) -> gpui::ShapedLine {
-        let run = gpui::TextRun {
+    fn shape(&self, text: &str, color: Hsla) -> gpui_kit::ShapedLine {
+        let run = gpui_kit::TextRun {
             len: text.len(),
             font: self.font.clone(),
             color,
@@ -449,7 +451,7 @@ impl Labels {
     /// A label is placed by the ink a digit puts on the canvas, which is
     /// neither the line box nor the em: a row of figures carries no descender
     /// and no ascender, so centring the box would sit every label low.
-    fn line_top(&self, y: f32, line: &gpui::ShapedLine) -> f32 {
+    fn line_top(&self, y: f32, line: &gpui_kit::ShapedLine) -> f32 {
         let size = px(LABEL_SIZE);
         let cap = f32::from(self.text.cap_height(self.font_id, size));
         // Painting uses the shaped line's metrics, which can differ from the
@@ -466,7 +468,7 @@ const LINE_HEIGHT: f32 = LABEL_SIZE * 1.4;
 ///
 /// Whatever the theme asked for is kept: this adds one feature rather than
 /// replacing the set, so a face configured with ligatures off stays that way.
-fn tabular(features: &gpui::FontFeatures) -> gpui::FontFeatures {
+fn tabular(features: &gpui_kit::FontFeatures) -> gpui_kit::FontFeatures {
     const TABULAR: &str = "tnum";
     let mut tags: Vec<(String, u32)> = features
         .tag_value_list()
@@ -475,10 +477,10 @@ fn tabular(features: &gpui::FontFeatures) -> gpui::FontFeatures {
         .cloned()
         .collect();
     tags.push((TABULAR.to_owned(), 1));
-    gpui::FontFeatures(std::sync::Arc::new(tags))
+    gpui_kit::FontFeatures(std::sync::Arc::new(tags))
 }
 
-fn advance(text: &gpui::WindowTextSystem, font_id: FontId, digit: char) -> f32 {
+fn advance(text: &gpui_kit::WindowTextSystem, font_id: FontId, digit: char) -> f32 {
     text.advance(font_id, px(LABEL_SIZE), digit)
         .map_or(0.0, |size| f32::from(size.width))
 }
@@ -502,7 +504,7 @@ impl LabelMeasure for Labels {
                 }
             })
             .collect();
-        let run = gpui::TextRun {
+        let run = gpui_kit::TextRun {
             len: uniform.len(),
             font: self.font.clone(),
             color: Hsla::default(),
@@ -534,6 +536,24 @@ pub struct Colors {
     /// The ticks outside it.
     pub tick: Hsla,
     pub label: Hsla,
+}
+
+/// Paint one shaped label left-aligned at `at`, the only way axis text is
+/// drawn here.
+fn paint_label(
+    shaped: &gpui_kit::ShapedLine,
+    at: Point<Pixels>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let _ = shaped.paint(
+        at,
+        px(LINE_HEIGHT),
+        gpui_kit::TextAlign::Left,
+        None,
+        window,
+        cx,
+    );
 }
 
 /// Draw the grid, the ticks and the labels around a plot.
@@ -607,12 +627,7 @@ pub fn paint(
             } else {
                 (x + LABEL_PAD, y + 0.5)
             };
-            let _ = shaped.paint(
-                at(left, labels.line_top(row, &shaped)),
-                px(LINE_HEIGHT),
-                window,
-                cx,
-            );
+            paint_label(&shaped, at(left, labels.line_top(row, &shaped)), window, cx);
         }
     }
 
@@ -628,12 +643,12 @@ pub fn paint(
     );
 
     let shaped = labels.shape(frame.time_caption, colors.label);
-    let _ = shaped.paint(
+    paint_label(
+        &shaped,
         at(
             plot.right() + LABEL_PAD,
             labels.line_top(frame.time_caption_row, &shaped),
         ),
-        px(LINE_HEIGHT),
         window,
         cx,
     );
@@ -644,7 +659,7 @@ pub fn paint(
         let shaped = labels.shape(caption, colors.label);
         let left = frame.caption_x;
         let top = labels.line_top(frame.caption_row, &shaped);
-        let _ = shaped.paint(at(left, top), px(LINE_HEIGHT), window, cx);
+        paint_label(&shaped, at(left, top), window, cx);
     }
 }
 

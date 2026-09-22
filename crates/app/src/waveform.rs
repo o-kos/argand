@@ -1,7 +1,7 @@
 //! Full-capture minimap geometry is cached separately from the viewport overlay.
 
 use crate::{axes::Frame, minimap, navigation::View};
-use gpui::{Bounds, Pixels, Point, Rgba, Window, fill, point, px, size};
+use gpui_kit::{Bounds, Pixels, Point, Rgba, Window, fill, point, px, size};
 use std::sync::{Arc, Mutex};
 
 pub struct Waveform {
@@ -112,7 +112,7 @@ impl Waveform {
 pub struct Panel {
     pub waveform: Option<Arc<Waveform>>,
     pub viewport: Option<(View, u64)>,
-    pub separator: gpui::Hsla,
+    pub separator: gpui_kit::Hsla,
     pub ink: Ink,
 }
 

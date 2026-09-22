@@ -336,6 +336,16 @@ impl Default for Session {
     }
 }
 
+/// What the file's own version says about this binary.
+enum VersionGate {
+    /// A layout this binary reads.
+    Readable,
+    /// A layout from a newer binary, which must be left alone.
+    ForeignVersion,
+    /// Not parseable at all; nothing worth keeping.
+    Corrupt,
+}
+
 impl Session {
     /// Read the session, falling back to defaults for every failure.
     ///
@@ -348,30 +358,64 @@ impl Session {
             writable: true,
         };
 
-        let text = match std::fs::read_to_string(path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                tracing::debug!(path = %path.display(), "no session yet, starting fresh");
-                return fresh;
-            }
-            Err(error) => {
-                tracing::warn!(path = %path.display(), %error, "cannot read session, starting fresh");
-                return fresh;
-            }
-        };
-
         // The version is read on its own, before anything else is asked of the
         // text. A file from a newer layout is exactly the file whose *other*
         // fields this version cannot parse, so a single parse would fail on
         // them and report a corrupt session -- and then overwrite it, which is
         // the one thing that must not happen to a file another version wrote.
+        let Some(text) = Self::read_text(path) else {
+            return fresh;
+        };
+        match Self::version_gate(path, &text) {
+            VersionGate::Readable => {}
+            // A newer binary's session is left alone and closed to writing,
+            // so this run never overwrites what it cannot parse.
+            VersionGate::ForeignVersion => {
+                return Restored {
+                    session: Self::default(),
+                    writable: false,
+                };
+            }
+            // Corrupt at the version probe: nothing worth keeping, and free
+            // to write over.
+            VersionGate::Corrupt => return fresh,
+        }
+        let Some(session) = Self::parse_payload(path, &text) else {
+            return fresh;
+        };
+        Restored {
+            session,
+            writable: true,
+        }
+    }
+
+    /// The file's text, or nothing when there is no session to read.
+    ///
+    /// A missing file is the ordinary first run and stays quiet at debug
+    /// level; anything else is warned about. Both leave the session writable.
+    fn read_text(path: &Path) -> Option<String> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => Some(text),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                tracing::debug!(path = %path.display(), "no session yet, starting fresh");
+                None
+            }
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "cannot read session, starting fresh");
+                None
+            }
+        }
+    }
+
+    /// Probe the file's version before anything else is parsed from it.
+    fn version_gate(path: &Path, text: &str) -> VersionGate {
         #[derive(Deserialize)]
         struct Versioned {
             version: u32,
         }
 
-        match toml::from_str::<Versioned>(&text) {
-            Ok(Versioned { version }) if READABLE.contains(&version) => {}
+        match toml::from_str::<Versioned>(text) {
+            Ok(Versioned { version }) if READABLE.contains(&version) => VersionGate::Readable,
             Ok(Versioned { version }) => {
                 tracing::warn!(
                     path = %path.display(),
@@ -379,34 +423,30 @@ impl Session {
                     expected = VERSION,
                     "session written by another version; starting fresh and leaving it alone"
                 );
-                return Restored {
-                    session: Self::default(),
-                    writable: false,
-                };
+                VersionGate::ForeignVersion
             }
             Err(error) => {
                 tracing::warn!(path = %path.display(), %error, "corrupt session, starting fresh");
-                return fresh;
+                VersionGate::Corrupt
             }
         }
+    }
 
-        match toml::from_str::<Self>(&text) {
-            // Read at whatever version wrote it, written back at this one:
-            // anything an older layout did not have is at its default, which
-            // is what an absent field means.
-            Ok(session) => Restored {
-                session: Self {
-                    version: VERSION,
-                    waveform_fraction: session
-                        .waveform_fraction
-                        .filter(|value| value.is_finite() && (0.0..=1.0).contains(value)),
-                    ..session
-                },
-                writable: true,
-            },
+    /// The payload parse: whatever an older layout did not have lands at its
+    /// default, which is what an absent field means, and the result is
+    /// written back at this binary's version.
+    fn parse_payload(path: &Path, text: &str) -> Option<Session> {
+        match toml::from_str::<Self>(text) {
+            Ok(mut session) => {
+                session.version = VERSION;
+                session.waveform_fraction = session
+                    .waveform_fraction
+                    .filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
+                Some(session)
+            }
             Err(error) => {
                 tracing::warn!(path = %path.display(), %error, "corrupt session, starting fresh");
-                fresh
+                None
             }
         }
     }
