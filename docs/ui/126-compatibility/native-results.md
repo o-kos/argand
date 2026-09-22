@@ -146,3 +146,26 @@ adopt the locked Root in production, copy the private controls, patch Cargo regi
 sources or claim a visual pass. Test shared hover/active tokens as a whole-interface
 palette change, not a one-control disguise. #137 must establish supported borderless
 Root behavior and fresh native evidence before #127 changes production ownership.
+
+## Gate termination and not-exercised cases
+
+Owner decision, 2026-09-22: the compatibility gate terminates on the recorded
+NO-GO verdict. Further measurement on the locked 0.2.2 stack is not invested in;
+all further compatibility hypotheses are made on the GPUI 0.3.x stack, and #137
+re-owns fixture evidence there. The following cases were never exercised on the
+locked stack and are recorded as such, not as passes:
+
+- Full R1–R3 frame hitbox matrix: move/resize edges and corners, diagonal corner
+  targets, maximize/restore/fullscreen/tiling transitions and title-bar gesture
+  isolation. The owner's qualitative fixture-versus-production report stands
+  without captured coordinates or screenshots and is not a measurement row.
+- F2/F3 input: complete focus-restoration, nested Select/menu Escape, clipboard,
+  IME, numeric-validation and Tab-traversal passes. Only the specific sequences
+  listed above ran.
+- P1/P2: complete popover/control event-isolation and passive-hint compatibility
+  passes, including sustained covered-tooltip click/wheel behavior.
+- Standard Button visual-state matrix, resizable horizontal/vertical minimum
+  sizes, live dimensions versus callbacks, mouse-up outside and focus loss.
+- Compact-layout geometry rows beyond the recorded 720×520 content size.
+- Windows and macOS natively; Linux compositors beyond the recorded
+  GNOME/Wayland desktop and the isolated GPU-backed Sway session.

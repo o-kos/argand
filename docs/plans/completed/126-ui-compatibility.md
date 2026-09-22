@@ -80,14 +80,17 @@ Inspected locked APIs (GPUI 0.2.2 / gpui-component 0.5.1):
       source evidence, native results and a go/no-go decision for the locked stack.
 - [x] Exercise the current application baseline and fixture on available native
       environments without confusing historical screenshots with current evidence.
-- [ ] Obtain missing native coverage before marking the compatibility gate complete;
-      list unavailable cases as not exercised. Unresolved failures block direct
-      production Root adoption on the locked stack and feed #137's migration oracle.
+- [x] Owner decision, 2026-09-22: terminate the gate on the recorded NO-GO verdict
+      instead of investing further measurement in the locked 0.2.2 stack; all further
+      compatibility hypotheses are made on GPUI 0.3.x. Cases never exercised are
+      listed as such in `native-results.md`, and #137 re-owns fixture evidence on
+      the migrated stack.
 - [x] Run local gate, rebuild current releases/examples, inspect the diff and complete
       external review before presenting the implementation for owner acceptance.
 - [x] Publish/update a Draft PR linked to #126. Do not close #124 or implement #137 here.
-- [ ] Move this plan to completed only once all required compatibility evidence and
-      decisions exist; a working fixture with incomplete evidence stays an open Draft.
+- [x] Move this plan to completed with the gate-termination decision recorded; a
+      working fixture with incomplete evidence stayed an open Draft only until the
+      owner resolved the gate.
 
 ## Validation
 
@@ -158,27 +161,26 @@ reason to retain or replace a window-control implementation by itself.
 - [x] `cargo test -p argand --example ui_compatibility --locked`
 - [x] `cargo build --release --locked`, after checks pass
 - [x] `cargo build -p argand --example ui_compatibility --release --locked`
-- [ ] Native R1/R2/R3: Root identity, single frame, move/resize edges/corners,
-      maximize/restore/fullscreen/tiling and title-bar gesture isolation.
-- [ ] Native F2/F3: cursor/selection, clipboard, undo, IME, numeric validation,
-      Tab traversal, nested Select/menu Escape and focus restoration.
-- [ ] Native P1/P2: popover/control event isolation; passive hint cursor/Alt-guide
-      behavior and independent click/wheel compatibility observations.
-- [ ] Native standard Button visual states and resizable horizontal/vertical minimum
-      sizes, live dimensions versus callbacks, mouse-up outside and focus loss.
-- [ ] Report rows use case, build, OS/backend/compositor, scale/theme/orientation,
+- [x] Native R1/R2/R3, F2/F3, P1/P2 and resizable/Button rows: terminated
+      unexercised on the locked stack by the 2026-09-22 owner decision. The
+      exercised subsets and the explicit not-exercised list live in
+      `docs/ui/126-compatibility/native-results.md`; no unexercised case is
+      recorded as passed anywhere.
+- [x] Report rows use case, build, OS/backend/compositor, scale/theme/orientation,
       preconditions, input, expected/observed result, pass/fail/not-exercised and
       evidence. No skipped or inferred native check is marked passed.
-- [ ] Full CI on an up-to-date final revision and all required native evidence before
-      merge; Draft quick CI alone is not the compatibility gate.
+- [x] Full CI on the up-to-date final revision before merge; Draft quick CI alone
+      is not the compatibility gate.
 
 ## Post-completion
 
-Current blocker: opening the stock Select inside Popover reproducibly panics in
-the locked GPUI deferred drawing path. See
-[native evidence](../ui/126-compatibility/native-results.md). The compatibility
-gate is **NO-GO**, not complete; remaining platform/input checks are outstanding.
-Do not patch dependencies or substitute a custom control under this task.
+Final state: the compatibility gate is **NO-GO** and closed by the 2026-09-22
+owner decision. Opening the stock Select inside Popover reproducibly panics in
+the locked GPUI deferred drawing path, and the stock frame regresses current
+resize and bare-title behavior; both reasons stand unpatched and unresolved by
+design. Remaining platform/input checks were terminated unexercised rather than
+completed against a stack this decision abandons. Do not patch dependencies or
+substitute custom controls retroactively; the record above is the checkpoint.
 
 Link evidence from #124 and #126. Proceed through #137 to the aligned GPUI Kit /
 GPUI 0.3.x stack, then use #127 for borderless production Root ownership while
