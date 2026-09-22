@@ -6,6 +6,8 @@
 //! [`crate::analysis`], none of which know about a toolkit and all of which are
 //! tested without one. This module converts between those answers and GPUI.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -17,7 +19,7 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{
-    ActiveTheme, Colorize, InteractiveElementExt, Sizable, ThemeMode, TitleBar,
+    ActiveTheme, Colorize, InteractiveElementExt, Root, Sizable, ThemeMode, TitleBar,
 };
 use gpui_kit::{
     Action, AppContext, Bounds, Context, Corners, ExternalPaths, FocusHandle, FontWeight,
@@ -134,7 +136,13 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     "placing the window"
                 );
 
-                let opened = cx.open_window(options, |window, cx| {
+                // The shell is created first; Root strongly owns it as the
+                // window's root view. The slot carries the weak shell out of
+                // the constructor, which cannot return anything itself.
+                let shell_slot: Rc<RefCell<Option<WeakEntity<Shell>>>> =
+                    Rc::new(RefCell::new(None));
+                let slot = Rc::clone(&shell_slot);
+                let opened = cx.open_window(options, move |window, cx| {
                     tracing::debug!(
                         decorations = ?window.window_decorations(),
                         "the window is decorated by this side"
@@ -146,22 +154,23 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     if let Some(origin) = opening {
                         shell.update(cx, |shell, cx| shell.open(origin, window, cx));
                     }
-                    shell
+                    *slot.borrow_mut() = Some(shell.downgrade());
+                    cx.new(|cx| Root::new(shell, window, cx).bordered(false))
                 });
+                let shell = shell_slot.borrow_mut().take();
 
                 // A window that will not open is the end of the run, and a task
                 // whose error nobody reads would end it silently: there is nothing
                 // else this program does.
-                match opened {
-                    // The update itself cannot fail: the application is running
-                    // by construction while this task is alive.
-                    Ok(window) => cx.update(|cx| Shell::bind_choose_file(window, cx)),
-                    Err(error) => {
-                        tracing::error!(%error, "cannot open a window");
-                        cx.update(|cx| cx.quit());
+                let Err(error) = &opened else {
+                    if let Some(shell) = shell {
+                        cx.update(|cx| Shell::bind_choose_file(shell, cx));
                     }
-                }
-                Ok::<_, anyhow::Error>(())
+                    return Ok::<(), anyhow::Error>(());
+                };
+                tracing::error!(%error, "cannot open a window");
+                cx.update(|cx| cx.quit());
+                Ok::<(), anyhow::Error>(())
             })
             .detach();
         });
@@ -373,8 +382,9 @@ impl Shell {
         let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
             sync_theme(shell.config.theme, window, cx);
         });
-        let keystrokes = gpui_kit::App::observe_keystrokes(cx, |_, window, cx| {
-            Self::dismiss_window_ready_status(window, cx);
+        let shell = cx.entity().downgrade();
+        let keystrokes = gpui_kit::App::observe_keystrokes(cx, move |_, _, cx| {
+            let _ = shell.update(cx, Self::dismiss_ready_status);
         });
         let settings = Settings::restored(saved.analysis_settings, &config);
         Self {
@@ -440,24 +450,35 @@ impl Shell {
         cx.notify();
     }
 
+    /// Dismiss the ready status in the window a global event arrived for.
+    ///
+    /// The window root is a `Root` whose child is the shell; this is the one
+    /// place that resolves the shell through it, for interceptors registered
+    /// before any window exists and aimed at whichever window they hit.
     fn dismiss_window_ready_status(window: &Window, cx: &mut gpui_kit::App) {
-        if let Some(Some(shell)) = window.root::<Self>() {
-            shell.update(cx, Self::dismiss_ready_status);
+        if let Some(Some(root)) = window.root::<Root>() {
+            root.update(cx, |root, cx| {
+                if let Ok(shell) = root.view().clone().downcast::<Shell>() {
+                    shell.update(cx, Self::dismiss_ready_status);
+                }
+            });
         }
     }
 
-    fn ready_input_observer() -> impl IntoElement {
+    fn ready_input_observer(shell: WeakEntity<Self>) -> impl IntoElement {
         canvas(
             |_, _, _| (),
-            |_, _, window, _| {
-                window.on_mouse_event(|_: &gpui_kit::MouseDownEvent, phase, window, cx| {
+            move |_, _, window, _| {
+                let on_press = shell.clone();
+                window.on_mouse_event(move |_: &gpui_kit::MouseDownEvent, phase, _window, cx| {
                     if phase == gpui_kit::DispatchPhase::Capture {
-                        Self::dismiss_window_ready_status(window, cx);
+                        let _ = on_press.update(cx, Self::dismiss_ready_status);
                     }
                 });
-                window.on_mouse_event(|_: &gpui_kit::ScrollWheelEvent, phase, window, cx| {
+                let on_scroll = shell.clone();
+                window.on_mouse_event(move |_: &gpui_kit::ScrollWheelEvent, phase, _window, cx| {
                     if phase == gpui_kit::DispatchPhase::Capture {
-                        Self::dismiss_window_ready_status(window, cx);
+                        let _ = on_scroll.update(cx, Self::dismiss_ready_status);
                     }
                 });
             },
@@ -831,25 +852,45 @@ impl Drop for Shell {
 }
 
 impl Shell {
-    fn bind_choose_file(window: gpui_kit::WindowHandle<Self>, cx: &mut gpui_kit::App) {
+    /// Bind the app-level actions to this window's shell.
+    ///
+    /// Updates go through the weak shell inside its own window; a closed
+    /// window or a dropped shell makes the action a no-op.
+    fn bind_choose_file(shell: WeakEntity<Self>, cx: &mut gpui_kit::App) {
         // Popup focus sits outside the shell subtree; defer until dispatch releases the window.
-        cx.on_action(move |_: &ChooseFile, cx| {
-            cx.defer(move |cx| {
-                let _ = window.update(cx, Self::choose_file);
-            });
-        });
-        cx.on_action(move |_: &UseRecommendedRange, cx| {
-            cx.defer(move |cx| {
-                let _ = window.update(cx, |shell, _, cx| shell.use_recommended_range(cx));
-            });
-        });
-        cx.on_action(move |_: &EditAnalysis, cx| {
-            cx.defer(move |cx| {
-                let _ = window.update(cx, |shell, window, cx| {
-                    shell.edit_analysis(&EditAnalysis, window, cx)
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &ChooseFile, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ = shell.update_in(cx, Self::choose_file);
                 });
-            });
+            }
         });
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &UseRecommendedRange, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ = shell.update_in(cx, |shell, _, cx| shell.use_recommended_range(cx));
+                });
+            }
+        });
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &EditAnalysis, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ = shell.update_in(cx, Self::deferred_edit_analysis);
+                });
+            }
+        });
+    }
+
+    /// Adapter for [`Self::bind_choose_file`]: carries the action the
+    /// deferred dispatch already knows into [`Self::edit_analysis`].
+    fn deferred_edit_analysis(shell: &mut Shell, window: &mut Window, cx: &mut Context<Self>) {
+        shell.edit_analysis(&EditAnalysis, window, cx);
     }
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1426,7 +1467,7 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, cx))
             .children(overlay)
-            .child(Self::ready_input_observer())
+            .child(Self::ready_input_observer(cx.entity().downgrade()))
     }
 }
 
