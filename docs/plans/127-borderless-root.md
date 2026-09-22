@@ -44,7 +44,8 @@ external class-A model pair is not used.
 
 - The window root becomes `Root`; `Shell` is created first as a child entity
   and handed to `Root::new(shell, window, cx).bordered(false)`. The returned
-  `WindowHandle<Root>` is the only window handle stored at startup.
+  `WindowHandle<Root>` is dropped once bindings are installed: nothing
+  downstream needs it, because updates go through `WeakEntity<Shell>`.
 - App-level action handlers capture `WeakEntity<Shell>` and the originating
   `WindowHandle<Root>`; updates go through the weak entity, so a closed
   window or dropped shell is a safe no-op instead of a failed root lookup.
