@@ -13,7 +13,6 @@ mod analysis;
 mod app_menu;
 mod assets;
 mod axes;
-mod chrome;
 mod cli;
 mod config;
 mod cpu;
@@ -36,6 +35,9 @@ mod waveform;
 
 use clap::Parser;
 
+// The frame is compiled once, in the library, so the compatibility fixture
+// verifies the same implementation the window uses.
+use argand::chrome;
 use cli::Args;
 use config::Config;
 use session::{Session, Writer};

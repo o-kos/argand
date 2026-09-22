@@ -1,8 +1,14 @@
 //! Runnable stock-control compatibility probe for Issue #126.
+//!
+//! Since #137 the example opens two windows: the stock Root composition from
+//! the locked-stack baseline, and a borderless `Root::bordered(false)` window
+//! whose frame is the production `argand::chrome::Frame`, which is what #127
+//! will adopt.
 
 #[path = "ui_compatibility/model.rs"]
 mod model;
 
+use argand::chrome;
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, IndexPath, Root, Selectable as _, Theme,
     ThemeMode, TitleBar, WindowExt as _,
@@ -42,11 +48,18 @@ struct Fixture {
     plot_focus: FocusHandle,
     plot_bounds: Option<Bounds<Pixels>>,
     popover_crash_probe: bool,
+    /// Render inside the production chrome frame instead of the stock TitleBar.
+    borderless: bool,
     _subscriptions: Vec<Subscription>,
 }
 
 impl Fixture {
-    fn new(popover_crash_probe: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(
+        popover_crash_probe: bool,
+        borderless: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let number_input = cx.new(|cx| InputState::new(window, cx).default_value("2048"));
         let select_input = cx.new(|cx| {
             SelectState::new(
@@ -114,6 +127,8 @@ impl Fixture {
         ];
 
         Self {
+            borderless,
+
             model: ProbeModel::default(),
             number_input,
             select_input,
@@ -924,23 +939,26 @@ impl Fixture {
 
 impl Render for Fixture {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .bg(cx.theme().background)
-            .text_color(cx.theme().foreground)
-            .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
-            .child(
-                TitleBar::new().child(
+        let titlebar = (!self.borderless).then(|| {
+            TitleBar::new()
+                .child(
                     div()
                         .flex()
                         .items_center()
                         .h_full()
                         .text_sm()
                         .child("Argand UI compatibility fixture"),
-                ),
-            )
+                )
+                .into_any_element()
+        });
+        let column = div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
+            .children(titlebar)
             .child(self.toolbar(cx))
             .child(self.popover_probe_notice(cx))
             .child(self.window_metrics(window, cx))
@@ -950,7 +968,17 @@ impl Render for Fixture {
                     .min_h_0()
                     .child(self.resizable_group(window, cx)),
             )
-            .children(Root::render_dialog_layer(window, cx))
+            .children(Root::render_dialog_layer(window, cx));
+        // The borderless window is framed by the production chrome -- the
+        // composition #127 will adopt -- while the stock window keeps the
+        // TitleBar baseline the locked-stack checkpoint measured.
+        if self.borderless {
+            chrome::Frame::for_window(window)
+                .render(column, cx)
+                .into_any_element()
+        } else {
+            column.into_any_element()
+        }
     }
 }
 
@@ -1165,12 +1193,12 @@ fn main() {
             cx.spawn(async move |cx| {
                 cx.open_window(options, |window, cx| {
                     window.set_window_title("Argand UI compatibility fixture");
-                    let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, window, cx));
+                    let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, false, window, cx));
                     cx.new(|cx| Root::new(fixture, window, cx))
                 })?;
                 cx.open_window(borderless_options, |window, cx| {
                     window.set_window_title("Argand fixture: borderless Root");
-                    let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, window, cx));
+                    let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, true, window, cx));
                     cx.new(|cx| Root::new(fixture, window, cx).bordered(false))
                 })?;
                 Ok::<_, anyhow::Error>(())
