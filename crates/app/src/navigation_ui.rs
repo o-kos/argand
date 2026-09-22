@@ -31,7 +31,7 @@ actions!(
     ]
 );
 
-pub(super) fn init(cx: &mut gpui::App) {
+pub(super) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys([
         KeyBinding::new("ctrl-g", ToggleGrid, Some("Plot")),
         KeyBinding::new("ctrl-u", ToggleScaleUi, Some("Plot")),
@@ -92,9 +92,9 @@ pub(super) fn init(cx: &mut gpui::App) {
 
 fn plot_shortcut(
     key: &str,
-    modifiers: gpui::Modifiers,
+    modifiers: gpui_kit::Modifiers,
     physical_shift: bool,
-) -> Option<Box<dyn gpui::Action>> {
+) -> Option<Box<dyn gpui_kit::Action>> {
     if !modifiers.control || modifiers.alt || modifiers.platform {
         return None;
     }
@@ -137,22 +137,22 @@ enum Scroll {
 impl PlotGeometry {
     pub fn cursor(
         self,
-        pointer: Option<gpui::Point<Pixels>>,
+        pointer: Option<gpui_kit::Point<Pixels>>,
         dragging: bool,
         viewport: Option<(View, u64)>,
         frequency_zoomed: bool,
-    ) -> gpui::CursorStyle {
+    ) -> gpui_kit::CursorStyle {
         if dragging {
-            return gpui::CursorStyle::ClosedHand;
+            return gpui_kit::CursorStyle::ClosedHand;
         }
         let Some(position) = pointer else {
-            return gpui::CursorStyle::Arrow;
+            return gpui_kit::CursorStyle::Arrow;
         };
         if self.controls_at(position) {
-            return gpui::CursorStyle::Arrow;
+            return gpui_kit::CursorStyle::Arrow;
         }
         if self.spectrum.contains(&position) {
-            return gpui::CursorStyle::Crosshair;
+            return gpui_kit::CursorStyle::Crosshair;
         }
         let time_ruler = self.time_ruler.contains(&position);
         let selected = self.minimap.contains(&position)
@@ -165,20 +165,20 @@ impl PlotGeometry {
         if (can_pan && (time_ruler || selected))
             || (frequency_zoomed && self.frequency_ruler.contains(&position))
         {
-            gpui::CursorStyle::OpenHand
+            gpui_kit::CursorStyle::OpenHand
         } else {
-            gpui::CursorStyle::Arrow
+            gpui_kit::CursorStyle::Arrow
         }
     }
 
-    fn unit_at(self, position: gpui::Point<Pixels>) -> bool {
+    fn unit_at(self, position: gpui_kit::Point<Pixels>) -> bool {
         self.unit_hints
             .iter()
             .flatten()
             .any(|hint| rect_contains(hint.bounds, position))
     }
 
-    fn controls_at(self, position: gpui::Point<Pixels>) -> bool {
+    fn controls_at(self, position: gpui_kit::Point<Pixels>) -> bool {
         self.unit_at(position)
             || self
                 .zoom_zones
@@ -189,7 +189,7 @@ impl PlotGeometry {
 
     /// Whether the pointer sits on a corner scale button, wherever it is.
     /// Guides and gestures keep off these squares.
-    pub fn over_scale_buttons(self, pointer: Option<gpui::Point<Pixels>>) -> bool {
+    pub fn over_scale_buttons(self, pointer: Option<gpui_kit::Point<Pixels>>) -> bool {
         pointer.is_some_and(|position| {
             self.zoom_zones
                 .iter()
@@ -214,7 +214,7 @@ impl PlotGeometry {
         )
     }
 
-    fn fractions(self, position: gpui::Point<Pixels>) -> (f64, f64) {
+    fn fractions(self, position: gpui_kit::Point<Pixels>) -> (f64, f64) {
         self.orientation.fractions(
             f32::from(position.x - self.spectrum.left()) as f64
                 / f32::from(self.spectrum.size.width) as f64,
@@ -223,7 +223,7 @@ impl PlotGeometry {
         )
     }
 
-    fn minimap_fraction(self, position: gpui::Point<Pixels>) -> f64 {
+    fn minimap_fraction(self, position: gpui_kit::Point<Pixels>) -> f64 {
         let delta = position - self.minimap.origin;
         f32::from(self.orientation.axes(delta.x, delta.y).0) as f64
             / f32::from(
@@ -235,9 +235,9 @@ impl PlotGeometry {
 
     fn scroll(
         self,
-        position: gpui::Point<Pixels>,
-        delta: gpui::Point<Pixels>,
-        modifiers: gpui::Modifiers,
+        position: gpui_kit::Point<Pixels>,
+        delta: gpui_kit::Point<Pixels>,
+        modifiers: gpui_kit::Modifiers,
     ) -> Scroll {
         // Linux backends turn Shift+wheel into a horizontal scroll delta.
         let distance = if f32::from(delta.x).abs() > f32::from(delta.y).abs() {
@@ -268,7 +268,7 @@ impl PlotGeometry {
         }
     }
 
-    fn drag_axes(self, position: gpui::Point<Pixels>) -> (bool, bool) {
+    fn drag_axes(self, position: gpui_kit::Point<Pixels>) -> (bool, bool) {
         if self.controls_at(position) {
             return (false, false);
         }
@@ -282,7 +282,7 @@ impl PlotGeometry {
 
 #[derive(Clone, Copy)]
 pub(super) struct Pan {
-    position: gpui::Point<Pixels>,
+    position: gpui_kit::Point<Pixels>,
     view: View,
     width: f32,
     minimap: bool,
@@ -412,7 +412,7 @@ impl Shell {
 
     pub(super) fn wheel(
         &mut self,
-        event: &gpui::ScrollWheelEvent,
+        event: &gpui_kit::ScrollWheelEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -443,7 +443,7 @@ impl Shell {
 
     pub(super) fn begin_pan(
         &mut self,
-        event: &gpui::MouseDownEvent,
+        event: &gpui_kit::MouseDownEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -457,7 +457,7 @@ impl Shell {
         {
             return;
         }
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         self.pan = None;
         self.frequency_pan = None;
         let (time, frequency) = geometry.drag_axes(event.position);
@@ -493,7 +493,7 @@ impl Shell {
 
     fn minimap_press(
         &mut self,
-        event: &gpui::MouseDownEvent,
+        event: &gpui_kit::MouseDownEvent,
         geometry: PlotGeometry,
         window: &Window,
         cx: &mut Context<Self>,
@@ -519,7 +519,7 @@ impl Shell {
         false
     }
 
-    fn plot_pointer(&self, position: gpui::Point<Pixels>) -> Option<gpui::Point<Pixels>> {
+    fn plot_pointer(&self, position: gpui_kit::Point<Pixels>) -> Option<gpui_kit::Point<Pixels>> {
         self.plot_geometry
             .filter(|geometry| {
                 geometry.navigation.contains(&position)
@@ -528,7 +528,7 @@ impl Shell {
             .map(|_| position)
     }
 
-    fn set_pointer(&mut self, pointer: Option<gpui::Point<Pixels>>, cx: &mut Context<Self>) {
+    fn set_pointer(&mut self, pointer: Option<gpui_kit::Point<Pixels>>, cx: &mut Context<Self>) {
         self.pointer = pointer;
         if !self.ready_status_dismissed && self.cursor_readout().is_some() {
             self.dismiss_ready_status(cx);
@@ -537,7 +537,7 @@ impl Shell {
 
     pub(super) fn pointer_moved(
         &mut self,
-        event: &gpui::MouseMoveEvent,
+        event: &gpui_kit::MouseMoveEvent,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -583,7 +583,7 @@ impl Shell {
 
     pub(super) fn finish_pan(
         &mut self,
-        _: &gpui::MouseUpEvent,
+        _: &gpui_kit::MouseUpEvent,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -714,9 +714,9 @@ impl Shell {
 
     pub(super) fn navigation_actions(
         &self,
-        content: gpui::Stateful<gpui::Div>,
+        content: gpui_kit::Stateful<gpui_kit::Div>,
         cx: &mut Context<Self>,
-    ) -> gpui::Stateful<gpui::Div> {
+    ) -> gpui_kit::Stateful<gpui_kit::Div> {
         content
             .on_action(cx.listener(|shell, _: &ToggleOrientation, window, cx| {
                 shell.toggle_orientation(window, cx);
@@ -796,7 +796,7 @@ impl Shell {
 
     fn track_time_menu(
         &mut self,
-        menu: &gpui::Entity<PopupMenu>,
+        menu: &gpui_kit::Entity<PopupMenu>,
         window: &Window,
         cx: &mut Context<Self>,
     ) {
@@ -806,8 +806,8 @@ impl Shell {
 
     fn time_menu_dismissed(
         &mut self,
-        menu: &gpui::Entity<PopupMenu>,
-        _: &gpui::DismissEvent,
+        menu: &gpui_kit::Entity<PopupMenu>,
+        _: &gpui_kit::DismissEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -822,8 +822,8 @@ impl Shell {
         }
     }
 
-    pub(super) fn time_context_menu(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
-        use gpui_component::menu::ContextMenuExt;
+    pub(super) fn time_context_menu(&self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
+        use gpui_kit::component::menu::ContextMenuExt;
         let geometry = self.plot_geometry?;
         let panel = self.panel_bounds?;
         let focus = self.focus.clone();
@@ -869,18 +869,18 @@ impl Shell {
     }
 }
 
-fn rect_contains(rect: axes::Rect, position: gpui::Point<Pixels>) -> bool {
+fn rect_contains(rect: axes::Rect, position: gpui_kit::Point<Pixels>) -> bool {
     Bounds::new(
         point(px(rect.x), px(rect.y)),
-        gpui::size(px(rect.width), px(rect.height)),
+        gpui_kit::size(px(rect.width), px(rect.height)),
     )
     .contains(&position)
 }
 
 fn time_scale_items(
-    menu: gpui_component::menu::PopupMenu,
+    menu: gpui_kit::component::menu::PopupMenu,
     mode: crate::time_ruler::Mode,
-) -> gpui_component::menu::PopupMenu {
+) -> gpui_kit::component::menu::PopupMenu {
     use crate::time_ruler::Mode;
     menu.item(
         PopupMenuItem::new("Hours, minutes, seconds (hms)")
@@ -905,11 +905,11 @@ mod tests {
 
     #[test]
     fn zoom_symbols_use_physical_shift_without_leaking_into_time_zoom() {
-        let control = gpui::Modifiers {
+        let control = gpui_kit::Modifiers {
             control: true,
             ..Default::default()
         };
-        let shifted = gpui::Modifiers {
+        let shifted = gpui_kit::Modifiers {
             shift: true,
             ..control
         };
@@ -969,12 +969,12 @@ mod tests {
         }
         assert!(plot_shortcut("0", control, false).is_none());
         for modifiers in [
-            gpui::Modifiers::default(),
-            gpui::Modifiers {
+            gpui_kit::Modifiers::default(),
+            gpui_kit::Modifiers {
                 alt: true,
                 ..control
             },
-            gpui::Modifiers {
+            gpui_kit::Modifiers {
                 platform: true,
                 ..control
             },
@@ -1032,11 +1032,11 @@ mod tests {
             1000,
         ));
         for (x, y, expected) in [
-            (50., 20., gpui::CursorStyle::OpenHand),
-            (20., 20., gpui::CursorStyle::Arrow),
-            (50., 160., gpui::CursorStyle::OpenHand),
-            (120., 80., gpui::CursorStyle::Arrow),
-            (50., 80., gpui::CursorStyle::Crosshair),
+            (50., 20., gpui_kit::CursorStyle::OpenHand),
+            (20., 20., gpui_kit::CursorStyle::Arrow),
+            (50., 160., gpui_kit::CursorStyle::OpenHand),
+            (120., 80., gpui_kit::CursorStyle::Arrow),
+            (50., 80., gpui_kit::CursorStyle::Crosshair),
         ] {
             assert_eq!(
                 geometry.cursor(Some(point(px(x), px(y))), false, viewport, false),
@@ -1045,15 +1045,15 @@ mod tests {
         }
         assert_eq!(
             geometry.cursor(None, true, viewport, false),
-            gpui::CursorStyle::ClosedHand
+            gpui_kit::CursorStyle::ClosedHand
         );
         assert_eq!(
             geometry.cursor(None, false, viewport, false),
-            gpui::CursorStyle::Arrow
+            gpui_kit::CursorStyle::Arrow
         );
         assert_eq!(
             geometry.cursor(Some(point(px(50.), px(20.))), false, None, false),
-            gpui::CursorStyle::Arrow
+            gpui_kit::CursorStyle::Arrow
         );
     }
 
@@ -1073,12 +1073,12 @@ mod tests {
         for (x, cursor, click) in [
             (
                 109.25,
-                gpui::CursorStyle::Arrow,
+                gpui_kit::CursorStyle::Arrow,
                 crate::minimap::Click::Step(-1),
             ),
             (
                 109.75,
-                gpui::CursorStyle::OpenHand,
+                gpui_kit::CursorStyle::OpenHand,
                 crate::minimap::Click::Grab,
             ),
         ] {
@@ -1101,7 +1101,7 @@ mod tests {
             for (x, y) in [(50., 20.), (50., 160.), (120., 80.)] {
                 assert_eq!(
                     geometry.cursor(Some(point(px(x), px(y))), false, viewport, false),
-                    gpui::CursorStyle::Arrow,
+                    gpui_kit::CursorStyle::Arrow,
                 );
             }
         }
@@ -1113,9 +1113,9 @@ mod tests {
         for position in [point(px(60.), px(80.)), point(px(60.), px(160.))] {
             let delta = point(px(0.), px(-160.));
             assert!(
-                matches!(geometry.scroll(position, delta, gpui::Modifiers::default()), Scroll::Pan(f) if (f - 1.6).abs() < 1e-10)
+                matches!(geometry.scroll(position, delta, gpui_kit::Modifiers::default()), Scroll::Pan(f) if (f - 1.6).abs() < 1e-10)
             );
-            let control = gpui::Modifiers {
+            let control = gpui_kit::Modifiers {
                 control: true,
                 ..Default::default()
             };
@@ -1126,7 +1126,7 @@ mod tests {
                     anchor: 0.5
                 }
             ));
-            let shift = gpui::Modifiers {
+            let shift = gpui_kit::Modifiers {
                 shift: true,
                 ..Default::default()
             };
@@ -1142,13 +1142,13 @@ mod tests {
         let ruler = point(px(120.), px(75.));
         assert_eq!(
             geometry.cursor(Some(ruler), false, None, true),
-            gpui::CursorStyle::OpenHand
+            gpui_kit::CursorStyle::OpenHand
         );
         let delta = point(px(0.), px(40.));
         assert!(
-            matches!(geometry.scroll(ruler, delta, gpui::Modifiers::default()), Scroll::FrequencyPan(f) if (f - 0.4).abs() < 1e-10)
+            matches!(geometry.scroll(ruler, delta, gpui_kit::Modifiers::default()), Scroll::FrequencyPan(f) if (f - 0.4).abs() < 1e-10)
         );
-        let control = gpui::Modifiers {
+        let control = gpui_kit::Modifiers {
             control: true,
             ..Default::default()
         };
@@ -1156,7 +1156,7 @@ mod tests {
             geometry.scroll(ruler, delta, control),
             Scroll::FrequencyZoom { anchor: 0.75, .. }
         ));
-        let shift_control = gpui::Modifiers {
+        let shift_control = gpui_kit::Modifiers {
             shift: true,
             control: true,
             ..Default::default()
@@ -1182,7 +1182,7 @@ mod tests {
                 point(px(120.), px(75.)),
             ] {
                 for control in [false, true] {
-                    let modifiers = gpui::Modifiers {
+                    let modifiers = gpui_kit::Modifiers {
                         shift: true,
                         control,
                         ..Default::default()
@@ -1220,7 +1220,7 @@ mod tests {
             ));
             assert_eq!(
                 geometry.cursor(Some(position), false, viewport, true),
-                gpui::CursorStyle::Arrow
+                gpui_kit::CursorStyle::Arrow
             );
             assert_eq!(geometry.drag_axes(position), (false, false));
         }
@@ -1253,13 +1253,13 @@ mod tests {
         for position in [point(px(20.), px(166.)), point(px(128.), px(130.))] {
             assert_eq!(
                 geometry.cursor(Some(position), false, viewport, true),
-                gpui::CursorStyle::Arrow
+                gpui_kit::CursorStyle::Arrow
             );
             assert_eq!(geometry.drag_axes(position), (false, false));
         }
         assert_eq!(
             geometry.cursor(Some(point(px(60.), px(160.))), false, viewport, true),
-            gpui::CursorStyle::OpenHand
+            gpui_kit::CursorStyle::OpenHand
         );
     }
 
@@ -1279,7 +1279,7 @@ mod tests {
         ));
         assert_eq!(
             geometry.cursor(Some(corner), false, viewport, true),
-            gpui::CursorStyle::Crosshair
+            gpui_kit::CursorStyle::Crosshair
         );
         assert_eq!(geometry.drag_axes(corner), (true, true));
     }
@@ -1308,7 +1308,7 @@ mod tests {
         assert_eq!(geometry.drag_axes(point(px(75.), px(60.))), (true, true));
         assert_eq!(geometry.drag_axes(point(px(175.), px(60.))), (true, false));
         assert_eq!(geometry.drag_axes(point(px(75.), px(220.))), (false, true));
-        let control = gpui::Modifiers {
+        let control = gpui_kit::Modifiers {
             control: true,
             ..Default::default()
         };
@@ -1337,15 +1337,15 @@ mod tests {
         ));
         assert_eq!(
             geometry.cursor(Some(point(px(20.), px(60.))), false, viewport, true),
-            gpui::CursorStyle::OpenHand
+            gpui_kit::CursorStyle::OpenHand
         );
         assert_eq!(
             geometry.cursor(Some(point(px(175.), px(60.))), false, viewport, true),
-            gpui::CursorStyle::OpenHand
+            gpui_kit::CursorStyle::OpenHand
         );
         assert_eq!(
             geometry.cursor(Some(point(px(75.), px(220.))), false, viewport, true),
-            gpui::CursorStyle::OpenHand
+            gpui_kit::CursorStyle::OpenHand
         );
     }
 }

@@ -220,39 +220,64 @@ impl Config {
     /// of it, so each bad value is replaced on its own.
     pub(crate) fn repaired(mut self) -> Self {
         let default = Self::default();
-        if !crate::numbers::valid_format(&self.number_format) {
-            tracing::warn!(
-                found = self.number_format,
-                "invalid number_format; using the system numeric locale"
-            );
-            self.number_format = default.number_format;
-        }
+        self.repair_number_format(&default);
         self.analysis.repair();
+        self.repair_dynamic_range(&default);
+        self.repair_fft_size(&default);
+        self.repair_waveform_fraction(&default);
+        self
+    }
+
+    /// A number format the locale registry does not know falls back to the
+    /// system one.
+    fn repair_number_format(&mut self, default: &Self) {
+        if crate::numbers::valid_format(&self.number_format) {
+            return;
+        }
+        tracing::warn!(
+            found = self.number_format,
+            "invalid number_format; using the system numeric locale"
+        );
+        self.number_format.clone_from(&default.number_format);
+    }
+
+    /// A fixed dynamic range outside the representable window falls back to
+    /// the default range.
+    fn repair_dynamic_range(&mut self, default: &Self) {
         if let DynamicRange::Fixed(value) = self.dynamic_range
             && (!value.is_finite() || value <= 0.0)
         {
             self.dynamic_range = default.dynamic_range;
         }
+    }
 
-        if !self.stft.fft_size.is_power_of_two()
-            || !(2..=crate::settings::MAX_FFT_SIZE).contains(&self.stft.fft_size)
+    /// An FFT size the transform would refuse falls back to the default.
+    fn repair_fft_size(&mut self, default: &Self) {
+        if self.stft.fft_size.is_power_of_two()
+            && (2..=crate::settings::MAX_FFT_SIZE).contains(&self.stft.fft_size)
         {
-            tracing::warn!(
-                found = self.stft.fft_size,
-                using = default.stft.fft_size,
-                "fft size must be a power of two from 2 to 1048576"
-            );
-            self.stft.fft_size = default.stft.fft_size;
+            return;
         }
-        if !(0.05..=0.9).contains(&self.panels.waveform_fraction) {
-            tracing::warn!(
-                found = self.panels.waveform_fraction,
-                using = default.panels.waveform_fraction,
-                "the waveform share must leave room for the spectrogram"
-            );
-            self.panels.waveform_fraction = default.panels.waveform_fraction;
+        tracing::warn!(
+            found = self.stft.fft_size,
+            using = default.stft.fft_size,
+            "fft size must be a power of two from 2 to 1048576"
+        );
+        self.stft.fft_size = default.stft.fft_size;
+    }
+
+    /// A waveform share that would leave no room for the spectrogram falls
+    /// back to the default share.
+    fn repair_waveform_fraction(&mut self, default: &Self) {
+        if (0.05..=0.9).contains(&self.panels.waveform_fraction) {
+            return;
         }
-        self
+        tracing::warn!(
+            found = self.panels.waveform_fraction,
+            using = default.panels.waveform_fraction,
+            "the waveform share must leave room for the spectrogram"
+        );
+        self.panels.waveform_fraction = default.panels.waveform_fraction;
     }
 
     /// Where `argand.toml` is looked for, in the order it is looked for.

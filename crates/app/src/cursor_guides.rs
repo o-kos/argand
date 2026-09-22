@@ -88,7 +88,7 @@ impl CursorGuides {
         } else {
             positions
         };
-        window.with_content_mask(Some(gpui::ContentMask { bounds: panel }), |window| {
+        window.with_content_mask(Some(gpui_kit::ContentMask { bounds: panel }), |window| {
             paint_lines(panel.origin + pointer, panel.origin, positions, window);
             for (text, rect) in [(&readout.time, badges[0]), (&readout.frequency, badges[1])] {
                 self.badge(text, rect, panel, labels, window, cx);
@@ -117,7 +117,14 @@ impl CursorGuides {
         // Optical correction for the digit ink inside the filled badge.
         let top = labels.line_top(rect.height / 2., &shaped) + 1.;
         let left = (px(rect.width) - shaped.width) / 2.;
-        let _ = shaped.paint(origin + point(left, px(top)), px(LINE_HEIGHT), window, cx);
+        let _ = shaped.paint(
+            origin + point(left, px(top)),
+            px(LINE_HEIGHT),
+            gpui_kit::TextAlign::Left,
+            None,
+            window,
+            cx,
+        );
     }
 }
 
@@ -150,7 +157,7 @@ fn paint_lines(
     // Overlap the rounded backgrounds so their corners cannot expose a gap.
     let bottom = origin.y + px(badges[0].y + 3.);
     let right = origin.x + px(badges[1].x + 3.);
-    for (width, color) in [(3., gpui::white()), (1., gpui::black())] {
+    for (width, color) in [(3., gpui_kit::white()), (1., gpui_kit::black())] {
         let offset = px((width - 1.) / 2.);
         for bounds in [
             Bounds::new(
@@ -409,7 +416,7 @@ mod tests {
                 hertz: (-24000., 24000.),
             },
             scale: 1.,
-            font: gpui::font("test"),
+            font: gpui_kit::font("test"),
         };
         let expected = metrics.get(key.clone(), &labels);
         for _ in 0..1000 {
@@ -429,7 +436,7 @@ mod tests {
         changed.scale = 2.;
         metrics.get(changed.clone(), &labels);
         assert_eq!(labels.0.get(), 20);
-        changed.font = gpui::font("other");
+        changed.font = gpui_kit::font("other");
         metrics.get(changed, &labels);
         assert_eq!(labels.0.get(), 24);
     }

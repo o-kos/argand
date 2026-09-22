@@ -1,13 +1,15 @@
 //! A separate toolkit root gives native inputs their focus and editing context.
 
 use super::*;
-use gpui::{Entity, Focusable};
-use gpui_component::input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction};
-use gpui_component::select::{Select, SelectEvent, SelectState};
+use gpui_kit::component::input::{
+    InputEvent, InputState, NumberInput, NumberInputEvent, StepAction,
+};
+use gpui_kit::component::select::{Select, SelectEvent, SelectState};
+use gpui_kit::{Entity, Focusable};
 
 actions!(settings_editor, [CloseSettings]);
 
-pub(super) fn init(cx: &mut gpui::App) {
+pub(super) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys([KeyBinding::new(
         "escape",
         CloseSettings,
@@ -109,7 +111,7 @@ impl Editor {
             });
         })
         .detach();
-        fft.focus_handle(cx).focus(window);
+        fft.focus_handle(cx).focus(window, cx);
         Self {
             owner,
             settings,
@@ -167,7 +169,7 @@ impl Editor {
                 cx,
             );
             if matches!(dynamic_range, DynamicRange::Fixed(_)) {
-                self.range.focus_handle(cx).focus(window);
+                self.range.focus_handle(cx).focus(window, cx);
             }
         }
     }
@@ -338,7 +340,7 @@ impl Editor {
         self.apply(settings, window, cx);
     }
 
-    fn transform_rows(&self, cx: &gpui::App) -> impl IntoElement {
+    fn transform_rows(&self, cx: &gpui_kit::App) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -359,7 +361,7 @@ impl Editor {
         pending: bool,
         window: &Window,
         cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
+    ) -> gpui_kit::AnyElement {
         if let Some(error) = &self.error {
             return div()
                 .flex_1()
@@ -398,7 +400,7 @@ impl Editor {
             .into_any_element()
     }
 
-    fn display_rows(&self, cx: &gpui::App) -> impl IntoElement {
+    fn display_rows(&self, cx: &gpui_kit::App) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -521,7 +523,7 @@ fn mode_name(range: DynamicRange) -> &'static str {
     }
 }
 
-fn section(title: &'static str, cx: &gpui::App) -> impl IntoElement {
+fn section(title: &'static str, cx: &gpui_kit::App) -> impl IntoElement {
     div()
         .text_xs()
         .font_weight(FontWeight::SEMIBOLD)
@@ -529,7 +531,11 @@ fn section(title: &'static str, cx: &gpui::App) -> impl IntoElement {
         .child(title)
 }
 
-fn form_row(label: &'static str, control: impl IntoElement, cx: &gpui::App) -> impl IntoElement {
+fn form_row(
+    label: &'static str,
+    control: impl IntoElement,
+    cx: &gpui_kit::App,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -586,7 +592,7 @@ fn combo(
     let index = items
         .iter()
         .position(|value| value == &selected)
-        .map(gpui_component::IndexPath::new);
+        .map(gpui_kit::component::IndexPath::new);
     let state = cx.new(|cx| SelectState::new(items, index, window, cx));
     subscriptions.push(
         cx.subscribe_in(&state, window, move |editor, _, event, window, cx| {

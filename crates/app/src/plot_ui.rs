@@ -2,8 +2,8 @@
 
 use super::navigation_ui::*;
 use super::*;
-use gpui::Div;
-use gpui_component::{Icon, IconName};
+use gpui_kit::Div;
+use gpui_kit::component::{Icon, IconName};
 
 impl Shell {
     /// The spectrogram panel: the picture, and the axes around it.
@@ -168,7 +168,7 @@ impl Shell {
         .time_scheme
     }
 
-    fn minimap_panel(&self, cx: &gpui::App) -> waveform::Panel {
+    fn minimap_panel(&self, cx: &gpui_kit::App) -> waveform::Panel {
         let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
         let ink = self
             .settings
@@ -184,8 +184,8 @@ impl Shell {
             ),
             separator: cx.theme().border,
             ink: waveform::Ink {
-                active: gpui::rgb(ink.active),
-                muted: gpui::rgb(ink.muted),
+                active: gpui_kit::rgb(ink.active),
+                muted: gpui_kit::rgb(ink.muted),
             },
         }
     }
@@ -221,9 +221,9 @@ impl Shell {
     pub(super) fn unit_hint(
         &self,
         index: usize,
-        origin: gpui::Point<Pixels>,
+        origin: gpui_kit::Point<Pixels>,
         cx: &Context<Self>,
-    ) -> Option<gpui::AnyElement> {
+    ) -> Option<gpui_kit::AnyElement> {
         let menu_open = self
             .open_menu
             .as_ref()
@@ -238,7 +238,7 @@ impl Shell {
         Some(
             div()
                 .id(hint.text)
-                .cursor(gpui::CursorStyle::Arrow)
+                .cursor(gpui_kit::CursorStyle::Arrow)
                 .absolute()
                 .left(px(hint.bounds.x) - origin.x)
                 .top(px(hint.bounds.y) - origin.y)
@@ -249,7 +249,10 @@ impl Shell {
         )
     }
 
-    pub(super) fn ruler_zoom_buttons(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+    pub(super) fn ruler_zoom_buttons(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
         if !self.session.show_scale_ui {
             return None;
         }
@@ -331,7 +334,7 @@ impl Shell {
     }
 }
 
-fn axis_colors(cx: &gpui::App, show_grid: bool) -> axes::Colors {
+fn axis_colors(cx: &gpui_kit::App, show_grid: bool) -> axes::Colors {
     axes::Colors {
         // Keep the picture visible through the overlaid grid.
         grid: show_grid.then(|| cx.theme().border.opacity(0.55)),
@@ -402,7 +405,7 @@ fn zoom_pair(
     out_action: impl Action,
     enabled: bool,
     pressed: [bool; 2],
-    origin: gpui::Point<Pixels>,
+    origin: gpui_kit::Point<Pixels>,
     cx: &mut Context<Shell>,
 ) -> Div {
     let frame = cx.theme().border.opacity(0.75);
@@ -459,7 +462,7 @@ fn zoom_pair(
         .border_color(frame)
         .bg(paper)
         .overflow_hidden()
-        .cursor(gpui::CursorStyle::Arrow)
+        .cursor(gpui_kit::CursorStyle::Arrow)
         .rounded(px(SCALE_ROUNDING))
         .child(bar)
 }
@@ -475,7 +478,7 @@ fn half_button(
     pressed: bool,
     horizontal: bool,
     cx: &mut Context<Shell>,
-) -> gpui::Stateful<Div> {
+) -> gpui_kit::Stateful<Div> {
     let tooltip_action = Box::new(action) as Box<dyn Action>;
     let glyph = if enabled {
         cx.theme().foreground.opacity(0.85)
@@ -490,7 +493,7 @@ fn half_button(
         .flex()
         .items_center()
         .justify_center()
-        .cursor(gpui::CursorStyle::Arrow)
+        .cursor(gpui_kit::CursorStyle::Arrow)
         .child(Icon::new(icon).size(px(12.)).text_color(glyph));
     half = if horizontal {
         half.flex_1().h_full()
@@ -517,7 +520,7 @@ fn half_button(
                 }),
             )
             .on_click(cx.listener(move |shell, _, window, cx| {
-                window.focus(&shell.focus);
+                window.focus(&shell.focus, cx);
                 window.dispatch_action(click.boxed_clone(), cx);
             }));
     }
@@ -549,7 +552,11 @@ fn half_button(
     })
 }
 
-fn unit_tooltip(owner: WeakEntity<Shell>, index: usize, cx: &mut gpui::App) -> gpui::AnyView {
+fn unit_tooltip(
+    owner: WeakEntity<Shell>,
+    index: usize,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::AnyView {
     cx.new(|cx| {
         if let Some(owner) = owner.upgrade() {
             cx.observe(&owner, |_, _, cx| cx.notify()).detach();
@@ -689,7 +696,7 @@ pub(super) fn paint_held(
         [offset as f32, y, stretch as f32, height],
         orientation,
     );
-    window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
+    window.with_content_mask(Some(gpui_kit::ContentMask { bounds: plot }), |window| {
         spectrogram::paint(texture, image, window);
     });
 }
@@ -707,7 +714,7 @@ fn defer_layout(
     bounds: Bounds<Pixels>,
     measured: PlotSize,
     geometry: navigation_ui::PlotGeometry,
-    cx: &mut gpui::App,
+    cx: &mut gpui_kit::App,
 ) {
     cx.defer(move |cx| {
         let _ = view.update(cx, |shell, cx| {
@@ -821,7 +828,7 @@ impl DeepPreview {
                 [left as f32, y, (right - left) as f32, height],
                 orientation,
             );
-            window.with_content_mask(Some(gpui::ContentMask { bounds: plot }), |window| {
+            window.with_content_mask(Some(gpui_kit::ContentMask { bounds: plot }), |window| {
                 spectrogram::paint(texture.clone(), bounds, window);
             });
         }

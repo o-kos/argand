@@ -1,11 +1,11 @@
 //! Client-side frame geometry and its resize regions.
 
-use gpui::{
+use gpui_kit::component::{ActiveTheme, Icon, IconName, Sizable};
+use gpui_kit::{
     App, Bounds, BoxShadow, Corners, CursorStyle, Decorations, Edges, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Pixels, ResizeEdge, Size, StatefulInteractiveElement,
     Styled, Tiling, Window, div, point, prelude::FluentBuilder, px, size,
 };
-use gpui_component::{ActiveTheme, Icon, IconName, Sizable};
 
 const SHADOW: Pixels = px(12.0);
 const RESIZE_GRIP: Pixels = px(6.0);
@@ -43,7 +43,7 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
             };
             div()
                 .id(("window-control", index))
-                .w(gpui_component::TITLE_BAR_HEIGHT)
+                .w(gpui_kit::component::TITLE_BAR_HEIGHT)
                 .h_full()
                 .flex()
                 .items_center()
@@ -168,10 +168,11 @@ impl Frame {
                     .bg(cx.theme().background)
                     .when(self.shadow, |frame| {
                         frame.shadow(vec![BoxShadow {
-                            color: gpui::black().opacity(0.3),
+                            color: gpui_kit::black().opacity(0.3),
                             blur_radius: SHADOW / 2.0,
                             spread_radius: px(0.0),
                             offset: point(px(0.0), px(0.0)),
+                            inset: false,
                         }])
                     })
                     .child(content),

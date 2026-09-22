@@ -12,18 +12,20 @@ use std::sync::{
 };
 use std::time::Instant;
 
-use gpui::{
-    Action, AppContext, Application, Bounds, Context, Corners, ExternalPaths, FocusHandle,
-    FontWeight, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
-    PathPromptOptions, Pixels, Render, RenderImage, StatefulInteractiveElement, Styled,
-    Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations,
-    WindowOptions, actions, canvas, div, point, prelude::FluentBuilder, px, size,
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants};
+use gpui_kit::component::kbd::Kbd;
+use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
+use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::component::{
+    ActiveTheme, Colorize, InteractiveElementExt, Sizable, ThemeMode, TitleBar,
 };
-use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
-use gpui_component::kbd::Kbd;
-use gpui_component::menu::{PopupMenu, PopupMenuItem};
-use gpui_component::tooltip::Tooltip;
-use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, ThemeMode, TitleBar};
+use gpui_kit::{
+    Action, AppContext, Bounds, Context, Corners, ExternalPaths, FocusHandle, FontWeight,
+    InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement, PathPromptOptions,
+    Pixels, Render, RenderImage, StatefulInteractiveElement, Styled, Subscription, Task,
+    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowDecorations, WindowOptions, actions,
+    canvas, div, point, prelude::FluentBuilder, px, size,
+};
 
 use crate::settings::Settings;
 use argand_dsp::AnalysisRequest;
@@ -81,10 +83,10 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
     // The toolkit's own icons -- the window controls among them -- are loaded
     // by path through an asset source. Without one they resolve to nothing and
     // the buttons render as blank space that still responds to a click.
-    Application::new()
+    gpui_kit::application()
         .with_assets(crate::assets::Assets)
         .run(move |cx| {
-            gpui_component::init(cx);
+            gpui_kit::init(cx);
             settings_ui::init(cx);
             navigation_ui::init(cx);
             cx.bind_keys([
@@ -108,7 +110,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                     Some("StartPage"),
                 )
             }));
-            gpui_component::theme::Theme::change(
+            gpui_kit::component::theme::Theme::change(
                 theme_mode(config.theme, cx.window_appearance()),
                 None,
                 cx,
@@ -123,7 +125,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                         .iter()
                         .map(|display| from_bounds(display.bounds()))
                         .collect()
-                })?;
+                });
                 let options = window_options(&saved, &displays);
                 tracing::debug!(
                     displays = displays.len(),
@@ -151,10 +153,12 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                 // whose error nobody reads would end it silently: there is nothing
                 // else this program does.
                 match opened {
-                    Ok(window) => cx.update(|cx| Shell::bind_choose_file(window, cx))?,
+                    // The update itself cannot fail: the application is running
+                    // by construction while this task is alive.
+                    Ok(window) => cx.update(|cx| Shell::bind_choose_file(window, cx)),
                     Err(error) => {
                         tracing::error!(%error, "cannot open a window");
-                        cx.update(|cx| cx.quit())?;
+                        cx.update(|cx| cx.quit());
                     }
                 }
                 Ok::<_, anyhow::Error>(())
@@ -194,7 +198,7 @@ fn window_options(saved: &Session, displays: &[Geometry]) -> WindowOptions {
     }
 }
 
-fn theme_mode(theme: Theme, appearance: gpui::WindowAppearance) -> ThemeMode {
+fn theme_mode(theme: Theme, appearance: gpui_kit::WindowAppearance) -> ThemeMode {
     match theme {
         Theme::System => appearance.into(),
         Theme::Dark => ThemeMode::Dark,
@@ -202,12 +206,12 @@ fn theme_mode(theme: Theme, appearance: gpui::WindowAppearance) -> ThemeMode {
     }
 }
 
-fn sync_theme(theme: Theme, window: &mut Window, cx: &mut gpui::App) {
+fn sync_theme(theme: Theme, window: &mut Window, cx: &mut gpui_kit::App) {
     let mode = theme_mode(theme, window.appearance());
     if mode == cx.theme().mode {
         return;
     }
-    gpui_component::theme::Theme::change(mode, Some(window), cx);
+    gpui_kit::component::theme::Theme::change(mode, Some(window), cx);
     cx.refresh_windows();
 }
 
@@ -266,7 +270,7 @@ struct Shell {
     /// analysis request built below.
     config: Config,
     settings: Settings,
-    settings_window: Option<gpui::WindowHandle<gpui_component::Root>>,
+    settings_window: Option<gpui_kit::WindowHandle<gpui_kit::component::Root>>,
     analysis_hovered: bool,
     range_hovered: bool,
     ready_status_dismissed: bool,
@@ -308,11 +312,11 @@ struct Shell {
     view: Option<crate::navigation::View>,
     frequency: crate::frequency::View,
     frequency_scheme: Option<argand_core::axis::TickScheme>,
-    frequency_pan: Option<(gpui::Point<Pixels>, crate::frequency::View)>,
+    frequency_pan: Option<(gpui_kit::Point<Pixels>, crate::frequency::View)>,
     time_scheme: Option<argand_core::axis::TickScheme>,
     tick_pan: Option<crate::navigation::TickPan>,
     plot_geometry: Option<navigation_ui::PlotGeometry>,
-    pointer: Option<gpui::Point<Pixels>>,
+    pointer: Option<gpui_kit::Point<Pixels>>,
     pressed_zoom: Option<&'static str>,
     badge_metrics: axes::BadgeMetrics,
     pan: Option<navigation_ui::Pan>,
@@ -333,7 +337,7 @@ struct Shell {
     application_menu: Option<app_menu_ui::ApplicationMenu>,
     application_menu_anchor: app_menu_ui::Anchor,
     open_menu: Option<WeakEntity<PopupMenu>>,
-    menu_dismiss: Option<gpui::Subscription>,
+    menu_dismiss: Option<gpui_kit::Subscription>,
     recent_files: RecentFiles,
     recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
@@ -356,7 +360,7 @@ impl Shell {
         // drag, which is what [`Writer`] is for.
         crate::profiling::watch_ui(cx);
         let focus = cx.focus_handle();
-        window.focus(&focus);
+        window.focus(&focus, cx);
         window.set_window_title(TITLE);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
         let activation = cx.observe_window_activation(window, |shell, window, cx| {
@@ -369,7 +373,7 @@ impl Shell {
         let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
             sync_theme(shell.config.theme, window, cx);
         });
-        let keystrokes = gpui::App::observe_keystrokes(cx, |_, window, cx| {
+        let keystrokes = gpui_kit::App::observe_keystrokes(cx, |_, window, cx| {
             Self::dismiss_window_ready_status(window, cx);
         });
         let settings = Settings::restored(saved.analysis_settings, &config);
@@ -436,7 +440,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn dismiss_window_ready_status(window: &Window, cx: &mut gpui::App) {
+    fn dismiss_window_ready_status(window: &Window, cx: &mut gpui_kit::App) {
         if let Some(Some(shell)) = window.root::<Self>() {
             shell.update(cx, Self::dismiss_ready_status);
         }
@@ -446,13 +450,13 @@ impl Shell {
         canvas(
             |_, _, _| (),
             |_, _, window, _| {
-                window.on_mouse_event(|_: &gpui::MouseDownEvent, phase, window, cx| {
-                    if phase == gpui::DispatchPhase::Capture {
+                window.on_mouse_event(|_: &gpui_kit::MouseDownEvent, phase, window, cx| {
+                    if phase == gpui_kit::DispatchPhase::Capture {
                         Self::dismiss_window_ready_status(window, cx);
                     }
                 });
-                window.on_mouse_event(|_: &gpui::ScrollWheelEvent, phase, window, cx| {
-                    if phase == gpui::DispatchPhase::Capture {
+                window.on_mouse_event(|_: &gpui_kit::ScrollWheelEvent, phase, window, cx| {
+                    if phase == gpui_kit::DispatchPhase::Capture {
                         Self::dismiss_window_ready_status(window, cx);
                     }
                 });
@@ -827,7 +831,7 @@ impl Drop for Shell {
 }
 
 impl Shell {
-    fn bind_choose_file(window: gpui::WindowHandle<Self>, cx: &mut gpui::App) {
+    fn bind_choose_file(window: gpui_kit::WindowHandle<Self>, cx: &mut gpui_kit::App) {
         // Popup focus sits outside the shell subtree; defer until dispatch releases the window.
         cx.on_action(move |_: &ChooseFile, cx| {
             cx.defer(move |cx| {
@@ -854,9 +858,9 @@ impl Shell {
         // dialog: a corner half held at this moment would stay pressed.
         self.pressed_zoom = None;
         if let Some(menu) = self.open_menu.take() {
-            let _ = menu.update(cx, |_, cx| cx.emit(gpui::DismissEvent));
+            let _ = menu.update(cx, |_, cx| cx.emit(gpui_kit::DismissEvent));
         }
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         cx.notify();
         Self::choose(&cx.entity().downgrade(), window, cx);
     }
@@ -870,7 +874,7 @@ impl Shell {
     /// A file chosen this way is opened on what it says about itself. A
     /// headerless capture has nothing to say, so it fails and says how; the
     /// recent list is what carries hints back for the next time.
-    fn choose(view: &WeakEntity<Self>, window: &mut Window, cx: &mut gpui::App) {
+    fn choose(view: &WeakEntity<Self>, window: &mut Window, cx: &mut gpui_kit::App) {
         let chosen = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
@@ -935,7 +939,7 @@ impl Shell {
                 .id("title-bar")
                 .flex()
                 .items_center()
-                .h(gpui_component::TITLE_BAR_HEIGHT)
+                .h(gpui_kit::component::TITLE_BAR_HEIGHT)
                 .pl_3()
                 .rounded_tl(corners.top_left)
                 .rounded_tr(corners.top_right)
@@ -992,7 +996,7 @@ impl Shell {
         let controls = if cfg!(target_os = "macos") {
             px(0.)
         } else {
-            gpui_component::TITLE_BAR_HEIGHT * 3.
+            gpui_kit::component::TITLE_BAR_HEIGHT * 3.
         };
         let margin = (leading + app_menu_ui::toolbar_width(window, cx)).max(controls)
             + window.rem_size() * 0.75;
@@ -1021,7 +1025,12 @@ impl Shell {
             .child(div().w(margin - controls).flex_shrink_0())
     }
 
-    fn finish_splitter(&mut self, _: &gpui::MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn finish_splitter(
+        &mut self,
+        _: &gpui_kit::MouseUpEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.splitter_dragging {
             self.splitter_dragging = false;
             cx.notify();
@@ -1068,14 +1077,14 @@ impl Shell {
                 .bottom_0()
                 .left(px((height - 3.).max(0.)))
                 .w(px(5.))
-                .cursor(gpui::CursorStyle::ResizeLeftRight)
+                .cursor(gpui_kit::CursorStyle::ResizeLeftRight)
         } else {
             divider
                 .left_0()
                 .right_0()
                 .top(px((height - 3.).max(0.)))
                 .h(px(5.))
-                .cursor(gpui::CursorStyle::ResizeUpDown)
+                .cursor(gpui_kit::CursorStyle::ResizeUpDown)
         };
         divider.on_mouse_down(
             MouseButton::Left,
@@ -1088,7 +1097,7 @@ impl Shell {
 
     fn drag_splitter(
         &mut self,
-        event: &gpui::MouseMoveEvent,
+        event: &gpui_kit::MouseMoveEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1125,7 +1134,7 @@ impl Shell {
     ///
     /// Decided in one place and drawn in another, so that neither has to hold
     /// the other's conditions: four states, and each of them one element.
-    fn middle(&self, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn middle(&self, window: &Window, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
         let notice = |text: String, color| {
             div()
                 .flex_1()
@@ -1143,7 +1152,7 @@ impl Shell {
                 .id("time-plot")
                 .cursor(
                     self.plot_geometry
-                        .map_or(gpui::CursorStyle::Arrow, |geometry| {
+                        .map_or(gpui_kit::CursorStyle::Arrow, |geometry| {
                             geometry.cursor(
                                 self.pointer,
                                 self.pan.is_some() || self.frequency_pan.is_some(),
@@ -1397,8 +1406,8 @@ impl Render for Shell {
                 .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
                     shell.use_recommended_range(cx)
                 }))
-                .on_action(|_: &FocusNext, window, _| window.focus_next())
-                .on_action(|_: &FocusPrevious, window, _| window.focus_prev())
+                .on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
+                .on_action(|_: &FocusPrevious, window, cx| window.focus_prev(cx))
                 // A capture dropped anywhere on the window opens, which is where a
                 // person aims when the window is showing the wrong file.
                 .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
@@ -1444,7 +1453,7 @@ fn shortcut_tooltip(
     })
 }
 
-fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui::App) -> Pixels {
+fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui_kit::App) -> Pixels {
     let limit = px(320.).min(window.viewport_size().width - px(48.));
     [
         (hint.title, 0.875, FontWeight::SEMIBOLD),
@@ -1453,7 +1462,7 @@ fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui::App) -> 
     ]
     .into_iter()
     .flat_map(|(text, scale, weight)| {
-        let style = gpui::TextStyle {
+        let style = gpui_kit::TextStyle {
             font_family: cx.theme().font_family.clone(),
             font_weight: weight,
             ..Default::default()
@@ -1577,7 +1586,7 @@ fn device_size(plot: axes::Rect, scale: f32) -> PlotSize {
 #[cfg(test)]
 mod theme_tests {
     use super::*;
-    use gpui::WindowAppearance;
+    use gpui_kit::WindowAppearance;
 
     #[test]
     fn system_follows_appearance_and_explicit_themes_remain_fixed() {

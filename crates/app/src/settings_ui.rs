@@ -41,13 +41,13 @@ struct RangePresentation {
 
 #[derive(Clone, Copy)]
 struct ControlForegrounds {
-    normal: gpui::Hsla,
-    hovered: gpui::Hsla,
-    active: gpui::Hsla,
+    normal: gpui_kit::Hsla,
+    hovered: gpui_kit::Hsla,
+    active: gpui_kit::Hsla,
 }
 
 impl ControlForegrounds {
-    fn between(normal: gpui::Hsla, hovered: gpui::Hsla) -> Self {
+    fn between(normal: gpui_kit::Hsla, hovered: gpui_kit::Hsla) -> Self {
         Self {
             normal,
             hovered,
@@ -55,11 +55,11 @@ impl ControlForegrounds {
         }
     }
 
-    fn current(self, hovered: bool) -> gpui::Hsla {
+    fn current(self, hovered: bool) -> gpui_kit::Hsla {
         if hovered { self.hovered } else { self.normal }
     }
 
-    fn button_style(self, cx: &gpui::App) -> ButtonCustomVariant {
+    fn button_style(self, cx: &gpui_kit::App) -> ButtonCustomVariant {
         ButtonCustomVariant::new(cx)
             .foreground(self.active)
             .hover(cx.theme().secondary_hover)
@@ -85,7 +85,7 @@ fn document_range_presentation(
     }
 }
 
-pub(super) fn init(cx: &mut gpui::App) {
+pub(super) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys([KeyBinding::new(
         if cfg!(target_os = "macos") {
             "cmd-,"
@@ -142,7 +142,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn cancel_settings_window(&mut self, id: gpui::WindowId, cx: &mut Context<Self>) {
+    fn cancel_settings_window(&mut self, id: gpui_kit::WindowId, cx: &mut Context<Self>) {
         if self
             .settings_window
             .is_some_and(|handle| handle.window_id() == id)
@@ -241,7 +241,7 @@ impl Shell {
                         .id("file-summary")
                         .px_2()
                         .min_w_0()
-                        .flex_shrink()
+                        .flex_shrink(1.)
                         .tooltip(move |window, cx| {
                             metadata_tooltip(field.hint.clone()).build(window, cx)
                         })
@@ -381,7 +381,7 @@ impl Shell {
             .border_color(cx.theme().border)
             .tooltip(move |window, cx| {
                 let action =
-                    actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui::Action>);
+                    actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
                 shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.)).build(window, cx)
             })
             .child(range_content)
@@ -480,7 +480,7 @@ impl Shell {
                 window.set_window_title("Analysis settings · argand");
                 let form =
                     cx.new(|cx| editor::Editor::new(form_owner, settings, range, window, cx));
-                cx.new(|cx| gpui_component::Root::new(form, window, cx))
+                cx.new(|cx| gpui_kit::component::Root::new(form, window, cx))
             });
             match opened {
                 Ok(handle) => {
@@ -496,9 +496,9 @@ impl Shell {
 }
 
 pub(super) fn detail_row(
-    label: impl Into<gpui::SharedString>,
-    value: impl Into<gpui::SharedString>,
-    cx: &gpui::App,
+    label: impl Into<gpui_kit::SharedString>,
+    value: impl Into<gpui_kit::SharedString>,
+    cx: &gpui_kit::App,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -515,7 +515,7 @@ pub(super) fn detail_row(
         .child(div().flex_1().min_w_0().text_right().child(value.into()))
 }
 
-fn live_analysis_tooltip(owner: WeakEntity<Shell>, cx: &mut gpui::App) -> gpui::AnyView {
+fn live_analysis_tooltip(owner: WeakEntity<Shell>, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {
     cx.new(|cx| {
         if let Some(owner) = owner.upgrade() {
             cx.observe(&owner, |_, _, cx| cx.notify()).detach();
@@ -615,17 +615,17 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
     })
 }
 
-fn advice_color(cx: &gpui::App) -> gpui::Hsla {
+fn advice_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     if cx.theme().is_dark() {
-        gpui::rgb(0xfacc15).into()
+        gpui_kit::rgb(0xfacc15).into()
     } else {
-        gpui::rgb(0x946200).into()
+        gpui_kit::rgb(0x946200).into()
     }
 }
 
-fn advice_hover_color(cx: &gpui::App) -> gpui::Hsla {
+fn advice_hover_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     let color = advice_color(cx);
-    gpui::hsla(color.h, color.s, (color.l + 0.24).min(1.0), color.a)
+    gpui_kit::hsla(color.h, color.s, (color.l + 0.24).min(1.0), color.a)
 }
 
 #[cfg(test)]
@@ -670,8 +670,8 @@ mod tests {
 
     #[test]
     fn control_foregrounds_keep_distinct_normal_hover_and_pressed_steps() {
-        let normal = gpui::hsla(0.15, 0.8, 0.4, 1.0);
-        let hovered = gpui::hsla(0.15, 0.8, 0.8, 1.0);
+        let normal = gpui_kit::hsla(0.15, 0.8, 0.4, 1.0);
+        let hovered = gpui_kit::hsla(0.15, 0.8, 0.8, 1.0);
         let foregrounds = ControlForegrounds::between(normal, hovered);
 
         assert_eq!(foregrounds.current(false), normal);

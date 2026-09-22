@@ -1,6 +1,6 @@
 //! Application artwork alongside the toolkit's standard icons.
 
-use gpui::{AssetSource, SharedString};
+use gpui_kit::{AssetSource, SharedString};
 use std::borrow::Cow;
 
 pub struct Assets;
@@ -25,15 +25,15 @@ const ARTWORK: &[(&str, &[u8])] = &[
 ];
 
 impl AssetSource for Assets {
-    fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
+    fn load(&self, path: &str) -> gpui_kit::Result<Option<Cow<'static, [u8]>>> {
         match ARTWORK.iter().find(|(name, _)| *name == path) {
             Some((_, data)) => Ok(Some(Cow::Borrowed(data))),
-            None => gpui_component_assets::Assets.load(path),
+            None => gpui_kit::assets::Assets.load(path),
         }
     }
 
-    fn list(&self, path: &str) -> gpui::Result<Vec<SharedString>> {
-        let mut entries = gpui_component_assets::Assets.list(path)?;
+    fn list(&self, path: &str) -> gpui_kit::Result<Vec<SharedString>> {
+        let mut entries = gpui_kit::assets::Assets.list(path)?;
         entries.extend(
             ARTWORK
                 .iter()
