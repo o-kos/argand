@@ -73,9 +73,10 @@ external class-A model pair is not used.
 
 ## Implementation steps
 
-- [ ] Start the focused branch and open a Draft PR closing this issue.
-- [ ] Root adoption in `shell::run`: create `Entity<Shell>`, wrap in
-      `Root::new(...).bordered(false)`, keep `WindowHandle<Root>` at startup.
+- [x] Start the focused branch and open a Draft PR closing this issue.
+- [x] Root adoption in `shell::run`: create `Entity<Shell>` first, wrap in
+      `Root::new(...).bordered(false)`; the startup handle is `WindowHandle<Root>`
+      and is not retained further (the shell's own window id serves updates).
 - [ ] Move ChooseFile / UseRecommendedRange / EditAnalysis dispatch to
       `WeakEntity<Shell>` + `WindowHandle<Root>` with safe no-ops.
 - [ ] Rewire the ready-status dismissal to the captured weak entity; remove
