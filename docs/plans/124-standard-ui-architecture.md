@@ -4,10 +4,11 @@ Resolves [#124](https://github.com/o-kos/argand/issues/124).
 
 ## Overview
 
-Adopt the standard gpui-component `Root` and its window frame, give the plot a
-dedicated focused entity, and replace custom ordinary controls with toolkit
-components wherever their required behavior can be preserved. This is the owner's
-selected option 2, not a proposal to keep the custom frame under another wrapper.
+Migrate to GPUI Kit's aligned GPUI 0.3.x stack, adopt its borderless `Root` around
+the existing Argand frame, give the plot a dedicated focused entity, and replace
+custom ordinary controls with toolkit components wherever their required behavior
+can be preserved. This supersedes the initial stock-frame direction after #126
+demonstrated functional frame and composition blockers in the locked stack.
 
 This initial revision contains planning and policy only. No UI migration, native
 interaction verification or dependency change has been performed by this revision.
@@ -25,6 +26,10 @@ documentation-review rule; this does not downgrade the future implementation.
 - `Root::read/update` expect the window's top-level entity to be `Root`; wrapping
   only an input subtree does not satisfy that contract. `Root::render` always
   calls `window_border()` in this version; there is no exposed border-off option.
+- GPUI Kit 0.6.x is the application facade for its aligned GPUI 0.3.x family. Its
+  `Root::bordered(false)` separates Root's focus/input/overlay infrastructure from
+  the Linux CSD wrapper. #137 owns this dependency/API migration before #127 uses
+  borderless Root in production.
 - `chrome.rs` owns the current client frame, resize regions and Linux controls.
   Its viewport-based resize behavior, expanded/tiled cases and rounded corners
   must be compared with the standard frame, not discarded without verification.
@@ -53,12 +58,13 @@ documentation-review rule; this does not downgrade the future implementation.
 
 ```text
 Application window
-  Root + standard window frame (one owner)
-    Shell: document/analysis and GPU-resource ownership, title/status, window commands
-      PlotView: plot focus, pointer/readout state, hitboxes and gesture lifecycle
-        existing canvas paints Shell-supplied snapshots, axes, waveform and minimap
-        standard zoom controls
-      toolkit overlays: menus, hints and editing popovers
+  Root (border disabled; focus/input/overlay infrastructure)
+    Argand frame (sole inset/resize/title-bar owner)
+      Shell: document/analysis and GPU-resource ownership, title/status, window commands
+        PlotView: plot focus, pointer/readout state, hitboxes and gesture lifecycle
+          existing canvas paints Shell-supplied snapshots, axes, waveform and minimap
+          standard zoom controls
+    toolkit overlays: menus, hints and editing popovers
 ```
 
 This is an ownership sketch, not a requirement to draw every overlay as a normal
@@ -80,13 +86,12 @@ Do not create a generic widget framework or one entity per drawn tick/primitive.
   a replacement window. Test replacement while old frames are still in flight.
 - UI-only gesture/focus state moves to PlotView. Session persistence remains
   centralized; do not persist hover, focus or pressed state.
-- Exactly one standard frame owns decoration insets and resizing. Keep supported
-  platform title-bar controls. Small frame appearance differences are accepted;
-  changes to menus, hints, shortcuts or form transactions are not implicitly accepted.
-- Start with locked crates.io dependencies. If standard framing or composition
-  cannot meet functional requirements, stop that phase with a reproducible
-  limitation and seek an owner decision. No silent fork, cache edit, dependency
-  upgrade, second frame or return to custom ordinary controls.
+- Exactly one Argand frame owns decoration insets and resizing. Root supplies the
+  standard focus, input and overlay infrastructure with its border disabled.
+- Migrate through the crates.io `gpui-kit` facade; do not depend on `gpui-pre`
+  directly or independently select GPUI/component/assets versions. If the aligned
+  stack cannot meet functional requirements, stop with a reproducible limitation
+  and seek an owner decision. No silent fork, cache edit or second frame.
 
 ### Root-to-Shell bridge
 
@@ -133,8 +138,8 @@ implementation or the word "custom" is not a justification.
 
 | Existing implementation | Standard candidate / target | Verification or exception decision |
 | --- | --- | --- |
-| Custom frame and Linux window controls (`chrome.rs`) | Root frame and supported title-bar controls | Replace; checkpoint resize/tiling/platform behavior first |
-| Title-bar drag and double-click handlers (`shell.rs`) | TitleBar's native move/zoom behavior | Replace duplicate handlers; controls must not start a window move or maximize |
+| Custom frame and Linux window controls (`chrome.rs`) | Borderless Root plus the existing Argand frame | Retain as the sole frame; remove only infrastructure duplicated by Root and verify resize/tiling/platform behavior |
+| Title-bar drag and double-click handlers (`shell.rs`) | Existing Argand title-bar behavior | Retain accepted behavior; controls must not start a window move and the accepted maximize-button double-click sequence remains non-blocking |
 | Zoom halves and `pressed_zoom` (`plot_ui.rs`, shell routing) | Button with shared group styling | Replace; remove custom pressed/release/reset state; retain geometry, translucency and enabled rules |
 | Main cascading menu (`app_menu.rs`, `app_menu_ui.rs`) | PopupMenu and supported composition | Prototype one-level Escape, hover switching, keyboard selection, viewport placement; unresolved mismatch needs separate owner decision |
 | Waveform/spectrum splitter (`shell.rs`, `panels.rs`) | Resizable panels/handle | Compare both orientations, minimum sizes, 1-pixel separator, persisted fraction and non-restarting resize; replace if compatible, otherwise justify a narrow handle |
@@ -170,7 +175,10 @@ control within it still needs replacement or a separately accepted exception.
 - Keep Shell unwrapped and indefinitely retain separate settings windows: does not
   remove the infrastructure obstacle to #108 or reduce duplicated control behavior.
 - Nest Root under Shell or around one input: does not satisfy the top-level lookup.
-- Wrap the existing custom frame in Root: doubles frame ownership.
+- Use the locked Root around the existing frame: its mandatory border doubles frame
+  ownership. GPUI Kit's supported `Root::bordered(false)` is the selected solution.
+- Replace the accepted Argand frame with the stock component frame: #126 demonstrated
+  resize cursor/hit-region and bare-title regressions, so it failed the owner gate.
 - Hand-write ordinary controls to avoid Root or styling constraints: takes over
   text/focus/gesture contracts unnecessarily and repeats the #106 failure.
 - Rewrite DSP or introduce a custom GPU backend: unrelated to interaction ownership.
@@ -197,17 +205,29 @@ control within it still needs replacement or a separately accepted exception.
 - [ ] Present native evidence and remaining limitations. Do not start broad migration
       if functional frame requirements fail; obtain decisions on any UX tradeoffs.
 
-### 2. Root and single-frame migration
+### 2. GPUI Kit / GPUI 0.3.x migration
+
+- [ ] Replace the independently versioned GUI dependencies with the crates.io
+      `gpui-kit` facade and its aligned GPUI 0.3.x graph; commit `Cargo.lock`.
+- [ ] Adapt startup, focus, painting, assets and changed component APIs while keeping
+      the production main window rooted directly at Shell and preserving behavior.
+- [ ] Migrate the #126 fixture and prove borderless Root, standard input/select,
+      overlays and the Argand frame composition without a second frame layer.
+- [ ] Repeat the local gates, release build, dependency/license inventory,
+      representative performance checks and native/three-platform validation in #137.
+
+### 3. Root and single-frame migration
 
 - [ ] Implement and test the explicit Root-to-Shell weak-owner bridge before changing
       root lookups or application command targets; verify closed-window no-ops.
-- [ ] Adopt Root in the main window and remove duplicate custom frame/inset handlers.
+- [ ] Adopt `Root::bordered(false)` in the main window while retaining `chrome.rs` as
+      the sole frame, inset, resize and title-bar owner.
 - [ ] Update typed window handles, Shell root lookups, theme/font setup, Tab traversal,
       ready-status observation and window-level actions without duplicate registration.
 - [ ] Preserve native title, activation, file chooser/drop behavior, session geometry
       and the existing Root-backed settings window. Verify a current release build.
 
-### 3. Plot ownership and overlay isolation
+### 4. Plot ownership and overlay isolation
 
 - [ ] Introduce PlotView with bounded render inputs and typed navigation intents;
       move plot focus, pointer/readout and gesture state out of Shell.
@@ -224,7 +244,7 @@ control within it still needs replacement or a separately accepted exception.
 - [ ] Verify #122's cursor/guide reproduction and compatibility requirements; link
       the evidence without claiming unrelated hint-contrast work is complete.
 
-### 4. Standard-control replacement
+### 5. Standard-control replacement
 
 - [ ] Replace zoom halves with standard Buttons and remove their obsolete state paths.
 - [ ] Replace menu/splitter implementations where the checkpoint proved compatibility;
@@ -235,7 +255,7 @@ control within it still needs replacement or a separately accepted exception.
 - [ ] Remove temporary prototype UI; retain a focused verification fixture or tests
       that exercise standard in-window inputs without shipping another settings surface.
 
-### 5. Integration and handoff
+### 6. Integration and handoff
 
 - [ ] Update AGENTS current status from its pre-#124 description to implemented ownership,
       relevant documentation and user-visible changelog entries only for shipped changes.
@@ -256,7 +276,7 @@ listed separately from native cases. At minimum include these atomic oracles:
 
 | Case | Action / setup | Expected result |
 | --- | --- | --- |
-| R1 | Inspect main/editor roots and frame registration | One top-level Root per application window; only standard frame code owns inset/resize setup; no custom frame or second shadow |
+| R1 | Inspect main/editor roots and frame registration | One top-level Root per application window; the main Root border is disabled and only Argand frame code owns inset/resize setup; no second border or shadow |
 | R2 | Resize each edge/corner, maximize/restore, fullscreen and supported tiling | Visible edge tracks pointer; expanded windows expose no stray resize zones; restored content has one frame's insets |
 | R3 | Click toolbar control, then drag/double-click bare title | Control runs once without moving/zooming window; bare title retains platform move/zoom behavior |
 | F1 | Focus plot and issue each navigation binding | Exactly one intended view change; no duplicate analysis generation from a single action |
