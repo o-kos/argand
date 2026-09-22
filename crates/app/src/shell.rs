@@ -156,7 +156,13 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
                         shell.update(cx, |shell, cx| shell.open(origin, window, cx));
                     }
                     *slot.borrow_mut() = Some(shell.downgrade());
-                    cx.new(|cx| Root::new(shell, window, cx).bordered(false))
+                    // The frame paints its own shadow into the client inset: Root's full-window
+                    // theme background must not cover it with an opaque ring.
+                    cx.new(|cx| {
+                        Root::new(shell, window, cx)
+                            .bordered(false)
+                            .bg(gpui_kit::transparent_black())
+                    })
                 });
                 let shell = shell_slot.borrow_mut().take();
 

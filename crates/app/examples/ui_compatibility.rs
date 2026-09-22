@@ -1199,7 +1199,11 @@ fn main() {
                 cx.open_window(borderless_options, |window, cx| {
                     window.set_window_title("Argand fixture: borderless Root");
                     let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, true, window, cx));
-                    cx.new(|cx| Root::new(fixture, window, cx).bordered(false))
+                    cx.new(|cx| {
+                        Root::new(fixture, window, cx)
+                            .bordered(false)
+                            .bg(gpui_kit::transparent_black())
+                    })
                 })?;
                 Ok::<_, anyhow::Error>(())
             })
