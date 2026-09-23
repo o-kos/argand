@@ -282,8 +282,13 @@ plots and the time ruler.
 
 All time zoom keys use Control: Ctrl+Plus/Equals, Ctrl+Minus and Ctrl+0 (fit).
 Alt guides use a white three-logical-pixel stroke with a black one-pixel core,
-clipped to the plot, and slightly rounded coordinate badges with optically
-centred text. Guide colours are independent of the spectrogram palette.
+clipped to the plot, and slightly rounded coordinate badges. Guide colours are
+independent of the spectrogram palette. Badges (#141) wrap the digits' ink with
+3 logical pixels on every side. The bottom badge is centred on the bottom
+ruler's text row, so its text shares the labels' row and clears the ruler line.
+The right badge is centred on the guide line and ends at the panel edge, one
+outer margin past the ruler's labels. Clamping moves a badge only where the
+panel has no room; `cursor_guides::badge_rects` holds the geometry.
 
 ## Full-capture waveform minimap (#79)
 
@@ -383,7 +388,12 @@ state is persisted, and the full-capture minimap is independent of both viewport
 GUI time labels request `LabelMetrics::keep_edge_marks`: spacing is selected using
 readable labels as before, then edge-clipped labels become empty strings while
 their valid marks remain. Default CLI layout is unchanged. Both GUI ruler ticks
-extend six logical pixels with nine-pixel label clearance. `session.show_grid`
+extend six logical pixels. Right-hand ruler labels start nine pixels after the tick.
+Horizontal time labels (#145) start four clear pixels after their tick. Their ink is
+centred in the band below the ruler line, at least six pixels under it, and the band
+leaves as much room below the ink as above. An Alt badge around that ink therefore
+has equal space to the ruler line and to the band's bottom edge. Vertical bottom
+rows keep the nine-pixel clearance. `session.show_grid`
 (version 8, default true for older files) controls only grid strokes; View > Show
 grid saves the choice and notifies the UI without requesting analysis.
 
