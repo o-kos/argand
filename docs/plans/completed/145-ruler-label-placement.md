@@ -105,7 +105,7 @@ Request.
       both orientations, all time modes and fractional scales.
 - [x] Lower the label row to `TIME_LABEL_DROP` and centre it in the band so the
       badge has equal room above and below. Verified on an X11 capture at 1.25×.
-- [ ] Complete validation and move this plan to `docs/plans/completed/`.
+- [x] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation
 
@@ -113,13 +113,20 @@ Request.
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Native:
+- [x] Native:
   - horizontal clock, seconds and samples rulers at 1× and a fractional scale;
   - labels near both plot edges while panning;
   - Alt badges on both rulers in both orientations, including near plot corners;
   - the time unit hint;
   - vertical orientation unchanged.
 
+Native validation: the owner accepted the horizontal layout and badges on the
+current build at 1.25×. The first review round (Sonnet 5) was clean apart from
+one accepted test gap. The owner waived a second round for the badge and band
+follow-ups: they are covered by tests in both orientations, all time modes and
+fractional scales, and by per-pixel captures at 1, 1.25 and 2.
+
 ## Post-completion
 
-None.
+- #148 (fixed right-gutter width with deep-zoom label shortening) follows as its
+  own Pull Request.
