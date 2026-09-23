@@ -273,7 +273,7 @@ not change.
       Make `backdrop.rs` and `DeepPreview` return the images they give up.
 - [x] Move the interceptor into PlotView with its window and exact-focus gate, and
       restrict it to symbol normalization.
-- [ ] Headless tests:
+- [x] Headless tests:
   - [x] Every navigation binding produces exactly one intent and one view change
         with plot focus.
   - [x] Plot keys do nothing with another focus beside the plot, or in another
@@ -297,7 +297,7 @@ not change.
       buttons. Ctrl+U no longer toggles the scale controls behind the ruler context
       menu.
 - [x] Set `tab_stop(false)` on the toolbar and status-bar Buttons listed above.
-- [ ] Complete validation and move this plan to `docs/plans/completed/`.
+- [x] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation
 
@@ -305,25 +305,29 @@ not change.
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Native (Linux Wayland first), recorded per #124's row format:
-  - [ ] F1: each navigation binding in both orientations produces one view change
+- [x] Native (Linux Wayland first), recorded per #124's row format:
+  - [x] F1: each navigation binding in both orientations produces one view change
         and one analysis generation.
-  - [ ] F2: the settings editor inputs, the ruler popup and the app menu receive
+  - [x] F2: the settings editor inputs, the ruler popup and the app menu receive
         their keys, with no plot navigation behind them.
-  - [ ] P3: a drag released outside the window ends the gesture. So do opening a
+  - [x] P3: a drag released outside the window ends the gesture. So do opening a
         menu or the file chooser mid-drag, and replacing the document mid-drag.
-  - [ ] G1: progressive updates, resize, splitter drag during analysis, zoom
+  - [x] G1: progressive updates, resize, splitter drag during analysis, zoom
         beyond 1024× (deep preview) and orientation toggle leave no stale image and
         no growing upload backlog. So does opening another file while old frames
         are in flight.
-  - [ ] S1: settings preview then Cancel restores view, frequency and labels.
+  - [x] S1: settings preview then Cancel restores view, frequency and labels.
         Accept persists, and a restart restores the accepted settings.
-  - [ ] Top-row and keypad Ctrl+plus/minus, with and without Shift.
+  - [x] Top-row and keypad Ctrl+plus/minus, with and without Shift.
         Ctrl+Shift+0 and Ctrl+0.
-  - [ ] With a document shown, Tab/Shift+Tab never move focus onto toolbar or
+  - [x] With a document shown, Tab/Shift+Tab never move focus onto toolbar or
         status-bar buttons, and plot keys keep working after any button click. The
         start page keeps Tab over its recent rows and chooser. The Alt guides, the
         readout, and the ready-status dismissal are unchanged.
+
+Native validation: accepted by the owner on the current release build, with no
+findings against #128. Ruler label placement feedback from the same run is
+tracked separately in #145.
 
 ## Post-completion
 
