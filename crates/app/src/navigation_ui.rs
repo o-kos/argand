@@ -61,36 +61,9 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         KeyBinding::new("ctrl-up", PanFarUp, Some("Plot && Horizontal")),
         KeyBinding::new("ctrl-down", PanFarDown, Some("Plot && Horizontal")),
     ]);
-    cx.intercept_keystrokes(|event, window, cx| {
-        if !event
-            .context_stack
-            .iter()
-            .any(|context| context.contains("Plot"))
-        {
-            return;
-        }
-        // GPUI consumes Shift for symbols; the window retains its physical state.
-        if let Some(action) = plot_shortcut(
-            &event.keystroke.key,
-            event.keystroke.modifiers,
-            window.modifiers().shift,
-        ) {
-            Shell::dismiss_window_ready_status(window, cx);
-            // A popup can inherit Plot bindings; do not navigate behind it.
-            if event
-                .context_stack
-                .last()
-                .is_some_and(|context| context.contains("Plot"))
-            {
-                window.dispatch_action(action, cx);
-            }
-            cx.stop_propagation();
-        }
-    })
-    .detach();
 }
 
-fn plot_shortcut(
+pub(super) fn plot_shortcut(
     key: &str,
     modifiers: gpui_kit::Modifiers,
     physical_shift: bool,
@@ -99,8 +72,6 @@ fn plot_shortcut(
         return None;
     }
     match (key, modifiers.shift || physical_shift) {
-        ("g", false) => Some(Box::new(ToggleGrid)),
-        ("t", false) => Some(Box::new(ToggleOrientation)),
         ("+" | "=" | "add", false) => Some(Box::new(ZoomIn)),
         ("-" | "_" | "subtract", false) => Some(Box::new(ZoomOut)),
         ("+" | "=" | "add", true) => Some(Box::new(FrequencyZoomIn)),
@@ -295,7 +266,6 @@ impl Shell {
         };
         self.view = Some(View::full(total));
         self.frequency = crate::frequency::View::default();
-        self.frequency_pan = None;
         self.frequency_scheme = None;
         self.time_scheme = None;
         self.tick_pan = None;
@@ -305,9 +275,10 @@ impl Shell {
         }
     }
 
-    pub(super) fn bound_view(&mut self) {
-        self.pan = None;
-        self.frequency_pan = None;
+    pub(super) fn bound_view(&mut self, cx: &mut gpui_kit::App) {
+        if let Some(plot) = self.plot_entity() {
+            plot.update(cx, |plot, cx| plot.cancel_drags(cx));
+        }
         let bounded = self.frequency.zoom(1., 0.5, self.frequency_cells());
         if bounded != self.frequency {
             self.frequency = bounded;
@@ -331,6 +302,12 @@ impl Shell {
 
     fn sample_count(&self) -> Option<u64> {
         Some(self.file.as_ref()?.document.meta()?.len_samples)
+    }
+
+    /// Whether a view the plot asked for lies within the open capture.
+    fn within_capture(&self, view: View) -> bool {
+        self.sample_count()
+            .is_some_and(|total| view.len > 0 && view.start.saturating_add(view.len) <= total)
     }
 
     fn navigate(&mut self, view: View, cx: &mut Context<Self>) {
@@ -373,9 +350,9 @@ impl Shell {
         }
     }
 
-    fn hold_time_scheme(&mut self, window: &Window) {
+    fn hold_time_scheme(&mut self, window: &Window, cx: &gpui_kit::App) {
         if self.time_scheme.is_none() {
-            self.time_scheme = self.measure_time_scheme(window);
+            self.time_scheme = self.measure_time_scheme(window, cx);
         }
     }
 
@@ -386,7 +363,7 @@ impl Shell {
         };
         let total = meta.len_samples;
         let rate = meta.sample_rate;
-        self.hold_time_scheme(window);
+        self.hold_time_scheme(window, cx);
         let Some(scheme) = self.time_scheme else {
             return;
         };
@@ -402,7 +379,7 @@ impl Shell {
     }
 
     fn pan_by(&mut self, fraction: f64, window: &Window, cx: &mut Context<Self>) {
-        self.hold_time_scheme(window);
+        self.hold_time_scheme(window, cx);
         if let Some(view) = self.view
             && let Some(total) = self.sample_count()
         {
@@ -410,191 +387,95 @@ impl Shell {
         }
     }
 
-    pub(super) fn wheel(
+    /// Act on what the plot asked for, accepting only views within this capture.
+    pub(super) fn apply_plot_intent(
         &mut self,
-        event: &gpui_kit::ScrollWheelEvent,
+        _: &gpui_kit::Entity<plot_view::PlotView>,
+        intent: &plot_view::PlotIntent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(geometry) = self.plot_geometry else {
-            return;
-        };
-        if !(geometry.navigation.contains(&event.position)
-            || geometry.frequency_ruler.contains(&event.position))
-            || self.splitter_dragging
-            || geometry.controls_at(event.position)
-        {
-            return;
-        }
-        if geometry.minimap.contains(&event.position) {
-            return;
-        }
-        self.pan = None;
-        self.frequency_pan = None;
-        let delta = event.delta.pixel_delta(px(40.));
-        match geometry.scroll(event.position, delta, event.modifiers) {
-            Scroll::FrequencyPan(fraction) => self.pan_frequency(fraction, cx),
-            Scroll::FrequencyZoom { factor, anchor } => self.zoom_frequency(factor, anchor, cx),
-            Scroll::Pan(fraction) => self.pan_by(fraction, window, cx),
-            Scroll::Zoom { factor, anchor } => self.zoom(factor, anchor, cx),
-        }
-        cx.stop_propagation();
-    }
-
-    pub(super) fn begin_pan(
-        &mut self,
-        event: &gpui_kit::MouseDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(geometry) = self.plot_geometry else {
-            return;
-        };
-        if !(geometry.navigation.contains(&event.position)
-            || geometry.frequency_ruler.contains(&event.position))
-            || self.splitter_dragging
-            || geometry.controls_at(event.position)
-        {
-            return;
-        }
-        window.focus(&self.focus, cx);
-        self.pan = None;
-        self.frequency_pan = None;
-        let (time, frequency) = geometry.drag_axes(event.position);
-        if frequency && self.frequency.span < 1. {
-            self.hold_frequency_scheme();
-            self.frequency_pan = Some((event.position, self.frequency));
-            cx.notify();
-        }
-        if !time {
-            return;
-        }
-        if self
-            .view
-            .zip(self.sample_count())
-            .is_none_or(|(view, total)| view.len >= total)
-        {
-            return;
-        }
-        self.hold_time_scheme(window);
-        let minimap = geometry.minimap.contains(&event.position);
-        if minimap && !self.minimap_press(event, geometry, window, cx) {
-            self.pan = None;
-            return;
-        }
-        self.pan = self.view.map(|view| Pan {
-            position: event.position,
-            view,
-            width: geometry.time_length(),
-            minimap,
-        });
-        cx.notify();
-    }
-
-    fn minimap_press(
-        &mut self,
-        event: &gpui_kit::MouseDownEvent,
-        geometry: PlotGeometry,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let Some(view) = self.view else { return false };
-        let Some(total) = self.sample_count() else {
-            return false;
-        };
-        let fraction = geometry.minimap_fraction(event.position);
-        let viewport = crate::minimap::viewport(view, total, geometry.minimap_columns);
-        match crate::minimap::click(
-            fraction,
-            viewport,
-            event.modifiers.control,
-            event.click_count,
-        ) {
-            crate::minimap::Click::Grab => return true,
-            crate::minimap::Click::Step(divisions) => self.pan_ticks(divisions, window, cx),
-            crate::minimap::Click::Center => {
-                self.navigate(crate::minimap::center(view, fraction, total), cx)
-            }
-        }
-        false
-    }
-
-    fn plot_pointer(&self, position: gpui_kit::Point<Pixels>) -> Option<gpui_kit::Point<Pixels>> {
-        self.plot_geometry
-            .filter(|geometry| {
-                geometry.navigation.contains(&position)
-                    || geometry.frequency_ruler.contains(&position)
-            })
-            .map(|_| position)
-    }
-
-    fn set_pointer(&mut self, pointer: Option<gpui_kit::Point<Pixels>>, cx: &mut Context<Self>) {
-        self.pointer = pointer;
-        if !self.ready_status_dismissed && self.cursor_readout().is_some() {
-            self.dismiss_ready_status(cx);
-        }
-    }
-
-    pub(super) fn pointer_moved(
-        &mut self,
-        event: &gpui_kit::MouseMoveEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let pointer = self.plot_pointer(event.position);
-        if self.pan.is_none() && self.frequency_pan.is_none() && self.pointer == pointer {
-            return;
-        }
-        self.set_pointer(pointer, cx);
-        let mut changed = false;
-        if let Some((origin, view)) = self.frequency_pan {
-            if event.dragging() {
-                if let Some(geometry) = self.plot_geometry {
-                    let fraction =
-                        geometry.fractions(event.position).1 - geometry.fractions(origin).1;
-                    changed |= self.set_frequency_view(view.pan(fraction));
+        use plot_view::{FrequencyIntent, PlotIntent, TimeIntent};
+        match *intent {
+            PlotIntent::Layout {
+                plot,
+                time_length_changed,
+                frequency_length_changed,
+            } => {
+                if time_length_changed {
+                    self.time_scheme = None;
+                    self.tick_pan = None;
                 }
-            } else {
-                self.frequency_pan = None;
+                if frequency_length_changed {
+                    self.frequency_scheme = None;
+                }
+                if self.plot != Some(plot) {
+                    self.resize(plot, cx);
+                }
+                cx.notify();
+            }
+            PlotIntent::Pointer => {
+                if !self.ready_status_dismissed && self.cursor_readout(cx).is_some() {
+                    self.dismiss_ready_status(cx);
+                }
+                cx.notify();
+            }
+            PlotIntent::GestureStarted { time, frequency } => {
+                if frequency {
+                    self.hold_frequency_scheme(cx);
+                }
+                if time {
+                    self.hold_time_scheme(window, cx);
+                }
+            }
+            PlotIntent::Time(TimeIntent::Zoom { factor, anchor }) => self.zoom(factor, anchor, cx),
+            PlotIntent::Time(TimeIntent::Pan(fraction)) => self.pan_by(fraction, window, cx),
+            PlotIntent::Time(TimeIntent::Ticks(divisions)) => self.pan_ticks(divisions, window, cx),
+            PlotIntent::Time(TimeIntent::Fit) => {
+                if let Some(total) = self.sample_count() {
+                    self.navigate(View::full(total), cx);
+                }
+            }
+            PlotIntent::Time(TimeIntent::Show(view)) => {
+                if self.within_capture(view) {
+                    self.navigate(view, cx);
+                }
+            }
+            PlotIntent::Frequency(FrequencyIntent::Zoom { factor, anchor }) => {
+                self.zoom_frequency(factor, anchor, cx)
+            }
+            PlotIntent::Frequency(FrequencyIntent::Pan(fraction)) => {
+                self.pan_frequency(fraction, cx)
+            }
+            PlotIntent::Frequency(FrequencyIntent::Ticks(divisions)) => {
+                self.frequency_ticks(divisions, cx)
+            }
+            PlotIntent::Frequency(FrequencyIntent::Fit) => {
+                self.navigate_frequency(crate::frequency::View::default(), cx)
+            }
+            PlotIntent::Drag { time, frequency } => {
+                let mut changed = false;
+                if let Some(view) = frequency {
+                    changed |= self.set_frequency_view(view);
+                }
+                if let Some(view) = time.filter(|view| self.within_capture(*view)) {
+                    changed |= self.set_time_view(view);
+                }
+                if changed {
+                    self.ask_for_a_picture();
+                }
+                cx.notify();
+            }
+            PlotIntent::WaveformFraction(fraction) => {
+                self.session.waveform_fraction = Some(fraction);
+                self.save();
+                cx.notify();
             }
         }
-        if let Some(pan) = self.pan
-            && let Some(total) = self.sample_count()
-        {
-            if event.dragging() {
-                let delta = pan.position - event.position;
-                let fraction =
-                    f32::from(self.session.orientation.axes(delta.x, delta.y).0) / pan.width;
-                let fraction = if pan.minimap {
-                    -f64::from(fraction) * total as f64 / pan.view.len.max(1) as f64
-                } else {
-                    f64::from(fraction)
-                };
-                changed |= self.set_time_view(pan.view.pan(fraction, total));
-            } else {
-                self.pan = None;
-            }
-        }
-        if changed {
-            self.ask_for_a_picture();
-        }
-        cx.notify();
     }
 
-    pub(super) fn finish_pan(
-        &mut self,
-        _: &gpui_kit::MouseUpEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.pan = None;
-        self.frequency_pan = None;
-        cx.notify();
-    }
-
-    pub(super) fn cursor_readout(&self) -> Option<(String, Option<String>)> {
-        let geometry = self.plot_geometry?;
-        let pointer = self.pointer?;
+    pub(super) fn cursor_readout(&self, cx: &gpui_kit::App) -> Option<(String, Option<String>)> {
+        let (pointer, geometry) = self.plot_view()?.read(cx).hover()?;
         if !geometry.navigation.contains(&pointer) {
             return None;
         }
@@ -687,21 +568,22 @@ impl Shell {
         }
     }
 
-    fn hold_frequency_scheme(&mut self) {
+    fn hold_frequency_scheme(&mut self, cx: &gpui_kit::App) {
         if self.frequency_scheme.is_none() {
             self.frequency_scheme = self
-                .plot_geometry
+                .plot_view()
+                .and_then(|plot| plot.read(cx).geometry)
                 .and_then(|geometry| geometry.frequency_scheme);
         }
     }
 
     fn pan_frequency(&mut self, fraction: f64, cx: &mut Context<Self>) {
-        self.hold_frequency_scheme();
+        self.hold_frequency_scheme(cx);
         self.navigate_frequency(self.frequency.pan(fraction), cx);
     }
 
     fn frequency_ticks(&mut self, divisions: f64, cx: &mut Context<Self>) {
-        self.hold_frequency_scheme();
+        self.hold_frequency_scheme(cx);
         if let Some(scheme) = self.frequency_scheme
             && let Some(extents) = self.extents()
         {
@@ -712,7 +594,8 @@ impl Shell {
         }
     }
 
-    pub(super) fn navigation_actions(
+    /// The view commands that change the session; navigation belongs to the plot.
+    pub(super) fn view_commands(
         &self,
         content: gpui_kit::Stateful<gpui_kit::Div>,
         cx: &mut Context<Self>,
@@ -730,25 +613,14 @@ impl Shell {
                 shell.session.show_scale_ui = !shell.session.show_scale_ui;
                 // Hiding the controls while one is held would leave the
                 // pressed mark stuck on whichever half returns.
-                if !shell.session.show_scale_ui {
-                    shell.pressed_zoom = None;
+                if !shell.session.show_scale_ui
+                    && let Some(plot) = shell.plot_entity()
+                {
+                    plot.update(cx, |plot, cx| plot.release_press(cx));
                 }
                 shell.save();
                 cx.notify();
             }))
-            .on_action(
-                cx.listener(|shell, _: &FrequencyZoomIn, _, cx| shell.zoom_frequency(0.5, 0.5, cx)),
-            )
-            .on_action(
-                cx.listener(|shell, _: &FrequencyZoomOut, _, cx| shell.zoom_frequency(2., 0.5, cx)),
-            )
-            .on_action(cx.listener(|shell, _: &FitFrequency, _, cx| {
-                shell.navigate_frequency(crate::frequency::View::default(), cx)
-            }))
-            .on_action(cx.listener(|shell, _: &PanUp, _, cx| shell.frequency_ticks(1., cx)))
-            .on_action(cx.listener(|shell, _: &PanDown, _, cx| shell.frequency_ticks(-1., cx)))
-            .on_action(cx.listener(|shell, _: &PanFarUp, _, cx| shell.frequency_ticks(5., cx)))
-            .on_action(cx.listener(|shell, _: &PanFarDown, _, cx| shell.frequency_ticks(-5., cx)))
             .on_action(cx.listener(|shell, _: &ClockRuler, _, cx| {
                 shell.set_time_ruler(crate::time_ruler::Mode::Clock, cx)
             }))
@@ -757,29 +629,6 @@ impl Shell {
             }))
             .on_action(cx.listener(|shell, _: &SamplesRuler, _, cx| {
                 shell.set_time_ruler(crate::time_ruler::Mode::Samples, cx)
-            }))
-            .on_action(cx.listener(|shell, _: &ZoomIn, _, cx| shell.zoom(0.5, 0.5, cx)))
-            .on_action(cx.listener(|shell, _: &ZoomOut, _, cx| shell.zoom(2.0, 0.5, cx)))
-            .on_action(
-                cx.listener(|shell, _: &PanLeft, window, cx| shell.pan_ticks(-1, window, cx)),
-            )
-            .on_action(
-                cx.listener(|shell, _: &PanRight, window, cx| shell.pan_ticks(1, window, cx)),
-            )
-            .on_action(
-                cx.listener(|shell, _: &PanFarLeft, window, cx| shell.pan_ticks(-5, window, cx)),
-            )
-            .on_action(
-                cx.listener(|shell, _: &PanFarRight, window, cx| shell.pan_ticks(5, window, cx)),
-            )
-            .on_action(
-                cx.listener(|shell, _: &GoStart, window, cx| shell.pan_by(-1e20, window, cx)),
-            )
-            .on_action(cx.listener(|shell, _: &GoEnd, window, cx| shell.pan_by(1e20, window, cx)))
-            .on_action(cx.listener(|shell, _: &FitCapture, _, cx| {
-                if let Some(total) = shell.sample_count() {
-                    shell.navigate(View::full(total), cx);
-                }
             }))
     }
 
@@ -792,6 +641,218 @@ impl Shell {
         self.tick_pan = None;
         self.save();
         cx.notify();
+    }
+
+    fn toggle_orientation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.session.orientation = self.session.orientation.toggled();
+        self.time_scheme = None;
+        self.frequency_scheme = None;
+        self.tick_pan = None;
+        if let Some(plot) = self.plot_entity() {
+            plot.update(cx, |plot, cx| plot.reorient(cx));
+        }
+        self.upload(window, cx);
+        self.upload_pending = false;
+        self.orient_backdrop(window, cx);
+        self.save();
+        cx.notify();
+    }
+}
+
+impl plot_view::PlotView {
+    pub(super) fn wheel(
+        &mut self,
+        event: &gpui_kit::ScrollWheelEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use plot_view::{FrequencyIntent, PlotIntent, TimeIntent};
+        let Some(geometry) = self.geometry else {
+            return;
+        };
+        if !(geometry.navigation.contains(&event.position)
+            || geometry.frequency_ruler.contains(&event.position))
+            || self.splitter_dragging
+            || geometry.controls_at(event.position)
+        {
+            return;
+        }
+        if geometry.minimap.contains(&event.position) {
+            return;
+        }
+        self.pan = None;
+        self.frequency_pan = None;
+        let delta = event.delta.pixel_delta(px(40.));
+        cx.emit(
+            match geometry.scroll(event.position, delta, event.modifiers) {
+                Scroll::FrequencyPan(fraction) => {
+                    PlotIntent::Frequency(FrequencyIntent::Pan(fraction))
+                }
+                Scroll::FrequencyZoom { factor, anchor } => {
+                    PlotIntent::Frequency(FrequencyIntent::Zoom { factor, anchor })
+                }
+                Scroll::Pan(fraction) => PlotIntent::Time(TimeIntent::Pan(fraction)),
+                Scroll::Zoom { factor, anchor } => {
+                    PlotIntent::Time(TimeIntent::Zoom { factor, anchor })
+                }
+            },
+        );
+        cx.stop_propagation();
+    }
+
+    pub(super) fn begin_pan(
+        &mut self,
+        event: &gpui_kit::MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(geometry) = self.geometry else {
+            return;
+        };
+        let Some(snapshot) = &self.snapshot else {
+            return;
+        };
+        if !(geometry.navigation.contains(&event.position)
+            || geometry.frequency_ruler.contains(&event.position))
+            || self.splitter_dragging
+            || geometry.controls_at(event.position)
+        {
+            return;
+        }
+        window.focus(&self.focus, cx);
+        let view = snapshot.extents.time.view;
+        let total = snapshot.extents.time.total;
+        let frequency_view = snapshot.frequency;
+        self.pan = None;
+        self.frequency_pan = None;
+        let (time, frequency) = geometry.drag_axes(event.position);
+        let frequency = frequency && frequency_view.span < 1.;
+        let time = time && view.len < total;
+        if frequency {
+            self.frequency_pan = Some((event.position, frequency_view));
+        }
+        if time || frequency {
+            cx.emit(plot_view::PlotIntent::GestureStarted { time, frequency });
+        }
+        if time {
+            let minimap = geometry.minimap.contains(&event.position);
+            if !minimap || self.minimap_press(event, geometry, view, total, cx) {
+                self.pan = Some(Pan {
+                    position: event.position,
+                    view,
+                    width: geometry.time_length(),
+                    minimap,
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    fn minimap_press(
+        &mut self,
+        event: &gpui_kit::MouseDownEvent,
+        geometry: PlotGeometry,
+        view: View,
+        total: u64,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        use plot_view::{PlotIntent, TimeIntent};
+        let fraction = geometry.minimap_fraction(event.position);
+        let viewport = crate::minimap::viewport(view, total, geometry.minimap_columns);
+        match crate::minimap::click(
+            fraction,
+            viewport,
+            event.modifiers.control,
+            event.click_count,
+        ) {
+            crate::minimap::Click::Grab => return true,
+            crate::minimap::Click::Step(divisions) => {
+                cx.emit(PlotIntent::Time(TimeIntent::Ticks(divisions)))
+            }
+            crate::minimap::Click::Center => cx.emit(PlotIntent::Time(TimeIntent::Show(
+                crate::minimap::center(view, fraction, total),
+            ))),
+        }
+        false
+    }
+
+    fn plot_pointer(&self, position: gpui_kit::Point<Pixels>) -> Option<gpui_kit::Point<Pixels>> {
+        self.geometry
+            .filter(|geometry| {
+                geometry.navigation.contains(&position)
+                    || geometry.frequency_ruler.contains(&position)
+            })
+            .map(|_| position)
+    }
+
+    fn set_pointer(&mut self, pointer: Option<gpui_kit::Point<Pixels>>, cx: &mut Context<Self>) {
+        if self.pointer != pointer {
+            self.pointer = pointer;
+            cx.emit(plot_view::PlotIntent::Pointer);
+        }
+    }
+
+    pub(super) fn pointer_moved(
+        &mut self,
+        event: &gpui_kit::MouseMoveEvent,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.drag_splitter(event, window, cx);
+        let pointer = self.plot_pointer(event.position);
+        if self.pan.is_none() && self.frequency_pan.is_none() && self.pointer == pointer {
+            return;
+        }
+        self.set_pointer(pointer, cx);
+        let mut frequency = None;
+        if let Some((origin, view)) = self.frequency_pan {
+            if event.dragging() {
+                if let Some(geometry) = self.geometry {
+                    let fraction =
+                        geometry.fractions(event.position).1 - geometry.fractions(origin).1;
+                    frequency = Some(view.pan(fraction));
+                }
+            } else {
+                self.frequency_pan = None;
+            }
+        }
+        let mut time = None;
+        if let Some(pan) = self.pan
+            && let Some(snapshot) = &self.snapshot
+        {
+            if event.dragging() {
+                let total = snapshot.extents.time.total;
+                let delta = pan.position - event.position;
+                let fraction =
+                    f32::from(snapshot.extents.orientation.axes(delta.x, delta.y).0) / pan.width;
+                let fraction = if pan.minimap {
+                    -f64::from(fraction) * total as f64 / pan.view.len.max(1) as f64
+                } else {
+                    f64::from(fraction)
+                };
+                time = Some(pan.view.pan(fraction, total));
+            } else {
+                self.pan = None;
+            }
+        }
+        if time.is_some() || frequency.is_some() {
+            cx.emit(plot_view::PlotIntent::Drag { time, frequency });
+        }
+        cx.notify();
+    }
+
+    pub(super) fn finish_drags(
+        &mut self,
+        _: &gpui_kit::MouseUpEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.dragging() {
+            self.pan = None;
+            self.frequency_pan = None;
+            self.splitter_dragging = false;
+            cx.notify();
+        }
     }
 
     fn track_time_menu(
@@ -822,13 +883,17 @@ impl Shell {
         }
     }
 
-    pub(super) fn time_context_menu(&self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
+    pub(super) fn time_context_menu(
+        &self,
+        snapshot: &plot_view::PlotSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
         use gpui_kit::component::menu::ContextMenuExt;
-        let geometry = self.plot_geometry?;
+        let geometry = self.geometry?;
         let panel = self.panel_bounds?;
         let focus = self.focus.clone();
         let owner = cx.entity().downgrade();
-        let mode = self.session.time_ruler;
+        let mode = snapshot.extents.time.mode;
         Some(
             div()
                 .id("time-scale-context")
@@ -844,28 +909,11 @@ impl Shell {
                 .children(self.unit_hint(0, geometry.time_ruler.origin, cx))
                 .context_menu(move |menu, window, cx| {
                     let popup = cx.entity();
-                    let _ = owner.update(cx, |shell, cx| shell.track_time_menu(&popup, window, cx));
+                    let _ = owner.update(cx, |plot, cx| plot.track_time_menu(&popup, window, cx));
                     time_scale_items(menu.action_context(focus.clone()), mode)
                 })
                 .into_any_element(),
         )
-    }
-
-    fn toggle_orientation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.session.orientation = self.session.orientation.toggled();
-        self.time_scheme = None;
-        self.frequency_scheme = None;
-        self.tick_pan = None;
-        self.pan = None;
-        self.frequency_pan = None;
-        self.splitter_dragging = false;
-        self.pointer = None;
-        self.plot_geometry = None;
-        self.upload(window);
-        self.upload_pending = false;
-        self.orient_backdrop(window);
-        self.save();
-        cx.notify();
     }
 }
 

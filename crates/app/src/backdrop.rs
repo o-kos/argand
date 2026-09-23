@@ -98,6 +98,7 @@ impl Shell {
             .file
             .as_ref()
             .is_some_and(|file| file.analyst.accepts(&refresh.delivery));
+        let plot = self.plot_entity();
         let Some(backdrop) = &mut self.backdrop else {
             return;
         };
@@ -110,15 +111,10 @@ impl Shell {
         let Some(texture) = spectrogram::texture(&image, self.session.orientation) else {
             return;
         };
-        release(
-            Some(std::mem::replace(&mut backdrop.texture, texture)),
-            window,
-        );
-        if let Some(deep) = backdrop.deep.take() {
-            deep.release(window);
-        }
+        let retired = backdrop.replace_texture(texture);
         backdrop.image = Arc::new(image);
         backdrop.settings = refresh.settings;
+        retire(plot.as_ref(), retired, window, cx);
         self.receive(refresh.delivery, window, cx);
     }
 }
@@ -134,32 +130,28 @@ pub(super) struct Backdrop {
 }
 
 impl Shell {
-    pub(super) fn release_backdrop(&mut self, window: &mut Window) {
+    pub(super) fn release_backdrop(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         self.backdrop_refresh = None;
         if let Some(backdrop) = self.backdrop.take() {
-            release(Some(backdrop.texture.clone()), window);
-            if let Some(deep) = &backdrop.deep {
-                deep.release(window);
-            }
+            let mut retired = vec![backdrop.texture];
+            retired.extend(backdrop.deep.map(|deep| deep.images()).unwrap_or_default());
+            retire(self.plot_view(), retired, window, cx);
         }
     }
 
-    pub(super) fn orient_backdrop(&mut self, window: &mut Window) {
+    pub(super) fn orient_backdrop(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
+        let plot = self.plot_entity();
         let Some(backdrop) = &mut self.backdrop else {
             return;
         };
-        if let Some(texture) = spectrogram::texture(&backdrop.image, self.session.orientation) {
-            release(
-                Some(std::mem::replace(&mut backdrop.texture, texture)),
-                window,
-            );
-        }
-        if let Some(deep) = backdrop.deep.take() {
-            deep.release(window);
-        }
+        let retired = match spectrogram::texture(&backdrop.image, self.session.orientation) {
+            Some(texture) => backdrop.replace_texture(texture),
+            None => backdrop.take_deep(),
+        };
+        retire(plot.as_ref(), retired, window, cx);
     }
 
-    pub(super) fn prepare_backdrop(&mut self, window: &mut Window) {
+    pub(super) fn prepare_backdrop(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         let Some(file) = &self.file else { return };
         let Some(settings) = file.displayed_settings else {
             return;
@@ -169,19 +161,26 @@ impl Shell {
             .as_ref()
             .is_some_and(|backdrop| !backdrop.settings.equivalent(settings))
         {
-            self.release_backdrop(window);
+            self.release_backdrop(window, cx);
         }
-        self.retain_wider_picture(settings, window);
+        self.retain_wider_picture(settings, window, cx);
         let Some(shown) = self.extents().map(|extents| extents.seconds) else {
             return;
         };
+        let plot = self.plot_entity();
         let Some(backdrop) = self.backdrop.as_mut() else {
             return;
         };
-        backdrop.prepare(shown, self.session.orientation, window);
+        let retired = backdrop.prepare(shown, self.session.orientation);
+        retire(plot.as_ref(), retired, window, cx);
     }
 
-    fn retain_wider_picture(&mut self, settings: Settings, window: &mut Window) {
+    fn retain_wider_picture(
+        &mut self,
+        settings: Settings,
+        window: &mut Window,
+        cx: &mut gpui_kit::App,
+    ) {
         // A refresh owns the only pending foreground delivery. Its source grid
         // must survive until that delivery is applied or explicitly invalidated.
         let refreshing = self.backdrop_refresh.is_some();
@@ -217,7 +216,7 @@ impl Shell {
             complete,
             deep: None,
         };
-        self.release_backdrop(window);
+        self.release_backdrop(window, cx);
         self.backdrop = Some(backdrop);
     }
 }
@@ -253,27 +252,39 @@ impl Backdrop {
         crate::navigation::level_in_view(&self.db, shown, x, y)
     }
 
+    /// Swap in a picture for the current orientation, returning what it replaces.
+    fn replace_texture(&mut self, texture: Arc<RenderImage>) -> Vec<Arc<RenderImage>> {
+        let mut retired = vec![std::mem::replace(&mut self.texture, texture)];
+        retired.extend(self.take_deep());
+        retired
+    }
+
+    fn take_deep(&mut self) -> Vec<Arc<RenderImage>> {
+        self.deep
+            .take()
+            .map(|deep| deep.images())
+            .unwrap_or_default()
+    }
+
+    /// Keep source-column strips while zoomed deep, returning the ones it drops.
     fn prepare(
         &mut self,
         shown: (f64, f64),
         orientation: crate::orientation::Mode,
-        window: &mut Window,
-    ) {
+    ) -> Vec<Arc<RenderImage>> {
         let held = (self.db.t0, self.db.t1);
         if crate::navigation::image_mapping(held, shown).1 <= 1024.0 {
-            if let Some(deep) = self.deep.take() {
-                deep.release(window);
-            }
-            return;
+            return self.take_deep();
         }
         let Some(deep) =
             plot_ui::DeepPreview::prepare(&self.image, shown, orientation, self.deep.as_deref())
         else {
-            return;
+            return Vec::new();
         };
-        if let Some(old) = self.deep.replace(Arc::new(deep)) {
-            old.release(window);
-        }
+        self.deep
+            .replace(Arc::new(deep))
+            .map(|old| old.images())
+            .unwrap_or_default()
     }
 
     pub(super) fn paint(
