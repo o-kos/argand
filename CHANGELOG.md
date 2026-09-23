@@ -36,6 +36,8 @@ promise applies to.
 
 ### Changed
 
+- Place vertical-orientation frequency labels beside their ticks like the horizontal time ruler, with the same ruler height and centred label row.
+
 - Size the right-hand ruler to its visible labels, and keep it from narrowing while zooming or panning. It fits its labels again after opening a file, switching orientation, changing the time format while time is on the right, or fitting the axis shown on the right.
 
 - Place horizontal time-ruler labels right beside their ticks and give the freed space to the spectrogram.

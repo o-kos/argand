@@ -29,14 +29,14 @@ const LABEL_PAD: f32 = 9.0;
 const OUTER_PAD: f32 = 4.0;
 /// How far a tick's mark reaches out of the plot.
 const TICK_LEN: f32 = 6.0;
-/// Clear space from a horizontal time tick to its label.
-const TIME_LABEL_GAP: f32 = 4.0;
-/// Least clear space from the horizontal ruler line to the top of its labels' ink.
-const TIME_LABEL_DROP: f32 = 6.0;
+/// Clear space from a bottom-ruler tick to its label.
+const BOTTOM_LABEL_GAP: f32 = 4.0;
+/// Least clear space from the bottom ruler line to the top of its labels' ink.
+const BOTTOM_LABEL_DROP: f32 = 6.0;
 /// Room between an Alt badge's edges and the ink of its digits, on every side.
 const BADGE_PAD: f32 = 3.0;
-/// Where a horizontal time label starts, past its one-pixel tick and the gap.
-const TIME_LABEL_START: f32 = 1.0 + TIME_LABEL_GAP;
+/// Where a bottom-ruler label starts, past its one-pixel tick and the gap.
+const BOTTOM_LABEL_START: f32 = 1.0 + BOTTOM_LABEL_GAP;
 /// The size the labels are drawn at.
 ///
 /// A shade under the window's smallest text: an axis is read by glancing at
@@ -267,7 +267,7 @@ impl Frame {
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
         let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
-        let foot = bottom_band(vertical, row_height, measure);
+        let foot = bottom_band(measure);
         let scale = if scale > 0. { scale } else { 1. };
         let ceil = |value: f32| (value * scale).ceil() / scale;
         let floor = |value: f32| (value * scale).floor() / scale;
@@ -283,7 +283,8 @@ impl Frame {
         } else {
             right_labels
         };
-        let (lead, trail) = right_label_room(vertical, height, row_height, measure);
+        let bottom_center = bottom_row_center(panel, height);
+        let (lead, trail) = right_label_room(vertical, height, bottom_center, row_height, measure);
         let right_ticks = axis::tick_layout(
             right_kind,
             Axis {
@@ -313,12 +314,9 @@ impl Frame {
         } else {
             (extents.time.mode.kind(), t0, t1, held.time)
         };
-        let across = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).keep_edge_marks();
-        let across = if vertical {
-            across
-        } else {
-            across.after_tick(TIME_LABEL_START)
-        };
+        let across = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across)
+            .keep_edge_marks()
+            .after_tick(BOTTOM_LABEL_START);
         let bottom_ticks = axis::tick_layout(
             bottom_kind,
             Axis {
@@ -336,7 +334,7 @@ impl Frame {
         } else {
             (bottom_ticks, right_ticks)
         };
-        let bottom_row = plot.bottom() + bottom_row_center(vertical, row_height, panel, height);
+        let bottom_row = plot.bottom() + bottom_center;
         Some(Self {
             orientation,
             plot,
@@ -364,32 +362,25 @@ impl Frame {
     }
 }
 
-/// The height reserved below the plot for its bottom ruler.
+/// The height reserved below the plot for its bottom ruler, in either orientation.
 ///
-/// A horizontal time ruler holds its label ink `TIME_LABEL_DROP` below the
-/// one-pixel ruler line and as much again below it, so an Alt badge around
-/// that ink has equal room above and below.
-fn bottom_band(vertical: bool, row_height: f32, measure: &dyn LabelMeasure) -> f32 {
-    if vertical {
-        OUTER_PAD + row_height + LABEL_PAD
-    } else {
-        1. + 2. * TIME_LABEL_DROP + measure.digit_height(LABEL_SIZE)
-    }
+/// The ruler holds its label ink `BOTTOM_LABEL_DROP` below the one-pixel ruler
+/// line and as much again below it, so an Alt badge around that ink has equal
+/// room above and below.
+fn bottom_band(measure: &dyn LabelMeasure) -> f32 {
+    1. + 2. * BOTTOM_LABEL_DROP + measure.digit_height(LABEL_SIZE)
 }
 
 /// How far below the plot the bottom label row is centred.
-fn bottom_row_center(vertical: bool, row_height: f32, panel: Size<Pixels>, height: f32) -> f32 {
-    if vertical {
-        LABEL_PAD + row_height / 2.
-    } else {
-        // Centred in the band below the ruler line, which rounding may leave a little taller.
-        1. + (f32::from(panel.height) - height - 1.) / 2.
-    }
+fn bottom_row_center(panel: Size<Pixels>, height: f32) -> f32 {
+    // Centred in the band below the ruler line, which rounding may leave a little taller.
+    1. + (f32::from(panel.height) - height - 1.) / 2.
 }
 
 fn right_label_room(
     vertical: bool,
     height: f32,
+    bottom_center: f32,
     row_height: f32,
     measure: &dyn LabelMeasure,
 ) -> (i64, i64) {
@@ -399,7 +390,7 @@ fn right_label_room(
     let half_ink = measure.digit_height(LABEL_SIZE) / 2.;
     // Match the painted ink and the numeric labels' half-pixel center offset.
     let first = row_height / 2. + half_ink + OUTER_PAD - 0.5;
-    let last = height + LABEL_PAD + row_height / 2. - half_ink - OUTER_PAD - 0.5;
+    let last = height + bottom_center - half_ink - OUTER_PAD - 0.5;
     (
         -(first.ceil() as i64),
         last.floor() as i64 - (height as i64 - 1),
@@ -617,9 +608,9 @@ pub fn paint(
         ));
     };
 
-    for (ticks, bottom, increasing_down, after_tick) in [
-        (&frame.time, !frame.orientation.vertical(), true, true),
-        (&frame.frequency, frame.orientation.vertical(), false, false),
+    for (ticks, bottom, increasing_down) in [
+        (&frame.time, !frame.orientation.vertical(), true),
+        (&frame.frequency, frame.orientation.vertical(), false),
     ] {
         for tick in ticks {
             let (x, y) = if bottom {
@@ -653,14 +644,7 @@ pub fn paint(
             }
             let shaped = labels.shape(&tick.label, colors.label);
             let (left, row) = if bottom {
-                (
-                    if after_tick {
-                        x + TIME_LABEL_START
-                    } else {
-                        x - f32::from(shaped.width) / 2.
-                    },
-                    frame.time_row,
-                )
+                (x + BOTTOM_LABEL_START, frame.time_row)
             } else {
                 (x + LABEL_PAD, y + 0.5)
             };

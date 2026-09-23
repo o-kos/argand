@@ -61,6 +61,23 @@ chose a gutter that only grows.
 - `Shell::measure_time_scheme` passes the same floor, so held schemes match the
   painted layout.
 
+### Bottom ruler in vertical orientation, added during owner review
+
+In vertical orientation the bottom ruler carries frequency. It kept the old
+placement: labels centred under ticks, a row 9 pixels below the line, and a
+different band height. The owner asked for it to match the horizontal time
+ruler from #145, in this Pull Request.
+
+- `bottom_band` and `bottom_row_center` no longer branch on orientation. Every
+  bottom ruler reserves `1 + 2 × BOTTOM_LABEL_DROP + ink` and centres its ink in
+  the band.
+- Bottom labels use `after_tick(BOTTOM_LABEL_START)` in both orientations. Tick
+  spacing and edge marks follow the same policy as the horizontal time ruler.
+- `right_label_room` measures the vertical time labels' clearance against the
+  new bottom caption row, so they still clear the frequency unit.
+- The constants are renamed `BOTTOM_LABEL_*`: they now describe the bottom
+  ruler, not the time axis.
+
 ## Rejected alternatives
 
 - Fixed budget with shared-prefix or offset labels: not obvious to read (owner).
@@ -81,6 +98,8 @@ chose a gutter that only grows.
   - fitting the right axis and reorienting release the floor, while fitting the
     other axis does not.
 - [x] Update AGENTS.md and CHANGELOG.
+- [x] Match the vertical-orientation bottom (frequency) ruler to the horizontal
+      time ruler, and test both orientations and the vertical time clearance.
 - [ ] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation
@@ -96,7 +115,9 @@ chose a gutter that only grows.
   - it narrows on a fit of the right axis, and does not narrow on a fit of the
     other axis;
   - it narrows on an orientation switch, a time-format switch with time on the
-    right, and opening another file.
+    right, and opening another file;
+  - vertical-orientation frequency labels sit beside their ticks, with the Alt
+    badge centred in the band.
 
 ## Post-completion
 

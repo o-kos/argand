@@ -391,11 +391,11 @@ GUI time labels request `LabelMetrics::keep_edge_marks`: spacing is selected usi
 readable labels as before, then edge-clipped labels become empty strings while
 their valid marks remain. Default CLI layout is unchanged. Both GUI ruler ticks
 extend six logical pixels. Right-hand ruler labels start nine pixels after the tick.
-Horizontal time labels (#145) start four clear pixels after their tick. Their ink is
-centred in the band below the ruler line, at least six pixels under it, and the band
-leaves as much room below the ink as above. An Alt badge around that ink therefore
-has equal space to the ruler line and to the band's bottom edge. Vertical bottom
-rows keep the nine-pixel clearance. `session.show_grid`
+Bottom-ruler labels in both orientations (#145, #148) start four clear pixels after
+their tick: time in horizontal orientation, frequency in vertical. Their ink is centred
+in the band below the ruler line, at least six pixels under it, and the band leaves as
+much room below the ink as above. An Alt badge around that ink therefore has equal
+space to the ruler line and to the band's bottom edge. `session.show_grid`
 (version 8, default true for older files) controls only grid strokes; View > Show
 grid saves the choice and notifies the UI without requesting analysis.
 

@@ -165,7 +165,7 @@ fn time_labels_follow_ticks_without_overlapping_or_entering_the_right_gutter() {
 fn assert_time_labels_fit(frame: &Frame) {
     let visible: Vec<_> = frame.time.iter().filter(|tick| !tick.label.is_empty()).collect();
     for tick in &visible {
-        let start = frame.plot.x + tick.offset as f32 + TIME_LABEL_START;
+        let start = frame.plot.x + tick.offset as f32 + BOTTOM_LABEL_START;
         let end = start + DejaVuSans.width(&tick.label, LABEL_SIZE);
         assert!(start > frame.plot.x + tick.offset as f32);
         assert!(end <= frame.plot.right(), "{tick:?}");
@@ -227,7 +227,7 @@ fn assert_axis_bands_fit(frame: &Frame, width: f32, height: f32) {
     let half_ink = DejaVuSans.digit_height(LABEL_SIZE) / 2.0;
     let above = frame.time_row - half_ink - BADGE_PAD - (frame.plot.bottom() + 1.);
     let below = height - (frame.time_row + half_ink + BADGE_PAD);
-    assert!(above >= TIME_LABEL_DROP - BADGE_PAD - 1e-4, "badge clears the ruler line");
+    assert!(above >= BOTTOM_LABEL_DROP - BADGE_PAD - 1e-4, "badge clears the ruler line");
     assert!((above - below).abs() < 1e-4, "equal room above and below the badge");
     assert!(!frame.frequency.is_empty());
     for tick in &frame.frequency {
@@ -290,7 +290,7 @@ fn localized_time_labels_fit_and_units_do_not_resize_the_plot() {
             let mut end = 0.;
             for tick in frame.time.into_iter().filter(|tick| !tick.label.is_empty()) {
                 assert!(!tick.label.contains(['#', 's']));
-                let left = tick.offset as f32 + TIME_LABEL_START;
+                let left = tick.offset as f32 + BOTTOM_LABEL_START;
                 assert!(left >= end);
                 end = left + labels.width(&tick.label, LABEL_SIZE);
                 assert!(end <= frame.plot.width);
@@ -373,9 +373,8 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
             assert!(frame.plot.right() + LABEL_PAD + DejaVuSans.width(&tick.label, LABEL_SIZE) <= 796.);
         }
         for tick in frame.frequency.iter().filter(|tick| !tick.label.is_empty()) {
-            let half = DejaVuSans.width(&tick.label, LABEL_SIZE) / 2.;
-            assert!(tick.offset as f32 >= half);
-            assert!(tick.offset as f32 + half <= frame.plot.width);
+            let start = tick.offset as f32 + BOTTOM_LABEL_START;
+            assert!(start + DejaVuSans.width(&tick.label, LABEL_SIZE) <= frame.plot.width);
         }
         let hints = frame.unit_hints(&DejaVuSans);
         assert_eq!(hints[0].unwrap().per_pixel, (extents.time.bounds(extents.seconds).1 - extents.time.bounds(extents.seconds).0) / (frame.plot.height * scale).round() as f64);
@@ -385,7 +384,8 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
         assert_eq!(time_unit.y, 0.);
         assert!(time_unit.x > frame.plot.right() + TICK_LEN);
         assert!(frequency_unit.x > frame.plot.right());
-        assert!(frequency_unit.y > frame.plot.bottom() + TICK_LEN);
+        let unit_ink = frequency_unit.y + frequency_unit.height / 2. - DejaVuSans.digit_height(LABEL_SIZE) / 2.;
+        assert!(unit_ink >= frame.plot.bottom() + 1. + BOTTOM_LABEL_DROP - 1e-4);
         assert!(frequency_unit.x + frequency_unit.width <= 800.);
         assert_vertical_time_clearance(&frame);
     }
@@ -472,23 +472,21 @@ fn vertical_time_labels_clear_captions_when_resized_and_panned() {
 }
 
 #[test]
-fn horizontal_time_labels_hang_beside_their_ticks() {
+fn bottom_labels_hang_beside_their_ticks_in_both_orientations() {
     let ink = DejaVuSans.digit_height(LABEL_SIZE);
-    let row = LINE_HEIGHT.max(ink).ceil();
-    assert_eq!(TIME_LABEL_START - 1., TIME_LABEL_GAP, "gap after the one-pixel tick");
-    for (width, height) in [(300., 240.), (800., 600.)] {
-        for scale in [1., 1.25, 1.5, 2.] {
-            let extents = Extents { orientation: crate::orientation::Mode::Horizontal, ..HFDL };
-            let frame = Frame::measure(panel(width, height), scale, extents, &DejaVuSans, None).unwrap();
-            let line = frame.plot.bottom() + 1.;
-            let drop = frame.time_row - ink / 2. - line;
-            assert!(drop >= TIME_LABEL_DROP - 1e-4, "ink starts below the ruler line at {scale}");
-            assert!(drop < TIME_LABEL_DROP + 1. / scale, "rounding adds under a device pixel at {scale}");
-            let below = height - (frame.time_row + ink / 2.);
-            assert!((below - drop).abs() < 1e-4, "the ink is centred in the band at {scale}");
-            let vertical = Extents { orientation: crate::orientation::Mode::Vertical, ..extents };
-            let frame = Frame::measure(panel(width, height), scale, vertical, &DejaVuSans, None).unwrap();
-            assert_eq!(frame.time_row, frame.plot.bottom() + LABEL_PAD + row / 2., "vertical bottom row is unchanged at {scale}");
+    assert_eq!(BOTTOM_LABEL_START - 1., BOTTOM_LABEL_GAP, "gap after the one-pixel tick");
+    for orientation in [crate::orientation::Mode::Horizontal, crate::orientation::Mode::Vertical] {
+        for (width, height) in [(300., 240.), (800., 600.)] {
+            for scale in [1., 1.25, 1.5, 2.] {
+                let extents = Extents { orientation, ..HFDL };
+                let frame = Frame::measure(panel(width, height), scale, extents, &DejaVuSans, None).unwrap();
+                let line = frame.plot.bottom() + 1.;
+                let drop = frame.time_row - ink / 2. - line;
+                assert!(drop >= BOTTOM_LABEL_DROP - 1e-4, "ink starts below the ruler line at {scale}");
+                assert!(drop < BOTTOM_LABEL_DROP + 1. / scale, "rounding adds under a device pixel at {scale}");
+                let below = height - (frame.time_row + ink / 2.);
+                assert!((below - drop).abs() < 1e-4, "the ink is centred in the band at {scale}");
+            }
         }
     }
 }

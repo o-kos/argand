@@ -635,15 +635,13 @@ mod tests {
         let centre_y = right.y + right.height / 2.;
         assert!((centre_x - snap(f32::from(pointer.x))).abs() < 1e-4);
         assert!((centre_y - snap(f32::from(pointer.y))).abs() < 1e-4);
-        if !extents.orientation.vertical() {
-            let above = bottom.y - (frame.plot.bottom() + 1.);
-            let below = f32::from(panel.height) - bottom.bottom();
-            assert!(
-                above >= TIME_LABEL_DROP - BADGE_PAD - 1e-4,
-                "clears the ruler line"
-            );
-            assert!((above - below).abs() < 1e-4, "equal room above and below");
-        }
+        let above = bottom.y - (frame.plot.bottom() + 1.);
+        let below = f32::from(panel.height) - bottom.bottom();
+        assert!(
+            above >= BOTTOM_LABEL_DROP - BADGE_PAD - 1e-4,
+            "clears the ruler line"
+        );
+        assert!((above - below).abs() < 1e-4, "equal room above and below");
     }
 
     #[test]
