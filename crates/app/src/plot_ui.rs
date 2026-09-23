@@ -1,22 +1,12 @@
 //! Synchronized plot painting and measured pointer geometry.
 
 use super::navigation_ui::*;
+use super::plot_view::{PlotIntent, PlotSnapshot, PlotView};
 use super::*;
 use gpui_kit::Div;
 use gpui_kit::component::{Icon, IconName};
 
 impl Shell {
-    /// The spectrogram panel: the picture, and the axes around it.
-    ///
-    /// One canvas does the measuring and the drawing, because the two are the
-    /// same question. How wide the frequency labels are decides how much of
-    /// the panel is left for the picture, and that leftover is exactly what the
-    /// transform is asked to fill -- so the size reported back from here is the
-    /// plot's and not the panel's. Only the window has a font to measure the
-    /// labels with, which is why this cannot be settled anywhere earlier.
-    ///
-    /// The measurement is deferred rather than applied on the spot: prepaint is
-    /// not a moment at which the entity being painted can be borrowed again.
     /// The held picture view and the once-only first-paint marker, both
     /// taken from the open file when there is one.
     fn first_paint_state(
@@ -36,28 +26,121 @@ impl Shell {
         )
     }
 
+    /// What the plot paints this frame, or nothing when no plot is shown.
+    pub(super) fn plot_snapshot(&self, cx: &gpui_kit::App) -> Option<PlotSnapshot> {
+        let Showing::Plot(extents) = self.showing() else {
+            return None;
+        };
+        let (held, first_picture) = self.first_paint_state();
+        Some(PlotSnapshot {
+            extents,
+            texture: self.texture.clone(),
+            deep: self.deep_preview.clone(),
+            backdrop: self.backdrop.clone(),
+            held,
+            first_picture,
+            minimap: self.minimap_panel(cx),
+            fraction: self.session.waveform_fraction,
+            time_scheme: self.time_scheme,
+            frequency_scheme: self.frequency_scheme,
+            frequency: self.frequency,
+            show_grid: self.session.show_grid,
+            show_scale_ui: self.session.show_scale_ui,
+        })
+    }
+
+    pub(super) fn measure_time_scheme(
+        &self,
+        window: &Window,
+        cx: &gpui_kit::App,
+    ) -> Option<argand_core::axis::TickScheme> {
+        let bounds = self.plot_view()?.read(cx).panel_bounds?;
+        let height = panels::waveform_height(
+            f32::from(
+                self.session
+                    .orientation
+                    .axes(bounds.size.width, bounds.size.height)
+                    .1,
+            ),
+            f32::from(window.rem_size()),
+            self.session.waveform_fraction,
+            window.scale_factor(),
+        );
+        let (dx, dy) = self.session.orientation.axes(px(0.), px(height));
+        let panel = size(bounds.size.width - dx, bounds.size.height - dy);
+        axes::Frame::measure(
+            panel,
+            window.scale_factor(),
+            self.extents()?,
+            &axes::Labels::new(window),
+            None,
+        )?
+        .time_scheme
+    }
+
+    fn minimap_panel(&self, cx: &gpui_kit::App) -> waveform::Panel {
+        let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
+        let ink = self
+            .settings
+            .minimap_colormap(displayed)
+            .waveform_ink(cx.theme().mode.is_dark());
+        waveform::Panel {
+            waveform: self.waveform.clone(),
+            viewport: self.view.zip(
+                self.file
+                    .as_ref()
+                    .and_then(|file| file.document.meta())
+                    .map(|meta| meta.len_samples),
+            ),
+            separator: cx.theme().border,
+            ink: waveform::Ink {
+                active: gpui_kit::rgb(ink.active),
+                muted: gpui_kit::rgb(ink.muted),
+            },
+        }
+    }
+}
+
+impl PlotView {
+    /// The spectrogram panel: the picture, and the axes around it.
+    ///
+    /// One canvas does the measuring and the drawing, because the two are the
+    /// same question. How wide the frequency labels are decides how much of
+    /// the panel is left for the picture, and that leftover is exactly what the
+    /// transform is asked to fill -- so the size reported back from here is the
+    /// plot's and not the panel's. Only the window has a font to measure the
+    /// labels with, which is why this cannot be settled anywhere earlier.
+    ///
+    /// The measurement is deferred rather than applied on the spot: prepaint is
+    /// not a moment at which the entity being painted can be borrowed again.
     pub(super) fn spectrogram(
         &self,
-        extents: axes::Extents,
+        snapshot: PlotSnapshot,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let texture = self.texture.clone();
-        let deep = self.deep_preview.clone();
-        let backdrop = self.backdrop.clone();
-        let (held_view, first_picture) = self.first_paint_state();
-        let minimap = self.minimap_panel(cx);
-        let orientation = self.session.orientation;
-        let fraction = self.session.waveform_fraction;
+        let PlotSnapshot {
+            extents,
+            texture,
+            deep,
+            backdrop,
+            held: held_view,
+            first_picture,
+            minimap,
+            fraction,
+            time_scheme,
+            frequency_scheme,
+            show_grid,
+            show_scale_ui: scale_ui_visible,
+            ..
+        } = snapshot;
+        let orientation = extents.orientation;
         let rem = f32::from(cx.theme().font_size);
         let known_bounds = self.panel_bounds;
-        let known = self.plot;
-        let known_geometry = self.plot_geometry;
-        let time_scheme = self.time_scheme;
-        let frequency_scheme = self.frequency_scheme;
+        let known = self.measured;
+        let known_geometry = self.geometry;
         let view = cx.entity().downgrade();
         let guides = self.cursor_guides(extents, cx);
-        let colors = axis_colors(cx, self.session.show_grid);
-        let scale_ui_visible = self.session.show_scale_ui;
+        let colors = axis_colors(cx, show_grid);
 
         canvas(
             move |bounds, window, cx| {
@@ -140,56 +223,6 @@ impl Shell {
         .size_full()
     }
 
-    pub(super) fn measure_time_scheme(
-        &self,
-        window: &Window,
-    ) -> Option<argand_core::axis::TickScheme> {
-        let bounds = self.panel_bounds?;
-        let height = panels::waveform_height(
-            f32::from(
-                self.session
-                    .orientation
-                    .axes(bounds.size.width, bounds.size.height)
-                    .1,
-            ),
-            f32::from(window.rem_size()),
-            self.session.waveform_fraction,
-            window.scale_factor(),
-        );
-        let (dx, dy) = self.session.orientation.axes(px(0.), px(height));
-        let panel = size(bounds.size.width - dx, bounds.size.height - dy);
-        axes::Frame::measure(
-            panel,
-            window.scale_factor(),
-            self.extents()?,
-            &axes::Labels::new(window),
-            None,
-        )?
-        .time_scheme
-    }
-
-    fn minimap_panel(&self, cx: &gpui_kit::App) -> waveform::Panel {
-        let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
-        let ink = self
-            .settings
-            .minimap_colormap(displayed)
-            .waveform_ink(cx.theme().mode.is_dark());
-        waveform::Panel {
-            waveform: self.waveform.clone(),
-            viewport: self.view.zip(
-                self.file
-                    .as_ref()
-                    .and_then(|file| file.document.meta())
-                    .map(|meta| meta.len_samples),
-            ),
-            separator: cx.theme().border,
-            ink: waveform::Ink {
-                active: gpui_kit::rgb(ink.active),
-                muted: gpui_kit::rgb(ink.muted),
-            },
-        }
-    }
-
     fn cursor_guides(
         &self,
         extents: axes::Extents,
@@ -203,7 +236,7 @@ impl Shell {
         // The corner scale buttons take the pointer for themselves: no
         // Alt guides over them.
         let over_buttons = self
-            .plot_geometry
+            .geometry
             .is_some_and(|geometry| geometry.over_scale_buttons(self.pointer));
         (self.pointer.is_some()
             && self.pan.is_none()
@@ -233,7 +266,7 @@ impl Shell {
         {
             return None;
         }
-        let hint = self.plot_geometry?.unit_hints[index]?;
+        let hint = self.geometry?.unit_hints[index]?;
         let owner = cx.entity().downgrade();
         Some(
             div()
@@ -251,14 +284,15 @@ impl Shell {
 
     pub(super) fn ruler_zoom_buttons(
         &self,
+        snapshot: &PlotSnapshot,
         cx: &mut Context<Self>,
     ) -> Option<gpui_kit::AnyElement> {
-        if !self.session.show_scale_ui {
+        if !snapshot.show_scale_ui {
             return None;
         }
-        let geometry = self.plot_geometry?;
+        let geometry = self.geometry?;
         let origin = self.panel_bounds?.origin;
-        let enabled = self.view.is_some();
+        let enabled = true;
         let [time, frequency] = geometry.zoom_zones;
         Some(
             div()
@@ -305,31 +339,24 @@ impl Shell {
         )
     }
 
-    fn layout_panels(
+    /// Keep the measured layout and tell the shell what it changes.
+    fn layout(
         &mut self,
         bounds: Bounds<Pixels>,
         measured: PlotSize,
-        geometry: navigation_ui::PlotGeometry,
+        geometry: PlotGeometry,
         cx: &mut Context<Self>,
     ) {
-        if self
-            .plot_geometry
-            .is_some_and(|old| old.time_length() != geometry.time_length())
-        {
-            self.time_scheme = None;
-            self.tick_pan = None;
-        }
-        if self
-            .plot_geometry
-            .is_some_and(|old| old.frequency_length() != geometry.frequency_length())
-        {
-            self.frequency_scheme = None;
-        }
+        let old = self.geometry;
         self.panel_bounds = Some(bounds);
-        self.plot_geometry = Some(geometry);
-        if self.plot != Some(measured) {
-            self.resize(measured, cx);
-        }
+        self.geometry = Some(geometry);
+        self.measured = Some(measured);
+        cx.emit(PlotIntent::Layout {
+            plot: measured,
+            time_length_changed: old.is_some_and(|old| old.time_length() != geometry.time_length()),
+            frequency_length_changed: old
+                .is_some_and(|old| old.frequency_length() != geometry.frequency_length()),
+        });
         cx.notify();
     }
 }
@@ -406,7 +433,7 @@ fn zoom_pair(
     enabled: bool,
     pressed: [bool; 2],
     origin: gpui_kit::Point<Pixels>,
-    cx: &mut Context<Shell>,
+    cx: &mut Context<PlotView>,
 ) -> Div {
     let frame = cx.theme().border.opacity(0.75);
     let paper = cx.theme().background.opacity(0.55);
@@ -477,7 +504,7 @@ fn half_button(
     enabled: bool,
     pressed: bool,
     horizontal: bool,
-    cx: &mut Context<Shell>,
+    cx: &mut Context<PlotView>,
 ) -> gpui_kit::Stateful<Div> {
     let tooltip_action = Box::new(action) as Box<dyn Action>;
     let glyph = if enabled {
@@ -514,32 +541,24 @@ fn half_button(
         half = half
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |shell, _, _, cx| {
-                    shell.pressed_zoom = Some(hint);
+                cx.listener(move |plot, _, _, cx| {
+                    plot.pressed_zoom = Some(hint);
                     cx.notify();
                 }),
             )
-            .on_click(cx.listener(move |shell, _, window, cx| {
-                window.focus(&shell.focus, cx);
+            .on_click(cx.listener(move |plot, _, window, cx| {
+                window.focus(&plot.focus, cx);
                 window.dispatch_action(click.boxed_clone(), cx);
             }));
     }
     half = half
         .on_mouse_up(
             MouseButton::Left,
-            cx.listener(|shell, _, _, cx| {
-                if shell.pressed_zoom.take().is_some() {
-                    cx.notify();
-                }
-            }),
+            cx.listener(|plot, _, _, cx| plot.release_press(cx)),
         )
         .on_mouse_up_out(
             MouseButton::Left,
-            cx.listener(|shell, _, _, cx| {
-                if shell.pressed_zoom.take().is_some() {
-                    cx.notify();
-                }
-            }),
+            cx.listener(|plot, _, _, cx| plot.release_press(cx)),
         );
     half.tooltip(move |window, cx| {
         shortcut_tooltip(
@@ -553,7 +572,7 @@ fn half_button(
 }
 
 fn unit_tooltip(
-    owner: WeakEntity<Shell>,
+    owner: WeakEntity<PlotView>,
     index: usize,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::AnyView {
@@ -565,7 +584,7 @@ fn unit_tooltip(
             let hint = owner.upgrade().and_then(|owner| {
                 owner
                     .read(cx)
-                    .plot_geometry
+                    .geometry
                     .and_then(|geometry| geometry.unit_hints[index])
             });
             div()
@@ -710,16 +729,14 @@ fn frequency_mapping(held: (f64, f64), shown: (f64, f64)) -> (f32, f32) {
 }
 
 fn defer_layout(
-    view: WeakEntity<Shell>,
+    view: WeakEntity<PlotView>,
     bounds: Bounds<Pixels>,
     measured: PlotSize,
     geometry: navigation_ui::PlotGeometry,
     cx: &mut gpui_kit::App,
 ) {
     cx.defer(move |cx| {
-        let _ = view.update(cx, |shell, cx| {
-            shell.layout_panels(bounds, measured, geometry, cx)
-        });
+        let _ = view.update(cx, |plot, cx| plot.layout(bounds, measured, geometry, cx));
     });
 }
 
@@ -734,13 +751,13 @@ pub(super) struct DeepPreview {
 }
 
 impl Shell {
-    pub(super) fn release_deep_preview(&mut self, window: &mut Window) {
+    pub(super) fn release_deep_preview(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         if let Some(deep) = self.deep_preview.take() {
-            deep.release(window);
+            retire(self.plot_view(), deep.images(), window, cx);
         }
     }
 
-    pub(super) fn prepare_deep_preview(&mut self, window: &mut Window) {
+    pub(super) fn prepare_deep_preview(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         let Some(extents) = self.extents() else {
             return;
         };
@@ -750,7 +767,7 @@ impl Shell {
         let image = &analysis.spectrogram;
         let held = (image.t0, image.t1);
         if crate::navigation::image_mapping(held, extents.seconds).1 <= 1024.0 {
-            self.release_deep_preview(window);
+            self.release_deep_preview(window, cx);
             return;
         }
         if let Some(deep) = DeepPreview::prepare(
@@ -759,7 +776,7 @@ impl Shell {
             self.session.orientation,
             self.deep_preview.as_deref(),
         ) {
-            self.release_deep_preview(window);
+            self.release_deep_preview(window, cx);
             self.deep_preview = Some(Arc::new(deep));
         }
     }
@@ -799,10 +816,12 @@ impl DeepPreview {
         })
     }
 
-    pub(super) fn release(&self, window: &mut Window) {
-        for (_, texture) in &self.strips {
-            release(Some(texture.clone()), window);
-        }
+    /// The strips to retire when this preview is replaced.
+    pub(super) fn images(&self) -> Vec<Arc<RenderImage>> {
+        self.strips
+            .iter()
+            .map(|(_, texture)| texture.clone())
+            .collect()
     }
 
     pub(super) fn paint(

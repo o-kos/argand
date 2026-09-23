@@ -44,6 +44,8 @@ mod backdrop;
 mod navigation_ui;
 #[path = "plot_ui.rs"]
 mod plot_ui;
+#[path = "plot_view.rs"]
+mod plot_view;
 #[path = "settings_ui.rs"]
 mod settings_ui;
 
@@ -264,6 +266,14 @@ struct OpenFile {
     opened_at: Instant,
     first_picture: Arc<AtomicBool>,
     displayed_settings: Option<Settings>,
+    /// Created once the file has described itself, and dropped with it.
+    plot: Option<PlotHandle>,
+}
+
+/// The document's plot, with the subscription that carries its intents.
+struct PlotHandle {
+    view: gpui_kit::Entity<plot_view::PlotView>,
+    _intents: Subscription,
 }
 
 /// The size of the plot in device pixels, which is the size the transform is
@@ -330,14 +340,8 @@ struct Shell {
     view: Option<crate::navigation::View>,
     frequency: crate::frequency::View,
     frequency_scheme: Option<argand_core::axis::TickScheme>,
-    frequency_pan: Option<(gpui_kit::Point<Pixels>, crate::frequency::View)>,
     time_scheme: Option<argand_core::axis::TickScheme>,
     tick_pan: Option<crate::navigation::TickPan>,
-    plot_geometry: Option<navigation_ui::PlotGeometry>,
-    pointer: Option<gpui_kit::Point<Pixels>>,
-    pressed_zoom: Option<&'static str>,
-    badge_metrics: axes::BadgeMetrics,
-    pan: Option<navigation_ui::Pan>,
     /// The picture currently on the GPU.
     ///
     /// Held so that the one it replaces can be released: gpui keeps an
@@ -349,13 +353,9 @@ struct Shell {
     upload_pending: bool,
     title_drag_pending: bool,
     waveform: Option<Arc<waveform::Waveform>>,
-    panel_bounds: Option<Bounds<Pixels>>,
-    splitter_dragging: bool,
     focus: FocusHandle,
     application_menu: Option<app_menu_ui::ApplicationMenu>,
     application_menu_anchor: app_menu_ui::Anchor,
-    open_menu: Option<WeakEntity<PopupMenu>>,
-    menu_dismiss: Option<gpui_kit::Subscription>,
     recent_files: RecentFiles,
     recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
@@ -415,14 +415,8 @@ impl Shell {
             view: None,
             frequency: crate::frequency::View::default(),
             frequency_scheme: None,
-            frequency_pan: None,
             time_scheme: None,
             tick_pan: None,
-            plot_geometry: None,
-            pointer: None,
-            pressed_zoom: None,
-            badge_metrics: axes::BadgeMetrics::default(),
-            pan: None,
             texture: None,
             deep_preview: None,
             backdrop: None,
@@ -430,13 +424,9 @@ impl Shell {
             upload_pending: false,
             title_drag_pending: false,
             waveform: None,
-            panel_bounds: None,
-            splitter_dragging: false,
             focus,
             application_menu: None,
             application_menu_anchor: Default::default(),
-            open_menu: None,
-            menu_dismiss: None,
             recent_updates: None,
             _bounds: bounds,
             _activation: activation,
@@ -504,9 +494,8 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
-        // A new capture replaces everything the old one held, including a
-        // corner half still marked pressed at the moment of the swap.
-        self.pressed_zoom = None;
+        // The old plot goes with its document, so focus must not stay on it.
+        window.focus(&self.focus, cx);
         let editor = self.settings_window;
         self.finish_settings(false, cx);
         if let Some(editor) = editor {
@@ -521,15 +510,12 @@ impl Shell {
         // otherwise be drawn under this one's axes until the first transform
         // lands, and its plot size would send the first request at a width
         // this file's labels may not leave.
-        self.release(window);
+        self.release(window, cx);
         self.plot = None;
         self.view = None;
         self.recent_files.clear_current();
         self.time_scheme = None;
         self.tick_pan = None;
-        self.plot_geometry = None;
-        self.pointer = None;
-        self.pan = None;
 
         let (analyst, updates, start) = crate::analysis::prepare(
             origin.path.clone(),
@@ -572,6 +558,7 @@ impl Shell {
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
             displayed_settings: None,
+            plot: None,
         });
         cx.notify();
     }
@@ -652,6 +639,7 @@ impl Shell {
         match effect {
             Effect::Opened => {
                 self.reset_view();
+                self.attach_plot(window, cx);
                 self.start_minimap(window, cx);
                 // Remembered now rather than when it was asked for. A file
                 // that will not open must not overwrite the hints of the entry
@@ -673,7 +661,47 @@ impl Shell {
             Effect::Analysis => self.upload_pending = true,
             Effect::Status => {}
         }
+        if matches!(self.showing(), Showing::Failed(_))
+            && self
+                .plot_view()
+                .is_some_and(|plot| plot.read(cx).focus.is_focused(window))
+        {
+            window.focus(&self.focus, cx);
+        }
         cx.notify();
+    }
+
+    /// Give the described document its plot, focused unless something else holds focus.
+    fn attach_plot(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let view = cx.new(|cx| plot_view::PlotView::new(window, cx));
+        let intents = cx.subscribe_in(&view, window, Self::apply_plot_intent);
+        if self.focus.is_focused(window) {
+            let focus = view.read(cx).focus.clone();
+            window.focus(&focus, cx);
+        }
+        if let Some(file) = &mut self.file {
+            file.plot = Some(PlotHandle {
+                view,
+                _intents: intents,
+            });
+        }
+    }
+
+    pub(super) fn plot_view(&self) -> Option<&gpui_kit::Entity<plot_view::PlotView>> {
+        Some(&self.file.as_ref()?.plot.as_ref()?.view)
+    }
+
+    /// An owned handle, for callers that go on to borrow other fields mutably.
+    pub(super) fn plot_entity(&self) -> Option<gpui_kit::Entity<plot_view::PlotView>> {
+        self.plot_view().cloned()
+    }
+
+    /// Where keyboard focus belongs when an overlay closes or a command runs.
+    pub(super) fn focus_target(&self, cx: &gpui_kit::App) -> FocusHandle {
+        match (self.showing(), self.plot_view()) {
+            (Showing::Plot(_), Some(plot)) => plot.read(cx).focus.clone(),
+            _ => self.focus.clone(),
+        }
     }
 
     fn start_minimap(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -732,7 +760,7 @@ impl Shell {
         if width_changed {
             self.time_scheme = None;
             self.tick_pan = None;
-            self.bound_view();
+            self.bound_view(cx);
         }
         self.ask_for_a_picture();
         cx.notify();
@@ -792,8 +820,8 @@ impl Shell {
     }
 
     /// Put the newest picture on the GPU and release the one it replaces.
-    fn upload(&mut self, window: &mut Window) {
-        self.release_deep_preview(window);
+    fn upload(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
+        self.release_deep_preview(window, cx);
         let started = Instant::now();
         let fresh = self
             .file
@@ -803,17 +831,18 @@ impl Shell {
                 spectrogram::texture(&analysis.spectrogram, self.session.orientation)
             });
         let stale = std::mem::replace(&mut self.texture, fresh);
-        release(stale, window);
+        retire(self.plot_view(), stale, window, cx);
         tracing::trace!(target: "argand::ui_latency", elapsed_us = started.elapsed().as_micros(),
             "texture prepared");
     }
 
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
-    fn release(&mut self, window: &mut Window) {
+    fn release(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         self.waveform = None;
-        self.release_backdrop(window);
-        self.release_deep_preview(window);
-        release(self.texture.take(), window);
+        self.release_backdrop(window, cx);
+        self.release_deep_preview(window, cx);
+        let stale = self.texture.take();
+        retire(self.plot_view(), stale, window, cx);
     }
 
     /// Record where the window is and what state it is in.
@@ -905,11 +934,13 @@ impl Shell {
         self.dismiss_application_menu(window, cx);
         // The chooser takes the pointer and the release happens over the
         // dialog: a corner half held at this moment would stay pressed.
-        self.pressed_zoom = None;
-        if let Some(menu) = self.open_menu.take() {
-            let _ = menu.update(cx, |_, cx| cx.emit(gpui_kit::DismissEvent));
+        if let Some(plot) = self.plot_entity() {
+            plot.update(cx, |plot, cx| {
+                plot.release_press(cx);
+                plot.dismiss_menu(cx);
+            });
         }
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus_target(cx), cx);
         cx.notify();
         Self::choose(&cx.entity().downgrade(), window, cx);
     }
@@ -1074,18 +1105,6 @@ impl Shell {
             .child(div().w(margin - controls).flex_shrink_0())
     }
 
-    fn finish_splitter(
-        &mut self,
-        _: &gpui_kit::MouseUpEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.splitter_dragging {
-            self.splitter_dragging = false;
-            cx.notify();
-        }
-    }
-
     fn content(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex_1()
@@ -1102,81 +1121,6 @@ impl Shell {
                 )
             })
             .child(self.middle(window, cx))
-    }
-
-    fn splitter(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let total = self.panel_bounds.map_or(0.0, |bounds| {
-            f32::from(
-                self.session
-                    .orientation
-                    .axes(bounds.size.width, bounds.size.height)
-                    .1,
-            )
-        });
-        let height = panels::waveform_height(
-            total,
-            f32::from(cx.theme().font_size),
-            self.session.waveform_fraction,
-            window.scale_factor(),
-        );
-        let divider = div().id("waveform-splitter").absolute();
-        let divider = if self.session.orientation.vertical() {
-            divider
-                .top_0()
-                .bottom_0()
-                .left(px((height - 3.).max(0.)))
-                .w(px(5.))
-                .cursor(gpui_kit::CursorStyle::ResizeLeftRight)
-        } else {
-            divider
-                .left_0()
-                .right_0()
-                .top(px((height - 3.).max(0.)))
-                .h(px(5.))
-                .cursor(gpui_kit::CursorStyle::ResizeUpDown)
-        };
-        divider.on_mouse_down(
-            MouseButton::Left,
-            cx.listener(|shell, _, _, cx| {
-                shell.splitter_dragging = true;
-                cx.stop_propagation();
-            }),
-        )
-    }
-
-    fn drag_splitter(
-        &mut self,
-        event: &gpui_kit::MouseMoveEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.splitter_dragging {
-            return;
-        }
-        if !event.dragging() {
-            self.splitter_dragging = false;
-            cx.notify();
-            return;
-        }
-        let Some(bounds) = self.panel_bounds else {
-            return;
-        };
-        let orientation = self.session.orientation;
-        let total = f32::from(orientation.axes(bounds.size.width, bounds.size.height).1);
-        if total <= 0.0 {
-            return;
-        }
-        let delta = event.position - bounds.origin;
-        let requested = f32::from(orientation.axes(delta.x, delta.y).1) / total;
-        let height = panels::waveform_height(
-            total,
-            f32::from(cx.theme().font_size),
-            Some(requested.clamp(0.0, 1.0)),
-            window.scale_factor(),
-        );
-        self.session.waveform_fraction = Some(height / total);
-        self.save();
-        cx.notify();
     }
 
     /// What fills the middle of the window.
@@ -1197,44 +1141,10 @@ impl Shell {
         };
 
         match self.showing() {
-            Showing::Plot(extents) => div()
-                .id("time-plot")
-                .cursor(
-                    self.plot_geometry
-                        .map_or(gpui_kit::CursorStyle::Arrow, |geometry| {
-                            geometry.cursor(
-                                self.pointer,
-                                self.pan.is_some() || self.frequency_pan.is_some(),
-                                self.view.zip(
-                                    self.file
-                                        .as_ref()
-                                        .and_then(|file| file.document.meta())
-                                        .map(|meta| meta.len_samples),
-                                ),
-                                self.frequency.span < 1.,
-                            )
-                        }),
-                )
-                .on_scroll_wheel(cx.listener(Self::wheel))
-                .on_mouse_down(MouseButton::Left, cx.listener(Self::begin_pan))
-                .on_hover(cx.listener(|shell, hovered, _, cx| {
-                    if !hovered {
-                        shell.pointer = None;
-                        cx.notify();
-                    }
-                }))
-                .flex_1()
-                .min_h_0()
-                .relative()
-                .child(self.spectrogram(extents, cx))
-                .child(self.splitter(window, cx))
-                .children(self.time_context_menu(cx))
-                .children(
-                    self.panel_bounds
-                        .and_then(|bounds| self.unit_hint(1, bounds.origin, cx)),
-                )
-                .children(self.ruler_zoom_buttons(cx))
-                .into_any_element(),
+            Showing::Plot(_) => match self.plot_view() {
+                Some(plot) => plot.clone().into_any_element(),
+                None => div().flex_1().min_h_0().into_any_element(),
+            },
             // Physical labels need the metadata; their boundaries can appear immediately.
             Showing::Opening => div()
                 .flex_1()
@@ -1419,10 +1329,15 @@ impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.upload_pending {
             self.upload_pending = false;
-            self.upload(window);
+            self.upload(window, cx);
         }
-        self.prepare_backdrop(window);
-        self.prepare_deep_preview(window);
+        self.prepare_backdrop(window, cx);
+        self.prepare_deep_preview(window, cx);
+        // Rebuilt every frame, so the plot never paints an image retired since the last one.
+        let snapshot = self.plot_snapshot(cx);
+        if let Some(plot) = self.plot_view() {
+            plot.update(cx, |plot, _| plot.snapshot = snapshot);
+        }
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;
@@ -1437,18 +1352,10 @@ impl Render for Shell {
                 .track_focus(&self.focus)
                 .key_context(if self.file.is_none() {
                     "Shell StartPage"
-                } else if self.session.orientation.vertical() {
-                    "Shell Plot Vertical"
                 } else {
-                    "Shell Plot Horizontal"
+                    "Shell"
                 })
-                .on_mouse_move(cx.listener(Self::drag_splitter))
-                .on_mouse_move(cx.listener(Self::pointer_moved))
                 .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
-                .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_pan))
-                .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_pan))
-                .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_splitter))
-                .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_splitter))
                 .on_action(cx.listener(Self::toggle_application_menu))
                 .on_action(cx.listener(Self::open_recent))
                 .on_action(cx.listener(Self::edit_analysis))
@@ -1467,7 +1374,7 @@ impl Render for Shell {
                 .child(self.title_bar(corners, window, cx))
                 .child(self.content(window, cx))
                 .child(self.status_bar(corners, cx));
-        let content = self.navigation_actions(content, cx);
+        let content = self.view_commands(content, cx);
         let overlay =
             self.application_menu_overlay(frame.content_bounds(window.viewport_size()), window, cx);
         div()
@@ -1597,14 +1504,30 @@ fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
     })
 }
 
-/// Hand one uploaded picture back to the toolkit.
+/// Hand uploaded pictures back to the toolkit, after the plot stops referencing them.
+///
+/// The only place images are retired. The plot's snapshot is cleared first, so
+/// no later frame can paint one of them, and the shell's next render republishes
+/// a snapshot built from what it still holds.
 ///
 /// An uploaded image stays in the window's texture atlas until gpui is told to
 /// let go of it. A spectrogram is the size of the plot and a resize produces
 /// one per step, so saying nothing fills the atlas with pictures nobody can
 /// see any more.
-fn release(texture: Option<Arc<RenderImage>>, window: &mut Window) {
-    if let Some(texture) = texture {
+fn retire(
+    plot: Option<&gpui_kit::Entity<plot_view::PlotView>>,
+    images: impl IntoIterator<Item = Arc<RenderImage>>,
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) {
+    let mut images = images.into_iter().peekable();
+    if images.peek().is_none() {
+        return;
+    }
+    if let Some(plot) = plot {
+        plot.update(cx, |plot, _| plot.snapshot = None);
+    }
+    for texture in images {
         // Blade's atlas destroys an unreferenced texture immediately, while
         // the last submitted frame can still be sampling it. Draw its
         // replacement first: that draw waits for the preceding GPU frame.

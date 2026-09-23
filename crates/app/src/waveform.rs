@@ -109,6 +109,7 @@ impl Waveform {
     }
 }
 
+#[derive(Clone)]
 pub struct Panel {
     pub waveform: Option<Arc<Waveform>>,
     pub viewport: Option<(View, u64)>,

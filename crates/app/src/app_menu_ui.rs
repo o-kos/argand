@@ -95,7 +95,7 @@ impl Shell {
 
     pub(super) fn dismiss_application_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.application_menu.take().is_some() {
-            window.focus(&self.focus, cx);
+            window.focus(&self.focus_target(cx), cx);
             self.title_drag_pending = false;
             cx.notify();
         }
@@ -111,8 +111,11 @@ impl Shell {
             self.dismiss_application_menu(window, cx);
             return;
         }
-        if let Some(menu) = self.open_menu.take() {
-            let _ = menu.update(cx, |_, cx| cx.emit(gpui_kit::DismissEvent));
+        if let Some(plot) = self.plot_entity() {
+            plot.update(cx, |plot, cx| {
+                plot.dismiss_menu(cx);
+                plot.clear_pointer(cx);
+            });
         }
         self.recent_files.refresh(&self.session.recent);
         let focus = cx.focus_handle();
@@ -123,7 +126,6 @@ impl Shell {
             scroll: Vec::new(),
         });
         self.title_drag_pending = false;
-        self.pointer = None;
         cx.notify();
     }
 
@@ -197,6 +199,7 @@ impl Shell {
     pub(super) fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let anchor = self.application_menu_anchor.clone();
         let mut app = Button::new("application-menu-button")
+            .tab_stop(false)
             .custom(toolbar_style(self.application_menu.is_some(), cx))
             .border_1()
             .border_color(toolbar_border(self.application_menu.is_some(), cx))
@@ -303,6 +306,7 @@ impl Shell {
         let enabled = self.view.is_some();
         let hover_foreground = toolbar_accent(cx);
         let mut button = Button::new(id)
+            .tab_stop(false)
             .custom(toolbar_style(selected, cx))
             .border_1()
             .border_color(toolbar_border(selected, cx))
@@ -325,7 +329,7 @@ impl Shell {
             )
             .disabled(!enabled)
             .on_click(cx.listener(move |shell, _, window, cx| {
-                window.focus(&shell.focus, cx);
+                window.focus(&shell.focus_target(cx), cx);
                 window.dispatch_action(action.boxed_clone(), cx);
             }));
         button.interactivity().tooltip(move |window, cx| {
@@ -364,7 +368,8 @@ impl Shell {
             let menu = self.application_menu.as_ref()?;
             let items = menu.model.items(level);
             let height = items.iter().map(row_height).sum::<f32>() + PADDING * 2.;
-            let width = menu_width(items, &self.focus, window, cx);
+            // Keycaps resolve from the plot, where its bindings live.
+            let width = menu_width(items, &self.focus_target(cx), window, cx);
             let rect = app_menu::place(parent, [width, height], viewport, level > 0);
             let selected = menu.model.selected(level);
             let offset = menu.scroll[level].offset().y;
@@ -498,8 +503,9 @@ impl Shell {
             Kind::Command(Command::Action(action)) => Some(action),
             _ => None,
         };
-        let shortcut = action
-            .and_then(|action| Kbd::binding_for_action_in(action.as_ref(), &self.focus, window));
+        let focus = self.focus_target(cx);
+        let shortcut =
+            action.and_then(|action| Kbd::binding_for_action_in(action.as_ref(), &focus, window));
         div()
             .id(("app-menu-row", level * 100 + index))
             .h(px(ROW))

@@ -133,7 +133,7 @@ impl Shell {
             file.displayed_settings = Some(settings);
         }
         self.settings = settings;
-        self.bound_view();
+        self.bound_view(cx);
         if self.settings_backup.is_none() {
             self.session.analysis_settings = Some(settings);
             self.save();
@@ -259,7 +259,7 @@ impl Shell {
             })
             .when(has_file, |bar| bar.child(self.analysis_control(cx)))
             .child(div().flex_1().min_w_0())
-            .when_some(self.cursor_readout(), |bar, (text, level)| {
+            .when_some(self.cursor_readout(cx), |bar, (text, level)| {
                 bar.child(
                     div()
                         .id("cursor-readout")
@@ -340,6 +340,7 @@ impl Shell {
         let foreground = foregrounds.current(self.range_hovered && actionable);
         let range_content = if actionable {
             Button::new("analysis-range")
+                .tab_stop(false)
                 .custom(foregrounds.button_style(cx))
                 .small()
                 .h_5()
@@ -395,6 +396,7 @@ impl Shell {
             ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground);
         let foreground = foregrounds.current(self.analysis_hovered);
         let mut summary = Button::new("analysis-settings")
+            .tab_stop(false)
             .custom(foregrounds.button_style(cx))
             .small()
             .h_5()
@@ -579,6 +581,7 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                 )
                 .child(
                     Button::new("hint-recommendation")
+                        .tab_stop(false)
                         .ghost()
                         .small()
                         .label(format!(
@@ -601,6 +604,7 @@ fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
                     .pt_2()
                     .child(
                         Button::new("edit-analysis-hint")
+                            .tab_stop(false)
                             .ghost()
                             .small()
                             .label("Edit settings…")
