@@ -36,6 +36,8 @@ promise applies to.
 
 ### Changed
 
+- Place horizontal time-ruler labels right beside their ticks and give the freed space to the spectrogram.
+
 - Keep keyboard focus on the plot while a signal is shown. Tab no longer moves focus onto toolbar or status-bar buttons, so plot shortcuts keep working after any button is used.
 
 - Hide the completed-analysis status and its timing hint after a mouse button press, a key press, a wheel scroll or the cursor readout appearing. Each completed analysis shows its timing again.

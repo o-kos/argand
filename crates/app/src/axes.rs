@@ -29,6 +29,10 @@ const LABEL_PAD: f32 = 9.0;
 const OUTER_PAD: f32 = 4.0;
 /// How far a tick's mark reaches out of the plot.
 const TICK_LEN: f32 = 6.0;
+/// Clear space from a horizontal time tick to its label, and from the ruler line to the label's ink.
+const TIME_LABEL_GAP: f32 = 4.0;
+/// Where a horizontal time label starts, past its one-pixel tick and the gap.
+const TIME_LABEL_START: f32 = 1.0 + TIME_LABEL_GAP;
 /// The size the labels are drawn at.
 ///
 /// A shade under the window's smallest text: an axis is read by glancing at
@@ -242,7 +246,8 @@ impl Frame {
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
         let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
-        let foot = OUTER_PAD + row_height + LABEL_PAD;
+        let bottom_center = bottom_row_center(vertical, row_height, measure);
+        let foot = bottom_center + row_height / 2. + OUTER_PAD;
         let scale = if scale > 0. { scale } else { 1. };
         let ceil = |value: f32| (value * scale).ceil() / scale;
         let floor = |value: f32| (value * scale).floor() / scale;
@@ -292,7 +297,7 @@ impl Frame {
         let across = if vertical {
             across
         } else {
-            across.after_tick(LABEL_PAD)
+            across.after_tick(TIME_LABEL_START)
         };
         let bottom_ticks = axis::tick_layout(
             bottom_kind,
@@ -311,7 +316,7 @@ impl Frame {
         } else {
             (bottom_ticks, right_ticks)
         };
-        let bottom_row = plot.bottom() + LABEL_PAD + row_height / 2.;
+        let bottom_row = plot.bottom() + bottom_center;
         Some(Self {
             orientation,
             plot,
@@ -335,6 +340,16 @@ impl Frame {
             caption_x: plot.right() + LABEL_PAD,
             per_pixel: extents.per_pixel(plot, scale),
         })
+    }
+}
+
+/// How far below the plot the bottom label row is centred.
+fn bottom_row_center(vertical: bool, row_height: f32, measure: &dyn LabelMeasure) -> f32 {
+    if vertical {
+        LABEL_PAD + row_height / 2.
+    } else {
+        // Horizontal time labels hang beside their ticks, just under the ruler line.
+        1. + TIME_LABEL_GAP + measure.digit_height(LABEL_SIZE) / 2.
     }
 }
 
@@ -618,7 +633,7 @@ pub fn paint(
             let (left, row) = if bottom {
                 (
                     if after_tick {
-                        x + LABEL_PAD
+                        x + TIME_LABEL_START
                     } else {
                         x - f32::from(shaped.width) / 2.
                     },
