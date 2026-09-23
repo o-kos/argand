@@ -20,8 +20,9 @@ splitter until #132), no central overlay policy (#129), no DSP or public
 `argand-core`/`argand-dsp` API change, no persisted state added.
 
 Implementation class: **A**, declared before handoff: it changes GPU texture
-lifetime ownership boundaries and spans more than five code files. Implementer
-`gpt-5.6-sol` high; reviewer `gpt-5.6-terra` high, fixed for every round.
+lifetime ownership boundaries and spans more than five code files. Per the owner's
+2026-09-23 decision, as for #127, the implementation is done in-session and
+reviewed by the owner directly; the external class-A model pair is not used.
 
 ## Context
 
@@ -170,10 +171,22 @@ and before pans.
 
 ### Focus, key context and actions
 
-- The PlotView focus handle is a tab stop. It sits on the plot surface element
-  together with `key_context("Plot Horizontal" | "Plot Vertical")` and the
-  navigation action handlers (zoom, pan, fit, Home/End, frequency). Shell's content
-  keeps `"Shell"` or `"Shell StartPage"` only.
+- While a document is shown, the plot owns the main window's keyboard focus (owner
+  decision, 2026-09-23). This is the usual desktop convention: the canvas owns the
+  keyboard, and commands are reached through the menu (F10) and shortcuts.
+  - Every toolbar and status-bar `Button` gets `tab_stop(false)`: the application
+    menu button, the toolbar buttons (`app_menu_ui.rs`), and the range, summary and
+    hint buttons (`settings_ui.rs`). `chrome.rs` window controls are not focusable.
+  - Clicking a Button already never takes focus (`prevent_default` on mouse down).
+  - The start page (recent rows, chooser) and the separate settings window keep
+    their tab stops.
+  - Overlays (application menu, ruler context menu, and later the #108 settings
+    popover) take focus temporarily and return it through the focus-target helper
+    below.
+- The PlotView focus handle sits on the plot surface element together with
+  `key_context("Plot Horizontal" | "Plot Vertical")` and the navigation action
+  handlers (zoom, pan, fit, Home/End, frequency). Shell's content keeps `"Shell"` or
+  `"Shell StartPage"` only.
 - Focusable overlays of the plot (the ruler context menu) are anchored in siblings
   of the plot surface element, not in its descendants. They therefore do not inherit
   `Plot` bindings. This replaces the #82 swallow guard.
@@ -265,10 +278,15 @@ not change.
   - [ ] A replaced PlotView drops its snapshot and gestures, and its intents no
         longer reach Shell.
   - [ ] A drag that leaves the plot still tracks and finishes on release outside.
+  - [ ] Tab/Shift+Tab never land on a toolbar or status-bar button while a plot is
+        shown.
 - [ ] Update AGENTS.md (the current-status bullets on Shell focus and key contexts,
       the interceptor paragraph in #82, and the navigation section) and #124's
-      stage 4 rows that this issue covers. Add CHANGELOG entries only for
-      user-visible differences, and name them in the Pull Request.
+      stage 4 rows that this issue covers. The CHANGELOG records the two
+      user-visible differences. Tab no longer moves focus onto toolbar or status-bar
+      buttons. Ctrl+U no longer toggles the scale controls behind the ruler context
+      menu.
+- [ ] Set `tab_stop(false)` on the toolbar and status-bar Buttons listed above.
 - [ ] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation
@@ -292,8 +310,10 @@ not change.
         Accept persists, and a restart restores the accepted settings.
   - [ ] Top-row and keypad Ctrl+plus/minus, with and without Shift.
         Ctrl+Shift+0 and Ctrl+0.
-  - [ ] Tab/Shift+Tab reach the plot and return navigation to it; the Alt guides,
-        the readout, and the ready-status dismissal are unchanged.
+  - [ ] With a document shown, Tab/Shift+Tab never move focus onto toolbar or
+        status-bar buttons, and plot keys keep working after any button click. The
+        start page keeps Tab over its recent rows and chooser. The Alt guides, the
+        readout, and the ready-status dismissal are unchanged.
 
 ## Post-completion
 
