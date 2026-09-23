@@ -353,7 +353,9 @@ and validate localized grouping when parsing. `LabelMeasure::localize` runs befo
 tick measurement; CLI implementations keep the default identity hook. GUI HMS
 labels use colons between clock fields, and fractions use the locale decimal mark.
 Time units are painted once at the right; space for all three captions is reserved
-independently of the mode, so switching it cannot resize the spectral image.
+independently of the mode. In horizontal orientation switching the mode therefore
+cannot resize the spectral image. In vertical orientation the right gutter refits
+the new mode's time labels (#148).
 Unit hints use measured caption rectangles from the axis frame. The time hint
 belongs to the ruler context-menu element so right-click handling is preserved;
 the frequency hint occupies only its visible caption beside the minimap, not the frequency ticks. Hints observe the shell and report the current view span per physical device pixel, in seconds/samples and an independently selected frequency unit (Hz through GHz)
