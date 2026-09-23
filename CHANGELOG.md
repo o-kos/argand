@@ -36,6 +36,8 @@ promise applies to.
 
 ### Changed
 
+- Size the right-hand ruler to its visible labels, and keep it from narrowing while zooming or panning. It fits its labels again after opening a file, switching orientation, changing the time format while time is on the right, or fitting the axis shown on the right.
+
 - Place horizontal time-ruler labels right beside their ticks and give the freed space to the spectrogram.
 
 - Align the Alt coordinate badges with their rulers. Bottom badge text shares the ruler labels' row without covering the ruler line, and the right badge ends one margin past the ruler labels.

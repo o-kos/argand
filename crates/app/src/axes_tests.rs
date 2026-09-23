@@ -26,14 +26,11 @@ fn measure(panel: Size<Pixels>, extents: Extents) -> Frame {
 fn the_picture_gets_what_the_labels_leave() {
     let frame = measure(panel(1200.0, 800.0), HFDL);
 
-    // The gutter is wide enough for the widest label the axis could print,
-    // which at these frequencies is six digits and a point.
-    let widest = DejaVuSans.width("12.591000", 11.0);
-    assert!(
-        1200.0 - frame.plot.right() >= widest + LABEL_PAD,
-        "a {widest} pixel label does not fit in a {} pixel gutter",
-        1200.0 - frame.plot.right()
-    );
+    // The gutter fits the labels actually placed, not every decimal the unit resolves.
+    let widest = frame.frequency.iter().map(|tick| DejaVuSans.width(&tick.label, 11.0)).fold(0., f32::max);
+    assert!(frame.gutter >= widest + LABEL_PAD);
+    assert!(frame.gutter < DejaVuSans.width("12.591000", 11.0) + LABEL_PAD, "no worst-case reserve");
+    assert!(1200.0 - frame.plot.right() >= frame.gutter + OUTER_PAD - 1e-3);
     assert!(frame.plot.x >= OUTER_PAD);
     assert!(frame.plot.right() < 1200.0);
     assert!(
@@ -493,5 +490,21 @@ fn horizontal_time_labels_hang_beside_their_ticks() {
             let frame = Frame::measure(panel(width, height), scale, vertical, &DejaVuSans, None).unwrap();
             assert_eq!(frame.time_row, frame.plot.bottom() + LABEL_PAD + row / 2., "vertical bottom row is unchanged at {scale}");
         }
+    }
+}
+
+#[test]
+fn a_held_gutter_keeps_the_right_ruler_from_narrowing() {
+    for orientation in [crate::orientation::Mode::Horizontal, crate::orientation::Mode::Vertical] {
+        let extents = Extents { orientation, ..HFDL };
+        let fresh = Frame::measure_view(panel(900., 600.), 1.25, extents, &DejaVuSans, Held::default()).unwrap();
+        let wider = fresh.gutter + 30.;
+        let held = Held { gutter: wider, ..Held::default() };
+        let kept = Frame::measure_view(panel(900., 600.), 1.25, extents, &DejaVuSans, held).unwrap();
+        assert_eq!(kept.gutter, wider, "the floor wins over narrower labels");
+        assert!(kept.plot.right() < fresh.plot.right(), "the plot gives the room back");
+        let held = Held { gutter: fresh.gutter - 10., ..Held::default() };
+        let grown = Frame::measure_view(panel(900., 600.), 1.25, extents, &DejaVuSans, held).unwrap();
+        assert_eq!(grown.gutter, fresh.gutter, "wider labels still widen the ruler");
     }
 }

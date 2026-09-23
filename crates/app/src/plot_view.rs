@@ -84,6 +84,8 @@ pub(super) struct PlotView {
     pub(super) geometry: Option<PlotGeometry>,
     pub(super) panel_bounds: Option<Bounds<Pixels>>,
     pub(super) measured: Option<PlotSize>,
+    /// The right ruler only widens while zooming, until an explicit reset.
+    pub(super) gutter_floor: f32,
     pub(super) badge_metrics: axes::BadgeMetrics,
     pub(super) open_menu: Option<WeakEntity<PopupMenu>>,
     pub(super) menu_dismiss: Option<Subscription>,
@@ -108,6 +110,7 @@ impl PlotView {
             geometry: None,
             panel_bounds: None,
             measured: None,
+            gutter_floor: 0.,
             badge_metrics: axes::BadgeMetrics::default(),
             open_menu: None,
             menu_dismiss: None,
@@ -149,8 +152,31 @@ impl PlotView {
         }
     }
 
+    /// Let the right ruler fit its current labels again.
+    pub(super) fn reset_gutter(&mut self, cx: &mut Context<Self>) {
+        self.gutter_floor = 0.;
+        cx.notify();
+    }
+
+    /// Reset the right ruler when the fitted axis is the one shown there.
+    fn fit(&mut self, time: bool, cx: &mut Context<Self>) {
+        let vertical = self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.extents.orientation.vertical());
+        if time == vertical {
+            self.gutter_floor = 0.;
+        }
+        if time {
+            self.time(TimeIntent::Fit, cx);
+        } else {
+            self.frequency(FrequencyIntent::Fit, cx);
+        }
+    }
+
     /// Forget the gestures and layout the other orientation cannot reuse.
     pub(super) fn reorient(&mut self, cx: &mut Context<Self>) {
+        self.gutter_floor = 0.;
         self.pan = None;
         self.frequency_pan = None;
         self.splitter_dragging = false;
@@ -196,7 +222,7 @@ impl PlotView {
                     cx,
                 )
             }))
-            .on_action(cx.listener(|plot, _: &FitCapture, _, cx| plot.time(TimeIntent::Fit, cx)))
+            .on_action(cx.listener(|plot, _: &FitCapture, _, cx| plot.fit(true, cx)))
             .on_action(cx.listener(|plot, _: &PanLeft, _, cx| plot.time(TimeIntent::Ticks(-1), cx)))
             .on_action(cx.listener(|plot, _: &PanRight, _, cx| plot.time(TimeIntent::Ticks(1), cx)))
             .on_action(
@@ -227,11 +253,7 @@ impl PlotView {
                     cx,
                 )
             }))
-            .on_action(
-                cx.listener(|plot, _: &FitFrequency, _, cx| {
-                    plot.frequency(FrequencyIntent::Fit, cx)
-                }),
-            )
+            .on_action(cx.listener(|plot, _: &FitFrequency, _, cx| plot.fit(false, cx)))
             .on_action(
                 cx.listener(|plot, _: &PanUp, _, cx| {
                     plot.frequency(FrequencyIntent::Ticks(1.), cx)
@@ -600,6 +622,49 @@ mod tests {
             press(cx, handle, key);
             assert_eq!(navigation(cx, handle), vec![expected], "{key}");
         }
+    }
+
+    #[gpui_kit::test]
+    fn fitting_the_right_axis_releases_the_held_gutter(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let floor = |cx: &mut TestAppContext| {
+            handle
+                .update(cx, |harness, _, cx| {
+                    harness.plot.as_ref().unwrap().read(cx).gutter_floor
+                })
+                .unwrap()
+        };
+        let hold = |cx: &mut TestAppContext| {
+            handle
+                .update(cx, |harness, _, cx| {
+                    harness
+                        .plot
+                        .as_ref()
+                        .unwrap()
+                        .update(cx, |plot, _| plot.gutter_floor = 500.)
+                })
+                .unwrap()
+        };
+        hold(cx);
+        press(cx, handle, "ctrl-0");
+        assert_eq!(
+            floor(cx),
+            500.,
+            "time is not on the right in horizontal mode"
+        );
+        press(cx, handle, "ctrl-shift-0");
+        assert!(floor(cx) < 500., "fitting frequency lets its ruler narrow");
+        hold(cx);
+        handle
+            .update(cx, |harness, _, cx| {
+                harness
+                    .plot
+                    .as_ref()
+                    .unwrap()
+                    .update(cx, |plot, cx| plot.reorient(cx))
+            })
+            .unwrap();
+        assert!(floor(cx) < 500., "a new orientation starts from its labels");
     }
 
     #[gpui_kit::test]

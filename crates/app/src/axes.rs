@@ -141,6 +141,17 @@ impl UnitHint {
     }
 }
 
+/// What a plot keeps from its previous layouts while the view changes.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Held {
+    /// Tick spacing kept for the time axis while panning.
+    pub time: Option<axis::TickScheme>,
+    /// Tick spacing kept for the frequency axis while panning.
+    pub frequency: Option<axis::TickScheme>,
+    /// The right ruler never narrows below this while zooming.
+    pub gutter: f32,
+}
+
 /// Where the picture goes inside a panel, and what is drawn around it.
 pub struct Frame {
     pub orientation: crate::orientation::Mode,
@@ -153,6 +164,8 @@ pub struct Frame {
     /// The unit the frequency labels are in, named once above them instead of
     /// on every tick.
     pub caption: Option<&'static str>,
+    /// The right ruler's width from the plot edge, without the outer margin.
+    pub gutter: f32,
     /// Where the ink of a time label is centred, under the plot.
     time_row: f32,
     time_caption: &'static str,
@@ -226,6 +239,7 @@ impl Frame {
     /// `None` when the panel is too small to hold a plot at all, which is the
     /// answer for a window dragged down to nothing: there is no rectangle to
     /// draw into and nothing to ask a transform for.
+    #[cfg(test)]
     pub fn measure(
         panel: Size<Pixels>,
         scale: f32,
@@ -233,7 +247,11 @@ impl Frame {
         measure: &dyn LabelMeasure,
         held: Option<axis::TickScheme>,
     ) -> Option<Self> {
-        Self::measure_view(panel, scale, extents, measure, held, None)
+        let held = Held {
+            time: held,
+            ..Held::default()
+        };
+        Self::measure_view(panel, scale, extents, measure, held)
     }
 
     pub fn measure_view(
@@ -241,8 +259,7 @@ impl Frame {
         scale: f32,
         extents: Extents,
         measure: &dyn LabelMeasure,
-        held: Option<axis::TickScheme>,
-        held_frequency: Option<axis::TickScheme>,
+        held: Held,
     ) -> Option<Self> {
         let orientation = extents.orientation;
         let vertical = orientation.vertical();
@@ -256,9 +273,9 @@ impl Frame {
         let floor = |value: f32| (value * scale).floor() / scale;
         let height = floor(f32::from(panel.height) - foot);
         let (right_kind, right_min, right_max, right_held) = if vertical {
-            (extents.time.mode.kind(), t0, t1, held)
+            (extents.time.mode.kind(), t0, t1, held.time)
         } else {
-            (AxisKind::Frequency, f0, f1, held_frequency)
+            (AxisKind::Frequency, f0, f1, held.frequency)
         };
         let right_labels = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down);
         let right_labels = if vertical {
@@ -279,7 +296,7 @@ impl Frame {
             &right_labels,
             right_held,
         );
-        let gutter = ruler_gutter(extents, &right_ticks.ticks, caption, measure);
+        let gutter = ruler_gutter(&right_ticks.ticks, caption, measure).max(held.gutter);
         let left = if vertical { 0. } else { ceil(OUTER_PAD) };
         let right = floor(f32::from(panel.width) - OUTER_PAD - gutter);
         let plot = Rect {
@@ -292,9 +309,9 @@ impl Frame {
             return None;
         }
         let (bottom_kind, bottom_min, bottom_max, bottom_held) = if vertical {
-            (AxisKind::Frequency, f0, f1, held_frequency)
+            (AxisKind::Frequency, f0, f1, held.frequency)
         } else {
-            (extents.time.mode.kind(), t0, t1, held)
+            (extents.time.mode.kind(), t0, t1, held.time)
         };
         let across = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).keep_edge_marks();
         let across = if vertical {
@@ -328,6 +345,7 @@ impl Frame {
             frequency: frequency.ticks,
             frequency_scheme: frequency.scheme,
             caption,
+            gutter,
             time_caption: extents.time.mode.caption(),
             time_row: bottom_row,
             time_caption_row: if vertical {
@@ -388,23 +406,11 @@ fn right_label_room(
     )
 }
 
-fn ruler_gutter(
-    extents: Extents,
-    right_ticks: &[Tick],
-    caption: Option<&str>,
-    measure: &dyn LabelMeasure,
-) -> f32 {
-    let candidates = if extents.orientation.vertical() {
-        right_ticks.iter().map(|tick| tick.label.clone()).collect()
-    } else {
-        axis::widest_labels(AxisKind::Frequency, extents.hertz.0, extents.hertz.1)
-            .into_iter()
-            .map(|label| measure.localize(&label, AxisKind::Frequency))
-            .collect::<Vec<_>>()
-    };
-    candidates
+/// Room for the right ruler's placed labels and every unit caption it may show.
+fn ruler_gutter(right_ticks: &[Tick], caption: Option<&str>, measure: &dyn LabelMeasure) -> f32 {
+    right_ticks
         .iter()
-        .map(String::as_str)
+        .map(|tick| tick.label.as_str())
         .chain(caption)
         .chain(["hms", "s", "#"])
         .map(|label| measure.width(label, LABEL_SIZE))

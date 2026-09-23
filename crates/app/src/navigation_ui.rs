@@ -639,6 +639,11 @@ impl Shell {
         self.session.time_ruler = mode;
         self.time_scheme = None;
         self.tick_pan = None;
+        if self.session.orientation.vertical()
+            && let Some(plot) = self.plot_entity()
+        {
+            plot.update(cx, |plot, cx| plot.reset_gutter(cx));
+        }
         self.save();
         cx.notify();
     }
