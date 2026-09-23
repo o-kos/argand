@@ -475,16 +475,18 @@ fn vertical_time_labels_clear_captions_when_resized_and_panned() {
 fn horizontal_time_labels_hang_beside_their_ticks() {
     let ink = DejaVuSans.digit_height(LABEL_SIZE);
     let row = LINE_HEIGHT.max(ink).ceil();
+    assert_eq!(TIME_LABEL_START - 1., TIME_LABEL_GAP, "gap after the one-pixel tick");
     for (width, height) in [(300., 240.), (800., 600.)] {
-        let extents = Extents { orientation: crate::orientation::Mode::Horizontal, ..HFDL };
-        let frame = Frame::measure(panel(width, height), 1., extents, &DejaVuSans, None).unwrap();
-        let ink_top = frame.time_row - ink / 2.;
-        assert_eq!(ink_top - (frame.plot.bottom() + 1.), TIME_LABEL_GAP, "gap below the ruler line");
-        assert!(ink_top < frame.plot.bottom() + TICK_LEN, "the label starts beside its tick");
-        assert!(frame.time_row + row / 2. <= height - OUTER_PAD, "the whole label row stays in the panel");
-        assert_eq!(TIME_LABEL_START - 1., TIME_LABEL_GAP, "gap after the one-pixel tick");
-        let vertical = Extents { orientation: crate::orientation::Mode::Vertical, ..extents };
-        let frame = Frame::measure(panel(width, height), 1., vertical, &DejaVuSans, None).unwrap();
-        assert_eq!(frame.time_row, frame.plot.bottom() + LABEL_PAD + row / 2., "vertical bottom row is unchanged");
+        for scale in [1., 1.25, 1.5, 2.] {
+            let extents = Extents { orientation: crate::orientation::Mode::Horizontal, ..HFDL };
+            let frame = Frame::measure(panel(width, height), scale, extents, &DejaVuSans, None).unwrap();
+            let ink_top = frame.time_row - ink / 2.;
+            assert_eq!(ink_top - (frame.plot.bottom() + 1.), TIME_LABEL_GAP, "gap below the ruler line at {scale}");
+            assert!(ink_top < frame.plot.bottom() + TICK_LEN, "the label starts beside its tick at {scale}");
+            assert!(frame.time_row + row / 2. <= height - OUTER_PAD, "the whole label row stays in the panel at {scale}");
+            let vertical = Extents { orientation: crate::orientation::Mode::Vertical, ..extents };
+            let frame = Frame::measure(panel(width, height), scale, vertical, &DejaVuSans, None).unwrap();
+            assert_eq!(frame.time_row, frame.plot.bottom() + LABEL_PAD + row / 2., "vertical bottom row is unchanged at {scale}");
+        }
     }
 }
