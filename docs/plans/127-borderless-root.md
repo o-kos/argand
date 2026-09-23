@@ -49,8 +49,13 @@ external class-A model pair is not used.
 - App-level action handlers capture `WeakEntity<Shell>` and the originating
   `WindowHandle<Root>`; updates go through the weak entity, so a closed
   window or dropped shell is a safe no-op instead of a failed root lookup.
-- The ready-status dismissal observer captures `WeakEntity<Shell>` at
-  construction rather than resolving the window root per event.
+- Correction found during review: `App::observe_keystrokes` fires for every
+  window, not only the one that registered it, so a ready-status observer
+  that captures a fixed `WeakEntity<Shell>` at construction dismisses the
+  wrong window's banner as soon as a second window exists (the settings
+  editor). The observer resolves the shell through the window the event hit
+  instead, via the same centralized `Shell::dismiss_window_ready_status`
+  helper the pointer/wheel interceptor already uses.
 - `chrome.rs` keeps calling `window.set_client_inset` and rendering resize
   regions; Root is configured with `bordered(false)` and nothing else, so no
   second frame, inset or hit layer exists.
@@ -58,8 +63,9 @@ external class-A model pair is not used.
   plot bindings on the existing contexts); Root's focus infrastructure joins
   the chain, and any handler it would duplicate is removed rather than kept
   in parallel.
-- Documentation: the AGENTS.md "unwrapped shell" status description becomes
-  the Root-owned description only after this lands in main.
+- Documentation: the AGENTS.md status description is updated to the
+  Root-owned reality on this branch, since AGENTS.md ships in the same PR
+  and must stay synchronized with the code it describes.
 
 ## Rejected alternatives
 
@@ -78,27 +84,32 @@ external class-A model pair is not used.
 - [x] Root adoption in `shell::run`: create `Entity<Shell>` first, wrap in
       `Root::new(...).bordered(false)`; the startup handle is `WindowHandle<Root>`
       and is not retained further (the shell's own window id serves updates).
-- [ ] Move ChooseFile / UseRecommendedRange / EditAnalysis dispatch to
+- [x] Move ChooseFile / UseRecommendedRange / EditAnalysis dispatch to
       `WeakEntity<Shell>` + `WindowHandle<Root>` with safe no-ops.
-- [ ] Rewire the ready-status dismissal to the captured weak entity; remove
-      the `window.root::<Self>()` assumption.
-- [ ] Audit remaining root-type assumptions (grep `root::<`, `WindowHandle`),
+- [x] Rewire the ready-status dismissal to resolve through the window an
+      event hit rather than a captured weak entity (see the corrected
+      decision above); remove the `window.root::<Self>()` assumption.
+- [x] Audit remaining root-type assumptions (grep `root::<`, `WindowHandle`),
       register every observer and action exactly once, keep editor-local
       precedence for Settings/Range actions.
 - [ ] Verify focus traversal, popup dismissal and title-bar drag against the
-      Root chain; remove any handler Root makes redundant.
-- [ ] Update AGENTS.md architecture status and the fixture/README wording to
+      Root chain; remove any handler Root makes redundant. In particular,
+      `Root` now binds its own `tab`/`shift-tab` keys (`Tab`/`TabPrev`,
+      context `"Root"`) alongside Shell's existing `FocusNext`/`FocusPrevious`
+      (context `"Shell ..."`); confirm one Tab press advances focus by one
+      element, not two, now that both contexts are simultaneously active.
+- [x] Update AGENTS.md architecture status and the fixture/README wording to
       the Root-owned reality.
 - [ ] Complete the validation matrix and move this plan to
       `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in
       `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Native (owner, Wayland CSD first): R1–R3 frame matrix
       (restore/maximize/fullscreen/tiling, edge and corner resize without
       stale regions or doubled insets, title-bar drag and the accepted

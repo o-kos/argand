@@ -2,8 +2,8 @@
 //!
 //! Since #137 the example opens two windows: the stock Root composition from
 //! the locked-stack baseline, and a borderless `Root::bordered(false)` window
-//! whose frame is the production `argand::chrome::Frame`, which is what #127
-//! will adopt.
+//! whose frame is the production `argand::chrome::Frame`, the composition
+//! #127 adopted for the production window.
 
 #[path = "ui_compatibility/model.rs"]
 mod model;
