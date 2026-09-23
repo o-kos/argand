@@ -3,6 +3,9 @@
 use super::*;
 use std::{cell::RefCell, rc::Rc};
 
+/// Room between a badge's edges and the ink of its digits, on every side.
+const BADGE_PAD: f32 = 3.;
+
 pub struct CursorGuides {
     pub extents: Extents,
     pub metrics: BadgeMetrics,
@@ -71,18 +74,14 @@ impl CursorGuides {
         } else {
             widths
         };
-        let positions = [
-            badge_bounds(
-                point(pointer.x, px(frame.time_row - LINE_HEIGHT / 2.)),
-                panel.size,
-                ordered_widths[0],
-            ),
-            badge_bounds(
-                point(panel.size.width, pointer.y - px(LINE_HEIGHT / 2.)),
-                panel.size,
-                ordered_widths[1],
-            ),
-        ];
+        let positions = badge_rects(
+            frame,
+            panel.size,
+            pointer,
+            ordered_widths,
+            labels.digit_height(LABEL_SIZE),
+            window.scale_factor(),
+        );
         let badges = if vertical {
             [positions[1], positions[0]]
         } else {
@@ -114,8 +113,8 @@ impl CursorGuides {
             )
             .corner_radii(px(3.)),
         );
-        // Optical correction for the digit ink inside the filled badge.
-        let top = labels.line_top(rect.height / 2., &shaped) + 1.;
+        // Centred like the ruler labels, so an unclamped badge shares their text row.
+        let top = labels.line_top(rect.height / 2., &shaped);
         let left = (px(rect.width) - shaped.width) / 2.;
         let _ = shaped.paint(
             origin + point(left, px(top)),
@@ -138,7 +137,7 @@ fn measure_badges(plot: Rect, extents: Extents, scale: f32, labels: &dyn LabelMe
     ] {
         if let Some(readout) = Readout::at(plot, pointer, extents, scale) {
             for (width, text) in widths.iter_mut().zip([readout.time, readout.frequency]) {
-                *width = width.max(labels.width(&text, LABEL_SIZE).ceil() + 6.);
+                *width = width.max(labels.width(&text, LABEL_SIZE).ceil() + 2. * BADGE_PAD);
             }
         }
     }
@@ -174,9 +173,41 @@ fn paint_lines(
     }
 }
 
-fn badge_bounds(anchor: Point<Pixels>, panel: Size<Pixels>, width: f32) -> Rect {
+/// The bottom and right badges, each centred where its ruler centres a label.
+///
+/// The bottom badge sits on the bottom ruler's text row and the right badge on
+/// the guide line, as labels sit on their ticks. The right badge ends at the
+/// panel edge, the outer margin beyond the ruler's labels. Clamping moves a
+/// badge only where the panel has no room for the aligned position.
+fn badge_rects(
+    frame: &Frame,
+    panel: Size<Pixels>,
+    pointer: Point<Pixels>,
+    widths: [f32; 2],
+    ink: f32,
+    scale: f32,
+) -> [Rect; 2] {
+    let height = ink + 2. * BADGE_PAD;
+    let snap = |value: Pixels| (f32::from(value) * scale).floor() / scale;
+    [
+        badge_bounds(
+            point(px(snap(pointer.x) + 0.5), px(frame.time_row - height / 2.)),
+            panel,
+            widths[0],
+            height,
+        ),
+        badge_bounds(
+            point(panel.width, px(snap(pointer.y) + 0.5 - height / 2.)),
+            panel,
+            widths[1],
+            height,
+        ),
+    ]
+}
+
+fn badge_bounds(anchor: Point<Pixels>, panel: Size<Pixels>, width: f32, height: f32) -> Rect {
     let width = width.min(f32::from(panel.width));
-    let height = LINE_HEIGHT.min(f32::from(panel.height));
+    let height = height.min(f32::from(panel.height));
     Rect {
         x: (f32::from(anchor.x) - width / 2.).clamp(0., f32::from(panel.width) - width),
         y: f32::from(anchor.y).clamp(0., f32::from(panel.height) - height),
@@ -500,7 +531,7 @@ mod tests {
                     DejaVuSans.width(text, LABEL_SIZE) + 6. <= width,
                     "{text} exceeds {width}"
                 );
-                let rect = badge_bounds(pointer, panel, width);
+                let rect = badge_bounds(pointer, panel, width, LINE_HEIGHT);
                 assert_eq!(rect.width, width);
             }
         }
@@ -541,11 +572,78 @@ mod tests {
     #[test]
     fn badges_stay_inside_panel_at_corners() {
         for anchor in [point(px(0.), px(-10.)), point(px(100.), px(80.))] {
-            let rect = badge_bounds(anchor, size(px(100.), px(80.)), 70.);
+            let rect = badge_bounds(anchor, size(px(100.), px(80.)), 70., LINE_HEIGHT);
             assert!(rect.x >= 0. && rect.y >= 0.);
             assert!(rect.right() <= 100. && rect.bottom() <= 80.);
         }
     }
+    #[test]
+    fn badges_sit_on_their_ruler_rows_in_both_orientations() {
+        let orientations = [
+            crate::orientation::Mode::Horizontal,
+            crate::orientation::Mode::Vertical,
+        ];
+        let modes = [
+            crate::time_ruler::Mode::Clock,
+            crate::time_ruler::Mode::Seconds,
+            crate::time_ruler::Mode::Samples,
+        ];
+        for orientation in orientations {
+            for mode in modes {
+                for scale in [1., 1.25, 1.5, 2.] {
+                    let extents = Extents {
+                        orientation,
+                        time: crate::time_ruler::Ruler {
+                            mode,
+                            ..crate::time_ruler::Ruler::CLOCK
+                        },
+                        seconds: (10., 20.),
+                        hertz: (-12000., 12000.),
+                    };
+                    assert_badges_on_rows(extents, scale);
+                }
+            }
+        }
+    }
+
+    fn assert_badges_on_rows(extents: Extents, scale: f32) {
+        use argand_core::testutil::DejaVuSans;
+
+        let ink = DejaVuSans.digit_height(LABEL_SIZE);
+        let panel = size(px(800.), px(500.));
+        let frame = Frame::measure(panel, scale, extents, &DejaVuSans, None).unwrap();
+        let widths = measure_badges(frame.plot, extents, scale, &DejaVuSans);
+        let snap = |value: f32| (value * scale).floor() / scale + 0.5;
+        let at = |fx: f32, fy: f32| {
+            point(
+                px(frame.plot.x + frame.plot.width * fx),
+                px(frame.plot.y + frame.plot.height * fy),
+            )
+        };
+        for pointer in [at(0.4, 0.6), at(0., 0.), at(1., 1.)] {
+            let [bottom, right] = badge_rects(&frame, panel, pointer, widths, ink, scale);
+            for rect in [bottom, right] {
+                assert!(rect.x >= 0. && rect.y >= 0., "{rect:?}");
+                assert!(rect.right() <= 800. && rect.bottom() <= 500., "{rect:?}");
+                assert!((rect.height - (ink + 2. * BADGE_PAD)).abs() < 1e-4);
+            }
+            let row = bottom.y + bottom.height / 2.;
+            assert!((row - frame.time_row).abs() < 1e-4, "text row at {scale}");
+            assert!(bottom.y >= frame.plot.bottom() + 1., "ruler line visible");
+            assert_eq!(right.right(), 800., "one outer margin past the labels");
+        }
+        let pointer = at(0.4, 0.6);
+        let [bottom, right] = badge_rects(&frame, panel, pointer, widths, ink, scale);
+        let centre_x = bottom.x + bottom.width / 2.;
+        let centre_y = right.y + right.height / 2.;
+        assert!((centre_x - snap(f32::from(pointer.x))).abs() < 1e-4);
+        assert!((centre_y - snap(f32::from(pointer.y))).abs() < 1e-4);
+        if !extents.orientation.vertical() {
+            let clearance = bottom.y - (frame.plot.bottom() + 1.);
+            assert!((clearance - (TIME_LABEL_GAP - BADGE_PAD)).abs() < 1e-4);
+        }
+    }
+
     #[test]
     fn vertical_readouts_follow_time_down_and_frequency_right() {
         let extents = Extents {

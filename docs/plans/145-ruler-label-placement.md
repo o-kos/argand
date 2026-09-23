@@ -1,6 +1,7 @@
-# Issue #145: Place time-ruler labels closer to their ticks
+# Issues #145 and #141: Ruler label placement and aligned Alt badges
 
-Resolves [#145](https://github.com/o-kos/argand/issues/145).
+Resolves [#145](https://github.com/o-kos/argand/issues/145) and
+[#141](https://github.com/o-kos/argand/issues/141).
 
 ## Overview
 
@@ -47,6 +48,26 @@ placement.
   - the unit captions' horizontal position;
   - the CLI (`aspec`), which keeps centred labels from the shared default.
 
+### Alt badges (#141), added after owner review
+
+Owner review showed the horizontal Alt badge covering the ruler line. The badge
+box was a full `LINE_HEIGHT` row centred on the raised label row, so its top came
+within half a pixel of the line. The owner asked to close #141 in this Pull
+Request.
+
+- `cursor_guides::badge_rects` derives both badge rectangles from the measured
+  frame. Each box wraps the digits' ink with `BADGE_PAD` (3) on every side.
+- The bottom badge is centred on `Frame::time_row`, the bottom ruler's text row.
+  The badge text uses the same `Labels::line_top` as the ruler labels, and the
+  former +1 pixel optical correction is removed. In horizontal orientation this
+  leaves 1 clear pixel below the ruler line.
+- The right badge is centred on the drawn guide line (the device-snapped pointer
+  plus half a pixel), as right-hand labels are centred on their ticks. It ends at
+  the panel edge, `OUTER_PAD` past the reserved label column, which is #141's
+  4-pixel rule.
+- The fixed right-gutter width and deep-zoom label shortening raised in the same
+  review are split out to #148.
+
 ## Rejected alternatives
 
 - Centred under the tick (the CLI's default): at the plot edges a centred label
@@ -67,6 +88,9 @@ placement.
 - [x] Add a geometry test for both gaps, the in-panel row and the unchanged
       vertical row.
 - [x] Update AGENTS.md and CHANGELOG.
+- [x] Derive Alt badge rectangles from the frame, sharing the label rows (#141).
+- [x] Test badge rows, ruler-line clearance, the right-edge margin, clamping,
+      both orientations, all time modes and fractional scales.
 - [ ] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation
@@ -78,7 +102,8 @@ placement.
 - [ ] Native:
   - horizontal clock, seconds and samples rulers at 1× and a fractional scale;
   - labels near both plot edges while panning;
-  - Alt time badge and the time unit hint;
+  - Alt badges on both rulers in both orientations, including near plot corners;
+  - the time unit hint;
   - vertical orientation unchanged.
 
 ## Post-completion
