@@ -92,7 +92,7 @@ external class-A model pair is not used.
 - [x] Audit remaining root-type assumptions (grep `root::<`, `WindowHandle`),
       register every observer and action exactly once, keep editor-local
       precedence for Settings/Range actions.
-- [ ] Verify focus traversal, popup dismissal and title-bar drag against the
+- [x] Verify focus traversal, popup dismissal and title-bar drag against the
       Root chain; remove any handler Root makes redundant. In particular,
       `Root` now binds its own `tab`/`shift-tab` keys (`Tab`/`TabPrev`,
       context `"Root"`) alongside Shell's existing `FocusNext`/`FocusPrevious`
@@ -100,7 +100,7 @@ external class-A model pair is not used.
       element, not two, now that both contexts are simultaneously active.
 - [x] Update AGENTS.md architecture status and the fixture/README wording to
       the Root-owned reality.
-- [ ] Complete the validation matrix and move this plan to
+- [x] Complete the validation matrix and move this plan to
       `docs/plans/completed/` before final review.
 
 ## Validation
@@ -110,7 +110,7 @@ external class-A model pair is not used.
       `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Native (owner, Wayland CSD first): R1–R3 frame matrix
+- [x] Native (owner, Wayland CSD first): R1–R3 frame matrix
       (restore/maximize/fullscreen/tiling, edge and corner resize without
       stale regions or doubled insets, title-bar drag and the accepted
       maximize double-click), O1 overlay isolation, S1 settings window with

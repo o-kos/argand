@@ -218,13 +218,13 @@ control within it still needs replacement or a separately accepted exception.
 
 ### 3. Root and single-frame migration
 
-- [ ] Implement and test the explicit Root-to-Shell weak-owner bridge before changing
+- [x] Implement and test the explicit Root-to-Shell weak-owner bridge before changing
       root lookups or application command targets; verify closed-window no-ops.
-- [ ] Adopt `Root::bordered(false)` in the main window while retaining `chrome.rs` as
+- [x] Adopt `Root::bordered(false)` in the main window while retaining `chrome.rs` as
       the sole frame, inset, resize and title-bar owner.
-- [ ] Update typed window handles, Shell root lookups, theme/font setup, Tab traversal,
+- [x] Update typed window handles, Shell root lookups, theme/font setup, Tab traversal,
       ready-status observation and window-level actions without duplicate registration.
-- [ ] Preserve native title, activation, file chooser/drop behavior, session geometry
+- [x] Preserve native title, activation, file chooser/drop behavior, session geometry
       and the existing Root-backed settings window. Verify a current release build.
 
 ### 4. Plot ownership and overlay isolation
