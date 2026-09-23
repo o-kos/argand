@@ -227,8 +227,11 @@ fn assert_axis_bands_fit(frame: &Frame, width: f32, height: f32) {
     assert!(frame.caption_row - half_line >= -48., "caption fits beside the minimap");
     assert_eq!(frame.caption_row + DejaVuSans.digit_height(LABEL_SIZE) / 2., frame.plot.y);
     assert!(frame.time_row - half_line > frame.plot.bottom());
-    assert!(frame.time_row + half_line <= height - 4.0, "time labels touch the status bar");
     let half_ink = DejaVuSans.digit_height(LABEL_SIZE) / 2.0;
+    let above = frame.time_row - half_ink - BADGE_PAD - (frame.plot.bottom() + 1.);
+    let below = height - (frame.time_row + half_ink + BADGE_PAD);
+    assert!(above >= TIME_LABEL_DROP - BADGE_PAD - 1e-4, "badge clears the ruler line");
+    assert!((above - below).abs() < 1e-4, "equal room above and below the badge");
     assert!(!frame.frequency.is_empty());
     for tick in &frame.frequency {
         let center = frame.plot.bottom() - tick.offset as f32 + 0.5;
@@ -334,7 +337,7 @@ fn assert_unit_hint_bounds(frame: &Frame, hint: UnitHint) {
     assert!(hint.bounds.x > frame.plot.right());
     assert!(hint.bounds.right() <= 800. - OUTER_PAD);
     assert!(hint.bounds.y >= -48.);
-    assert!(hint.bounds.bottom() <= 600. - OUTER_PAD);
+    assert!(hint.bounds.bottom() <= 600.);
 }
 
 #[test]
@@ -480,10 +483,12 @@ fn horizontal_time_labels_hang_beside_their_ticks() {
         for scale in [1., 1.25, 1.5, 2.] {
             let extents = Extents { orientation: crate::orientation::Mode::Horizontal, ..HFDL };
             let frame = Frame::measure(panel(width, height), scale, extents, &DejaVuSans, None).unwrap();
-            let ink_top = frame.time_row - ink / 2.;
-            assert_eq!(ink_top - (frame.plot.bottom() + 1.), TIME_LABEL_GAP, "gap below the ruler line at {scale}");
-            assert!(ink_top < frame.plot.bottom() + TICK_LEN, "the label starts beside its tick at {scale}");
-            assert!(frame.time_row + row / 2. <= height - OUTER_PAD, "the whole label row stays in the panel at {scale}");
+            let line = frame.plot.bottom() + 1.;
+            let drop = frame.time_row - ink / 2. - line;
+            assert!(drop >= TIME_LABEL_DROP - 1e-4, "ink starts below the ruler line at {scale}");
+            assert!(drop < TIME_LABEL_DROP + 1. / scale, "rounding adds under a device pixel at {scale}");
+            let below = height - (frame.time_row + ink / 2.);
+            assert!((below - drop).abs() < 1e-4, "the ink is centred in the band at {scale}");
             let vertical = Extents { orientation: crate::orientation::Mode::Vertical, ..extents };
             let frame = Frame::measure(panel(width, height), scale, vertical, &DejaVuSans, None).unwrap();
             assert_eq!(frame.time_row, frame.plot.bottom() + LABEL_PAD + row / 2., "vertical bottom row is unchanged at {scale}");

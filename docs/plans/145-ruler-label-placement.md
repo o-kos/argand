@@ -48,6 +48,18 @@ placement.
   - the unit captions' horizontal position;
   - the CLI (`aspec`), which keeps centred labels from the shared default.
 
+### Final label row, after the owner's visual check
+
+The owner judged the ruler too low with the ink 4 pixels under the line, and
+confirmed that the badge text and the labels share one row (the apparent offset
+was optical). The label ink moves 2 pixels lower (`TIME_LABEL_DROP` = 6). The
+band below the plot is `1 + 2 × TIME_LABEL_DROP + ink`, and the ink is centred in
+the band that remains after device-pixel rounding. An Alt badge (`BADGE_PAD` = 3
+around the ink) therefore has equal room to the ruler line and to the band's
+bottom edge, 3 logical pixels each when rounding adds nothing. The horizontal
+4-pixel gap after the tick is unchanged. This replaces the earlier "4 pixels below
+the line" rule.
+
 ### Alt badges (#141), added after owner review
 
 Owner review showed the horizontal Alt badge covering the ruler line. The badge
@@ -91,6 +103,8 @@ Request.
 - [x] Derive Alt badge rectangles from the frame, sharing the label rows (#141).
 - [x] Test badge rows, ruler-line clearance, the right-edge margin, clamping,
       both orientations, all time modes and fractional scales.
+- [x] Lower the label row to `TIME_LABEL_DROP` and centre it in the band so the
+      badge has equal room above and below. Verified on an X11 capture at 1.25×.
 - [ ] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation

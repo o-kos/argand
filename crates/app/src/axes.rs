@@ -29,8 +29,12 @@ const LABEL_PAD: f32 = 9.0;
 const OUTER_PAD: f32 = 4.0;
 /// How far a tick's mark reaches out of the plot.
 const TICK_LEN: f32 = 6.0;
-/// Clear space from a horizontal time tick to its label, and from the ruler line to the label's ink.
+/// Clear space from a horizontal time tick to its label.
 const TIME_LABEL_GAP: f32 = 4.0;
+/// Least clear space from the horizontal ruler line to the top of its labels' ink.
+const TIME_LABEL_DROP: f32 = 6.0;
+/// Room between an Alt badge's edges and the ink of its digits, on every side.
+const BADGE_PAD: f32 = 3.0;
 /// Where a horizontal time label starts, past its one-pixel tick and the gap.
 const TIME_LABEL_START: f32 = 1.0 + TIME_LABEL_GAP;
 /// The size the labels are drawn at.
@@ -246,8 +250,7 @@ impl Frame {
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
         let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
-        let bottom_center = bottom_row_center(vertical, row_height, measure);
-        let foot = bottom_center + row_height / 2. + OUTER_PAD;
+        let foot = bottom_band(vertical, row_height, measure);
         let scale = if scale > 0. { scale } else { 1. };
         let ceil = |value: f32| (value * scale).ceil() / scale;
         let floor = |value: f32| (value * scale).floor() / scale;
@@ -316,7 +319,7 @@ impl Frame {
         } else {
             (bottom_ticks, right_ticks)
         };
-        let bottom_row = plot.bottom() + bottom_center;
+        let bottom_row = plot.bottom() + bottom_row_center(vertical, row_height, panel, height);
         Some(Self {
             orientation,
             plot,
@@ -343,13 +346,26 @@ impl Frame {
     }
 }
 
+/// The height reserved below the plot for its bottom ruler.
+///
+/// A horizontal time ruler holds its label ink `TIME_LABEL_DROP` below the
+/// one-pixel ruler line and as much again below it, so an Alt badge around
+/// that ink has equal room above and below.
+fn bottom_band(vertical: bool, row_height: f32, measure: &dyn LabelMeasure) -> f32 {
+    if vertical {
+        OUTER_PAD + row_height + LABEL_PAD
+    } else {
+        1. + 2. * TIME_LABEL_DROP + measure.digit_height(LABEL_SIZE)
+    }
+}
+
 /// How far below the plot the bottom label row is centred.
-fn bottom_row_center(vertical: bool, row_height: f32, measure: &dyn LabelMeasure) -> f32 {
+fn bottom_row_center(vertical: bool, row_height: f32, panel: Size<Pixels>, height: f32) -> f32 {
     if vertical {
         LABEL_PAD + row_height / 2.
     } else {
-        // Horizontal time labels hang beside their ticks, just under the ruler line.
-        1. + TIME_LABEL_GAP + measure.digit_height(LABEL_SIZE) / 2.
+        // Centred in the band below the ruler line, which rounding may leave a little taller.
+        1. + (f32::from(panel.height) - height - 1.) / 2.
     }
 }
 
