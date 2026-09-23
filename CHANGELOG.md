@@ -13,6 +13,8 @@ promise applies to.
 
 ### Fixed
 
+- Stop Ctrl+U and other plot shortcuts from acting behind the open time-ruler context menu.
+
 - Make the hinted spectrogram range in the status bar apply an available recommendation or restore the full range on click and Ctrl+R / Cmd+R without opening analysis settings.
 
 - Correct the README Rust version badge to state Rust 1.97+.
@@ -33,6 +35,8 @@ promise applies to.
 - Spectrum dragging now pans both axes; ruler and minimap dragging remain constrained. Shift+wheel frequency pan and Ctrl+Shift+wheel frequency zoom also handle horizontal deltas emitted by Linux backends.
 
 ### Changed
+
+- Keep keyboard focus on the plot while a signal is shown. Tab no longer moves focus onto toolbar or status-bar buttons, so plot shortcuts keep working after any button is used.
 
 - Hide the completed-analysis status and its timing hint after a mouse button press, a key press, a wheel scroll or the cursor readout appearing. Each completed analysis shows its timing again.
 

@@ -109,7 +109,9 @@ with the existing canvas, axes, minimap and badge code reused inside it.
   the Shell subscription to its intents. Replacing or closing the file drops both.
   That subscription lifetime is the stale-intent protection: a replaced
   PlotView cannot reach the new document.
-- Shell focuses the new PlotView when it is created. `Shell::open` moves focus to
+- Shell focuses the new PlotView when it is created, unless focus has meanwhile
+  moved off the shell handle (for example into the application menu); the focus
+  target then returns it to the plot. `Shell::open` moves focus to
   the shell handle before dropping the old PlotView. If the document switches to
   `Showing::Failed` while a PlotView exists, the same transition moves focus to the
   shell handle, so focus never rests on a handle absent from the rendered frame.
@@ -124,8 +126,8 @@ with the existing canvas, axes, minimap and badge code reused inside it.
 
 ### Snapshot and texture retirement
 
-- `PlotSnapshot` is immutable and shared (`Arc`), built by Shell from its own
-  fields. It holds:
+- `PlotSnapshot` is a plain struct of shared references (`Arc` and `Copy` values),
+  built by Shell from its own fields and replaced whole every frame. It holds:
   - the extents, texture, deep preview, backdrop clone and held picture view;
   - the first-paint marker and the minimap panel;
   - orientation, waveform fraction, held tick schemes, grid and scale-UI flags;
@@ -137,10 +139,13 @@ with the existing canvas, axes, minimap and badge code reused inside it.
   `upload`/`prepare_backdrop`/`prepare_deep_preview`, and before returning the
   element that contains the PlotView. PlotView must not become a cached view: its
   render has to run in the frame in which the snapshot was set.
-- Retirement has one entry: a function taking the current PlotView (if any), the
-  images, the window and the context. It first clears that PlotView's snapshot
-  synchronously and notifies it. Only then does it schedule the existing
-  two-callback release on the originating window. `backdrop.rs` and `DeepPreview`
+- Retirement has one entry, `shell::retire`, taking the current PlotView (if any),
+  the images, the window and the context. It first clears that PlotView's snapshot
+  synchronously. Only then does it schedule the existing two-callback release on the
+  originating window. It does not notify the plot: retirement also runs inside
+  `Shell::render`, where a notification would schedule a redundant frame. The
+  release's first callback refreshes the window, and every Shell render publishes
+  a fresh snapshot before the plot renders. `backdrop.rs` and `DeepPreview`
   return the images they give up instead of releasing them. After the change the
   scheduling code (`on_next_frame` + `drop_image`) exists in exactly one place.
   Window teardown keeps today's behavior: callbacks for a closed window never run
@@ -215,10 +220,12 @@ and before pans.
 
 ### Pointer tracking outside the plot
 
-While a pan, frequency pan or splitter drag is active, PlotView registers
-window-level mouse-move and mouse-up listeners (`window.on_mouse_event`) during
-paint. GPUI clears these every frame. This keeps today's whole-window drag
-tracking, and an established drag still finishes or cancels outside. No such
+While a pan, frequency pan or splitter drag is active, PlotView registers a
+window-level mouse-move listener (`window.on_mouse_event`) during paint. GPUI
+clears it every frame. The listener handles only moves outside the plot's bounds.
+Moves inside stay with the plot's own `on_mouse_move`, which also covers moves
+that arrive before the first frame after the press: GPUI dispatches mouse events
+against the last rendered frame. Release outside is `on_mouse_up_out`. No such
 listener exists while no gesture is active.
 
 ### Tests
@@ -249,52 +256,55 @@ not change.
 
 ## Implementation steps
 
-- [ ] Add the headless test dependency and a minimal test harness for PlotView.
-- [ ] Introduce `PlotView` (new module, for example `plot_view.rs`) with its focus
+- [x] Add the headless test dependency and a minimal test harness for PlotView.
+- [x] Introduce `PlotView` (new module, for example `plot_view.rs`) with its focus
       handle, snapshot slot, intent enum and the moved UI state. Move the canvas,
       splitter, unit hints, zoom pairs and ruler context menu rendering from
       `plot_ui.rs`/`navigation_ui.rs`/`shell.rs` into it.
-- [ ] Move gesture handling (wheel, pan, minimap press, pointer, splitter, layout
+- [x] Move gesture handling (wheel, pan, minimap press, pointer, splitter, layout
       deferral) into PlotView, emitting intents. Replace the whole-window Shell
       handlers with gesture-scoped window listeners.
-- [ ] Handle intents in Shell. Move the navigation action handlers to the plot
+- [x] Handle intents in Shell. Move the navigation action handlers to the plot
       surface and keep the session commands on Shell. Add the focus-target helper
       and use it at every former `shell.focus` dispatch site.
-- [ ] Create the PlotView on `Effect::Opened`, drop it with the document, and apply
+- [x] Create the PlotView on `Effect::Opened`, drop it with the document, and apply
       the focus transitions and the mapped resets listed above.
-- [ ] Route all retirement through the single entry, clearing the snapshot first.
+- [x] Route all retirement through the single entry, clearing the snapshot first.
       Make `backdrop.rs` and `DeepPreview` return the images they give up.
-- [ ] Move the interceptor into PlotView with its window and exact-focus gate, and
+- [x] Move the interceptor into PlotView with its window and exact-focus gate, and
       restrict it to symbol normalization.
 - [ ] Headless tests:
-  - [ ] Every navigation binding produces exactly one intent and one view change
+  - [x] Every navigation binding produces exactly one intent and one view change
         with plot focus.
-  - [ ] Plot keys do nothing with the ruler popup focused, with a shell or toolbar
-        focus, and in another window. This covers Ctrl+G/Ctrl+T/Ctrl+U and symbol
-        zoom.
-  - [ ] Symbol zoom via top-row and keypad keys, with and without Shift.
-  - [ ] The snapshot is cleared before retirement is scheduled, and
+  - [x] Plot keys do nothing with another focus beside the plot, or in another
+        window. This covers Ctrl+G and symbol zoom.
+  - ⚠️ With the ruler popup open, the headless test's assertions pass. It still
+        fails GPUI's exit leak check, because gpui-component's ContextMenu retains
+        its PopupMenu through an Rc cycle (#144). The case moves to the native F2
+        check.
+  - [x] Symbol zoom via top-row and keypad keys, with and without Shift.
+  - [x] The snapshot is cleared before retirement is scheduled, and
         `drop_image` happens only after two frames.
-  - [ ] A replaced PlotView drops its snapshot and gestures, and its intents no
+  - [x] A replaced PlotView drops its snapshot and gestures, and its intents no
         longer reach Shell.
-  - [ ] A drag that leaves the plot still tracks and finishes on release outside.
-  - [ ] Tab/Shift+Tab never land on a toolbar or status-bar button while a plot is
-        shown.
-- [ ] Update AGENTS.md (the current-status bullets on Shell focus and key contexts,
+  - [x] A drag that leaves the plot still tracks and finishes on release outside.
+  - ➕ Tab/Shift+Tab never landing on a toolbar or status-bar button needs a
+        running Shell with an open file. It is covered by the native check.
+- [x] Update AGENTS.md (the current-status bullets on Shell focus and key contexts,
       the interceptor paragraph in #82, and the navigation section) and #124's
       stage 4 rows that this issue covers. The CHANGELOG records the two
       user-visible differences. Tab no longer moves focus onto toolbar or status-bar
       buttons. Ctrl+U no longer toggles the scale controls behind the ruler context
       menu.
-- [ ] Set `tab_stop(false)` on the toolbar and status-bar Buttons listed above.
+- [x] Set `tab_stop(false)` on the toolbar and status-bar Buttons listed above.
 - [ ] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Native (Linux Wayland first), recorded per #124's row format:
   - [ ] F1: each navigation binding in both orientations produces one view change
         and one analysis generation.

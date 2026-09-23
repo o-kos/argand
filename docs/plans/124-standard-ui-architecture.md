@@ -229,16 +229,16 @@ control within it still needs replacement or a separately accepted exception.
 
 ### 4. Plot ownership and overlay isolation
 
-- [ ] Introduce PlotView with bounded render inputs and typed navigation intents;
+- [x] Introduce PlotView with bounded render inputs and typed navigation intents;
       move plot focus, pointer/readout and gesture state out of Shell.
-- [ ] Route keyboard navigation through plot focus and commands through explicit
+- [x] Route keyboard navigation through plot focus and commands through explicit
       targets; keep required symbolic-key normalization scoped to plot input.
-- [ ] Remove or localize the global `cx.intercept_keystrokes` plot handler. If the
+- [x] Remove or localize the global `cx.intercept_keystrokes` plot handler. If the
       toolkit only exposes a global registration, gate it on the active PlotView
       focus before matching, dispatching or stopping propagation; this is a scoped
       adapter, not a global navigation bypass. Verify focused Input/Select symbols,
       Control commands and IME remain untouched; test both top-row and keypad zoom.
-- [ ] Preserve accepted snapshot labels, resize mailbox behavior and texture retirement.
+- [x] Preserve accepted snapshot labels, resize mailbox behavior and texture retirement.
 - [ ] Apply the surface contracts centrally and test dismissal, release outside,
       focus loss, overlay opening during drag and document replacement.
 - [ ] Verify #122's cursor/guide reproduction and compatibility requirements; link
