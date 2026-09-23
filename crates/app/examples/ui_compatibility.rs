@@ -2,8 +2,8 @@
 //!
 //! Since #137 the example opens two windows: the stock Root composition from
 //! the locked-stack baseline, and a borderless `Root::bordered(false)` window
-//! whose frame is the production `argand::chrome::Frame`, which is what #127
-//! will adopt.
+//! whose frame is the production `argand::chrome::Frame`, the composition
+//! #127 adopted for the production window.
 
 #[path = "ui_compatibility/model.rs"]
 mod model;
@@ -25,8 +25,8 @@ use gpui_kit::{
     Anchor, App, AppContext as _, Bounds, Context, CursorStyle, Entity, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent,
     ParentElement as _, Pixels, Point, Render, StatefulInteractiveElement as _, Styled as _,
-    Subscription, Window, WindowBounds, WindowDecorations, WindowOptions, actions, canvas, div,
-    hsla, px, size,
+    Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+    WindowOptions, actions, canvas, div, hsla, px, size,
 };
 use model::{NumberStep, NumberValidation, Orientation, PlotPoint, ProbeModel, ZoomDirection};
 
@@ -1199,7 +1199,11 @@ fn main() {
                 cx.open_window(borderless_options, |window, cx| {
                     window.set_window_title("Argand fixture: borderless Root");
                     let fixture = cx.new(|cx| Fixture::new(popover_crash_probe, true, window, cx));
-                    cx.new(|cx| Root::new(fixture, window, cx).bordered(false))
+                    cx.new(|cx| {
+                        Root::new(fixture, window, cx)
+                            .bordered(false)
+                            .bg(gpui_kit::transparent_black())
+                    })
                 })?;
                 Ok::<_, anyhow::Error>(())
             })
@@ -1218,6 +1222,7 @@ fn window_options(cx: &App) -> WindowOptions {
         window_decorations: Some(WindowDecorations::Client),
         titlebar: Some(TitleBar::title_bar_options()),
         app_id: Some(APP_ID.into()),
+        window_background: WindowBackgroundAppearance::Transparent,
         ..Default::default()
     }
 }
