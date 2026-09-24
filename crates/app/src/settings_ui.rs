@@ -416,7 +416,9 @@ impl Shell {
         if self.settings_backup.is_none() {
             summary
                 .interactivity()
-                .hoverable_tooltip(move |_, cx| live_analysis_tooltip(hint_owner.clone(), cx));
+                .hoverable_tooltip(move |window, cx| {
+                    live_analysis_tooltip(hint_owner.clone(), window, cx)
+                });
         }
         div()
             .flex()
@@ -517,8 +519,12 @@ pub(super) fn detail_row(
         .child(div().flex_1().min_w_0().text_right().child(value.into()))
 }
 
-fn live_analysis_tooltip(owner: WeakEntity<Shell>, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {
-    hints::interactive(cx, |cx| {
+fn live_analysis_tooltip(
+    owner: WeakEntity<Shell>,
+    window: &Window,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::AnyView {
+    hints::interactive(window, cx, |cx| {
         if let Some(owner) = owner.upgrade() {
             cx.observe(&owner, |_, _, cx| cx.notify()).detach();
         }

@@ -11,8 +11,8 @@
 
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
-    AnyView, App, AppContext, Context, CursorStyle, Entity, InteractiveElement, IntoElement,
-    ParentElement, Render, Styled, Window, div,
+    AnyView, App, AppContext, Context, CursorStyle, Entity, FocusHandle, InteractiveElement,
+    IntoElement, ParentElement, Render, StatefulInteractiveElement, Styled, Window, div,
 };
 
 /// The gap between the pointer and a hint's box, which the standard tooltip
@@ -29,24 +29,66 @@ pub(super) fn passive(
 
 /// The view a `.hoverable_tooltip` builder returns.
 pub(super) fn interactive(
+    window: &Window,
     cx: &mut App,
     build: impl FnOnce(&mut Context<Tooltip>) -> Tooltip,
 ) -> AnyView {
     let tooltip = cx.new(|cx| build(cx).m_0());
-    cx.new(|_| Surface { tooltip }).into()
+    cx.new(|cx| {
+        cx.on_release_in(window, |surface: &mut Surface, window, cx| {
+            surface.give_back(window, cx)
+        })
+        .detach();
+        Surface {
+            tooltip,
+            focus: cx.focus_handle(),
+            previous: None,
+        }
+    })
+    .into()
 }
 
+/// An interactive hint, owning the pointer and the keyboard while the pointer is inside its box.
 struct Surface {
     tooltip: Entity<Tooltip>,
+    focus: FocusHandle,
+    /// Where the keyboard goes back to when the pointer leaves or the hint closes under it.
+    previous: Option<FocusHandle>,
+}
+
+impl Surface {
+    fn hovered(&mut self, hovered: bool, window: &mut Window, cx: &mut App) {
+        if !hovered {
+            self.give_back(window, cx);
+        } else if !self.focus.is_focused(window) {
+            self.previous = window.focused(cx);
+            window.focus(&self.focus, cx);
+        }
+    }
+
+    fn give_back(&mut self, window: &mut Window, cx: &mut App) {
+        if self.focus.is_focused(window)
+            && let Some(previous) = self.previous.take()
+        {
+            window.focus(&previous, cx);
+        }
+    }
 }
 
 impl Render for Surface {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Only the box blocks the pointer, the margin around it stays transparent.
         div().p(gpui_kit::px(MARGIN)).child(
             div()
+                .id("hint-surface")
                 .occlude()
                 .cursor(CursorStyle::Arrow)
+                .track_focus(&self.focus)
+                .on_hover(
+                    cx.listener(|surface, hovered, window, cx| {
+                        surface.hovered(*hovered, window, cx)
+                    }),
+                )
                 .child(self.tooltip.clone()),
         )
     }
@@ -55,15 +97,21 @@ impl Render for Surface {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui_kit::prelude::FluentBuilder;
     use gpui_kit::{
-        Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement,
-        TestAppContext, VisualTestContext, point, px, size,
+        Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext,
+        point, px, size,
     };
 
+    gpui_kit::actions!(hint_tests, [Nudge]);
+
     /// A plot-like surface filling the window, with a hint trigger in its corner.
-    #[derive(Default)]
     struct Harness {
         plain: bool,
+        /// The trigger goes away with its hint when this is cleared.
+        trigger: bool,
+        focus: FocusHandle,
+        nudges: usize,
         hovered: Option<bool>,
         moves: usize,
         presses: usize,
@@ -80,6 +128,9 @@ mod tests {
                         .id("plot")
                         .absolute()
                         .inset_0()
+                        .track_focus(&self.focus)
+                        .key_context("Plot")
+                        .on_action(cx.listener(|harness, _: &Nudge, _, _| harness.nudges += 1))
                         .cursor(CursorStyle::Crosshair)
                         .on_hover(
                             cx.listener(|harness, hovered, _, _| harness.hovered = Some(*hovered)),
@@ -91,18 +142,20 @@ mod tests {
                         )
                         .on_scroll_wheel(cx.listener(|harness, _, _, _| harness.wheels += 1)),
                 )
-                .child(
-                    div()
-                        .id("trigger")
-                        .absolute()
-                        .left(px(10.))
-                        .top(px(10.))
-                        .size(px(20.))
-                        .hoverable_tooltip({
-                            let plain = self.plain;
-                            move |window, cx| hint(plain, window, cx)
-                        }),
-                )
+                .when(self.trigger, |harness| {
+                    harness.child(
+                        div()
+                            .id("trigger")
+                            .absolute()
+                            .left(px(10.))
+                            .top(px(10.))
+                            .size(px(20.))
+                            .hoverable_tooltip({
+                                let plain = self.plain;
+                                move |window, cx| hint(plain, window, cx)
+                            }),
+                    )
+                })
         }
     }
 
@@ -111,7 +164,7 @@ mod tests {
         if plain {
             tooltip.build(window, cx)
         } else {
-            interactive(cx, |_| tooltip)
+            interactive(window, cx, |_| tooltip)
         }
     }
 
@@ -131,10 +184,23 @@ mod tests {
         &mut VisualTestContext,
         gpui_kit::Point<gpui_kit::Pixels>,
     ) {
-        cx.update(gpui_kit::init);
-        let (harness, cx) = cx.add_window_view(|_, _| Harness {
-            plain,
-            ..Default::default()
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.bind_keys([gpui_kit::KeyBinding::new("left", Nudge, Some("Plot"))]);
+        });
+        let (harness, cx) = cx.add_window_view(|window, cx| {
+            let focus = cx.focus_handle();
+            window.focus(&focus, cx);
+            Harness {
+                plain,
+                trigger: true,
+                focus,
+                nudges: 0,
+                hovered: None,
+                moves: 0,
+                presses: 0,
+                wheels: 0,
+            }
         });
         cx.simulate_resize(size(px(400.), px(300.)));
         cx.simulate_mouse_move(point(px(15.), px(15.)), None, Modifiers::default());
@@ -186,6 +252,38 @@ mod tests {
         assert_eq!(hovered, Some(true), "the margin leaves the plot hovered");
         assert!(after > moves, "the plot follows the pointer in the margin");
     }
+    fn nudges(cx: &mut VisualTestContext, harness: &Entity<Harness>) -> usize {
+        harness.read_with(cx, |harness, _| harness.nudges)
+    }
+
+    #[gpui_kit::test]
+    fn an_interactive_hint_holds_the_keyboard_while_the_pointer_is_inside(cx: &mut TestAppContext) {
+        let (harness, cx, _) = open(cx, false);
+        cx.simulate_keystrokes("left");
+        assert_eq!(
+            nudges(cx, &harness),
+            0,
+            "the plot keys wait while in the hint"
+        );
+        cx.simulate_mouse_move(point(px(300.), px(250.)), None, Modifiers::default());
+        cx.simulate_keystrokes("left");
+        assert_eq!(nudges(cx, &harness), 1, "leaving gives the keyboard back");
+    }
+
+    #[gpui_kit::test]
+    fn a_hint_closing_under_the_pointer_gives_the_keyboard_back(cx: &mut TestAppContext) {
+        let (harness, cx, _) = open(cx, false);
+        cx.simulate_keystrokes("left");
+        assert_eq!(nudges(cx, &harness), 0);
+        harness.update(cx, |harness, cx| {
+            harness.trigger = false;
+            cx.notify();
+        });
+        cx.run_until_parked();
+        cx.simulate_keystrokes("left");
+        assert_eq!(nudges(cx, &harness), 1);
+    }
+
     /// A large button whose own hint opens partly over it.
     #[derive(Default)]
     struct Trigger {
