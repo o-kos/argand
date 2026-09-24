@@ -242,9 +242,7 @@ impl Shell {
                         .px_2()
                         .min_w_0()
                         .flex_shrink(1.)
-                        .tooltip(move |window, cx| {
-                            metadata_tooltip(field.hint.clone()).build(window, cx)
-                        })
+                        .tooltip(move |_, cx| metadata_tooltip(field.hint.clone(), cx))
                         .child(
                             div()
                                 .overflow_hidden()
@@ -289,9 +287,7 @@ impl Shell {
                         .min_w_0()
                         .max_w(px(140.))
                         .when_some(hint, |status, hint| {
-                            status.tooltip(move |window, cx| {
-                                metadata_tooltip(hint.clone()).build(window, cx)
-                            })
+                            status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
                         })
                         .child(
                             div()
@@ -380,10 +376,10 @@ impl Shell {
             .id("analysis-range-item")
             .border_l_1()
             .border_color(cx.theme().border)
-            .tooltip(move |window, cx| {
+            .tooltip(move |_, cx| {
                 let action =
                     actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
-                shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.)).build(window, cx)
+                shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
             })
             .child(range_content)
     }
@@ -521,13 +517,12 @@ pub(super) fn detail_row(
 }
 
 fn live_analysis_tooltip(owner: WeakEntity<Shell>, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {
-    cx.new(|cx| {
+    hints::view(cx, |cx| {
         if let Some(owner) = owner.upgrade() {
             cx.observe(&owner, |_, _, cx| cx.notify()).detach();
         }
         analysis_tooltip(owner)
     })
-    .into()
 }
 
 fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {

@@ -216,7 +216,7 @@ impl Shell {
         // click that opened it hides a visible hint instead of explaining
         // it. The hint returns when the menu is gone.
         let shell = cx.entity().downgrade();
-        app.interactivity().tooltip(move |window, cx| {
+        app.interactivity().tooltip(move |_, cx| {
             let open = shell
                 .upgrade()
                 .is_some_and(|shell| shell.read(cx).application_menu.is_some());
@@ -228,8 +228,8 @@ impl Shell {
                     Some(Box::new(OpenApplicationMenu)),
                     "Shell",
                     px(240.),
+                    cx,
                 )
-                .build(window, cx)
             }
         });
         // The anchor wraps the button instead of living inside it: inside,
@@ -332,14 +332,14 @@ impl Shell {
                 window.focus(&shell.focus_target(cx), cx);
                 window.dispatch_action(action.boxed_clone(), cx);
             }));
-        button.interactivity().tooltip(move |window, cx| {
+        button.interactivity().tooltip(move |_, cx| {
             shortcut_tooltip(
                 hint.clone(),
                 Some(tooltip_action.boxed_clone()),
                 "Plot",
                 px(360.),
+                cx,
             )
-            .build(window, cx)
         });
         div().group(id).child(button)
     }

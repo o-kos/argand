@@ -332,17 +332,19 @@ impl Render for PlotView {
     }
 }
 
-/// Follows a drag beyond the plot, where its own hitbox no longer sees the pointer.
+/// Follows a drag wherever the plot's own hitbox no longer sees the pointer.
 ///
-/// Moves inside the plot stay with its own listener, which also covers the
-/// ones that arrive before the first frame drawn after the press.
+/// That is beyond the plot and over a hint lying on it. The tracker's hitbox
+/// matches the plot's, so each move goes to exactly one of them. Moves the
+/// plot sees stay with its own listener, which also covers the ones that
+/// arrive before the first frame drawn after the press.
 fn drag_tracker(plot: WeakEntity<PlotView>) -> impl IntoElement {
     canvas(
-        |_, _, _| (),
-        move |bounds, _, window, _| {
+        |bounds, window, _| window.insert_hitbox(bounds, gpui_kit::HitboxBehavior::Normal),
+        move |_, hitbox, window, _| {
             let plot = plot.clone();
             window.on_mouse_event(move |event: &gpui_kit::MouseMoveEvent, phase, window, cx| {
-                if phase == gpui_kit::DispatchPhase::Bubble && !bounds.contains(&event.position) {
+                if phase == gpui_kit::DispatchPhase::Bubble && !hitbox.is_hovered(window) {
                     let _ = plot.update(cx, |plot, cx| plot.pointer_moved(event, window, cx));
                 }
             });
@@ -468,6 +470,8 @@ mod tests {
         other: FocusHandle,
         intents: Vec<PlotIntent>,
         grid: usize,
+        /// Stands in for a hint lying on the plot.
+        cover: Option<Bounds<Pixels>>,
         _intents: Option<Subscription>,
     }
 
@@ -475,12 +479,24 @@ mod tests {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             div()
                 .size_full()
+                .relative()
                 .flex()
                 .flex_col()
                 .key_context("Shell")
                 .on_action(cx.listener(|harness, _: &ToggleGrid, _, _| harness.grid += 1))
                 .children(self.plot.clone())
                 .child(div().id("other").h(px(40.)).track_focus(&self.other))
+                .when_some(self.cover, |harness, cover| {
+                    harness.child(
+                        div()
+                            .absolute()
+                            .left(cover.origin.x)
+                            .top(cover.origin.y)
+                            .w(cover.size.width)
+                            .h(cover.size.height)
+                            .block_mouse_except_scroll(),
+                    )
+                })
         }
     }
 
@@ -545,6 +561,7 @@ mod tests {
                 other: cx.focus_handle(),
                 intents: Vec::new(),
                 grid: 0,
+                cover: None,
                 _intents: Some(intents),
             }
         });
@@ -719,6 +736,7 @@ mod tests {
                 other: focus,
                 intents: Vec::new(),
                 grid: 0,
+                cover: None,
                 _intents: None,
             }
         });
@@ -776,25 +794,27 @@ mod tests {
         .unwrap();
     }
 
-    #[gpui_kit::test]
-    fn a_drag_keeps_tracking_beyond_the_plot(cx: &mut TestAppContext) {
-        let handle = open(cx);
-        let (spectrum, bottom) = handle
-            .update(cx, |harness, window, cx| {
-                let geometry = harness.plot.as_ref().unwrap().read(cx).geometry;
-                (geometry.unwrap().spectrum, window.viewport_size().height)
-            })
-            .unwrap();
+    /// Drags the spectrum from its centre to `to` and returns the last view it asked for.
+    fn drag_time(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        spectrum: Bounds<Pixels>,
+        to: gpui_kit::Point<Pixels>,
+    ) -> crate::navigation::View {
         let from = spectrum.center();
-        let to = point(from.x - px(200.), bottom - px(10.));
-        assert!(!spectrum.contains(&to));
         handle
             .update(cx, |harness, _, _| harness.intents.clear())
             .unwrap();
         cx.update_window(handle.into(), |_, window, cx| window.drag(from, to, cx))
             .unwrap();
         cx.run_until_parked();
-        let drags: Vec<_> = handle
+        let dragging = handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().read(cx).dragging()
+            })
+            .unwrap();
+        assert!(!dragging, "release ends the drag");
+        handle
             .update(cx, |harness, _, _| {
                 harness
                     .intents
@@ -805,18 +825,135 @@ mod tests {
                         } => Some(*view),
                         _ => None,
                     })
-                    .collect()
+                    .next_back()
             })
+            .unwrap()
+            .expect("the drag moved the view")
+    }
+
+    fn spectrum(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> Bounds<Pixels> {
+        handle
+            .update(cx, |harness, _, cx| {
+                let geometry = harness.plot.as_ref().unwrap().read(cx).geometry;
+                geometry.unwrap().spectrum
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn a_drag_keeps_tracking_beyond_the_plot(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let bottom = handle
+            .update(cx, |_, window, _| window.viewport_size().height)
             .unwrap();
-        let last = drags.last().expect("the drag moved the view");
+        let from = spectrum.center();
+        let to = point(from.x - px(200.), bottom - px(10.));
+        assert!(!spectrum.contains(&to));
         let width = f32::from(spectrum.size.width) as f64;
         let expected = snapshot().extents.time.view.pan(200. / width, 1_000_000);
-        assert_eq!(*last, expected, "the step outside the plot was followed");
-        let dragging = handle
+        assert_eq!(
+            drag_time(cx, handle, spectrum, to),
+            expected,
+            "the step outside the plot was followed"
+        );
+    }
+
+    fn cover(cx: &mut TestAppContext, handle: WindowHandle<Harness>, bounds: Bounds<Pixels>) {
+        handle
             .update(cx, |harness, _, cx| {
-                harness.plot.as_ref().unwrap().read(cx).dragging()
+                harness.cover = Some(bounds);
+                cx.notify();
             })
             .unwrap();
-        assert!(!dragging, "release outside ends the drag");
+        frame(cx, handle);
+    }
+
+    fn pointer(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+    ) -> Option<gpui_kit::Point<Pixels>> {
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().read(cx).pointer
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn a_hint_on_the_plot_takes_its_pointer_and_clicks_but_not_the_wheel(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let covered = spectrum.center();
+        let free = point(covered.x - px(100.), covered.y);
+        cover(
+            cx,
+            handle,
+            Bounds::new(covered - point(px(20.), px(20.)), size(px(40.), px(40.))),
+        );
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(free, None, none);
+        assert_eq!(pointer(cx, handle), Some(free));
+        input.simulate_mouse_move(covered, None, none);
+        assert_eq!(
+            pointer(cx, handle),
+            None,
+            "no readout or guides under a hint"
+        );
+        input.simulate_mouse_move(free, None, none);
+        assert_eq!(
+            pointer(cx, handle),
+            Some(free),
+            "the first move back restores it"
+        );
+        navigation(cx, handle);
+        input.simulate_event(gpui_kit::ScrollWheelEvent {
+            position: covered,
+            delta: gpui_kit::ScrollDelta::Pixels(point(px(0.), px(40.))),
+            ..Default::default()
+        });
+        assert_eq!(
+            navigation(cx, handle).len(),
+            1,
+            "the wheel pans under a hint"
+        );
+        handle
+            .update(cx, |harness, _, _| harness.intents.clear())
+            .unwrap();
+        input.simulate_mouse_down(covered, MouseButton::Left, none);
+        let (intents, dragging) = handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.as_ref().unwrap().read(cx);
+                (std::mem::take(&mut harness.intents), plot.dragging())
+            })
+            .unwrap();
+        assert!(!dragging, "a click on a hint starts no drag");
+        assert!(
+            !intents
+                .iter()
+                .any(|intent| matches!(intent, PlotIntent::GestureStarted { .. })),
+            "{intents:?}"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_drag_keeps_tracking_over_a_hint_on_the_plot(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let from = spectrum.center();
+        let to = point(from.x - px(100.), from.y);
+        cover(
+            cx,
+            handle,
+            Bounds::new(to - point(px(20.), px(20.)), size(px(40.), px(40.))),
+        );
+        let width = f32::from(spectrum.size.width) as f64;
+        let expected = snapshot().extents.time.view.pan(100. / width, 1_000_000);
+        assert_eq!(
+            drag_time(cx, handle, spectrum, to),
+            expected,
+            "the step over the hint was followed"
+        );
     }
 }

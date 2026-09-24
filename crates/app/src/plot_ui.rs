@@ -575,14 +575,14 @@ fn half_button(
             MouseButton::Left,
             cx.listener(|plot, _, _, cx| plot.release_press(cx)),
         );
-    half.tooltip(move |window, cx| {
+    half.tooltip(move |_, cx| {
         shortcut_tooltip(
             hint.to_owned(),
             Some(tooltip_action.boxed_clone()),
             "Plot",
             px(240.),
+            cx,
         )
-        .build(window, cx)
     })
 }
 
@@ -591,7 +591,7 @@ fn unit_tooltip(
     index: usize,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::AnyView {
-    cx.new(|cx| {
+    hints::view(cx, |cx| {
         if let Some(owner) = owner.upgrade() {
             cx.observe(&owner, |_, _, cx| cx.notify()).detach();
         }
@@ -617,7 +617,6 @@ fn unit_tooltip(
                 })
         })
     })
-    .into()
 }
 
 fn plot_geometry(

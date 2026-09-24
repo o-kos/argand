@@ -40,6 +40,8 @@ mod shortcuts;
 #[path = "backdrop.rs"]
 mod backdrop;
 
+#[path = "hints.rs"]
+mod hints;
 #[path = "navigation_ui.rs"]
 mod navigation_ui;
 #[path = "plot_ui.rs"]
@@ -1209,9 +1211,9 @@ impl Shell {
                     cx,
                 );
             }));
-        button.interactivity().tooltip(move |window, cx| {
+        button.interactivity().tooltip(move |_, cx| {
             let action = (index < 9).then(|| Box::new(OpenRecent { index }) as Box<dyn Action>);
-            shortcut_tooltip(tooltip.clone(), action, "StartPage", width).build(window, cx)
+            shortcut_tooltip(tooltip.clone(), action, "StartPage", width, cx)
         });
         button
     }
@@ -1232,14 +1234,14 @@ impl Shell {
             .cursor_pointer()
             .label("Open a signal file…")
             .on_click(|_, window, cx| window.dispatch_action(Box::new(ChooseFile), cx));
-        chooser.interactivity().tooltip(move |window, cx| {
+        chooser.interactivity().tooltip(move |_, cx| {
             shortcut_tooltip(
                 "Open a signal file".to_owned(),
                 Some(Box::new(ChooseFile)),
                 "Shell",
                 width,
+                cx,
             )
-            .build(window, cx)
         });
         div()
             .flex_1()
@@ -1391,21 +1393,24 @@ fn shortcut_tooltip(
     action: Option<Box<dyn Action>>,
     context: &'static str,
     width: Pixels,
-) -> Tooltip {
-    Tooltip::element(move |window, cx| {
-        let shortcut = action.as_deref().and_then(|action| {
-            shortcuts::zoom_keycap(action)
-                .or_else(|| Kbd::binding_for_action(action, Some(context), window))
-        });
-        div()
-            .max_w(width.min(window.viewport_size().width - px(48.)))
-            .flex()
-            .items_center()
-            .gap_3()
-            .child(div().min_w_0().child(text.clone()))
-            .when_some(shortcut, |hint, shortcut| {
-                hint.child(shortcuts::keycap(shortcut, cx))
-            })
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::AnyView {
+    hints::view(cx, |_| {
+        Tooltip::element(move |window, cx| {
+            let shortcut = action.as_deref().and_then(|action| {
+                shortcuts::zoom_keycap(action)
+                    .or_else(|| Kbd::binding_for_action(action, Some(context), window))
+            });
+            div()
+                .max_w(width.min(window.viewport_size().width - px(48.)))
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(div().min_w_0().child(text.clone()))
+                .when_some(shortcut, |hint, shortcut| {
+                    hint.child(shortcuts::keycap(shortcut, cx))
+                })
+        })
     })
 }
 
@@ -1440,67 +1445,69 @@ fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui_kit::App)
     .min(limit)
 }
 
-fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
-    Tooltip::element(move |window, cx| {
-        if !hint.rows.is_empty() {
-            return div()
-                .w(px(330.).min(window.viewport_size().width - px(48.)))
+fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {
+    hints::view(cx, |_| {
+        Tooltip::element(move |window, cx| {
+            if !hint.rows.is_empty() {
+                return div()
+                    .w(px(330.).min(window.viewport_size().width - px(48.)))
+                    .py_1()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .mb_1()
+                            .child(hint.title),
+                    )
+                    .children(hint.rows.iter().map(|(label, value)| {
+                        settings_ui::detail_row(label.clone(), value.clone(), cx)
+                    }))
+                    .child(
+                        div()
+                            .mt_1()
+                            .pt_2()
+                            .border_t_1()
+                            .border_color(cx.theme().border)
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(hint.explanation.clone()),
+                    );
+            }
+            // A definite content width lets wrapped lines contribute their full layout height.
+            let width = metadata_hint_width(&hint, window, cx);
+            div()
+                .w(width)
                 .py_1()
                 .flex()
                 .flex_col()
                 .gap_1()
                 .child(
                     div()
+                        .w_full()
+                        .flex_shrink_0()
                         .font_weight(FontWeight::SEMIBOLD)
-                        .mb_1()
                         .child(hint.title),
                 )
-                .children(hint.rows.iter().map(|(label, value)| {
-                    settings_ui::detail_row(label.clone(), value.clone(), cx)
-                }))
                 .child(
-                    div()
-                        .mt_1()
-                        .pt_2()
-                        .border_t_1()
-                        .border_color(cx.theme().border)
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(hint.explanation.clone()),
-                );
-        }
-        // A definite content width lets wrapped lines contribute their full layout height.
-        let width = metadata_hint_width(&hint, window, cx);
-        div()
-            .w(width)
-            .py_1()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .child(
-                div()
-                    .w_full()
-                    .flex_shrink_0()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(hint.title),
-            )
-            .child(
-                div()
-                    .w_full()
-                    .flex_shrink_0()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(hint.value.clone()),
-            )
-            .when(!hint.explanation.is_empty(), |tooltip| {
-                tooltip.child(
                     div()
                         .w_full()
                         .flex_shrink_0()
-                        .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child(hint.explanation.clone()),
+                        .child(hint.value.clone()),
                 )
-            })
+                .when(!hint.explanation.is_empty(), |tooltip| {
+                    tooltip.child(
+                        div()
+                            .w_full()
+                            .flex_shrink_0()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(hint.explanation.clone()),
+                    )
+                })
+        })
     })
 }
 

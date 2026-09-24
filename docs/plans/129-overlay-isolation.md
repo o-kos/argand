@@ -105,9 +105,12 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
   opens, before the file chooser, and when the main window deactivates. PlotView
   calls it when its ruler menu opens. Document replacement drops the PlotView
   and its gestures with it, as today.
-- A drag keeps following the pointer while it crosses a hint. The mechanism is
-  chosen in the prototype step: the drag tracker must see moves that the plot's
-  own blocked hitbox no longer receives, without handling any move twice.
+- A drag keeps following the pointer while it crosses a hint. The drag tracker
+  inserts its own hitbox with the plot's bounds and handles exactly the moves
+  for which that hitbox is not hovered: beyond the plot, and over anything that
+  blocks it. The plot's own listener handles the rest, so no move is handled
+  twice. This replaces the tracker's bounds test, which stalled a drag over a
+  hint (a negative control confirmed the stall).
 
 ### Keyboard and focus
 
@@ -116,6 +119,24 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
   routing: dismissing the ruler menu or one application-menu level with Escape
   returns focus so that the next key reaches the restored target exactly once.
 - Hints never take focus. The helper adds no focus handle.
+
+## Inventory
+
+| Entry point | Surface | Contract |
+| --- | --- | --- |
+| `shortcut_tooltip` (toolbar, application button, status range, start page, zoom halves) | Passive hint | `hints::view` |
+| `metadata_tooltip` (status file and metadata fields) | Passive hint | `hints::view` |
+| `analysis_tooltip` (hoverable, two Buttons) | Interactive hint | `hints::view`; its Buttons take their clicks |
+| `unit_tooltip` (ruler unit captions) | Passive hint | `hints::view` |
+| `NoTooltip` (application button while its menu is open) | None | Renders nothing, exempt |
+| Application menu overlay (`app_menu_ui.rs`) | Menu | `occlude()`, stops move and wheel propagation, own focus, one-level Escape |
+| Ruler context menu (`PopupMenu` via `context_menu`) | Menu | Toolkit `occlude()`, tracked by `PlotView::open_menu` |
+| Settings editor (`settings_editor.rs`) | Separate native window | Window-local input, #128 tests |
+| File chooser | Native dialog | Takes the pointer, gestures end before it opens |
+| `time-plot` handlers (wheel, down, move, up, up-out, hover), splitter, zoom halves, drag tracker | Plot | Hover-based, so any blocking layer above wins |
+| Title bar handlers (`shell.rs`), window controls (`chrome.rs`) | Frame | Outside the plot, unchanged |
+| `ready_input_observer` (capture-phase down and wheel), `observe_keystrokes`, symbol interceptor | Ready-status observer | Never consume input |
+| `observe_window_activation` | Window | Gains gesture interruption on deactivation |
 
 ## Rejected alternatives
 
@@ -128,30 +149,32 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
 - Wrapping the whole tooltip view, margin included: the transparent 12-pixel
   ring around every hint would swallow clicks meant for the plot.
 - Pointer capture for drags: no element exposes a `div`'s hitbox id in the locked
-  version. Revisit only if the prototype finds no simpler tracker.
+  version, and the tracker's own hitbox gives the same result.
 
 ## Implementation steps
 
 ### 1. Prototype and inventory
 
-- [ ] Inventory every overlay entry point: `.tooltip`, `.hoverable_tooltip`,
-      `Tooltip::element`, `PopupMenu`/context menus, the application menu, the
-      settings window, the file chooser, `on_mouse*`/`on_scroll*` handlers and
-      window-level listeners in `crates/app/src`. Record each with its
-      contract row in this plan.
-- [ ] Prove the hint helper in a headless test: a hint over a plot-like hitbox
+- [x] Inventory every overlay entry point (see "Inventory" below).
+- [x] Prove the hint helper in a headless test: a hint over a plot-like hitbox
       makes it not hovered, takes clicks, passes wheel and shows an arrow; its
-      margin blocks nothing.
-- [ ] Choose the drag-tracker mechanism for drags crossing a hint and record it here.
+      margin blocks nothing. A plain tooltip, kept as a control test, lets both
+      the pointer and the click through.
+- [x] Choose the drag-tracker mechanism for drags crossing a hint and record it here.
 
 ### 2. Hints
 
-- [ ] Add `hints.rs` with the surface helper; route the four builders through it.
-- [ ] Keep hint sizes, placement, typography and hoverable behaviour unchanged.
-- [ ] Tests: arrow cursor, cleared readout and absent guides over a hint; the
-      plot's own pointer returns on the first move back; wheel over a hint still
-      pans the plot; a click on a hint starts no plot gesture; the analysis
-      hint's Buttons act once.
+- [x] Add `hints.rs` with the surface helper; route the four builders through it.
+      The builders now return the finished view, so no caller can skip the
+      surface by building a bare `Tooltip`.
+- [ ] Keep hint sizes, placement, typography and hoverable behaviour unchanged
+      (native check).
+- [x] Tests: the plot's pointer, and with it the readout and guides, clears
+      over a hint and returns on the first move back; wheel over a hint still
+      pans the plot; a click on a hint starts no plot gesture; a drag keeps
+      following the pointer over a hint. The arrow cursor is not observable in
+      the headless platform and is a native check.
+- [ ] Test: the analysis hint's Buttons act once.
 
 ### 3. Gesture interruption
 
