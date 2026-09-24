@@ -503,11 +503,11 @@ hover-based, so any blocking layer above it wins.
   cursor and restores the 12-pixel margin outside it. Its visible box, border
   included, takes the pointer, clicks and wheel from the plot, like any
   interactive surface, while the transparent margin blocks nothing (#129).
-  While the pointer is inside the box, the hint also holds keyboard focus, so
-  `Plot` bindings (arrows, zoom, grid) do not reach the plot beneath. Commands
-  with application-level handlers (Ctrl+R, Ctrl+,, Ctrl+O) still work from it.
-  Leaving the box, or the hint closing under the pointer, returns focus to
-  where it was. The hint lives in its own tooltip layer outside the Shell
+  While the hint is open, it holds keyboard focus, as a menu does, so `Plot`
+  bindings (arrows, zoom, grid) do not reach the plot beneath. Commands with
+  application-level handlers (Ctrl+R, Ctrl+,, Ctrl+O) still work from it. When
+  the hint closes and its view is released on the next frame, focus returns to
+  where it was, unless something else took it meanwhile. The hint lives in its own tooltip layer outside the Shell
   subtree, which is why those commands need their application-level handlers. Add hints through these builders, never a bare
   `Tooltip::build`, and give any new hoverable hint `hints::interactive`.
 - Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,

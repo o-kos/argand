@@ -521,7 +521,7 @@ pub(super) fn detail_row(
 
 fn live_analysis_tooltip(
     owner: WeakEntity<Shell>,
-    window: &Window,
+    window: &mut Window,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::AnyView {
     hints::interactive(window, cx, |cx| {

@@ -106,18 +106,20 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
   wheel gestures are unaffected", which was written before the analysis hint
   gained buttons. Passive hints are unaffected, since they never take the pointer
   from their trigger.
-- Owner correction after the native check (2026-09-24): the arrow keys over the
-  analysis hint must not pan the plot either. While the pointer is inside the
-  hint's box, the hint holds keyboard focus. `Plot` bindings then have no
+- Owner corrections after the native checks (2026-09-24): the arrow keys must
+  not pan the plot while the analysis hint is shown. A first attempt took focus
+  only while the pointer was inside the hint's box, and the owner found the keys
+  still acting with the pointer on the trigger. The hint now holds keyboard
+  focus from the moment it opens until it closes, as a menu does. `Plot` bindings then have no
   match, while `UseRecommendedRange`, `EditAnalysis` and `ChooseFile` keep
   working through the application-level handlers added in #128 for focus
   outside the Shell subtree (the tooltip layer is its own dispatch root).
-  Leaving the box returns focus to where it was. A hint closing under the
-  pointer returns it too, through GPUI's hover update when the box disappears,
-  with a release hook as a backstop. Focus moves only when the pointer enters,
-  so merely showing a hint never takes focus, as #129 requires. F10 and the
-  `Plot` session keys (Ctrl+G, Ctrl+T, Ctrl+U) do not act while the pointer is
-  in the hint.
+  When the hint closes, GPUI releases its view on the next frame, and the
+  release hook returns focus to where it was, unless something else took it
+  meanwhile. #129's rule that showing a hint must not take focus concerns
+  passive hints; this interactive one follows the popover row of the parent
+  plan's contract. F10 and the `Plot` session keys (Ctrl+G, Ctrl+T, Ctrl+U) do
+  not act while the hint is open.
 - #122's cursor criterion holds for passive hints through their triggers. The
   only triggers on the spectrogram are the zoom halves, which already show an
   arrow and suppress the guides. Unit captions sit on the rulers, where no
@@ -202,10 +204,10 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
 - [x] ➕ Keep passive hints unblocked after a test showed a blocking hint taking
       its own trigger's click.
 - [x] ➕ Owner corrections: the interactive hint takes the wheel (`occlude()`)
-      and holds keyboard focus while the pointer is inside it. Tests: plot keys
-      wait while the pointer is in the hint, and return on leaving and when the
-      hint closes under the pointer; controls confirm both depend on the new
-      code.
+      and holds keyboard focus while it is open. Tests: plot keys wait while the
+      hint is open, with the pointer on the trigger or in the hint, and return
+      when it closes, including under the pointer. Controls without the focus
+      take and without the give-back each fail them.
 - [ ] Keep hint sizes, placement, typography and hoverable behaviour unchanged
       (native check).
 - [x] Tests: the plot's pointer, and with it the readout and guides, clears

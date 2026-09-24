@@ -12,7 +12,7 @@
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyView, App, AppContext, Context, CursorStyle, Entity, FocusHandle, InteractiveElement,
-    IntoElement, ParentElement, Render, StatefulInteractiveElement, Styled, Window, div,
+    IntoElement, ParentElement, Render, Styled, Window, div,
 };
 
 /// The gap between the pointer and a hint's box, which the standard tooltip
@@ -27,14 +27,14 @@ pub(super) fn passive(
     cx.new(build).into()
 }
 
-/// The view a `.hoverable_tooltip` builder returns.
+/// The view a `.hoverable_tooltip` builder returns, taking the keyboard as the hint opens.
 pub(super) fn interactive(
-    window: &Window,
+    window: &mut Window,
     cx: &mut App,
     build: impl FnOnce(&mut Context<Tooltip>) -> Tooltip,
 ) -> AnyView {
     let tooltip = cx.new(|cx| build(cx).m_0());
-    cx.new(|cx| {
+    let surface = cx.new(|cx| {
         cx.on_release_in(window, |surface: &mut Surface, window, cx| {
             surface.give_back(window, cx)
         })
@@ -42,30 +42,22 @@ pub(super) fn interactive(
         Surface {
             tooltip,
             focus: cx.focus_handle(),
-            previous: None,
+            previous: window.focused(cx),
         }
-    })
-    .into()
+    });
+    window.focus(&surface.read(cx).focus.clone(), cx);
+    surface.into()
 }
 
-/// An interactive hint, owning the pointer and the keyboard while the pointer is inside its box.
+/// An interactive hint, owning the pointer inside its box and the keyboard while it is open.
 struct Surface {
     tooltip: Entity<Tooltip>,
     focus: FocusHandle,
-    /// Where the keyboard goes back to when the pointer leaves or the hint closes under it.
+    /// Where the keyboard goes back to when the hint closes.
     previous: Option<FocusHandle>,
 }
 
 impl Surface {
-    fn hovered(&mut self, hovered: bool, window: &mut Window, cx: &mut App) {
-        if !hovered {
-            self.give_back(window, cx);
-        } else if !self.focus.is_focused(window) {
-            self.previous = window.focused(cx);
-            window.focus(&self.focus, cx);
-        }
-    }
-
     fn give_back(&mut self, window: &mut Window, cx: &mut App) {
         if self.focus.is_focused(window)
             && let Some(previous) = self.previous.take()
@@ -76,7 +68,7 @@ impl Surface {
 }
 
 impl Render for Surface {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         // Only the box blocks the pointer, the margin around it stays transparent.
         div().p(gpui_kit::px(MARGIN)).child(
             div()
@@ -84,11 +76,6 @@ impl Render for Surface {
                 .occlude()
                 .cursor(CursorStyle::Arrow)
                 .track_focus(&self.focus)
-                .on_hover(
-                    cx.listener(|surface, hovered, window, cx| {
-                        surface.hovered(*hovered, window, cx)
-                    }),
-                )
                 .child(self.tooltip.clone()),
         )
     }
@@ -97,7 +84,9 @@ impl Render for Surface {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui_kit::StatefulInteractiveElement;
     use gpui_kit::prelude::FluentBuilder;
+    use gpui_kit::test::TestWindowExt;
     use gpui_kit::{
         Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext,
         point, px, size,
@@ -175,15 +164,8 @@ mod tests {
         harness.read_with(cx, |h, _| (h.hovered, h.moves, h.presses, h.wheels))
     }
 
-    /// Opens the hint and returns a point inside its visible box.
-    fn open(
-        cx: &mut TestAppContext,
-        plain: bool,
-    ) -> (
-        Entity<Harness>,
-        &mut VisualTestContext,
-        gpui_kit::Point<gpui_kit::Pixels>,
-    ) {
+    /// Opens the hint with the pointer still on its trigger.
+    fn show(cx: &mut TestAppContext, plain: bool) -> (Entity<Harness>, &mut VisualTestContext) {
         cx.update(|cx| {
             gpui_kit::init(cx);
             cx.bind_keys([gpui_kit::KeyBinding::new("left", Nudge, Some("Plot"))]);
@@ -207,6 +189,19 @@ mod tests {
         cx.executor()
             .advance_clock(std::time::Duration::from_secs(1));
         cx.run_until_parked();
+        (harness, cx)
+    }
+
+    /// Opens the hint and returns a point inside its visible box.
+    fn open(
+        cx: &mut TestAppContext,
+        plain: bool,
+    ) -> (
+        Entity<Harness>,
+        &mut VisualTestContext,
+        gpui_kit::Point<gpui_kit::Pixels>,
+    ) {
+        let (harness, cx) = show(cx, plain);
         // The tooltip opens one pixel past the pointer, its box one margin further.
         let inside = point(px(15. + 1. + MARGIN + 10.), px(15. + 1. + MARGIN + 6.));
         cx.simulate_mouse_move(inside, None, Modifiers::default());
@@ -252,22 +247,38 @@ mod tests {
         assert_eq!(hovered, Some(true), "the margin leaves the plot hovered");
         assert!(after > moves, "the plot follows the pointer in the margin");
     }
+    /// Draws a frame, which releases a hint hidden since the last one.
+    fn frame(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| window.render_frame(cx));
+        cx.run_until_parked();
+    }
+
     fn nudges(cx: &mut VisualTestContext, harness: &Entity<Harness>) -> usize {
         harness.read_with(cx, |harness, _| harness.nudges)
     }
 
     #[gpui_kit::test]
-    fn an_interactive_hint_holds_the_keyboard_while_the_pointer_is_inside(cx: &mut TestAppContext) {
-        let (harness, cx, _) = open(cx, false);
+    fn an_interactive_hint_holds_the_keyboard_while_it_is_open(cx: &mut TestAppContext) {
+        let (harness, cx) = show(cx, false);
         cx.simulate_keystrokes("left");
         assert_eq!(
             nudges(cx, &harness),
             0,
-            "the plot keys wait while in the hint"
+            "the pointer is still on the trigger"
         );
         cx.simulate_mouse_move(point(px(300.), px(250.)), None, Modifiers::default());
         cx.simulate_keystrokes("left");
-        assert_eq!(nudges(cx, &harness), 1, "leaving gives the keyboard back");
+        assert_eq!(nudges(cx, &harness), 0, "the hint is still closing");
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        frame(cx);
+        cx.simulate_keystrokes("left");
+        assert_eq!(
+            nudges(cx, &harness),
+            1,
+            "a closed hint gives the keyboard back"
+        );
     }
 
     #[gpui_kit::test]
@@ -279,7 +290,7 @@ mod tests {
             harness.trigger = false;
             cx.notify();
         });
-        cx.run_until_parked();
+        frame(cx);
         cx.simulate_keystrokes("left");
         assert_eq!(nudges(cx, &harness), 1);
     }
