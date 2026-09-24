@@ -158,20 +158,27 @@ impl PlotView {
         cx.notify();
     }
 
-    /// Reset the right ruler when the fitted axis is the one shown there.
-    fn fit(&mut self, time: bool, cx: &mut Context<Self>) {
+    /// Send a view change, letting the right ruler refit when its own axis zooms out.
+    ///
+    /// Zooming in keeps the ruler from narrowing, and so do panning and the
+    /// other axis. Zooming out or fitting the ruler's own axis lets it fit its
+    /// new labels, which can still widen it when a format or unit grows.
+    pub(super) fn view_intent(&mut self, intent: PlotIntent, cx: &mut Context<Self>) {
         let vertical = self
             .snapshot
             .as_ref()
             .is_some_and(|snapshot| snapshot.extents.orientation.vertical());
-        if time == vertical {
+        let refit = match intent {
+            PlotIntent::Time(TimeIntent::Zoom { factor, .. }) => vertical && factor > 1.,
+            PlotIntent::Time(TimeIntent::Fit) => vertical,
+            PlotIntent::Frequency(FrequencyIntent::Zoom { factor, .. }) => !vertical && factor > 1.,
+            PlotIntent::Frequency(FrequencyIntent::Fit) => !vertical,
+            _ => false,
+        };
+        if refit {
             self.gutter_floor = 0.;
         }
-        if time {
-            self.time(TimeIntent::Fit, cx);
-        } else {
-            self.frequency(FrequencyIntent::Fit, cx);
-        }
+        cx.emit(intent);
     }
 
     /// Forget the gestures and layout the other orientation cannot reuse.
@@ -186,11 +193,11 @@ impl PlotView {
     }
 
     fn time(&mut self, intent: TimeIntent, cx: &mut Context<Self>) {
-        cx.emit(PlotIntent::Time(intent));
+        self.view_intent(PlotIntent::Time(intent), cx);
     }
 
     fn frequency(&mut self, intent: FrequencyIntent, cx: &mut Context<Self>) {
-        cx.emit(PlotIntent::Frequency(intent));
+        self.view_intent(PlotIntent::Frequency(intent), cx);
     }
 
     /// The navigation keys, handled only while the plot itself has focus.
@@ -222,7 +229,7 @@ impl PlotView {
                     cx,
                 )
             }))
-            .on_action(cx.listener(|plot, _: &FitCapture, _, cx| plot.fit(true, cx)))
+            .on_action(cx.listener(|plot, _: &FitCapture, _, cx| plot.time(TimeIntent::Fit, cx)))
             .on_action(cx.listener(|plot, _: &PanLeft, _, cx| plot.time(TimeIntent::Ticks(-1), cx)))
             .on_action(cx.listener(|plot, _: &PanRight, _, cx| plot.time(TimeIntent::Ticks(1), cx)))
             .on_action(
@@ -253,7 +260,11 @@ impl PlotView {
                     cx,
                 )
             }))
-            .on_action(cx.listener(|plot, _: &FitFrequency, _, cx| plot.fit(false, cx)))
+            .on_action(
+                cx.listener(|plot, _: &FitFrequency, _, cx| {
+                    plot.frequency(FrequencyIntent::Fit, cx)
+                }),
+            )
             .on_action(
                 cx.listener(|plot, _: &PanUp, _, cx| {
                     plot.frequency(FrequencyIntent::Ticks(1.), cx)
@@ -625,7 +636,7 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn fitting_the_right_axis_releases_the_held_gutter(cx: &mut TestAppContext) {
+    fn zooming_out_the_right_axis_releases_the_held_gutter(cx: &mut TestAppContext) {
         let handle = open(cx);
         let floor = |cx: &mut TestAppContext| {
             handle
@@ -646,14 +657,22 @@ mod tests {
                 .unwrap()
         };
         hold(cx);
-        press(cx, handle, "ctrl-0");
-        assert_eq!(
-            floor(cx),
-            500.,
-            "time is not on the right in horizontal mode"
+        for key in ["ctrl-0", "ctrl--", "ctrl-=", "ctrl-shift-=", "home", "up"] {
+            press(cx, handle, key);
+            assert_eq!(
+                floor(cx),
+                500.,
+                "{key} keeps the frequency ruler from narrowing"
+            );
+        }
+        press(cx, handle, "ctrl-shift--");
+        assert!(
+            floor(cx) < 500.,
+            "zooming frequency out lets its ruler refit"
         );
+        hold(cx);
         press(cx, handle, "ctrl-shift-0");
-        assert!(floor(cx) < 500., "fitting frequency lets its ruler narrow");
+        assert!(floor(cx) < 500., "fitting frequency lets its ruler refit");
         hold(cx);
         handle
             .update(cx, |harness, _, cx| {

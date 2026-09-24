@@ -78,6 +78,19 @@ ruler from #145, in this Pull Request.
 - The constants are renamed `BOTTOM_LABEL_*`: they now describe the bottom
   ruler, not the time axis.
 
+### Zoom direction, added during owner review
+
+The owner asked that zooming in may only widen the ruler, and zooming out may
+only narrow it. Zooming out can still lengthen labels: a clock format gains
+hours at a one-hour span, and a frequency unit or integer digit can grow. So
+zooming out lets the ruler refit its new labels rather than forbidding growth,
+because forbidding it would clip labels.
+
+- `PlotView::view_intent` is the single path for time and frequency intents,
+  covering keys, wheel, zoom buttons and menu fits. It releases the hold when
+  the axis on the right zooms out (factor > 1) or is fitted.
+- Zooming in, panning, minimap steps and the other axis keep the hold.
+
 ## Rejected alternatives
 
 - Fixed budget with shared-prefix or offset labels: not obvious to read (owner).
@@ -95,8 +108,8 @@ ruler from #145, in this Pull Request.
   - the gutter fits the placed labels without a worst-case reserve;
   - a held floor keeps the ruler from narrowing while wider labels still widen
     it (both orientations);
-  - fitting the right axis and reorienting release the floor, while fitting the
-    other axis does not.
+  - zooming out or fitting the right axis and reorienting release the floor;
+  - zooming in, panning and the other axis keep it.
 - [x] Update AGENTS.md and CHANGELOG.
 - [x] Match the vertical-orientation bottom (frequency) ruler to the horizontal
       time ruler, and test both orientations and the vertical time clearance.
@@ -112,8 +125,8 @@ ruler from #145, in this Pull Request.
   - the gutter is narrow on open;
   - it widens at most once while zooming in, and stays while zooming out and
     panning;
-  - it narrows on a fit of the right axis, and does not narrow on a fit of the
-    other axis;
+  - it refits on zooming out or fitting the right axis, and does not narrow on
+    zooming in, panning or any action on the other axis;
   - it narrows on an orientation switch, a time-format switch with time on the
     right, and opening another file;
   - vertical-orientation frequency labels sit beside their ticks, with the Alt

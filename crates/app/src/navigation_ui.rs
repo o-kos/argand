@@ -688,7 +688,7 @@ impl plot_view::PlotView {
         self.pan = None;
         self.frequency_pan = None;
         let delta = event.delta.pixel_delta(px(40.));
-        cx.emit(
+        self.view_intent(
             match geometry.scroll(event.position, delta, event.modifiers) {
                 Scroll::FrequencyPan(fraction) => {
                     PlotIntent::Frequency(FrequencyIntent::Pan(fraction))
@@ -701,6 +701,7 @@ impl plot_view::PlotView {
                     PlotIntent::Time(TimeIntent::Zoom { factor, anchor })
                 }
             },
+            cx,
         );
         cx.stop_propagation();
     }
