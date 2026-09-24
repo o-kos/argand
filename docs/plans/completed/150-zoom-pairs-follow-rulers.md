@@ -66,8 +66,8 @@ process, #147).
 - [x] ➕ Update the same statement in the README's View description.
 - [x] Amend the unreleased #99 `CHANGELOG.md` entry instead of adding a fix:
       the old placement was never released.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -75,7 +75,7 @@ process, #147).
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Owner check in the release binary: both orientations, Ctrl+T switching,
+- [x] Owner check in the release binary: both orientations, Ctrl+T switching,
       Ctrl+U hiding, tooltips and clicks on each pair.
 
 ## Post-completion
