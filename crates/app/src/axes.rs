@@ -33,6 +33,8 @@ const TICK_LEN: f32 = 6.0;
 const BOTTOM_LABEL_GAP: f32 = 4.0;
 /// Least clear space from the bottom ruler line to the top of its labels' ink.
 const BOTTOM_LABEL_DROP: f32 = 6.0;
+/// Least clear space below the bottom labels' ink, more than above so they do not crowd the status bar.
+const BOTTOM_LABEL_FOOT: f32 = 8.0;
 /// Room between an Alt badge's edges and the ink of its digits, on every side.
 const BADGE_PAD: f32 = 3.0;
 /// Where a bottom-ruler label starts, past its one-pixel tick and the gap.
@@ -365,16 +367,16 @@ impl Frame {
 /// The height reserved below the plot for its bottom ruler, in either orientation.
 ///
 /// The ruler holds its label ink `BOTTOM_LABEL_DROP` below the one-pixel ruler
-/// line and as much again below it, so an Alt badge around that ink has equal
-/// room above and below.
+/// line and `BOTTOM_LABEL_FOOT` above the band's bottom edge. The larger foot
+/// keeps the labels optically clear of the status bar below them.
 fn bottom_band(measure: &dyn LabelMeasure) -> f32 {
-    1. + 2. * BOTTOM_LABEL_DROP + measure.digit_height(LABEL_SIZE)
+    1. + BOTTOM_LABEL_DROP + measure.digit_height(LABEL_SIZE) + BOTTOM_LABEL_FOOT
 }
 
 /// How far below the plot the bottom label row is centred.
 fn bottom_row_center(panel: Size<Pixels>, height: f32) -> f32 {
-    // Centred in the band below the ruler line, which rounding may leave a little taller.
-    1. + (f32::from(panel.height) - height - 1.) / 2.
+    // Rounding may leave the band a little taller, and both gaps share the surplus.
+    1. + (f32::from(panel.height) - height - 1. - (BOTTOM_LABEL_FOOT - BOTTOM_LABEL_DROP)) / 2.
 }
 
 fn right_label_room(

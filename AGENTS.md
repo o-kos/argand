@@ -392,10 +392,10 @@ readable labels as before, then edge-clipped labels become empty strings while
 their valid marks remain. Default CLI layout is unchanged. Both GUI ruler ticks
 extend six logical pixels. Right-hand ruler labels start nine pixels after the tick.
 Bottom-ruler labels in both orientations (#145, #148) start four clear pixels after
-their tick: time in horizontal orientation, frequency in vertical. Their ink is centred
-in the band below the ruler line, at least six pixels under it, and the band leaves as
-much room below the ink as above. An Alt badge around that ink therefore has equal
-space to the ruler line and to the band's bottom edge. `session.show_grid`
+their tick: time in horizontal orientation, frequency in vertical. Their ink sits at
+least six pixels under the ruler line and at least eight above the band's bottom edge
+(`BOTTOM_LABEL_FOOT`), which keeps them optically clear of the status bar. An Alt
+badge wraps the ink with 3 pixels, so it clears the ruler line by at least 3. `session.show_grid`
 (version 8, default true for older files) controls only grid strokes; View > Show
 grid saves the choice and notifies the UI without requesting analysis.
 

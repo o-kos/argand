@@ -225,10 +225,10 @@ fn assert_axis_bands_fit(frame: &Frame, width: f32, height: f32) {
     assert_eq!(frame.caption_row + DejaVuSans.digit_height(LABEL_SIZE) / 2., frame.plot.y);
     assert!(frame.time_row - half_line > frame.plot.bottom());
     let half_ink = DejaVuSans.digit_height(LABEL_SIZE) / 2.0;
-    let above = frame.time_row - half_ink - BADGE_PAD - (frame.plot.bottom() + 1.);
-    let below = height - (frame.time_row + half_ink + BADGE_PAD);
-    assert!(above >= BOTTOM_LABEL_DROP - BADGE_PAD - 1e-4, "badge clears the ruler line");
-    assert!((above - below).abs() < 1e-4, "equal room above and below the badge");
+    let above = frame.time_row - half_ink - (frame.plot.bottom() + 1.);
+    let below = height - (frame.time_row + half_ink);
+    assert!(above >= BOTTOM_LABEL_DROP - 1e-4, "labels clear the ruler line");
+    assert!((below - above - (BOTTOM_LABEL_FOOT - BOTTOM_LABEL_DROP)).abs() < 1e-4, "more room below the labels");
     assert!(!frame.frequency.is_empty());
     for tick in &frame.frequency {
         let center = frame.plot.bottom() - tick.offset as f32 + 0.5;
@@ -485,7 +485,8 @@ fn bottom_labels_hang_beside_their_ticks_in_both_orientations() {
                 assert!(drop >= BOTTOM_LABEL_DROP - 1e-4, "ink starts below the ruler line at {scale}");
                 assert!(drop < BOTTOM_LABEL_DROP + 1. / scale, "rounding adds under a device pixel at {scale}");
                 let below = height - (frame.time_row + ink / 2.);
-                assert!((below - drop).abs() < 1e-4, "the ink is centred in the band at {scale}");
+                let extra = BOTTOM_LABEL_FOOT - BOTTOM_LABEL_DROP;
+                assert!((below - drop - extra).abs() < 1e-4, "the foot adds room below at {scale}");
             }
         }
     }

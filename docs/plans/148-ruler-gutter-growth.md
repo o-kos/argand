@@ -91,6 +91,18 @@ because forbidding it would clip labels.
   the axis on the right zooms out (factor > 1) or is fitted.
 - Zooming in, panning, minimap steps and the other axis keep the hold.
 
+### Bottom foot, added during owner review
+
+The owner found the bottom gap too small. The two gaps were geometrically equal
+(7 device pixels each at 1.25×). The ruler digits still sat closer to the status
+bar than the status bar's own text does (about 9 device pixels), and
+geometrically centred text reads low. The top stays at 6 pixels
+(`BOTTOM_LABEL_DROP`). The space below the ink becomes 8 (`BOTTOM_LABEL_FOOT`),
+and rounding surplus is shared between the two gaps. This was compared on real
+captures at 1.25× before the change. The Alt badge is no longer equidistant
+(3 above, 5 below). The owner accepted that: the badge is transient and belongs
+to the ruler line.
+
 ## Rejected alternatives
 
 - Fixed budget with shared-prefix or offset labels: not obvious to read (owner).
@@ -113,6 +125,8 @@ because forbidding it would clip labels.
 - [x] Update AGENTS.md and CHANGELOG.
 - [x] Match the vertical-orientation bottom (frequency) ruler to the horizontal
       time ruler, and test both orientations and the vertical time clearance.
+- [x] Give the bottom labels an 8-pixel foot (6 above), tested in both
+      orientations and for the badge.
 - [ ] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation

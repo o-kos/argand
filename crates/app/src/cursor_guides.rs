@@ -641,7 +641,11 @@ mod tests {
             above >= BOTTOM_LABEL_DROP - BADGE_PAD - 1e-4,
             "clears the ruler line"
         );
-        assert!((above - below).abs() < 1e-4, "equal room above and below");
+        let extra = BOTTOM_LABEL_FOOT - BOTTOM_LABEL_DROP;
+        assert!(
+            (below - above - extra).abs() < 1e-4,
+            "the foot adds room below"
+        );
     }
 
     #[test]
