@@ -154,7 +154,7 @@ a 1.25× capture.
       pictures.
 - [x] Paint guide lines in paper/ink, and give the right badge the bottom
       badge's edge margin (tested).
-- [ ] Complete validation and move this plan to `docs/plans/completed/`.
+- [x] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation
 
@@ -162,7 +162,7 @@ a 1.25× capture.
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Native, both orientations:
+- [x] Native, both orientations:
   - the gutter is narrow on open;
   - it widens at most once while zooming in, and stays while zooming out and
     panning;
@@ -172,6 +172,22 @@ a 1.25× capture.
     right, and opening another file;
   - vertical-orientation frequency labels sit beside their ticks, with the Alt
     badge centred in the band.
+
+Native validation: the owner accepted the gutter behaviour, the unified bottom
+ruler, the badge ring, the guide colours and the badge margins on the native
+build.
+
+Review: GPT-6 Sol (medium) via `codex exec`, chosen by the owner under the
+interim process of #147.
+- Round 1:
+  - accepted: `measure_time_scheme` dropped the held frequency scheme. Fixed,
+    with a Frame-level test that the remeasured plot equals the painted one;
+  - declined: `view_intent` reading orientation from the snapshot. The
+    reorientation already clears the floor, and GPUI draws a dirty window before
+    the next keystroke.
+- Round 2, asked to challenge the decline: it agreed no observable sequence
+  exists. Clean. One minor test note is declined: the test pins the Frame-level
+  invariant because `Shell` needs a window and a document.
 
 ## Post-completion
 
