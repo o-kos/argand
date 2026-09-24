@@ -386,6 +386,9 @@ impl Shell {
         let activation = cx.observe_window_activation(window, |shell, window, cx| {
             if window.is_window_active() {
                 shell.recent_files.refresh(&shell.session.recent);
+            } else if let Some(plot) = shell.plot_entity() {
+                // The release may happen in another window and never arrive here.
+                plot.update(cx, |plot, cx| plot.end_gestures(cx));
             }
             cx.notify();
         });
@@ -698,6 +701,13 @@ impl Shell {
         self.plot_view().cloned()
     }
 
+    /// End the plot's gestures and hover before an overlay takes the input.
+    pub(super) fn interrupt_plot(&self, cx: &mut gpui_kit::App) {
+        if let Some(plot) = self.plot_entity() {
+            plot.update(cx, |plot, cx| plot.interrupt(cx));
+        }
+    }
+
     /// Where keyboard focus belongs when an overlay closes or a command runs.
     pub(super) fn focus_target(&self, cx: &gpui_kit::App) -> FocusHandle {
         match (self.showing(), self.plot_view()) {
@@ -934,14 +944,8 @@ impl Shell {
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
-        // The chooser takes the pointer and the release happens over the
-        // dialog: a corner half held at this moment would stay pressed.
-        if let Some(plot) = self.plot_entity() {
-            plot.update(cx, |plot, cx| {
-                plot.release_press(cx);
-                plot.dismiss_menu(cx);
-            });
-        }
+        // The release happens over the dialog, so nothing held now may stay pressed.
+        self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);
         cx.notify();
         Self::choose(&cx.entity().downgrade(), window, cx);
@@ -1395,7 +1399,7 @@ fn shortcut_tooltip(
     width: Pixels,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::AnyView {
-    hints::view(cx, |_| {
+    hints::passive(cx, |_| {
         Tooltip::element(move |window, cx| {
             let shortcut = action.as_deref().and_then(|action| {
                 shortcuts::zoom_keycap(action)
@@ -1446,7 +1450,7 @@ fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui_kit::App)
 }
 
 fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {
-    hints::view(cx, |_| {
+    hints::passive(cx, |_| {
         Tooltip::element(move |window, cx| {
             if !hint.rows.is_empty() {
                 return div()

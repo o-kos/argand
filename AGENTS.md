@@ -465,9 +465,10 @@ Navigation actions and gestures become `PlotIntent`s that Shell handles in one
 subscription. Shell validates views against the capture and keeps view ranges,
 tick schemes, analysis requests, session writes and settings rollback. Session
 commands (grid, scale controls, orientation, ruler mode) stay Shell handlers,
-reached by bubbling from plot focus. Drags keep tracking outside the plot through
-window-level move listeners registered only while a drag is active. Moves inside
-the plot stay with its own listener.
+reached by bubbling from plot focus. While a drag is active, a tracker with its
+own hitbox matching the plot's handles every move the plot's hitbox does not see:
+beyond the plot and over a hint lying on it (#129). The plot's own listener
+handles the rest, so no move is handled twice.
 
 Shell remains the only texture owner. It rebuilds an immutable `PlotSnapshot` of
 shared references in every render and gives it to the plot. `shell::retire` is the
@@ -481,6 +482,39 @@ take focus temporarily and return it through `Shell::focus_target`, which the
 application menu also uses to resolve keycaps. Headless GPUI tests
 (`gpui-kit` `test-support`, dev-only) cover key routing, focus isolation, window
 isolation, plot replacement, retirement and drags beyond the plot.
+
+## Overlay surfaces (#129)
+
+Surfaces over the plot own the input they cover through toolkit layering; the
+plot never learns which overlays are open or where. It decides its cursor,
+readout and Alt guides from its own hitbox hover state, and its handlers are
+hover-based, so any blocking layer above it wins.
+
+- Hints: every hint comes from one of four builders (`shortcut_tooltip`,
+  `metadata_tooltip`, `analysis_tooltip`, `unit_tooltip`), which return the
+  finished view through `hints.rs`. A passive hint (`.tooltip`, `hints::passive`)
+  lives only while its trigger is hovered, so the pointer can be inside it only
+  over the trigger, which keeps the pointer and its clicks. Blocking it would
+  take clicks from its own trigger, because a GPUI tooltip opens 13 pixels from
+  the pointer and can cover the trigger. An interactive hint
+  (`.hoverable_tooltip`, `hints::interactive`, today the analysis hint) stays
+  open when the pointer enters it. It draws the standard gpui-component
+  `Tooltip` without its margin inside a `block_mouse_except_scroll()` element
+  with an arrow cursor and restores the 12-pixel margin outside it. Its visible
+  box, border included, takes the pointer and clicks from the plot, while the
+  transparent margin blocks nothing and the wheel still reaches the plot (owner
+  decision, #129). Add hints through these builders, never a bare
+  `Tooltip::build`, and give any new hoverable hint `hints::interactive`.
+- Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
+  clicks and drags.
+- Gestures: `PlotView::interrupt` ends drags, a pressed zoom half, the ruler menu
+  and the pointer. Shell calls it before the application menu, the settings
+  window and the file chooser open. Opening the ruler menu and deactivating the
+  window call `PlotView::end_gestures`, which keeps the pointer.
+- Tests cover hints over the plot, a drag crossing a hint, a menu-like occluding
+  layer and interruption. The ruler context menu cannot be opened in a headless
+  test because of the toolkit's `PopupMenu` retention cycle (#144), so its cases
+  are native checks.
 
 ## Application menu and toolbar (#91, #99)
 

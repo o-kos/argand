@@ -867,6 +867,7 @@ impl plot_view::PlotView {
         window: &Window,
         cx: &mut Context<Self>,
     ) {
+        self.end_gestures(cx);
         self.open_menu = Some(menu.downgrade());
         self.menu_dismiss = Some(cx.subscribe_in(menu, window, Self::time_menu_dismissed));
     }

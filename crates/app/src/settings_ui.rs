@@ -449,6 +449,7 @@ impl Shell {
         if self.settings_backup.is_some() {
             return;
         }
+        self.interrupt_plot(cx);
         self.settings_backup = Some(self.settings);
         self.settings_view_backup = self.view;
         self.settings_frequency_backup = Some(self.frequency);
@@ -517,7 +518,7 @@ pub(super) fn detail_row(
 }
 
 fn live_analysis_tooltip(owner: WeakEntity<Shell>, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {
-    hints::view(cx, |cx| {
+    hints::interactive(cx, |cx| {
         if let Some(owner) = owner.upgrade() {
             cx.observe(&owner, |_, _, cx| cx.notify()).detach();
         }

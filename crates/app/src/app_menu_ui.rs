@@ -111,12 +111,7 @@ impl Shell {
             self.dismiss_application_menu(window, cx);
             return;
         }
-        if let Some(plot) = self.plot_entity() {
-            plot.update(cx, |plot, cx| {
-                plot.dismiss_menu(cx);
-                plot.clear_pointer(cx);
-            });
-        }
+        self.interrupt_plot(cx);
         self.recent_files.refresh(&self.session.recent);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);

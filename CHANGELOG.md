@@ -13,6 +13,10 @@ promise applies to.
 
 ### Fixed
 
+- The analysis hint, which stays open when the pointer moves into it, now shows an ordinary arrow over the spectrogram and hides the cursor readout and Alt guides beneath it. Clicks inside it no longer start a pan under it; the mouse wheel still scrolls the plot.
+
+- Opening a menu, the analysis settings or the file chooser, or switching to another window, now ends a drag in progress, and a drag keeps following the pointer across a hint.
+
 - Stop Ctrl+U and other plot shortcuts from acting behind the open time-ruler context menu.
 
 - Make the hinted spectrogram range in the status bar apply an available recommendation or restore the full range on click and Ctrl+R / Cmd+R without opening analysis settings.

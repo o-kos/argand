@@ -591,7 +591,7 @@ fn unit_tooltip(
     index: usize,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::AnyView {
-    hints::view(cx, |cx| {
+    hints::passive(cx, |cx| {
         if let Some(owner) = owner.upgrade() {
             cx.observe(&owner, |_, _, cx| cx.notify()).detach();
         }

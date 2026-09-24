@@ -16,7 +16,7 @@ window, or losing window focus, does not end a drag in progress.
 
 Apply the event contracts of the parent plan centrally:
 
-- hints own the pointer inside their visible box;
+- hints the pointer can enter own the pointer inside their visible box;
 - menus own covered pointer and wheel input, which they already do, and this is
   now tested;
 - every overlay activation, window deactivation and document replacement ends
@@ -79,32 +79,48 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
 
 ### Hints own their box
 
-- One helper, in a new `hints.rs`, turns a gpui-component `Tooltip` into the
-  view a `.tooltip` builder returns. It renders the standard Tooltip with its
-  margin removed, wraps it in an element with `block_mouse_except_scroll()`
-  and an arrow cursor, and puts the 12-pixel margin back outside that element.
-  The blocking area is therefore exactly the visible box, border included, and
-  the transparent margin blocks nothing.
-- All four builders go through it, so a hint added later gets the rule by
-  using the builders.
-- Owner decision (2026-09-24): a hint takes the clicks inside its box. A click on
-  a hint no longer starts a plot pan or drag under it, and the analysis hint's
-  Buttons receive their clicks alone. The wheel still passes through to the plot.
-  This refines #122's "clicks and wheel gestures are unaffected", which was
-  written before the analysis hint gained buttons.
+- A passive hint (`.tooltip`) lives only while its trigger is hovered: GPUI
+  hides it on the first frame the pointer is outside the trigger's bounds. The
+  pointer can therefore be inside it only over its trigger, which keeps the
+  pointer, its cursor and its clicks. Blocking a passive hint was tried and
+  rejected: a GPUI tooltip opens 13 pixels from the pointer and can cover its own
+  trigger (a 22-pixel zoom half, a status-bar item), and a blocking box then took
+  the trigger's click. A test now guards this.
+- An interactive hint (`.hoverable_tooltip`, today only the analysis hint with
+  its two Buttons) stays open when the pointer moves into it, over the plot. One
+  helper, `hints::interactive`, renders the standard Tooltip with its margin
+  removed, wraps it in an element with `block_mouse_except_scroll()` and an
+  arrow cursor, and puts the 12-pixel margin back outside that element. The
+  blocking area is therefore exactly the visible box, border included, and the
+  transparent margin blocks nothing.
+- All four builders return their finished view through `hints.rs`
+  (`hints::passive` or `hints::interactive`), so no caller builds a bare
+  Tooltip. A future hoverable hint must use `hints::interactive`, which
+  `AGENTS.md` states.
+- Owner decision (2026-09-24): a hint takes the clicks inside its box. A click in
+  the analysis hint no longer starts a plot pan or drag under it, and its Buttons
+  receive their clicks alone. The wheel still passes through to the plot. This
+  refines #122's "clicks and wheel gestures are unaffected", which was written
+  before the analysis hint gained buttons.
+- #122's cursor criterion holds for passive hints through their triggers. The
+  only triggers on the spectrogram are the zoom halves, which already show an
+  arrow and suppress the guides. Unit captions sit on the rulers, where no
+  guides are drawn.
 - The plot keeps deciding its cursor, readout and guides from its own hitbox
   hover state. It gets no list of open hint rectangles.
 
 ### One gesture interruption path
 
-- `PlotView::interrupt` ends everything transient: pan, frequency pan, splitter
-  drag, a pressed zoom half, the pointer and readout, and its own ruler menu
-  unless that menu is the surface opening. It replaces the ad hoc combinations
-  in `choose_file`, the application menu and `bound_view`.
-- Shell calls it when the application menu opens, when the settings window
-  opens, before the file chooser, and when the main window deactivates. PlotView
-  calls it when its ruler menu opens. Document replacement drops the PlotView
-  and its gestures with it, as today.
+- `PlotView::end_gestures` ends pan, frequency pan, splitter drag and a pressed
+  zoom half. `PlotView::interrupt` also dismisses the ruler menu and clears the
+  pointer and readout. `interrupt` replaces the ad hoc combinations in
+  `choose_file` and the application menu. `bound_view` keeps its own drag
+  cancellation, because it reacts to a view change, not to an overlay.
+- Shell calls `interrupt` when the application menu opens, when the settings
+  window opens and before the file chooser. Opening the ruler menu and
+  deactivating the main window call `end_gestures` only: the menu restores the
+  pointer when it closes, and an inactive window keeps its readout as before.
+  Document replacement drops the PlotView and its gestures with it, as today.
 - A drag keeps following the pointer while it crosses a hint. The drag tracker
   inserts its own hitbox with the plot's bounds and handles exactly the moves
   for which that hitbox is not hovered: beyond the plot, and over anything that
@@ -124,10 +140,10 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
 
 | Entry point | Surface | Contract |
 | --- | --- | --- |
-| `shortcut_tooltip` (toolbar, application button, status range, start page, zoom halves) | Passive hint | `hints::view` |
-| `metadata_tooltip` (status file and metadata fields) | Passive hint | `hints::view` |
-| `analysis_tooltip` (hoverable, two Buttons) | Interactive hint | `hints::view`; its Buttons take their clicks |
-| `unit_tooltip` (ruler unit captions) | Passive hint | `hints::view` |
+| `shortcut_tooltip` (toolbar, application button, status range, start page, zoom halves) | Passive hint | `hints::passive` |
+| `metadata_tooltip` (status file and metadata fields) | Passive hint | `hints::passive` |
+| `analysis_tooltip` (hoverable, two Buttons) | Interactive hint | `hints::interactive`, its Buttons take their clicks |
+| `unit_tooltip` (ruler unit captions) | Passive hint | `hints::passive` |
 | `NoTooltip` (application button while its menu is open) | None | Renders nothing, exempt |
 | Application menu overlay (`app_menu_ui.rs`) | Menu | `occlude()`, stops move and wheel propagation, own focus, one-level Escape |
 | Ruler context menu (`PopupMenu` via `context_menu`) | Menu | Toolkit `occlude()`, tracked by `PlotView::open_menu` |
@@ -167,6 +183,8 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
 - [x] Add `hints.rs` with the surface helper; route the four builders through it.
       The builders now return the finished view, so no caller can skip the
       surface by building a bare `Tooltip`.
+- [x] ➕ Keep passive hints unblocked after a test showed a blocking hint taking
+      its own trigger's click.
 - [ ] Keep hint sizes, placement, typography and hoverable behaviour unchanged
       (native check).
 - [x] Tests: the plot's pointer, and with it the readout and guides, clears
@@ -174,30 +192,37 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
       pans the plot; a click on a hint starts no plot gesture; a drag keeps
       following the pointer over a hint. The arrow cursor is not observable in
       the headless platform and is a native check.
-- [ ] Test: the analysis hint's Buttons act once.
+- [ ] Native: the analysis hint's Buttons act once. It lives in Shell, which a
+      headless test cannot give a document without a real worker thread.
 
 ### 3. Gesture interruption
 
-- [ ] Add `PlotView::interrupt` and call it from every activation listed above.
-- [ ] Remove the ad hoc combinations it replaces.
-- [ ] Tests: opening each surface during a drag ends it; later moves do not resume
-      it; release outside still ends a drag; deactivation ends a drag; a
-      replaced document leaves no gesture behind.
+- [x] Add `PlotView::interrupt` and `end_gestures` and call them from every
+      activation listed above.
+- [x] Remove the ad hoc combinations `interrupt` replaces.
+- [x] Tests: an interrupted drag clears the readout and does not resume on later
+      moves; release outside still ends a drag; a replaced plot leaves nothing
+      behind (#128 test).
+- [ ] Native: F10, Ctrl+, and Ctrl+O during a drag, a window switch during a drag,
+      and a right click on the time ruler during a drag. The ruler menu leaks in
+      headless tests (#144), and the others need Shell.
 
 ### 4. Menus, keyboard and the ready status
 
-- [ ] Tests: wheel, click and drag over the application menu and the ruler menu
-      leave the plot view and drag state unchanged.
-- [ ] Tests: Escape on the ruler menu and on each application-menu level returns
-      focus as specified, and the next navigation key produces exactly one intent.
-- [ ] Tests: while the ready status shows, a click or wheel over a menu dismisses
+- [x] Test: an occluding layer, as both menus are, takes wheel, click and drag
+      from the plot. This fails if the plot's handlers stop being hover-based.
+- [ ] Native: wheel, click and drag over the application menu and the ruler menu
+      leave the plot view unchanged.
+- [ ] Native: Escape on the ruler menu and on each application-menu level returns
+      focus as specified, and the next navigation key acts exactly once.
+- [ ] Native: while the ready status shows, a click or wheel over a menu dismisses
       it and still reaches the menu once, and navigates nothing.
 
 ### 5. Documentation and validation
 
-- [ ] Add an "Overlay surfaces (#129)" section to `AGENTS.md` and update the #122
-      statement in "Plot ownership (#128)".
-- [ ] `CHANGELOG.md`: hints show an arrow and hide guides and readout; overlays and
+- [x] Add an "Overlay surfaces (#129)" section to `AGENTS.md` and update the drag
+      tracker statement in "Plot ownership (#128)".
+- [x] `CHANGELOG.md`: hints show an arrow and hide guides and readout; overlays and
       window switches end drags.
 - [ ] Update the parent plan's phase 4 rows with evidence links.
 - [ ] Complete validation.

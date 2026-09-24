@@ -152,6 +152,24 @@ impl PlotView {
         }
     }
 
+    /// End the drags and the pressed zoom half, which only the pointer that began them may finish.
+    pub(super) fn end_gestures(&mut self, cx: &mut Context<Self>) {
+        if self.dragging() {
+            self.pan = None;
+            self.frequency_pan = None;
+            self.splitter_dragging = false;
+            cx.notify();
+        }
+        self.release_press(cx);
+    }
+
+    /// Leave nothing behind for an overlay that is taking the input.
+    pub(super) fn interrupt(&mut self, cx: &mut Context<Self>) {
+        self.end_gestures(cx);
+        self.dismiss_menu(cx);
+        self.clear_pointer(cx);
+    }
+
     /// Let the right ruler fit its current labels again.
     pub(super) fn reset_gutter(&mut self, cx: &mut Context<Self>) {
         self.gutter_floor = 0.;
@@ -470,8 +488,8 @@ mod tests {
         other: FocusHandle,
         intents: Vec<PlotIntent>,
         grid: usize,
-        /// Stands in for a hint lying on the plot.
-        cover: Option<Bounds<Pixels>>,
+        /// Stands in for a hint lying on the plot, or a menu when it also takes the wheel.
+        cover: Option<(Bounds<Pixels>, bool)>,
         _intents: Option<Subscription>,
     }
 
@@ -486,16 +504,18 @@ mod tests {
                 .on_action(cx.listener(|harness, _: &ToggleGrid, _, _| harness.grid += 1))
                 .children(self.plot.clone())
                 .child(div().id("other").h(px(40.)).track_focus(&self.other))
-                .when_some(self.cover, |harness, cover| {
-                    harness.child(
-                        div()
-                            .absolute()
-                            .left(cover.origin.x)
-                            .top(cover.origin.y)
-                            .w(cover.size.width)
-                            .h(cover.size.height)
-                            .block_mouse_except_scroll(),
-                    )
+                .when_some(self.cover, |harness, (cover, menu)| {
+                    let layer = div()
+                        .absolute()
+                        .left(cover.origin.x)
+                        .top(cover.origin.y)
+                        .w(cover.size.width)
+                        .h(cover.size.height);
+                    harness.child(if menu {
+                        layer.occlude()
+                    } else {
+                        layer.block_mouse_except_scroll()
+                    })
                 })
         }
     }
@@ -859,10 +879,15 @@ mod tests {
         );
     }
 
-    fn cover(cx: &mut TestAppContext, handle: WindowHandle<Harness>, bounds: Bounds<Pixels>) {
+    fn cover(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        bounds: Bounds<Pixels>,
+        menu: bool,
+    ) {
         handle
             .update(cx, |harness, _, cx| {
-                harness.cover = Some(bounds);
+                harness.cover = Some((bounds, menu));
                 cx.notify();
             })
             .unwrap();
@@ -890,6 +915,7 @@ mod tests {
             cx,
             handle,
             Bounds::new(covered - point(px(20.), px(20.)), size(px(40.), px(40.))),
+            false,
         );
         let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
         let none = gpui_kit::Modifiers::default();
@@ -938,6 +964,93 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn a_menu_on_the_plot_takes_its_wheel_clicks_and_drags(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let covered = spectrum.center();
+        cover(
+            cx,
+            handle,
+            Bounds::new(covered - point(px(40.), px(40.)), size(px(80.), px(80.))),
+            true,
+        );
+        handle
+            .update(cx, |harness, _, _| harness.intents.clear())
+            .unwrap();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(covered, None, none);
+        input.simulate_event(gpui_kit::ScrollWheelEvent {
+            position: covered,
+            delta: gpui_kit::ScrollDelta::Pixels(point(px(0.), px(40.))),
+            ..Default::default()
+        });
+        input.simulate_mouse_down(covered, MouseButton::Left, none);
+        input.simulate_mouse_move(covered + point(px(20.), px(0.)), MouseButton::Left, none);
+        input.simulate_mouse_up(covered + point(px(20.), px(0.)), MouseButton::Left, none);
+        let intents = handle
+            .update(cx, |harness, _, _| std::mem::take(&mut harness.intents))
+            .unwrap();
+        assert!(
+            intents.is_empty(),
+            "nothing under the menu reaches the plot: {intents:?}"
+        );
+        assert_eq!(pointer(cx, handle), None);
+    }
+
+    /// Presses in the spectrum's centre and drags a little, returning the drag's input.
+    fn start_drag(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+    ) -> (gpui_kit::VisualTestContext, gpui_kit::Point<Pixels>) {
+        let from = spectrum(cx, handle).center();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(from, None, none);
+        input.simulate_mouse_down(from, MouseButton::Left, none);
+        input.simulate_mouse_move(from - point(px(10.), px(0.)), MouseButton::Left, none);
+        let dragging = handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().read(cx).dragging()
+            })
+            .unwrap();
+        assert!(dragging, "the press began a drag");
+        (input, from)
+    }
+
+    fn drag_steps(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> usize {
+        handle
+            .update(cx, |harness, _, _| {
+                std::mem::take(&mut harness.intents)
+                    .into_iter()
+                    .filter(|intent| matches!(intent, PlotIntent::Drag { .. }))
+                    .count()
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn an_interrupted_drag_does_not_resume(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let (mut input, from) = start_drag(cx, handle);
+        handle
+            .update(cx, |harness, _, cx| {
+                harness
+                    .plot
+                    .as_ref()
+                    .unwrap()
+                    .update(cx, |plot, cx| plot.interrupt(cx))
+            })
+            .unwrap();
+        assert_eq!(pointer(cx, handle), None, "the readout goes with the drag");
+        drag_steps(cx, handle);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(from - point(px(60.), px(0.)), MouseButton::Left, none);
+        input.simulate_mouse_up(from - point(px(60.), px(0.)), MouseButton::Left, none);
+        assert_eq!(drag_steps(cx, handle), 0, "later moves do not resume it");
+    }
+
+    #[gpui_kit::test]
     fn a_drag_keeps_tracking_over_a_hint_on_the_plot(cx: &mut TestAppContext) {
         let handle = open(cx);
         let spectrum = spectrum(cx, handle);
@@ -947,6 +1060,7 @@ mod tests {
             cx,
             handle,
             Bounds::new(to - point(px(20.), px(20.)), size(px(40.), px(40.))),
+            false,
         );
         let width = f32::from(spectrum.size.width) as f64;
         let expected = snapshot().extents.time.view.pan(100. / width, 1_000_000);

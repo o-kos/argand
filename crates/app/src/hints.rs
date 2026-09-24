@@ -1,9 +1,13 @@
-//! Hints as a layer that owns the pointer inside its visible box.
+//! Hints, and which of them own the pointer inside their visible box.
 //!
-//! Whatever lies under a hint -- the plot above all -- stops seeing the pointer
-//! there: it is not hovered, gets no clicks and sets no cursor. Wheel gestures
-//! still reach it. The plot learns it is covered from its own hitbox, so no
-//! surface needs to know which hints are open.
+//! A passive hint (`.tooltip`) lives only while its trigger is hovered, so the
+//! pointer is never inside it anywhere but over the trigger, and the trigger
+//! keeps the pointer and its clicks. An interactive hint (`.hoverable_tooltip`)
+//! stays open when the pointer moves into it, and then owns its box. Whatever
+//! lies under it -- the plot above all -- stops seeing the pointer there. It is
+//! not hovered, gets no clicks and sets no cursor, while wheel gestures still
+//! reach it. The plot learns it is covered from its own hitbox, so no surface
+//! needs to know which hints are open.
 
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
@@ -15,8 +19,19 @@ use gpui_kit::{
 /// keeps as its own margin.
 const MARGIN: f32 = 12.;
 
-/// The view a `.tooltip` or `.hoverable_tooltip` builder returns for a hint.
-pub(super) fn view(cx: &mut App, build: impl FnOnce(&mut Context<Tooltip>) -> Tooltip) -> AnyView {
+/// The view a `.tooltip` builder returns.
+pub(super) fn passive(
+    cx: &mut App,
+    build: impl FnOnce(&mut Context<Tooltip>) -> Tooltip,
+) -> AnyView {
+    cx.new(build).into()
+}
+
+/// The view a `.hoverable_tooltip` builder returns.
+pub(super) fn interactive(
+    cx: &mut App,
+    build: impl FnOnce(&mut Context<Tooltip>) -> Tooltip,
+) -> AnyView {
     let tooltip = cx.new(|cx| build(cx).m_0());
     cx.new(|_| Surface { tooltip }).into()
 }
@@ -96,7 +111,7 @@ mod tests {
         if plain {
             tooltip.build(window, cx)
         } else {
-            view(cx, |_| tooltip)
+            interactive(cx, |_| tooltip)
         }
     }
 
@@ -170,5 +185,45 @@ mod tests {
         let (hovered, after, ..) = state(cx, &harness);
         assert_eq!(hovered, Some(true), "the margin leaves the plot hovered");
         assert!(after > moves, "the plot follows the pointer in the margin");
+    }
+    /// A large button whose own hint opens partly over it.
+    #[derive(Default)]
+    struct Trigger {
+        presses: usize,
+    }
+
+    impl Render for Trigger {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                div()
+                    .id("trigger")
+                    .absolute()
+                    .left(px(10.))
+                    .top(px(10.))
+                    .size(px(60.))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|trigger, _, _, _| trigger.presses += 1),
+                    )
+                    .tooltip(|_, cx| passive(cx, |_| Tooltip::new("A hint over its own button"))),
+            )
+        }
+    }
+
+    #[gpui_kit::test]
+    fn a_passive_hint_leaves_its_trigger_the_click(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let (trigger, cx) = cx.add_window_view(|_, _| Trigger::default());
+        cx.simulate_resize(size(px(400.), px(300.)));
+        let none = Modifiers::default();
+        cx.simulate_mouse_move(point(px(15.), px(15.)), None, none);
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        cx.run_until_parked();
+        // Still on the button, and inside the box of its hint.
+        let overlap = point(px(15. + 1. + MARGIN + 8.), px(15. + 1. + MARGIN + 8.));
+        cx.simulate_mouse_move(overlap, None, none);
+        cx.simulate_mouse_down(overlap, MouseButton::Left, none);
+        assert_eq!(trigger.read_with(cx, |trigger, _| trigger.presses), 1);
     }
 }
