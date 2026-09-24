@@ -507,3 +507,17 @@ fn a_held_gutter_keeps_the_right_ruler_from_narrowing() {
         assert_eq!(grown.gutter, fresh.gutter, "wider labels still widen the ruler");
     }
 }
+
+#[test]
+fn remeasuring_the_time_scheme_keeps_the_painted_plot_width() {
+    for orientation in [crate::orientation::Mode::Horizontal, crate::orientation::Mode::Vertical] {
+        let extents = Extents { orientation, ..HFDL };
+        let fresh = Frame::measure_view(panel(900., 600.), 1.25, extents, &DejaVuSans, Held::default()).unwrap();
+        let panned = Extents { hertz: (extents.hertz.0 + 1234.5, extents.hertz.1 + 1234.5), ..extents };
+        let held = Held { time: fresh.time_scheme, frequency: fresh.frequency_scheme, gutter: fresh.gutter };
+        let painted = Frame::measure_view(panel(900., 600.), 1.25, panned, &DejaVuSans, held).unwrap();
+        let held = Held { time: None, frequency: fresh.frequency_scheme, gutter: painted.gutter };
+        let remeasured = Frame::measure_view(panel(900., 600.), 1.25, panned, &DejaVuSans, held).unwrap();
+        assert_eq!(remeasured.plot, painted.plot, "the held frequency scheme keeps the gutter");
+    }
+}

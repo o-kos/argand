@@ -70,9 +70,11 @@ impl Shell {
         );
         let (dx, dy) = self.session.orientation.axes(px(0.), px(height));
         let panel = size(bounds.size.width - dx, bounds.size.height - dy);
+        // Only the time scheme is measured afresh, so the plot keeps its painted width.
         let held = axes::Held {
+            time: None,
+            frequency: self.frequency_scheme,
             gutter,
-            ..axes::Held::default()
         };
         axes::Frame::measure_view(
             panel,
