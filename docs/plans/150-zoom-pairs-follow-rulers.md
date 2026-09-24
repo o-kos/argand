@@ -45,9 +45,10 @@ process, #147).
 
 - `corner_zones` takes the orientation. It computes the bottom-left row zone
   and the top-right column zone once, and assigns them to `[time, frequency]`
-  by the orientation. The pair order and index meaning of `zoom_zones` stay
-  `[time, frequency]`, so `ruler_zoom_buttons` keeps binding the time actions
-  to index 0.
+  through `orientation::Mode::axes`, the same mapping that turns screen
+  lengths into time and frequency. The pair order and index meaning of
+  `zoom_zones` stay `[time, frequency]`, so `ruler_zoom_buttons` keeps binding
+  the time actions to index 0.
 - The bottom-left zone is always a row and the top-right zone always a column:
   each pair runs along its ruler.
 
@@ -58,20 +59,22 @@ process, #147).
 
 ## Implementation steps
 
-- [ ] Make `corner_zones` place the pairs by orientation.
-- [ ] Test `corner_zones` placement and layout in both orientations.
-- [ ] Test the gesture exclusion (arrow cursor, no drag) with vertical-orientation zones.
-- [ ] Update the "identically in both orientations" statement in `AGENTS.md`.
-- [ ] Add a `CHANGELOG.md` entry.
+- [x] Make `corner_zones` place the pairs by orientation.
+- [x] Test `corner_zones` placement and layout in both orientations.
+- [x] Test the gesture exclusion (arrow cursor, no drag) with vertical-orientation zones.
+- [x] Update the "identically in both orientations" statement in `AGENTS.md`.
+- [x] ➕ Update the same statement in the README's View description.
+- [x] Amend the unreleased #99 `CHANGELOG.md` entry instead of adding a fix:
+      the old placement was never released.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Owner check in the release binary: both orientations, Ctrl+T switching,
       Ctrl+U hiding, tooltips and clicks on each pair.
 

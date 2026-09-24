@@ -380,10 +380,11 @@ fn axis_colors(cx: &gpui_kit::App, show_grid: bool) -> axes::Colors {
     }
 }
 
-/// The corner zoom zones, translated into panel coordinates: the time pair in
-/// the spectrum's bottom-left corner, the frequency pair in its top-right
-/// one, in both orientations, held [`SCALE_INSET`] clear of the picture's
-/// edges.
+/// The corner zoom zones `[time, frequency]`, translated into panel
+/// coordinates: each pair runs along the ruler of the axis it zooms, as a row
+/// in the spectrum's bottom-left corner beside the bottom ruler or as a column
+/// in its top-right one beside the right ruler, held [`SCALE_INSET`] clear of
+/// the picture's edges.
 ///
 /// The pairs exist only while the scale-controls toggle shows them, and both
 /// appear or vanish together: they need the same clear span on *both* sides
@@ -392,7 +393,11 @@ fn axis_colors(cx: &gpui_kit::App, show_grid: bool) -> axes::Colors {
 ///
 /// Each present zone is exactly the pair's frame, `[+|-]`: two squares and
 /// their shared divider inside one border.
-fn corner_zones(spectrum: Bounds<Pixels>, visible: bool) -> [Option<axes::Rect>; 2] {
+fn corner_zones(
+    spectrum: Bounds<Pixels>,
+    orientation: crate::orientation::Mode,
+    visible: bool,
+) -> [Option<axes::Rect>; 2] {
     const MIN_SPAN: f32 = 2.0 * SCALE_INSET + SCALE_PAIR + SCALE_BUTTON;
     if !visible {
         return [None, None];
@@ -404,20 +409,20 @@ fn corner_zones(spectrum: Bounds<Pixels>, visible: bool) -> [Option<axes::Rect>;
     if right - left < MIN_SPAN || bottom - top < MIN_SPAN {
         return [None, None];
     }
-    [
-        Some(axes::Rect {
-            x: left + SCALE_INSET,
-            y: bottom - SCALE_INSET - SCALE_BUTTON,
-            width: SCALE_PAIR,
-            height: SCALE_BUTTON,
-        }),
-        Some(axes::Rect {
-            x: right - SCALE_INSET - SCALE_BUTTON,
-            y: top + SCALE_INSET,
-            width: SCALE_BUTTON,
-            height: SCALE_PAIR,
-        }),
-    ]
+    let bottom_row = axes::Rect {
+        x: left + SCALE_INSET,
+        y: bottom - SCALE_INSET - SCALE_BUTTON,
+        width: SCALE_PAIR,
+        height: SCALE_BUTTON,
+    };
+    let right_column = axes::Rect {
+        x: right - SCALE_INSET - SCALE_BUTTON,
+        y: top + SCALE_INSET,
+        width: SCALE_BUTTON,
+        height: SCALE_PAIR,
+    };
+    let (time, frequency) = orientation.axes(bottom_row, right_column);
+    [Some(time), Some(frequency)]
 }
 
 struct ZoomPair {
@@ -663,7 +668,7 @@ fn plot_geometry(
                 hint
             })
         }),
-        zoom_zones: corner_zones(spectrum, scale_ui_visible),
+        zoom_zones: corner_zones(spectrum, orientation, scale_ui_visible),
         time_scheme: frame.time_scheme,
         frequency_scheme: frame.frequency_scheme,
         minimap_columns: oriented_device_size(frame.plot, scale, orientation).width,
@@ -875,67 +880,80 @@ mod tests {
         Bounds::new(point(px(30.), px(20.)), size(px(640.), px(300.)))
     }
 
+    const ORIENTATIONS: [crate::orientation::Mode; 2] = [
+        crate::orientation::Mode::Horizontal,
+        crate::orientation::Mode::Vertical,
+    ];
+
+    fn bottom_left_row() -> axes::Rect {
+        axes::Rect {
+            x: 30. + SCALE_INSET,
+            y: 20. + 300. - SCALE_INSET - SCALE_BUTTON,
+            width: SCALE_PAIR,
+            height: SCALE_BUTTON,
+        }
+    }
+
+    fn top_right_column() -> axes::Rect {
+        axes::Rect {
+            x: 30. + 640. - SCALE_INSET - SCALE_BUTTON,
+            y: 20. + SCALE_INSET,
+            width: SCALE_BUTTON,
+            height: SCALE_PAIR,
+        }
+    }
+
     #[test]
-    fn corner_zones_sit_in_bottom_left_and_top_right_in_both_orientations() {
-        let spectrum = spectrum();
-        let [time, frequency] = corner_zones(spectrum, true);
-        let time = time.unwrap();
-        assert_eq!(
-            (time.x, time.y, time.width, time.height),
-            (
-                30. + SCALE_INSET,
-                20. + 300. - SCALE_INSET - SCALE_BUTTON,
-                SCALE_PAIR,
-                SCALE_BUTTON
-            )
-        );
-        let frequency = frequency.unwrap();
-        assert_eq!(
-            (frequency.x, frequency.y, frequency.width, frequency.height),
-            (
-                30. + 640. - SCALE_INSET - SCALE_BUTTON,
-                20. + SCALE_INSET,
-                SCALE_BUTTON,
-                SCALE_PAIR
-            )
-        );
+    fn horizontal_corner_zones_put_time_bottom_left_and_frequency_top_right() {
+        let zones = corner_zones(spectrum(), crate::orientation::Mode::Horizontal, true);
+        assert_eq!(zones, [Some(bottom_left_row()), Some(top_right_column())]);
+    }
+
+    #[test]
+    fn vertical_corner_zones_put_time_top_right_and_frequency_bottom_left() {
+        // Time runs down the right ruler and frequency along the bottom one.
+        let zones = corner_zones(spectrum(), crate::orientation::Mode::Vertical, true);
+        assert_eq!(zones, [Some(top_right_column()), Some(bottom_left_row())]);
     }
 
     #[test]
     fn hidden_scale_controls_leave_no_zones() {
-        for zone in corner_zones(spectrum(), false) {
-            assert!(zone.is_none(), "a hidden toggle leaves no pair");
+        for orientation in ORIENTATIONS {
+            for zone in corner_zones(spectrum(), orientation, false) {
+                assert!(zone.is_none(), "a hidden toggle leaves no pair");
+            }
         }
     }
 
     #[test]
     fn corner_zones_vanish_together_on_small_spectrums() {
-        let tiny = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(40.)));
-        for zone in corner_zones(tiny, true) {
-            assert!(zone.is_none(), "a 40-pixel spectrum fits no pair");
+        for orientation in ORIENTATIONS {
+            let tiny = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(40.)));
+            for zone in corner_zones(tiny, orientation, true) {
+                assert!(zone.is_none(), "a 40-pixel spectrum fits no pair");
+            }
+            // Either side alone being too small drops both pairs.
+            let narrow = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(400.)));
+            for zone in corner_zones(narrow, orientation, true) {
+                assert!(zone.is_none(), "a 40-pixel side fits no pair");
+            }
+            // Below the minimum the two corner pairs would overlap in the
+            // middle of the picture, so the minimum is exact.
+            let cramped = Bounds::new(point(px(0.), px(0.)), size(px(82.), px(82.)));
+            for zone in corner_zones(cramped, orientation, true) {
+                assert!(zone.is_none(), "an 82-pixel spectrum still overlaps");
+            }
+            let snug = Bounds::new(point(px(0.), px(0.)), size(px(83.), px(83.)));
+            let [time, frequency] = corner_zones(snug, orientation, true);
+            let (time, frequency) = (time.unwrap(), frequency.unwrap());
+            assert!(
+                time.x + time.width <= frequency.x || frequency.x + frequency.width <= time.x,
+                "the horizontal spans do not overlap"
+            );
+            assert!(
+                frequency.y + frequency.height <= time.y || time.y + time.height <= frequency.y,
+                "the vertical spans do not overlap"
+            );
         }
-        // Either side alone being too small drops both pairs: a narrow but
-        // tall spectrum keeps no frequency pair.
-        let narrow = Bounds::new(point(px(0.), px(0.)), size(px(40.), px(400.)));
-        for zone in corner_zones(narrow, true) {
-            assert!(zone.is_none(), "a 40-pixel side fits no pair");
-        }
-        // Below the minimum the two corner pairs would overlap in the
-        // middle of the picture, so the minimum is exact.
-        let cramped = Bounds::new(point(px(0.), px(0.)), size(px(82.), px(82.)));
-        for zone in corner_zones(cramped, true) {
-            assert!(zone.is_none(), "an 82-pixel spectrum still overlaps");
-        }
-        let snug = Bounds::new(point(px(0.), px(0.)), size(px(83.), px(83.)));
-        let [time, frequency] = corner_zones(snug, true);
-        let (time, frequency) = (time.unwrap(), frequency.unwrap());
-        assert!(
-            time.x + time.width <= frequency.x || frequency.x + frequency.width <= time.x,
-            "the horizontal spans do not overlap"
-        );
-        assert!(
-            frequency.y + frequency.height <= time.y || time.y + time.height <= frequency.y,
-            "the vertical spans do not overlap"
-        );
     }
 }
