@@ -38,13 +38,15 @@ promise applies to.
 
 - Outline the Alt coordinate badges with a thin ring in the background colour, so a badge over a bright part of the spectrogram keeps its full size.
 
+- Draw the Alt guide lines as a background-coloured stroke around a foreground core, matching the badges: black–white–black in the dark theme.
+
 - Place vertical-orientation frequency labels beside their ticks like the horizontal time ruler. Both bottom rulers leave a little more room below their labels than above, so the labels no longer crowd the status bar.
 
 - Size the right-hand ruler to its visible labels. Zooming in or panning never narrows it. Zooming out or fitting the axis shown on the right lets it fit its labels again, and so do opening a file, switching orientation, and changing the time format while time is on the right.
 
 - Place horizontal time-ruler labels right beside their ticks and give the freed space to the spectrogram.
 
-- Align the Alt coordinate badges with their rulers. Bottom badge text shares the ruler labels' row without covering the ruler line, and the right badge ends one margin past the ruler labels.
+- Align the Alt coordinate badges with their rulers. Bottom badge text shares the ruler labels' row without covering the ruler line, and the right badge keeps the same margin to the window edge as the bottom badge keeps to the ruler's edge.
 
 - Keep keyboard focus on the plot while a signal is shown. Tab no longer moves focus onto toolbar or status-bar buttons, so plot shortcuts keep working after any button is used.
 

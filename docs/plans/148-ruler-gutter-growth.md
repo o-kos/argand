@@ -114,6 +114,18 @@ fill. The ring is invisible on the dark ruler and defines the edge on bright
 pictures. Size, text row and the 6/8 geometry are unchanged. This was checked on
 a 1.25× capture.
 
+### Guide colours and right badge margin, added during owner review
+
+- The guide lines swap to the badge's colour sequence: a paper-coloured 3-pixel
+  stroke around an ink core (black–white–black in the dark theme). They are
+  taken from the theme, so the light theme stays consistent with its dark
+  badges. The fixed white–black–white is gone. The owner accepted it in the
+  native window.
+- The right badge now stands as far from the panel's right edge as the bottom
+  badge stands from the bottom ruler's edge. The margin is taken from the bottom
+  badge's actual position, so rounding surplus matches too. This replaces #141's
+  "4 pixels past the ruler labels" rule at the owner's request.
+
 ## Rejected alternatives
 
 - Fixed budget with shared-prefix or offset labels: not obvious to read (owner).
@@ -140,6 +152,8 @@ a 1.25× capture.
       orientations and for the badge.
 - [x] Ring the Alt badges in the paper colour so they keep their edge over bright
       pictures.
+- [x] Paint guide lines in paper/ink, and give the right badge the bottom
+      badge's edge margin (tested).
 - [ ] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation

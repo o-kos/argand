@@ -281,15 +281,17 @@ not navigate in time. Unmodified wheel pans horizontally; Ctrl+wheel zooms on bo
 plots and the time ruler.
 
 All time zoom keys use Control: Ctrl+Plus/Equals, Ctrl+Minus and Ctrl+0 (fit).
-Alt guides use a white three-logical-pixel stroke with a black one-pixel core,
-clipped to the plot, and slightly rounded coordinate badges. Guide colours are
-independent of the spectrogram palette. Badges (#141) wrap the digits' ink with
+Alt guides use a three-logical-pixel stroke in the theme's paper colour with a
+one-pixel core in its ink colour (#148). That is the same sequence as a badge (ink
+fill inside a paper ring), black–white–black in the dark theme. The guides are
+clipped to the plot, and the coordinate badges are slightly rounded. Guide colours
+follow the interface theme, independent of the spectrogram palette. Badges (#141) wrap the digits' ink with
 3 logical pixels on every side. A one-pixel ring in the paper colour (#148) surrounds
 each badge so its edge stays visible over picture areas of its own shade. Rings are
 painted before the guide lines, which therefore meet the badge fill without a gap. The bottom badge is centred on the bottom
 ruler's text row, so its text shares the labels' row and clears the ruler line.
-The right badge is centred on the guide line and ends at the panel edge, one
-outer margin past the ruler's labels. Clamping moves a badge only where the
+The right badge is centred on the guide line and stands as far from the panel's
+right edge as the bottom badge stands from the bottom ruler's edge (#148). Clamping moves a badge only where the
 panel has no room; `cursor_guides::badge_rects` holds the geometry.
 
 ## Full-capture waveform minimap (#79)
