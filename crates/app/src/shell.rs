@@ -302,6 +302,10 @@ struct Shell {
     settings: Settings,
     settings_window: Option<gpui_kit::WindowHandle<gpui_kit::component::Root>>,
     analysis_hovered: bool,
+    /// The analysis hint, pinned open until a click outside, Enter or Escape.
+    analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
+    /// The settings when the analysis hint opened, which Escape restores.
+    hint_opening: Option<Settings>,
     range_hovered: bool,
     ready_status_dismissed: bool,
     settings_backup: Option<Settings>,
@@ -365,6 +369,7 @@ struct Shell {
     _activation: Subscription,
     _appearance: Subscription,
     _keystrokes: Subscription,
+    _pinned: Subscription,
 }
 
 impl Shell {
@@ -400,10 +405,17 @@ impl Shell {
             Self::dismiss_window_ready_status(window, cx);
         });
         let settings = Settings::restored(saved.analysis_settings, &config);
+        let owner = cx.entity().downgrade();
+        let analysis_hint = cx.new(|cx| {
+            hints::PinnedHint::new(move |_, _| settings_ui::analysis_tooltip(owner.clone()), cx)
+        });
+        let pinned = cx.subscribe(&analysis_hint, Self::analysis_hint_changed);
         Self {
             settings,
             settings_window: None,
             analysis_hovered: false,
+            analysis_hint,
+            hint_opening: None,
             range_hovered: false,
             ready_status_dismissed: false,
             settings_backup: None,
@@ -437,6 +449,7 @@ impl Shell {
             _activation: activation,
             _appearance: appearance,
             _keystrokes: keystrokes,
+            _pinned: pinned,
         }
     }
 
@@ -499,6 +512,7 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
+        self.close_analysis_hint(cx);
         // The old plot goes with its document, so focus must not stay on it.
         window.focus(&self.focus, cx);
         let editor = self.settings_window;
@@ -944,6 +958,7 @@ impl Shell {
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
+        self.close_analysis_hint(cx);
         // The release happens over the dialog, so nothing held now may stay pressed.
         self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);
@@ -1368,8 +1383,17 @@ impl Render for Shell {
                 .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
                     shell.use_recommended_range(cx)
                 }))
-                .on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
-                .on_action(|_: &FocusPrevious, window, cx| window.focus_prev(cx))
+                // An open analysis hint keeps the keyboard until it closes.
+                .on_action(cx.listener(|shell, _: &FocusNext, window, cx| {
+                    if !shell.analysis_hint.read(cx).is_open() {
+                        window.focus_next(cx);
+                    }
+                }))
+                .on_action(cx.listener(|shell, _: &FocusPrevious, window, cx| {
+                    if !shell.analysis_hint.read(cx).is_open() {
+                        window.focus_prev(cx);
+                    }
+                }))
                 // A capture dropped anywhere on the window opens, which is where a
                 // person aims when the window is showing the wrong file.
                 .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
@@ -1388,6 +1412,7 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, cx))
             .children(overlay)
+            .children(hints::backdrop(&self.analysis_hint, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
     }
 }

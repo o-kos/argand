@@ -13,7 +13,7 @@ promise applies to.
 
 ### Fixed
 
-- The analysis hint, which stays open when the pointer moves into it, now shows an ordinary arrow over the spectrogram and hides the cursor readout and Alt guides beneath it. Clicks and the mouse wheel inside it, and the arrow and zoom keys while it is open, no longer pan or zoom the plot; Ctrl+R and Ctrl+, still work.
+- The analysis hint now stays open once shown: moving the pointer away no longer closes it. A click outside, Enter or Escape closes it; Escape also undoes a range applied from it. While it is open, the plot ignores the pointer, wheel and navigation keys, and the click that closes the hint does not start a pan. A right click on the FFT summary also opens it.
 
 - Opening a menu, the analysis settings or the file chooser, or switching to another window, now ends a drag in progress, and a drag keeps following the pointer across a hint.
 

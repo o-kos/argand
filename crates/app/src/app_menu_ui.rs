@@ -111,6 +111,7 @@ impl Shell {
             self.dismiss_application_menu(window, cx);
             return;
         }
+        self.close_analysis_hint(cx);
         self.interrupt_plot(cx);
         self.recent_files.refresh(&self.session.recent);
         let focus = cx.focus_handle();

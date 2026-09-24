@@ -170,6 +170,35 @@ impl Shell {
         self.apply_settings(if accept { self.settings } else { backup }, cx);
     }
 
+    /// Close the analysis hint, keeping what was changed while it was open.
+    pub(super) fn close_analysis_hint(&mut self, cx: &mut Context<Self>) {
+        self.analysis_hint
+            .update(cx, |hint, cx| hint.close(false, cx));
+    }
+
+    pub(super) fn analysis_hint_changed(
+        &mut self,
+        _: gpui_kit::Entity<hints::PinnedHint>,
+        event: &hints::Pinned,
+        cx: &mut Context<Self>,
+    ) {
+        match *event {
+            hints::Pinned::Opened => {
+                self.interrupt_plot(cx);
+                self.hint_opening = Some(self.settings);
+            }
+            hints::Pinned::Closed { revert } => {
+                if let Some(opening) = self.hint_opening.take()
+                    && revert
+                    && opening != self.settings
+                {
+                    self.set_settings(opening, cx);
+                }
+            }
+        }
+        cx.notify();
+    }
+
     pub(super) fn use_recommended_range(&mut self, cx: &mut Context<Self>) {
         if let Some(dynamic_range) = self.next_range_action() {
             self.set_settings(
@@ -387,11 +416,11 @@ impl Shell {
     fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
         let visible = displayed.unwrap_or(self.settings);
-        let hint_owner = cx.entity().downgrade();
+        let hint_enabled = self.settings_backup.is_none();
         let foregrounds =
             ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground);
         let foreground = foregrounds.current(self.analysis_hovered);
-        let mut summary = Button::new("analysis-settings")
+        let summary = Button::new("analysis-settings")
             .tab_stop(false)
             .custom(foregrounds.button_style(cx))
             .small()
@@ -401,8 +430,11 @@ impl Shell {
             .when(self.analysis_hovered, |button| {
                 button.bg(cx.theme().secondary_hover)
             })
-            .on_hover(cx.listener(|shell, hovered, _, cx| {
+            .on_hover(cx.listener(move |shell, hovered, window, cx| {
                 shell.analysis_hovered = *hovered;
+                shell.analysis_hint.update(cx, |hint, cx| {
+                    hint.hover(*hovered && hint_enabled, window, cx)
+                });
                 cx.notify();
             }))
             .on_click(
@@ -413,13 +445,6 @@ impl Shell {
                 crate::numbers::number(visible.fft_size),
                 visible.window
             )));
-        if self.settings_backup.is_none() {
-            summary
-                .interactivity()
-                .hoverable_tooltip(move |window, cx| {
-                    live_analysis_tooltip(hint_owner.clone(), window, cx)
-                });
-        }
         div()
             .flex()
             .items_center()
@@ -429,7 +454,12 @@ impl Shell {
                     .id("analysis-summary")
                     .border_l_1()
                     .border_color(cx.theme().border)
-                    .child(summary),
+                    .child(hints::pinned(
+                        "analysis-hint",
+                        &self.analysis_hint,
+                        summary,
+                        cx,
+                    )),
             )
             .child(self.range_control(displayed, cx))
     }
@@ -441,6 +471,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         self.dismiss_application_menu(window, cx);
+        self.close_analysis_hint(cx);
         if self.settings_window.is_some_and(|handle| {
             handle
                 .update(cx, |_, window, _| window.activate_window())
@@ -519,20 +550,7 @@ pub(super) fn detail_row(
         .child(div().flex_1().min_w_0().text_right().child(value.into()))
 }
 
-fn live_analysis_tooltip(
-    owner: WeakEntity<Shell>,
-    window: &mut Window,
-    cx: &mut gpui_kit::App,
-) -> gpui_kit::AnyView {
-    hints::interactive(window, cx, |cx| {
-        if let Some(owner) = owner.upgrade() {
-            cx.observe(&owner, |_, _, cx| cx.notify()).detach();
-        }
-        analysis_tooltip(owner)
-    })
-}
-
-fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
+pub(super) fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
     Tooltip::element(move |window, cx| {
         let Some(shell) = owner.upgrade() else {
             return div();

@@ -490,34 +490,36 @@ plot never learns which overlays are open or where. It decides its cursor,
 readout and Alt guides from its own hitbox hover state, and its handlers are
 hover-based, so any blocking layer above it wins.
 
-- Hints: every hint comes from one of four builders (`shortcut_tooltip`,
-  `metadata_tooltip`, `analysis_tooltip`, `unit_tooltip`), which return the
-  finished view through `hints.rs`. A passive hint (`.tooltip`, `hints::passive`)
-  lives only while its trigger is hovered, so the pointer can be inside it only
-  over the trigger, which keeps the pointer and its clicks. Blocking it would
-  take clicks from its own trigger, because a GPUI tooltip opens 13 pixels from
-  the pointer and can cover the trigger. An interactive hint
-  (`.hoverable_tooltip`, `hints::interactive`, today the analysis hint) stays
-  open when the pointer enters it. It draws the standard gpui-component
-  `Tooltip` without its margin inside an `occlude()` element with an arrow
-  cursor and restores the 12-pixel margin outside it. Its visible box, border
-  included, takes the pointer, clicks and wheel from the plot, like any
-  interactive surface, while the transparent margin blocks nothing (#129).
-  While the hint is open, it holds keyboard focus, as a menu does, so `Plot`
-  bindings (arrows, zoom, grid) do not reach the plot beneath. Commands with
-  application-level handlers (Ctrl+R, Ctrl+,, Ctrl+O) still work from it. When
-  the hint closes and its view is released on the next frame, focus returns to
-  where it was, unless something else took it meanwhile. The hint lives in its own tooltip layer outside the Shell
-  subtree, which is why those commands need their application-level handlers. Add hints through these builders, never a bare
-  `Tooltip::build`, and give any new hoverable hint `hints::interactive`.
+- Passive hints: `shortcut_tooltip`, `metadata_tooltip` and `unit_tooltip`
+  return their view through `hints::passive`, never a bare `Tooltip::build`. A
+  passive hint (`.tooltip`) lives only while its trigger is hovered, so the
+  pointer can be inside it only over the trigger, which keeps the pointer and its
+  clicks. Blocking it would take clicks from its own trigger, because a GPUI
+  tooltip opens 13 pixels from the pointer and can cover the trigger.
+- The analysis hint is a pinned hint (`hints::PinnedHint`), following the
+  contract agreed in #108 for the future settings popover. Hovering the FFT
+  summary for 500 ms opens it as a standard gpui-component `Popover` anchored
+  above the summary, drawn with the standard `Tooltip` look (`appearance(false)`).
+  A right click on the summary also toggles it; the left click still opens
+  the settings window. Moving the pointer away does not close it. Only a click
+  outside (consumed), Enter (keeps the values), Escape (reverts to the settings
+  at opening), Ctrl+, (opens the settings window), F10, Ctrl+O and opening a
+  file close it. While it is open the plot is frozen: a transparent deferred
+  backdrop (`hints::backdrop`) covers the window, so the plot gets no pointer,
+  readout, Alt guides, clicks or wheel, and the popover holds keyboard focus,
+  so `Plot` bindings do not match. Tab does not leave it. Values changed from
+  it (Ctrl+R, its recommendation button) preview live. `PinnedHint` emits
+  `Pinned::Opened` / `Pinned::Closed { revert }`; Shell interrupts the plot on
+  opening and restores `hint_opening` on a reverting close.
 - Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
   clicks and drags.
 - Gestures: `PlotView::interrupt` ends drags, a pressed zoom half, the ruler menu
   and the pointer. Shell calls it before the application menu, the settings
   window and the file chooser open. Opening the ruler menu and deactivating the
   window call `PlotView::end_gestures`, which keeps the pointer.
-- Tests cover hints over the plot, a drag crossing a hint, a menu-like occluding
-  layer and interruption. The ruler context menu cannot be opened in a headless
+- Tests cover the pinned hint's lifecycle and isolation, a passive hint's
+  trigger click, a drag crossing a blocking layer, a menu-like occluding layer
+  and interruption. The ruler context menu cannot be opened in a headless
   test because of the toolkit's `PopupMenu` retention cycle (#144), so its cases
   are native checks.
 

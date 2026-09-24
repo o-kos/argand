@@ -1,23 +1,30 @@
-//! Hints, and which of them own the pointer inside their visible box.
+//! Hints: passive ones that follow the pointer, and pinned ones that stay until dismissed.
 //!
 //! A passive hint (`.tooltip`) lives only while its trigger is hovered, so the
 //! pointer is never inside it anywhere but over the trigger, and the trigger
-//! keeps the pointer and its clicks. An interactive hint (`.hoverable_tooltip`)
-//! stays open when the pointer moves into it, and then owns its box. Whatever
-//! lies under it -- the plot above all -- stops seeing the pointer there. It is
-//! not hovered and gets no clicks, wheel gestures or cursor. The plot learns it
-//! is covered from its own hitbox, so no surface needs to know which hints are
-//! open.
+//! keeps the pointer and its clicks.
+//!
+//! A pinned hint is a standard `Popover` that opens when its trigger has been
+//! hovered for a moment and then stays open until a click outside, Enter or
+//! Escape closes it. While it is open it owns the input: it holds keyboard
+//! focus, and a transparent backdrop covers everything else, so the plot gets
+//! no pointer, clicks or wheel, and the click that closes the hint goes no
+//! further. Escape also asks its owner to revert what changed while it was open.
 
+use std::time::Duration;
+
+use gpui_kit::base::actions::Cancel;
+use gpui_kit::component::button::Button;
+use gpui_kit::component::popover::Popover;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
-    AnyView, App, AppContext, Context, CursorStyle, Entity, FocusHandle, InteractiveElement,
-    IntoElement, ParentElement, Render, Styled, Window, div,
+    Anchor, AnyElement, AnyView, App, AppContext, Context, CursorStyle, Entity, EventEmitter,
+    FocusHandle, InteractiveElement, IntoElement, MouseButton, ParentElement, Render, Styled, Task,
+    Window, deferred, div,
 };
 
-/// The gap between the pointer and a hint's box, which the standard tooltip
-/// keeps as its own margin.
-const MARGIN: f32 = 12.;
+/// How long the trigger must be hovered before a pinned hint opens, as for a tooltip.
+const OPEN_DELAY: Duration = Duration::from_millis(500);
 
 /// The view a `.tooltip` builder returns.
 pub(super) fn passive(
@@ -27,88 +34,174 @@ pub(super) fn passive(
     cx.new(build).into()
 }
 
-/// The view a `.hoverable_tooltip` builder returns, taking the keyboard as the hint opens.
-pub(super) fn interactive(
-    window: &mut Window,
-    cx: &mut App,
-    build: impl FnOnce(&mut Context<Tooltip>) -> Tooltip,
-) -> AnyView {
-    let tooltip = cx.new(|cx| build(cx).m_0());
-    let surface = cx.new(|cx| {
-        cx.on_release_in(window, |surface: &mut Surface, window, cx| {
-            surface.give_back(window, cx)
-        })
-        .detach();
-        Surface {
-            tooltip,
-            focus: cx.focus_handle(),
-            previous: window.focused(cx),
-        }
-    });
-    window.focus(&surface.read(cx).focus.clone(), cx);
-    surface.into()
+/// What a pinned hint tells its owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Pinned {
+    Opened,
+    /// Closed, and whether the owner should undo what changed since it opened.
+    Closed {
+        revert: bool,
+    },
 }
 
-/// An interactive hint, owning the pointer inside its box and the keyboard while it is open.
-struct Surface {
-    tooltip: Entity<Tooltip>,
+type Build = Box<dyn Fn(&mut Window, &mut App) -> Tooltip>;
+
+/// The open state of one pinned hint and the content it shows while open.
+pub(super) struct PinnedHint {
+    build: Build,
+    content: Option<Entity<Tooltip>>,
     focus: FocusHandle,
-    /// Where the keyboard goes back to when the hint closes.
-    previous: Option<FocusHandle>,
+    pending: Option<Task<()>>,
 }
 
-impl Surface {
-    fn give_back(&mut self, window: &mut Window, cx: &mut App) {
-        if self.focus.is_focused(window)
-            && let Some(previous) = self.previous.take()
-        {
-            window.focus(&previous, cx);
+impl EventEmitter<Pinned> for PinnedHint {}
+
+impl PinnedHint {
+    pub(super) fn new(
+        build: impl Fn(&mut Window, &mut App) -> Tooltip + 'static,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self {
+            build: Box::new(build),
+            content: None,
+            focus: cx.focus_handle(),
+            pending: None,
+        }
+    }
+
+    pub(super) fn is_open(&self) -> bool {
+        self.content.is_some()
+    }
+
+    /// Open after the trigger has been hovered for a moment, unless the pointer leaves first.
+    pub(super) fn hover(&mut self, hovered: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if !hovered || self.is_open() {
+            self.pending = None;
+            return;
+        }
+        self.pending = Some(cx.spawn_in(window, async move |hint, cx| {
+            cx.background_executor().timer(OPEN_DELAY).await;
+            let _ = hint.update_in(cx, |hint, window, cx| hint.open(window, cx));
+        }));
+    }
+
+    pub(super) fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pending = None;
+        if self.is_open() {
+            return;
+        }
+        let tooltip = (self.build)(window, cx).m_0();
+        self.content = Some(cx.new(|_| tooltip));
+        cx.emit(Pinned::Opened);
+        cx.notify();
+    }
+
+    pub(super) fn close(&mut self, revert: bool, cx: &mut Context<Self>) {
+        self.pending = None;
+        if self.content.take().is_some() {
+            cx.emit(Pinned::Closed { revert });
+            cx.notify();
         }
     }
 }
 
-impl Render for Surface {
+impl Render for PinnedHint {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        // Only the box blocks the pointer, the margin around it stays transparent.
-        div().p(gpui_kit::px(MARGIN)).child(
-            div()
-                .id("hint-surface")
-                .occlude()
-                .cursor(CursorStyle::Arrow)
-                .track_focus(&self.focus)
-                .child(self.tooltip.clone()),
-        )
+        div()
     }
+}
+
+/// The trigger with its pinned hint anchored above it.
+pub(super) fn pinned(
+    id: &'static str,
+    hint: &Entity<PinnedHint>,
+    trigger: Button,
+    cx: &App,
+) -> impl IntoElement {
+    let state = hint.read(cx);
+    let content = state.content.clone();
+    let focus = state.focus.clone();
+    let changed = hint.downgrade();
+    let cancelled = hint.downgrade();
+    Popover::new(id)
+        .anchor(Anchor::BottomLeft)
+        .appearance(false)
+        // The left click keeps its own meaning on the trigger.
+        .mouse_button(MouseButton::Right)
+        .open(content.is_some())
+        .track_focus(&focus)
+        .on_open_change(move |open, window, cx| {
+            let _ = changed.update(cx, |hint, cx| {
+                if *open {
+                    hint.open(window, cx);
+                } else {
+                    hint.close(false, cx);
+                }
+            });
+        })
+        .trigger(trigger)
+        .content(move |_, _, _| {
+            let cancelled = cancelled.clone();
+            div()
+                .track_focus(&focus)
+                .cursor(CursorStyle::Arrow)
+                .on_action(move |_: &Cancel, _, cx| {
+                    let _ = cancelled.update(cx, |hint, cx| hint.close(true, cx));
+                    // The popover's own Escape handling still closes it.
+                    cx.propagate();
+                })
+                .children(content.clone())
+        })
+}
+
+/// While the hint is open, covers the window beneath it so nothing else sees the pointer.
+pub(super) fn backdrop(hint: &Entity<PinnedHint>, cx: &App) -> Option<AnyElement> {
+    hint.read(cx).is_open().then(|| {
+        deferred(
+            div()
+                .id("pinned-hint-backdrop")
+                .absolute()
+                .inset_0()
+                .occlude()
+                .cursor(CursorStyle::Arrow),
+        )
+        .with_priority(1)
+        .into_any_element()
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui_kit::StatefulInteractiveElement;
-    use gpui_kit::prelude::FluentBuilder;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{
-        Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext,
-        point, px, size,
+        Modifiers, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement, Subscription,
+        TestAppContext, VisualTestContext, point, px, size,
     };
 
     gpui_kit::actions!(hint_tests, [Nudge]);
 
-    /// A plot-like surface filling the window, with a hint trigger in its corner.
+    /// A plot filling the window, with a pinned hint's trigger at its bottom left.
     struct Harness {
-        plain: bool,
-        /// The trigger goes away with its hint when this is cleared.
-        trigger: bool,
+        hint: Entity<PinnedHint>,
         focus: FocusHandle,
+        events: Vec<Pinned>,
         nudges: usize,
-        hovered: Option<bool>,
-        moves: usize,
         presses: usize,
         wheels: usize,
+        hovered: Option<bool>,
+        _events: Subscription,
     }
 
     impl Render for Harness {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let hint = self.hint.clone();
+            let trigger =
+                Button::new("trigger")
+                    .label("FFT")
+                    .on_hover(move |hovered, window, cx| {
+                        hint.update(cx, |hint, cx| hint.hover(*hovered, window, cx))
+                    });
             div()
                 .size_full()
                 .relative()
@@ -120,52 +213,40 @@ mod tests {
                         .track_focus(&self.focus)
                         .key_context("Plot")
                         .on_action(cx.listener(|harness, _: &Nudge, _, _| harness.nudges += 1))
-                        .cursor(CursorStyle::Crosshair)
                         .on_hover(
                             cx.listener(|harness, hovered, _, _| harness.hovered = Some(*hovered)),
                         )
-                        .on_mouse_move(cx.listener(|harness, _, _, _| harness.moves += 1))
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(|harness, _, _, _| harness.presses += 1),
                         )
                         .on_scroll_wheel(cx.listener(|harness, _, _, _| harness.wheels += 1)),
                 )
-                .when(self.trigger, |harness| {
-                    harness.child(
-                        div()
-                            .id("trigger")
-                            .absolute()
-                            .left(px(10.))
-                            .top(px(10.))
-                            .size(px(20.))
-                            .hoverable_tooltip({
-                                let plain = self.plain;
-                                move |window, cx| hint(plain, window, cx)
-                            }),
-                    )
-                })
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(20.))
+                        .top(px(260.))
+                        .child(pinned("hint", &self.hint, trigger, cx)),
+                )
+                .children(backdrop(&self.hint, cx))
         }
     }
 
-    fn hint(plain: bool, window: &mut Window, cx: &mut App) -> AnyView {
-        let tooltip = Tooltip::new("A hint wide enough to enter");
-        if plain {
-            tooltip.build(window, cx)
-        } else {
-            interactive(window, cx, |_| tooltip)
-        }
+    const TRIGGER: (f32, f32) = (30., 268.);
+    const OUTSIDE: (f32, f32) = (300., 60.);
+
+    fn at((x, y): (f32, f32)) -> gpui_kit::Point<gpui_kit::Pixels> {
+        point(px(x), px(y))
     }
 
-    fn state(
-        cx: &mut VisualTestContext,
-        harness: &Entity<Harness>,
-    ) -> (Option<bool>, usize, usize, usize) {
-        harness.read_with(cx, |h, _| (h.hovered, h.moves, h.presses, h.wheels))
+    fn frame(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| window.render_frame(cx));
+        cx.run_until_parked();
     }
 
-    /// Opens the hint with the pointer still on its trigger.
-    fn show(cx: &mut TestAppContext, plain: bool) -> (Entity<Harness>, &mut VisualTestContext) {
+    fn open_window(cx: &mut TestAppContext) -> (Entity<Harness>, &mut VisualTestContext) {
         cx.update(|cx| {
             gpui_kit::init(cx);
             cx.bind_keys([gpui_kit::KeyBinding::new("left", Nudge, Some("Plot"))]);
@@ -173,126 +254,128 @@ mod tests {
         let (harness, cx) = cx.add_window_view(|window, cx| {
             let focus = cx.focus_handle();
             window.focus(&focus, cx);
+            let hint = cx.new(|cx| PinnedHint::new(|_, _| Tooltip::new("Analysis"), cx));
+            let events = cx.subscribe(&hint, |harness: &mut Harness, _, event, _| {
+                harness.events.push(*event)
+            });
             Harness {
-                plain,
-                trigger: true,
+                hint,
                 focus,
+                events: Vec::new(),
                 nudges: 0,
-                hovered: None,
-                moves: 0,
                 presses: 0,
                 wheels: 0,
+                hovered: None,
+                _events: events,
             }
         });
         cx.simulate_resize(size(px(400.), px(300.)));
-        cx.simulate_mouse_move(point(px(15.), px(15.)), None, Modifiers::default());
-        cx.executor()
-            .advance_clock(std::time::Duration::from_secs(1));
-        cx.run_until_parked();
+        frame(cx);
         (harness, cx)
     }
 
-    /// Opens the hint and returns a point inside its visible box.
-    fn open(
-        cx: &mut TestAppContext,
-        plain: bool,
-    ) -> (
-        Entity<Harness>,
-        &mut VisualTestContext,
-        gpui_kit::Point<gpui_kit::Pixels>,
-    ) {
-        let (harness, cx) = show(cx, plain);
-        // The tooltip opens one pixel past the pointer, its box one margin further.
-        let inside = point(px(15. + 1. + MARGIN + 10.), px(15. + 1. + MARGIN + 6.));
-        cx.simulate_mouse_move(inside, None, Modifiers::default());
-        (harness, cx, inside)
+    /// Hovers the trigger long enough to open the hint, then moves away from it.
+    fn open_and_leave(cx: &mut TestAppContext) -> (Entity<Harness>, &mut VisualTestContext) {
+        let (harness, cx) = open_window(cx);
+        cx.simulate_mouse_move(at(TRIGGER), None, Modifiers::default());
+        cx.executor().advance_clock(Duration::from_secs(1));
+        frame(cx);
+        cx.simulate_mouse_move(at(OUTSIDE), None, Modifiers::default());
+        cx.executor().advance_clock(Duration::from_secs(1));
+        frame(cx);
+        (harness, cx)
+    }
+
+    fn read<T>(
+        cx: &mut VisualTestContext,
+        harness: &Entity<Harness>,
+        f: impl FnOnce(&Harness, &App) -> T,
+    ) -> T {
+        harness.read_with(cx, |harness, cx| f(harness, cx))
+    }
+
+    fn is_open(cx: &mut VisualTestContext, harness: &Entity<Harness>) -> bool {
+        read(cx, harness, |harness, cx| harness.hint.read(cx).is_open())
+    }
+
+    fn events(cx: &mut VisualTestContext, harness: &Entity<Harness>) -> Vec<Pinned> {
+        read(cx, harness, |harness, _| harness.events.clone())
+    }
+
+    fn nudge(cx: &mut VisualTestContext, harness: &Entity<Harness>) -> usize {
+        cx.simulate_keystrokes("left");
+        read(cx, harness, |harness, _| harness.nudges)
     }
 
     #[gpui_kit::test]
-    fn a_plain_tooltip_leaves_the_plot_under_the_pointer(cx: &mut TestAppContext) {
-        let (harness, cx, inside) = open(cx, true);
-        assert_ne!(state(cx, &harness).0, Some(false));
-        cx.simulate_mouse_down(inside, MouseButton::Left, Modifiers::default());
-        assert_eq!(state(cx, &harness).2, 1, "the click falls through");
+    fn a_short_hover_opens_nothing(cx: &mut TestAppContext) {
+        let (harness, cx) = open_window(cx);
+        cx.simulate_mouse_move(at(TRIGGER), None, Modifiers::default());
+        cx.simulate_mouse_move(at(OUTSIDE), None, Modifiers::default());
+        cx.executor().advance_clock(Duration::from_secs(1));
+        frame(cx);
+        assert!(!is_open(cx, &harness));
     }
 
     #[gpui_kit::test]
-    fn a_hint_box_takes_the_pointer_clicks_and_wheel(cx: &mut TestAppContext) {
-        let (harness, cx, inside) = open(cx, false);
-        let none = Modifiers::default();
-        let (hovered, moves, ..) = state(cx, &harness);
-        assert_eq!(
-            hovered,
-            Some(false),
-            "the box hides the plot from the pointer"
-        );
-        cx.simulate_mouse_move(inside + point(px(3.), px(0.)), None, none);
-        assert_eq!(
-            state(cx, &harness).1,
-            moves,
-            "moves over the box skip the plot"
-        );
-        cx.simulate_mouse_down(inside, MouseButton::Left, none);
-        cx.simulate_mouse_up(inside, MouseButton::Left, none);
-        assert_eq!(state(cx, &harness).2, 0, "the box takes the click");
+    fn leaving_the_trigger_keeps_the_hint_open(cx: &mut TestAppContext) {
+        let (harness, cx) = open_and_leave(cx);
+        assert!(is_open(cx, &harness));
+        assert_eq!(events(cx, &harness), [Pinned::Opened]);
+    }
+
+    #[gpui_kit::test]
+    fn an_open_hint_keeps_the_plot_from_input(cx: &mut TestAppContext) {
+        let (harness, cx) = open_and_leave(cx);
+        assert_eq!(read(cx, &harness, |h, _| h.hovered), Some(false));
         cx.simulate_event(ScrollWheelEvent {
-            position: inside,
-            delta: ScrollDelta::Pixels(point(px(0.), px(10.))),
+            position: at(OUTSIDE),
+            delta: ScrollDelta::Pixels(point(px(0.), px(40.))),
             ..Default::default()
         });
-        assert_eq!(state(cx, &harness).3, 0, "the box takes the wheel");
-        let margin = point(px(15. + 1. + MARGIN / 2.), inside.y);
-        cx.simulate_mouse_move(margin, None, none);
-        let (hovered, after, ..) = state(cx, &harness);
-        assert_eq!(hovered, Some(true), "the margin leaves the plot hovered");
-        assert!(after > moves, "the plot follows the pointer in the margin");
-    }
-    /// Draws a frame, which releases a hint hidden since the last one.
-    fn frame(cx: &mut VisualTestContext) {
-        cx.run_until_parked();
-        cx.update(|window, cx| window.render_frame(cx));
-        cx.run_until_parked();
-    }
-
-    fn nudges(cx: &mut VisualTestContext, harness: &Entity<Harness>) -> usize {
-        harness.read_with(cx, |harness, _| harness.nudges)
+        assert_eq!(nudge(cx, &harness), 0, "keys do not reach the plot");
+        assert_eq!(read(cx, &harness, |h, _| h.wheels), 0, "nor does the wheel");
     }
 
     #[gpui_kit::test]
-    fn an_interactive_hint_holds_the_keyboard_while_it_is_open(cx: &mut TestAppContext) {
-        let (harness, cx) = show(cx, false);
-        cx.simulate_keystrokes("left");
-        assert_eq!(
-            nudges(cx, &harness),
-            0,
-            "the pointer is still on the trigger"
-        );
-        cx.simulate_mouse_move(point(px(300.), px(250.)), None, Modifiers::default());
-        cx.simulate_keystrokes("left");
-        assert_eq!(nudges(cx, &harness), 0, "the hint is still closing");
-        cx.executor()
-            .advance_clock(std::time::Duration::from_secs(1));
+    fn a_click_outside_closes_the_hint_and_goes_no_further(cx: &mut TestAppContext) {
+        let (harness, cx) = open_and_leave(cx);
+        cx.simulate_mouse_down(at(OUTSIDE), MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(at(OUTSIDE), MouseButton::Left, Modifiers::default());
         frame(cx);
-        cx.simulate_keystrokes("left");
+        assert!(!is_open(cx, &harness));
+        assert_eq!(read(cx, &harness, |h, _| h.presses), 0);
         assert_eq!(
-            nudges(cx, &harness),
-            1,
-            "a closed hint gives the keyboard back"
+            events(cx, &harness),
+            [Pinned::Opened, Pinned::Closed { revert: false }]
         );
+        assert_eq!(nudge(cx, &harness), 1, "the keyboard is back");
     }
 
     #[gpui_kit::test]
-    fn a_hint_closing_under_the_pointer_gives_the_keyboard_back(cx: &mut TestAppContext) {
-        let (harness, cx, _) = open(cx, false);
-        cx.simulate_keystrokes("left");
-        assert_eq!(nudges(cx, &harness), 0);
-        harness.update(cx, |harness, cx| {
-            harness.trigger = false;
-            cx.notify();
-        });
+    fn enter_closes_the_hint_and_keeps_the_values(cx: &mut TestAppContext) {
+        let (harness, cx) = open_and_leave(cx);
+        cx.simulate_keystrokes("enter");
         frame(cx);
-        cx.simulate_keystrokes("left");
-        assert_eq!(nudges(cx, &harness), 1);
+        assert!(!is_open(cx, &harness));
+        assert_eq!(
+            events(cx, &harness),
+            [Pinned::Opened, Pinned::Closed { revert: false }]
+        );
+        assert_eq!(nudge(cx, &harness), 1);
+    }
+
+    #[gpui_kit::test]
+    fn escape_closes_the_hint_and_reverts(cx: &mut TestAppContext) {
+        let (harness, cx) = open_and_leave(cx);
+        cx.simulate_keystrokes("escape");
+        frame(cx);
+        assert!(!is_open(cx, &harness));
+        assert_eq!(
+            events(cx, &harness),
+            [Pinned::Opened, Pinned::Closed { revert: true }]
+        );
+        assert_eq!(nudge(cx, &harness), 1);
     }
 
     /// A large button whose own hint opens partly over it.
@@ -326,11 +409,10 @@ mod tests {
         cx.simulate_resize(size(px(400.), px(300.)));
         let none = Modifiers::default();
         cx.simulate_mouse_move(point(px(15.), px(15.)), None, none);
-        cx.executor()
-            .advance_clock(std::time::Duration::from_secs(1));
+        cx.executor().advance_clock(Duration::from_secs(1));
         cx.run_until_parked();
-        // Still on the button, and inside the box of its hint.
-        let overlap = point(px(15. + 1. + MARGIN + 8.), px(15. + 1. + MARGIN + 8.));
+        // Still on the button, and inside the box its hint opens 13 pixels away.
+        let overlap = point(px(15. + 13. + 8.), px(15. + 13. + 8.));
         cx.simulate_mouse_move(overlap, None, none);
         cx.simulate_mouse_down(overlap, MouseButton::Left, none);
         assert_eq!(trigger.read_with(cx, |trigger, _| trigger.presses), 1);
