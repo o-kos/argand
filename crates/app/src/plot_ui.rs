@@ -54,7 +54,9 @@ impl Shell {
         window: &Window,
         cx: &gpui_kit::App,
     ) -> Option<argand_core::axis::TickScheme> {
-        let bounds = self.plot_view()?.read(cx).panel_bounds?;
+        let plot = self.plot_view()?.read(cx);
+        let bounds = plot.panel_bounds?;
+        let gutter = plot.gutter_floor;
         let height = panels::waveform_height(
             f32::from(
                 self.session
@@ -68,12 +70,18 @@ impl Shell {
         );
         let (dx, dy) = self.session.orientation.axes(px(0.), px(height));
         let panel = size(bounds.size.width - dx, bounds.size.height - dy);
-        axes::Frame::measure(
+        // Only the time scheme is measured afresh, so the plot keeps its painted width.
+        let held = axes::Held {
+            time: None,
+            frequency: self.frequency_scheme,
+            gutter,
+        };
+        axes::Frame::measure_view(
             panel,
             window.scale_factor(),
             self.extents()?,
             &axes::Labels::new(window),
-            None,
+            held,
         )?
         .time_scheme
     }
@@ -138,6 +146,11 @@ impl PlotView {
         let known_bounds = self.panel_bounds;
         let known = self.measured;
         let known_geometry = self.geometry;
+        let held = axes::Held {
+            time: time_scheme,
+            frequency: frequency_scheme,
+            gutter: self.gutter_floor,
+        };
         let view = cx.entity().downgrade();
         let guides = self.cursor_guides(extents, cx);
         let colors = axis_colors(cx, show_grid);
@@ -154,22 +167,17 @@ impl PlotView {
                 );
                 let (dx, dy) = orientation.axes(px(0.), px(height));
                 let spectrum_size = size(bounds.size.width - dx, bounds.size.height - dy);
-                let frame = axes::Frame::measure_view(
-                    spectrum_size,
-                    scale,
-                    extents,
-                    &labels,
-                    time_scheme,
-                    frequency_scheme,
-                )?;
+                let frame =
+                    axes::Frame::measure_view(spectrum_size, scale, extents, &labels, held)?;
                 let measured = oriented_device_size(frame.plot, scale, orientation);
                 let geometry =
                     plot_geometry(bounds, &frame, &labels, height, scale, scale_ui_visible);
                 if known != Some(measured)
                     || known_bounds != Some(bounds)
                     || known_geometry != Some(geometry)
+                    || frame.gutter > held.gutter
                 {
-                    defer_layout(view.clone(), bounds, measured, geometry, cx);
+                    defer_layout(view.clone(), bounds, measured, geometry, frame.gutter, cx);
                 }
                 Some((frame, labels, height))
             },
@@ -345,9 +353,11 @@ impl PlotView {
         bounds: Bounds<Pixels>,
         measured: PlotSize,
         geometry: PlotGeometry,
+        gutter: f32,
         cx: &mut Context<Self>,
     ) {
         let old = self.geometry;
+        self.gutter_floor = self.gutter_floor.max(gutter);
         self.panel_bounds = Some(bounds);
         self.geometry = Some(geometry);
         self.measured = Some(measured);
@@ -733,10 +743,13 @@ fn defer_layout(
     bounds: Bounds<Pixels>,
     measured: PlotSize,
     geometry: navigation_ui::PlotGeometry,
+    gutter: f32,
     cx: &mut gpui_kit::App,
 ) {
     cx.defer(move |cx| {
-        let _ = view.update(cx, |plot, cx| plot.layout(bounds, measured, geometry, cx));
+        let _ = view.update(cx, |plot, cx| {
+            plot.layout(bounds, measured, geometry, gutter, cx)
+        });
     });
 }
 

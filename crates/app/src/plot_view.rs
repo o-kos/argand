@@ -84,6 +84,8 @@ pub(super) struct PlotView {
     pub(super) geometry: Option<PlotGeometry>,
     pub(super) panel_bounds: Option<Bounds<Pixels>>,
     pub(super) measured: Option<PlotSize>,
+    /// The right ruler only widens while zooming, until an explicit reset.
+    pub(super) gutter_floor: f32,
     pub(super) badge_metrics: axes::BadgeMetrics,
     pub(super) open_menu: Option<WeakEntity<PopupMenu>>,
     pub(super) menu_dismiss: Option<Subscription>,
@@ -108,6 +110,7 @@ impl PlotView {
             geometry: None,
             panel_bounds: None,
             measured: None,
+            gutter_floor: 0.,
             badge_metrics: axes::BadgeMetrics::default(),
             open_menu: None,
             menu_dismiss: None,
@@ -149,8 +152,38 @@ impl PlotView {
         }
     }
 
+    /// Let the right ruler fit its current labels again.
+    pub(super) fn reset_gutter(&mut self, cx: &mut Context<Self>) {
+        self.gutter_floor = 0.;
+        cx.notify();
+    }
+
+    /// Send a view change, letting the right ruler refit when its own axis zooms out.
+    ///
+    /// Zooming in keeps the ruler from narrowing, and so do panning and the
+    /// other axis. Zooming out or fitting the ruler's own axis lets it fit its
+    /// new labels, which can still widen it when a format or unit grows.
+    pub(super) fn view_intent(&mut self, intent: PlotIntent, cx: &mut Context<Self>) {
+        let vertical = self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.extents.orientation.vertical());
+        let refit = match intent {
+            PlotIntent::Time(TimeIntent::Zoom { factor, .. }) => vertical && factor > 1.,
+            PlotIntent::Time(TimeIntent::Fit) => vertical,
+            PlotIntent::Frequency(FrequencyIntent::Zoom { factor, .. }) => !vertical && factor > 1.,
+            PlotIntent::Frequency(FrequencyIntent::Fit) => !vertical,
+            _ => false,
+        };
+        if refit {
+            self.gutter_floor = 0.;
+        }
+        cx.emit(intent);
+    }
+
     /// Forget the gestures and layout the other orientation cannot reuse.
     pub(super) fn reorient(&mut self, cx: &mut Context<Self>) {
+        self.gutter_floor = 0.;
         self.pan = None;
         self.frequency_pan = None;
         self.splitter_dragging = false;
@@ -160,11 +193,11 @@ impl PlotView {
     }
 
     fn time(&mut self, intent: TimeIntent, cx: &mut Context<Self>) {
-        cx.emit(PlotIntent::Time(intent));
+        self.view_intent(PlotIntent::Time(intent), cx);
     }
 
     fn frequency(&mut self, intent: FrequencyIntent, cx: &mut Context<Self>) {
-        cx.emit(PlotIntent::Frequency(intent));
+        self.view_intent(PlotIntent::Frequency(intent), cx);
     }
 
     /// The navigation keys, handled only while the plot itself has focus.
@@ -600,6 +633,57 @@ mod tests {
             press(cx, handle, key);
             assert_eq!(navigation(cx, handle), vec![expected], "{key}");
         }
+    }
+
+    #[gpui_kit::test]
+    fn zooming_out_the_right_axis_releases_the_held_gutter(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let floor = |cx: &mut TestAppContext| {
+            handle
+                .update(cx, |harness, _, cx| {
+                    harness.plot.as_ref().unwrap().read(cx).gutter_floor
+                })
+                .unwrap()
+        };
+        let hold = |cx: &mut TestAppContext| {
+            handle
+                .update(cx, |harness, _, cx| {
+                    harness
+                        .plot
+                        .as_ref()
+                        .unwrap()
+                        .update(cx, |plot, _| plot.gutter_floor = 500.)
+                })
+                .unwrap()
+        };
+        hold(cx);
+        for key in ["ctrl-0", "ctrl--", "ctrl-=", "ctrl-shift-=", "home", "up"] {
+            press(cx, handle, key);
+            assert_eq!(
+                floor(cx),
+                500.,
+                "{key} keeps the frequency ruler from narrowing"
+            );
+        }
+        press(cx, handle, "ctrl-shift--");
+        assert!(
+            floor(cx) < 500.,
+            "zooming frequency out lets its ruler refit"
+        );
+        hold(cx);
+        press(cx, handle, "ctrl-shift-0");
+        assert!(floor(cx) < 500., "fitting frequency lets its ruler refit");
+        hold(cx);
+        handle
+            .update(cx, |harness, _, cx| {
+                harness
+                    .plot
+                    .as_ref()
+                    .unwrap()
+                    .update(cx, |plot, cx| plot.reorient(cx))
+            })
+            .unwrap();
+        assert!(floor(cx) < 500., "a new orientation starts from its labels");
     }
 
     #[gpui_kit::test]

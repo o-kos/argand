@@ -639,6 +639,11 @@ impl Shell {
         self.session.time_ruler = mode;
         self.time_scheme = None;
         self.tick_pan = None;
+        if self.session.orientation.vertical()
+            && let Some(plot) = self.plot_entity()
+        {
+            plot.update(cx, |plot, cx| plot.reset_gutter(cx));
+        }
         self.save();
         cx.notify();
     }
@@ -683,7 +688,7 @@ impl plot_view::PlotView {
         self.pan = None;
         self.frequency_pan = None;
         let delta = event.delta.pixel_delta(px(40.));
-        cx.emit(
+        self.view_intent(
             match geometry.scroll(event.position, delta, event.modifiers) {
                 Scroll::FrequencyPan(fraction) => {
                     PlotIntent::Frequency(FrequencyIntent::Pan(fraction))
@@ -696,6 +701,7 @@ impl plot_view::PlotView {
                     PlotIntent::Time(TimeIntent::Zoom { factor, anchor })
                 }
             },
+            cx,
         );
         cx.stop_propagation();
     }

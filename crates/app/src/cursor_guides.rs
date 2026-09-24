@@ -3,6 +3,11 @@
 use super::*;
 use std::{cell::RefCell, rc::Rc};
 
+/// The badge's corner radius.
+const BADGE_RADIUS: f32 = 3.;
+/// The width of the paper-coloured ring around a badge.
+const BADGE_RING: f32 = 1.;
+
 pub struct CursorGuides {
     pub extents: Extents,
     pub metrics: BadgeMetrics,
@@ -85,11 +90,34 @@ impl CursorGuides {
             positions
         };
         window.with_content_mask(Some(gpui_kit::ContentMask { bounds: panel }), |window| {
-            paint_lines(panel.origin + pointer, panel.origin, positions, window);
+            // Rings first, so the guide lines run over them into the badge fill.
+            for rect in badges {
+                self.ring(rect, panel, window);
+            }
+            let colors = [self.paper, self.ink];
+            paint_lines(
+                panel.origin + pointer,
+                panel.origin,
+                positions,
+                colors,
+                window,
+            );
             for (text, rect) in [(&readout.time, badges[0]), (&readout.frequency, badges[1])] {
                 self.badge(text, rect, panel, labels, window, cx);
             }
         });
+    }
+
+    /// A one-pixel ring in the paper colour, so a badge keeps its edge over a picture of its own shade.
+    fn ring(&self, rect: Rect, panel: Bounds<Pixels>, window: &mut Window) {
+        let origin = panel.origin + point(px(rect.x - BADGE_RING), px(rect.y - BADGE_RING));
+        let size = size(
+            px(rect.width + 2. * BADGE_RING),
+            px(rect.height + 2. * BADGE_RING),
+        );
+        window.paint_quad(
+            fill(Bounds::new(origin, size), self.paper).corner_radii(px(BADGE_RADIUS + BADGE_RING)),
+        );
     }
 
     fn badge(
@@ -108,7 +136,7 @@ impl CursorGuides {
                 Bounds::new(origin, size(px(rect.width), px(rect.height))),
                 self.ink,
             )
-            .corner_radii(px(3.)),
+            .corner_radii(px(BADGE_RADIUS)),
         );
         // Centred like the ruler labels, so an unclamped badge shares their text row.
         let top = labels.line_top(rect.height / 2., &shaped);
@@ -141,19 +169,21 @@ fn measure_badges(plot: Rect, extents: Extents, scale: f32, labels: &dyn LabelMe
     widths
 }
 
+/// Draw both guide lines as a paper-coloured stroke around an ink core, matching the badges.
 fn paint_lines(
     pointer: Point<Pixels>,
     origin: Point<Pixels>,
     badges: [Rect; 2],
+    [paper, ink]: [Hsla; 2],
     window: &mut Window,
 ) {
     let scale = window.scale_factor();
     let x = px((f32::from(pointer.x) * scale).floor() / scale);
     let y = px((f32::from(pointer.y) * scale).floor() / scale);
     // Overlap the rounded backgrounds so their corners cannot expose a gap.
-    let bottom = origin.y + px(badges[0].y + 3.);
-    let right = origin.x + px(badges[1].x + 3.);
-    for (width, color) in [(3., gpui_kit::white()), (1., gpui_kit::black())] {
+    let bottom = origin.y + px(badges[0].y + BADGE_RADIUS);
+    let right = origin.x + px(badges[1].x + BADGE_RADIUS);
+    for (width, color) in [(3., paper), (1., ink)] {
         let offset = px((width - 1.) / 2.);
         for bounds in [
             Bounds::new(
@@ -173,9 +203,10 @@ fn paint_lines(
 /// The bottom and right badges, each centred where its ruler centres a label.
 ///
 /// The bottom badge sits on the bottom ruler's text row and the right badge on
-/// the guide line, as labels sit on their ticks. The right badge ends at the
-/// panel edge, the outer margin beyond the ruler's labels. Clamping moves a
-/// badge only where the panel has no room for the aligned position.
+/// the guide line, as labels sit on their ticks. The right badge stands as far
+/// from the panel's right edge as the bottom badge from its bottom edge.
+/// Clamping moves a badge only where the panel has no room for the aligned
+/// position.
 fn badge_rects(
     frame: &Frame,
     panel: Size<Pixels>,
@@ -186,20 +217,25 @@ fn badge_rects(
 ) -> [Rect; 2] {
     let height = ink + 2. * BADGE_PAD;
     let snap = |value: Pixels| (f32::from(value) * scale).floor() / scale;
-    [
-        badge_bounds(
-            point(px(snap(pointer.x) + 0.5), px(frame.time_row - height / 2.)),
-            panel,
-            widths[0],
-            height,
+    let bottom = badge_bounds(
+        point(px(snap(pointer.x) + 0.5), px(frame.time_row - height / 2.)),
+        panel,
+        widths[0],
+        height,
+    );
+    // The right badge keeps the same margin to the panel edge as the bottom one.
+    let margin = (f32::from(panel.height) - bottom.bottom()).max(0.);
+    let right_edge = f32::from(panel.width) - margin;
+    let right = badge_bounds(
+        point(
+            px(right_edge - widths[1] / 2.),
+            px(snap(pointer.y) + 0.5 - height / 2.),
         ),
-        badge_bounds(
-            point(panel.width, px(snap(pointer.y) + 0.5 - height / 2.)),
-            panel,
-            widths[1],
-            height,
-        ),
-    ]
+        panel,
+        widths[1],
+        height,
+    );
+    [bottom, right]
 }
 
 fn badge_bounds(anchor: Point<Pixels>, panel: Size<Pixels>, width: f32, height: f32) -> Rect {
@@ -627,7 +663,12 @@ mod tests {
             let row = bottom.y + bottom.height / 2.;
             assert!((row - frame.time_row).abs() < 1e-4, "text row at {scale}");
             assert!(bottom.y >= frame.plot.bottom() + 1., "ruler line visible");
-            assert_eq!(right.right(), 800., "one outer margin past the labels");
+            let margin = 500. - bottom.bottom();
+            assert!(
+                (800. - right.right() - margin).abs() < 1e-4,
+                "equal margins to both edges"
+            );
+            assert!(margin >= BOTTOM_LABEL_FOOT - BADGE_PAD - 1e-4);
         }
         let pointer = at(0.4, 0.6);
         let [bottom, right] = badge_rects(&frame, panel, pointer, widths, ink, scale);
@@ -635,15 +676,17 @@ mod tests {
         let centre_y = right.y + right.height / 2.;
         assert!((centre_x - snap(f32::from(pointer.x))).abs() < 1e-4);
         assert!((centre_y - snap(f32::from(pointer.y))).abs() < 1e-4);
-        if !extents.orientation.vertical() {
-            let above = bottom.y - (frame.plot.bottom() + 1.);
-            let below = f32::from(panel.height) - bottom.bottom();
-            assert!(
-                above >= TIME_LABEL_DROP - BADGE_PAD - 1e-4,
-                "clears the ruler line"
-            );
-            assert!((above - below).abs() < 1e-4, "equal room above and below");
-        }
+        let above = bottom.y - (frame.plot.bottom() + 1.);
+        let below = f32::from(panel.height) - bottom.bottom();
+        assert!(
+            above >= BOTTOM_LABEL_DROP - BADGE_PAD - 1e-4,
+            "clears the ruler line"
+        );
+        let extra = BOTTOM_LABEL_FOOT - BOTTOM_LABEL_DROP;
+        assert!(
+            (below - above - extra).abs() < 1e-4,
+            "the foot adds room below"
+        );
     }
 
     #[test]

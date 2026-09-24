@@ -29,14 +29,16 @@ const LABEL_PAD: f32 = 9.0;
 const OUTER_PAD: f32 = 4.0;
 /// How far a tick's mark reaches out of the plot.
 const TICK_LEN: f32 = 6.0;
-/// Clear space from a horizontal time tick to its label.
-const TIME_LABEL_GAP: f32 = 4.0;
-/// Least clear space from the horizontal ruler line to the top of its labels' ink.
-const TIME_LABEL_DROP: f32 = 6.0;
+/// Clear space from a bottom-ruler tick to its label.
+const BOTTOM_LABEL_GAP: f32 = 4.0;
+/// Least clear space from the bottom ruler line to the top of its labels' ink.
+const BOTTOM_LABEL_DROP: f32 = 6.0;
+/// Least clear space below the bottom labels' ink, more than above so they do not crowd the status bar.
+const BOTTOM_LABEL_FOOT: f32 = 8.0;
 /// Room between an Alt badge's edges and the ink of its digits, on every side.
 const BADGE_PAD: f32 = 3.0;
-/// Where a horizontal time label starts, past its one-pixel tick and the gap.
-const TIME_LABEL_START: f32 = 1.0 + TIME_LABEL_GAP;
+/// Where a bottom-ruler label starts, past its one-pixel tick and the gap.
+const BOTTOM_LABEL_START: f32 = 1.0 + BOTTOM_LABEL_GAP;
 /// The size the labels are drawn at.
 ///
 /// A shade under the window's smallest text: an axis is read by glancing at
@@ -141,6 +143,17 @@ impl UnitHint {
     }
 }
 
+/// What a plot keeps from its previous layouts while the view changes.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Held {
+    /// Tick spacing kept for the time axis while panning.
+    pub time: Option<axis::TickScheme>,
+    /// Tick spacing kept for the frequency axis while panning.
+    pub frequency: Option<axis::TickScheme>,
+    /// The right ruler never narrows below this while zooming.
+    pub gutter: f32,
+}
+
 /// Where the picture goes inside a panel, and what is drawn around it.
 pub struct Frame {
     pub orientation: crate::orientation::Mode,
@@ -153,6 +166,8 @@ pub struct Frame {
     /// The unit the frequency labels are in, named once above them instead of
     /// on every tick.
     pub caption: Option<&'static str>,
+    /// The right ruler's width from the plot edge, without the outer margin.
+    pub gutter: f32,
     /// Where the ink of a time label is centred, under the plot.
     time_row: f32,
     time_caption: &'static str,
@@ -226,6 +241,7 @@ impl Frame {
     /// `None` when the panel is too small to hold a plot at all, which is the
     /// answer for a window dragged down to nothing: there is no rectangle to
     /// draw into and nothing to ask a transform for.
+    #[cfg(test)]
     pub fn measure(
         panel: Size<Pixels>,
         scale: f32,
@@ -233,7 +249,11 @@ impl Frame {
         measure: &dyn LabelMeasure,
         held: Option<axis::TickScheme>,
     ) -> Option<Self> {
-        Self::measure_view(panel, scale, extents, measure, held, None)
+        let held = Held {
+            time: held,
+            ..Held::default()
+        };
+        Self::measure_view(panel, scale, extents, measure, held)
     }
 
     pub fn measure_view(
@@ -241,8 +261,7 @@ impl Frame {
         scale: f32,
         extents: Extents,
         measure: &dyn LabelMeasure,
-        held: Option<axis::TickScheme>,
-        held_frequency: Option<axis::TickScheme>,
+        held: Held,
     ) -> Option<Self> {
         let orientation = extents.orientation;
         let vertical = orientation.vertical();
@@ -250,15 +269,15 @@ impl Frame {
         let (f0, f1) = extents.hertz;
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
         let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
-        let foot = bottom_band(vertical, row_height, measure);
+        let foot = bottom_band(measure);
         let scale = if scale > 0. { scale } else { 1. };
         let ceil = |value: f32| (value * scale).ceil() / scale;
         let floor = |value: f32| (value * scale).floor() / scale;
         let height = floor(f32::from(panel.height) - foot);
         let (right_kind, right_min, right_max, right_held) = if vertical {
-            (extents.time.mode.kind(), t0, t1, held)
+            (extents.time.mode.kind(), t0, t1, held.time)
         } else {
-            (AxisKind::Frequency, f0, f1, held_frequency)
+            (AxisKind::Frequency, f0, f1, held.frequency)
         };
         let right_labels = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down);
         let right_labels = if vertical {
@@ -266,7 +285,8 @@ impl Frame {
         } else {
             right_labels
         };
-        let (lead, trail) = right_label_room(vertical, height, row_height, measure);
+        let bottom_center = bottom_row_center(panel, height);
+        let (lead, trail) = right_label_room(vertical, height, bottom_center, row_height, measure);
         let right_ticks = axis::tick_layout(
             right_kind,
             Axis {
@@ -279,7 +299,7 @@ impl Frame {
             &right_labels,
             right_held,
         );
-        let gutter = ruler_gutter(extents, &right_ticks.ticks, caption, measure);
+        let gutter = ruler_gutter(&right_ticks.ticks, caption, measure).max(held.gutter);
         let left = if vertical { 0. } else { ceil(OUTER_PAD) };
         let right = floor(f32::from(panel.width) - OUTER_PAD - gutter);
         let plot = Rect {
@@ -292,16 +312,13 @@ impl Frame {
             return None;
         }
         let (bottom_kind, bottom_min, bottom_max, bottom_held) = if vertical {
-            (AxisKind::Frequency, f0, f1, held_frequency)
+            (AxisKind::Frequency, f0, f1, held.frequency)
         } else {
-            (extents.time.mode.kind(), t0, t1, held)
+            (extents.time.mode.kind(), t0, t1, held.time)
         };
-        let across = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across).keep_edge_marks();
-        let across = if vertical {
-            across
-        } else {
-            across.after_tick(TIME_LABEL_START)
-        };
+        let across = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across)
+            .keep_edge_marks()
+            .after_tick(BOTTOM_LABEL_START);
         let bottom_ticks = axis::tick_layout(
             bottom_kind,
             Axis {
@@ -319,7 +336,7 @@ impl Frame {
         } else {
             (bottom_ticks, right_ticks)
         };
-        let bottom_row = plot.bottom() + bottom_row_center(vertical, row_height, panel, height);
+        let bottom_row = plot.bottom() + bottom_center;
         Some(Self {
             orientation,
             plot,
@@ -328,6 +345,7 @@ impl Frame {
             frequency: frequency.ticks,
             frequency_scheme: frequency.scheme,
             caption,
+            gutter,
             time_caption: extents.time.mode.caption(),
             time_row: bottom_row,
             time_caption_row: if vertical {
@@ -346,32 +364,25 @@ impl Frame {
     }
 }
 
-/// The height reserved below the plot for its bottom ruler.
+/// The height reserved below the plot for its bottom ruler, in either orientation.
 ///
-/// A horizontal time ruler holds its label ink `TIME_LABEL_DROP` below the
-/// one-pixel ruler line and as much again below it, so an Alt badge around
-/// that ink has equal room above and below.
-fn bottom_band(vertical: bool, row_height: f32, measure: &dyn LabelMeasure) -> f32 {
-    if vertical {
-        OUTER_PAD + row_height + LABEL_PAD
-    } else {
-        1. + 2. * TIME_LABEL_DROP + measure.digit_height(LABEL_SIZE)
-    }
+/// The ruler holds its label ink `BOTTOM_LABEL_DROP` below the one-pixel ruler
+/// line and `BOTTOM_LABEL_FOOT` above the band's bottom edge. The larger foot
+/// keeps the labels optically clear of the status bar below them.
+fn bottom_band(measure: &dyn LabelMeasure) -> f32 {
+    1. + BOTTOM_LABEL_DROP + measure.digit_height(LABEL_SIZE) + BOTTOM_LABEL_FOOT
 }
 
 /// How far below the plot the bottom label row is centred.
-fn bottom_row_center(vertical: bool, row_height: f32, panel: Size<Pixels>, height: f32) -> f32 {
-    if vertical {
-        LABEL_PAD + row_height / 2.
-    } else {
-        // Centred in the band below the ruler line, which rounding may leave a little taller.
-        1. + (f32::from(panel.height) - height - 1.) / 2.
-    }
+fn bottom_row_center(panel: Size<Pixels>, height: f32) -> f32 {
+    // Rounding may leave the band a little taller, and both gaps share the surplus.
+    1. + (f32::from(panel.height) - height - 1. - (BOTTOM_LABEL_FOOT - BOTTOM_LABEL_DROP)) / 2.
 }
 
 fn right_label_room(
     vertical: bool,
     height: f32,
+    bottom_center: f32,
     row_height: f32,
     measure: &dyn LabelMeasure,
 ) -> (i64, i64) {
@@ -381,30 +392,18 @@ fn right_label_room(
     let half_ink = measure.digit_height(LABEL_SIZE) / 2.;
     // Match the painted ink and the numeric labels' half-pixel center offset.
     let first = row_height / 2. + half_ink + OUTER_PAD - 0.5;
-    let last = height + LABEL_PAD + row_height / 2. - half_ink - OUTER_PAD - 0.5;
+    let last = height + bottom_center - half_ink - OUTER_PAD - 0.5;
     (
         -(first.ceil() as i64),
         last.floor() as i64 - (height as i64 - 1),
     )
 }
 
-fn ruler_gutter(
-    extents: Extents,
-    right_ticks: &[Tick],
-    caption: Option<&str>,
-    measure: &dyn LabelMeasure,
-) -> f32 {
-    let candidates = if extents.orientation.vertical() {
-        right_ticks.iter().map(|tick| tick.label.clone()).collect()
-    } else {
-        axis::widest_labels(AxisKind::Frequency, extents.hertz.0, extents.hertz.1)
-            .into_iter()
-            .map(|label| measure.localize(&label, AxisKind::Frequency))
-            .collect::<Vec<_>>()
-    };
-    candidates
+/// Room for the right ruler's placed labels and every unit caption it may show.
+fn ruler_gutter(right_ticks: &[Tick], caption: Option<&str>, measure: &dyn LabelMeasure) -> f32 {
+    right_ticks
         .iter()
-        .map(String::as_str)
+        .map(|tick| tick.label.as_str())
         .chain(caption)
         .chain(["hms", "s", "#"])
         .map(|label| measure.width(label, LABEL_SIZE))
@@ -611,9 +610,9 @@ pub fn paint(
         ));
     };
 
-    for (ticks, bottom, increasing_down, after_tick) in [
-        (&frame.time, !frame.orientation.vertical(), true, true),
-        (&frame.frequency, frame.orientation.vertical(), false, false),
+    for (ticks, bottom, increasing_down) in [
+        (&frame.time, !frame.orientation.vertical(), true),
+        (&frame.frequency, frame.orientation.vertical(), false),
     ] {
         for tick in ticks {
             let (x, y) = if bottom {
@@ -647,14 +646,7 @@ pub fn paint(
             }
             let shaped = labels.shape(&tick.label, colors.label);
             let (left, row) = if bottom {
-                (
-                    if after_tick {
-                        x + TIME_LABEL_START
-                    } else {
-                        x - f32::from(shaped.width) / 2.
-                    },
-                    frame.time_row,
-                )
+                (x + BOTTOM_LABEL_START, frame.time_row)
             } else {
                 (x + LABEL_PAD, y + 0.5)
             };
