@@ -1318,6 +1318,57 @@ mod tests {
     }
 
     #[test]
+    fn vertical_zoom_pairs_keep_the_arrow_cursor_and_do_not_start_dragging() {
+        // Time pair along the right ruler, frequency pair along the bottom one.
+        let geometry = PlotGeometry {
+            orientation: crate::orientation::Mode::Vertical,
+            spectrum: Bounds::new(point(px(50.), px(10.)), size(px(100.), px(200.))),
+            minimap: Bounds::new(point(px(10.), px(10.)), size(px(30.), px(200.))),
+            time_ruler: Bounds::new(point(px(150.), px(10.)), size(px(30.), px(200.))),
+            frequency_ruler: Bounds::new(point(px(50.), px(210.)), size(px(100.), px(20.))),
+            navigation: Bounds::new(point(px(10.), px(10.)), size(px(170.), px(200.))),
+            zoom_zones: [
+                Some(axes::Rect {
+                    x: 120.,
+                    y: 18.,
+                    width: 22.,
+                    height: 45.,
+                }),
+                Some(axes::Rect {
+                    x: 58.,
+                    y: 180.,
+                    width: 45.,
+                    height: 22.,
+                }),
+            ],
+            ..geometry()
+        };
+        let viewport = Some((
+            View {
+                start: 200,
+                len: 300,
+            },
+            1000,
+        ));
+        for position in [point(px(130.), px(55.)), point(px(95.), px(190.))] {
+            assert!(geometry.over_scale_buttons(Some(position)));
+            assert_eq!(
+                geometry.cursor(Some(position), false, viewport, true),
+                gpui_kit::CursorStyle::Arrow
+            );
+            assert_eq!(geometry.drag_axes(position), (false, false));
+        }
+        for position in [point(px(130.), px(80.)), point(px(110.), px(190.))] {
+            assert!(!geometry.over_scale_buttons(Some(position)));
+            assert_eq!(
+                geometry.cursor(Some(position), false, viewport, true),
+                gpui_kit::CursorStyle::Crosshair
+            );
+            assert_eq!(geometry.drag_axes(position), (true, true));
+        }
+    }
+
+    #[test]
     fn hidden_scale_controls_leave_the_spectrum_navigation_alone() {
         // Hidden pairs leave no zones behind, so the corner area they would
         // cover pans and drags like the rest of the picture.

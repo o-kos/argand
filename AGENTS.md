@@ -495,10 +495,12 @@ commands remain available through keys and gestures rather than menu rows.
 The menu anchor wraps the application button (`toolbar` in `app_menu_ui.rs`),
 not its padded interior, so the dropdown drops from the button's outer edge
 and never covers it.
-`plot_ui.rs` draws translucent `[+|-]` zoom pairs over the spectrogram itself:
-the time pair in its bottom-left corner, the frequency pair in its top-right
-one, identically in both orientations, eight logical pixels clear of the
-picture's edges (`corner_zones`). Each pair is one framed container with
+`plot_ui.rs` draws translucent `[+|-]` zoom pairs over the spectrogram itself,
+eight logical pixels clear of the picture's edges (`corner_zones`). Each pair
+runs along the ruler of the axis it zooms (#150): a row in the bottom-left
+corner beside the bottom ruler, a column in the top-right corner beside the
+right ruler. Horizontal mode puts time bottom-left and frequency top-right;
+vertical mode swaps them. Each pair is one framed container with
 rounded corners (22-pixel squares, one-pixel divider) dispatching the
 registered zoom actions with shortcut tooltips. View → Show scale controls
 (`ToggleScaleUi`, Ctrl+U, session version 10, default on) hides or shows
