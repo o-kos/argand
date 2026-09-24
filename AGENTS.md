@@ -499,11 +499,10 @@ hover-based, so any blocking layer above it wins.
   the pointer and can cover the trigger. An interactive hint
   (`.hoverable_tooltip`, `hints::interactive`, today the analysis hint) stays
   open when the pointer enters it. It draws the standard gpui-component
-  `Tooltip` without its margin inside a `block_mouse_except_scroll()` element
-  with an arrow cursor and restores the 12-pixel margin outside it. Its visible
-  box, border included, takes the pointer and clicks from the plot, while the
-  transparent margin blocks nothing and the wheel still reaches the plot (owner
-  decision, #129). Add hints through these builders, never a bare
+  `Tooltip` without its margin inside an `occlude()` element with an arrow
+  cursor and restores the 12-pixel margin outside it. Its visible box, border
+  included, takes the pointer, clicks and wheel from the plot, like any
+  interactive surface, while the transparent margin blocks nothing (#129). Add hints through these builders, never a bare
   `Tooltip::build`, and give any new hoverable hint `hints::interactive`.
 - Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
   clicks and drags.

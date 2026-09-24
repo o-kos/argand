@@ -54,8 +54,7 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
   it, so the plot keeps receiving moves and computing its crosshair and guides.
 - `HitboxBehavior::BlockMouseExceptScroll` (`block_mouse_except_scroll()`)
   makes every hitbox behind it not hovered while still letting them handle
-  scroll. `occlude()` blocks scroll too, which the parent plan and #122 rule out
-  for hints.
+  scroll. `occlude()` blocks scroll too.
 - `div().on_mouse_move`, `on_mouse_down` and `on_hover` fire only while the
   element's hitbox is hovered. PlotView's `time-plot` element already clears its
   pointer on `on_hover(false)` and sets it again on the next move, so a blocked
@@ -89,8 +88,7 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
 - An interactive hint (`.hoverable_tooltip`, today only the analysis hint with
   its two Buttons) stays open when the pointer moves into it, over the plot. One
   helper, `hints::interactive`, renders the standard Tooltip with its margin
-  removed, wraps it in an element with `block_mouse_except_scroll()` and an
-  arrow cursor, and puts the 12-pixel margin back outside that element. The
+  removed, wraps it in an element with `occlude()` and an arrow cursor, and puts the 12-pixel margin back outside that element. The
   blocking area is therefore exactly the visible box, border included, and the
   transparent margin blocks nothing.
 - All four builders return their finished view through `hints.rs`
@@ -99,9 +97,15 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
   `AGENTS.md` states.
 - Owner decision (2026-09-24): a hint takes the clicks inside its box. A click in
   the analysis hint no longer starts a plot pan or drag under it, and its Buttons
-  receive their clicks alone. The wheel still passes through to the plot. This
-  refines #122's "clicks and wheel gestures are unaffected", which was written
-  before the analysis hint gained buttons.
+  receive their clicks alone.
+- Owner correction after the native check (2026-09-24): the wheel over the
+  analysis hint must not move the plot either. The first implementation used
+  `block_mouse_except_scroll()` and let the wheel through. The analysis hint is
+  an interactive surface, and the parent plan's contract gives such surfaces all
+  pointer input, so it now uses `occlude()`. Both refine #122's "clicks and
+  wheel gestures are unaffected", which was written before the analysis hint
+  gained buttons. Passive hints are unaffected, since they never take the pointer
+  from their trigger.
 - #122's cursor criterion holds for passive hints through their triggers. The
   only triggers on the spectrogram are the zoom halves, which already show an
   arrow and suppress the guides. Unit captions sit on the rulers, where no
@@ -156,8 +160,8 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
 
 ## Rejected alternatives
 
-- `occlude()` on hints: it would also swallow wheel gestures over a hint,
-  contrary to the parent plan and #122.
+- `block_mouse_except_scroll()` on the interactive hint: tried first, and the
+  owner rejected the wheel reaching the plot through the hint.
 - A plot-side list of open hint rectangles: explicitly rejected by #122 and the
   parent plan, and it would break for every hint added later.
 - Blocking only the hint's inner content: the Tooltip's padding and border
@@ -173,7 +177,7 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
 
 - [x] Inventory every overlay entry point (see "Inventory" below).
 - [x] Prove the hint helper in a headless test: a hint over a plot-like hitbox
-      makes it not hovered, takes clicks, passes wheel and shows an arrow; its
+      makes it not hovered, takes clicks and wheel and shows an arrow; its
       margin blocks nothing. A plain tooltip, kept as a control test, lets both
       the pointer and the click through.
 - [x] Choose the drag-tracker mechanism for drags crossing a hint and record it here.
@@ -188,8 +192,8 @@ Verified against the locked `gpui-pre` 0.3.6, `gpui-component` 0.6.6 and
 - [ ] Keep hint sizes, placement, typography and hoverable behaviour unchanged
       (native check).
 - [x] Tests: the plot's pointer, and with it the readout and guides, clears
-      over a hint and returns on the first move back; wheel over a hint still
-      pans the plot; a click on a hint starts no plot gesture; a drag keeps
+      over a hint and returns on the first move back; wheel and clicks over a
+      hint do not reach the plot; a drag keeps
       following the pointer over a hint. The arrow cursor is not observable in
       the headless platform and is a native check.
 - [ ] Native: the analysis hint's Buttons act once. It lives in Shell, which a

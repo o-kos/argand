@@ -13,7 +13,7 @@ promise applies to.
 
 ### Fixed
 
-- The analysis hint, which stays open when the pointer moves into it, now shows an ordinary arrow over the spectrogram and hides the cursor readout and Alt guides beneath it. Clicks inside it no longer start a pan under it; the mouse wheel still scrolls the plot.
+- The analysis hint, which stays open when the pointer moves into it, now shows an ordinary arrow over the spectrogram and hides the cursor readout and Alt guides beneath it. Clicks and the mouse wheel inside it no longer pan or zoom the plot under it.
 
 - Opening a menu, the analysis settings or the file chooser, or switching to another window, now ends a drag in progress, and a drag keeps following the pointer across a hint.
 

@@ -5,9 +5,9 @@
 //! keeps the pointer and its clicks. An interactive hint (`.hoverable_tooltip`)
 //! stays open when the pointer moves into it, and then owns its box. Whatever
 //! lies under it -- the plot above all -- stops seeing the pointer there. It is
-//! not hovered, gets no clicks and sets no cursor, while wheel gestures still
-//! reach it. The plot learns it is covered from its own hitbox, so no surface
-//! needs to know which hints are open.
+//! not hovered and gets no clicks, wheel gestures or cursor. The plot learns it
+//! is covered from its own hitbox, so no surface needs to know which hints are
+//! open.
 
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
@@ -45,7 +45,7 @@ impl Render for Surface {
         // Only the box blocks the pointer, the margin around it stays transparent.
         div().p(gpui_kit::px(MARGIN)).child(
             div()
-                .block_mouse_except_scroll()
+                .occlude()
                 .cursor(CursorStyle::Arrow)
                 .child(self.tooltip.clone()),
         )
@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn a_hint_box_takes_the_pointer_and_clicks_but_not_the_wheel(cx: &mut TestAppContext) {
+    fn a_hint_box_takes_the_pointer_clicks_and_wheel(cx: &mut TestAppContext) {
         let (harness, cx, inside) = open(cx, false);
         let none = Modifiers::default();
         let (hovered, moves, ..) = state(cx, &harness);
@@ -179,7 +179,7 @@ mod tests {
             delta: ScrollDelta::Pixels(point(px(0.), px(10.))),
             ..Default::default()
         });
-        assert_eq!(state(cx, &harness).3, 1, "the wheel still reaches the plot");
+        assert_eq!(state(cx, &harness).3, 0, "the box takes the wheel");
         let margin = point(px(15. + 1. + MARGIN / 2.), inside.y);
         cx.simulate_mouse_move(margin, None, none);
         let (hovered, after, ..) = state(cx, &harness);
