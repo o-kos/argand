@@ -454,9 +454,10 @@ time-axis direction, while its tooltip describes the next click.
 View contains grid, scale controls and orientation toggles, Fit time, Fit
 frequency and Time scale format. When View → Show scale controls is on (default),
 the spectrogram carries a translucent `[+|-]` pair in its bottom-left and
-top-right corners, held eight logical pixels clear of the picture: the
-bottom-left pair zooms time, the top-right pair zooms frequency, in both
-orientations. Each pair has rounded corners. Both dispatch the
+top-right corners, held eight logical pixels clear of the picture. Each pair
+sits beside the ruler of the axis it zooms: in Horizontal mode the bottom-left
+pair zooms time and the top-right pair frequency, in Vertical mode the other
+way round. Each pair has rounded corners. Both dispatch the
 registered zoom actions, show the corresponding keyboard shortcut on hover, and
 disappear on small spectrograms.
 
