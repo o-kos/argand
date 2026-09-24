@@ -36,6 +36,8 @@ promise applies to.
 
 ### Changed
 
+- Outline the Alt coordinate badges with a thin ring in the background colour, so a badge over a bright part of the spectrogram keeps its full size.
+
 - Place vertical-orientation frequency labels beside their ticks like the horizontal time ruler. Both bottom rulers leave a little more room below their labels than above, so the labels no longer crowd the status bar.
 
 - Size the right-hand ruler to its visible labels. Zooming in or panning never narrows it. Zooming out or fitting the axis shown on the right lets it fit its labels again, and so do opening a file, switching orientation, and changing the time format while time is on the right.

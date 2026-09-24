@@ -103,6 +103,17 @@ captures at 1.25× before the change. The Alt badge is no longer equidistant
 (3 above, 5 below). The owner accepted that: the badge is transient and belongs
 to the ruler line.
 
+### Badge ring, added during owner review
+
+The owner saw the right badge as about 16 px tall against 18 for the bottom one.
+Screenshots showed both at 18 px, with the text in the same rows. The right badge
+lay over the bright spectrogram, and its anti-aliased white edge merged into the
+light background. Each badge now gets a one-pixel ring in the paper colour
+(`BADGE_RING`), painted before the guide lines, which then run over it into the
+fill. The ring is invisible on the dark ruler and defines the edge on bright
+pictures. Size, text row and the 6/8 geometry are unchanged. This was checked on
+a 1.25× capture.
+
 ## Rejected alternatives
 
 - Fixed budget with shared-prefix or offset labels: not obvious to read (owner).
@@ -127,6 +138,8 @@ to the ruler line.
       time ruler, and test both orientations and the vertical time clearance.
 - [x] Give the bottom labels an 8-pixel foot (6 above), tested in both
       orientations and for the badge.
+- [x] Ring the Alt badges in the paper colour so they keep their edge over bright
+      pictures.
 - [ ] Complete validation and move this plan to `docs/plans/completed/`.
 
 ## Validation

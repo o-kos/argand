@@ -3,6 +3,11 @@
 use super::*;
 use std::{cell::RefCell, rc::Rc};
 
+/// The badge's corner radius.
+const BADGE_RADIUS: f32 = 3.;
+/// The width of the paper-coloured ring around a badge.
+const BADGE_RING: f32 = 1.;
+
 pub struct CursorGuides {
     pub extents: Extents,
     pub metrics: BadgeMetrics,
@@ -85,11 +90,27 @@ impl CursorGuides {
             positions
         };
         window.with_content_mask(Some(gpui_kit::ContentMask { bounds: panel }), |window| {
+            // Rings first, so the guide lines run over them into the badge fill.
+            for rect in badges {
+                self.ring(rect, panel, window);
+            }
             paint_lines(panel.origin + pointer, panel.origin, positions, window);
             for (text, rect) in [(&readout.time, badges[0]), (&readout.frequency, badges[1])] {
                 self.badge(text, rect, panel, labels, window, cx);
             }
         });
+    }
+
+    /// A one-pixel ring in the paper colour, so a badge keeps its edge over a picture of its own shade.
+    fn ring(&self, rect: Rect, panel: Bounds<Pixels>, window: &mut Window) {
+        let origin = panel.origin + point(px(rect.x - BADGE_RING), px(rect.y - BADGE_RING));
+        let size = size(
+            px(rect.width + 2. * BADGE_RING),
+            px(rect.height + 2. * BADGE_RING),
+        );
+        window.paint_quad(
+            fill(Bounds::new(origin, size), self.paper).corner_radii(px(BADGE_RADIUS + BADGE_RING)),
+        );
     }
 
     fn badge(
@@ -108,7 +129,7 @@ impl CursorGuides {
                 Bounds::new(origin, size(px(rect.width), px(rect.height))),
                 self.ink,
             )
-            .corner_radii(px(3.)),
+            .corner_radii(px(BADGE_RADIUS)),
         );
         // Centred like the ruler labels, so an unclamped badge shares their text row.
         let top = labels.line_top(rect.height / 2., &shaped);
