@@ -584,9 +584,9 @@ PopupMenu. Toolbar buttons share the grid and orientation actions and persistenc
 Orientation is a two-segment control in one frame whose selected segment is the
 mode in force and whose tooltip names its own mode, and the segments and the grid
 toggle appear only while a document is shown (#130). The segments carry the
-Lucide `panel-top` and `panel-left` artwork, beside `grid.svg` in
-`crates/app/assets/icons/`. `assets.rs` adds embedded
-application artwork to the toolkit icons.
+Lucide `panel-top` and `panel-left` artwork, which the toolkit's default bundle
+serves for the second and `assets.rs` embeds for the first with `icon_assets!`.
+`assets.rs` adds embedded application artwork to the toolkit icons.
 Title-bar content centers the shrinking filename region on the full window with
 symmetric margins that include the toolbar and native controls;
 interactive controls consume drag and double-click gestures.

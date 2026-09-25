@@ -219,8 +219,9 @@ Decisions, taken with the owner on an interactive colour preview:
   one-pixel divider, both in `foreground.opacity(0.24)` (the theme `border` is almost
   invisible on the title bar). Icons are Lucide `panel-top` (horizontal: the minimap
   strip on top) and `panel-left` (vertical: the strip on the left), taken from the
-  gpui-kit asset catalog already served by `assets.rs`. Retire `horizontal.svg` and
-  `vertical.svg` if nothing else uses them.
+  gpui-kit asset catalog, whose default bundle serves `panel-left` and
+  `icon_assets!` in `assets.rs` embeds `panel-top` alone. Retire `horizontal.svg`
+  and `vertical.svg` if nothing else uses them.
 - **On state.** Grid on and the selected segment use accent 0.30 background with an
   accent-coloured glyph. A Grid that is on still reacts, with 0.40 under the pointer
   and 0.52 while pressed. Off controls keep hover 0.32, pressed 0.44 and the glyph
@@ -274,8 +275,9 @@ frame on the group with a painted divider, because a `Button` border takes the
 colour of the states its own variant passes through, and the segment icons are the
 Lucide panel strips. The on state is accent 0.30 with 0.40 and 0.52 under the
 pointer, and the status controls follow the pointer through paint-time hover. The
-icons are app assets beside `grid.svg`, because the toolkit's default bundle has
-no `panel-top.svg` and its complete catalog is 7.3 MB of SVG source.
+segment icons come from the toolkit: `panel-left` is in the default bundle and
+`assets.rs` embeds `panel-top` alone with `icon_assets!`, so no Lucide artwork is
+vendored and the complete catalog is not linked.
 
 ## Validation
 
