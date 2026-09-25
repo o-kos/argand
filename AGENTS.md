@@ -512,7 +512,10 @@ hover-based, so any blocking layer above it wins.
   key context). Values changed from
   it (Ctrl+R, its recommendation button) preview live. `PinnedHint` emits
   `Pinned::Opened` / `Pinned::Closed { revert }`; Shell interrupts the plot on
-  opening and restores `hint_opening` on a reverting close.
+  opening and restores `hint_opening` on a reverting close. While the settings
+  window is open the hint is disabled (`PinnedHint::set_enabled`): the trigger
+  renders without its popover, so neither hover nor a right click opens a second
+  surface with its own rollback.
 - The corner zoom buttons suppress the crosshair, the Alt guides and the
   status-bar readout (`PlotGeometry::over_scale_buttons`).
 - Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,

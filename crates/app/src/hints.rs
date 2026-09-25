@@ -60,6 +60,8 @@ pub(super) struct PinnedHint {
     content: Option<Entity<Tooltip>>,
     focus: FocusHandle,
     pending: Option<Task<()>>,
+    /// Cleared while another surface edits what the hint shows.
+    enabled: bool,
 }
 
 impl EventEmitter<Pinned> for PinnedHint {}
@@ -74,7 +76,17 @@ impl PinnedHint {
             content: None,
             focus: cx.focus_handle(),
             pending: None,
+            enabled: true,
         }
+    }
+
+    /// Allow or forbid opening, closing the hint and keeping its changes when forbidden.
+    pub(super) fn set_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.enabled = enabled;
+        if !enabled {
+            self.close(false, cx);
+        }
+        cx.notify();
     }
 
     pub(super) fn is_open(&self) -> bool {
@@ -95,7 +107,7 @@ impl PinnedHint {
 
     pub(super) fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.pending = None;
-        if self.is_open() {
+        if self.is_open() || !self.enabled {
             return;
         }
         let tooltip = (self.build)(window, cx).m_0();
@@ -125,8 +137,12 @@ pub(super) fn pinned(
     hint: &Entity<PinnedHint>,
     trigger: Button,
     cx: &App,
-) -> impl IntoElement {
+) -> AnyElement {
     let state = hint.read(cx);
+    if !state.enabled {
+        // Without a popover there is nothing for a click to open.
+        return trigger.into_any_element();
+    }
     let content = state.content.clone();
     let focus = state.focus.clone();
     let changed = hint.downgrade();
@@ -161,6 +177,7 @@ pub(super) fn pinned(
                 })
                 .children(content.clone())
         })
+        .into_any_element()
 }
 
 /// While the hint is open, covers the window beneath it so nothing else sees the pointer.
@@ -205,12 +222,12 @@ mod tests {
     impl Render for Harness {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let hint = self.hint.clone();
-            let trigger =
-                Button::new("trigger")
-                    .label("FFT")
-                    .on_hover(move |hovered, window, cx| {
-                        hint.update(cx, |hint, cx| hint.hover(*hovered, window, cx))
-                    });
+            let trigger = Button::new("trigger")
+                .tab_stop(false)
+                .label("FFT")
+                .on_hover(move |hovered, window, cx| {
+                    hint.update(cx, |hint, cx| hint.hover(*hovered, window, cx))
+                });
             div()
                 .size_full()
                 .relative()
@@ -373,6 +390,41 @@ mod tests {
             [Pinned::Opened, Pinned::Closed { revert: false }]
         );
         assert_eq!(nudge(cx, &harness), 1);
+    }
+
+    #[gpui_kit::test]
+    fn a_disabled_hint_opens_neither_on_hover_nor_on_a_right_click(cx: &mut TestAppContext) {
+        let (harness, cx) = open_window(cx);
+        harness.update(cx, |harness, cx| {
+            harness
+                .hint
+                .update(cx, |hint, cx| hint.set_enabled(false, cx));
+            cx.notify();
+        });
+        frame(cx);
+        cx.simulate_mouse_move(at(TRIGGER), None, Modifiers::default());
+        cx.executor().advance_clock(Duration::from_secs(1));
+        frame(cx);
+        assert!(!is_open(cx, &harness), "hover");
+        cx.simulate_mouse_down(at(TRIGGER), MouseButton::Right, Modifiers::default());
+        cx.simulate_mouse_up(at(TRIGGER), MouseButton::Right, Modifiers::default());
+        frame(cx);
+        assert!(!is_open(cx, &harness), "right click");
+        assert!(events(cx, &harness).is_empty());
+        let focused =
+            cx.update(|window, cx| harness.read(cx).hint.read(cx).focus.is_focused(window));
+        assert!(!focused, "a shut hint takes no focus");
+        harness.update(cx, |harness, cx| {
+            harness
+                .hint
+                .update(cx, |hint, cx| hint.set_enabled(true, cx));
+            cx.notify();
+        });
+        frame(cx);
+        cx.simulate_mouse_down(at(TRIGGER), MouseButton::Right, Modifiers::default());
+        cx.simulate_mouse_up(at(TRIGGER), MouseButton::Right, Modifiers::default());
+        frame(cx);
+        assert!(is_open(cx, &harness), "enabled again");
     }
 
     #[gpui_kit::test]

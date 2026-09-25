@@ -1656,6 +1656,32 @@ mod analysis_hint_tests {
     }
 
     #[gpui_kit::test]
+    fn the_hint_stays_shut_while_the_settings_editor_is_open(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let try_open = |cx: &mut TestAppContext| {
+            handle
+                .update(cx, |shell, window, cx| {
+                    let hint = shell.analysis_hint.clone();
+                    hint.update(cx, |hint, cx| hint.open(window, cx));
+                    hint.read(cx).is_open()
+                })
+                .unwrap()
+        };
+        handle
+            .update(cx, |shell, window, cx| {
+                shell.edit_analysis(&EditAnalysis, window, cx)
+            })
+            .unwrap();
+        cx.run_until_parked();
+        assert!(!try_open(cx), "the editor has its own rollback");
+        handle
+            .update(cx, |shell, _, cx| shell.finish_settings(false, cx))
+            .unwrap();
+        cx.run_until_parked();
+        assert!(try_open(cx), "the editor has closed");
+    }
+
+    #[gpui_kit::test]
     fn escape_restores_the_settings_the_hint_opened_with(cx: &mut TestAppContext) {
         let (opening, closed) = change_and_close(cx, true);
         assert_ne!(opening.dynamic_range, DynamicRange::Fixed(42.));

@@ -158,6 +158,8 @@ impl Shell {
         self.settings_window = None;
         self.analysis_hovered = false;
         self.range_hovered = false;
+        self.analysis_hint
+            .update(cx, |hint, cx| hint.set_enabled(true, cx));
         let view = self.settings_view_backup.take();
         let frequency = self.settings_frequency_backup.take();
         if !accept {
@@ -416,7 +418,6 @@ impl Shell {
     fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
         let visible = displayed.unwrap_or(self.settings);
-        let hint_enabled = self.settings_backup.is_none();
         let foregrounds =
             ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground);
         let foreground = foregrounds.current(self.analysis_hovered);
@@ -432,9 +433,9 @@ impl Shell {
             })
             .on_hover(cx.listener(move |shell, hovered, window, cx| {
                 shell.analysis_hovered = *hovered;
-                shell.analysis_hint.update(cx, |hint, cx| {
-                    hint.hover(*hovered && hint_enabled, window, cx)
-                });
+                shell
+                    .analysis_hint
+                    .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
                 cx.notify();
             }))
             .on_click(
@@ -483,6 +484,9 @@ impl Shell {
             return;
         }
         self.interrupt_plot(cx);
+        // The editor keeps its own rollback, so the hint must not open beside it.
+        self.analysis_hint
+            .update(cx, |hint, cx| hint.set_enabled(false, cx));
         self.settings_backup = Some(self.settings);
         self.settings_view_backup = self.view;
         self.settings_frequency_backup = Some(self.frequency);

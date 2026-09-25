@@ -290,6 +290,22 @@ Round 2 confirmed the fixes and accepted the reasoning behind the decline.
   asserts that the hint is shown and covers the clicked point before checking
   that the trigger gets the click.
 
+Round 3 confirmed the round 2 fix.
+- Accepted (P1): a right click opened the pinned hint while the settings window
+  was open, and the two surfaces kept separate rollbacks, so Escape in the hint
+  could restore a setting the editor had just cancelled. `PinnedHint` is now
+  disabled from the editor opening until it finishes; a disabled hint renders
+  its trigger without the popover. Tests cover a disabled hint on hover and on a
+  right click (a control that keeps the popover fails), and the Shell sequence
+  of opening the editor, failing to open the hint, and opening it after the
+  editor closes.
+- Accepted (P2): the Pull Request description's review section was stale; it
+  is updated.
+- ➕ Found while testing: a right click on any toolbar or status-bar `Button`
+  takes keyboard focus, because the toolkit prevents the default focusing only
+  for the left button. Pre-existing and unrelated to this Issue, tracked in
+  #156.
+
 ## Post-completion
 
 - Close #122 through the Pull Request, with its evidence linked.
