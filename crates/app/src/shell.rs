@@ -95,6 +95,8 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
             settings_ui::init(cx);
             hints::init(cx);
             navigation_ui::init(cx);
+            // The pointer is the plot's working tool, so navigation keys must not hide it.
+            cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
             cx.bind_keys([
                 KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
                 KeyBinding::new("tab", FocusNext, Some("Shell")),

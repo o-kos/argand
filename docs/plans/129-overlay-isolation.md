@@ -206,7 +206,7 @@ apply it to this hint now (2026-09-24). The editor itself stays in #108.
       outside closes it without reaching the plot and gives the keyboard back;
       Enter keeps and Escape reverts. Controls without the backdrop or without
       the Escape handler fail them.
-- [ ] Native: the hint's look and position above the FFT summary, its two
+- [x] Native: the hint's look and position above the FFT summary, its two
       Buttons, Ctrl+R and Escape reverting it, Tab staying inside, and the
       readout and Alt guides absent while it is open.
 
@@ -218,7 +218,7 @@ apply it to this hint now (2026-09-24). The editor itself stays in #108.
 - [x] Tests: an interrupted drag clears the readout and does not resume on later
       moves; release outside still ends a drag; a replaced plot leaves nothing
       behind (#128 test).
-- [ ] Native: F10, Ctrl+, and Ctrl+O during a drag, a window switch during a drag,
+- [x] Native: F10, Ctrl+, and Ctrl+O during a drag, a window switch during a drag,
       and a right click on the time ruler during a drag. The ruler menu leaks in
       headless tests (#144), and the others need Shell.
 
@@ -226,11 +226,11 @@ apply it to this hint now (2026-09-24). The editor itself stays in #108.
 
 - [x] Test: an occluding layer, as both menus are, takes wheel, click and drag
       from the plot. This fails if the plot's handlers stop being hover-based.
-- [ ] Native: wheel, click and drag over the application menu and the ruler menu
+- [x] Native: wheel, click and drag over the application menu and the ruler menu
       leave the plot view unchanged.
-- [ ] Native: Escape on the ruler menu and on each application-menu level returns
+- [x] Native: Escape on the ruler menu and on each application-menu level returns
       focus as specified, and the next navigation key acts exactly once.
-- [ ] Native: while the ready status shows, a click or wheel over a menu dismisses
+- [x] Native: while the ready status shows, a click or wheel over a menu dismisses
       it and still reaches the menu once, and navigates nothing.
 
 ### 5. Documentation and validation
@@ -259,6 +259,19 @@ apply it to this hint now (2026-09-24). The editor itself stays in #108.
       native run are listed as not exercised.
 - [ ] #122 evidence: each of its acceptance criteria mapped to a test or native
       row, linked from the Pull Request.
+
+### Owner's native check (Ubuntu, 2026-09-25)
+
+The listed native cases passed. Two findings were added to this Issue at the
+owner's decision:
+- [x] ➕ A pointer resting over the plot was not known until it moved: after
+      opening a file from the start page, and after a hint or menu closed by a
+      key. `pointer_probe` and `PlotView::pick_up_pointer` now take it up after
+      the frame. A test covers a covered plot, a pointer outside the window and
+      the pick-up once the cover goes.
+- [x] ➕ Tab and every bound key hid the mouse pointer until the mouse moved
+      (GPUI's default `CursorHideMode::OnTypingAndAction`). The application
+      now sets `CursorHideMode::Never`.
 
 ## Review
 

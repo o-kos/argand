@@ -792,6 +792,26 @@ impl plot_view::PlotView {
             .map(|_| position)
     }
 
+    /// Take up a pointer already resting over the uncovered plot.
+    pub(super) fn pick_up_pointer(
+        &mut self,
+        window_hovered: bool,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let position = window.mouse_position();
+        let uncovered = self
+            .probe
+            .borrow()
+            .as_ref()
+            .is_some_and(|hitbox| hitbox.is_hovered_at(position, window));
+        if !window_hovered || !uncovered || self.pointer.is_some() || self.dragging() {
+            return;
+        }
+        self.set_pointer(self.plot_pointer(position), cx);
+        cx.notify();
+    }
+
     fn set_pointer(&mut self, pointer: Option<gpui_kit::Point<Pixels>>, cx: &mut Context<Self>) {
         if self.pointer != pointer {
             self.pointer = pointer;
