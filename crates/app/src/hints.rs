@@ -184,8 +184,8 @@ mod tests {
     use super::*;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{
-        Modifiers, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement, Subscription,
-        TestAppContext, VisualTestContext, point, px, size,
+        Bounds, Modifiers, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement, Subscription,
+        TestAppContext, TestSupportExt, VisualTestContext, point, px, size,
     };
 
     gpui_kit::actions!(hint_tests, [Nudge]);
@@ -397,7 +397,7 @@ mod tests {
         assert_eq!(nudge(cx, &harness), 1);
     }
 
-    /// A large button whose own hint opens partly over it.
+    /// A zoom-half-sized button whose own hint opens partly over it.
     #[derive(Default)]
     struct Trigger {
         presses: usize,
@@ -411,14 +411,18 @@ mod tests {
                     .absolute()
                     .left(px(10.))
                     .top(px(10.))
-                    .size(px(60.))
+                    .size(px(22.))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|trigger, _, _, _| trigger.presses += 1),
                     )
-                    .tooltip(|_, cx| passive(cx, |_| Tooltip::new("A hint over its own button"))),
+                    .tooltip(|_, cx| passive(cx, |_| observed_hint())),
             )
         }
+    }
+
+    fn observed_hint() -> Tooltip {
+        Tooltip::element(|_, _| div().id("hint-text").test_support().child("A hint"))
     }
 
     #[gpui_kit::test]
@@ -427,12 +431,23 @@ mod tests {
         let (trigger, cx) = cx.add_window_view(|_, _| Trigger::default());
         cx.simulate_resize(size(px(400.), px(300.)));
         let none = Modifiers::default();
-        cx.simulate_mouse_move(point(px(15.), px(15.)), None, none);
+        cx.simulate_mouse_move(point(px(11.), px(11.)), None, none);
         cx.executor().advance_clock(Duration::from_secs(1));
-        cx.run_until_parked();
+        frame(cx);
         // Still on the button, and inside the box its hint opens 13 pixels away.
-        let overlap = point(px(15. + 13. + 8.), px(15. + 13. + 8.));
+        let overlap = point(px(28.), px(28.));
         cx.simulate_mouse_move(overlap, None, none);
+        frame(cx);
+        let text = cx
+            .update(|window, _| window.try_find("hint-text"))
+            .expect("the hint is shown");
+        // The standard tooltip pads its text by 8 and 2 pixels inside a 1-pixel border.
+        let frame = point(px(9.), px(3.));
+        let hint = Bounds::from_corners(
+            text.bounds().origin - frame,
+            text.bounds().bottom_right() + frame,
+        );
+        assert!(text.visible() && hint.contains(&overlap), "{hint:?}");
         cx.simulate_mouse_down(overlap, MouseButton::Left, none);
         assert_eq!(trigger.read_with(cx, |trigger, _| trigger.presses), 1);
     }

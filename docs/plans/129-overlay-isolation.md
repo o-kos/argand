@@ -284,6 +284,12 @@ Round 1:
   Enforcing it in the hint would block the pointer and so the trigger's own
   click, which a test guards.
 
+Round 2 confirmed the fixes and accepted the reasoning behind the decline.
+- Accepted: the passive-hint test would pass without the hint being shown, and
+  used a 60-pixel trigger. It now uses a 22-pixel trigger like a zoom half and
+  asserts that the hint is shown and covers the clicked point before checking
+  that the trigger gets the click.
+
 ## Post-completion
 
 - Close #122 through the Pull Request, with its evidence linked.
