@@ -595,9 +595,9 @@ so application switchers and window managers receive the same identity.
 
 The corner zoom halves and the toolbar are gpui-component `Button`s, and each
 keeps the toolkit's own pressed, disabled and click behaviour. A control that
-lives over the picture or in the title bar is `tab_stop(false)`, carries a stable
-`id`, hands keyboard focus back to the plot on a click, and keeps its rule for
-when it is enabled. A custom variant paints no border, so these controls carry
+lives over the picture or in the title bar is `tab_stop(false)` and carries a stable
+`id`. The zoom halves, Grid and the orientation segments hand keyboard focus back
+to the plot on a click; the application button opens its menu, which takes focus. A custom variant paints no border, so these controls carry
 none: `toolbar_style` gives one control its surface, with the accent shade of an
 on control and the hover and pressed accents on top of it. The application
 button and the grid toggle are not `selected`, because the toolkit stops
@@ -605,8 +605,8 @@ repainting a selected button's hover and pressed surfaces, so their on state is
 the variant alone. The grid glyph and the orientation segment that changes the
 mode tint while hovered; the application button's artwork does not. The
 orientation segment in force is the one selected control, and it is inert while
-selected because clicking the mode in force is not an action. The status-bar FFT item and the range item are a `Button`
-only while they have an action and a `div` otherwise; they keep the accepted
+selected because clicking the mode in force is not an action. The status-bar FFT item is a `Button`, and the range item
+is one only while it has an action and a `div` otherwise; they keep the accepted
 colours, including the manual hover foreground and background the pinned analysis
 hint and the yellow range progression are driven from. The audit dispositions are
 recorded in the inventory table of

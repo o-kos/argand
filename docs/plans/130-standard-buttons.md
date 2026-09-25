@@ -128,7 +128,8 @@ Current code:
   switches to it. Both segments are `tab_stop(false)`. The View menu row and Ctrl+T
   are unchanged.
 - **Grid stays one toggle button**: grid visibility is a genuine on/off option.
-  Hint "Show grid" / "Hide grid" as today, selected while the grid is shown.
+  Hint "Show grid" / "Hide grid" as today. While the grid is shown the button is on:
+  the variant's accent colour, with `toggled` for accessibility, not `selected(true)`.
 - **No outline frames.** Drop `toolbar_border` and the `border_1` on the application
   button, Grid and the orientation segments. Selected is expressed by background
   (accent at the existing 0.18 opacity), hover by the existing 0.32 accent and pressed
@@ -222,9 +223,9 @@ The arbiter's decisions, all implemented on this branch.
   the grid toggle does.
 - An actionable toolbar control tints its icon while hovered, on the grid toggle
   and the unselected segment, and the selected segment does not.
-- The reported gap between the application button and the rest of the toolbar,
-  which opens on a click rather than a drag, is pre-existing and declined here. It
-  is tracked separately.
+- Gaps inside the populated toolbar swallow title drag and double-click. The
+  container handler predates this branch, so this is declined here and tracked in
+  #158.
 
 Round 2 adds two accepted items. A click on either segment returns focus to the
 owner before the mode comparison, so the selected segment hands the keyboard back
@@ -232,12 +233,16 @@ without switching. The wording of the toolbar's on state says Grid is on rather
 than selected, and the hover tint is claimed for the grid glyph and the segment
 that changes the mode, not for the application button's artwork.
 
+Round 3 is clean. Its two documentation nits (Grid described as on with `toggled`,
+and focus return limited to the controls that do return it) are fixed. The reviewer
+accepted both declined round-1 items.
+
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Native matrix on Linux (owner), recorded in the PR as
       `case | revision | platform/backend, theme, orientation | input | expected |
       observed | pass/fail/not exercised`:
