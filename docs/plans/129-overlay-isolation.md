@@ -339,6 +339,11 @@ the changes since round 3:
   uncover a plot under a still pointer and let the real hover listener run,
   with and without the mouse in the window. Controls without the pick-up, with
   the old orientation clearing, or without the window check each fail.
+- ➕ Owner's check of Ctrl+T: the kept pointer still blinked, because
+  `reorient` also dropped the geometry, so for one frame the cursor fell back to
+  an arrow (whose hotspot differs, so it seemed to move) and the readout
+  blanked. The old geometry now serves until the new layout; a test asserts the
+  pointer stays readable right after the switch.
 - Declined: taking up the pointer when the settings window closes over a still
   mouse. The plot is not covered there; the mouse was in another window, and
   no reliable signal says it rests over the plot again before it moves. Taking

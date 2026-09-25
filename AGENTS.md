@@ -526,8 +526,10 @@ hover-based, so any blocking layer above it wins.
   last position and hit test after `MouseExited`, and `is_window_hovered` means
   "active" on macOS, so Shell follows window-level `MouseMove` and
   `MouseExited` itself (`pointer_presence`) and clears the plot's pointer when
-  the mouse leaves. An orientation change keeps the pointer; the next layout
-  filters it through the new geometry (`plot_pointer`).
+  the mouse leaves. An orientation change keeps the pointer and the old
+  geometry until the next frame measures the new one, so the cursor does not
+  flash to an arrow and the readout does not blank; that layout filters the
+  pointer through the new geometry (`plot_pointer`).
 - The application sets `CursorHideMode::Never`: GPUI's default hides the mouse
   pointer on Tab and on every key bound to an action, and on the plot the
   pointer is the working tool.

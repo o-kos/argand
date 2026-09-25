@@ -201,14 +201,13 @@ impl PlotView {
         cx.emit(intent);
     }
 
-    /// Forget the gestures and layout the other orientation cannot reuse.
+    /// Forget the gestures the other orientation cannot reuse.
     pub(super) fn reorient(&mut self, cx: &mut Context<Self>) {
         self.gutter_floor = 0.;
         self.pan = None;
         self.frequency_pan = None;
         self.splitter_dragging = false;
-        // The pointer stays, and the next layout checks it against the new geometry.
-        self.geometry = None;
+        // The old layout serves until the next frame measures the new one, so the cursor and readout do not blink.
         cx.notify();
     }
 
@@ -1041,6 +1040,7 @@ mod tests {
                     plot.snapshot.as_mut().unwrap().extents.orientation =
                         crate::orientation::Mode::Vertical;
                     plot.reorient(cx);
+                    assert!(plot.hover().is_some(), "no frame without a readout");
                 });
             })
             .unwrap();
