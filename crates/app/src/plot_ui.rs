@@ -4,6 +4,7 @@ use super::navigation_ui::*;
 use super::plot_view::{PlotIntent, PlotSnapshot, PlotView};
 use super::*;
 use gpui_kit::Div;
+use gpui_kit::component::button::ButtonRounded;
 use gpui_kit::component::{Disableable, Icon, IconName};
 
 impl Shell {
@@ -547,10 +548,10 @@ fn half_button(
     let half = Button::new(hint)
         .tab_stop(false)
         .custom(style)
+        // The component rounds all four corners, so the inner ones stay square.
+        .rounded(ButtonRounded::None)
         .px_0()
         .flex_1();
-    // The frame clips to a rectangle, so each half rounds the corners the
-    // frame's own radius leaves square.
     let half = round_outer(half, horizontal, leading);
     let half = if horizontal {
         half.h_full()
