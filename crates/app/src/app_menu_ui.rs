@@ -647,8 +647,9 @@ pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App, document: bool)
     if !document {
         return app;
     }
-    // Two orientation segments and Grid, the separator, four gaps and its margins.
-    app + px(26. * 3. + 1.) + window.rem_size() * 1.5
+    // Two orientation segments and Grid, the separator, three gaps and the
+    // separator's two margins.
+    app + px(26. * 3. + 1.) + window.rem_size() * 1.25
 }
 
 fn app_button_width(window: &Window, cx: &gpui_kit::App) -> Pixels {
@@ -780,7 +781,7 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn the_title_reserves_room_for_the_controls_the_toolbar_draws(cx: &mut TestAppContext) {
+    fn the_title_reserves_exactly_what_the_toolbar_draws(cx: &mut TestAppContext) {
         let handle = open(cx);
         let app = handle
             .update(cx, |_, window, cx| app_button_width(window, cx))
@@ -795,9 +796,20 @@ mod tests {
             app,
             "the application button is all the toolbar holds without a document"
         );
-        assert!(
-            reserved(cx, true) > app,
-            "the segments and Grid need their own room"
+        open_document(cx, handle);
+        // The first and the last control touch the toolbar's own edges, so the
+        // room between them is everything it draws.
+        let drawn = cx
+            .update_window(handle.into(), |_, window, _| {
+                let first = window.find("application-menu-button").bounds();
+                let last = window.find("toggle-grid").bounds();
+                last.right() - first.origin.x
+            })
+            .unwrap();
+        assert_eq!(
+            reserved(cx, true),
+            drawn,
+            "the title reserves the segments, the separator and the grid"
         );
     }
 
