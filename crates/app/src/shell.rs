@@ -1139,7 +1139,8 @@ impl Shell {
         } else {
             gpui_kit::component::TITLE_BAR_HEIGHT * 3.
         };
-        let margin = (leading + app_menu_ui::toolbar_width(window, cx)).max(controls)
+        let margin = (leading + app_menu_ui::toolbar_width(window, cx, self.view.is_some()))
+            .max(controls)
             + window.rem_size() * 0.75;
         div()
             .flex()
