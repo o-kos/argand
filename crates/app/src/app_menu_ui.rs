@@ -290,8 +290,9 @@ impl Shell {
                 let Some(&next) = selected.first() else {
                     return;
                 };
+                // A click on either segment hands the keyboard back to the owner.
+                window.focus(&shell.focus_target(cx), cx);
                 if next != usize::from(shell.session.orientation.vertical()) {
-                    window.focus(&shell.focus_target(cx), cx);
                     shell.toggle_orientation(window, cx);
                 }
             }))
@@ -771,6 +772,12 @@ mod tests {
             .unwrap()
     }
 
+    fn owner_focused(cx: &mut TestAppContext, handle: WindowHandle<Shell>) -> bool {
+        handle
+            .update(cx, |shell, window, _| shell.focus.is_focused(window))
+            .unwrap()
+    }
+
     #[gpui_kit::test]
     fn the_document_controls_join_the_toolbar(cx: &mut TestAppContext) {
         let handle = open(cx);
@@ -820,10 +827,22 @@ mod tests {
         let handle = open(cx);
         open_document(cx, handle);
         assert!(!vertical(cx, handle), "horizontal is the default");
+        // Another control held the keyboard, as it would after a toolbar click.
+        handle
+            .update(cx, |_, window, cx| {
+                let elsewhere = cx.focus_handle();
+                window.focus(&elsewhere, cx);
+            })
+            .unwrap();
+        assert!(!owner_focused(cx, handle), "the keyboard left the owner");
         cx.update_window(handle.into(), |_, window, cx| {
             window.click("orientation-horizontal", cx);
         })
         .unwrap();
+        assert!(
+            owner_focused(cx, handle),
+            "a click on either segment hands the keyboard back"
+        );
         assert!(!vertical(cx, handle), "the mode in force is not an action");
         cx.update_window(handle.into(), |_, window, cx| {
             window.click("orientation-vertical", cx);
