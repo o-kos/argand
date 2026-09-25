@@ -226,6 +226,12 @@ The arbiter's decisions, all implemented on this branch.
   which opens on a click rather than a drag, is pre-existing and declined here. It
   is tracked separately.
 
+Round 2 adds two accepted items. A click on either segment returns focus to the
+owner before the mode comparison, so the selected segment hands the keyboard back
+without switching. The wording of the toolbar's on state says Grid is on rather
+than selected, and the hover tint is claimed for the grid glyph and the segment
+that changes the mode, not for the application button's artwork.
+
 ## Validation
 
 - [x] `cargo fmt --all -- --check`

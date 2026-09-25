@@ -601,10 +601,11 @@ when it is enabled. A custom variant paints no border, so these controls carry
 none: `toolbar_style` gives one control its surface, with the accent shade of an
 on control and the hover and pressed accents on top of it. The application
 button and the grid toggle are not `selected`, because the toolkit stops
-repainting a selected button's hover and pressed surfaces, and an actionable
-control tints its icon while hovered. The orientation segment in force is the one
-selected control, and it is inert while selected because clicking the mode in
-force is not an action. The status-bar FFT item and the range item are a `Button`
+repainting a selected button's hover and pressed surfaces, so their on state is
+the variant alone. The grid glyph and the orientation segment that changes the
+mode tint while hovered; the application button's artwork does not. The
+orientation segment in force is the one selected control, and it is inert while
+selected because clicking the mode in force is not an action. The status-bar FFT item and the range item are a `Button`
 only while they have an action and a `div` otherwise; they keep the accepted
 colours, including the manual hover foreground and background the pinned analysis
 hint and the yellow range progression are driven from. The audit dispositions are
