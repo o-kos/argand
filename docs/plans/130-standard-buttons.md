@@ -205,8 +205,40 @@ Current code:
 - [x] Update AGENTS.md (toolbar, zoom pair and plot ownership paragraphs: no pressed
       state, segmented orientation, toolbar visibility) and add `CHANGELOG.md`
       `[Unreleased]` entries for the user-visible changes.
+- [ ] ➕ Owner feedback 1: segment frame and icons, on state, status hover from
+      paint-time hover, zoom half corners.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
+
+## Owner feedback 1 (2026-09-25)
+
+The first native check found four problems. None was visible to a static review.
+Decisions, taken with the owner on an interactive colour preview:
+
+- **Orientation segment frame and icons.** The segment gets one shared frame with a
+  one-pixel divider, both in `foreground.opacity(0.24)` (the theme `border` is almost
+  invisible on the title bar). Icons are Lucide `panel-top` (horizontal: the minimap
+  strip on top) and `panel-left` (vertical: the strip on the left), taken from the
+  gpui-kit asset catalog already served by `assets.rs`. Retire `horizontal.svg` and
+  `vertical.svg` if nothing else uses them.
+- **On state.** Grid on and the selected segment use accent 0.30 background with an
+  accent-coloured glyph. A Grid that is on still reacts, with 0.40 under the pointer
+  and 0.52 while pressed. Off controls keep hover 0.32, pressed 0.44 and the glyph
+  tint. The selected segment keeps its on look under the pointer and stays inert. The
+  application button with its menu open uses the same on background.
+- **Status FFT and range flicker** (pre-existing from #129). The manual
+  `analysis_hovered` / `range_hovered` flags go out of step with the pointer when the
+  pinned hint's backdrop covers the window, so the summary lightens, darkens and
+  lightens again. Drive the hover look from GPUI's paint-time hover instead (Button
+  hover background and a group hover on the text colour). The FFT summary stays lit
+  while its pinned hint is open. After the hint closes, the look follows the real
+  pointer at once. Keep `on_hover` only where a behaviour needs it (the pinned hint's
+  open delay). The accepted colours, including the yellow warning progression and its
+  pressed state, do not change.
+- **Zoom half corners.** GPUI clips content only to rectangles (`ContentMask` has no
+  corner radii), so a pressed half painted square corners over the rounded frame.
+  Each half rounds its own outer corners to match the frame.
+- **No auto-repeat** for the zoom halves (owner declined it).
 
 ## Review round 1
 
