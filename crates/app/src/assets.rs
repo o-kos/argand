@@ -15,12 +15,12 @@ const ARTWORK: &[(&str, &[u8])] = &[
         include_bytes!("../assets/icons/grid.svg"),
     ),
     (
-        "argand/horizontal.svg",
-        include_bytes!("../assets/icons/horizontal.svg"),
+        "argand/panel-top.svg",
+        include_bytes!("../assets/icons/panel-top.svg"),
     ),
     (
-        "argand/vertical.svg",
-        include_bytes!("../assets/icons/vertical.svg"),
+        "argand/panel-left.svg",
+        include_bytes!("../assets/icons/panel-left.svg"),
     ),
 ];
 

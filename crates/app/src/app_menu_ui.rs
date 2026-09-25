@@ -4,12 +4,19 @@ use super::{navigation_ui::*, *};
 use crate::app_menu::{self, Effect, Item, Kind, Menu};
 use crate::orientation::Mode;
 use gpui_kit::component::Selectable;
-use gpui_kit::component::button::{ButtonCustomVariant, ButtonGroup};
+use gpui_kit::component::button::{ButtonCustomVariant, ButtonGroup, ButtonRounded};
 use gpui_kit::component::{Icon, IconName};
 use gpui_kit::{AnyElement, KeyDownEvent, ScrollHandle, deferred, img};
 use std::{cell::Cell, rc::Rc};
 
 actions!(application_menu, [OpenApplicationMenu]);
+
+/// The visual height of a toolbar control, frame included.
+const TOOLBAR_HEIGHT: f32 = 26.0;
+/// The width of one orientation segment, which the frame wraps around.
+const SEGMENT: f32 = 26.0;
+/// The radius of the frame around the two orientation segments.
+const FRAME_RADIUS: f32 = 6.0;
 
 #[derive(Clone)]
 enum Command {
@@ -197,13 +204,18 @@ impl Shell {
     pub(super) fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let anchor = self.application_menu_anchor.clone();
         let open = self.application_menu.is_some();
+        let state = if open {
+            ToolbarState::On
+        } else {
+            ToolbarState::Off
+        };
         let mut app = Button::new("application-menu-button")
             .tab_stop(false)
-            .custom(toolbar_style(open, cx))
+            .custom(toolbar_style(state, cx))
             .small()
             .w(app_button_width(window, cx))
             .px(px(6.))
-            .h(px(26.))
+            .h(px(TOOLBAR_HEIGHT))
             .child(img("argand/app.png").size(px(22.)))
             .child(div().text_color(cx.theme().foreground).child(TITLE))
             .on_click(cx.listener(|shell, _, window, cx| {
@@ -266,24 +278,30 @@ impl Shell {
             })
     }
 
-    /// The two orientation segments, with the mode in force selected.
+    /// The two orientation segments in one frame, with the mode in force selected.
     fn orientation_segments(&self, cx: &mut Context<Self>) -> ButtonGroup {
         let vertical = self.session.orientation.vertical();
         let horizontal = Self::orientation_segment(
             "orientation-horizontal",
-            "argand/horizontal.svg",
+            "argand/panel-top.svg",
             Mode::Horizontal,
             !vertical,
+            false,
             cx,
         );
         let vertical = Self::orientation_segment(
             "orientation-vertical",
-            "argand/vertical.svg",
+            "argand/panel-left.svg",
             Mode::Vertical,
             vertical,
+            true,
             cx,
         );
         ButtonGroup::new("orientation-segments")
+            .rounded(px(FRAME_RADIUS))
+            .border_1()
+            .border_color(frame_colour(cx))
+            .h(px(TOOLBAR_HEIGHT))
             .child(horizontal)
             .child(vertical)
             .on_click(cx.listener(|shell, selected: &Vec<usize>, window, cx| {
@@ -304,20 +322,33 @@ impl Shell {
         icon: &'static str,
         mode: Mode,
         current: bool,
+        divided: bool,
         cx: &mut Context<Self>,
     ) -> Button {
+        let state = if current {
+            ToolbarState::Selected
+        } else {
+            ToolbarState::Off
+        };
         let mut segment = Button::new(id)
             .tab_stop(false)
-            .custom(toolbar_style(current, cx))
+            .custom(toolbar_style(state, cx))
             .selected(current)
+            .rounded(ButtonRounded::Size(px(FRAME_RADIUS - 1.)))
             .small()
-            .w(px(26.))
-            .h(px(26.))
+            .w(px(SEGMENT))
+            .h(px(TOOLBAR_HEIGHT - 2.))
             .px_0()
-            .child(Self::toolbar_glyph(id, icon, !current, cx));
+            .child(Self::toolbar_glyph(id, icon, state, cx));
         // The mode in force is not an action, so its segment joins no hover group.
         if !current {
             segment = segment.group(id);
+        }
+        // The divider is painted, not a border, because a border takes the
+        // colour of the states its own button passes through.
+        if divided {
+            let line = div().absolute().left_0().top_0().bottom_0().w(px(1.));
+            segment = segment.relative().child(line.bg(frame_colour(cx)));
         }
         // Only the segment that changes the mode offers Ctrl+T.
         let other = !current;
@@ -333,17 +364,22 @@ impl Shell {
     fn grid_button(&self, cx: &mut Context<Self>) -> Button {
         let id = "toggle-grid";
         let show = self.session.show_grid;
+        let state = if show {
+            ToolbarState::On
+        } else {
+            ToolbarState::Off
+        };
         let hint = if show { "Hide grid" } else { "Show grid" };
         let mut button = Button::new(id)
             .tab_stop(false)
             .group(id)
-            .custom(toolbar_style(show, cx))
+            .custom(toolbar_style(state, cx))
             .toggled(show)
             .small()
-            .w(px(26.))
-            .h(px(26.))
+            .w(px(TOOLBAR_HEIGHT))
+            .h(px(TOOLBAR_HEIGHT))
             .px_0()
-            .child(Self::toolbar_glyph(id, "argand/grid.svg", true, cx))
+            .child(Self::toolbar_glyph(id, "argand/grid.svg", state, cx))
             .on_click(cx.listener(|shell, _, window, cx| {
                 window.focus(&shell.focus_target(cx), cx);
                 window.dispatch_action(Box::new(ToggleGrid), cx);
@@ -360,21 +396,25 @@ impl Shell {
         button
     }
 
-    /// The icon of a toolbar control, which tints while its own control is hovered.
+    /// The icon of a toolbar control, which tints while an off control is hovered.
     fn toolbar_glyph(
         id: &'static str,
         icon: &'static str,
-        tinted: bool,
+        state: ToolbarState,
         cx: &gpui_kit::App,
     ) -> impl IntoElement {
-        let hover_foreground = toolbar_accent(cx);
+        let accent = toolbar_accent(cx);
+        let colour = match state {
+            ToolbarState::Off => cx.theme().foreground.opacity(0.85),
+            ToolbarState::On | ToolbarState::Selected => accent,
+        };
         gpui_kit::svg()
             .path(icon)
             .size(px(20.))
             .id((id, 0_usize))
-            .text_color(cx.theme().foreground.opacity(0.85))
-            .when(tinted, |glyph| {
-                glyph.group_hover(id, |style| style.text_color(hover_foreground))
+            .text_color(colour)
+            .when(state == ToolbarState::Off, |glyph| {
+                glyph.group_hover(id, |style| style.text_color(accent))
             })
     }
 
@@ -659,8 +699,8 @@ pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App, document: bool)
     if !document {
         return app;
     }
-    // Two orientation segments and Grid, the separator, three gaps and its margins.
-    app + px(26. * 3. + 1.) + window.rem_size() * 1.25
+    // The framed segment group and Grid, the separator, three gaps and its margins.
+    app + px(SEGMENT * 2. + 2. + TOOLBAR_HEIGHT + 1.) + window.rem_size() * 1.25
 }
 
 fn app_button_width(window: &Window, cx: &gpui_kit::App) -> Pixels {
@@ -686,19 +726,50 @@ pub(super) fn toolbar_accent(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     }
 }
 
+/// The state a toolbar control is in, which decides its whole surface.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum ToolbarState {
+    /// An ordinary control, which tints its glyph while it is hovered.
+    Off,
+    /// A control that is on, which stays accent while it is pressed.
+    On,
+    /// The segment in force, which does not react to the pointer at all.
+    Selected,
+}
+
 /// The toolbar surface of one control. An on control keeps the accent shade
 /// under the hover and pressed surfaces.
-pub(super) fn toolbar_style(selected: bool, cx: &gpui_kit::App) -> ButtonCustomVariant {
+pub(super) fn toolbar_style(state: ToolbarState, cx: &gpui_kit::App) -> ButtonCustomVariant {
     let accent = toolbar_accent(cx);
+    let (color, hover, active) = match state {
+        ToolbarState::Off => (
+            cx.theme().title_bar.darken(0.035),
+            accent.opacity(0.32),
+            accent.opacity(0.44),
+        ),
+        ToolbarState::On => (
+            accent.opacity(0.30),
+            accent.opacity(0.40),
+            accent.opacity(0.52),
+        ),
+        // A selected button is painted with the variant's active colour.
+        ToolbarState::Selected => (
+            accent.opacity(0.30),
+            accent.opacity(0.30),
+            accent.opacity(0.30),
+        ),
+    };
     ButtonCustomVariant::new(cx)
-        .color(if selected {
-            accent.opacity(0.18)
-        } else {
-            cx.theme().title_bar.darken(0.035)
-        })
+        .color(color)
         .foreground(cx.theme().foreground.darken(0.12))
-        .hover(accent.opacity(0.32))
-        .active(accent.opacity(0.44))
+        .hover(hover)
+        .active(active)
+}
+
+/// The one-pixel frame a pair of segments shares, which the theme's border
+/// colour is too faint to draw on the title bar.
+fn frame_colour(cx: &gpui_kit::App) -> gpui_kit::Hsla {
+    cx.theme().foreground.opacity(0.24)
 }
 
 /// The tooltip stand-in for the pressed application button: renders nothing.
@@ -819,6 +890,38 @@ mod tests {
             reserved(cx, true),
             drawn,
             "the title reserves the segments, the separator and the grid"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_segment_group_carries_its_own_frame(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        open_document(cx, handle);
+        let bounds = |cx: &mut TestAppContext, id: &'static str| {
+            cx.update_window(handle.into(), |_, window, _| window.find(id).bounds())
+                .unwrap()
+        };
+        let first = bounds(cx, "orientation-horizontal");
+        let second = bounds(cx, "orientation-vertical");
+        let grid = bounds(cx, "toggle-grid");
+        assert_eq!(first.size, second.size, "the segments are equal");
+        assert_eq!(first.size.width, px(26.));
+        assert_eq!(
+            first.size.height,
+            px(24.),
+            "a segment fills the frame's inside"
+        );
+        assert_eq!(second.origin.x - first.origin.x, px(26.));
+        assert_eq!(first.origin.y, second.origin.y, "the pair is one row");
+        assert_eq!(
+            grid.size.height,
+            px(26.),
+            "the group and the grid keep one height"
+        );
+        assert_eq!(
+            first.origin.y - grid.origin.y,
+            px(1.),
+            "the frame is one pixel above the segments"
         );
     }
 
