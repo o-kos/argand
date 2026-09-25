@@ -19,9 +19,17 @@ use gpui_kit::component::popover::Popover;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     Anchor, AnyElement, AnyView, App, AppContext, Context, CursorStyle, Entity, EventEmitter,
-    FocusHandle, InteractiveElement, IntoElement, MouseButton, ParentElement, Render, Styled, Task,
-    Window, deferred, div,
+    FocusHandle, InteractiveElement, IntoElement, KeyBinding, MouseButton, NoAction, ParentElement,
+    Render, Styled, Task, Window, deferred, div,
 };
+
+/// The key context of a pinned hint's content, inside the popover's own.
+const CONTEXT: &str = "PinnedHint";
+
+pub(super) fn init(cx: &mut App) {
+    // The popover confirms on Space as on Enter, which is not one of the ways a pinned hint closes.
+    cx.bind_keys([KeyBinding::new("space", NoAction, Some(CONTEXT))]);
+}
 
 /// How long the trigger must be hovered before a pinned hint opens, as for a tooltip.
 const OPEN_DELAY: Duration = Duration::from_millis(500);
@@ -144,6 +152,7 @@ pub(super) fn pinned(
             let cancelled = cancelled.clone();
             div()
                 .track_focus(&focus)
+                .key_context(CONTEXT)
                 .cursor(CursorStyle::Arrow)
                 .on_action(move |_: &Cancel, _, cx| {
                     let _ = cancelled.update(cx, |hint, cx| hint.close(true, cx));
@@ -249,7 +258,8 @@ mod tests {
     fn open_window(cx: &mut TestAppContext) -> (Entity<Harness>, &mut VisualTestContext) {
         cx.update(|cx| {
             gpui_kit::init(cx);
-            cx.bind_keys([gpui_kit::KeyBinding::new("left", Nudge, Some("Plot"))]);
+            init(cx);
+            cx.bind_keys([KeyBinding::new("left", Nudge, Some("Plot"))]);
         });
         let (harness, cx) = cx.add_window_view(|window, cx| {
             let focus = cx.focus_handle();
@@ -363,6 +373,15 @@ mod tests {
             [Pinned::Opened, Pinned::Closed { revert: false }]
         );
         assert_eq!(nudge(cx, &harness), 1);
+    }
+
+    #[gpui_kit::test]
+    fn space_leaves_the_hint_open(cx: &mut TestAppContext) {
+        let (harness, cx) = open_and_leave(cx);
+        cx.simulate_keystrokes("space");
+        frame(cx);
+        assert!(is_open(cx, &harness));
+        assert_eq!(events(cx, &harness), [Pinned::Opened]);
     }
 
     #[gpui_kit::test]

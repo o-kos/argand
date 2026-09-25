@@ -74,7 +74,7 @@ promise applies to.
 
 ### Added
 
-- Translucent `[+|-]` zoom pairs in the spectrogram's corners, each beside the ruler of the axis it zooms in either orientation, with rounded corners; View → Show scale controls (Ctrl+U) hides or shows them. Zoom tooltips use uniform key names: Ctrl+Plus, Ctrl+Shift+Plus, Ctrl+Minus, Ctrl+Shift+Minus.
+- Translucent `[+|-]` zoom pairs in the spectrogram's corners, each beside the ruler of the axis it zooms in either orientation, with rounded corners; the cursor readout and Alt guides pause over them; View → Show scale controls (Ctrl+U) hides or shows them. Zoom tooltips use uniform key names: Ctrl+Plus, Ctrl+Shift+Plus, Ctrl+Minus, Ctrl+Shift+Minus.
 - File → Settings opens the existing analysis settings editor.
 
 - Ctrl+T switches between Horizontal and Vertical spectrogram orientation and appears in the mode button tooltip.

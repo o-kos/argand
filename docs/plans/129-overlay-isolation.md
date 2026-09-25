@@ -152,7 +152,8 @@ apply it to this hint now (2026-09-24). The editor itself stays in #108.
   `Shell::focus_target`. This stage adds the missing tests rather than new
   routing: dismissing the ruler menu or one application-menu level with Escape
   returns focus so that the next key reaches the restored target exactly once.
-- Hints never take focus. The helper adds no focus handle.
+- Passive hints never take focus. The pinned analysis hint takes it while open,
+  as a popover does (see above).
 
 ## Inventory
 
@@ -236,18 +237,18 @@ apply it to this hint now (2026-09-24). The editor itself stays in #108.
 
 - [x] Add an "Overlay surfaces (#129)" section to `AGENTS.md` and update the drag
       tracker statement in "Plot ownership (#128)".
-- [x] `CHANGELOG.md`: hints show an arrow and hide guides and readout; overlays and
-      window switches end drags.
+- [x] `CHANGELOG.md`: the pinned analysis hint; overlays and window switches end
+      drags.
 - [ ] Update the parent plan's phase 4 rows with evidence links.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Native cases on the current release build, one row each in the Pull
       Request (`case | build | platform/backend | input | expected | observed |
       result`): P1 (menus over the plot), P2 (every hint over the spectrogram,
@@ -258,6 +259,30 @@ apply it to this hint now (2026-09-24). The editor itself stays in #108.
       native run are listed as not exercised.
 - [ ] #122 evidence: each of its acceptance criteria mapped to a test or native
       row, linked from the Pull Request.
+
+## Review
+
+External review with GPT-6 Sol, high reasoning (owner's choice, 2026-09-25).
+
+Round 1:
+- Accepted: Space closed the pinned hint through the popover's `Confirm`. A
+  `NoAction` binding in the deeper `PinnedHint` context now leaves it open; a
+  test and a control cover it.
+- Accepted: the Escape test only checked the event. Two Shell-level tests now
+  check that a reverting close restores the opening settings and that other
+  closes keep them; a control without the revert fails.
+- Accepted: the status-bar readout stayed over the corner zoom buttons, where
+  the Alt guides were already hidden. `cursor_readout` now skips them too.
+- Accepted: the plan said hints never take focus; it now limits that to
+  passive hints. Validation items are ticked as they are run.
+- Declined: enforcing #122's rule inside `hints::passive`. A passive hint is
+  visible only while its trigger is hovered, so the pointer is inside it only
+  over the trigger, and what the plot shows there is the trigger's concern, not
+  the hint's. On the spectrogram the only triggers are the zoom halves, whose
+  zones already suppress the crosshair, guides and now the readout through
+  `PlotGeometry::controls_at`; #130 replaces them with standard Buttons.
+  Enforcing it in the hint would block the pointer and so the trigger's own
+  click, which a test guards.
 
 ## Post-completion
 

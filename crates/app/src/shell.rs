@@ -93,6 +93,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
         .run(move |cx| {
             gpui_kit::init(cx);
             settings_ui::init(cx);
+            hints::init(cx);
             navigation_ui::init(cx);
             cx.bind_keys([
                 KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
@@ -1608,5 +1609,62 @@ mod theme_tests {
             assert_eq!(theme_mode(Theme::Dark, appearance), ThemeMode::Dark);
             assert_eq!(theme_mode(Theme::Light, appearance), ThemeMode::Light);
         }
+    }
+}
+
+#[cfg(test)]
+mod analysis_hint_tests {
+    use super::*;
+    use argand_dsp::DynamicRange;
+    use gpui_kit::{TestAppContext, WindowHandle};
+
+    fn open(cx: &mut TestAppContext) -> WindowHandle<Shell> {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            settings_ui::init(cx);
+            navigation_ui::init(cx);
+            hints::init(cx);
+        });
+        let handle = cx.add_window(|window, cx| {
+            Shell::new(Config::default(), None, Session::default(), window, cx)
+        });
+        cx.run_until_parked();
+        handle
+    }
+
+    /// Opens the hint, changes the range as its recommendation would, then closes it.
+    fn change_and_close(cx: &mut TestAppContext, revert: bool) -> (Settings, Settings) {
+        let handle = open(cx);
+        let opening = handle
+            .update(cx, |shell, window, cx| {
+                let hint = shell.analysis_hint.clone();
+                hint.update(cx, |hint, cx| hint.open(window, cx));
+                shell.settings
+            })
+            .unwrap();
+        cx.run_until_parked();
+        handle
+            .update(cx, |shell, _, cx| {
+                shell.settings.dynamic_range = DynamicRange::Fixed(42.);
+                let hint = shell.analysis_hint.clone();
+                hint.update(cx, |hint, cx| hint.close(revert, cx));
+            })
+            .unwrap();
+        cx.run_until_parked();
+        let closed = handle.read_with(cx, |shell, _| shell.settings).unwrap();
+        (opening, closed)
+    }
+
+    #[gpui_kit::test]
+    fn escape_restores_the_settings_the_hint_opened_with(cx: &mut TestAppContext) {
+        let (opening, closed) = change_and_close(cx, true);
+        assert_ne!(opening.dynamic_range, DynamicRange::Fixed(42.));
+        assert_eq!(closed, opening);
+    }
+
+    #[gpui_kit::test]
+    fn other_closes_keep_what_changed(cx: &mut TestAppContext) {
+        let (_, closed) = change_and_close(cx, false);
+        assert_eq!(closed.dynamic_range, DynamicRange::Fixed(42.));
     }
 }

@@ -507,10 +507,14 @@ hover-based, so any blocking layer above it wins.
   file close it. While it is open the plot is frozen: a transparent deferred
   backdrop (`hints::backdrop`) covers the window, so the plot gets no pointer,
   readout, Alt guides, clicks or wheel, and the popover holds keyboard focus,
-  so `Plot` bindings do not match. Tab does not leave it. Values changed from
+  so `Plot` bindings do not match. Tab does not leave it, and Space, which the
+  popover would treat as Enter, does nothing (`NoAction` in the `PinnedHint`
+  key context). Values changed from
   it (Ctrl+R, its recommendation button) preview live. `PinnedHint` emits
   `Pinned::Opened` / `Pinned::Closed { revert }`; Shell interrupts the plot on
   opening and restores `hint_opening` on a reverting close.
+- The corner zoom buttons suppress the crosshair, the Alt guides and the
+  status-bar readout (`PlotGeometry::over_scale_buttons`).
 - Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
   clicks and drags.
 - Gestures: `PlotView::interrupt` ends drags, a pressed zoom half, the ruler menu

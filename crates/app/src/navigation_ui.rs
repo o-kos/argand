@@ -476,7 +476,8 @@ impl Shell {
 
     pub(super) fn cursor_readout(&self, cx: &gpui_kit::App) -> Option<(String, Option<String>)> {
         let (pointer, geometry) = self.plot_view()?.read(cx).hover()?;
-        if !geometry.navigation.contains(&pointer) {
+        // The corner scale buttons are controls, not a place on the plot.
+        if !geometry.navigation.contains(&pointer) || geometry.over_scale_buttons(Some(pointer)) {
             return None;
         }
         let mut extents = self.extents()?;
