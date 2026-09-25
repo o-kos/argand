@@ -419,7 +419,7 @@ floor requires expansion for a longer time axis. That exceptional range change
 restarts analysis just as an ordinary resize does.
 `PlotSize` always counts time columns and frequency rows; axes, hints, gestures,
 minimap rebinning and splitter layout use the corresponding screen dimension.
-The mode button and Ctrl+T share one orientation action and persist session version 9.
+The mode segments and Ctrl+T share one orientation action and persist session version 9.
 Its shortcut hint resolves the registered binding; plot bindings match only while
 the plot surface itself has focus, so they cannot toggle behind a popup or input. Arrow bindings use Horizontal/Vertical
 key contexts so panning follows the screen; named time/frequency zoom shortcuts
@@ -458,9 +458,9 @@ Ctrl+Shift+Up/Down are not zoom bindings; arrow pan bindings stay unchanged.
 `plot_view.rs` defines `PlotView`, one entity per document created when the file
 describes itself and dropped with it. It owns the plot focus handle and the
 `Plot Horizontal`/`Plot Vertical` key context on its surface element. It also owns
-pointer and readout position, pan, frequency-pan, splitter and pressed-zoom state,
-measured geometry and badge metrics, and the ruler context menu. Focusable overlays
-are siblings of the surface, never descendants, so they inherit no plot bindings.
+pointer and readout position, pan, frequency-pan and splitter state, measured
+geometry and badge metrics, and the ruler context menu. Focusable overlays are
+siblings of the surface, never descendants, so they inherit no plot bindings.
 Navigation actions and gestures become `PlotIntent`s that Shell handles in one
 subscription. Shell validates views against the capture and keeps view ranges,
 tick schemes, analysis requests, session writes and settings rollback. Session
@@ -537,10 +537,10 @@ hover-based, so any blocking layer above it wins.
   status-bar readout (`PlotGeometry::over_scale_buttons`).
 - Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
   clicks and drags.
-- Gestures: `PlotView::interrupt` ends drags, a pressed zoom half, the ruler menu
-  and the pointer. Shell calls it before the application menu, the settings
-  window and the file chooser open. Opening the ruler menu and deactivating the
-  window call `PlotView::end_gestures`, which keeps the pointer.
+- Gestures: `PlotView::interrupt` ends drags, the ruler menu and the pointer.
+  Shell calls it before the application menu, the settings window and the file
+  chooser open. Opening the ruler menu and deactivating the window call
+  `PlotView::end_gestures`, which keeps the pointer.
 - Tests cover the pinned hint's lifecycle and isolation, a passive hint's
   trigger click, a drag crossing a blocking layer, a menu-like occluding layer
   and interruption. The ruler context menu cannot be opened in a headless
@@ -566,8 +566,9 @@ runs along the ruler of the axis it zooms (#150): a row in the bottom-left
 corner beside the bottom ruler, a column in the top-right corner beside the
 right ruler. Horizontal mode puts time bottom-left and frequency top-right;
 vertical mode swaps them. Each pair is one framed container with
-rounded corners (22-pixel squares, one-pixel divider) dispatching the
-registered zoom actions with shortcut tooltips. View → Show scale controls
+rounded corners (22-pixel squares, one-pixel divider) whose halves are
+gpui-component `Button`s dispatching the registered zoom actions with shortcut
+tooltips. View → Show scale controls
 (`ToggleScaleUi`, Ctrl+U, session version 10, default on) hides or shows
 every pair; pairs vanish when either spectrum side is too small. Pair zones use
 an arrow cursor and exclude pan, drag and wheel navigation.
@@ -578,8 +579,10 @@ keyboard navigation. `app_menu_ui.rs` renders the overlay and dispatches existin
 actions after returning focus to the shell. Escape closes one level, outside
 clicks close the chain, and the independent ruler context menu retains the stock
 PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
-The orientation icon depicts the current time-axis direction; its tooltip names
-the next mode. `assets.rs` adds embedded application artwork to the toolkit icons.
+Orientation is a two-segment control whose selected segment is the mode in force
+and whose tooltip names only the other mode, and the segments and the grid toggle
+appear only while a document is shown (#130). `assets.rs` adds embedded
+application artwork to the toolkit icons.
 Title-bar content centers the shrinking filename region on the full window with
 symmetric margins that include the toolbar and native controls;
 interactive controls consume drag and double-click gestures.
@@ -587,3 +590,20 @@ interactive controls consume drag and double-click gestures.
 The centered client title contains only the filename. Set the native window title
 explicitly at startup and on each file opening: `Argand` or `filename – Argand`,
 so application switchers and window managers receive the same identity.
+
+## Standard buttons (#130)
+
+The corner zoom halves, the toolbar and the status-bar FFT and range items are
+gpui-component `Button`s, and each keeps the toolkit's own pressed, disabled and
+click behaviour. A control that lives over the picture or in the title bar is
+`tab_stop(false)`, carries a stable `id`, hands keyboard focus back to the plot
+on a click, and keeps its rule for when it is enabled. A custom variant paints no
+border, so these controls carry none: `toolbar_style` gives one control its
+surface, with the selected shade, the hover accent and the pressed accent as its
+states. A selected control keeps that one shade in every state, because the
+toolkit paints a selected button with its variant's active colour and it would
+otherwise read as pressed. The hover events on the status FFT and range items
+stay, because the pinned analysis hint and the yellow range progression are
+driven from them, but their manual hover background is gone, so a held button
+shows the variant's pressed colour. The audit dispositions are recorded in the
+inventory table of `docs/plans/124-standard-ui-architecture.md`.

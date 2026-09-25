@@ -167,27 +167,38 @@ Current code:
 
 ## Implementation steps
 
-- [ ] Replace `half_button` with a standard `Button` per half inside the retained
+- [x] Replace `half_button` with a standard `Button` per half inside the retained
       frame container; keep placement, 22-pixel squares, divider, rounding,
       translucency, icons, tooltips and both orientations.
-- [ ] Remove `pressed_zoom`, `release_press`, their listeners and every caller
+- [x] Remove `pressed_zoom`, `release_press`, their listeners and every caller
       (`end_gestures`, `ToggleScaleUi`), and update comments that describe them.
-- [ ] Remove the toolbar outline frames; keep selected, hover and pressed distinct.
-- [ ] Render the separator, orientation segment and Grid only with a document, and
+- [x] Remove the toolbar outline frames; keep selected, hover and pressed distinct.
+- [x] Render the separator, orientation segment and Grid only with a document, and
       make `toolbar_width` match.
-- [ ] Replace the orientation button with the two-segment `ButtonGroup`, hints and
+- [x] Replace the orientation button with the two-segment `ButtonGroup`, hints and
       keycap as decided.
-- [ ] Audit status FFT/range, start page and settings buttons; remove only
+- [x] Audit status FFT/range, start page and settings buttons; remove only
       redundant styling proven equivalent; record every disposition in the parent
       inventory table and mark the relevant phase-5 items there.
-- [ ] Headless GPUI tests (`gpui-kit` `test-support`): a zoom-half click dispatches
+- [x] Headless GPUI tests (`gpui-kit` `test-support`): a zoom-half click dispatches
       its zoom action exactly once and leaves focus on the plot; press inside then
       release outside dispatches nothing and a later click still works; hiding the
       pairs (`ToggleScaleUi`) mid-press leaves nothing stuck; the toolbar tree has no
       Grid/Orientation without a document and has them with one; clicking the
       unselected orientation segment toggles once and the selected one does nothing.
       Where a case cannot be driven headlessly, say so here and cover it natively.
-- [ ] Update AGENTS.md (toolbar, zoom pair and plot ownership paragraphs: no pressed
+
+      Three cases are `plot_view.rs` (`a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot`,
+      `a_release_outside_a_zoom_half_changes_nothing`,
+      `hiding_the_pairs_during_a_press_leaves_nothing_behind`) and two are
+      `app_menu_ui.rs` (`the_document_controls_join_the_toolbar`,
+      `only_the_other_orientation_segment_switches`). Keyboard traversal is the
+      one case that cannot be driven headlessly: GPUI's tab-stop map orders
+      handles by their tab-index path, and every focusable in the harness shares
+      one path, so `focus_next` returns the handle that already holds focus. Tab
+      avoidance stays in the native matrix, and each of these buttons carries
+      `tab_stop(false)` for it.
+- [x] Update AGENTS.md (toolbar, zoom pair and plot ownership paragraphs: no pressed
       state, segmented orientation, toolbar visibility) and add `CHANGELOG.md`
       `[Unreleased]` entries for the user-visible changes.
 - [ ] Complete validation.
@@ -195,9 +206,9 @@ Current code:
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] Native matrix on Linux (owner), recorded in the PR as
       `case | revision | platform/backend, theme, orientation | input | expected |
