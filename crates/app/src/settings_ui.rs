@@ -421,8 +421,7 @@ impl Shell {
         let visible = displayed.unwrap_or(self.settings);
         let foregrounds =
             ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground);
-        // The hint's backdrop keeps the pointer from the window, so the summary
-        // stays lit while it is open instead of fading under it.
+        // The hint's backdrop keeps the pointer off the window, so the summary stays lit.
         let lit = self.analysis_hint.read(cx).is_open();
         let summary = Button::new("analysis-settings")
             .tab_stop(false)
