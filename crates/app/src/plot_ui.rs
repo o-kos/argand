@@ -4,7 +4,8 @@ use super::navigation_ui::*;
 use super::plot_view::{PlotIntent, PlotSnapshot, PlotView};
 use super::*;
 use gpui_kit::Div;
-use gpui_kit::component::{Icon, IconName};
+use gpui_kit::component::button::ButtonRounded;
+use gpui_kit::component::{Disableable, Icon, IconName};
 
 impl Shell {
     /// The held picture view and the once-only first-paint marker, both
@@ -318,10 +319,6 @@ impl PlotView {
                         ZoomIn,
                         ZoomOut,
                         enabled,
-                        [
-                            self.pressed_zoom == Some("Zoom in time"),
-                            self.pressed_zoom == Some("Zoom out time"),
-                        ],
                         origin,
                         cx,
                     )
@@ -336,10 +333,6 @@ impl PlotView {
                         FrequencyZoomIn,
                         FrequencyZoomOut,
                         enabled,
-                        [
-                            self.pressed_zoom == Some("Zoom in frequency"),
-                            self.pressed_zoom == Some("Zoom out frequency"),
-                        ],
                         origin,
                         cx,
                     )
@@ -452,7 +445,6 @@ fn zoom_pair(
     in_action: impl Action,
     out_action: impl Action,
     enabled: bool,
-    pressed: [bool; 2],
     origin: gpui_kit::Point<Pixels>,
     cx: &mut Context<PlotView>,
 ) -> Div {
@@ -464,7 +456,6 @@ fn zoom_pair(
         pair.zoom_in,
         in_action,
         enabled,
-        pressed[0],
         horizontal,
         cx,
     );
@@ -473,7 +464,6 @@ fn zoom_pair(
         pair.zoom_out,
         out_action,
         enabled,
-        pressed[1],
         horizontal,
         cx,
     );
@@ -515,18 +505,17 @@ fn zoom_pair(
         .child(bar)
 }
 
-/// One clickable half of a corner pair: it fills its side of the shared
-/// frame, centers its glyph, presses while held, and dispatches the pair's
-/// zoom action.
+/// One clickable half of a corner pair: a standard button that fills its side
+/// of the shared frame, centers its glyph and dispatches the pair's zoom
+/// action, leaving keyboard focus on the plot.
 fn half_button(
     icon: IconName,
     hint: &'static str,
     action: impl Action + 'static,
     enabled: bool,
-    pressed: bool,
     horizontal: bool,
     cx: &mut Context<PlotView>,
-) -> gpui_kit::Stateful<Div> {
+) -> Button {
     let tooltip_action = Box::new(action) as Box<dyn Action>;
     let glyph = if enabled {
         cx.theme().foreground.opacity(0.85)
@@ -534,54 +523,32 @@ fn half_button(
         cx.theme().muted_foreground.opacity(0.5)
     };
     let accent = super::app_menu_ui::toolbar_accent(cx);
-    let hover = accent.opacity(0.32);
-    let press = accent.opacity(0.44);
-    let mut half = div()
-        .id(hint)
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor(gpui_kit::CursorStyle::Arrow)
-        .child(Icon::new(icon).size(px(12.)).text_color(glyph));
-    half = if horizontal {
-        half.flex_1().h_full()
+    // The frame supplies the paper and the rounding, so a half paints only the
+    // surfaces the pointer gives it.
+    let style = ButtonCustomVariant::new(cx)
+        .color(cx.theme().transparent)
+        .hover(accent.opacity(0.32))
+        .active(accent.opacity(0.44));
+    let half = Button::new(hint)
+        .tab_stop(false)
+        .custom(style)
+        .rounded(ButtonRounded::None)
+        .px_0()
+        .flex_1();
+    let half = if horizontal {
+        half.h_full()
     } else {
-        half.flex_1().w_full()
+        half.w_full()
     };
-    half = if enabled && pressed {
-        // Pressed wins outright: a hover refinement would repaint the same
-        // shade the pointer already shows while it holds the button down.
-        half.bg(press)
-    } else if enabled {
-        half.hover(move |style| style.bg(hover))
-    } else {
-        half
-    };
-    if enabled {
-        let click = tooltip_action.boxed_clone();
-        half = half
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |plot, _, _, cx| {
-                    plot.pressed_zoom = Some(hint);
-                    cx.notify();
-                }),
-            )
-            .on_click(cx.listener(move |plot, _, window, cx| {
-                window.focus(&plot.focus, cx);
-                window.dispatch_action(click.boxed_clone(), cx);
-            }));
-    }
-    half = half
-        .on_mouse_up(
-            MouseButton::Left,
-            cx.listener(|plot, _, _, cx| plot.release_press(cx)),
-        )
-        .on_mouse_up_out(
-            MouseButton::Left,
-            cx.listener(|plot, _, _, cx| plot.release_press(cx)),
-        );
-    half.tooltip(move |_, cx| {
+    let click = tooltip_action.boxed_clone();
+    let mut half = half
+        .child(Icon::new(icon).size(px(12.)).text_color(glyph))
+        .disabled(!enabled)
+        .on_click(cx.listener(move |plot, _, window, cx| {
+            window.focus(&plot.focus, cx);
+            window.dispatch_action(click.boxed_clone(), cx);
+        }));
+    half.interactivity().tooltip(move |_, cx| {
         shortcut_tooltip(
             hint.to_owned(),
             Some(tooltip_action.boxed_clone()),
@@ -589,7 +556,8 @@ fn half_button(
             px(240.),
             cx,
         )
-    })
+    });
+    half
 }
 
 fn unit_tooltip(
