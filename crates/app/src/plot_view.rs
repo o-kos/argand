@@ -8,8 +8,6 @@
 use super::navigation_ui::*;
 use super::*;
 use gpui_kit::EventEmitter;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 /// Everything the plot paints, rebuilt by the shell on every frame.
 ///
@@ -92,8 +90,6 @@ pub(super) struct PlotView {
     pub(super) open_menu: Option<WeakEntity<PopupMenu>>,
     pub(super) menu_dismiss: Option<Subscription>,
     /// Kept because dropping it stops the symbol shortcuts.
-    /// The plot's own hitbox from the last frame, which says whether anything covers it.
-    pub(super) probe: Rc<RefCell<Option<gpui_kit::Hitbox>>>,
     _symbols: Subscription,
 }
 
@@ -118,7 +114,6 @@ impl PlotView {
             badge_metrics: axes::BadgeMetrics::default(),
             open_menu: None,
             menu_dismiss: None,
-            probe: Rc::default(),
             _symbols: symbols,
         }
     }
@@ -332,8 +327,12 @@ impl Render for PlotView {
             )
             .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_drags))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_drags))
-            .on_hover(cx.listener(|plot, hovered, _, cx| {
-                if !hovered {
+            // Keys must not end the hover, and a plot uncovered under a still pointer takes it up.
+            .hover_listener_mode(gpui_kit::HoverListenerMode::InputModalityIndependent)
+            .on_hover(cx.listener(|plot, hovered, window, cx| {
+                if *hovered {
+                    plot.pick_up_pointer(window.is_window_hovered(), window, cx);
+                } else {
                     plot.clear_pointer(cx);
                 }
             }))
@@ -348,11 +347,6 @@ impl Render for PlotView {
                     .and_then(|bounds| self.unit_hint(1, bounds.origin, cx)),
             )
             .children(self.ruler_zoom_buttons(&snapshot, cx))
-            .child(pointer_probe(
-                cx.entity().downgrade(),
-                self.probe.clone(),
-                self.pointer.is_none(),
-            ))
             .when(self.dragging(), |plot| {
                 plot.child(drag_tracker(cx.entity().downgrade()))
             })
@@ -376,35 +370,6 @@ fn drag_tracker(plot: WeakEntity<PlotView>) -> impl IntoElement {
                     let _ = plot.update(cx, |plot, cx| plot.pointer_moved(event, window, cx));
                 }
             });
-        },
-    )
-    .absolute()
-    .inset_0()
-}
-
-/// Finds a pointer resting over the plot that no move has reported.
-///
-/// That happens when the plot appears under it, or when an overlay above it
-/// closes. After such a frame the plot asks whether the pointer is over its own
-/// uncovered hitbox, without waiting for the next move.
-fn pointer_probe(
-    plot: WeakEntity<PlotView>,
-    probe: Rc<RefCell<Option<gpui_kit::Hitbox>>>,
-    missing: bool,
-) -> impl IntoElement {
-    canvas(
-        move |bounds, window, _| {
-            let hitbox = window.insert_hitbox(bounds, gpui_kit::HitboxBehavior::Normal);
-            probe.replace(Some(hitbox));
-            bounds
-        },
-        move |_, bounds, window, _| {
-            if missing && bounds.contains(&window.mouse_position()) {
-                window.on_next_frame(move |window, cx| {
-                    let hovered = window.is_window_hovered();
-                    let _ = plot.update(cx, |plot, cx| plot.pick_up_pointer(hovered, window, cx));
-                });
-            }
         },
     )
     .absolute()
@@ -1012,10 +977,23 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn a_resting_pointer_is_picked_up_once_nothing_covers_the_plot(cx: &mut TestAppContext) {
+    fn key_presses_keep_the_pointer_over_the_plot(cx: &mut TestAppContext) {
         let handle = open(cx);
-        let spectrum = spectrum(cx, handle);
-        let resting = spectrum.center();
+        let resting = spectrum(cx, handle).center();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(resting, None, gpui_kit::Modifiers::default());
+        frame(cx, handle);
+        for key in ["a", "left", "tab"] {
+            press(cx, handle, key);
+            frame(cx, handle);
+            assert_eq!(pointer(cx, handle), Some(resting), "{key}");
+        }
+    }
+
+    #[gpui_kit::test]
+    fn a_resting_pointer_is_taken_up_only_inside_the_window(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let resting = spectrum(cx, handle).center();
         cover(
             cx,
             handle,
@@ -1023,16 +1001,7 @@ mod tests {
         );
         let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
         input.simulate_mouse_move(resting, None, gpui_kit::Modifiers::default());
-        frame(cx, handle);
-        pick_up(cx, handle, true);
         assert_eq!(pointer(cx, handle), None, "covered");
-        handle
-            .update(cx, |harness, _, cx| {
-                harness.cover = None;
-                cx.notify();
-            })
-            .unwrap();
-        frame(cx, handle);
         pick_up(cx, handle, false);
         assert_eq!(
             pointer(cx, handle),
@@ -1040,7 +1009,7 @@ mod tests {
             "the pointer is outside the window"
         );
         pick_up(cx, handle, true);
-        assert_eq!(pointer(cx, handle), Some(resting), "no move was needed");
+        assert_eq!(pointer(cx, handle), Some(resting));
     }
 
     /// Presses in the spectrum's centre and drags a little, returning the drag's input.

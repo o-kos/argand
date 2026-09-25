@@ -266,9 +266,15 @@ The listed native cases passed. Two findings were added to this Issue at the
 owner's decision:
 - [x] ➕ A pointer resting over the plot was not known until it moved: after
       opening a file from the start page, and after a hint or menu closed by a
-      key. `pointer_probe` and `PlotView::pick_up_pointer` now take it up after
-      the frame. A test covers a covered plot, a pointer outside the window and
-      the pick-up once the cover goes.
+      key. `time-plot`'s `on_hover` fires on layout changes under a still
+      pointer too, and now takes the pointer up (`PlotView::pick_up_pointer`)
+      while the window is hovered. A first attempt used a hitbox probe after
+      each frame; the owner's check found the crosshair and readout blinking on
+      the first key, because GPUI's modality-aware hover cleared the pointer and
+      the probe restored it. `HoverListenerMode::InputModalityIndependent` keeps
+      the hover through key presses, and the probe is gone. Tests: key presses
+      keep the pointer (a control with the default mode fails), and a resting
+      pointer is taken up only inside the window.
 - [x] ➕ Tab and every bound key hid the mouse pointer until the mouse moved
       (GPUI's default `CursorHideMode::OnTypingAndAction`). The application
       now sets `CursorHideMode::Never`.

@@ -516,14 +516,14 @@ hover-based, so any blocking layer above it wins.
   window is open the hint is disabled (`PinnedHint::set_enabled`): the trigger
   renders without its popover, so neither hover nor a right click opens a second
   surface with its own rollback.
-- A resting pointer: `on_mouse_move` and `on_hover` fire only on moves, so a
-  plot that appears under a still pointer (a file opened from the start page) or
-  is uncovered under it (a hint or menu closed by a key) would not know it is
-  there. `pointer_probe` inserts the plot's own hitbox each frame and, while the
-  plot has no pointer and the mouse lies within it, asks after the frame
-  (`on_next_frame`) whether `Hitbox::is_hovered_at` the mouse position and the
-  window is hovered; `PlotView::pick_up_pointer` then takes the pointer up.
-  Nothing is marked dirty unless a pointer is found.
+- The pointer over the plot: `time-plot` uses `on_hover` with
+  `HoverListenerMode::InputModalityIndependent`. GPUI's default mode ends hover
+  on every key press until the mouse moves, which cleared the readout and the
+  crosshair on the first key. `on_hover` also fires when a layout change moves
+  the plot under a still pointer: a file opened from the start page, or a hint
+  or menu closed by a key. `PlotView::pick_up_pointer` then takes the pointer up,
+  but only while the window is hovered, since the mouse position is stale once
+  the pointer has left the window.
 - The application sets `CursorHideMode::Never`: GPUI's default hides the mouse
   pointer on Tab and on every key bound to an action, and on the plot the
   pointer is the working tool.

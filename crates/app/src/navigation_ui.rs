@@ -792,23 +792,20 @@ impl plot_view::PlotView {
             .map(|_| position)
     }
 
-    /// Take up a pointer already resting over the uncovered plot.
+    /// Take up a pointer that came to rest over the plot without a move.
+    ///
+    /// The mouse position is stale once the pointer has left the window, so it
+    /// counts only while the window is hovered.
     pub(super) fn pick_up_pointer(
         &mut self,
         window_hovered: bool,
         window: &Window,
         cx: &mut Context<Self>,
     ) {
-        let position = window.mouse_position();
-        let uncovered = self
-            .probe
-            .borrow()
-            .as_ref()
-            .is_some_and(|hitbox| hitbox.is_hovered_at(position, window));
-        if !window_hovered || !uncovered || self.pointer.is_some() || self.dragging() {
+        if !window_hovered || self.pointer.is_some() || self.dragging() {
             return;
         }
-        self.set_pointer(self.plot_pointer(position), cx);
+        self.set_pointer(self.plot_pointer(window.mouse_position()), cx);
         cx.notify();
     }
 
