@@ -76,9 +76,7 @@ promise applies to.
 
 - The orientation control is a two-segment switch that shows the mode in force, rather than one button naming the next mode. The segments and the grid toggle appear only while a file is open.
 
-- Toolbar buttons lose their outline frames. The current orientation, a selected grid, hover and a pressed button are now the accent surfaces of the interface theme, and a toolbar icon no longer changes colour on hover.
-
-- The status-bar FFT summary and range item show the pressed background while held, instead of keeping the hover background.
+- Toolbar buttons lose their outline frames. The current orientation, a selected grid, hover and a pressed button are now the accent surfaces of the interface theme, and an actionable control tints its icon while hovered.
 
 - In vertical mode, place frequency units at the lower right and time units at the top of the right ruler. Captions reserve space from numeric labels, keep unit/resolution hints and use an arrow cursor without starting navigation gestures.
 

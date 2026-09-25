@@ -580,7 +580,7 @@ actions after returning focus to the shell. Escape closes one level, outside
 clicks close the chain, and the independent ruler context menu retains the stock
 PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
 Orientation is a two-segment control whose selected segment is the mode in force
-and whose tooltip names only the other mode, and the segments and the grid toggle
+and whose tooltip names its own mode, and the segments and the grid toggle
 appear only while a document is shown (#130). `assets.rs` adds embedded
 application artwork to the toolkit icons.
 Title-bar content centers the shrinking filename region on the full window with
@@ -593,17 +593,20 @@ so application switchers and window managers receive the same identity.
 
 ## Standard buttons (#130)
 
-The corner zoom halves, the toolbar and the status-bar FFT and range items are
-gpui-component `Button`s, and each keeps the toolkit's own pressed, disabled and
-click behaviour. A control that lives over the picture or in the title bar is
-`tab_stop(false)`, carries a stable `id`, hands keyboard focus back to the plot
-on a click, and keeps its rule for when it is enabled. A custom variant paints no
-border, so these controls carry none: `toolbar_style` gives one control its
-surface, with the selected shade, the hover accent and the pressed accent as its
-states. A selected control keeps that one shade in every state, because the
-toolkit paints a selected button with its variant's active colour and it would
-otherwise read as pressed. The hover events on the status FFT and range items
-stay, because the pinned analysis hint and the yellow range progression are
-driven from them, but their manual hover background is gone, so a held button
-shows the variant's pressed colour. The audit dispositions are recorded in the
-inventory table of `docs/plans/124-standard-ui-architecture.md`.
+The corner zoom halves and the toolbar are gpui-component `Button`s, and each
+keeps the toolkit's own pressed, disabled and click behaviour. A control that
+lives over the picture or in the title bar is `tab_stop(false)`, carries a stable
+`id`, hands keyboard focus back to the plot on a click, and keeps its rule for
+when it is enabled. A custom variant paints no border, so these controls carry
+none: `toolbar_style` gives one control its surface, with the accent shade of an
+on control and the hover and pressed accents on top of it. The application
+button and the grid toggle are not `selected`, because the toolkit stops
+repainting a selected button's hover and pressed surfaces, and an actionable
+control tints its icon while hovered. The orientation segment in force is the one
+selected control, and it is inert while selected because clicking the mode in
+force is not an action. The status-bar FFT item and the range item are a `Button`
+only while they have an action and a `div` otherwise; they keep the accepted
+colours, including the manual hover foreground and background the pinned analysis
+hint and the yellow range progression are driven from. The audit dispositions are
+recorded in the inventory table of
+`docs/plans/124-standard-ui-architecture.md`.

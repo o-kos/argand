@@ -192,17 +192,39 @@ Current code:
       `a_release_outside_a_zoom_half_changes_nothing`,
       `hiding_the_pairs_during_a_press_leaves_nothing_behind`) and two are
       `app_menu_ui.rs` (`the_document_controls_join_the_toolbar`,
-      `only_the_other_orientation_segment_switches`). Keyboard traversal is the
-      one case that cannot be driven headlessly: GPUI's tab-stop map orders
-      handles by their tab-index path, and every focusable in the harness shares
-      one path, so `focus_next` returns the handle that already holds focus. Tab
-      avoidance stays in the native matrix, and each of these buttons carries
-      `tab_stop(false)` for it.
+      `only_the_other_orientation_segment_switches`). What the three plot cases
+      prove is activation, a release outside and a hide during a press, not the
+      absence of a stuck pressed look, which is a surface observation. Keyboard
+      traversal is the one case that cannot be driven headlessly: GPUI's
+      tab-stop map orders handles by their tab-index path, and every focusable
+      in the harness shares one path, so `focus_next` returns the handle that
+      already holds focus. The stuck look, a document replaced during a press and
+      Tab avoidance therefore stay native-matrix cases, and each of these buttons
+      carries `tab_stop(false)` for the last.
 - [x] Update AGENTS.md (toolbar, zoom pair and plot ownership paragraphs: no pressed
       state, segmented orientation, toolbar visibility) and add `CHANGELOG.md`
       `[Unreleased]` entries for the user-visible changes.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
+
+## Review round 1
+
+The arbiter's decisions, all implemented on this branch.
+
+- A selected toolbar control keeps its hover and pressed feedback, so the
+  application button and the grid toggle are no longer `selected`; their on state
+  is the accent shade in the custom variant, and the grid keeps `toggled` for
+  accessibility. The orientation segment in force stays `selected` and inert,
+  because clicking the mode in force is not an action.
+- The status-bar FFT and range buttons keep their manual hover background. The
+  accepted status-bar colours do not change in this Issue.
+- Clicking a segment returns focus to `Shell::focus_target` before it toggles, as
+  the grid toggle does.
+- An actionable toolbar control tints its icon while hovered, on the grid toggle
+  and the unselected segment, and the selected segment does not.
+- The reported gap between the application button and the rest of the toolbar,
+  which opens on a click rather than a drag, is pre-existing and declined here. It
+  is tracked separately.
 
 ## Validation
 

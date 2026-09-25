@@ -1127,8 +1127,7 @@ mod tests {
         .unwrap()
     }
 
-    /// Flips the scale controls and repaints, the way the shell does when the
-    /// toggle reaches it: the session choice travels on the next snapshot.
+    /// Flips the scale controls, as the shell does, and carries the choice over.
     fn toggle_pairs(cx: &mut TestAppContext, handle: WindowHandle<Harness>) {
         press(cx, handle, "ctrl-u");
         handle
