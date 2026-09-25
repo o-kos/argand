@@ -60,7 +60,8 @@ impl ControlForegrounds {
         ButtonCustomVariant::new(cx)
             .foreground(self.active)
             .hover(cx.theme().secondary_hover)
-            .active(cx.theme().secondary_active)
+            // The accepted pressed look keeps the hover surface.
+            .active(cx.theme().secondary_hover)
     }
 
     /// The text of a control, which follows the pointer through its group.
