@@ -419,7 +419,7 @@ floor requires expansion for a longer time axis. That exceptional range change
 restarts analysis just as an ordinary resize does.
 `PlotSize` always counts time columns and frequency rows; axes, hints, gestures,
 minimap rebinning and splitter layout use the corresponding screen dimension.
-The mode button and Ctrl+T share one orientation action and persist session version 9.
+The mode segments and Ctrl+T share one orientation action and persist session version 9.
 Its shortcut hint resolves the registered binding; plot bindings match only while
 the plot surface itself has focus, so they cannot toggle behind a popup or input. Arrow bindings use Horizontal/Vertical
 key contexts so panning follows the screen; named time/frequency zoom shortcuts
@@ -458,9 +458,9 @@ Ctrl+Shift+Up/Down are not zoom bindings; arrow pan bindings stay unchanged.
 `plot_view.rs` defines `PlotView`, one entity per document created when the file
 describes itself and dropped with it. It owns the plot focus handle and the
 `Plot Horizontal`/`Plot Vertical` key context on its surface element. It also owns
-pointer and readout position, pan, frequency-pan, splitter and pressed-zoom state,
-measured geometry and badge metrics, and the ruler context menu. Focusable overlays
-are siblings of the surface, never descendants, so they inherit no plot bindings.
+pointer and readout position, pan, frequency-pan and splitter state, measured
+geometry and badge metrics, and the ruler context menu. Focusable overlays are
+siblings of the surface, never descendants, so they inherit no plot bindings.
 Navigation actions and gestures become `PlotIntent`s that Shell handles in one
 subscription. Shell validates views against the capture and keeps view ranges,
 tick schemes, analysis requests, session writes and settings rollback. Session
@@ -537,10 +537,10 @@ hover-based, so any blocking layer above it wins.
   status-bar readout (`PlotGeometry::over_scale_buttons`).
 - Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
   clicks and drags.
-- Gestures: `PlotView::interrupt` ends drags, a pressed zoom half, the ruler menu
-  and the pointer. Shell calls it before the application menu, the settings
-  window and the file chooser open. Opening the ruler menu and deactivating the
-  window call `PlotView::end_gestures`, which keeps the pointer.
+- Gestures: `PlotView::interrupt` ends drags, the ruler menu and the pointer.
+  Shell calls it before the application menu, the settings window and the file
+  chooser open. Opening the ruler menu and deactivating the window call
+  `PlotView::end_gestures`, which keeps the pointer.
 - Tests cover the pinned hint's lifecycle and isolation, a passive hint's
   trigger click, a drag crossing a blocking layer, a menu-like occluding layer
   and interruption. The ruler context menu cannot be opened in a headless
@@ -566,8 +566,11 @@ runs along the ruler of the axis it zooms (#150): a row in the bottom-left
 corner beside the bottom ruler, a column in the top-right corner beside the
 right ruler. Horizontal mode puts time bottom-left and frequency top-right;
 vertical mode swaps them. Each pair is one framed container with
-rounded corners (22-pixel squares, one-pixel divider) dispatching the
-registered zoom actions with shortcut tooltips. View → Show scale controls
+rounded corners (22-pixel squares, one-pixel divider) whose halves are
+gpui-component `Button`s dispatching the registered zoom actions with shortcut
+tooltips. Each half rounds the two corners facing away from its pair to the
+frame's radius less its border, because the frame clips content to a rectangle
+and a square hovered half would paint outside the rounded frame. View → Show scale controls
 (`ToggleScaleUi`, Ctrl+U, session version 10, default on) hides or shows
 every pair; pairs vanish when either spectrum side is too small. Pair zones use
 an arrow cursor and exclude pan, drag and wheel navigation.
@@ -578,8 +581,12 @@ keyboard navigation. `app_menu_ui.rs` renders the overlay and dispatches existin
 actions after returning focus to the shell. Escape closes one level, outside
 clicks close the chain, and the independent ruler context menu retains the stock
 PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
-The orientation icon depicts the current time-axis direction; its tooltip names
-the next mode. `assets.rs` adds embedded application artwork to the toolkit icons.
+Orientation is a two-segment control in one frame whose selected segment is the
+mode in force and whose tooltip names its own mode, and the segments and the grid
+toggle appear only while a document is shown (#130). The segments carry the
+Lucide `panel-top` and `panel-left` artwork, which the toolkit's default bundle
+serves for the second and `assets.rs` embeds for the first with `icon_assets!`.
+`assets.rs` adds embedded application artwork to the toolkit icons.
 Title-bar content centers the shrinking filename region on the full window with
 symmetric margins that include the toolbar and native controls;
 interactive controls consume drag and double-click gestures.
@@ -587,3 +594,35 @@ interactive controls consume drag and double-click gestures.
 The centered client title contains only the filename. Set the native window title
 explicitly at startup and on each file opening: `Argand` or `filename – Argand`,
 so application switchers and window managers receive the same identity.
+
+## Standard buttons (#130)
+
+The corner zoom halves and the toolbar are gpui-component `Button`s, and each
+keeps the toolkit's own pressed, disabled and click behaviour. A control that
+lives over the picture or in the title bar is `tab_stop(false)` and carries a stable
+`id`. The zoom halves, Grid and the orientation segments hand keyboard focus back
+to the plot on a click; the application button opens its menu, which takes focus.
+A custom variant paints no border, so these controls carry none:
+`toolbar_style` takes a `ToolbarState` and gives one control its whole surface.
+`Off` is the resting surface with the accent hover and pressed shades on top,
+and tints the glyph while hovered. `On`, which is a Grid that is shown and the
+application button while its menu is open, is the accent at 0.30 with 0.40 under
+the pointer and 0.52 while held, and an accent glyph. `Selected`, which is the
+orientation segment in force, is the accent at 0.30 in every state with an accent
+glyph, because a selected button is painted with its variant's active colour; it
+is inert, because clicking the mode in force is not an action. The application
+button and the grid toggle are not `selected`, because the toolkit stops
+repainting a selected button's hover and pressed surfaces. The two orientation
+segments share one frame on the group, a one-pixel border in
+`foreground.opacity(0.24)` over a six-pixel radius, and each segment rounds its
+own outer corners to the radius the frame leaves inside, since GPUI clips content
+to rectangles. Their divider is painted
+inside the second segment rather than a border, because a border takes the colour
+of the states its button passes through. The status-bar FFT item is a `Button`,
+and the range item is one only while it has an action and a `div` otherwise.
+Both follow the pointer through the button's own hover background and a hover
+group on their text, with no hovered flag in the shell, and the FFT summary stays
+lit while its pinned hint is open, which keeps the pointer off the window. The
+yellow range progression and the accepted colours are unchanged. The audit
+dispositions are recorded in the inventory table of
+`docs/plans/124-standard-ui-architecture.md`.

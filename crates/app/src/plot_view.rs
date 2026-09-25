@@ -81,7 +81,6 @@ pub(super) struct PlotView {
     pub(super) pointer: Option<gpui_kit::Point<Pixels>>,
     pub(super) pan: Option<Pan>,
     pub(super) frequency_pan: Option<(gpui_kit::Point<Pixels>, crate::frequency::View)>,
-    pub(super) pressed_zoom: Option<&'static str>,
     pub(super) splitter_dragging: bool,
     pub(super) geometry: Option<PlotGeometry>,
     pub(super) panel_bounds: Option<Bounds<Pixels>>,
@@ -107,7 +106,6 @@ impl PlotView {
             pointer: None,
             pan: None,
             frequency_pan: None,
-            pressed_zoom: None,
             splitter_dragging: false,
             geometry: None,
             panel_bounds: None,
@@ -142,19 +140,13 @@ impl PlotView {
         }
     }
 
-    pub(super) fn release_press(&mut self, cx: &mut Context<Self>) {
-        if self.pressed_zoom.take().is_some() {
-            cx.notify();
-        }
-    }
-
     pub(super) fn dismiss_menu(&mut self, cx: &mut Context<Self>) {
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui_kit::DismissEvent));
         }
     }
 
-    /// End the drags and the pressed zoom half, which only the pointer that began them may finish.
+    /// End the drags, which only the pointer that began them may finish.
     pub(super) fn end_gestures(&mut self, cx: &mut Context<Self>) {
         if self.dragging() {
             self.pan = None;
@@ -162,7 +154,6 @@ impl PlotView {
             self.splitter_dragging = false;
             cx.notify();
         }
-        self.release_press(cx);
     }
 
     /// Leave nothing behind for an overlay that is taking the input.
@@ -493,6 +484,8 @@ mod tests {
         other: FocusHandle,
         intents: Vec<PlotIntent>,
         grid: usize,
+        /// Stands in for the session's scale-controls choice.
+        scale_ui: bool,
         /// Stands in for a hint or a menu lying on the plot.
         cover: Option<Bounds<Pixels>>,
         _intents: Option<Subscription>,
@@ -507,6 +500,9 @@ mod tests {
                 .flex_col()
                 .key_context("Shell")
                 .on_action(cx.listener(|harness, _: &ToggleGrid, _, _| harness.grid += 1))
+                .on_action(cx.listener(|harness, _: &ToggleScaleUi, _, _| {
+                    harness.scale_ui = !harness.scale_ui
+                }))
                 .children(self.plot.clone())
                 .child(div().id("other").h(px(40.)).track_focus(&self.other))
                 .when_some(self.cover, |harness, cover| {
@@ -585,6 +581,7 @@ mod tests {
                 other: cx.focus_handle(),
                 intents: Vec::new(),
                 grid: 0,
+                scale_ui: false,
                 cover: None,
                 _intents: Some(intents),
             }
@@ -760,6 +757,7 @@ mod tests {
                 other: focus,
                 intents: Vec::new(),
                 grid: 0,
+                scale_ui: false,
                 cover: None,
                 _intents: None,
             }
@@ -1118,6 +1116,209 @@ mod tests {
             drag_time(cx, handle, spectrum, to),
             expected,
             "the step over the hint was followed"
+        );
+    }
+
+    /// Whether the corner pairs are in the tree the last frame drew.
+    fn pairs_shown(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> bool {
+        cx.update_window(handle.into(), |_, window, _| {
+            window.try_find("Zoom in time").is_some()
+        })
+        .unwrap()
+    }
+
+    /// Flips the scale controls, as the shell does, and carries the choice over.
+    fn toggle_pairs(cx: &mut TestAppContext, handle: WindowHandle<Harness>) {
+        press(cx, handle, "ctrl-u");
+        handle
+            .update(cx, |harness, _, cx| {
+                let shown = harness.scale_ui;
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, cx| {
+                    plot.snapshot.as_mut().unwrap().show_scale_ui = shown;
+                    cx.notify();
+                });
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
+        let shown = handle.update(cx, |harness, _, _| harness.scale_ui).unwrap();
+        assert_eq!(
+            pairs_shown(cx, handle),
+            shown,
+            "the scale controls show and hide the pairs"
+        );
+    }
+
+    /// The corner a pair occupies, in window coordinates.
+    fn zone(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        index: usize,
+    ) -> Bounds<Pixels> {
+        handle
+            .update(cx, |harness, _, cx| {
+                let geometry = harness.plot.as_ref().unwrap().read(cx).geometry;
+                let zone = geometry.expect("the plot is measured").zoom_zones[index]
+                    .expect("the pair is shown");
+                Bounds::new(
+                    point(px(zone.x), px(zone.y)),
+                    size(px(zone.width), px(zone.height)),
+                )
+            })
+            .unwrap()
+    }
+
+    /// The centre of a zoom half, which is where a click of its own lands.
+    fn half(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        index: usize,
+    ) -> gpui_kit::Point<Pixels> {
+        let zone = zone(cx, handle, index);
+        zone.center()
+    }
+
+    /// The two halves of a pair, with the frame they share.
+    fn halves(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        index: usize,
+    ) -> (Bounds<Pixels>, Bounds<Pixels>, Bounds<Pixels>) {
+        let (zoom_in, zoom_out) = if index == 0 {
+            ("Zoom in time", "Zoom out time")
+        } else {
+            ("Zoom in frequency", "Zoom out frequency")
+        };
+        let read = |cx: &mut TestAppContext, id: &'static str| {
+            cx.update_window(handle.into(), |_, window, _| window.find(id).bounds())
+                .unwrap()
+        };
+        (
+            read(cx, zoom_in),
+            read(cx, zoom_out),
+            zone(cx, handle, index),
+        )
+    }
+
+    #[gpui_kit::test]
+    fn the_halves_split_their_pair_in_two(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        toggle_pairs(cx, handle);
+        let (first, second, pair) = halves(cx, handle, 0);
+        assert_eq!(first.size, second.size, "the halves are equal");
+        assert_eq!(
+            first.size.width * 2. + px(1.) + px(2.),
+            pair.size.width,
+            "the frame holds both halves and the divider"
+        );
+        assert_eq!(first.size.height + px(2.), pair.size.height);
+        let (first, second, pair) = halves(cx, handle, 1);
+        assert_eq!(first.size, second.size, "the halves are equal");
+        assert_eq!(
+            first.size.height * 2. + px(1.) + px(2.),
+            pair.size.height,
+            "the frame holds both halves and the divider"
+        );
+        assert_eq!(first.size.width + px(2.), pair.size.width);
+    }
+
+    /// Whether the plot holds the keyboard, which its controls hand back to it.
+    fn plot_focused(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> bool {
+        handle
+            .update(cx, |harness, window, cx| {
+                harness
+                    .plot
+                    .as_ref()
+                    .unwrap()
+                    .read(cx)
+                    .focus
+                    .is_focused(window)
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        toggle_pairs(cx, handle);
+        navigation(cx, handle);
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("Zoom in time", cx)
+        })
+        .unwrap();
+        assert_eq!(
+            navigation(cx, handle),
+            vec![PlotIntent::Time(TimeIntent::Zoom {
+                factor: 0.5,
+                anchor: 0.5,
+            })],
+            "one activation is one zoom"
+        );
+        assert!(
+            plot_focused(cx, handle),
+            "the click leaves focus on the plot"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_release_outside_a_zoom_half_changes_nothing(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        toggle_pairs(cx, handle);
+        let inside = half(cx, handle, 0);
+        let outside = inside - point(px(0.), px(40.));
+        let none = gpui_kit::Modifiers::default();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(inside, None, none);
+        input.simulate_mouse_down(inside, MouseButton::Left, none);
+        input.simulate_mouse_move(outside, Some(MouseButton::Left), none);
+        input.simulate_mouse_up(outside, MouseButton::Left, none);
+        assert!(
+            navigation(cx, handle).is_empty(),
+            "the release did not land on the half"
+        );
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("Zoom out time", cx)
+        })
+        .unwrap();
+        assert_eq!(
+            navigation(cx, handle),
+            vec![PlotIntent::Time(TimeIntent::Zoom {
+                factor: 2.,
+                anchor: 0.5,
+            })],
+            "the half still works"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn hiding_the_pairs_during_a_press_leaves_nothing_behind(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        toggle_pairs(cx, handle);
+        let inside = half(cx, handle, 1);
+        let outside = inside - point(px(40.), px(0.));
+        let none = gpui_kit::Modifiers::default();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(inside, None, none);
+        input.simulate_mouse_down(inside, MouseButton::Left, none);
+        toggle_pairs(cx, handle);
+        input.simulate_mouse_up(outside, MouseButton::Left, none);
+        assert!(
+            navigation(cx, handle).is_empty(),
+            "a hidden half cannot be pressed"
+        );
+        toggle_pairs(cx, handle);
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("Zoom in frequency", cx)
+        })
+        .unwrap();
+        assert_eq!(
+            navigation(cx, handle),
+            vec![PlotIntent::Frequency(FrequencyIntent::Zoom {
+                factor: 0.5,
+                anchor: 0.5,
+            })],
+            "the pairs that return work"
         );
     }
 }

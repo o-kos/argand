@@ -612,13 +612,6 @@ impl Shell {
             }))
             .on_action(cx.listener(|shell, _: &ToggleScaleUi, _, cx| {
                 shell.session.show_scale_ui = !shell.session.show_scale_ui;
-                // Hiding the controls while one is held would leave the
-                // pressed mark stuck on whichever half returns.
-                if !shell.session.show_scale_ui
-                    && let Some(plot) = shell.plot_entity()
-                {
-                    plot.update(cx, |plot, cx| plot.release_press(cx));
-                }
                 shell.save();
                 cx.notify();
             }))
@@ -649,7 +642,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn toggle_orientation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn toggle_orientation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.session.orientation = self.session.orientation.toggled();
         self.time_scheme = None;
         self.frequency_scheme = None;
