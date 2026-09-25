@@ -200,7 +200,6 @@ impl Shell {
         let mut app = Button::new("application-menu-button")
             .tab_stop(false)
             .custom(toolbar_style(open, cx))
-            .selected(open)
             .small()
             .w(app_button_width(window, cx))
             .px(px(6.))
@@ -258,8 +257,7 @@ impl Shell {
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .on_double_click(|_, _, cx| cx.stop_propagation())
             .child(app)
-            // Nothing here acts without a document, and an empty hitbox in
-            // the title bar is a drag that does not move the window.
+            // Without a document these act on nothing, and their hitbox would block a title drag.
             .when(self.view.is_some(), |bar| {
                 let separator = div().w(px(1.)).h(px(16.)).mx_1().bg(cx.theme().border);
                 let orientation = self.orientation_segments(cx);
@@ -293,6 +291,7 @@ impl Shell {
                     return;
                 };
                 if next != usize::from(shell.session.orientation.vertical()) {
+                    window.focus(&shell.focus_target(cx), cx);
                     shell.toggle_orientation(window, cx);
                 }
             }))
@@ -314,8 +313,12 @@ impl Shell {
             .w(px(26.))
             .h(px(26.))
             .px_0()
-            .child(Self::toolbar_glyph(id, icon, cx));
-        // Ctrl+T switches to the mode this segment does not name.
+            .child(Self::toolbar_glyph(id, icon, !current, cx));
+        // The mode in force is not an action, so its segment joins no hover group.
+        if !current {
+            segment = segment.group(id);
+        }
+        // Only the segment that changes the mode offers Ctrl+T.
         let other = !current;
         let hint = format!("{} orientation", mode.label());
         segment.interactivity().tooltip(move |_, cx| {
@@ -327,18 +330,19 @@ impl Shell {
 
     /// The grid toggle, whose two states are the option on and the option off.
     fn grid_button(&self, cx: &mut Context<Self>) -> Button {
+        let id = "toggle-grid";
         let show = self.session.show_grid;
         let hint = if show { "Hide grid" } else { "Show grid" };
-        let mut button = Button::new("toggle-grid")
+        let mut button = Button::new(id)
             .tab_stop(false)
+            .group(id)
             .custom(toolbar_style(show, cx))
-            .selected(show)
             .toggled(show)
             .small()
             .w(px(26.))
             .h(px(26.))
             .px_0()
-            .child(Self::toolbar_glyph("toggle-grid", "argand/grid.svg", cx))
+            .child(Self::toolbar_glyph(id, "argand/grid.svg", true, cx))
             .on_click(cx.listener(|shell, _, window, cx| {
                 window.focus(&shell.focus_target(cx), cx);
                 window.dispatch_action(Box::new(ToggleGrid), cx);
@@ -355,13 +359,22 @@ impl Shell {
         button
     }
 
-    /// The icon of a toolbar control, painted over the accent hover surface.
-    fn toolbar_glyph(id: &'static str, icon: &'static str, cx: &gpui_kit::App) -> impl IntoElement {
+    /// The icon of a toolbar control, which tints while its own control is hovered.
+    fn toolbar_glyph(
+        id: &'static str,
+        icon: &'static str,
+        tinted: bool,
+        cx: &gpui_kit::App,
+    ) -> impl IntoElement {
+        let hover_foreground = toolbar_accent(cx);
         gpui_kit::svg()
             .path(icon)
             .size(px(20.))
             .id((id, 0_usize))
             .text_color(cx.theme().foreground.opacity(0.85))
+            .when(tinted, |glyph| {
+                glyph.group_hover(id, |style| style.text_color(hover_foreground))
+            })
     }
 
     pub(super) fn application_menu_overlay(
@@ -639,15 +652,13 @@ fn menu_width(
         .min(420.)
 }
 
-/// The width the title reserves for the toolbar, which is the application
-/// button alone until a document adds the orientation segments and Grid.
+/// The width the title reserves for the toolbar.
 pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App, document: bool) -> Pixels {
     let app = app_button_width(window, cx);
     if !document {
         return app;
     }
-    // Two orientation segments and Grid, the separator, three gaps and the
-    // separator's two margins.
+    // Two orientation segments and Grid, the separator, three gaps and its margins.
     app + px(26. * 3. + 1.) + window.rem_size() * 1.25
 }
 
@@ -674,26 +685,19 @@ pub(super) fn toolbar_accent(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     }
 }
 
-/// The toolbar surface of one control. A selected control keeps the accent
-/// shade in every state, because the toolkit paints a selected button with the
-/// variant's active colour and that would otherwise read as pressed.
+/// The toolbar surface of one control. An on control keeps the accent shade
+/// under the hover and pressed surfaces.
 pub(super) fn toolbar_style(selected: bool, cx: &gpui_kit::App) -> ButtonCustomVariant {
     let accent = toolbar_accent(cx);
-    let (color, hover, active) = if selected {
-        let on = accent.opacity(0.18);
-        (on, on, on)
-    } else {
-        (
-            cx.theme().title_bar.darken(0.035),
-            accent.opacity(0.32),
-            accent.opacity(0.44),
-        )
-    };
     ButtonCustomVariant::new(cx)
-        .color(color)
+        .color(if selected {
+            accent.opacity(0.18)
+        } else {
+            cx.theme().title_bar.darken(0.035)
+        })
         .foreground(cx.theme().foreground.darken(0.12))
-        .hover(hover)
-        .active(active)
+        .hover(accent.opacity(0.32))
+        .active(accent.opacity(0.44))
 }
 
 /// The tooltip stand-in for the pressed application button: renders nothing.
@@ -796,8 +800,7 @@ mod tests {
             "the application button is all the toolbar holds without a document"
         );
         open_document(cx, handle);
-        // The first and the last control touch the toolbar's own edges, so the
-        // room between them is everything it draws.
+        // The first and the last control touch the toolbar's own edges.
         let drawn = cx
             .update_window(handle.into(), |_, window, _| {
                 let first = window.find("application-menu-button").bounds();
