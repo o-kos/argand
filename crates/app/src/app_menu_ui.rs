@@ -3,6 +3,7 @@
 use super::{navigation_ui::*, *};
 use crate::app_menu::{self, Effect, Item, Kind, Menu};
 use crate::orientation::Mode;
+use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::Selectable;
 use gpui_kit::component::button::{ButtonCustomVariant, ButtonGroup, ButtonRounded};
 use gpui_kit::component::{Icon, IconName};
@@ -283,7 +284,7 @@ impl Shell {
         let vertical = self.session.orientation.vertical();
         let horizontal = Self::orientation_segment(
             "orientation-horizontal",
-            "argand/panel-top.svg",
+            Lucide::PanelTop.path(),
             Mode::Horizontal,
             !vertical,
             false,
@@ -291,7 +292,7 @@ impl Shell {
         );
         let vertical = Self::orientation_segment(
             "orientation-vertical",
-            "argand/panel-left.svg",
+            Lucide::PanelLeft.path(),
             Mode::Vertical,
             vertical,
             true,
@@ -319,7 +320,7 @@ impl Shell {
     /// One orientation segment, which is an action for the mode it names.
     fn orientation_segment(
         id: &'static str,
-        icon: &'static str,
+        icon: gpui_kit::SharedString,
         mode: Mode,
         current: bool,
         divided: bool,
@@ -344,8 +345,7 @@ impl Shell {
         if !current {
             segment = segment.group(id);
         }
-        // The divider is painted, not a border, because a border takes the
-        // colour of the states its own button passes through.
+        // Painted, because a border takes the colour of the button's own states.
         if divided {
             let line = div().absolute().left_0().top_0().bottom_0().w(px(1.));
             segment = segment.relative().child(line.bg(frame_colour(cx)));
@@ -379,7 +379,7 @@ impl Shell {
             .w(px(TOOLBAR_HEIGHT))
             .h(px(TOOLBAR_HEIGHT))
             .px_0()
-            .child(Self::toolbar_glyph(id, "argand/grid.svg", state, cx))
+            .child(Self::toolbar_glyph(id, "argand/grid.svg".into(), state, cx))
             .on_click(cx.listener(|shell, _, window, cx| {
                 window.focus(&shell.focus_target(cx), cx);
                 window.dispatch_action(Box::new(ToggleGrid), cx);
@@ -399,7 +399,7 @@ impl Shell {
     /// The icon of a toolbar control, which tints while an off control is hovered.
     fn toolbar_glyph(
         id: &'static str,
-        icon: &'static str,
+        icon: gpui_kit::SharedString,
         state: ToolbarState,
         cx: &gpui_kit::App,
     ) -> impl IntoElement {
