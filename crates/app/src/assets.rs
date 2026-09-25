@@ -9,10 +9,16 @@ icon_assets!(SegmentIcons, [PanelTop]);
 
 pub struct Assets;
 
-const ARTWORK: &[(&str, &[u8])] = &[(
-    "argand/grid.svg",
-    include_bytes!("../assets/icons/grid.svg"),
-)];
+const ARTWORK: &[(&str, &[u8])] = &[
+    (
+        "argand/app.png",
+        include_bytes!("../assets/icons/argand-24.png"),
+    ),
+    (
+        "argand/grid.svg",
+        include_bytes!("../assets/icons/grid.svg"),
+    ),
+];
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui_kit::Result<Option<Cow<'static, [u8]>>> {
@@ -44,6 +50,7 @@ mod tests {
     #[test]
     fn the_toolbar_icons_resolve_through_the_asset_source() {
         for path in [
+            "argand/app.png",
             "argand/grid.svg",
             "icons/panel-left.svg",
             "icons/panel-top.svg",
