@@ -377,9 +377,6 @@ impl Shell {
                     shell.range_hovered = *hovered;
                     cx.notify();
                 }))
-                .when(self.range_hovered && actionable, |button| {
-                    button.bg(cx.theme().secondary_hover)
-                })
                 .on_click(move |_, window, cx| {
                     window.dispatch_action(Box::new(UseRecommendedRange), cx);
                 })
@@ -428,9 +425,6 @@ impl Shell {
             .h_5()
             .px_2()
             .text_color(foreground)
-            .when(self.analysis_hovered, |button| {
-                button.bg(cx.theme().secondary_hover)
-            })
             .on_hover(cx.listener(move |shell, hovered, window, cx| {
                 shell.analysis_hovered = *hovered;
                 shell
