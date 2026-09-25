@@ -2,6 +2,7 @@
 
 use super::{navigation_ui::*, *};
 use crate::app_menu::{self, Effect, Item, Kind, Menu};
+use crate::orientation::Mode;
 use gpui_kit::component::Selectable;
 use gpui_kit::component::button::{ButtonCustomVariant, ButtonGroup};
 use gpui_kit::component::{Icon, IconName};
@@ -269,16 +270,15 @@ impl Shell {
 
     /// The two orientation segments, with the mode in force selected.
     fn orientation_segments(&self, cx: &mut Context<Self>) -> ButtonGroup {
-        use crate::orientation::Mode;
         let vertical = self.session.orientation.vertical();
-        let horizontal = self.orientation_segment(
+        let horizontal = Self::orientation_segment(
             "orientation-horizontal",
             "argand/horizontal.svg",
             Mode::Horizontal,
             !vertical,
             cx,
         );
-        let vertical = self.orientation_segment(
+        let vertical = Self::orientation_segment(
             "orientation-vertical",
             "argand/vertical.svg",
             Mode::Vertical,
@@ -300,10 +300,9 @@ impl Shell {
 
     /// One orientation segment, which is an action for the mode it names.
     fn orientation_segment(
-        &self,
         id: &'static str,
         icon: &'static str,
-        mode: crate::orientation::Mode,
+        mode: Mode,
         current: bool,
         cx: &mut Context<Self>,
     ) -> Button {
