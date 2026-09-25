@@ -239,10 +239,12 @@ control within it still needs replacement or a separately accepted exception.
       adapter, not a global navigation bypass. Verify focused Input/Select symbols,
       Control commands and IME remain untouched; test both top-row and keypad zoom.
 - [x] Preserve accepted snapshot labels, resize mailbox behavior and texture retirement.
-- [ ] Apply the surface contracts centrally and test dismissal, release outside,
-      focus loss, overlay opening during drag and document replacement.
-- [ ] Verify #122's cursor/guide reproduction and compatibility requirements; link
-      the evidence without claiming unrelated hint-contrast work is complete.
+- [x] Apply the surface contracts centrally and test dismissal, release outside,
+      focus loss, overlay opening during drag and document replacement (#129,
+      PR #155; see `completed/129-overlay-isolation.md`).
+- [x] Verify #122's cursor/guide reproduction and compatibility requirements; link
+      the evidence without claiming unrelated hint-contrast work is complete (PR
+      #155 maps each #122 criterion to a test or native case; #123 stays open).
 
 ### 5. Standard-control replacement
 

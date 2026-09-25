@@ -3,8 +3,8 @@
 Resolves [#129](https://github.com/o-kos/argand/issues/129) and
 [#122](https://github.com/o-kos/argand/issues/122).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](124-standard-ui-architecture.md), phase 4 (surface
-contracts). Blocked by [#128](completed/128-plot-view.md), merged in PR #143.
+[approved architecture](../124-standard-ui-architecture.md), phase 4 (surface
+contracts). Blocked by [#128](128-plot-view.md), merged in PR #143.
 
 ## Overview
 
@@ -239,9 +239,9 @@ apply it to this hint now (2026-09-24). The editor itself stays in #108.
       tracker statement in "Plot ownership (#128)".
 - [x] `CHANGELOG.md`: the pinned analysis hint; overlays and window switches end
       drags.
-- [ ] Update the parent plan's phase 4 rows with evidence links.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Update the parent plan's phase 4 rows with evidence links.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -249,15 +249,16 @@ apply it to this hint now (2026-09-24). The editor itself stays in #108.
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Native cases on the current release build, one row each in the Pull
+- [x] Native cases on the current release build, one row each in the Pull
       Request (`case | build | platform/backend | input | expected | observed |
       result`): P1 (menus over the plot), P2 (every hint over the spectrogram,
       with and without Alt, entering and leaving), P3 (drag with release
       outside, window switch, F10, Ctrl+, and Ctrl+O during a drag, file
       replacement), F3 (Escape on each menu, then a navigation key), O1 (ready
       status dismissed by click or wheel over a menu). Platforms without a
-      native run are listed as not exercised.
-- [ ] #122 evidence: each of its acceptance criteria mapped to a test or native
+      native run are listed as not exercised. Run by the owner on Ubuntu with
+      the final release build; Windows and macOS not exercised.
+- [x] #122 evidence: each of its acceptance criteria mapped to a test or native
       row, linked from the Pull Request.
 
 ### Owner's native check (Ubuntu, 2026-09-25)
