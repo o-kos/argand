@@ -40,6 +40,8 @@ mod shortcuts;
 #[path = "backdrop.rs"]
 mod backdrop;
 
+#[path = "hints.rs"]
+mod hints;
 #[path = "navigation_ui.rs"]
 mod navigation_ui;
 #[path = "plot_ui.rs"]
@@ -91,7 +93,10 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
         .run(move |cx| {
             gpui_kit::init(cx);
             settings_ui::init(cx);
+            hints::init(cx);
             navigation_ui::init(cx);
+            // The pointer is the plot's working tool, so navigation keys must not hide it.
+            cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
             cx.bind_keys([
                 KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
                 KeyBinding::new("tab", FocusNext, Some("Shell")),
@@ -300,8 +305,14 @@ struct Shell {
     settings: Settings,
     settings_window: Option<gpui_kit::WindowHandle<gpui_kit::component::Root>>,
     analysis_hovered: bool,
+    /// The analysis hint, pinned open until a click outside, Enter or Escape.
+    analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
+    /// The settings when the analysis hint opened, which Escape restores.
+    hint_opening: Option<Settings>,
     range_hovered: bool,
     ready_status_dismissed: bool,
+    /// Whether the mouse has moved in the window since it last left it.
+    pointer_in_window: bool,
     settings_backup: Option<Settings>,
     settings_view_backup: Option<crate::navigation::View>,
     settings_frequency_backup: Option<crate::frequency::View>,
@@ -363,6 +374,7 @@ struct Shell {
     _activation: Subscription,
     _appearance: Subscription,
     _keystrokes: Subscription,
+    _pinned: Subscription,
 }
 
 impl Shell {
@@ -384,6 +396,9 @@ impl Shell {
         let activation = cx.observe_window_activation(window, |shell, window, cx| {
             if window.is_window_active() {
                 shell.recent_files.refresh(&shell.session.recent);
+            } else if let Some(plot) = shell.plot_entity() {
+                // The release may happen in another window and never arrive here.
+                plot.update(cx, |plot, cx| plot.end_gestures(cx));
             }
             cx.notify();
         });
@@ -395,12 +410,20 @@ impl Shell {
             Self::dismiss_window_ready_status(window, cx);
         });
         let settings = Settings::restored(saved.analysis_settings, &config);
+        let owner = cx.entity().downgrade();
+        let analysis_hint = cx.new(|cx| {
+            hints::PinnedHint::new(move |_, _| settings_ui::analysis_tooltip(owner.clone()), cx)
+        });
+        let pinned = cx.subscribe(&analysis_hint, Self::analysis_hint_changed);
         Self {
             settings,
             settings_window: None,
             analysis_hovered: false,
+            analysis_hint,
+            hint_opening: None,
             range_hovered: false,
             ready_status_dismissed: false,
+            pointer_in_window: false,
             settings_backup: None,
             settings_view_backup: None,
             settings_frequency_backup: None,
@@ -432,6 +455,7 @@ impl Shell {
             _activation: activation,
             _appearance: appearance,
             _keystrokes: keystrokes,
+            _pinned: pinned,
         }
     }
 
@@ -461,6 +485,40 @@ impl Shell {
                 }
             });
         }
+    }
+
+    /// Follows whether the mouse is in the window, which GPUI's stale position after leaving does not say.
+    fn pointer_presence(shell: WeakEntity<Self>) -> impl IntoElement {
+        canvas(
+            |_, _, _| (),
+            move |_, _, window, _| {
+                let moved = shell.clone();
+                window.on_mouse_event(move |_: &gpui_kit::MouseMoveEvent, phase, _, cx| {
+                    if phase == gpui_kit::DispatchPhase::Capture {
+                        let _ = moved.update(cx, |shell, cx| shell.set_pointer_in_window(true, cx));
+                    }
+                });
+                let left = shell.clone();
+                window.on_mouse_event(move |_: &gpui_kit::MouseExitEvent, phase, _, cx| {
+                    if phase == gpui_kit::DispatchPhase::Capture {
+                        let _ = left.update(cx, |shell, cx| shell.set_pointer_in_window(false, cx));
+                    }
+                });
+            },
+        )
+        .absolute()
+        .size_full()
+    }
+
+    fn set_pointer_in_window(&mut self, inside: bool, cx: &mut Context<Self>) {
+        if self.pointer_in_window == inside {
+            return;
+        }
+        self.pointer_in_window = inside;
+        if !inside && let Some(plot) = self.plot_entity() {
+            plot.update(cx, |plot, cx| plot.clear_pointer(cx));
+        }
+        cx.notify();
     }
 
     fn ready_input_observer(shell: WeakEntity<Self>) -> impl IntoElement {
@@ -494,6 +552,7 @@ impl Shell {
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
+        self.close_analysis_hint(cx);
         // The old plot goes with its document, so focus must not stay on it.
         window.focus(&self.focus, cx);
         let editor = self.settings_window;
@@ -694,6 +753,13 @@ impl Shell {
     /// An owned handle, for callers that go on to borrow other fields mutably.
     pub(super) fn plot_entity(&self) -> Option<gpui_kit::Entity<plot_view::PlotView>> {
         self.plot_view().cloned()
+    }
+
+    /// End the plot's gestures and hover before an overlay takes the input.
+    pub(super) fn interrupt_plot(&self, cx: &mut gpui_kit::App) {
+        if let Some(plot) = self.plot_entity() {
+            plot.update(cx, |plot, cx| plot.interrupt(cx));
+        }
     }
 
     /// Where keyboard focus belongs when an overlay closes or a command runs.
@@ -932,14 +998,9 @@ impl Shell {
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
-        // The chooser takes the pointer and the release happens over the
-        // dialog: a corner half held at this moment would stay pressed.
-        if let Some(plot) = self.plot_entity() {
-            plot.update(cx, |plot, cx| {
-                plot.release_press(cx);
-                plot.dismiss_menu(cx);
-            });
-        }
+        self.close_analysis_hint(cx);
+        // The release happens over the dialog, so nothing held now may stay pressed.
+        self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);
         cx.notify();
         Self::choose(&cx.entity().downgrade(), window, cx);
@@ -1209,9 +1270,9 @@ impl Shell {
                     cx,
                 );
             }));
-        button.interactivity().tooltip(move |window, cx| {
+        button.interactivity().tooltip(move |_, cx| {
             let action = (index < 9).then(|| Box::new(OpenRecent { index }) as Box<dyn Action>);
-            shortcut_tooltip(tooltip.clone(), action, "StartPage", width).build(window, cx)
+            shortcut_tooltip(tooltip.clone(), action, "StartPage", width, cx)
         });
         button
     }
@@ -1232,14 +1293,14 @@ impl Shell {
             .cursor_pointer()
             .label("Open a signal file…")
             .on_click(|_, window, cx| window.dispatch_action(Box::new(ChooseFile), cx));
-        chooser.interactivity().tooltip(move |window, cx| {
+        chooser.interactivity().tooltip(move |_, cx| {
             shortcut_tooltip(
                 "Open a signal file".to_owned(),
                 Some(Box::new(ChooseFile)),
                 "Shell",
                 width,
+                cx,
             )
-            .build(window, cx)
         });
         div()
             .flex_1()
@@ -1362,8 +1423,17 @@ impl Render for Shell {
                 .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
                     shell.use_recommended_range(cx)
                 }))
-                .on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
-                .on_action(|_: &FocusPrevious, window, cx| window.focus_prev(cx))
+                // An open analysis hint keeps the keyboard until it closes.
+                .on_action(cx.listener(|shell, _: &FocusNext, window, cx| {
+                    if !shell.analysis_hint.read(cx).is_open() {
+                        window.focus_next(cx);
+                    }
+                }))
+                .on_action(cx.listener(|shell, _: &FocusPrevious, window, cx| {
+                    if !shell.analysis_hint.read(cx).is_open() {
+                        window.focus_prev(cx);
+                    }
+                }))
                 // A capture dropped anywhere on the window opens, which is where a
                 // person aims when the window is showing the wrong file.
                 .on_drop(cx.listener(|shell, dropped: &ExternalPaths, window, cx| {
@@ -1382,7 +1452,9 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, cx))
             .children(overlay)
+            .children(hints::backdrop(&self.analysis_hint, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
+            .child(Self::pointer_presence(cx.entity().downgrade()))
     }
 }
 
@@ -1391,21 +1463,24 @@ fn shortcut_tooltip(
     action: Option<Box<dyn Action>>,
     context: &'static str,
     width: Pixels,
-) -> Tooltip {
-    Tooltip::element(move |window, cx| {
-        let shortcut = action.as_deref().and_then(|action| {
-            shortcuts::zoom_keycap(action)
-                .or_else(|| Kbd::binding_for_action(action, Some(context), window))
-        });
-        div()
-            .max_w(width.min(window.viewport_size().width - px(48.)))
-            .flex()
-            .items_center()
-            .gap_3()
-            .child(div().min_w_0().child(text.clone()))
-            .when_some(shortcut, |hint, shortcut| {
-                hint.child(shortcuts::keycap(shortcut, cx))
-            })
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::AnyView {
+    hints::passive(cx, |_| {
+        Tooltip::element(move |window, cx| {
+            let shortcut = action.as_deref().and_then(|action| {
+                shortcuts::zoom_keycap(action)
+                    .or_else(|| Kbd::binding_for_action(action, Some(context), window))
+            });
+            div()
+                .max_w(width.min(window.viewport_size().width - px(48.)))
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(div().min_w_0().child(text.clone()))
+                .when_some(shortcut, |hint, shortcut| {
+                    hint.child(shortcuts::keycap(shortcut, cx))
+                })
+        })
     })
 }
 
@@ -1440,67 +1515,69 @@ fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui_kit::App)
     .min(limit)
 }
 
-fn metadata_tooltip(hint: MetadataHint) -> Tooltip {
-    Tooltip::element(move |window, cx| {
-        if !hint.rows.is_empty() {
-            return div()
-                .w(px(330.).min(window.viewport_size().width - px(48.)))
+fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {
+    hints::passive(cx, |_| {
+        Tooltip::element(move |window, cx| {
+            if !hint.rows.is_empty() {
+                return div()
+                    .w(px(330.).min(window.viewport_size().width - px(48.)))
+                    .py_1()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .mb_1()
+                            .child(hint.title),
+                    )
+                    .children(hint.rows.iter().map(|(label, value)| {
+                        settings_ui::detail_row(label.clone(), value.clone(), cx)
+                    }))
+                    .child(
+                        div()
+                            .mt_1()
+                            .pt_2()
+                            .border_t_1()
+                            .border_color(cx.theme().border)
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(hint.explanation.clone()),
+                    );
+            }
+            // A definite content width lets wrapped lines contribute their full layout height.
+            let width = metadata_hint_width(&hint, window, cx);
+            div()
+                .w(width)
                 .py_1()
                 .flex()
                 .flex_col()
                 .gap_1()
                 .child(
                     div()
+                        .w_full()
+                        .flex_shrink_0()
                         .font_weight(FontWeight::SEMIBOLD)
-                        .mb_1()
                         .child(hint.title),
                 )
-                .children(hint.rows.iter().map(|(label, value)| {
-                    settings_ui::detail_row(label.clone(), value.clone(), cx)
-                }))
                 .child(
-                    div()
-                        .mt_1()
-                        .pt_2()
-                        .border_t_1()
-                        .border_color(cx.theme().border)
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(hint.explanation.clone()),
-                );
-        }
-        // A definite content width lets wrapped lines contribute their full layout height.
-        let width = metadata_hint_width(&hint, window, cx);
-        div()
-            .w(width)
-            .py_1()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .child(
-                div()
-                    .w_full()
-                    .flex_shrink_0()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(hint.title),
-            )
-            .child(
-                div()
-                    .w_full()
-                    .flex_shrink_0()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(hint.value.clone()),
-            )
-            .when(!hint.explanation.is_empty(), |tooltip| {
-                tooltip.child(
                     div()
                         .w_full()
                         .flex_shrink_0()
-                        .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child(hint.explanation.clone()),
+                        .child(hint.value.clone()),
                 )
-            })
+                .when(!hint.explanation.is_empty(), |tooltip| {
+                    tooltip.child(
+                        div()
+                            .w_full()
+                            .flex_shrink_0()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(hint.explanation.clone()),
+                    )
+                })
+        })
     })
 }
 
@@ -1572,5 +1649,109 @@ mod theme_tests {
             assert_eq!(theme_mode(Theme::Dark, appearance), ThemeMode::Dark);
             assert_eq!(theme_mode(Theme::Light, appearance), ThemeMode::Light);
         }
+    }
+}
+
+#[cfg(test)]
+mod analysis_hint_tests {
+    use super::*;
+    use argand_dsp::DynamicRange;
+    use gpui_kit::{TestAppContext, WindowHandle};
+
+    fn open(cx: &mut TestAppContext) -> WindowHandle<Shell> {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            settings_ui::init(cx);
+            navigation_ui::init(cx);
+            hints::init(cx);
+        });
+        let handle = cx.add_window(|window, cx| {
+            Shell::new(Config::default(), None, Session::default(), window, cx)
+        });
+        cx.run_until_parked();
+        handle
+    }
+
+    /// Opens the hint, changes the range as its recommendation would, then closes it.
+    fn change_and_close(cx: &mut TestAppContext, revert: bool) -> (Settings, Settings) {
+        let handle = open(cx);
+        let opening = handle
+            .update(cx, |shell, window, cx| {
+                let hint = shell.analysis_hint.clone();
+                hint.update(cx, |hint, cx| hint.open(window, cx));
+                shell.settings
+            })
+            .unwrap();
+        cx.run_until_parked();
+        handle
+            .update(cx, |shell, _, cx| {
+                shell.settings.dynamic_range = DynamicRange::Fixed(42.);
+                let hint = shell.analysis_hint.clone();
+                hint.update(cx, |hint, cx| hint.close(revert, cx));
+            })
+            .unwrap();
+        cx.run_until_parked();
+        let closed = handle.read_with(cx, |shell, _| shell.settings).unwrap();
+        (opening, closed)
+    }
+
+    #[gpui_kit::test]
+    fn the_shell_follows_the_mouse_into_and_out_of_the_window(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let inside = |cx: &mut TestAppContext| {
+            handle
+                .read_with(cx, |shell, _| shell.pointer_in_window)
+                .unwrap()
+        };
+        assert!(!inside(cx), "nothing is known before the first move");
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let position = gpui_kit::point(gpui_kit::px(100.), gpui_kit::px(100.));
+        input.simulate_mouse_move(position, None, gpui_kit::Modifiers::default());
+        assert!(inside(cx));
+        input.simulate_event(gpui_kit::MouseExitEvent {
+            position,
+            pressed_button: None,
+            modifiers: gpui_kit::Modifiers::default(),
+        });
+        assert!(!inside(cx));
+    }
+
+    #[gpui_kit::test]
+    fn the_hint_stays_shut_while_the_settings_editor_is_open(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let try_open = |cx: &mut TestAppContext| {
+            handle
+                .update(cx, |shell, window, cx| {
+                    let hint = shell.analysis_hint.clone();
+                    hint.update(cx, |hint, cx| hint.open(window, cx));
+                    hint.read(cx).is_open()
+                })
+                .unwrap()
+        };
+        handle
+            .update(cx, |shell, window, cx| {
+                shell.edit_analysis(&EditAnalysis, window, cx)
+            })
+            .unwrap();
+        cx.run_until_parked();
+        assert!(!try_open(cx), "the editor has its own rollback");
+        handle
+            .update(cx, |shell, _, cx| shell.finish_settings(false, cx))
+            .unwrap();
+        cx.run_until_parked();
+        assert!(try_open(cx), "the editor has closed");
+    }
+
+    #[gpui_kit::test]
+    fn escape_restores_the_settings_the_hint_opened_with(cx: &mut TestAppContext) {
+        let (opening, closed) = change_and_close(cx, true);
+        assert_ne!(opening.dynamic_range, DynamicRange::Fixed(42.));
+        assert_eq!(closed, opening);
+    }
+
+    #[gpui_kit::test]
+    fn other_closes_keep_what_changed(cx: &mut TestAppContext) {
+        let (_, closed) = change_and_close(cx, false);
+        assert_eq!(closed.dynamic_range, DynamicRange::Fixed(42.));
     }
 }

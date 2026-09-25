@@ -465,9 +465,10 @@ Navigation actions and gestures become `PlotIntent`s that Shell handles in one
 subscription. Shell validates views against the capture and keeps view ranges,
 tick schemes, analysis requests, session writes and settings rollback. Session
 commands (grid, scale controls, orientation, ruler mode) stay Shell handlers,
-reached by bubbling from plot focus. Drags keep tracking outside the plot through
-window-level move listeners registered only while a drag is active. Moves inside
-the plot stay with its own listener.
+reached by bubbling from plot focus. While a drag is active, a tracker with its
+own hitbox matching the plot's handles every move the plot's hitbox does not see:
+beyond the plot and over a hint lying on it (#129). The plot's own listener
+handles the rest, so no move is handled twice.
 
 Shell remains the only texture owner. It rebuilds an immutable `PlotSnapshot` of
 shared references in every render and gives it to the plot. `shell::retire` is the
@@ -481,6 +482,70 @@ take focus temporarily and return it through `Shell::focus_target`, which the
 application menu also uses to resolve keycaps. Headless GPUI tests
 (`gpui-kit` `test-support`, dev-only) cover key routing, focus isolation, window
 isolation, plot replacement, retirement and drags beyond the plot.
+
+## Overlay surfaces (#129)
+
+Surfaces over the plot own the input they cover through toolkit layering; the
+plot never learns which overlays are open or where. It decides its cursor,
+readout and Alt guides from its own hitbox hover state, and its handlers are
+hover-based, so any blocking layer above it wins.
+
+- Passive hints: `shortcut_tooltip`, `metadata_tooltip` and `unit_tooltip`
+  return their view through `hints::passive`, never a bare `Tooltip::build`. A
+  passive hint (`.tooltip`) lives only while its trigger is hovered, so the
+  pointer can be inside it only over the trigger, which keeps the pointer and its
+  clicks. Blocking it would take clicks from its own trigger, because a GPUI
+  tooltip opens 13 pixels from the pointer and can cover the trigger.
+- The analysis hint is a pinned hint (`hints::PinnedHint`), following the
+  contract agreed in #108 for the future settings popover. Hovering the FFT
+  summary for 500 ms opens it as a standard gpui-component `Popover` anchored
+  above the summary, drawn with the standard `Tooltip` look (`appearance(false)`).
+  A right click on the summary also toggles it; the left click still opens
+  the settings window. Moving the pointer away does not close it. Only a click
+  outside (consumed), Enter (keeps the values), Escape (reverts to the settings
+  at opening), Ctrl+, (opens the settings window), F10, Ctrl+O and opening a
+  file close it. While it is open the plot is frozen: a transparent deferred
+  backdrop (`hints::backdrop`) covers the window, so the plot gets no pointer,
+  readout, Alt guides, clicks or wheel, and the popover holds keyboard focus,
+  so `Plot` bindings do not match. Tab does not leave it, and Space, which the
+  popover would treat as Enter, does nothing (`NoAction` in the `PinnedHint`
+  key context). Values changed from
+  it (Ctrl+R, its recommendation button) preview live. `PinnedHint` emits
+  `Pinned::Opened` / `Pinned::Closed { revert }`; Shell interrupts the plot on
+  opening and restores `hint_opening` on a reverting close. While the settings
+  window is open the hint is disabled (`PinnedHint::set_enabled`): the trigger
+  renders without its popover, so neither hover nor a right click opens a second
+  surface with its own rollback.
+- The pointer over the plot: `time-plot` uses `on_hover` with
+  `HoverListenerMode::InputModalityIndependent`. GPUI's default mode ends hover
+  on every key press until the mouse moves, which cleared the readout and the
+  crosshair on the first key. `on_hover` also fires when a layout change moves
+  the plot under a still pointer: a file opened from the start page, or a hint
+  or menu closed by a key. `PlotView::pick_up_pointer` then takes the pointer
+  up, but only while `PlotSnapshot::pointer_in_window` holds. GPUI keeps the
+  last position and hit test after `MouseExited`, and `is_window_hovered` means
+  "active" on macOS, so Shell follows window-level `MouseMove` and
+  `MouseExited` itself (`pointer_presence`) and clears the plot's pointer when
+  the mouse leaves. An orientation change keeps the pointer and the old
+  geometry until the next frame measures the new one, so the cursor does not
+  flash to an arrow and the readout does not blank; that layout filters the
+  pointer through the new geometry (`plot_pointer`).
+- The application sets `CursorHideMode::Never`: GPUI's default hides the mouse
+  pointer on Tab and on every key bound to an action, and on the plot the
+  pointer is the working tool.
+- The corner zoom buttons suppress the crosshair, the Alt guides and the
+  status-bar readout (`PlotGeometry::over_scale_buttons`).
+- Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
+  clicks and drags.
+- Gestures: `PlotView::interrupt` ends drags, a pressed zoom half, the ruler menu
+  and the pointer. Shell calls it before the application menu, the settings
+  window and the file chooser open. Opening the ruler menu and deactivating the
+  window call `PlotView::end_gestures`, which keeps the pointer.
+- Tests cover the pinned hint's lifecycle and isolation, a passive hint's
+  trigger click, a drag crossing a blocking layer, a menu-like occluding layer
+  and interruption. The ruler context menu cannot be opened in a headless
+  test because of the toolkit's `PopupMenu` retention cycle (#144), so its cases
+  are native checks.
 
 ## Application menu and toolbar (#91, #99)
 

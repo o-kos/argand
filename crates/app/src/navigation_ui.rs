@@ -476,7 +476,8 @@ impl Shell {
 
     pub(super) fn cursor_readout(&self, cx: &gpui_kit::App) -> Option<(String, Option<String>)> {
         let (pointer, geometry) = self.plot_view()?.read(cx).hover()?;
-        if !geometry.navigation.contains(&pointer) {
+        // The corner scale buttons are controls, not a place on the plot.
+        if !geometry.navigation.contains(&pointer) || geometry.over_scale_buttons(Some(pointer)) {
             return None;
         }
         let mut extents = self.extents()?;
@@ -782,13 +783,29 @@ impl plot_view::PlotView {
         false
     }
 
-    fn plot_pointer(&self, position: gpui_kit::Point<Pixels>) -> Option<gpui_kit::Point<Pixels>> {
+    pub(super) fn plot_pointer(
+        &self,
+        position: gpui_kit::Point<Pixels>,
+    ) -> Option<gpui_kit::Point<Pixels>> {
         self.geometry
             .filter(|geometry| {
                 geometry.navigation.contains(&position)
                     || geometry.frequency_ruler.contains(&position)
             })
             .map(|_| position)
+    }
+
+    /// Take up a pointer that came to rest over the plot without a move.
+    pub(super) fn pick_up_pointer(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let in_window = self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.pointer_in_window);
+        if !in_window || self.pointer.is_some() || self.dragging() {
+            return;
+        }
+        self.set_pointer(self.plot_pointer(window.mouse_position()), cx);
+        cx.notify();
     }
 
     fn set_pointer(&mut self, pointer: Option<gpui_kit::Point<Pixels>>, cx: &mut Context<Self>) {
@@ -867,6 +884,7 @@ impl plot_view::PlotView {
         window: &Window,
         cx: &mut Context<Self>,
     ) {
+        self.end_gestures(cx);
         self.open_menu = Some(menu.downgrade());
         self.menu_dismiss = Some(cx.subscribe_in(menu, window, Self::time_menu_dismissed));
     }
