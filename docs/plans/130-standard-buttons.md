@@ -205,7 +205,7 @@ Current code:
 - [x] Update AGENTS.md (toolbar, zoom pair and plot ownership paragraphs: no pressed
       state, segmented orientation, toolbar visibility) and add `CHANGELOG.md`
       `[Unreleased]` entries for the user-visible changes.
-- [ ] ➕ Owner feedback 1: segment frame and icons, on state, status hover from
+- [x] ➕ Owner feedback 1: segment frame and icons, on state, status hover from
       paint-time hover, zoom half corners.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
@@ -268,6 +268,14 @@ that changes the mode, not for the application button's artwork.
 Round 3 is clean. Its two documentation nits (Grid described as on with `toggled`,
 and focus return limited to the controls that do return it) are fixed. The reviewer
 accepted both declined round-1 items.
+
+Owner feedback 1 is implemented as decided. The two orientation segments share one
+frame on the group with a painted divider, because a `Button` border takes the
+colour of the states its own variant passes through, and the segment icons are the
+Lucide panel strips. The on state is accent 0.30 with 0.40 and 0.52 under the
+pointer, and the status controls follow the pointer through paint-time hover. The
+icons are app assets beside `grid.svg`, because the toolkit's default bundle has
+no `panel-top.svg` and its complete catalog is 7.3 MB of SVG source.
 
 ## Validation
 

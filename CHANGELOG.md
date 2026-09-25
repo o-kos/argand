@@ -78,6 +78,10 @@ promise applies to.
 
 - Toolbar buttons lose their outline frames. The current orientation, a grid that is on, hover and a pressed button are now the accent surfaces of the interface theme, and the grid icon and the orientation segment that changes the mode tint while hovered.
 
+- The orientation control is one framed group of two segments with a divider, showing a panel strip on the top or the left for the mode in force. A grid that is on, and the application button while its menu is open, take a stronger accent that still reads under the pointer.
+
+- The FFT summary and the range item follow the pointer directly, and the FFT summary stays lit while its analysis hint is open.
+
 - In vertical mode, place frequency units at the lower right and time units at the top of the right ruler. Captions reserve space from numeric labels, keep unit/resolution hints and use an arrow cursor without starting navigation gestures.
 
 - Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
