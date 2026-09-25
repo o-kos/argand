@@ -22,12 +22,13 @@ const ARTWORK: &[(&str, &[u8])] = &[
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui_kit::Result<Option<Cow<'static, [u8]>>> {
-        let Some((_, data)) = ARTWORK.iter().find(|(name, _)| *name == path) else {
-            return gpui_kit::assets::Assets
-                .load(path)
-                .or_else(|_| SegmentIcons.load(path));
-        };
-        Ok(Some(Cow::Borrowed(data)))
+        if let Some((_, data)) = ARTWORK.iter().find(|(name, _)| *name == path) {
+            return Ok(Some(Cow::Borrowed(data)));
+        }
+        match SegmentIcons.load(path)? {
+            Some(data) => Ok(Some(data)),
+            None => gpui_kit::assets::Assets.load(path),
+        }
     }
 
     fn list(&self, path: &str) -> gpui_kit::Result<Vec<SharedString>> {
