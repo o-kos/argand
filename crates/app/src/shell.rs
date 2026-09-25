@@ -304,12 +304,10 @@ struct Shell {
     config: Config,
     settings: Settings,
     settings_window: Option<gpui_kit::WindowHandle<gpui_kit::component::Root>>,
-    analysis_hovered: bool,
     /// The analysis hint, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
     /// The settings when the analysis hint opened, which Escape restores.
     hint_opening: Option<Settings>,
-    range_hovered: bool,
     ready_status_dismissed: bool,
     /// Whether the mouse has moved in the window since it last left it.
     pointer_in_window: bool,
@@ -418,10 +416,8 @@ impl Shell {
         Self {
             settings,
             settings_window: None,
-            analysis_hovered: false,
             analysis_hint,
             hint_opening: None,
-            range_hovered: false,
             ready_status_dismissed: false,
             pointer_in_window: false,
             settings_backup: None,
