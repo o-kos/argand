@@ -15,7 +15,9 @@ promise applies to.
 
 - The crosshair, cursor readout and Alt guides appear as soon as a file opens or a hint or menu closes under a resting pointer, without moving the mouse first.
 
-- Tab and the navigation keys no longer hide the mouse pointer.
+- Tab and the navigation keys no longer hide the mouse pointer, and the first key press no longer makes the crosshair and cursor readout blink.
+
+- The cursor readout clears when the mouse leaves the window, and switching orientation keeps the crosshair under a resting pointer.
 
 - The analysis hint now stays open once shown: moving the pointer away no longer closes it. A click outside, Enter or Escape closes it; Escape also undoes a range applied from it. While it is open, the plot ignores the pointer, wheel and navigation keys, and the click that closes the hint does not start a pan. A right click on the FFT summary also opens it.
 

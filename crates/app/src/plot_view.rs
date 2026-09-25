@@ -28,6 +28,8 @@ pub(super) struct PlotSnapshot {
     pub frequency: crate::frequency::View,
     pub show_grid: bool,
     pub show_scale_ui: bool,
+    /// The mouse position counts only while this holds, since it goes stale once the pointer leaves.
+    pub pointer_in_window: bool,
 }
 
 /// What the plot asks of the shell.
@@ -205,8 +207,8 @@ impl PlotView {
         self.pan = None;
         self.frequency_pan = None;
         self.splitter_dragging = false;
+        // The pointer stays, and the next layout checks it against the new geometry.
         self.geometry = None;
-        self.clear_pointer(cx);
         cx.notify();
     }
 
@@ -331,7 +333,7 @@ impl Render for PlotView {
             .hover_listener_mode(gpui_kit::HoverListenerMode::InputModalityIndependent)
             .on_hover(cx.listener(|plot, hovered, window, cx| {
                 if *hovered {
-                    plot.pick_up_pointer(window.is_window_hovered(), window, cx);
+                    plot.pick_up_pointer(window, cx);
                 } else {
                     plot.clear_pointer(cx);
                 }
@@ -559,6 +561,7 @@ mod tests {
             frequency: crate::frequency::View::default(),
             show_grid: true,
             show_scale_ui: false,
+            pointer_in_window: true,
         }
     }
 
@@ -965,17 +968,6 @@ mod tests {
         assert_eq!(pointer(cx, handle), None);
     }
 
-    fn pick_up(cx: &mut TestAppContext, handle: WindowHandle<Harness>, window_hovered: bool) {
-        handle
-            .update(cx, |harness, window, cx| {
-                let plot = harness.plot.clone().unwrap();
-                plot.update(cx, |plot, cx| {
-                    plot.pick_up_pointer(window_hovered, window, cx)
-                });
-            })
-            .unwrap();
-    }
-
     #[gpui_kit::test]
     fn key_presses_keep_the_pointer_over_the_plot(cx: &mut TestAppContext) {
         let handle = open(cx);
@@ -990,9 +982,12 @@ mod tests {
         }
     }
 
-    #[gpui_kit::test]
-    fn a_resting_pointer_is_taken_up_only_inside_the_window(cx: &mut TestAppContext) {
-        let handle = open(cx);
+    /// Rests the pointer on a covered plot, then takes the cover away without a move.
+    fn uncover_under(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        in_window: bool,
+    ) -> gpui_kit::Point<Pixels> {
         let resting = spectrum(cx, handle).center();
         cover(
             cx,
@@ -1001,14 +996,56 @@ mod tests {
         );
         let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
         input.simulate_mouse_move(resting, None, gpui_kit::Modifiers::default());
+        frame(cx, handle);
         assert_eq!(pointer(cx, handle), None, "covered");
-        pick_up(cx, handle, false);
-        assert_eq!(
-            pointer(cx, handle),
-            None,
-            "the pointer is outside the window"
-        );
-        pick_up(cx, handle, true);
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.cover = None;
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, _| {
+                    plot.snapshot.as_mut().unwrap().pointer_in_window = in_window
+                });
+                cx.notify();
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
+        resting
+    }
+
+    #[gpui_kit::test]
+    fn a_plot_uncovered_under_a_still_pointer_takes_it_up(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let resting = uncover_under(cx, handle, true);
+        assert_eq!(pointer(cx, handle), Some(resting));
+    }
+
+    #[gpui_kit::test]
+    fn a_pointer_that_left_the_window_is_not_taken_up(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        uncover_under(cx, handle, false);
+        assert_eq!(pointer(cx, handle), None);
+    }
+
+    #[gpui_kit::test]
+    fn a_new_orientation_keeps_a_resting_pointer(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let resting = spectrum(cx, handle).center();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(resting, None, gpui_kit::Modifiers::default());
+        frame(cx, handle);
+        handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, cx| {
+                    plot.snapshot.as_mut().unwrap().extents.orientation =
+                        crate::orientation::Mode::Vertical;
+                    plot.reorient(cx);
+                });
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
         assert_eq!(pointer(cx, handle), Some(resting));
     }
 

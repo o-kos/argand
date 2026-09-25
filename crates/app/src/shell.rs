@@ -311,6 +311,8 @@ struct Shell {
     hint_opening: Option<Settings>,
     range_hovered: bool,
     ready_status_dismissed: bool,
+    /// Whether the mouse has moved in the window since it last left it.
+    pointer_in_window: bool,
     settings_backup: Option<Settings>,
     settings_view_backup: Option<crate::navigation::View>,
     settings_frequency_backup: Option<crate::frequency::View>,
@@ -421,6 +423,7 @@ impl Shell {
             hint_opening: None,
             range_hovered: false,
             ready_status_dismissed: false,
+            pointer_in_window: false,
             settings_backup: None,
             settings_view_backup: None,
             settings_frequency_backup: None,
@@ -482,6 +485,40 @@ impl Shell {
                 }
             });
         }
+    }
+
+    /// Follows whether the mouse is in the window, which GPUI's stale position after leaving does not say.
+    fn pointer_presence(shell: WeakEntity<Self>) -> impl IntoElement {
+        canvas(
+            |_, _, _| (),
+            move |_, _, window, _| {
+                let moved = shell.clone();
+                window.on_mouse_event(move |_: &gpui_kit::MouseMoveEvent, phase, _, cx| {
+                    if phase == gpui_kit::DispatchPhase::Capture {
+                        let _ = moved.update(cx, |shell, cx| shell.set_pointer_in_window(true, cx));
+                    }
+                });
+                let left = shell.clone();
+                window.on_mouse_event(move |_: &gpui_kit::MouseExitEvent, phase, _, cx| {
+                    if phase == gpui_kit::DispatchPhase::Capture {
+                        let _ = left.update(cx, |shell, cx| shell.set_pointer_in_window(false, cx));
+                    }
+                });
+            },
+        )
+        .absolute()
+        .size_full()
+    }
+
+    fn set_pointer_in_window(&mut self, inside: bool, cx: &mut Context<Self>) {
+        if self.pointer_in_window == inside {
+            return;
+        }
+        self.pointer_in_window = inside;
+        if !inside && let Some(plot) = self.plot_entity() {
+            plot.update(cx, |plot, cx| plot.clear_pointer(cx));
+        }
+        cx.notify();
     }
 
     fn ready_input_observer(shell: WeakEntity<Self>) -> impl IntoElement {
@@ -1417,6 +1454,7 @@ impl Render for Shell {
             .children(overlay)
             .children(hints::backdrop(&self.analysis_hint, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
+            .child(Self::pointer_presence(cx.entity().downgrade()))
     }
 }
 
@@ -1655,6 +1693,27 @@ mod analysis_hint_tests {
         cx.run_until_parked();
         let closed = handle.read_with(cx, |shell, _| shell.settings).unwrap();
         (opening, closed)
+    }
+
+    #[gpui_kit::test]
+    fn the_shell_follows_the_mouse_into_and_out_of_the_window(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let inside = |cx: &mut TestAppContext| {
+            handle
+                .read_with(cx, |shell, _| shell.pointer_in_window)
+                .unwrap()
+        };
+        assert!(!inside(cx), "nothing is known before the first move");
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let position = gpui_kit::point(gpui_kit::px(100.), gpui_kit::px(100.));
+        input.simulate_mouse_move(position, None, gpui_kit::Modifiers::default());
+        assert!(inside(cx));
+        input.simulate_event(gpui_kit::MouseExitEvent {
+            position,
+            pressed_button: None,
+            modifiers: gpui_kit::Modifiers::default(),
+        });
+        assert!(!inside(cx));
     }
 
     #[gpui_kit::test]

@@ -325,6 +325,25 @@ Round 3 confirmed the round 2 fix.
   for the left button. Pre-existing and unrelated to this Issue, tracked in
   #156.
 
+Additional round at the owner's request, after the owner's native check, on
+the changes since round 3:
+- Accepted (P1): after `MouseExited` GPUI keeps the last position and hit test,
+  and `is_window_hovered` means an active window on macOS, so a stale position
+  could be taken up. Shell now follows window-level moves and exits
+  (`pointer_presence`); the plot takes a pointer up only while the mouse is in
+  the window, and the plot's pointer clears when it leaves.
+- Accepted (P2): an orientation change cleared the pointer while the plot stayed
+  hovered, so nothing restored it. The pointer is now kept and filtered through
+  the new geometry at the next layout.
+- Accepted (P2): the pick-up test called the method directly. The tests now
+  uncover a plot under a still pointer and let the real hover listener run,
+  with and without the mouse in the window. Controls without the pick-up, with
+  the old orientation clearing, or without the window check each fail.
+- Declined: taking up the pointer when the settings window closes over a still
+  mouse. The plot is not covered there; the mouse was in another window, and
+  no reliable signal says it rests over the plot again before it moves. Taking
+  it up on the first move matches ordinary desktop behaviour.
+
 ## Post-completion
 
 - Close #122 through the Pull Request, with its evidence linked.

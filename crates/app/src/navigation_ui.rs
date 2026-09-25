@@ -783,7 +783,10 @@ impl plot_view::PlotView {
         false
     }
 
-    fn plot_pointer(&self, position: gpui_kit::Point<Pixels>) -> Option<gpui_kit::Point<Pixels>> {
+    pub(super) fn plot_pointer(
+        &self,
+        position: gpui_kit::Point<Pixels>,
+    ) -> Option<gpui_kit::Point<Pixels>> {
         self.geometry
             .filter(|geometry| {
                 geometry.navigation.contains(&position)
@@ -793,16 +796,12 @@ impl plot_view::PlotView {
     }
 
     /// Take up a pointer that came to rest over the plot without a move.
-    ///
-    /// The mouse position is stale once the pointer has left the window, so it
-    /// counts only while the window is hovered.
-    pub(super) fn pick_up_pointer(
-        &mut self,
-        window_hovered: bool,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !window_hovered || self.pointer.is_some() || self.dragging() {
+    pub(super) fn pick_up_pointer(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let in_window = self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.pointer_in_window);
+        if !in_window || self.pointer.is_some() || self.dragging() {
             return;
         }
         self.set_pointer(self.plot_pointer(window.mouse_position()), cx);

@@ -46,6 +46,7 @@ impl Shell {
             frequency: self.frequency,
             show_grid: self.session.show_grid,
             show_scale_ui: self.session.show_scale_ui,
+            pointer_in_window: self.pointer_in_window,
         })
     }
 
@@ -361,6 +362,11 @@ impl PlotView {
         self.panel_bounds = Some(bounds);
         self.geometry = Some(geometry);
         self.measured = Some(measured);
+        let pointer = self.pointer.and_then(|pointer| self.plot_pointer(pointer));
+        if pointer != self.pointer {
+            self.pointer = pointer;
+            cx.emit(PlotIntent::Pointer);
+        }
         cx.emit(PlotIntent::Layout {
             plot: measured,
             time_length_changed: old.is_some_and(|old| old.time_length() != geometry.time_length()),

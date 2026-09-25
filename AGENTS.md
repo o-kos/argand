@@ -521,9 +521,13 @@ hover-based, so any blocking layer above it wins.
   on every key press until the mouse moves, which cleared the readout and the
   crosshair on the first key. `on_hover` also fires when a layout change moves
   the plot under a still pointer: a file opened from the start page, or a hint
-  or menu closed by a key. `PlotView::pick_up_pointer` then takes the pointer up,
-  but only while the window is hovered, since the mouse position is stale once
-  the pointer has left the window.
+  or menu closed by a key. `PlotView::pick_up_pointer` then takes the pointer
+  up, but only while `PlotSnapshot::pointer_in_window` holds. GPUI keeps the
+  last position and hit test after `MouseExited`, and `is_window_hovered` means
+  "active" on macOS, so Shell follows window-level `MouseMove` and
+  `MouseExited` itself (`pointer_presence`) and clears the plot's pointer when
+  the mouse leaves. An orientation change keeps the pointer; the next layout
+  filters it through the new geometry (`plot_pointer`).
 - The application sets `CursorHideMode::Never`: GPUI's default hides the mouse
   pointer on Tab and on every key bound to an action, and on the plot the
   pointer is the working tool.
