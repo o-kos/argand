@@ -4,7 +4,6 @@ use super::navigation_ui::*;
 use super::plot_view::{PlotIntent, PlotSnapshot, PlotView};
 use super::*;
 use gpui_kit::Div;
-use gpui_kit::component::button::ButtonRounded;
 use gpui_kit::component::{Disableable, Icon, IconName};
 
 impl Shell {
@@ -435,10 +434,23 @@ struct ZoomPair {
 const SCALE_BUTTON: f32 = 22.0;
 const SCALE_DIVIDER: f32 = 1.0;
 const SCALE_PAIR: f32 = 2.0 * SCALE_BUTTON + SCALE_DIVIDER;
+
 /// The gap between a corner pair and the spectrum's edges, in logical pixels.
 const SCALE_INSET: f32 = 8.0;
 /// The radius of a pair's outward corner, away from the picture's edges.
 const SCALE_ROUNDING: f32 = 6.0;
+
+/// Round the two corners of a half that face away from its pair, to the frame's
+/// own radius less its one-pixel border.
+fn round_outer(half: Button, horizontal: bool, leading: bool) -> Button {
+    let radius = px(SCALE_ROUNDING - 1.);
+    match (horizontal, leading) {
+        (true, true) => half.rounded_tl(radius).rounded_bl(radius),
+        (true, false) => half.rounded_tr(radius).rounded_br(radius),
+        (false, true) => half.rounded_tl(radius).rounded_tr(radius),
+        (false, false) => half.rounded_bl(radius).rounded_br(radius),
+    }
+}
 
 fn zoom_pair(
     pair: ZoomPair,
@@ -457,6 +469,7 @@ fn zoom_pair(
         in_action,
         enabled,
         horizontal,
+        true,
         cx,
     );
     let zoom_out = half_button(
@@ -465,6 +478,7 @@ fn zoom_pair(
         out_action,
         enabled,
         horizontal,
+        false,
         cx,
     );
     let divider = if horizontal {
@@ -514,6 +528,7 @@ fn half_button(
     action: impl Action + 'static,
     enabled: bool,
     horizontal: bool,
+    leading: bool,
     cx: &mut Context<PlotView>,
 ) -> Button {
     let tooltip_action = Box::new(action) as Box<dyn Action>;
@@ -532,9 +547,11 @@ fn half_button(
     let half = Button::new(hint)
         .tab_stop(false)
         .custom(style)
-        .rounded(ButtonRounded::None)
         .px_0()
         .flex_1();
+    // The frame clips to a rectangle, so each half rounds the corners the
+    // frame's own radius leaves square.
+    let half = round_outer(half, horizontal, leading);
     let half = if horizontal {
         half.h_full()
     } else {
