@@ -1383,8 +1383,7 @@ mod tests {
             let row = view_row(cx);
             press(cx, "down right");
             assert!(file_focused(cx, &shell), "{key} found the File branch");
-            // The pointer crosses to View, so File stops being drawn and the
-            // focus the File submenu held points at nothing in the frame.
+            // Crossing to View stops drawing File while its handle keeps the focus.
             cx.simulate_mouse_move(row, None, gpui_kit::Modifiers::default());
             draw(cx);
             press(cx, "down right");
