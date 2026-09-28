@@ -2,8 +2,8 @@
 
 Resolves [#130](https://github.com/o-kos/argand/issues/130).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](124-standard-ui-architecture.md), phase 5 (standard-control
-replacement). Predecessor [#129](completed/129-overlay-isolation.md), merged in PR #155.
+[approved architecture](../124-standard-ui-architecture.md), phase 5 (standard-control
+replacement). Predecessor [#129](129-overlay-isolation.md), merged in PR #155.
 
 ## Overview
 
@@ -207,8 +207,8 @@ Current code:
       `[Unreleased]` entries for the user-visible changes.
 - [x] ➕ Owner feedback 1: segment frame and icons, on state, status hover from
       paint-time hover, zoom half corners.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Owner feedback 1 (2026-09-25)
 
@@ -259,6 +259,16 @@ Decisions, taken with the owner on an interactive colour preview:
   background, so main showed `secondary_active` while held. The variant keeps
   `secondary_active`, as on main.
 
+## Review of the owner-feedback changes
+
+Codex `gpt-6-sol` high reviewed the feedback changes in three further passes. The
+first accepted the zoom inner corners, toolkit icons instead of vendored Lucide
+copies and one-line comments, and its claim that main painted the full hover text
+colour was declined with source evidence, which it later accepted. The arbiter
+restored the application artwork one commit had dropped. The second raised a
+silently swallowed asset error, fixed. The third, after owner feedback 2, found no
+substantive issue and two comment and wrapping nits, fixed.
+
 ## Review round 1
 
 The arbiter's decisions, all implemented on this branch.
@@ -303,7 +313,7 @@ vendored and the complete catalog is not linked.
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Native matrix on Linux (owner), recorded in the PR as
+- [x] Native matrix on Linux (owner), recorded in the PR as
       `case | revision | platform/backend, theme, orientation | input | expected |
       observed | pass/fail/not exercised`:
   - zoom halves: hover, press, release inside (one zoom), release outside (no zoom, no

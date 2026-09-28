@@ -615,9 +615,9 @@ glyph, because a selected button is painted with its variant's active colour; it
 is inert, because clicking the mode in force is not an action. The application
 button and the grid toggle are not `selected`, because the toolkit stops
 repainting a selected button's hover and pressed surfaces. The two orientation
-segments share one frame on the group, a one-pixel border in the opaque blend of
-`foreground.opacity(0.24)` over the title bar, with a six-pixel radius, and each segment rounds its
-own outer corners to the radius the frame leaves inside, since GPUI clips content
+segments share one frame on the group, a one-pixel border in the opaque blend
+of `foreground.opacity(0.24)` over the title bar, with a six-pixel radius, and
+each segment rounds its own outer corners to the radius the frame leaves inside, since GPUI clips content
 to rectangles. Their divider is painted
 inside the second segment rather than a border, because a border takes the colour
 of the states its button passes through. The status-bar FFT item is a `Button`,

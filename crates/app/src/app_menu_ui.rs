@@ -768,16 +768,12 @@ pub(super) fn toolbar_style(state: ToolbarState, cx: &gpui_kit::App) -> ButtonCu
         .active(active)
 }
 
-/// The resting surface of an on control. A custom variant paints its own
-/// resting colour at a fifth of its opacity, so the button carries this one
-/// itself, and the variant's hover and pressed surfaces still paint over it.
+/// The resting surface of an on control, which a custom variant would fade to a fifth.
 fn on_surface(state: ToolbarState, cx: &gpui_kit::App) -> Option<gpui_kit::Hsla> {
     (state == ToolbarState::On).then(|| toolbar_accent(cx).opacity(0.30))
 }
 
-/// The one-pixel frame a pair of segments shares, which the theme's border
-/// colour is too faint to draw on the title bar. It is opaque, so the divider
-/// over a selected segment keeps the colour of the frame.
+/// The opaque frame of the segments, so the divider keeps its colour over a selected one.
 fn frame_colour(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     cx.theme()
         .title_bar
