@@ -363,6 +363,40 @@ The same reviewer examined only that diff, the focus-lost listener, its behaviou
 when the menu closes, a file opens or the settings window opens, and whether the
 test exercises the lost-focus path, and found no substantive issue.
 
+## Owner feedback 1 (2026-09-28)
+
+The owner's first native check raised three items, decided with the owner.
+
+- [ ] **Framed keycaps in the menu.** The stock `PopupMenu` paints its own keycaps
+      and forces them borderless and transparent (`render_key_binding`), so they
+      differ from the framed `shortcuts::keycap` the hints use. Action rows become
+      `PopupMenuItem::element` rows that render the label and, when the action has
+      a binding resolved from `Shell::focus_target`, `shortcuts::keycap` at the
+      right edge, keeping `.action(..)` and `.checked(..)` so the stock menu still
+      dispatches, checks, selects and navigates them. This supersedes the earlier
+      decision to accept the stock keycaps.
+- [ ] **Recent labels are the file name alone**, in the menu and on the start page.
+      `session::recent_labels` stops appending ` - <full directory>` to names that
+      occur twice; duplicates show the same name. On the start page the row shows
+      the name, and its hint shows the name with the containing directory under it
+      in a smaller, muted font, beside the existing Alt+digit keycap. The menu shows
+      the name only and adds no hint. This is pre-existing behaviour that the owner
+      asked to change in this PR, because both lists share the helper.
+- [ ] **Long names truncate.** A recent row in the menu wrapped or overflowed
+      instead of ending in an ellipsis, because its label had `text_ellipsis`
+      without `overflow_hidden` and `whitespace_nowrap`. Recent labels in the menu
+      and on the start page truncate in the middle (`text_ellipsis_middle`), so the
+      extension stays visible, and every flex level between the stock row and the
+      label must allow shrinking (`overflow_hidden` / `min_w_0`) so the menu keeps
+      its `max_w`.
+- [ ] Headless tests: an action row still dispatches once and shows its binding
+      through `shortcuts::keycap`; two recent captures with the same file name in
+      different directories both label as the bare name; a long recent name keeps
+      the File submenu within its maximum width. Update the `recent_labels` tests
+      in `recent_tests.rs` and `session_tests.rs` to the new rule.
+- [ ] Update AGENTS.md and the CHANGELOG entries that mention the stock keycaps or
+      the directory suffix.
+
 ## Post-completion
 
 - Continue with #132 (splitter) on the same standard-control basis.
