@@ -1500,8 +1500,7 @@ mod tests {
         press(cx, "f10");
         press(cx, "down down right");
         assert!(menu_open(cx, &shell), "the View branch is on screen");
-        // A headless window has no plot, so the row's own binding sits in a key
-        // context its focus target cannot reach, and the row carries no keycap.
+        // Without a plot the row's own binding is out of reach, so it has no keycap.
         let bare = row_width(cx, ORIENTATION_ROW);
         press(cx, "escape");
         cx.update(|_, cx| {

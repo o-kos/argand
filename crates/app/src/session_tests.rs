@@ -703,11 +703,7 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
 #[test]
 fn two_captures_with_the_same_name_share_the_bare_name() {
-    // Two directories holding a capture named for the same frequency, which
-    // is how a directory of them and its copy elsewhere collide. The
-    // directories are built from a real root so that the paths are absolute
-    // in the way this platform spells one. A list is read by name, and the
-    // directory is what the start page's hint adds when it is wanted.
+    // One capture name in two real directories, which the list shows alike.
     let root = TempDir::new("labels");
     let (a, b) = (root.join("a"), root.join("b"));
     let mut session = Session::default();

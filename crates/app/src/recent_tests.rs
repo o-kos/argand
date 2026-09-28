@@ -305,8 +305,7 @@ fn duplicate_names_label_alike_and_still_match_shortcut_targets() {
         assert_eq!(recent.shortcut(index).as_ref(), Some(expected));
     }
     recent.apply(entries[1].path.clone(), true);
-    // Two directories holding one name read alike, and the row's own hint or
-    // directory is what tells them apart.
+    // Two directories holding one name read alike in the list.
     assert_eq!(
         crate::session::recent_labels(&recent.visible()),
         ["a.raw", "a.raw", "b.wav"]
