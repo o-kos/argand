@@ -82,6 +82,17 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
       on the boundary behaves as the minimap or spectrum beneath it, window resize
       keeps the minimap height.
 
+## Review round 1
+
+Codex `gpt-6-sol` medium found no leftover code path and no geometry or pointer
+regression, and four documentation and test items, all accepted. The README user
+guide still described dragging the boundary and is rewritten. The parent plan's
+native checklist asked for a splitter resize during analysis and now asks for the
+fixed minimap and its boundary in both orientations. The compatibility test now
+loads every readable session version with no split, a valid one and a NaN one,
+and checks that the geometry survives the write-back without the field. The
+CHANGELOG entry names the width that is fixed in vertical orientation.
+
 ## Post-completion
 
 - Continue with #133 (integration and handoff).

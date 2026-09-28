@@ -313,7 +313,8 @@ explicit rather than replacing the matrix with a few successful screenshots.
       fullscreen, supported tiling, move/resize edges/corners, title-bar controls,
       native dialogs and file opening. Mark platform-inapplicable cases explicitly.
 - [ ] Both plot orientations, grid/scale toggles, start/loaded states, progressive
-      updates, splitter resize during analysis, settings preview/cancel and file replacement.
+      updates, the fixed minimap and its boundary in both orientations (#132),
+      settings preview/cancel and file replacement.
 - [ ] Compare representative current-release resize/navigation responsiveness and
       texture behavior with the baseline; investigate regressions rather than attributing
       them to extraction. No extra transforms or retained image backlog on resize.

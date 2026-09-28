@@ -714,17 +714,21 @@ fn two_captures_with_the_same_name_share_the_bare_name() {
 fn a_saved_panel_split_is_read_and_forgotten() {
     let dir = TempDir::new("panel-split");
     let path = dir.join(FILE_NAME);
-    for text in [
-        "version = 3\nwindow_state = \"normal\"\nwaveform_fraction = 0.3\n",
-        "version = 10\nwindow_state = \"normal\"\nwaveform_fraction = nan\n",
-    ] {
-        std::fs::write(&path, text).expect("write session");
-        let restored = Session::load(&path);
-        assert!(restored.writable, "{text}");
-        assert_eq!(restored.session.version, VERSION);
-        assert!(restored.session.save(&path));
-        let written = std::fs::read_to_string(&path).expect("read session");
-        assert!(!written.contains("waveform_fraction"), "{written}");
+    let geometry = "[geometry]\nx = 1.0\ny = 2.0\nwidth = 900.0\nheight = 600.0\n";
+    for version in 1..=VERSION {
+        for split in ["", "waveform_fraction = 0.3\n", "waveform_fraction = nan\n"] {
+            let text = format!("version = {version}\nwindow_state = \"normal\"\n{split}{geometry}");
+            std::fs::write(&path, &text).expect("write session");
+            let restored = Session::load(&path);
+            assert!(restored.writable, "{text}");
+            assert_eq!(restored.session.version, VERSION, "{text}");
+            let kept = restored.session.geometry;
+            assert!(kept.is_some(), "{text}");
+            assert!(restored.session.save(&path));
+            let written = std::fs::read_to_string(&path).expect("read session");
+            assert!(!written.contains("waveform_fraction"), "{written}");
+            assert_eq!(Session::load(&path).session.geometry, kept, "{written}");
+        }
     }
 }
 
