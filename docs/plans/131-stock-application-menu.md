@@ -223,21 +223,23 @@ and its own `on_action` handlers never run.
   menu does not answer the dismissing click, and a press on the title bar starts
   no window drag. Starting a pan on the plot itself needs the same document and
   stays native.
-- [ ] Update the parent inventory rows (main cascading menu: replaced, with the
+- [x] Update the parent inventory rows (main cascading menu: replaced, with the
       accepted Escape/Home/End/Space change; ruler context menu: retained,
       re-verified) and tick phase 5's menu item for the menu half.
-- [ ] Update AGENTS.md ("Application menu and toolbar", "Overlay surfaces" menu
+      Phase 5's menu item is `[x]`, the Escape change is recorded in the row and in
+      `AGENTS.md`, and the ruler row records that this path was left alone.
+- [x] Update AGENTS.md ("Application menu and toolbar", "Overlay surfaces" menu
       bullet, `app_menu.rs` ownership sentence, one-level Escape) and add
       `CHANGELOG.md` `[Unreleased]` entries for the user-visible changes.
-- [ ] Complete validation.
+- [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Native matrix on Linux (owner), recorded in the PR as
       `case | revision | platform/backend, theme, orientation | input | expected |
       observed | pass/fail/not exercised`:

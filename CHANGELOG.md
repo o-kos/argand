@@ -11,6 +11,14 @@ promise applies to.
 
 ## [Unreleased]
 
+### Changed
+
+- Draw the application menu with the standard menu component. The menu still offers the same File and View branches, recent captures, checks and shortcuts, and still opens from the application button and F10.
+
+- Escape now closes the whole application menu instead of one level at a time, and Home, End and Space do nothing in it.
+
+- The application menu now covers the window beneath it while it is open, so the click or wheel that dismisses it no longer reaches the plot or the title bar.
+
 ### Fixed
 
 - The crosshair, cursor readout and Alt guides appear as soon as a file opens or a hint or menu closes under a resting pointer, without moving the mouse first.

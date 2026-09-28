@@ -548,7 +548,9 @@ hover-based, so any blocking layer above it wins.
 - The corner zoom buttons suppress the crosshair, the Alt guides and the
   status-bar readout (`PlotGeometry::over_scale_buttons`).
 - Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
-  clicks and drags.
+  clicks and drags. The application menu additionally draws a backdrop at a lower
+  priority than its popover while it is open, so an outside click or wheel
+  dismisses the menu and reaches nothing beneath it.
 - Gestures: `PlotView::interrupt` ends drags, the ruler menu and the pointer.
   Shell calls it before the application menu, the settings window and the file
   chooser open. Opening the ruler menu and deactivating the window call
@@ -564,14 +566,14 @@ hover-based, so any blocking layer above it wins.
 File contains Open file, availability-filtered recent rows directly in the menu,
 and Settings (`EditAnalysis`). Empty recent lists leave one separator between
 Open and Settings. The first nine recent rows carry digit keycaps, and pressing
-that digit while the File list is open activates the row
-(`app_menu::Menu::activate_numbered`). View appears only with a file and
+that digit while the File branch holds the keyboard activates the row. View
+appears only with a file and
 contains grid, scale
 controls, orientation, Fit time, Fit frequency and Time scale format; pan/zoom
 commands remain available through keys and gestures rather than menu rows.
-The menu anchor wraps the application button (`toolbar` in `app_menu_ui.rs`),
-not its padded interior, so the dropdown drops from the button's outer edge
-and never covers it.
+The menu is the toolkit's own `PopupMenu`, drawn by a controlled `Popover` on the
+application button, whose tracked focus handle is the menu's own so that the
+popover's open leaves the keyboard inside the menu.
 `plot_ui.rs` draws translucent `[+|-]` zoom pairs over the spectrogram itself,
 eight logical pixels clear of the picture's edges (`corner_zones`). Each pair
 runs along the ruler of the axis it zooms (#150): a row in the bottom-left
@@ -587,12 +589,20 @@ and a square hovered half would paint outside the rounded frame. View → Show s
 every pair; pairs vanish when either spectrum side is too small. Pair zones use
 an arrow cursor and exclude pan, drag and wheel navigation.
 
-The application icon and Argand label form one button that opens a cascading File / View menu; F10 opens the same menu
-from the shell. `app_menu.rs` owns toolkit-neutral branch selection, hover and
-keyboard navigation. `app_menu_ui.rs` renders the overlay and dispatches existing
-actions after returning focus to the shell. Escape closes one level, outside
-clicks close the chain, and the independent ruler context menu retains the stock
-PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
+The application icon and Argand label form one button that opens the cascading File / View menu; F10 opens the same menu
+from the shell, and both go through one open and dismiss pair that returns focus
+to `Shell::focus_target`. `app_menu.rs` owns the toolkit-neutral recent order and
+its digits (`file_items`). `app_menu_ui.rs` builds the stock `PopupMenu` entities
+and their rows, and the popover only draws them. The popover's own gesture opens
+the menu on the button's press and reports it through `on_open_change`; the button
+carries no handler of its own. Escape closes the whole chain, outside clicks close
+it, and Home, End and Space do nothing in the menu. F10, Tab and the File rows'
+digits are bound in an `ApplicationMenu` key context that wraps the menu, and the
+digits answer only while the File submenu entity holds the keyboard. While the
+menu is open a backdrop drawn below the popover's priority covers the window
+beneath it, so an outside click or wheel dismisses the menu and reaches no plot
+gesture, no title drag and no control. The independent ruler context menu
+retains the stock PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
 Orientation is a two-segment control in one frame whose selected segment is the
 mode in force and whose tooltip names its own mode, and the segments and the grid
 toggle appear only while a document is shown (#130). The segments carry the
