@@ -597,7 +597,8 @@ its digits (`file_items`). `app_menu_ui.rs` builds the stock `PopupMenu` entitie
 and their rows, and the popover only draws them. The popover's own gesture opens
 the menu on the button's press and reports it through `on_open_change`; the button
 carries no handler of its own. Escape closes the whole chain, outside clicks close
-it, and Home, End and Space do nothing in the menu. F10, Tab and the File rows'
+it, Home, End and Space do nothing in the menu, and Enter or Space on File, View
+or Time scale format does not open that branch, so only Right enters one. F10, Tab and the File rows'
 digits are bound in an `ApplicationMenu` key context that wraps the menu, and the
 digits answer only while the File submenu entity holds the keyboard. While the
 menu is open a backdrop drawn below the popover's priority covers the window

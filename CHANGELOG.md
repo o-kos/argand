@@ -15,7 +15,7 @@ promise applies to.
 
 - Draw the application menu with the standard menu component. The menu still offers the same File and View branches, recent captures, checks and shortcuts, and still opens from the application button and F10.
 
-- Escape now closes the whole application menu instead of one level at a time, and Home, End and Space do nothing in it.
+- Escape now closes the whole application menu instead of one level at a time, Home, End and Space do nothing in it, and Enter or Space on a branch row no longer opens it, so a branch is entered with Right.
 
 - The application menu now covers the window beneath it while it is open, so the click that dismisses it no longer reaches the plot or the title bar, and a wheel over the window behind it no longer reaches them either.
 

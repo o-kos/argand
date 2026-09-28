@@ -16,7 +16,8 @@ submenus, and delete the custom navigation, placement and rendering.
 
 The owner decided on 2026-09-28 to accept the stock keyboard contract where it
 differs from the accepted #91 behaviour, instead of keeping a custom cascade for one-level
-Escape. Everything the stock menu does not provide and the Issue still requires is
+Escape. That contract also leaves Enter and Space inert on a branch row, so only
+Right enters File, View or Time scale format. Everything the stock menu does not provide and the Issue still requires is
 added through supported composition around it, never by reimplementing rows or
 navigation.
 
@@ -41,9 +42,10 @@ Verified against the locked `gpui-component` 0.6.6 (`src/menu/popup_menu.rs`,
 
 - `PopupMenu` binds, in key context `PopupMenu`, only `enter` (Confirm), `escape`
   (Cancel), `up`, `down`, `left`, `right`. Up/Down wrap over enabled rows; Right
-  focuses an open submenu; Left in a submenu returns focus to the parent but the
-  submenu stays drawn, because the parent's `selected_index` is private and still
-  names the branch row.
+  focuses an open submenu; Enter runs a row and does nothing on a submenu row,
+  so it never opens a branch; Left in a submenu returns focus to the parent but
+  the submenu stays drawn, because the parent's `selected_index` is private and
+  still names the branch row.
 - `Cancel` calls the private `dismiss`, which emits `DismissEvent`, restores focus to
   `previous_focus_handle` or `action_context`, and recursively dismisses every
   parent. Escape therefore closes the whole chain. There is no public way to close
@@ -127,12 +129,15 @@ Current code:
   dispatch path because deferred draws keep their parent's dispatch node.
   - F10 and Tab in `ApplicationMenu` dismiss the menu (emit `DismissEvent`), as now.
   - Digits 1 to 9 in `ApplicationMenu` open the numbered recent row, only while the
-    File submenu entity holds keyboard focus (entered with Right or Enter). Shell
+    File submenu entity holds keyboard focus (entered with Right). Shell
     builds the File submenu itself so it keeps that entity to test. A digit with
     focus elsewhere does nothing. This narrows today's behaviour, where a digit also
     worked with File only hovered open, and the owner checks it natively.
-  - Nothing else is added: Home, End and Space stop working in the menu, and
-    Escape closes the whole menu, as the owner accepted.
+  - Nothing else is added: Home, End and Space stop working in the menu,
+    Escape closes the whole menu, and Enter or Space on File, View or Time
+    scale format does not open that branch, because the stock `confirm` ignores
+    a submenu row. The owner accepted all three on 2026-09-28, and only Right
+    enters a branch.
 - **Recent ordering stays toolkit-neutral and tested.** Keep `file_items` (or an
   equivalent pure function) with its test; delete `Menu`, `Effect`, `Kind`-driven
   navigation, `place`, their tests, `ApplicationMenu`, `application_menu_key`,
@@ -209,7 +214,8 @@ and its own `on_action` handlers never run.
   - a click on the application button while the menu is open closes it and it stays
     closed;
   - Enter on a View row dispatches its action exactly once (for example Show grid
-    toggles once) and closes the menu;
+    toggles once) and closes the menu; Enter on the branch row itself runs nothing
+    and leaves the keyboard in the menu, where Right enters it;
   - a recent row click and its digit (with File focused) open that recent entry;
     a digit with File not focused does nothing; a digit opens the row that was
     drawn even when a probe changes the list while the menu is open; recent rows
@@ -251,8 +257,8 @@ and its own `on_action` handlers never run.
   - F1: after closing the menu each plot navigation key acts once;
   - F3: Escape from File, from View and from Time scale format closes the menu and
     the next key reaches the plot; Left returns to the parent level;
-  - keyboard: Down/Up wrap, Right/Enter enter a submenu, Enter runs a row, F10 and
-    Tab close, digits with File focused open recent files;
+  - keyboard: Down/Up wrap, Right enters a branch, Enter runs a row and does not
+    open one, F10 and Tab close, digits with File focused open recent files;
   - hover: moving between File and View switches submenus; checked rows show their
     marks; keycaps present on every row that has a binding;
   - P1: click, wheel and drag inside the menu and outside it over the plot, the
@@ -308,6 +314,20 @@ The arbiter's five decisions, all applied on this branch.
 - **Accepted, three comments ran to two lines.** The `space` binding, the recent
   row's deferred open and the application button's press are one line each now, and
   no other comment in the branch spans a line.
+
+Round 2 adds two items. The owner accepted the stock behaviour on 2026-09-28:
+`PopupMenu::confirm` does nothing on a `Submenu` row, so Enter and Space never open
+File, View or Time scale format and only Right enters a branch. It is recorded
+beside the Escape and Home, End and Space change in the plan's Overview, Context
+and Decisions, in the plan's keyboard line for the native matrix and its test
+list, in the parent inventory row, in `AGENTS.md` and in the `CHANGELOG.md`
+entry, and the plan's digit decision now says the File branch is entered with
+Right rather than with Right or Enter. A headless test presses F10, Down twice to
+the View branch and Enter, and finds the menu open with the keyboard still in it
+and no row run, then presses Right and Enter and finds Show grid toggled. The
+second item is a comment correction, accepted: the recent row's deferred open is
+deferred because the toolkit dismisses the menu as the click handler returns, in
+the same `confirm`, and the comment now says that.
 
 ## Post-completion
 
