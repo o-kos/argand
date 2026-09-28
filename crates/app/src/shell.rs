@@ -1245,7 +1245,12 @@ impl Shell {
         width: Pixels,
         cx: &mut Context<Self>,
     ) -> Button {
-        let tooltip = entry.path.display().to_string();
+        let directory = entry
+            .path
+            .parent()
+            .map(|dir| dir.display().to_string())
+            .filter(|dir| !dir.is_empty())
+            .unwrap_or_default();
         let mut button = Button::new(("start-recent", index))
             .ghost()
             .small()
@@ -1270,7 +1275,14 @@ impl Shell {
                                 String::new()
                             }),
                     )
-                    .child(div().min_w_0().line_clamp(1).text_ellipsis().child(label)),
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .line_clamp(1)
+                            .text_ellipsis_middle()
+                            .child(label.clone()),
+                    ),
             )
             .on_click(cx.listener(move |shell, _, window, cx| {
                 shell.open(
@@ -1282,9 +1294,17 @@ impl Shell {
                     cx,
                 );
             }));
+        let hint = label;
         button.interactivity().tooltip(move |_, cx| {
             let action = (index < 9).then(|| Box::new(OpenRecent { index }) as Box<dyn Action>);
-            shortcut_tooltip(tooltip.clone(), action, "StartPage", width, cx)
+            recent_hint(
+                hint.clone(),
+                directory.clone(),
+                action,
+                "StartPage",
+                width,
+                cx,
+            )
         });
         button
     }
@@ -1527,6 +1547,50 @@ fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui_kit::App)
     })
     .fold(px(0.), Pixels::max)
     .min(limit)
+}
+
+/// The start page's own hint for one recent capture: its name over the
+/// directory holding it, beside the digit that opens it.
+fn recent_hint(
+    name: String,
+    directory: String,
+    action: Option<Box<dyn Action>>,
+    context: &'static str,
+    width: Pixels,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::AnyView {
+    hints::passive(cx, |_| {
+        Tooltip::element(move |window, cx| {
+            let shortcut = action
+                .as_deref()
+                .and_then(|action| Kbd::binding_for_action(action, Some(context), window));
+            div()
+                .max_w(width.min(window.viewport_size().width - px(48.)))
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(div().w_full().flex_shrink_0().child(name.clone()))
+                        .child(
+                            div()
+                                .w_full()
+                                .flex_shrink_0()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(directory.clone()),
+                        ),
+                )
+                .when_some(shortcut, |hint, shortcut| {
+                    hint.child(shortcuts::keycap(shortcut, cx))
+                })
+        })
+    })
 }
 
 fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {

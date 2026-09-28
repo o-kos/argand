@@ -702,11 +702,12 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 }
 
 #[test]
-fn two_captures_with_the_same_name_are_told_apart_in_the_menu() {
+fn two_captures_with_the_same_name_share_the_bare_name() {
     // Two directories holding a capture named for the same frequency, which
     // is how a directory of them and its copy elsewhere collide. The
     // directories are built from a real root so that the paths are absolute
-    // in the way this platform spells one.
+    // in the way this platform spells one. A list is read by name, and the
+    // directory is what the start page's hint adds when it is wanted.
     let root = TempDir::new("labels");
     let (a, b) = (root.join("a"), root.join("b"));
     let mut session = Session::default();
@@ -716,12 +717,8 @@ fn two_captures_with_the_same_name_are_told_apart_in_the_menu() {
 
     assert_eq!(
         recent_labels(&session.recent),
-        [
-            "other.iqw".to_owned(),
-            format!("12.579.iqw - {}", a.display()),
-            format!("12.579.iqw - {}", b.display()),
-        ],
-        "only the colliding names should carry a directory"
+        ["other.iqw", "12.579.iqw", "12.579.iqw"],
+        "every entry is named by its file alone"
     );
 }
 

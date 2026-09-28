@@ -107,14 +107,7 @@ fn a_relative_current_path_matches_history_and_labels_use_the_filtered_list() {
     for entry in &session.recent {
         recent.apply(entry.path.clone(), true);
     }
-    assert_eq!(
-        recent_labels(&recent.visible()),
-        [
-            format!("a.raw - {}", saved.recent[0].path.parent().unwrap().display()),
-            format!("a.raw - {}", saved.recent[1].path.parent().unwrap().display()),
-            "b.wav".to_owned(),
-        ]
-    );
+    assert_eq!(recent_labels(&recent.visible()), ["a.raw", "a.raw", "b.wav"]);
     recent.set_current(Path::new("one/./a.raw"));
     assert_eq!(recent.visible(), saved.recent[1..]);
     assert_eq!(recent_labels(&recent.visible()), ["a.raw", "b.wav"]);
@@ -139,14 +132,7 @@ fn clearing_then_replacing_the_current_path_restores_order_labels_and_shortcuts(
 
     recent.clear_current();
     assert_eq!(recent.visible(), entries);
-    assert_eq!(
-        recent_labels(&recent.visible()),
-        [
-            format!("a.raw - {}", entries[0].path.parent().unwrap().display()),
-            format!("a.raw - {}", entries[1].path.parent().unwrap().display()),
-            "b.wav".to_owned(),
-        ]
-    );
+    assert_eq!(recent_labels(&recent.visible()), ["a.raw", "a.raw", "b.wav"]);
     for (index, expected) in entries.iter().enumerate() {
         assert_eq!(recent.shortcut(index).as_ref(), Some(expected));
     }
@@ -308,7 +294,7 @@ fn repeated_refreshes_coalesce_pending_paths_even_when_history_changes() {
 }
 
 #[test]
-fn labels_are_disambiguated_after_filtering_and_match_shortcut_targets() {
+fn duplicate_names_label_alike_and_still_match_shortcut_targets() {
     let entries = vec![entry("one/a.raw"), entry("two/a.raw"), entry("three/b.wav")];
     let mut recent = RecentFiles::new(&entries);
     recent.apply(entries[0].path.clone(), true);
@@ -319,9 +305,11 @@ fn labels_are_disambiguated_after_filtering_and_match_shortcut_targets() {
         assert_eq!(recent.shortcut(index).as_ref(), Some(expected));
     }
     recent.apply(entries[1].path.clone(), true);
+    // Two directories holding one name read alike, and the row's own hint or
+    // directory is what tells them apart.
     assert_eq!(
         crate::session::recent_labels(&recent.visible()),
-        ["a.raw - one", "a.raw - two", "b.wav"]
+        ["a.raw", "a.raw", "b.wav"]
     );
 }
 
