@@ -241,6 +241,24 @@ Decisions, taken with the owner on an interactive colour preview:
   Each half rounds its own outer corners to match the frame.
 - **No auto-repeat** for the zoom halves (owner declined it).
 
+## Owner feedback 2 (2026-09-28)
+
+- **Grid on state still invisible.** gpui-component paints a custom variant's
+  resting `color` mixed with transparent at 0.2 (button.rs `bg_color`), so accent
+  0.30 rendered near 0.06. Hover, pressed and selected surfaces are not faded, which
+  is why the selected segment showed and Grid did not. The on control now carries its
+  0.30 surface as its own background; GPUI still layers the variant's hover and
+  pressed surfaces over the base style.
+- **Divider colour differed with the selected segment.** The divider is painted
+  inside the second segment in a translucent colour, so it mixed with that segment's
+  accent. The frame colour is now the opaque blend of `foreground.opacity(0.24)` over
+  the title bar, identical on the title bar and over any segment.
+- **Correction to review round 1, item 2.** Both reviewers held that main's manual
+  hover background masked the status controls' pressed surface. It did not: GPUI
+  applies the hover and active refinements after the base style that holds a caller's
+  background, so main showed `secondary_active` while held. The variant keeps
+  `secondary_active`, as on main.
+
 ## Review round 1
 
 The arbiter's decisions, all implemented on this branch.
