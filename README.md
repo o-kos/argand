@@ -514,7 +514,7 @@ visible across palettes. Release Alt to hide the guides.
 File min/max values stay file-wide; they become available after the full-capture
 waveform scan, even if navigation interrupts the initial spectral analysis.
 
-Resizing the window or dragging the panel separator redraws from retained analysis
+Resizing the window redraws from retained analysis
 without rereading the file or restarting FFT refinement. The GUI keeps up to 4096
 time cells and 2048 frequency cells (native FFT bins whenever they fit), plus a
 separate min/max envelope of up to 65536 sample cells. Every FFT frame still

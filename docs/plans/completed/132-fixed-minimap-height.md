@@ -2,9 +2,9 @@
 
 Resolves [#132](https://github.com/o-kos/argand/issues/132).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](124-standard-ui-architecture.md), phase 5 (standard-control
+[approved architecture](../124-standard-ui-architecture.md), phase 5 (standard-control
 replacement), inventory row "Waveform/spectrum splitter".
-Predecessor [#131](completed/131-stock-application-menu.md), merged in PR #160.
+Predecessor [#131](131-stock-application-menu.md), merged in PR #160.
 
 ## Overview
 
@@ -16,8 +16,8 @@ pointer move, a `PlotIntent::WaveformFraction` and a persisted
 `ResizablePanelGroup`.
 
 The owner decided on 2026-09-28 that the minimap is not resizable at all. It keeps
-the height it has by default today, 3 rem (48 logical pixels with the default font),
-in both orientations. Removing the control is the maximum reduction of custom
+the size it has by default today, 3 rem (48 logical pixels with the default font):
+its height in horizontal orientation and its width in vertical orientation. Removing the control is the maximum reduction of custom
 interaction the inventory asks for, so no standard replacement is needed.
 
 Boundaries: the minimap's drawing, navigation, the 1-pixel separator, the spectrum
@@ -45,7 +45,7 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 
 ## Decisions
 
-- **The minimap height is always 3 rem**, rounded to device pixels as today.
+- **The minimap is always 3 rem across**, high or wide by orientation, rounded to device pixels as today.
   `panels::waveform_height` loses its fraction parameter.
 - **Delete the splitter:** `PlotView::splitter`, `drag_splitter`,
   `splitter_dragging` and every check of it, `PlotIntent::WaveformFraction` and its
@@ -69,7 +69,7 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 - [x] Remove `Session::waveform_fraction`; test that an old session carrying it loads.
 - [x] Update AGENTS.md, the parent inventory row and phase-5 item, and CHANGELOG.
 - [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -92,6 +92,11 @@ fixed minimap and its boundary in both orientations. The compatibility test now
 loads every readable session version with no split, a valid one and a NaN one,
 and checks that the geometry survives the write-back without the field. The
 CHANGELOG entry names the width that is fixed in vertical orientation.
+
+Round 2 added two accepted items: the README still mentioned dragging the panel
+separator in its redraw paragraph, and several texts said the minimap is 3 rem
+high in both orientations where vertical orientation fixes its width. Both are
+fixed.
 
 ## Post-completion
 

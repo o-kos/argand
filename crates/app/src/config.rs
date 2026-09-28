@@ -78,7 +78,7 @@ pub struct Config {
     pub stft: Stft,
     pub analysis: crate::execution::Settings,
     /// Legacy panel proportions, accepted for configuration compatibility.
-    /// The waveform is always 3 rem high.
+    /// The waveform is always 3 rem across the axis it shares with the spectrum.
     pub panels: Panels,
 }
 

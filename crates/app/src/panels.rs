@@ -1,6 +1,6 @@
 //! Toolkit-independent vertical panel layout.
 
-/// The minimap's height, 3 rem on device pixels, never more than the panel holds.
+/// The minimap's size across the panel, 3 rem on device pixels, never more than the panel holds.
 pub fn waveform_height(total: f32, rem: f32, scale: f32) -> f32 {
     let height = (3.0 * rem).min(total.max(0.0));
     (height * scale).round() / scale

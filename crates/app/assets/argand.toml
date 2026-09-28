@@ -50,5 +50,5 @@ affinity = "none"
 
 [panels]
 # Legacy compatibility key, accepted from 0.05 to 0.9 but no longer used for layout.
-# The minimap is always 3 rem high.
+# The minimap is always 3 rem high, or 3 rem wide in vertical orientation.
 waveform_fraction = 0.2
