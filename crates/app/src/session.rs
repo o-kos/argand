@@ -247,40 +247,21 @@ pub struct Recent {
 
 /// What a menu calls each entry of the recent list.
 ///
-/// The file name, which is what a person recognises, unless two entries share
-/// one -- captures are named by frequency and timestamp, so a directory full
-/// of them and its copy elsewhere collide easily. Where they do, the directory
-/// holding the file is what tells them apart, and only those entries carry it:
-/// a list where every line is a path is a list nobody reads.
+/// The file name alone, which is what a person recognises. Two captures that
+/// share one are told apart where the list has room for it, in the start page's
+/// hint, and nowhere else: a list where every line is a path is a list nobody
+/// reads, and a name long enough to fill the row is a name that ends in an
+/// ellipsis rather than a directory.
 pub fn recent_labels(recent: &[Recent]) -> Vec<String> {
-    let name = |entry: &Recent| {
-        entry
-            .path
-            .file_name()
-            .unwrap_or(entry.path.as_os_str())
-            .to_string_lossy()
-            .into_owned()
-    };
-    let names: Vec<String> = recent.iter().map(name).collect();
-    names
+    recent
         .iter()
-        .enumerate()
-        .map(|(i, label)| {
-            let unique = names
-                .iter()
-                .enumerate()
-                .all(|(j, other)| j == i || other != label);
-            if unique {
-                return label.clone();
-            }
-            match recent[i]
+        .map(|entry| {
+            entry
                 .path
-                .parent()
-                .filter(|dir| !dir.as_os_str().is_empty())
-            {
-                Some(dir) => format!("{label} - {}", dir.display()),
-                None => label.clone(),
-            }
+                .file_name()
+                .unwrap_or(entry.path.as_os_str())
+                .to_string_lossy()
+                .into_owned()
         })
         .collect()
 }
@@ -500,8 +481,7 @@ impl Session {
     ///
     /// It does not ask the filesystem what a path points at. This is a list of
     /// the names a person opened things by, and two names for one capture are
-    /// two names; [`recent_labels`] already tells apart the ones that would
-    /// read alike. A list of files instead would mean a filesystem call for
+    /// two names. A list of files instead would mean a filesystem call for
     /// every stored entry on every open, and would still be wrong for one that
     /// has since moved.
     pub fn remember(&mut self, path: &Path, hints: &OpenHints) {

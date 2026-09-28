@@ -1,16 +1,22 @@
-//! The application menu and toolbar; menu navigation itself has no toolkit types.
+//! The application menu and toolbar; the menu itself is the toolkit's own.
 
 use super::{navigation_ui::*, *};
-use crate::app_menu::{self, Effect, Item, Kind, Menu};
+use crate::app_menu::{self, Row};
 use crate::orientation::Mode;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::Selectable;
 use gpui_kit::component::button::{ButtonCustomVariant, ButtonGroup, ButtonRounded};
-use gpui_kit::component::{Icon, IconName};
-use gpui_kit::{AnyElement, KeyDownEvent, ScrollHandle, deferred, img};
-use std::{cell::Cell, rc::Rc};
+use gpui_kit::component::kbd::Kbd;
+use gpui_kit::component::popover::Popover;
+use gpui_kit::{
+    Anchor, AnyElement, App, CursorStyle, DismissEvent, Entity, Focusable, IntoElement, KeyBinding,
+    Styled, deferred, img,
+};
 
-actions!(application_menu, [OpenApplicationMenu]);
+actions!(
+    application_menu,
+    [OpenApplicationMenu, CloseApplicationMenu]
+);
 
 /// The visual height of a toolbar control, frame included.
 const TOOLBAR_HEIGHT: f32 = 26.0;
@@ -19,96 +25,231 @@ const SEGMENT: f32 = 26.0;
 /// The radius of the frame around the two orientation segments.
 const FRAME_RADIUS: f32 = 6.0;
 
-#[derive(Clone)]
-enum Command {
-    Action(Rc<dyn Action>),
-    Open(Origin),
+/// The key context the menu's own content adds, for what the stock menu lacks.
+///
+/// The toolkit's own covers the pointer, Escape, Enter and the arrows, so what
+/// a person expects of a menu bar and cannot get from those lands here.
+const CONTEXT: &str = "ApplicationMenu";
+
+/// A recent row chosen by its digit, which only the File branch promises.
+#[derive(Clone, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = application_menu, no_json)]
+pub(super) struct OpenRecentRow {
+    index: usize,
 }
 
-fn command(label: &str, action: impl Action) -> Item<Command> {
-    Item::command(label, Command::Action(Rc::new(action)))
-}
-
-pub(super) struct ApplicationMenu {
-    model: Menu<Command>,
-    focus: FocusHandle,
-    scroll: Vec<ScrollHandle>,
-}
-
-pub(super) type Anchor = Rc<Cell<Bounds<Pixels>>>;
-
-const ROW: f32 = 26.;
-const SEPARATOR: f32 = 9.;
-const PADDING: f32 = 5.;
-
-fn row_height(item: &Item<Command>) -> f32 {
-    if matches!(item.kind, Kind::Separator) {
-        SEPARATOR
-    } else {
-        ROW
-    }
+pub(super) fn init(cx: &mut gpui_kit::App) {
+    let mut keys = vec![
+        KeyBinding::new("f10", OpenApplicationMenu, Some(CONTEXT)),
+        KeyBinding::new("tab", CloseApplicationMenu, Some(CONTEXT)),
+        // The popover confirms on Space, and no menu closes that way.
+        KeyBinding::new("space", gpui_kit::NoAction, Some(CONTEXT)),
+    ];
+    keys.extend((1..=9).map(|digit| {
+        KeyBinding::new(
+            &digit.to_string(),
+            OpenRecentRow {
+                index: (digit - 1) as usize,
+            },
+            Some(CONTEXT),
+        )
+    }));
+    cx.bind_keys(keys);
 }
 
 impl Shell {
-    fn application_items(&self) -> Vec<Item<Command>> {
-        let recent = self
-            .recent_entries()
-            .into_iter()
-            .enumerate()
-            .map(|(index, (label, origin))| {
-                let item = Item::command(label, Command::Open(origin));
-                if index < 9 {
-                    item.numbered((index + 1) as u8)
-                } else {
-                    item
-                }
+    /// The branch that asks for a file, opens a recent capture, and does settings.
+    ///
+    /// The recent rows stand where `app_menu` places them, and a click hands the
+    /// capture to the shell. The captures the digits name come back with it, so
+    /// a digit cannot answer from a list the probes have changed since.
+    fn file_menu(
+        &self,
+        focus: FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (Entity<PopupMenu>, Vec<Origin>) {
+        let recent = app_menu::file_items(self.recent_entries());
+        let digits = recent
+            .iter()
+            .filter_map(|row| match row {
+                Row::Recent {
+                    number: Some(_),
+                    origin,
+                    ..
+                } => Some(origin.clone()),
+                _ => None,
             })
             .collect();
-        let file = Item::branch(
-            "File",
-            app_menu::file_items(
-                command("Open file...", ChooseFile),
-                recent,
-                command("Settings", EditAnalysis),
-            ),
-        );
-        let mut items = vec![file];
-        if self.view.is_some() {
-            items.push(Item::branch("View", self.application_view_items()));
-        }
-        items
+        let owner = cx.entity().downgrade();
+        let menu = PopupMenu::build(window, cx, move |menu, _, _| {
+            let menu = menu
+                .action_context(focus.clone())
+                .max_w(px(420.))
+                .scrollable(true);
+            recent.into_iter().fold(menu, |menu, row| {
+                menu.item(Shell::file_row(row, focus.clone(), owner.clone()))
+            })
+        });
+        (menu, digits)
     }
 
-    fn application_view_items(&self) -> Vec<Item<Command>> {
-        use crate::time_ruler::Mode;
+    fn file_row(row: Row<Origin>, focus: FocusHandle, owner: WeakEntity<Self>) -> PopupMenuItem {
+        match row {
+            Row::Open => action_row("Open file...", Box::new(ChooseFile), false, focus),
+            Row::Settings => action_row("Settings", Box::new(EditAnalysis), false, focus),
+            Row::Separator => PopupMenuItem::separator(),
+            Row::Recent {
+                number,
+                label,
+                origin,
+            } => PopupMenuItem::element(move |_, cx| {
+                recent_row(number, label.clone(), cx.theme().muted_foreground)
+            })
+            .on_click(move |_, window, cx| {
+                // The menu dismisses as this returns, so the open waits a frame.
+                let owner = owner.clone();
+                let origin = origin.clone();
+                window.defer(cx, move |window, cx| {
+                    open_capture_from(&owner, origin.clone(), window, cx);
+                });
+            }),
+        }
+    }
+
+    /// The branch that carries the session's own choices.
+    ///
+    /// Absent while no document is open, which is what the menu bar offers.
+    fn view_menu(
+        &self,
+        focus: FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<PopupMenu> {
+        let scale = self.time_scale_menu(focus.clone(), window, cx);
+        let show_grid = self.session.show_grid;
+        let show_scale_ui = self.session.show_scale_ui;
+        let vertical = self.session.orientation.vertical();
+        PopupMenu::build(window, cx, move |menu, _, _| {
+            menu.action_context(focus.clone())
+                .item(action_row(
+                    "Show grid",
+                    Box::new(ToggleGrid),
+                    show_grid,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Show scale controls",
+                    Box::new(ToggleScaleUi),
+                    show_scale_ui,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Vertical orientation",
+                    Box::new(ToggleOrientation),
+                    vertical,
+                    focus.clone(),
+                ))
+                .item(PopupMenuItem::separator())
+                .item(action_row(
+                    "Fit time",
+                    Box::new(FitCapture),
+                    false,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Fit frequency",
+                    Box::new(FitFrequency),
+                    false,
+                    focus.clone(),
+                ))
+                .item(PopupMenuItem::separator())
+                .item(PopupMenuItem::submenu("Time scale format", scale))
+        })
+    }
+
+    /// The time ruler's own units, one row each.
+    fn time_scale_menu(
+        &self,
+        focus: FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<PopupMenu> {
         let ruler = self.session.time_ruler;
-        vec![
-            command("Show grid", ToggleGrid).checked(self.session.show_grid),
-            command("Show scale controls", ToggleScaleUi).checked(self.session.show_scale_ui),
-            command("Vertical orientation", ToggleOrientation)
-                .checked(self.session.orientation.vertical()),
-            Item::separator(),
-            command("Fit time", FitCapture),
-            command("Fit frequency", FitFrequency),
-            Item::separator(),
-            Item::branch(
-                "Time scale format",
-                vec![
-                    command("Hours, minutes, seconds (hms)", ClockRuler)
-                        .checked(ruler == Mode::Clock),
-                    command("Seconds", SecondsRuler).checked(ruler == Mode::Seconds),
-                    command("Sample numbers", SamplesRuler).checked(ruler == Mode::Samples),
-                ],
-            ),
-        ]
+        PopupMenu::build(window, cx, move |menu, _, _| {
+            use crate::time_ruler::Mode;
+            menu.action_context(focus.clone())
+                .item(action_row(
+                    "Hours, minutes, seconds (hms)",
+                    Box::new(ClockRuler),
+                    ruler == Mode::Clock,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Seconds",
+                    Box::new(SecondsRuler),
+                    ruler == Mode::Seconds,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Sample numbers",
+                    Box::new(SamplesRuler),
+                    ruler == Mode::Samples,
+                    focus.clone(),
+                ))
+        })
     }
 
-    pub(super) fn dismiss_application_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.application_menu.take().is_some() {
-            window.focus(&self.focus_target(cx), cx);
-            self.title_drag_pending = false;
-            cx.notify();
+    /// Builds the menu the application button opens, and puts the keyboard in it.
+    ///
+    /// The shell owns the entity, so the popover only draws it and one dismissal
+    /// of any branch closes the menu along with its submenus.
+    pub(super) fn open_application_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.application_menu.is_some() {
+            return;
         }
+        self.close_analysis_hint(cx);
+        self.interrupt_plot(cx);
+        self.recent_files.refresh(&self.session.recent);
+        let focus = self.focus_target(cx);
+        let (file, digits) = self.file_menu(focus.clone(), window, cx);
+        let view = self
+            .view
+            .is_some()
+            .then(|| self.view_menu(focus.clone(), window, cx));
+        let branch = file.clone();
+        let menu = PopupMenu::build(window, cx, move |menu, _, _| {
+            let menu = menu
+                .action_context(focus)
+                .item(PopupMenuItem::submenu("File", branch));
+            match view {
+                Some(view) => menu.item(PopupMenuItem::submenu("View", view)),
+                None => menu,
+            }
+        });
+        self.application_menu_dismissed =
+            Some(cx.subscribe_in(&menu, window, Self::application_menu_dismissed));
+        self.application_menu_focus = Some(cx.on_focus_lost(window, Self::recover_menu_focus));
+        self.application_file_menu = Some(file);
+        self.application_file_rows = Some(digits);
+        self.application_menu = Some(menu.clone());
+        self.title_drag_pending = false;
+        window.focus(&menu.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    /// Closes the menu and hands the keyboard back where it came from.
+    pub(super) fn dismiss_application_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.application_menu.take().is_none() {
+            return;
+        }
+        self.application_file_menu = None;
+        self.application_file_rows = None;
+        self.application_menu_dismissed = None;
+        self.application_menu_focus = None;
+        window.focus(&self.focus_target(cx), cx);
+        self.title_drag_pending = false;
+        cx.notify();
     }
 
     pub(super) fn toggle_application_menu(
@@ -121,95 +262,112 @@ impl Shell {
             self.dismiss_application_menu(window, cx);
             return;
         }
-        self.close_analysis_hint(cx);
-        self.interrupt_plot(cx);
-        self.recent_files.refresh(&self.session.recent);
-        let focus = cx.focus_handle();
-        window.focus(&focus, cx);
-        self.application_menu = Some(ApplicationMenu {
-            model: Menu::new(self.application_items()),
-            focus,
-            scroll: Vec::new(),
-        });
-        self.title_drag_pending = false;
-        cx.notify();
+        self.open_application_menu(window, cx);
     }
 
-    fn menu_effect(
+    /// Hands the keyboard back to the menu when its focused branch stops being drawn.
+    ///
+    /// The stock menu draws a submenu only while its row is selected, and a hover
+    /// moves that selection, so a focused submenu can vanish and take the keys with
+    /// it, because a handle missing from the frame routes them to the root.
+    fn recover_menu_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(menu) = self.application_menu.clone() else {
+            return;
+        };
+        window.focus(&menu.focus_handle(cx), cx);
+    }
+
+    fn application_menu_dismissed(
         &mut self,
-        effect: Effect<Command>,
+        menu: &Entity<PopupMenu>,
+        _: &DismissEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        match effect {
-            Effect::None => cx.notify(),
-            Effect::Dismiss => self.dismiss_application_menu(window, cx),
-            Effect::Activate(command) => {
-                self.dismiss_application_menu(window, cx);
-                match command {
-                    Command::Action(action) => window.dispatch_action(action.boxed_clone(), cx),
-                    Command::Open(origin) => self.open(origin, window, cx),
-                }
-            }
+        if self
+            .application_menu
+            .as_ref()
+            .is_some_and(|open| open.entity_id() == menu.entity_id())
+        {
+            self.dismiss_application_menu(window, cx);
         }
     }
 
-    fn application_menu_key(
-        &mut self,
-        event: &KeyDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(menu) = self.application_menu.as_mut() else {
-            return;
-        };
-        let stroke = &event.keystroke;
-        if stroke.modifiers.control || stroke.modifiers.platform || stroke.modifiers.alt {
+    /// Opens the recent capture a digit names, but only from the File branch.
+    ///
+    /// The digits belong to the File rows, so a digit typed while the menu bar
+    /// itself holds the keyboard is no recent row and does nothing.
+    fn open_recent_row(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let in_file = self
+            .application_file_menu
+            .as_ref()
+            .is_some_and(|file| file.read(cx).focus_handle(cx).is_focused(window));
+        if !in_file {
             return;
         }
-        let effect = match stroke.key.as_str() {
-            "up" => {
-                menu.model.step(false);
-                Effect::None
-            }
-            "down" => {
-                menu.model.step(true);
-                Effect::None
-            }
-            "home" => {
-                menu.model.edge(false);
-                Effect::None
-            }
-            "end" => {
-                menu.model.edge(true);
-                Effect::None
-            }
-            "right" => menu.model.enter(false),
-            "enter" | "space" => menu.model.enter(true),
-            "left" | "escape" => menu.model.back(),
-            "tab" | "f10" => Effect::Dismiss,
-            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => menu
-                .model
-                .activate_numbered(stroke.key.parse().unwrap_or(0), true),
-            _ => return,
+        let Some(origin) = self
+            .application_file_rows
+            .as_ref()
+            .and_then(|rows| rows.get(index))
+            .cloned()
+        else {
+            return;
         };
-        let level = menu.model.depth() - 1;
-        if let (Some(index), Some(scroll)) = (menu.model.selected(level), menu.scroll.get(level)) {
-            scroll.scroll_to_item(index);
-        }
-        self.dismiss_ready_status(cx);
-        cx.stop_propagation();
-        self.menu_effect(effect, window, cx);
+        self.open(origin, window, cx);
     }
 
+    /// Covers the window beneath the open menu, so an outside click only closes it.
+    ///
+    /// Drawn below the menu, which the toolkit paints at the window's topmost
+    /// priority.
+    pub(super) fn application_menu_backdrop(&self) -> AnyElement {
+        deferred(
+            div()
+                .id("application-menu-backdrop")
+                .absolute()
+                .inset_0()
+                .occlude()
+                .cursor(CursorStyle::Arrow),
+        )
+        .with_priority(1)
+        .into_any_element()
+    }
+
+    /// The popover that carries the menu, which only the shell opens or closes.
+    ///
+    /// The tracked handle is the menu's own, so the popover's open leaves the
+    /// keyboard inside the menu rather than taking it for itself.
+    fn application_menu_popover(&self, button: Button, cx: &mut Context<Self>) -> Popover {
+        let trigger = Trigger(button);
+        let open = self.application_menu.is_some();
+        let menu = self.application_menu.clone();
+        let focus = self
+            .application_menu
+            .as_ref()
+            .map(|menu| menu.focus_handle(cx));
+        let owner = cx.entity().downgrade();
+        let changed = owner.clone();
+        Popover::new("application-menu")
+            .anchor(Anchor::TopLeft)
+            .appearance(false)
+            .overlay_closable(false)
+            .flex_shrink_0()
+            .open(open)
+            .when_some(focus, |popover, focus| popover.track_focus(&focus))
+            .on_open_change(move |open, window, cx| open_from(&changed, *open, window, cx))
+            .trigger(trigger)
+            .content(move |_, _, _| menu_content(owner.clone(), menu.clone()))
+    }
+
+    /// The application's own window furniture, above and below the content.
     pub(super) fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let anchor = self.application_menu_anchor.clone();
         let open = self.application_menu.is_some();
         let state = if open {
             ToolbarState::On
         } else {
             ToolbarState::Off
         };
+        // The popover owns the press, so the button needs no handler.
         let mut app = Button::new("application-menu-button")
             .tab_stop(false)
             .custom(toolbar_style(state, cx))
@@ -219,13 +377,8 @@ impl Shell {
             .px(px(6.))
             .h(px(TOOLBAR_HEIGHT))
             .child(img("argand/app.png").size(px(22.)))
-            .child(div().text_color(cx.theme().foreground).child(TITLE))
-            .on_click(cx.listener(|shell, _, window, cx| {
-                shell.toggle_application_menu(&OpenApplicationMenu, window, cx)
-            }));
-        // No hint while the menu is open: the button is pressed, and the
-        // click that opened it hides a visible hint instead of explaining
-        // it. The hint returns when the menu is gone.
+            .child(div().text_color(cx.theme().foreground).child(TITLE));
+        // The button is pressed while the menu is open, so it shows no hint.
         let shell = cx.entity().downgrade();
         app.interactivity().tooltip(move |_, cx| {
             let open = shell
@@ -243,20 +396,6 @@ impl Shell {
                 )
             }
         });
-        // The anchor wraps the button instead of living inside it: inside,
-        // an absolute fill resolves against the button's padded content box
-        // and sits above the button's true bottom edge, which is what the
-        // menu measures against. The positioning styles go on a plain div;
-        // canvas does not honour them itself and would flow under the
-        // button, dragging the anchor a button-height down.
-        let app =
-            div()
-                .relative()
-                .flex_shrink_0()
-                .child(app)
-                .child(div().absolute().inset_0().child(
-                    canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {}).size_full(),
-                ));
         div()
             .id("title-toolbar")
             .occlude()
@@ -270,7 +409,7 @@ impl Shell {
             })
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .on_double_click(|_, _, cx| cx.stop_propagation())
-            .child(app)
+            .child(self.application_menu_popover(app, cx))
             // Without a document these act on nothing, and their hitbox would block a title drag.
             .when(self.view.is_some(), |bar| {
                 let separator = div().w(px(1.)).h(px(16.)).mx_1().bg(cx.theme().border);
@@ -418,281 +557,171 @@ impl Shell {
             .when(state == ToolbarState::Off, |glyph| {
                 glyph.group_hover(id, |style| style.text_color(accent))
             })
-    }
-
-    pub(super) fn application_menu_overlay(
-        &mut self,
-        area: Bounds<Pixels>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let menu = self.application_menu.as_mut()?;
-        let depth = menu.model.depth();
-        menu.scroll.resize_with(depth, ScrollHandle::new);
-        let focus = menu.focus.clone();
-        let bounds = self.application_menu_anchor.get();
-        let mut parent = [
-            (bounds.origin.x - area.origin.x).into(),
-            (bounds.origin.y - area.origin.y).into(),
-            bounds.size.width.into(),
-            bounds.size.height.into(),
-        ];
-        let viewport = area.size;
-        let viewport = [viewport.width.into(), viewport.height.into()];
-        let mut panels = Vec::new();
-        for level in 0..depth {
-            let menu = self.application_menu.as_ref()?;
-            let items = menu.model.items(level);
-            let height = items.iter().map(row_height).sum::<f32>() + PADDING * 2.;
-            // Keycaps resolve from the plot, where its bindings live.
-            let width = menu_width(items, &self.focus_target(cx), window, cx);
-            let rect = app_menu::place(parent, [width, height], viewport, level > 0);
-            let selected = menu.model.selected(level);
-            let offset = menu.scroll[level].offset().y;
-            let row_top: f32 = items
-                .iter()
-                .take(selected.unwrap_or(0))
-                .map(row_height)
-                .sum();
-            parent = [
-                rect[0],
-                rect[1] + PADDING + row_top + f32::from(offset),
-                rect[2],
-                ROW,
-            ];
-            let screen_rect = [
-                rect[0] + f32::from(area.origin.x),
-                rect[1] + f32::from(area.origin.y),
-                rect[2],
-                rect[3],
-            ];
-            panels.push(self.application_menu_panel(level, screen_rect, window, cx));
-        }
-        Some(
-            deferred(
-                div()
-                    .id("application-menu-overlay")
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .w(window.viewport_size().width)
-                    .h(window.viewport_size().height)
-                    .track_focus(&focus)
-                    .key_context("ApplicationMenu")
-                    .font_family(cx.theme().font_family.clone())
-                    .occlude()
-                    .on_key_down(cx.listener(Self::application_menu_key))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|shell, _, window, cx| {
-                            shell.dismiss_application_menu(window, cx);
-                            cx.stop_propagation();
-                        }),
-                    )
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(|shell, _, window, cx| {
-                            shell.dismiss_application_menu(window, cx);
-                            cx.stop_propagation();
-                        }),
-                    )
-                    .on_mouse_move(|_, _, cx| cx.stop_propagation())
-                    .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-                    .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_double_click(|_, _, cx| cx.stop_propagation())
-                    .children(panels),
-            )
-            .with_priority(2)
-            .into_any_element(),
-        )
-    }
-
-    fn application_menu_panel(
-        &self,
-        level: usize,
-        rect: [f32; 4],
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let Some(menu) = &self.application_menu else {
-            return div().into_any_element();
-        };
-        let [x, y, width, height] = rect;
-        div()
-            .id(("app-menu-panel", level))
-            .occlude()
-            .absolute()
-            .left(px(x))
-            .top(px(y))
-            .w(px(width))
-            .h(px(height))
-            .bg(cx.theme().popover)
-            .text_color(cx.theme().popover_foreground)
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded_md()
-            .shadow_lg()
-            .text_sm()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-            .child(
-                div()
-                    .id(("app-menu-scroll", level))
-                    .size_full()
-                    .p(px(PADDING - 1.))
-                    .overflow_y_scroll()
-                    .track_scroll(&menu.scroll[level])
-                    .children(
-                        menu.model
-                            .items(level)
-                            .iter()
-                            .enumerate()
-                            .map(|(index, item)| {
-                                self.application_menu_row(level, index, item, window, cx)
-                            }),
-                    ),
-            )
-            .into_any_element()
-    }
-
-    fn application_menu_row(
-        &self,
-        level: usize,
-        index: usize,
-        item: &Item<Command>,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        if matches!(item.kind, Kind::Separator) {
-            return div()
-                .h(px(SEPARATOR))
-                .flex_shrink_0()
-                .py(px(4.))
-                .child(div().h(px(1.)).bg(cx.theme().border))
-                .into_any_element();
-        }
-        let selected = self
-            .application_menu
-            .as_ref()
-            .is_some_and(|menu| menu.model.selected(level) == Some(index));
-        let action = match &item.kind {
-            Kind::Command(Command::Action(action)) => Some(action),
-            _ => None,
-        };
-        let focus = self.focus_target(cx);
-        let shortcut =
-            action.and_then(|action| Kbd::binding_for_action_in(action.as_ref(), &focus, window));
-        div()
-            .id(("app-menu-row", level * 100 + index))
-            .h(px(ROW))
-            .flex_shrink_0()
-            .flex()
-            .items_center()
-            .gap_2()
-            .px_2()
-            .rounded_sm()
-            .when(selected, |row| {
-                row.bg(cx.theme().accent)
-                    .text_color(cx.theme().accent_foreground)
-            })
-            .when(!item.enabled, |row| {
-                row.text_color(cx.theme().muted_foreground)
-            })
-            .on_hover(cx.listener(move |shell, hovered, _, cx| {
-                if !hovered {
-                    return;
-                }
-                if let Some(menu) = &mut shell.application_menu {
-                    menu.model.hover(level, index);
-                    menu.scroll.truncate(level + 1);
-                }
-                cx.notify();
-            }))
-            .on_click(cx.listener(move |shell, _, window, cx| {
-                let Some(menu) = &mut shell.application_menu else {
-                    return;
-                };
-                menu.model.select(level, index);
-                menu.scroll.truncate(level + 1);
-                let effect = menu.model.enter(true);
-                shell.menu_effect(effect, window, cx);
-                cx.stop_propagation();
-            }))
-            .child(
-                // Checked rows take a check mark; numbered recent rows carry
-                // their digit the way the start page's list does: a muted,
-                // localized figure leading the label.
-                div()
-                    .w(px(14.))
-                    .flex_shrink_0()
-                    .when(item.checked, |slot| {
-                        slot.child(Icon::new(IconName::Check).size(px(14.)))
-                    })
-                    .when_some(item.number, |slot, number| {
-                        slot.w_6()
-                            .flex()
-                            .items_center()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(crate::numbers::number(number))
-                    }),
-            )
-            .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .child(item.label.clone()),
-            )
-            .when_some(shortcut, |row, shortcut| {
-                row.child(shortcuts::keycap(shortcut, cx))
-            })
-            .when(matches!(item.kind, Kind::Branch(_)), |row| {
-                row.child(Icon::new(IconName::ChevronRight).size(px(14.)))
-            })
             .into_any_element()
     }
 }
 
-fn menu_width(
-    items: &[Item<Command>],
-    focus: &FocusHandle,
+/// The application button as a trigger the popover may not mark selected.
+///
+/// `Popover::trigger` selects its trigger while the popover is open, and a
+/// selected button loses its hover and pressed surfaces and paints the variant's
+/// active colour, which is not the on state #130 accepted for this button.
+struct Trigger(Button);
+
+impl Selectable for Trigger {
+    fn selected(self, _selected: bool) -> Self {
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        false
+    }
+}
+
+impl Styled for Trigger {
+    fn style(&mut self) -> &mut gpui_kit::StyleRefinement {
+        self.0.style()
+    }
+}
+
+impl IntoElement for Trigger {
+    type Element = AnyElement;
+
+    fn into_element(self) -> Self::Element {
+        self.0.into_any_element()
+    }
+
+    fn into_any_element(self) -> AnyElement {
+        self.0.into_any_element()
+    }
+}
+
+/// Runs a shell change from an element that owns no shell context of its own.
+///
+/// The menu's content is handed an app alone, and the window a key or a click
+/// arrived in is the one the shell draws into.
+fn with_shell(
+    owner: &WeakEntity<Shell>,
     window: &mut Window,
-    cx: &mut gpui_kit::App,
-) -> f32 {
-    let style = gpui_kit::TextStyle {
-        font_family: cx.theme().font_family.clone(),
-        ..Default::default()
+    cx: &mut App,
+    change: impl FnOnce(&mut Shell, &mut Window, &mut Context<Shell>),
+) {
+    let Some(shell) = owner.upgrade() else {
+        return;
     };
-    items
-        .iter()
-        .map(|item| {
-            let label_width = f32::from(
-                window
-                    .text_system()
-                    .shape_line(
-                        item.label.clone().into(),
-                        window.rem_size() * 0.875,
-                        &[style.to_run(item.label.len())],
-                        None,
-                    )
-                    .width
-                    .ceil(),
-            );
-            let shortcut = match &item.kind {
-                Kind::Command(Command::Action(action)) => {
-                    Kbd::binding_for_action_in(action.as_ref(), focus, window)
-                        .map_or(0., |key| f32::from(shortcuts::width(key, window, cx)) + 8.)
-                }
-                _ => 0.,
-            };
-            // A numbered row's leading column is 24 pixels, ten wider than
-            // the check slot.
-            let numbered = if item.number.is_some() { 10. } else { 0. };
-            label_width + numbered + shortcut + 64.
+    shell.update(cx, move |shell, cx| change(shell, window, cx));
+}
+
+/// The menu with the key context the stock menu has none of.
+///
+/// F10, Tab and the File rows' digits land here, and the popover hands this
+/// closure an app alone, so every change reaches the shell through `with_shell`.
+fn menu_content(owner: WeakEntity<Shell>, menu: Option<Entity<PopupMenu>>) -> impl IntoElement {
+    div()
+        .key_context(CONTEXT)
+        .on_action({
+            let owner = owner.clone();
+            move |_: &CloseApplicationMenu, window, cx| dismiss_from(&owner, window, cx)
         })
-        .fold(150., f32::max)
-        .min(420.)
+        .on_action(move |action: &OpenRecentRow, window, cx| {
+            open_recent_from(&owner, action.index, window, cx)
+        })
+        .children(menu)
+}
+
+/// Closes the menu from its own content, which is what F10 and Tab do.
+fn dismiss_from(owner: &WeakEntity<Shell>, window: &mut Window, cx: &mut App) {
+    with_shell(owner, window, cx, |shell, window, cx| {
+        shell.dismiss_application_menu(window, cx);
+    });
+}
+
+/// Opens the recent row a digit names, but only from the File branch.
+fn open_recent_from(owner: &WeakEntity<Shell>, index: usize, window: &mut Window, cx: &mut App) {
+    with_shell(owner, window, cx, move |shell, window, cx| {
+        shell.open_recent_row(index, window, cx);
+    });
+}
+
+/// Opens a capture a recent row names, once the menu is gone.
+fn open_capture_from(owner: &WeakEntity<Shell>, origin: Origin, window: &mut Window, cx: &mut App) {
+    with_shell(owner, window, cx, move |shell, window, cx| {
+        shell.open(origin, window, cx);
+    });
+}
+
+/// Follows the popover's own open state, which only the shell moves.
+fn open_from(owner: &WeakEntity<Shell>, open: bool, window: &mut Window, cx: &mut App) {
+    with_shell(owner, window, cx, move |shell, window, cx| {
+        if open {
+            shell.open_application_menu(window, cx);
+        } else {
+            shell.dismiss_application_menu(window, cx);
+        }
+    });
+}
+
+/// A command row that keeps the stock dispatch and carries the shared keycap.
+///
+/// The stock menu paints its own keycaps, borderless and transparent, where every
+/// other shortcut in the application uses the framed one. The row is an element
+/// for that reason alone, and keeps `.action(..)` and `.checked(..)` so the menu
+/// still dispatches, checks, selects and navigates it.
+fn action_row(
+    label: &str,
+    action: Box<dyn Action>,
+    checked: bool,
+    focus: FocusHandle,
+) -> PopupMenuItem {
+    let label = label.to_owned();
+    let shortcut = action.boxed_clone();
+    PopupMenuItem::element(move |window, cx| {
+        let key = Kbd::binding_for_action_in(shortcut.as_ref(), &focus, window);
+        div()
+            .flex()
+            .w_full()
+            .min_w_0()
+            .gap_3()
+            .items_center()
+            .justify_between()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_ellipsis_middle()
+                    .child(label.clone()),
+            )
+            .when_some(key, |row, key| row.child(shortcuts::keycap(key, cx)))
+    })
+    .action(action)
+    .checked(checked)
+}
+
+/// The row one recent capture is drawn in: its digit, then its name.
+fn recent_row(number: Option<u8>, label: String, muted: gpui_kit::Hsla) -> impl IntoElement {
+    div()
+        .flex()
+        .w_full()
+        .min_w_0()
+        .items_center()
+        .gap_2()
+        .when_some(number, |row, number| {
+            row.child(
+                div()
+                    .w_6()
+                    .flex_shrink_0()
+                    .text_color(muted)
+                    .child(crate::numbers::number(usize::from(number))),
+            )
+        })
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_ellipsis_middle()
+                .child(label),
+        )
 }
 
 /// The width the title reserves for the toolbar.
@@ -792,8 +821,10 @@ impl gpui_kit::Render for NoTooltip {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{TestAppContext, WindowHandle};
+    use std::path::{Path, PathBuf};
 
     /// The controls the toolbar offers, in the order they are drawn.
     const CONTROLS: [&str; 4] = [
@@ -809,6 +840,8 @@ mod tests {
             settings_ui::init(cx);
             navigation_ui::init(cx);
             hints::init(cx);
+            app_menu_ui::init(cx);
+            window_keys(cx);
         });
         let handle = cx.add_window(|window, cx| {
             Shell::new(Config::default(), None, Session::default(), window, cx)
@@ -970,5 +1003,552 @@ mod tests {
         })
         .unwrap();
         assert!(!vertical(cx, handle));
+    }
+
+    /// The window as a person finds it, with the keys the window itself binds.
+    fn open_window(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            settings_ui::init(cx);
+            navigation_ui::init(cx);
+            hints::init(cx);
+            app_menu_ui::init(cx);
+            window_keys(cx);
+        });
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::new(Config::default(), None, Session::default(), window, cx)
+        });
+        cx.simulate_resize(gpui_kit::size(px(800.), px(600.)));
+        draw(cx);
+        (shell, cx)
+    }
+
+    fn draw(cx: &mut gpui_kit::VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| window.render_frame(cx));
+        cx.run_until_parked();
+    }
+
+    /// A document, which is what binds the window's own keys to a focus path.
+    ///
+    /// The capture is nowhere near a real file and nothing analyses it, because
+    /// only the document's existence matters to a key context.
+    fn open_capture(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
+        shell.update_in(cx, |shell, window, cx| {
+            shell.open(
+                Origin::new(PathBuf::from("/captures/session.iqw")),
+                window,
+                cx,
+            );
+        });
+        draw(cx);
+        shell.update_in(cx, |shell, _, cx| {
+            shell.view = Some(crate::navigation::View::full(1000));
+            cx.notify();
+        });
+        draw(cx);
+    }
+
+    /// The middle of the window, which is over the content and not the menu.
+    fn outside() -> gpui_kit::Point<gpui_kit::Pixels> {
+        gpui_kit::point(px(400.), px(400.))
+    }
+
+    /// Where a drawn control is, so a click lands where a person would put it.
+    fn at(
+        cx: &mut gpui_kit::VisualTestContext,
+        id: &'static str,
+    ) -> gpui_kit::Point<gpui_kit::Pixels> {
+        cx.update(|window, _| window.find(id).bounds().center())
+    }
+
+    fn click(cx: &mut gpui_kit::VisualTestContext, id: &'static str) {
+        let at = at(cx, id);
+        cx.simulate_click(at, gpui_kit::Modifiers::default());
+        draw(cx);
+    }
+
+    fn click_outside(cx: &mut gpui_kit::VisualTestContext) {
+        cx.simulate_click(outside(), gpui_kit::Modifiers::default());
+        draw(cx);
+    }
+
+    fn press(cx: &mut gpui_kit::VisualTestContext, keys: &str) {
+        cx.simulate_keystrokes(keys);
+        draw(cx);
+    }
+
+    /// Whether the shell has built the menu, which is its own answer.
+    fn menu_open(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
+        shell.read_with(cx, |shell, _| shell.application_menu.is_some())
+    }
+
+    /// Whether the last frame drew the menu itself.
+    fn menu_drawn(cx: &mut gpui_kit::VisualTestContext) -> bool {
+        cx.update(|window, _| window.try_find("popup-menu").is_some())
+    }
+
+    /// Whether the keyboard is in the menu, which is where it belongs.
+    fn menu_focused(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
+        shell.update_in(cx, |shell, window, cx| {
+            shell
+                .application_menu
+                .as_ref()
+                .is_some_and(|menu| menu.read(cx).focus_handle(cx).is_focused(window))
+        })
+    }
+
+    /// Whether the keyboard is where the menu found it, which is what dismissal
+    /// hands it back to.
+    fn keyboard_at_owner(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
+        shell.update_in(cx, |shell, window, _| shell.focus.is_focused(window))
+    }
+
+    /// Whether the File branch holds the keyboard, which a digit row needs.
+    fn file_focused(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
+        shell.update_in(cx, |shell, window, cx| {
+            shell
+                .application_file_menu
+                .as_ref()
+                .is_some_and(|file| file.read(cx).focus_handle(cx).is_focused(window))
+        })
+    }
+
+    /// One available capture in the recent list, with a digit waiting for it.
+    fn recent(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>, path: &str) {
+        available_recent(cx, shell, std::slice::from_ref(&path.to_owned()), true);
+    }
+
+    /// Recent captures in a given availability, newest first.
+    fn available_recent(
+        cx: &mut gpui_kit::VisualTestContext,
+        shell: &Entity<Shell>,
+        paths: &[String],
+        available: bool,
+    ) {
+        shell.update_in(cx, |shell, _, cx| {
+            shell.session.recent = paths
+                .iter()
+                .map(|path| session::Recent {
+                    path: PathBuf::from(path),
+                    hints: Default::default(),
+                })
+                .collect();
+            shell.recent_files.refresh(&shell.session.recent);
+            for path in paths {
+                shell.recent_files.apply(PathBuf::from(path), available);
+            }
+            cx.notify();
+        });
+        draw(cx);
+    }
+
+    /// A capture a probe has just re-checked while the menu is open.
+    fn recheck(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>, path: &str) {
+        shell.update_in(cx, |shell, _, cx| {
+            shell.recent_files.apply(PathBuf::from(path), false);
+            cx.notify();
+        });
+        draw(cx);
+    }
+
+    /// Where a stock menu row is, which the toolkit records under its index.
+    fn row(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Point<gpui_kit::Pixels> {
+        cx.update(|window, _| {
+            window
+                .find(gpui_kit::ElementId::Integer(index))
+                .bounds()
+                .center()
+        })
+    }
+
+    /// The settings window the menu's Settings row opens.
+    fn settings_open(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
+        shell.read_with(cx, |shell, _| shell.settings_window.is_some())
+    }
+
+    /// The document the open menu replaced, once one of its rows opened something.
+    fn opened(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> Option<PathBuf> {
+        shell.read_with(cx, |shell, _| {
+            shell
+                .file
+                .as_ref()
+                .map(|file| file.document.origin().path.clone())
+        })
+    }
+
+    fn grid(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
+        shell.read_with(cx, |shell, _| shell.session.show_grid)
+    }
+
+    #[gpui_kit::test]
+    fn the_button_and_the_key_open_the_menu_with_the_keyboard_in_it(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        click(cx, "application-menu-button");
+        assert!(menu_open(cx, &shell), "the button opens the menu");
+        assert!(menu_drawn(cx), "and the menu is drawn");
+        assert!(menu_focused(cx, &shell), "with the keyboard inside it");
+        click(cx, "application-menu-button");
+        assert!(!menu_open(cx, &shell), "a second click closes it");
+        press(cx, "f10");
+        assert!(menu_open(cx, &shell), "the key opens it too");
+        assert!(menu_focused(cx, &shell));
+    }
+
+    #[gpui_kit::test]
+    fn a_click_on_the_button_closes_the_menu_and_leaves_it_closed(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        press(cx, "f10");
+        assert!(menu_open(cx, &shell));
+        click(cx, "application-menu-button");
+        assert!(!menu_open(cx, &shell));
+        draw(cx);
+        draw(cx);
+        assert!(!menu_drawn(cx), "and nothing opens it again");
+    }
+
+    #[gpui_kit::test]
+    fn the_key_escape_and_an_outside_click_each_close_the_menu(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        for key in ["f10", "tab", "escape"] {
+            press(cx, "f10");
+            press(cx, key);
+            assert!(!menu_open(cx, &shell), "{key} closes the menu");
+            assert!(!menu_drawn(cx), "{key} leaves nothing drawn");
+            assert!(
+                keyboard_at_owner(cx, &shell),
+                "{key} hands the keyboard back"
+            );
+        }
+        press(cx, "f10");
+        assert!(menu_open(cx, &shell));
+        click_outside(cx);
+        assert!(!menu_open(cx, &shell), "an outside click closes it");
+        assert!(keyboard_at_owner(cx, &shell));
+        // The next key reaches the window again, which is what dismissal promised.
+        press(cx, "f10");
+        assert!(menu_open(cx, &shell));
+    }
+
+    #[gpui_kit::test]
+    fn an_outside_click_and_wheel_reach_nothing_under_the_menu(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let view = shell.read_with(cx, |shell, _| shell.view);
+        press(cx, "f10");
+        assert!(menu_open(cx, &shell));
+        click_outside(cx);
+        assert!(!menu_open(cx, &shell), "the click closed the menu");
+        assert_eq!(
+            shell.read_with(cx, |shell, _| shell.view),
+            view,
+            "and moved nothing under it"
+        );
+        assert!(
+            !shell.read_with(cx, |shell, _| shell.title_drag_pending),
+            "nor began a title drag"
+        );
+        press(cx, "f10");
+        cx.simulate_event(gpui_kit::ScrollWheelEvent {
+            position: outside(),
+            delta: gpui_kit::ScrollDelta::Pixels(gpui_kit::point(px(0.), px(80.))),
+            ..Default::default()
+        });
+        draw(cx);
+        assert!(menu_open(cx, &shell), "the wheel leaves the menu open");
+        assert_eq!(
+            shell.read_with(cx, |shell, _| shell.view),
+            view,
+            "and changes no view"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_backdrop_keeps_the_window_beneath_the_menu(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let before = grid(cx, &shell);
+        press(cx, "f10");
+        assert!(menu_open(cx, &shell));
+        // A control under the menu must not answer the click that closed it.
+        click(cx, "toggle-grid");
+        assert!(
+            !menu_open(cx, &shell),
+            "the control's click dismissed the menu"
+        );
+        assert_eq!(grid(cx, &shell), before, "and did not reach the control");
+        // A press on the title bar must not become a window drag either.
+        press(cx, "f10");
+        let bar = gpui_kit::point(px(400.), px(14.));
+        let none = gpui_kit::Modifiers::default();
+        cx.simulate_mouse_down(bar, gpui_kit::MouseButton::Left, none);
+        draw(cx);
+        assert!(!menu_open(cx, &shell), "the press dismissed the menu");
+        assert!(
+            !shell.read_with(cx, |shell, _| shell.title_drag_pending),
+            "and the title bar never saw it"
+        );
+        cx.simulate_mouse_up(bar, gpui_kit::MouseButton::Left, none);
+        draw(cx);
+    }
+
+    #[gpui_kit::test]
+    fn enter_on_a_view_row_dispatches_its_action_once(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let before = grid(cx, &shell);
+        press(cx, "f10");
+        // Down to the View branch, right into it, then confirm its first row.
+        press(cx, "down down right enter");
+        assert!(!menu_open(cx, &shell), "the menu closed");
+        assert_ne!(grid(cx, &shell), before, "one confirmation is one toggle");
+    }
+
+    #[gpui_kit::test]
+    fn a_digit_answers_only_in_the_file_branch(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        recent(cx, &shell, "/captures/hfdl.iqw");
+        press(cx, "f10");
+        press(cx, "1");
+        assert!(menu_open(cx, &shell), "a digit in the menu bar is no row");
+        assert_eq!(
+            opened(cx, &shell).as_deref(),
+            Some(Path::new("/captures/session.iqw")),
+            "and opened nothing"
+        );
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell), "Right enters the File branch");
+        press(cx, "1");
+        assert!(!menu_open(cx, &shell), "the capture replaced the menu");
+        assert_eq!(
+            opened(cx, &shell).as_deref(),
+            Some(Path::new("/captures/hfdl.iqw"))
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_recent_row_opens_its_capture(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        recent(cx, &shell, "/captures/beacon.iqw");
+        press(cx, "f10");
+        // Into File, past the command and its separator, onto the capture.
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell));
+        press(cx, "down enter");
+        draw(cx);
+        assert!(!menu_open(cx, &shell), "the menu closed");
+        assert_eq!(
+            opened(cx, &shell).as_deref(),
+            Some(Path::new("/captures/beacon.iqw"))
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_settings_window_opens_from_the_menu_itself(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        press(cx, "f10");
+        // Down to File, right into it, then past the command to Settings.
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell));
+        press(cx, "down enter");
+        draw(cx);
+        assert!(!menu_open(cx, &shell), "the menu closed");
+        assert!(settings_open(cx, &shell), "and the settings window opened");
+        shell.update_in(cx, |shell, _, cx| shell.finish_settings(false, cx));
+        draw(cx);
+    }
+
+    #[gpui_kit::test]
+    fn a_click_on_a_recent_row_opens_that_capture(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        recent(cx, &shell, "/captures/beacon.iqw");
+        press(cx, "f10");
+        // The File branch is on screen, and its third row is the first capture.
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell));
+        let capture = row(cx, 2);
+        cx.simulate_click(capture, gpui_kit::Modifiers::default());
+        draw(cx);
+        assert!(!menu_open(cx, &shell), "the menu closed");
+        assert_eq!(
+            opened(cx, &shell).as_deref(),
+            Some(Path::new("/captures/beacon.iqw"))
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_digit_opens_the_row_that_was_drawn(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let paths = [
+            "/captures/hfdl.iqw".to_owned(),
+            "/captures/beacon.iqw".to_owned(),
+        ];
+        available_recent(cx, &shell, &paths, true);
+        press(cx, "f10");
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell));
+        // A probe finds the first capture gone while the menu stands open.
+        recheck(cx, &shell, "/captures/hfdl.iqw");
+        assert!(
+            menu_open(cx, &shell),
+            "the menu keeps the rows it was drawn with"
+        );
+        press(cx, "1");
+        assert_eq!(
+            opened(cx, &shell).as_deref(),
+            Some(Path::new("/captures/hfdl.iqw")),
+            "the digit opened the row that was drawn, not the first available"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn enter_runs_no_branch_where_the_stock_menu_ignores_one(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let before = grid(cx, &shell);
+        press(cx, "f10");
+        // Down twice reaches the View branch, and Enter on a branch runs nothing.
+        press(cx, "down down enter");
+        assert!(menu_open(cx, &shell), "the menu stays open");
+        assert!(
+            menu_focused(cx, &shell),
+            "and the keyboard stays in the menu"
+        );
+        assert_eq!(grid(cx, &shell), before, "with no row run");
+        press(cx, "right");
+        assert!(!menu_focused(cx, &shell), "Right enters the branch");
+        press(cx, "enter");
+        assert_ne!(grid(cx, &shell), before, "where Enter runs its row");
+    }
+
+    /// The View row of the menu bar, found while it is the only menu on screen.
+    fn view_row(cx: &mut gpui_kit::VisualTestContext) -> gpui_kit::Point<gpui_kit::Pixels> {
+        cx.update(|window, _| {
+            let menu = window.find("popup-menu").bounds();
+            menu.center() + gpui_kit::point(px(0.), menu.size.height / 4.)
+        })
+    }
+
+    #[gpui_kit::test]
+    fn the_keys_reach_the_menu_after_a_hover_drops_the_focused_branch(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        for key in ["f10", "tab", "escape"] {
+            press(cx, "f10");
+            let row = view_row(cx);
+            press(cx, "down right");
+            assert!(file_focused(cx, &shell), "{key} found the File branch");
+            // Crossing to View stops drawing File while its handle keeps the focus.
+            cx.simulate_mouse_move(row, None, gpui_kit::Modifiers::default());
+            draw(cx);
+            press(cx, "down right");
+            assert!(
+                file_focused(cx, &shell),
+                "{key} found the keys on the menu again, and Down moved the selection"
+            );
+            press(cx, key);
+            assert!(!menu_open(cx, &shell), "{key} closes the menu");
+            assert!(
+                keyboard_at_owner(cx, &shell),
+                "{key} hands the keyboard back"
+            );
+        }
+    }
+
+    /// How wide a stock menu row is, which changes with what the row carries.
+    fn row_width(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Pixels {
+        cx.update(|window, _| {
+            window
+                .find(gpui_kit::ElementId::Integer(index))
+                .bounds()
+                .size
+                .width
+        })
+    }
+
+    /// How tall a stock menu row is, which grows when a label wraps.
+    fn row_height(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Pixels {
+        cx.update(|window, _| {
+            window
+                .find(gpui_kit::ElementId::Integer(index))
+                .bounds()
+                .size
+                .height
+        })
+    }
+
+    /// The View submenu's "Vertical orientation" row, the first index only the
+    /// View branch has.
+    const ORIENTATION_ROW: u64 = 2;
+
+    /// The File submenu's separator, which spans the whole menu.
+    const FILE_SEPARATOR: u64 = 3;
+
+    #[gpui_kit::test]
+    fn an_action_row_draws_the_shared_keycap_when_its_binding_resolves(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let before = grid(cx, &shell);
+        press(cx, "f10");
+        press(cx, "down down right");
+        assert!(menu_open(cx, &shell), "the View branch is on screen");
+        // Without a plot the row's own binding is out of reach, so it has no keycap.
+        let bare = row_width(cx, ORIENTATION_ROW);
+        press(cx, "escape");
+        cx.update(|_, cx| {
+            cx.bind_keys([gpui_kit::KeyBinding::new(
+                "ctrl-alt-v",
+                ToggleOrientation,
+                Some("Shell"),
+            )]);
+        });
+        press(cx, "f10");
+        press(cx, "down down right");
+        let capped = row_width(cx, ORIENTATION_ROW);
+        assert!(
+            capped > bare,
+            "the row grew to hold the framed keycap, {bare} then {capped}"
+        );
+        press(cx, "enter");
+        assert!(!menu_open(cx, &shell), "and the row still dispatches once");
+        assert_ne!(grid(cx, &shell), before, "one Enter ran one row");
+    }
+
+    #[gpui_kit::test]
+    fn a_long_recent_name_keeps_the_file_branch_within_its_width(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let long = format!(
+            "{}.iqw",
+            "capture-2026-09-28-145233-1440.000000-MHz-".repeat(4)
+        );
+        recent(cx, &shell, &long);
+        press(cx, "f10");
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell), "the File branch is on screen");
+        assert!(
+            row_width(cx, FILE_SEPARATOR) <= px(420.),
+            "a name too long for its row leaves the menu at its own maximum"
+        );
+
+        assert!(
+            row_height(cx, 2) <= px(26.),
+            "and the long name truncates in one line instead of wrapping"
+        );
+    }
+
+    #[test]
+    fn the_popover_trigger_reports_itself_unselected() {
+        let trigger = Trigger(Button::new("application-menu-button"));
+        assert!(!trigger.is_selected());
+        assert!(!trigger.selected(true).is_selected());
     }
 }
