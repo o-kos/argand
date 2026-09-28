@@ -41,8 +41,7 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
     let mut keys = vec![
         KeyBinding::new("f10", OpenApplicationMenu, Some(CONTEXT)),
         KeyBinding::new("tab", CloseApplicationMenu, Some(CONTEXT)),
-        // The popover confirms on Space as it does on Enter, and no menu closes
-        // on Space.
+        // The popover confirms on Space, and no menu closes that way.
         KeyBinding::new("space", gpui_kit::NoAction, Some(CONTEXT)),
     ];
     keys.extend((1..=9).map(|digit| {
@@ -91,8 +90,7 @@ impl Shell {
                 recent_row(number, label.clone(), cx.theme().muted_foreground)
             })
             .on_click(move |_, window, cx| {
-                // The menu dismisses itself in the frame after this returns,
-                // so the open waits until it is gone.
+                // The menu dismisses itself a frame later, so the open waits.
                 let owner = owner.clone();
                 let origin = origin.clone();
                 window.defer(cx, move |window, cx| {
@@ -317,8 +315,7 @@ impl Shell {
         } else {
             ToolbarState::Off
         };
-        // The popover owns the button's press, so the menu opens and closes
-        // on it without a handler here.
+        // The popover owns the press, so the button needs no handler.
         let mut app = Button::new("application-menu-button")
             .tab_stop(false)
             .custom(toolbar_style(state, cx))
@@ -329,9 +326,7 @@ impl Shell {
             .h(px(TOOLBAR_HEIGHT))
             .child(img("argand/app.png").size(px(22.)))
             .child(div().text_color(cx.theme().foreground).child(TITLE));
-        // No hint while the menu is open: the button is pressed, and the
-        // click that opened it hides a visible hint instead of explaining
-        // it. The hint returns when the menu is gone.
+        // The button is pressed while the menu is open, so it shows no hint.
         let shell = cx.entity().downgrade();
         app.interactivity().tooltip(move |_, cx| {
             let open = shell
