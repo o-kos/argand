@@ -160,6 +160,49 @@ Current code:
 - Stock outside dismissal without a backdrop: the dismissing click would start a
   pan or a title drag, which the #129 isolation gate forbids.
 
+## ⚠️ Blocked on the controlled `Popover` (2026-09-28)
+
+The "Open and close" decision cannot be delivered with the locked
+`gpui-component` 0.6.6: a stock `PopupMenu` drawn as the content of a controlled
+`Popover` never receives its own key actions, so the menu is pointer-operable
+only. Nothing below this note is implemented, and no checkbox is ticked.
+
+What was measured, with the menu built by `PopupMenu::build` and drawn as
+`Popover::content`:
+
+- The window's focus is the menu's own handle, so the menu sits where the
+  toolkit intends it: `window.focused(cx) == menu.read(cx).focus_handle(cx)`.
+- Its key context is on the focused node's dispatch path, so the stock bindings
+  match and the actions are dispatched. A handler on the popover content div,
+  an ancestor of the menu, does see `SelectRight`.
+- The menu's own handlers, registered in `PopupMenu::render` on the
+  `v_flex().id("popup-menu")` that tracks the same focus handle
+  (`popup_menu.rs:1468`), never run. `PopupMenu::select_right` neither focuses
+  the submenu nor closes the menu, and a `Confirm` dispatched on the window
+  reaches no row.
+
+It reproduces with the popover in the title bar and in the content area, on the
+frame that first draws the menu and on later cached frames, with and without a
+wrapper div between the popover content and the menu, and with a menu that has
+no submenus. The popover's own `Cancel` handler does close the menu, so Escape
+works while no row can be reached or confirmed.
+
+`gpui_component::menu::ContextMenu` delivers the same menu's key actions in this
+repository, through the ruler context menu in `navigation_ui.rs`, but it opens
+only on `MouseButton::Right` (`context_menu.rs:298`) and exposes no open call,
+so it cannot serve the application button or F10.
+
+Two further facts for whoever picks this up:
+
+- `Popover` places the content at the trigger's top-left corner
+  (`resolved_corner` with `Anchor::TopLeft`, `popover.rs`), the same alignment
+  `Button::dropdown_menu` uses. A content block below the button's own
+  bottom-left corner, as this plan describes, is not expressible through the
+  stock `Popover`.
+- The shell's own key bindings live in `run`'s closure and reach no headless
+  test. F10 could not be exercised until they moved into a function the tests
+  also call.
+
 ## Implementation steps
 
 - [ ] Build the application menu as stock `PopupMenu` with File, View and Time scale
