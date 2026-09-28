@@ -1,9 +1,7 @@
 //! Shared keycap colours and measurement, preserving the toolkit typography.
 
 use gpui_kit::component::{ActiveTheme, kbd::Kbd};
-use gpui_kit::{
-    Action, App, AvailableSpace, IntoElement, Keystroke, Pixels, Styled, Window, relative, size,
-};
+use gpui_kit::{Action, App, Keystroke, Styled, relative};
 
 /// Uniform keycap names for the symbol zoom keys.
 ///
@@ -40,18 +38,6 @@ pub(super) fn keycap(shortcut: Kbd, cx: &App) -> Kbd {
         .whitespace_normal()
         .text_color(theme.muted_foreground.blend(theme.foreground.opacity(0.2)))
         .border_color(theme.border.blend(theme.foreground.opacity(0.15)))
-}
-
-pub(super) fn width(shortcut: Kbd, window: &mut Window, cx: &mut App) -> Pixels {
-    keycap(shortcut, cx)
-        .into_any_element()
-        .layout_as_root(
-            size(AvailableSpace::MaxContent, AvailableSpace::MaxContent),
-            window,
-            cx,
-        )
-        .width
-        .ceil()
 }
 
 #[cfg(test)]

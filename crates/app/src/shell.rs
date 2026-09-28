@@ -20,7 +20,7 @@ use gpui_kit::component::{
     ActiveTheme, Colorize, InteractiveElementExt, Root, Sizable, ThemeMode, TitleBar,
 };
 use gpui_kit::{
-    Action, AppContext, Bounds, Context, Corners, ExternalPaths, FocusHandle, FontWeight,
+    Action, AppContext, Bounds, Context, Corners, Entity, ExternalPaths, FocusHandle, FontWeight,
     InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement, PathPromptOptions,
     Pixels, Render, RenderImage, StatefulInteractiveElement, Styled, Subscription, Task,
     TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds,
@@ -83,6 +83,33 @@ struct OpenRecent {
     index: usize,
 }
 
+/// The window's own keys, which a headless test registers as the window does.
+pub(super) fn window_keys(cx: &mut gpui_kit::App) {
+    // The pointer is the plot's working tool, so navigation keys must not hide it.
+    cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
+    cx.bind_keys([
+        KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
+        KeyBinding::new("tab", FocusNext, Some("Shell")),
+        KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
+        KeyBinding::new(
+            if cfg!(target_os = "macos") {
+                "cmd-o"
+            } else {
+                "ctrl-o"
+            },
+            ChooseFile,
+            None,
+        ),
+    ]);
+    cx.bind_keys((0..9).map(|index| {
+        KeyBinding::new(
+            &format!("alt-{}", index + 1),
+            OpenRecent { index },
+            Some("StartPage"),
+        )
+    }));
+}
+
 /// Open the window and run until it closes.
 pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Option<Origin>) {
     // The toolkit's own icons -- the window controls among them -- are loaded
@@ -95,29 +122,8 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
             settings_ui::init(cx);
             hints::init(cx);
             navigation_ui::init(cx);
-            // The pointer is the plot's working tool, so navigation keys must not hide it.
-            cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
-            cx.bind_keys([
-                KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
-                KeyBinding::new("tab", FocusNext, Some("Shell")),
-                KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
-                KeyBinding::new(
-                    if cfg!(target_os = "macos") {
-                        "cmd-o"
-                    } else {
-                        "ctrl-o"
-                    },
-                    ChooseFile,
-                    None,
-                ),
-            ]);
-            cx.bind_keys((0..9).map(|index| {
-                KeyBinding::new(
-                    &format!("alt-{}", index + 1),
-                    OpenRecent { index },
-                    Some("StartPage"),
-                )
-            }));
+            app_menu_ui::init(cx);
+            window_keys(cx);
             gpui_kit::component::theme::Theme::change(
                 theme_mode(config.theme, cx.window_appearance()),
                 None,
@@ -363,8 +369,10 @@ struct Shell {
     title_drag_pending: bool,
     waveform: Option<Arc<waveform::Waveform>>,
     focus: FocusHandle,
-    application_menu: Option<app_menu_ui::ApplicationMenu>,
-    application_menu_anchor: app_menu_ui::Anchor,
+    application_menu: Option<Entity<PopupMenu>>,
+    /// The File branch, whose keyboard focus a digit row belongs to.
+    application_file_menu: Option<Entity<PopupMenu>>,
+    application_menu_dismissed: Option<Subscription>,
     recent_files: RecentFiles,
     recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
@@ -445,7 +453,8 @@ impl Shell {
             waveform: None,
             focus,
             application_menu: None,
-            application_menu_anchor: Default::default(),
+            application_file_menu: None,
+            application_menu_dismissed: None,
             recent_updates: None,
             _bounds: bounds,
             _activation: activation,
@@ -1442,13 +1451,15 @@ impl Render for Shell {
                 .child(self.content(window, cx))
                 .child(self.status_bar(corners, cx));
         let content = self.view_commands(content, cx);
-        let overlay =
-            self.application_menu_overlay(frame.content_bounds(window.viewport_size()), window, cx);
+        let menu_backdrop = self
+            .application_menu
+            .is_some()
+            .then(|| self.application_menu_backdrop());
         div()
             .relative()
             .size_full()
             .child(frame.render(content, cx))
-            .children(overlay)
+            .children(menu_backdrop)
             .children(hints::backdrop(&self.analysis_hint, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))

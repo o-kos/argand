@@ -187,18 +187,18 @@ and its own `on_action` handlers never run.
 
 ## Implementation steps
 
-- [ ] Build the application menu as stock `PopupMenu` with File, View and Time scale
+- [x] Build the application menu as stock `PopupMenu` with File, View and Time scale
       format submenus, the same rows, checks, separators, actions and recent order;
       recent rows as element rows with digits and a deferred open.
-- [ ] Host it in a controlled `Popover` on the application button with the backdrop;
+- [x] Host it in a controlled `Popover` on the application button with the backdrop;
       route the button, F10, `Shell::open`, the settings window and every existing
       dismissal path through one Shell open/dismiss pair with focus return.
-- [ ] Add the `ApplicationMenu` key context for F10 / Tab dismissal and File-focused
+- [x] Add the `ApplicationMenu` key context for F10 / Tab dismissal and File-focused
       digit activation.
-- [ ] Delete the custom navigation model, placement, overlay, renderers, key handler
+- [x] Delete the custom navigation model, placement, overlay, renderers, key handler
       and width measurement, and every test and helper only they used; keep the
       recent-ordering function and its test.
-- [ ] Headless GPUI tests (`gpui-kit` `test-support`), replacing the deleted ones
+- [x] Headless GPUI tests (`gpui-kit` `test-support`), replacing the deleted ones
       where they covered behaviour that remains:
   - the button and F10 open the menu with keyboard focus in it; a second F10, Tab,
     Escape and an outside click close it and return focus to `focus_target`; the
@@ -215,7 +215,14 @@ and its own `on_action` handlers never run.
   - opening a file and opening the settings window close the menu;
   - the ruler context menu's existing tests still pass unchanged.
   Where a case cannot be driven headlessly, say so here and leave it to the native
-  matrix.
+  matrix. Two cases came out in part. "The next key reaches the plot" is checked as
+  the keyboard reaching the window again, because a headless `Shell` has no
+  described document and therefore no `PlotView`; the plot's own key routing is
+  unchanged and already covered there. The pan and wheel cases are checked where
+  they are observable without a plot: the view is unchanged, a control under the
+  menu does not answer the dismissing click, and a press on the title bar starts
+  no window drag. Starting a pan on the plot itself needs the same document and
+  stays native.
 - [ ] Update the parent inventory rows (main cascading menu: replaced, with the
       accepted Escape/Home/End/Space change; ruler context menu: retained,
       re-verified) and tick phase 5's menu item for the menu half.
