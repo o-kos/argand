@@ -2,9 +2,9 @@
 
 Resolves [#131](https://github.com/o-kos/argand/issues/131).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](124-standard-ui-architecture.md), phase 5 (standard-control
+[approved architecture](../124-standard-ui-architecture.md), phase 5 (standard-control
 replacement), inventory rows "Main cascading menu" and "Ruler context menu".
-Predecessor [#130](completed/130-standard-buttons.md), merged in PR #157.
+Predecessor [#130](130-standard-buttons.md), merged in PR #157.
 
 ## Overview
 
@@ -252,7 +252,7 @@ and its own `on_action` handlers never run.
       bullet, `app_menu.rs` ownership sentence, one-level Escape) and add
       `CHANGELOG.md` `[Unreleased]` entries for the user-visible changes.
 - [x] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -274,8 +274,8 @@ and its own `on_action` handlers never run.
     keyboard on the menu, which the headless test drives through one direction;
   - P1: click, wheel and drag inside the menu and outside it over the plot, the
     rulers and the minimap change no view and start no drag; an outside wheel
-    leaves the menu open, and a click on a recent row and on Settings works by
-    pointer, which a headless test reaches only through the keyboard;
+    leaves the menu open, and a click on Settings works by pointer, which a
+    headless test reaches only through the keyboard;
   - the application button's own look while the menu is open, which the headless
     tests cannot observe: the popover must not make it read as selected;
   - P3: open the menu during a drag, and via F10 during a drag: the drag ends;
@@ -357,6 +357,11 @@ directions and from the Time scale format branch. The second item is a nit,
 accepted: dismissal now clears the DismissEvent subscription and the focus-lost
 subscription with the entity and the File rows, so no subscription outlives the
 menu it belongs to.
+
+The owner approved a targeted check of the round-3 fix instead of a fourth round.
+The same reviewer examined only that diff, the focus-lost listener, its behaviour
+when the menu closes, a file opens or the settings window opens, and whether the
+test exercises the lost-focus path, and found no substantive issue.
 
 ## Post-completion
 
