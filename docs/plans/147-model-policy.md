@@ -57,16 +57,16 @@ Agreed with the owner on 2026-09-28.
 - Reviewer fixed by class without agreement, as before #146: the owner wants to pick
   the reviewer from the actual diff.
 - Agreement per review with no table: leaves every round without a starting proposal.
-- `gpt-6-astra` for class A: `gpt-6-sol` high reviewed #129 and #130 to the owner's
-  satisfaction, and astra stays available on request when a change warrants it.
+- `gpt-6-astra` for class A: `gpt-6-sol` high reviewed #129 and #130, and astra
+  stays available on request when a change warrants it.
 - A codex implementer column in the table: the implementer is chosen per Issue, so a
   default model per class would state a rule nobody follows.
 
 ## Implementation steps
 
-- [ ] Rewrite "Agent roles and model selection" in `AGENTS.md`.
-- [ ] Update the external-review bullets in "Git workflow" of `AGENTS.md`.
-- [ ] Rewrite "External review" in `CONTRIBUTING.md`: reviewer agreement, the `codex exec`
+- [x] Rewrite "Agent roles and model selection" in `AGENTS.md`.
+- [x] Update the external-review bullets in "Git workflow" of `AGENTS.md`.
+- [x] Rewrite "External review" in `CONTRIBUTING.md`: reviewer agreement, the `codex exec`
       invocation with an agreed effort, the Claude subagent alternative, and the owner
       summary.
 - [ ] External review of this change.
@@ -79,8 +79,8 @@ Agreed with the owner on 2026-09-28.
 - [ ] `cargo test --locked`
 - [ ] `cargo build --release --locked` does not apply: no code changes, and no behaviour
       is shown to the owner.
-- [ ] Every model slug in the new text exists in the codex model cache.
-- [ ] No remaining rule in `AGENTS.md` or `CONTRIBUTING.md` names codex as the only
+- [x] Every model slug in the new text exists in the codex model cache.
+- [x] No remaining rule in `AGENTS.md` or `CONTRIBUTING.md` names codex as the only
       implementer or reviewer.
 
 ## Post-completion
