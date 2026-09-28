@@ -28,6 +28,8 @@ pub(super) struct PlotSnapshot {
     pub frequency: crate::frequency::View,
     pub show_grid: bool,
     pub show_scale_ui: bool,
+    /// The mouse position counts only while this holds, since it goes stale once the pointer leaves.
+    pub pointer_in_window: bool,
 }
 
 /// What the plot asks of the shell.
@@ -79,7 +81,6 @@ pub(super) struct PlotView {
     pub(super) pointer: Option<gpui_kit::Point<Pixels>>,
     pub(super) pan: Option<Pan>,
     pub(super) frequency_pan: Option<(gpui_kit::Point<Pixels>, crate::frequency::View)>,
-    pub(super) pressed_zoom: Option<&'static str>,
     pub(super) splitter_dragging: bool,
     pub(super) geometry: Option<PlotGeometry>,
     pub(super) panel_bounds: Option<Bounds<Pixels>>,
@@ -105,7 +106,6 @@ impl PlotView {
             pointer: None,
             pan: None,
             frequency_pan: None,
-            pressed_zoom: None,
             splitter_dragging: false,
             geometry: None,
             panel_bounds: None,
@@ -140,16 +140,27 @@ impl PlotView {
         }
     }
 
-    pub(super) fn release_press(&mut self, cx: &mut Context<Self>) {
-        if self.pressed_zoom.take().is_some() {
-            cx.notify();
-        }
-    }
-
     pub(super) fn dismiss_menu(&mut self, cx: &mut Context<Self>) {
         if let Some(menu) = self.open_menu.take() {
             let _ = menu.update(cx, |_, cx| cx.emit(gpui_kit::DismissEvent));
         }
+    }
+
+    /// End the drags, which only the pointer that began them may finish.
+    pub(super) fn end_gestures(&mut self, cx: &mut Context<Self>) {
+        if self.dragging() {
+            self.pan = None;
+            self.frequency_pan = None;
+            self.splitter_dragging = false;
+            cx.notify();
+        }
+    }
+
+    /// Leave nothing behind for an overlay that is taking the input.
+    pub(super) fn interrupt(&mut self, cx: &mut Context<Self>) {
+        self.end_gestures(cx);
+        self.dismiss_menu(cx);
+        self.clear_pointer(cx);
     }
 
     /// Let the right ruler fit its current labels again.
@@ -181,14 +192,13 @@ impl PlotView {
         cx.emit(intent);
     }
 
-    /// Forget the gestures and layout the other orientation cannot reuse.
+    /// Forget the gestures the other orientation cannot reuse.
     pub(super) fn reorient(&mut self, cx: &mut Context<Self>) {
         self.gutter_floor = 0.;
         self.pan = None;
         self.frequency_pan = None;
         self.splitter_dragging = false;
-        self.geometry = None;
-        self.clear_pointer(cx);
+        // The old layout serves until the next frame measures the new one, so the cursor and readout do not blink.
         cx.notify();
     }
 
@@ -309,8 +319,12 @@ impl Render for PlotView {
             )
             .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_drags))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_drags))
-            .on_hover(cx.listener(|plot, hovered, _, cx| {
-                if !hovered {
+            // Keys must not end the hover, and a plot uncovered under a still pointer takes it up.
+            .hover_listener_mode(gpui_kit::HoverListenerMode::InputModalityIndependent)
+            .on_hover(cx.listener(|plot, hovered, window, cx| {
+                if *hovered {
+                    plot.pick_up_pointer(window, cx);
+                } else {
                     plot.clear_pointer(cx);
                 }
             }))
@@ -332,17 +346,19 @@ impl Render for PlotView {
     }
 }
 
-/// Follows a drag beyond the plot, where its own hitbox no longer sees the pointer.
+/// Follows a drag wherever the plot's own hitbox no longer sees the pointer.
 ///
-/// Moves inside the plot stay with its own listener, which also covers the
-/// ones that arrive before the first frame drawn after the press.
+/// That is beyond the plot and over a hint lying on it. The tracker's hitbox
+/// matches the plot's, so each move goes to exactly one of them. Moves the
+/// plot sees stay with its own listener, which also covers the ones that
+/// arrive before the first frame drawn after the press.
 fn drag_tracker(plot: WeakEntity<PlotView>) -> impl IntoElement {
     canvas(
-        |_, _, _| (),
-        move |bounds, _, window, _| {
+        |bounds, window, _| window.insert_hitbox(bounds, gpui_kit::HitboxBehavior::Normal),
+        move |_, hitbox, window, _| {
             let plot = plot.clone();
             window.on_mouse_event(move |event: &gpui_kit::MouseMoveEvent, phase, window, cx| {
-                if phase == gpui_kit::DispatchPhase::Bubble && !bounds.contains(&event.position) {
+                if phase == gpui_kit::DispatchPhase::Bubble && !hitbox.is_hovered(window) {
                     let _ = plot.update(cx, |plot, cx| plot.pointer_moved(event, window, cx));
                 }
             });
@@ -468,6 +484,10 @@ mod tests {
         other: FocusHandle,
         intents: Vec<PlotIntent>,
         grid: usize,
+        /// Stands in for the session's scale-controls choice.
+        scale_ui: bool,
+        /// Stands in for a hint or a menu lying on the plot.
+        cover: Option<Bounds<Pixels>>,
         _intents: Option<Subscription>,
     }
 
@@ -475,12 +495,27 @@ mod tests {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             div()
                 .size_full()
+                .relative()
                 .flex()
                 .flex_col()
                 .key_context("Shell")
                 .on_action(cx.listener(|harness, _: &ToggleGrid, _, _| harness.grid += 1))
+                .on_action(cx.listener(|harness, _: &ToggleScaleUi, _, _| {
+                    harness.scale_ui = !harness.scale_ui
+                }))
                 .children(self.plot.clone())
                 .child(div().id("other").h(px(40.)).track_focus(&self.other))
+                .when_some(self.cover, |harness, cover| {
+                    harness.child(
+                        div()
+                            .absolute()
+                            .left(cover.origin.x)
+                            .top(cover.origin.y)
+                            .w(cover.size.width)
+                            .h(cover.size.height)
+                            .occlude(),
+                    )
+                })
         }
     }
 
@@ -521,6 +556,7 @@ mod tests {
             frequency: crate::frequency::View::default(),
             show_grid: true,
             show_scale_ui: false,
+            pointer_in_window: true,
         }
     }
 
@@ -545,6 +581,8 @@ mod tests {
                 other: cx.focus_handle(),
                 intents: Vec::new(),
                 grid: 0,
+                scale_ui: false,
+                cover: None,
                 _intents: Some(intents),
             }
         });
@@ -719,6 +757,8 @@ mod tests {
                 other: focus,
                 intents: Vec::new(),
                 grid: 0,
+                scale_ui: false,
+                cover: None,
                 _intents: None,
             }
         });
@@ -776,25 +816,27 @@ mod tests {
         .unwrap();
     }
 
-    #[gpui_kit::test]
-    fn a_drag_keeps_tracking_beyond_the_plot(cx: &mut TestAppContext) {
-        let handle = open(cx);
-        let (spectrum, bottom) = handle
-            .update(cx, |harness, window, cx| {
-                let geometry = harness.plot.as_ref().unwrap().read(cx).geometry;
-                (geometry.unwrap().spectrum, window.viewport_size().height)
-            })
-            .unwrap();
+    /// Drags the spectrum from its centre to `to` and returns the last view it asked for.
+    fn drag_time(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        spectrum: Bounds<Pixels>,
+        to: gpui_kit::Point<Pixels>,
+    ) -> crate::navigation::View {
         let from = spectrum.center();
-        let to = point(from.x - px(200.), bottom - px(10.));
-        assert!(!spectrum.contains(&to));
         handle
             .update(cx, |harness, _, _| harness.intents.clear())
             .unwrap();
         cx.update_window(handle.into(), |_, window, cx| window.drag(from, to, cx))
             .unwrap();
         cx.run_until_parked();
-        let drags: Vec<_> = handle
+        let dragging = handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().read(cx).dragging()
+            })
+            .unwrap();
+        assert!(!dragging, "release ends the drag");
+        handle
             .update(cx, |harness, _, _| {
                 harness
                     .intents
@@ -805,18 +847,478 @@ mod tests {
                         } => Some(*view),
                         _ => None,
                     })
-                    .collect()
+                    .next_back()
             })
+            .unwrap()
+            .expect("the drag moved the view")
+    }
+
+    fn spectrum(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> Bounds<Pixels> {
+        handle
+            .update(cx, |harness, _, cx| {
+                let geometry = harness.plot.as_ref().unwrap().read(cx).geometry;
+                geometry.unwrap().spectrum
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn a_drag_keeps_tracking_beyond_the_plot(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let bottom = handle
+            .update(cx, |_, window, _| window.viewport_size().height)
             .unwrap();
-        let last = drags.last().expect("the drag moved the view");
+        let from = spectrum.center();
+        let to = point(from.x - px(200.), bottom - px(10.));
+        assert!(!spectrum.contains(&to));
         let width = f32::from(spectrum.size.width) as f64;
         let expected = snapshot().extents.time.view.pan(200. / width, 1_000_000);
-        assert_eq!(*last, expected, "the step outside the plot was followed");
+        assert_eq!(
+            drag_time(cx, handle, spectrum, to),
+            expected,
+            "the step outside the plot was followed"
+        );
+    }
+
+    fn cover(cx: &mut TestAppContext, handle: WindowHandle<Harness>, bounds: Bounds<Pixels>) {
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.cover = Some(bounds);
+                cx.notify();
+            })
+            .unwrap();
+        frame(cx, handle);
+    }
+
+    fn pointer(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+    ) -> Option<gpui_kit::Point<Pixels>> {
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().read(cx).pointer
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn an_overlay_on_the_plot_hides_its_pointer_until_the_first_move_back(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let covered = spectrum.center();
+        let free = point(covered.x - px(100.), covered.y);
+        cover(
+            cx,
+            handle,
+            Bounds::new(covered - point(px(20.), px(20.)), size(px(40.), px(40.))),
+        );
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(free, None, none);
+        assert_eq!(pointer(cx, handle), Some(free));
+        input.simulate_mouse_move(covered, None, none);
+        assert_eq!(
+            pointer(cx, handle),
+            None,
+            "no readout or guides under a hint"
+        );
+        input.simulate_mouse_move(free, None, none);
+        assert_eq!(
+            pointer(cx, handle),
+            Some(free),
+            "the first move back restores it"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn an_overlay_on_the_plot_takes_its_wheel_clicks_and_drags(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let covered = spectrum.center();
+        cover(
+            cx,
+            handle,
+            Bounds::new(covered - point(px(40.), px(40.)), size(px(80.), px(80.))),
+        );
+        handle
+            .update(cx, |harness, _, _| harness.intents.clear())
+            .unwrap();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(covered, None, none);
+        input.simulate_event(gpui_kit::ScrollWheelEvent {
+            position: covered,
+            delta: gpui_kit::ScrollDelta::Pixels(point(px(0.), px(40.))),
+            ..Default::default()
+        });
+        input.simulate_mouse_down(covered, MouseButton::Left, none);
+        input.simulate_mouse_move(covered + point(px(20.), px(0.)), MouseButton::Left, none);
+        input.simulate_mouse_up(covered + point(px(20.), px(0.)), MouseButton::Left, none);
+        let intents = handle
+            .update(cx, |harness, _, _| std::mem::take(&mut harness.intents))
+            .unwrap();
+        assert!(
+            intents.is_empty(),
+            "nothing under the overlay reaches the plot: {intents:?}"
+        );
+        assert_eq!(pointer(cx, handle), None);
+    }
+
+    #[gpui_kit::test]
+    fn key_presses_keep_the_pointer_over_the_plot(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let resting = spectrum(cx, handle).center();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(resting, None, gpui_kit::Modifiers::default());
+        frame(cx, handle);
+        for key in ["a", "left", "tab"] {
+            press(cx, handle, key);
+            frame(cx, handle);
+            assert_eq!(pointer(cx, handle), Some(resting), "{key}");
+        }
+    }
+
+    /// Rests the pointer on a covered plot, then takes the cover away without a move.
+    fn uncover_under(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        in_window: bool,
+    ) -> gpui_kit::Point<Pixels> {
+        let resting = spectrum(cx, handle).center();
+        cover(
+            cx,
+            handle,
+            Bounds::new(resting - point(px(40.), px(40.)), size(px(80.), px(80.))),
+        );
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(resting, None, gpui_kit::Modifiers::default());
+        frame(cx, handle);
+        assert_eq!(pointer(cx, handle), None, "covered");
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.cover = None;
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, _| {
+                    plot.snapshot.as_mut().unwrap().pointer_in_window = in_window
+                });
+                cx.notify();
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
+        resting
+    }
+
+    #[gpui_kit::test]
+    fn a_plot_uncovered_under_a_still_pointer_takes_it_up(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let resting = uncover_under(cx, handle, true);
+        assert_eq!(pointer(cx, handle), Some(resting));
+    }
+
+    #[gpui_kit::test]
+    fn a_pointer_that_left_the_window_is_not_taken_up(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        uncover_under(cx, handle, false);
+        assert_eq!(pointer(cx, handle), None);
+    }
+
+    #[gpui_kit::test]
+    fn a_new_orientation_keeps_a_resting_pointer(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let resting = spectrum(cx, handle).center();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(resting, None, gpui_kit::Modifiers::default());
+        frame(cx, handle);
+        handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, cx| {
+                    plot.snapshot.as_mut().unwrap().extents.orientation =
+                        crate::orientation::Mode::Vertical;
+                    plot.reorient(cx);
+                    assert!(plot.hover().is_some(), "no frame without a readout");
+                });
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
+        assert_eq!(pointer(cx, handle), Some(resting));
+    }
+
+    /// Presses in the spectrum's centre and drags a little, returning the drag's input.
+    fn start_drag(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+    ) -> (gpui_kit::VisualTestContext, gpui_kit::Point<Pixels>) {
+        let from = spectrum(cx, handle).center();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(from, None, none);
+        input.simulate_mouse_down(from, MouseButton::Left, none);
+        input.simulate_mouse_move(from - point(px(10.), px(0.)), MouseButton::Left, none);
         let dragging = handle
             .update(cx, |harness, _, cx| {
                 harness.plot.as_ref().unwrap().read(cx).dragging()
             })
             .unwrap();
-        assert!(!dragging, "release outside ends the drag");
+        assert!(dragging, "the press began a drag");
+        (input, from)
+    }
+
+    fn drag_steps(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> usize {
+        handle
+            .update(cx, |harness, _, _| {
+                std::mem::take(&mut harness.intents)
+                    .into_iter()
+                    .filter(|intent| matches!(intent, PlotIntent::Drag { .. }))
+                    .count()
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn an_interrupted_drag_does_not_resume(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let (mut input, from) = start_drag(cx, handle);
+        handle
+            .update(cx, |harness, _, cx| {
+                harness
+                    .plot
+                    .as_ref()
+                    .unwrap()
+                    .update(cx, |plot, cx| plot.interrupt(cx))
+            })
+            .unwrap();
+        assert_eq!(pointer(cx, handle), None, "the readout goes with the drag");
+        drag_steps(cx, handle);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(from - point(px(60.), px(0.)), MouseButton::Left, none);
+        input.simulate_mouse_up(from - point(px(60.), px(0.)), MouseButton::Left, none);
+        assert_eq!(drag_steps(cx, handle), 0, "later moves do not resume it");
+    }
+
+    #[gpui_kit::test]
+    fn a_drag_keeps_tracking_over_a_hint_on_the_plot(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let from = spectrum.center();
+        let to = point(from.x - px(100.), from.y);
+        cover(
+            cx,
+            handle,
+            Bounds::new(to - point(px(20.), px(20.)), size(px(40.), px(40.))),
+        );
+        let width = f32::from(spectrum.size.width) as f64;
+        let expected = snapshot().extents.time.view.pan(100. / width, 1_000_000);
+        assert_eq!(
+            drag_time(cx, handle, spectrum, to),
+            expected,
+            "the step over the hint was followed"
+        );
+    }
+
+    /// Whether the corner pairs are in the tree the last frame drew.
+    fn pairs_shown(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> bool {
+        cx.update_window(handle.into(), |_, window, _| {
+            window.try_find("Zoom in time").is_some()
+        })
+        .unwrap()
+    }
+
+    /// Flips the scale controls, as the shell does, and carries the choice over.
+    fn toggle_pairs(cx: &mut TestAppContext, handle: WindowHandle<Harness>) {
+        press(cx, handle, "ctrl-u");
+        handle
+            .update(cx, |harness, _, cx| {
+                let shown = harness.scale_ui;
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, cx| {
+                    plot.snapshot.as_mut().unwrap().show_scale_ui = shown;
+                    cx.notify();
+                });
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
+        let shown = handle.update(cx, |harness, _, _| harness.scale_ui).unwrap();
+        assert_eq!(
+            pairs_shown(cx, handle),
+            shown,
+            "the scale controls show and hide the pairs"
+        );
+    }
+
+    /// The corner a pair occupies, in window coordinates.
+    fn zone(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        index: usize,
+    ) -> Bounds<Pixels> {
+        handle
+            .update(cx, |harness, _, cx| {
+                let geometry = harness.plot.as_ref().unwrap().read(cx).geometry;
+                let zone = geometry.expect("the plot is measured").zoom_zones[index]
+                    .expect("the pair is shown");
+                Bounds::new(
+                    point(px(zone.x), px(zone.y)),
+                    size(px(zone.width), px(zone.height)),
+                )
+            })
+            .unwrap()
+    }
+
+    /// The centre of a zoom half, which is where a click of its own lands.
+    fn half(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        index: usize,
+    ) -> gpui_kit::Point<Pixels> {
+        let zone = zone(cx, handle, index);
+        zone.center()
+    }
+
+    /// The two halves of a pair, with the frame they share.
+    fn halves(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        index: usize,
+    ) -> (Bounds<Pixels>, Bounds<Pixels>, Bounds<Pixels>) {
+        let (zoom_in, zoom_out) = if index == 0 {
+            ("Zoom in time", "Zoom out time")
+        } else {
+            ("Zoom in frequency", "Zoom out frequency")
+        };
+        let read = |cx: &mut TestAppContext, id: &'static str| {
+            cx.update_window(handle.into(), |_, window, _| window.find(id).bounds())
+                .unwrap()
+        };
+        (
+            read(cx, zoom_in),
+            read(cx, zoom_out),
+            zone(cx, handle, index),
+        )
+    }
+
+    #[gpui_kit::test]
+    fn the_halves_split_their_pair_in_two(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        toggle_pairs(cx, handle);
+        let (first, second, pair) = halves(cx, handle, 0);
+        assert_eq!(first.size, second.size, "the halves are equal");
+        assert_eq!(
+            first.size.width * 2. + px(1.) + px(2.),
+            pair.size.width,
+            "the frame holds both halves and the divider"
+        );
+        assert_eq!(first.size.height + px(2.), pair.size.height);
+        let (first, second, pair) = halves(cx, handle, 1);
+        assert_eq!(first.size, second.size, "the halves are equal");
+        assert_eq!(
+            first.size.height * 2. + px(1.) + px(2.),
+            pair.size.height,
+            "the frame holds both halves and the divider"
+        );
+        assert_eq!(first.size.width + px(2.), pair.size.width);
+    }
+
+    /// Whether the plot holds the keyboard, which its controls hand back to it.
+    fn plot_focused(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> bool {
+        handle
+            .update(cx, |harness, window, cx| {
+                harness
+                    .plot
+                    .as_ref()
+                    .unwrap()
+                    .read(cx)
+                    .focus
+                    .is_focused(window)
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        toggle_pairs(cx, handle);
+        navigation(cx, handle);
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("Zoom in time", cx)
+        })
+        .unwrap();
+        assert_eq!(
+            navigation(cx, handle),
+            vec![PlotIntent::Time(TimeIntent::Zoom {
+                factor: 0.5,
+                anchor: 0.5,
+            })],
+            "one activation is one zoom"
+        );
+        assert!(
+            plot_focused(cx, handle),
+            "the click leaves focus on the plot"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_release_outside_a_zoom_half_changes_nothing(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        toggle_pairs(cx, handle);
+        let inside = half(cx, handle, 0);
+        let outside = inside - point(px(0.), px(40.));
+        let none = gpui_kit::Modifiers::default();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(inside, None, none);
+        input.simulate_mouse_down(inside, MouseButton::Left, none);
+        input.simulate_mouse_move(outside, Some(MouseButton::Left), none);
+        input.simulate_mouse_up(outside, MouseButton::Left, none);
+        assert!(
+            navigation(cx, handle).is_empty(),
+            "the release did not land on the half"
+        );
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("Zoom out time", cx)
+        })
+        .unwrap();
+        assert_eq!(
+            navigation(cx, handle),
+            vec![PlotIntent::Time(TimeIntent::Zoom {
+                factor: 2.,
+                anchor: 0.5,
+            })],
+            "the half still works"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn hiding_the_pairs_during_a_press_leaves_nothing_behind(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        toggle_pairs(cx, handle);
+        let inside = half(cx, handle, 1);
+        let outside = inside - point(px(40.), px(0.));
+        let none = gpui_kit::Modifiers::default();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(inside, None, none);
+        input.simulate_mouse_down(inside, MouseButton::Left, none);
+        toggle_pairs(cx, handle);
+        input.simulate_mouse_up(outside, MouseButton::Left, none);
+        assert!(
+            navigation(cx, handle).is_empty(),
+            "a hidden half cannot be pressed"
+        );
+        toggle_pairs(cx, handle);
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("Zoom in frequency", cx)
+        })
+        .unwrap();
+        assert_eq!(
+            navigation(cx, handle),
+            vec![PlotIntent::Frequency(FrequencyIntent::Zoom {
+                factor: 0.5,
+                anchor: 0.5,
+            })],
+            "the pairs that return work"
+        );
     }
 }

@@ -119,14 +119,21 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
 ## Agent roles and model selection
 
-Claude plans and arbitrates; the `codex` CLI implements and reviews. The two roles
-never share a model, so a review is never the implementer agreeing with itself.
+Claude plans and arbitrates. The implementer and the reviewer are chosen for each
+piece of work and never share a model, so a review is never the implementer agreeing
+with itself.
 
 - Claude owns the plan in `docs/plans/`, the Issue and Pull Request text, the
   architecture and the acceptance reasoning, and talks to the owner. It runs the
   local gate itself and reads the diff before showing anything to the owner.
-- Codex implements against that plan and reviews the Draft Pull Request. It commits
-  code, tests and the plan checkboxes its own work completes.
+- The owner chooses the implementer for each Issue before the work is handed over:
+  Claude in the session, the `codex` CLI with a named model and reasoning effort, or
+  another agent the owner names. The plan records the choice. An external implementer
+  commits code, tests and the plan checkboxes its own work completes.
+- Before the first review round Claude proposes a reviewer from the table below,
+  adjusted for the diff actually under review, and the owner confirms or replaces it.
+  The agreed model and reasoning effort stay for every round of that Pull Request.
+- Only the owner waives a review round; the Pull Request says so.
 - Claude arbitrates a technical disagreement between implementer and reviewer and
   records the decision in the Pull Request. Anything that changes product behaviour,
   UX or an Issue's acceptance criteria goes to the owner instead.
@@ -137,25 +144,30 @@ never share a model, so a review is never the implementer agreeing with itself.
 Declare the class in the plan before the implementer is given the task, never after
 seeing the result.
 
-| Class | Applies to | Implementer | Reviewer |
-| --- | --- | --- | --- |
-| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 code files | `gpt-5.6-sol` high | `gpt-5.6-terra` high |
-| B | A feature or fix in one or two GUI modules with local, known invariants and concrete acceptance criteria | `gpt-5.6-sol` high | `gpt-5.6-terra` high |
-| C | Documentation, README, configuration, renames, single-file changes with no behavioural consequence | `gpt-5.6-terra` high | `gpt-5.6-luna` high |
-
-`gpt-6-astra` is not scheduled by class. Ask the owner for it, with the reason, and
-use it only once agreed. It costs roughly 1.4M tokens per run against 0.9M for
-`gpt-5.6-sol` and 0.55M for `gpt-5.6-terra`, measured over this repository's own
-sessions, and the model is not what decides most outcomes: a run wasted on a mistaken
-plan costs the same as a useful one.
+| Class | Applies to | Proposed reviewer |
+| --- | --- | --- |
+| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 code files | `gpt-6-sol` high |
+| B | A feature or fix in one or two GUI modules with local, known invariants and concrete acceptance criteria | `gpt-6-sol` medium |
+| C | Documentation, README, configuration, renames, single-file changes with no behavioural consequence | `gpt-6-luna` medium |
 
 A change that touches no code -- documentation, a plan, configuration, release notes
--- is reviewed by `gpt-5.6-luna`. Reserve the stronger reviewers for code.
+-- is reviewed as class C. Reserve the stronger reviewers for code.
+
+A Claude subagent can take the reviewer's place in any class, as long as its model is
+not the implementer's; `claude-sonnet-5` is the usual choice. When the proposed codex
+reviewer is the implementer's own model, propose a different one instead.
+
+`gpt-6-astra` is not scheduled by class. Ask the owner for it, with the reason, and
+use it only once agreed. Measured over this repository's own codex runs up to
+September 2026, a review costs a median of roughly 1.4M tokens with `gpt-6-sol` high
+and 0.7M with `gpt-6-sol` medium, and an implementation roughly 1.7M with
+`gpt-6-astra` high and 2.3M with `gpt-5.6-sol` high. Cached input makes up most of
+every figure. The model is not what decides most outcomes: a run wasted on a mistaken
+plan costs the same as a useful one.
 
 Any of class A's signals puts the Issue in class A. The file count considers code
 only: the plan, `CHANGELOG.md` and `AGENTS.md` change in nearly every Pull Request
-and say nothing about how hard the work is. Use the same implementer and reviewer
-model and reasoning effort for every round of one Pull Request.
+and say nothing about how hard the work is.
 
 The cheapest saving is not the model. Read the parts of a framework a plan depends on
 before writing it, so an implementer does not spend a full run discovering the plan
@@ -171,8 +183,8 @@ was wrong, and do not open a review round on a change with nothing to review.
 - Update plan checkboxes in the commits that complete the corresponding work. Do not record commit hashes in plans.
 - Route findings discovered during implementation or review in this order, as detailed in `CONTRIBUTING.md`: first keep branch regressions and anything required by the active Issue in the current work; otherwise raise material or urgent unrelated problems as normal Issues; only otherwise create a separate Issue labelled `backlog` for a minor-impact, pre-existing, non-urgent problem that is unrelated to the active objective and does not affect current functionality or acceptance criteria. Link the source Issue or Pull Request, and never use backlog to defer security, correctness, or data-safety work.
 - Move a finished plan to `docs/plans/completed/` before final review.
-- Before the owner is asked to review a Pull Request, put it through an external review with the `codex` CLI and act on the findings. Iterate until a round returns nothing substantive. When asking the owner to review the Pull Request, always provide a brief summary of the automatic review: the findings, which were accepted and how they were addressed, which were rejected and why, and whether the final round was clean. A second reviewer that never disagrees is worth nothing: ask it to challenge the reasoning behind anything you decline, rather than to confirm it.
-- Take the implementer and the reviewer for the Issue's class from "Agent roles and model selection".
+- Before the owner is asked to review a Pull Request, put it through an external review by the agreed reviewer and act on the findings. Iterate until a round returns nothing substantive. When asking the owner to review the Pull Request, always provide a brief summary of the automatic review: the findings, which were accepted and how they were addressed, which were rejected and why, and whether the final round was clean. A second reviewer that never disagrees is worth nothing: ask it to challenge the reasoning behind anything you decline, rather than to confirm it.
+- Record the Issue's class and implementer in its plan, and agree the reviewer with the owner before the first round, as "Agent roles and model selection" describes.
 - Rebuild the release binary once the standard checks pass and before the owner is asked to accept the Pull Request. Any behaviour shown to the owner must come from a binary built from the current code, never from a stale `target/release/`.
 - `main` is protected. Merge only through a Pull Request using squash merge after all checks pass and all review conversations are resolved.
 
@@ -419,7 +431,7 @@ floor requires expansion for a longer time axis. That exceptional range change
 restarts analysis just as an ordinary resize does.
 `PlotSize` always counts time columns and frequency rows; axes, hints, gestures,
 minimap rebinning and splitter layout use the corresponding screen dimension.
-The mode button and Ctrl+T share one orientation action and persist session version 9.
+The mode segments and Ctrl+T share one orientation action and persist session version 9.
 Its shortcut hint resolves the registered binding; plot bindings match only while
 the plot surface itself has focus, so they cannot toggle behind a popup or input. Arrow bindings use Horizontal/Vertical
 key contexts so panning follows the screen; named time/frequency zoom shortcuts
@@ -458,16 +470,17 @@ Ctrl+Shift+Up/Down are not zoom bindings; arrow pan bindings stay unchanged.
 `plot_view.rs` defines `PlotView`, one entity per document created when the file
 describes itself and dropped with it. It owns the plot focus handle and the
 `Plot Horizontal`/`Plot Vertical` key context on its surface element. It also owns
-pointer and readout position, pan, frequency-pan, splitter and pressed-zoom state,
-measured geometry and badge metrics, and the ruler context menu. Focusable overlays
-are siblings of the surface, never descendants, so they inherit no plot bindings.
+pointer and readout position, pan, frequency-pan and splitter state, measured
+geometry and badge metrics, and the ruler context menu. Focusable overlays are
+siblings of the surface, never descendants, so they inherit no plot bindings.
 Navigation actions and gestures become `PlotIntent`s that Shell handles in one
 subscription. Shell validates views against the capture and keeps view ranges,
 tick schemes, analysis requests, session writes and settings rollback. Session
 commands (grid, scale controls, orientation, ruler mode) stay Shell handlers,
-reached by bubbling from plot focus. Drags keep tracking outside the plot through
-window-level move listeners registered only while a drag is active. Moves inside
-the plot stay with its own listener.
+reached by bubbling from plot focus. While a drag is active, a tracker with its
+own hitbox matching the plot's handles every move the plot's hitbox does not see:
+beyond the plot and over a hint lying on it (#129). The plot's own listener
+handles the rest, so no move is handled twice.
 
 Shell remains the only texture owner. It rebuilds an immutable `PlotSnapshot` of
 shared references in every render and gives it to the plot. `shell::retire` is the
@@ -481,6 +494,70 @@ take focus temporarily and return it through `Shell::focus_target`, which the
 application menu also uses to resolve keycaps. Headless GPUI tests
 (`gpui-kit` `test-support`, dev-only) cover key routing, focus isolation, window
 isolation, plot replacement, retirement and drags beyond the plot.
+
+## Overlay surfaces (#129)
+
+Surfaces over the plot own the input they cover through toolkit layering; the
+plot never learns which overlays are open or where. It decides its cursor,
+readout and Alt guides from its own hitbox hover state, and its handlers are
+hover-based, so any blocking layer above it wins.
+
+- Passive hints: `shortcut_tooltip`, `metadata_tooltip` and `unit_tooltip`
+  return their view through `hints::passive`, never a bare `Tooltip::build`. A
+  passive hint (`.tooltip`) lives only while its trigger is hovered, so the
+  pointer can be inside it only over the trigger, which keeps the pointer and its
+  clicks. Blocking it would take clicks from its own trigger, because a GPUI
+  tooltip opens 13 pixels from the pointer and can cover the trigger.
+- The analysis hint is a pinned hint (`hints::PinnedHint`), following the
+  contract agreed in #108 for the future settings popover. Hovering the FFT
+  summary for 500 ms opens it as a standard gpui-component `Popover` anchored
+  above the summary, drawn with the standard `Tooltip` look (`appearance(false)`).
+  A right click on the summary also toggles it; the left click still opens
+  the settings window. Moving the pointer away does not close it. Only a click
+  outside (consumed), Enter (keeps the values), Escape (reverts to the settings
+  at opening), Ctrl+, (opens the settings window), F10, Ctrl+O and opening a
+  file close it. While it is open the plot is frozen: a transparent deferred
+  backdrop (`hints::backdrop`) covers the window, so the plot gets no pointer,
+  readout, Alt guides, clicks or wheel, and the popover holds keyboard focus,
+  so `Plot` bindings do not match. Tab does not leave it, and Space, which the
+  popover would treat as Enter, does nothing (`NoAction` in the `PinnedHint`
+  key context). Values changed from
+  it (Ctrl+R, its recommendation button) preview live. `PinnedHint` emits
+  `Pinned::Opened` / `Pinned::Closed { revert }`; Shell interrupts the plot on
+  opening and restores `hint_opening` on a reverting close. While the settings
+  window is open the hint is disabled (`PinnedHint::set_enabled`): the trigger
+  renders without its popover, so neither hover nor a right click opens a second
+  surface with its own rollback.
+- The pointer over the plot: `time-plot` uses `on_hover` with
+  `HoverListenerMode::InputModalityIndependent`. GPUI's default mode ends hover
+  on every key press until the mouse moves, which cleared the readout and the
+  crosshair on the first key. `on_hover` also fires when a layout change moves
+  the plot under a still pointer: a file opened from the start page, or a hint
+  or menu closed by a key. `PlotView::pick_up_pointer` then takes the pointer
+  up, but only while `PlotSnapshot::pointer_in_window` holds. GPUI keeps the
+  last position and hit test after `MouseExited`, and `is_window_hovered` means
+  "active" on macOS, so Shell follows window-level `MouseMove` and
+  `MouseExited` itself (`pointer_presence`) and clears the plot's pointer when
+  the mouse leaves. An orientation change keeps the pointer and the old
+  geometry until the next frame measures the new one, so the cursor does not
+  flash to an arrow and the readout does not blank; that layout filters the
+  pointer through the new geometry (`plot_pointer`).
+- The application sets `CursorHideMode::Never`: GPUI's default hides the mouse
+  pointer on Tab and on every key bound to an action, and on the plot the
+  pointer is the working tool.
+- The corner zoom buttons suppress the crosshair, the Alt guides and the
+  status-bar readout (`PlotGeometry::over_scale_buttons`).
+- Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
+  clicks and drags.
+- Gestures: `PlotView::interrupt` ends drags, the ruler menu and the pointer.
+  Shell calls it before the application menu, the settings window and the file
+  chooser open. Opening the ruler menu and deactivating the window call
+  `PlotView::end_gestures`, which keeps the pointer.
+- Tests cover the pinned hint's lifecycle and isolation, a passive hint's
+  trigger click, a drag crossing a blocking layer, a menu-like occluding layer
+  and interruption. The ruler context menu cannot be opened in a headless
+  test because of the toolkit's `PopupMenu` retention cycle (#144), so its cases
+  are native checks.
 
 ## Application menu and toolbar (#91, #99)
 
@@ -501,8 +578,11 @@ runs along the ruler of the axis it zooms (#150): a row in the bottom-left
 corner beside the bottom ruler, a column in the top-right corner beside the
 right ruler. Horizontal mode puts time bottom-left and frequency top-right;
 vertical mode swaps them. Each pair is one framed container with
-rounded corners (22-pixel squares, one-pixel divider) dispatching the
-registered zoom actions with shortcut tooltips. View → Show scale controls
+rounded corners (22-pixel squares, one-pixel divider) whose halves are
+gpui-component `Button`s dispatching the registered zoom actions with shortcut
+tooltips. Each half rounds the two corners facing away from its pair to the
+frame's radius less its border, because the frame clips content to a rectangle
+and a square hovered half would paint outside the rounded frame. View → Show scale controls
 (`ToggleScaleUi`, Ctrl+U, session version 10, default on) hides or shows
 every pair; pairs vanish when either spectrum side is too small. Pair zones use
 an arrow cursor and exclude pan, drag and wheel navigation.
@@ -513,8 +593,12 @@ keyboard navigation. `app_menu_ui.rs` renders the overlay and dispatches existin
 actions after returning focus to the shell. Escape closes one level, outside
 clicks close the chain, and the independent ruler context menu retains the stock
 PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
-The orientation icon depicts the current time-axis direction; its tooltip names
-the next mode. `assets.rs` adds embedded application artwork to the toolkit icons.
+Orientation is a two-segment control in one frame whose selected segment is the
+mode in force and whose tooltip names its own mode, and the segments and the grid
+toggle appear only while a document is shown (#130). The segments carry the
+Lucide `panel-top` and `panel-left` artwork, which the toolkit's default bundle
+serves for the second and `assets.rs` embeds for the first with `icon_assets!`.
+`assets.rs` adds embedded application artwork to the toolkit icons.
 Title-bar content centers the shrinking filename region on the full window with
 symmetric margins that include the toolbar and native controls;
 interactive controls consume drag and double-click gestures.
@@ -522,3 +606,37 @@ interactive controls consume drag and double-click gestures.
 The centered client title contains only the filename. Set the native window title
 explicitly at startup and on each file opening: `Argand` or `filename – Argand`,
 so application switchers and window managers receive the same identity.
+
+## Standard buttons (#130)
+
+The corner zoom halves and the toolbar are gpui-component `Button`s, and each
+keeps the toolkit's own pressed, disabled and click behaviour. A control that
+lives over the picture or in the title bar is `tab_stop(false)` and carries a stable
+`id`. The zoom halves, Grid and the orientation segments hand keyboard focus back
+to the plot on a click; the application button opens its menu, which takes focus.
+A custom variant paints no border, so these controls carry none:
+`toolbar_style` takes a `ToolbarState` and gives one control its whole surface.
+`Off` is the resting surface with the accent hover and pressed shades on top,
+and tints the glyph while hovered. `On`, which is a Grid that is shown and the
+application button while its menu is open, is the accent at 0.30 with 0.40 under
+the pointer and 0.52 while held, and an accent glyph. The button carries that
+0.30 surface itself (`on_surface`), because a custom variant paints its resting
+colour at a fifth of its opacity. `Selected`, which is the
+orientation segment in force, is the accent at 0.30 in every state with an accent
+glyph, because a selected button is painted with its variant's active colour; it
+is inert, because clicking the mode in force is not an action. The application
+button and the grid toggle are not `selected`, because the toolkit stops
+repainting a selected button's hover and pressed surfaces. The two orientation
+segments share one frame on the group, a one-pixel border in the opaque blend
+of `foreground.opacity(0.24)` over the title bar, with a six-pixel radius, and
+each segment rounds its own outer corners to the radius the frame leaves inside, since GPUI clips content
+to rectangles. Their divider is painted
+inside the second segment rather than a border, because a border takes the colour
+of the states its button passes through. The status-bar FFT item is a `Button`,
+and the range item is one only while it has an action and a `div` otherwise.
+Both follow the pointer through the button's own hover background and a hover
+group on their text, with no hovered flag in the shell, and the FFT summary stays
+lit while its pinned hint is open, which keeps the pointer off the window. The
+yellow range progression and the accepted colours are unchanged. The audit
+dispositions are recorded in the inventory table of
+`docs/plans/124-standard-ui-architecture.md`.

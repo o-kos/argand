@@ -39,10 +39,12 @@ struct RangePresentation {
     next_action: Option<DynamicRange>,
 }
 
+/// The text colours a status control paints. The toolkit gives a custom
+/// variant one foreground for every pointer state, so the two colours a
+/// control passes through are its resting one and that single state colour.
 #[derive(Clone, Copy)]
 struct ControlForegrounds {
     normal: gpui_kit::Hsla,
-    hovered: gpui_kit::Hsla,
     active: gpui_kit::Hsla,
 }
 
@@ -50,13 +52,8 @@ impl ControlForegrounds {
     fn between(normal: gpui_kit::Hsla, hovered: gpui_kit::Hsla) -> Self {
         Self {
             normal,
-            hovered,
             active: normal.mix(hovered, 0.5),
         }
-    }
-
-    fn current(self, hovered: bool) -> gpui_kit::Hsla {
-        if hovered { self.hovered } else { self.normal }
     }
 
     fn button_style(self, cx: &gpui_kit::App) -> ButtonCustomVariant {
@@ -65,7 +62,19 @@ impl ControlForegrounds {
             .hover(cx.theme().secondary_hover)
             .active(cx.theme().secondary_active)
     }
+
+    /// The text of a control, which follows the pointer through its group.
+    fn text(self, group: &'static str) -> gpui_kit::Div {
+        div()
+            .text_xs()
+            .text_color(self.normal)
+            .group_hover(group, |style| style.text_color(self.active))
+    }
 }
+
+/// The hover group each status control publishes for its own text.
+const SUMMARY_HOVER: &str = "analysis-summary-hover";
+const RANGE_HOVER: &str = "analysis-range-hover";
 
 fn document_range_presentation(
     document: &Document,
@@ -156,8 +165,8 @@ impl Shell {
             return;
         };
         self.settings_window = None;
-        self.analysis_hovered = false;
-        self.range_hovered = false;
+        self.analysis_hint
+            .update(cx, |hint, cx| hint.set_enabled(true, cx));
         let view = self.settings_view_backup.take();
         let frequency = self.settings_frequency_backup.take();
         if !accept {
@@ -168,6 +177,35 @@ impl Shell {
             }
         }
         self.apply_settings(if accept { self.settings } else { backup }, cx);
+    }
+
+    /// Close the analysis hint, keeping what was changed while it was open.
+    pub(super) fn close_analysis_hint(&mut self, cx: &mut Context<Self>) {
+        self.analysis_hint
+            .update(cx, |hint, cx| hint.close(false, cx));
+    }
+
+    pub(super) fn analysis_hint_changed(
+        &mut self,
+        _: gpui_kit::Entity<hints::PinnedHint>,
+        event: &hints::Pinned,
+        cx: &mut Context<Self>,
+    ) {
+        match *event {
+            hints::Pinned::Opened => {
+                self.interrupt_plot(cx);
+                self.hint_opening = Some(self.settings);
+            }
+            hints::Pinned::Closed { revert } => {
+                if let Some(opening) = self.hint_opening.take()
+                    && revert
+                    && opening != self.settings
+                {
+                    self.set_settings(opening, cx);
+                }
+            }
+        }
+        cx.notify();
     }
 
     pub(super) fn use_recommended_range(&mut self, cx: &mut Context<Self>) {
@@ -242,9 +280,7 @@ impl Shell {
                         .px_2()
                         .min_w_0()
                         .flex_shrink(1.)
-                        .tooltip(move |window, cx| {
-                            metadata_tooltip(field.hint.clone()).build(window, cx)
-                        })
+                        .tooltip(move |_, cx| metadata_tooltip(field.hint.clone(), cx))
                         .child(
                             div()
                                 .overflow_hidden()
@@ -289,9 +325,7 @@ impl Shell {
                         .min_w_0()
                         .max_w(px(140.))
                         .when_some(hint, |status, hint| {
-                            status.tooltip(move |window, cx| {
-                                metadata_tooltip(hint.clone()).build(window, cx)
-                            })
+                            status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
                         })
                         .child(
                             div()
@@ -337,26 +371,23 @@ impl Shell {
                 ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground)
             }
         };
-        let foreground = foregrounds.current(self.range_hovered && actionable);
         let range_content = if actionable {
             Button::new("analysis-range")
                 .tab_stop(false)
+                .group(RANGE_HOVER)
                 .custom(foregrounds.button_style(cx))
                 .small()
                 .h_5()
                 .px_2()
-                .text_color(foreground)
-                .on_hover(cx.listener(move |shell, hovered, _, cx| {
-                    shell.range_hovered = *hovered;
-                    cx.notify();
-                }))
-                .when(self.range_hovered && actionable, |button| {
-                    button.bg(cx.theme().secondary_hover)
-                })
                 .on_click(move |_, window, cx| {
                     window.dispatch_action(Box::new(UseRecommendedRange), cx);
                 })
-                .child(div().text_xs().whitespace_nowrap().child(range_label))
+                .child(
+                    foregrounds
+                        .text(RANGE_HOVER)
+                        .whitespace_nowrap()
+                        .child(range_label),
+                )
                 .into_any_element()
         } else {
             div()
@@ -366,12 +397,8 @@ impl Shell {
                 .flex()
                 .items_center()
                 .text_xs()
-                .text_color(foreground)
+                .text_color(foregrounds.normal)
                 .whitespace_nowrap()
-                .on_hover(cx.listener(move |shell, hovered, _, cx| {
-                    shell.range_hovered = *hovered;
-                    cx.notify();
-                }))
                 .child(range_label)
                 .into_any_element()
         };
@@ -380,10 +407,10 @@ impl Shell {
             .id("analysis-range-item")
             .border_l_1()
             .border_color(cx.theme().border)
-            .tooltip(move |window, cx| {
+            .tooltip(move |_, cx| {
                 let action =
                     actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
-                shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.)).build(window, cx)
+                shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
             })
             .child(range_content)
     }
@@ -391,37 +418,36 @@ impl Shell {
     fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
         let visible = displayed.unwrap_or(self.settings);
-        let hint_owner = cx.entity().downgrade();
         let foregrounds =
             ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground);
-        let foreground = foregrounds.current(self.analysis_hovered);
-        let mut summary = Button::new("analysis-settings")
+        // The hint's backdrop keeps the pointer off the window, so the summary stays lit.
+        let lit = self.analysis_hint.read(cx).is_open();
+        let summary = Button::new("analysis-settings")
             .tab_stop(false)
+            .group(SUMMARY_HOVER)
             .custom(foregrounds.button_style(cx))
             .small()
             .h_5()
             .px_2()
-            .text_color(foreground)
-            .when(self.analysis_hovered, |button| {
-                button.bg(cx.theme().secondary_hover)
-            })
-            .on_hover(cx.listener(|shell, hovered, _, cx| {
-                shell.analysis_hovered = *hovered;
-                cx.notify();
+            .when(lit, |button| button.bg(cx.theme().secondary_hover))
+            .on_hover(cx.listener(|shell, hovered, window, cx| {
+                shell
+                    .analysis_hint
+                    .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
             }))
             .on_click(
                 cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
             )
-            .child(div().text_xs().child(format!(
-                "{} · {}",
-                crate::numbers::number(visible.fft_size),
-                visible.window
-            )));
-        if self.settings_backup.is_none() {
-            summary
-                .interactivity()
-                .hoverable_tooltip(move |_, cx| live_analysis_tooltip(hint_owner.clone(), cx));
-        }
+            .child(
+                foregrounds
+                    .text(SUMMARY_HOVER)
+                    .when(lit, |text| text.text_color(foregrounds.active))
+                    .child(format!(
+                        "{} · {}",
+                        crate::numbers::number(visible.fft_size),
+                        visible.window
+                    )),
+            );
         div()
             .flex()
             .items_center()
@@ -431,7 +457,12 @@ impl Shell {
                     .id("analysis-summary")
                     .border_l_1()
                     .border_color(cx.theme().border)
-                    .child(summary),
+                    .child(hints::pinned(
+                        "analysis-hint",
+                        &self.analysis_hint,
+                        summary,
+                        cx,
+                    )),
             )
             .child(self.range_control(displayed, cx))
     }
@@ -443,6 +474,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         self.dismiss_application_menu(window, cx);
+        self.close_analysis_hint(cx);
         if self.settings_window.is_some_and(|handle| {
             handle
                 .update(cx, |_, window, _| window.activate_window())
@@ -453,11 +485,13 @@ impl Shell {
         if self.settings_backup.is_some() {
             return;
         }
+        self.interrupt_plot(cx);
+        // The editor keeps its own rollback, so the hint must not open beside it.
+        self.analysis_hint
+            .update(cx, |hint, cx| hint.set_enabled(false, cx));
         self.settings_backup = Some(self.settings);
         self.settings_view_backup = self.view;
         self.settings_frequency_backup = Some(self.frequency);
-        self.analysis_hovered = false;
-        self.range_hovered = false;
         cx.notify();
         let owner = cx.entity().downgrade();
         let settings = self.settings;
@@ -520,17 +554,7 @@ pub(super) fn detail_row(
         .child(div().flex_1().min_w_0().text_right().child(value.into()))
 }
 
-fn live_analysis_tooltip(owner: WeakEntity<Shell>, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {
-    cx.new(|cx| {
-        if let Some(owner) = owner.upgrade() {
-            cx.observe(&owner, |_, _, cx| cx.notify()).detach();
-        }
-        analysis_tooltip(owner)
-    })
-    .into()
-}
-
-fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
+pub(super) fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
     Tooltip::element(move |window, cx| {
         let Some(shell) = owner.upgrade() else {
             return div();
@@ -676,13 +700,12 @@ mod tests {
     }
 
     #[test]
-    fn control_foregrounds_keep_distinct_normal_hover_and_pressed_steps() {
+    fn control_foregrounds_keep_a_resting_colour_and_a_distinct_state_one() {
         let normal = gpui_kit::hsla(0.15, 0.8, 0.4, 1.0);
         let hovered = gpui_kit::hsla(0.15, 0.8, 0.8, 1.0);
         let foregrounds = ControlForegrounds::between(normal, hovered);
 
-        assert_eq!(foregrounds.current(false), normal);
-        assert_eq!(foregrounds.current(true), hovered);
+        assert_eq!(foregrounds.normal, normal);
         assert_eq!(foregrounds.active, normal.mix(hovered, 0.5));
         assert_ne!(foregrounds.active, normal);
         assert_ne!(foregrounds.active, hovered);

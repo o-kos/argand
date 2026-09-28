@@ -13,6 +13,16 @@ promise applies to.
 
 ### Fixed
 
+- The crosshair, cursor readout and Alt guides appear as soon as a file opens or a hint or menu closes under a resting pointer, without moving the mouse first.
+
+- Tab and the navigation keys no longer hide the mouse pointer, and the first key press no longer makes the crosshair and cursor readout blink.
+
+- The cursor readout clears when the mouse leaves the window, and switching orientation keeps the crosshair under a resting pointer.
+
+- The analysis hint now stays open once shown: moving the pointer away no longer closes it. A click outside, Enter or Escape closes it; Escape also undoes a range applied from it. While it is open, the plot ignores the pointer, wheel and navigation keys, and the click that closes the hint does not start a pan. A right click on the FFT summary also opens it.
+
+- Opening a menu, the analysis settings or the file chooser, or switching to another window, now ends a drag in progress, and a drag keeps following the pointer across a hint.
+
 - Stop Ctrl+U and other plot shortcuts from acting behind the open time-ruler context menu.
 
 - Make the hinted spectrogram range in the status bar apply an available recommendation or restore the full range on click and Ctrl+R / Cmd+R without opening analysis settings.
@@ -64,13 +74,21 @@ promise applies to.
 
 - Enlarge and brighten the toolbar icons for better visibility within their buttons, with orientation before grid.
 
+- The orientation control is a two-segment switch that shows the mode in force, rather than one button naming the next mode. The segments and the grid toggle appear only while a file is open.
+
+- Toolbar buttons lose their outline frames. The current orientation, a grid that is on, hover and a pressed button are now the accent surfaces of the interface theme, and the grid icon and the orientation segment that changes the mode tint while hovered.
+
+- The orientation control is one framed group of two segments with a divider, showing a panel strip on the top or the left for the mode in force. A grid that is on, and the application button while its menu is open, take a stronger accent that still reads under the pointer.
+
+- The FFT summary and the range item follow the pointer directly, and the FFT summary stays lit while its analysis hint is open.
+
 - In vertical mode, place frequency units at the lower right and time units at the top of the right ruler. Captions reserve space from numeric labels, keep unit/resolution hints and use an arrow cursor without starting navigation gestures.
 
 - Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
 
 ### Added
 
-- Translucent `[+|-]` zoom pairs in the spectrogram's corners, each beside the ruler of the axis it zooms in either orientation, with rounded corners; View → Show scale controls (Ctrl+U) hides or shows them. Zoom tooltips use uniform key names: Ctrl+Plus, Ctrl+Shift+Plus, Ctrl+Minus, Ctrl+Shift+Minus.
+- Translucent `[+|-]` zoom pairs in the spectrogram's corners, each beside the ruler of the axis it zooms in either orientation, with rounded corners; the cursor readout and Alt guides pause over them; View → Show scale controls (Ctrl+U) hides or shows them. Zoom tooltips use uniform key names: Ctrl+Plus, Ctrl+Shift+Plus, Ctrl+Minus, Ctrl+Shift+Minus.
 - File → Settings opens the existing analysis settings editor.
 
 - Ctrl+T switches between Horizontal and Vertical spectrogram orientation and appears in the mode button tooltip.

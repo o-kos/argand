@@ -4,7 +4,8 @@ use super::navigation_ui::*;
 use super::plot_view::{PlotIntent, PlotSnapshot, PlotView};
 use super::*;
 use gpui_kit::Div;
-use gpui_kit::component::{Icon, IconName};
+use gpui_kit::component::button::ButtonRounded;
+use gpui_kit::component::{Disableable, Icon, IconName};
 
 impl Shell {
     /// The held picture view and the once-only first-paint marker, both
@@ -46,6 +47,7 @@ impl Shell {
             frequency: self.frequency,
             show_grid: self.session.show_grid,
             show_scale_ui: self.session.show_scale_ui,
+            pointer_in_window: self.pointer_in_window,
         })
     }
 
@@ -317,10 +319,6 @@ impl PlotView {
                         ZoomIn,
                         ZoomOut,
                         enabled,
-                        [
-                            self.pressed_zoom == Some("Zoom in time"),
-                            self.pressed_zoom == Some("Zoom out time"),
-                        ],
                         origin,
                         cx,
                     )
@@ -335,10 +333,6 @@ impl PlotView {
                         FrequencyZoomIn,
                         FrequencyZoomOut,
                         enabled,
-                        [
-                            self.pressed_zoom == Some("Zoom in frequency"),
-                            self.pressed_zoom == Some("Zoom out frequency"),
-                        ],
                         origin,
                         cx,
                     )
@@ -361,6 +355,11 @@ impl PlotView {
         self.panel_bounds = Some(bounds);
         self.geometry = Some(geometry);
         self.measured = Some(measured);
+        let pointer = self.pointer.and_then(|pointer| self.plot_pointer(pointer));
+        if pointer != self.pointer {
+            self.pointer = pointer;
+            cx.emit(PlotIntent::Pointer);
+        }
         cx.emit(PlotIntent::Layout {
             plot: measured,
             time_length_changed: old.is_some_and(|old| old.time_length() != geometry.time_length()),
@@ -436,17 +435,29 @@ struct ZoomPair {
 const SCALE_BUTTON: f32 = 22.0;
 const SCALE_DIVIDER: f32 = 1.0;
 const SCALE_PAIR: f32 = 2.0 * SCALE_BUTTON + SCALE_DIVIDER;
+
 /// The gap between a corner pair and the spectrum's edges, in logical pixels.
 const SCALE_INSET: f32 = 8.0;
 /// The radius of a pair's outward corner, away from the picture's edges.
 const SCALE_ROUNDING: f32 = 6.0;
+
+/// Round the two corners of a half that face away from its pair, to the frame's
+/// own radius less its one-pixel border.
+fn round_outer(half: Button, horizontal: bool, leading: bool) -> Button {
+    let radius = px(SCALE_ROUNDING - 1.);
+    match (horizontal, leading) {
+        (true, true) => half.rounded_tl(radius).rounded_bl(radius),
+        (true, false) => half.rounded_tr(radius).rounded_br(radius),
+        (false, true) => half.rounded_tl(radius).rounded_tr(radius),
+        (false, false) => half.rounded_bl(radius).rounded_br(radius),
+    }
+}
 
 fn zoom_pair(
     pair: ZoomPair,
     in_action: impl Action,
     out_action: impl Action,
     enabled: bool,
-    pressed: [bool; 2],
     origin: gpui_kit::Point<Pixels>,
     cx: &mut Context<PlotView>,
 ) -> Div {
@@ -458,8 +469,8 @@ fn zoom_pair(
         pair.zoom_in,
         in_action,
         enabled,
-        pressed[0],
         horizontal,
+        true,
         cx,
     );
     let zoom_out = half_button(
@@ -467,8 +478,8 @@ fn zoom_pair(
         pair.zoom_out,
         out_action,
         enabled,
-        pressed[1],
         horizontal,
+        false,
         cx,
     );
     let divider = if horizontal {
@@ -509,18 +520,18 @@ fn zoom_pair(
         .child(bar)
 }
 
-/// One clickable half of a corner pair: it fills its side of the shared
-/// frame, centers its glyph, presses while held, and dispatches the pair's
-/// zoom action.
+/// One clickable half of a corner pair: a standard button that fills its side
+/// of the shared frame, centers its glyph and dispatches the pair's zoom
+/// action, leaving keyboard focus on the plot.
 fn half_button(
     icon: IconName,
     hint: &'static str,
     action: impl Action + 'static,
     enabled: bool,
-    pressed: bool,
     horizontal: bool,
+    leading: bool,
     cx: &mut Context<PlotView>,
-) -> gpui_kit::Stateful<Div> {
+) -> Button {
     let tooltip_action = Box::new(action) as Box<dyn Action>;
     let glyph = if enabled {
         cx.theme().foreground.opacity(0.85)
@@ -528,62 +539,43 @@ fn half_button(
         cx.theme().muted_foreground.opacity(0.5)
     };
     let accent = super::app_menu_ui::toolbar_accent(cx);
-    let hover = accent.opacity(0.32);
-    let press = accent.opacity(0.44);
-    let mut half = div()
-        .id(hint)
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor(gpui_kit::CursorStyle::Arrow)
-        .child(Icon::new(icon).size(px(12.)).text_color(glyph));
-    half = if horizontal {
-        half.flex_1().h_full()
+    // The frame supplies the paper and the rounding, so a half paints only the
+    // surfaces the pointer gives it.
+    let style = ButtonCustomVariant::new(cx)
+        .color(cx.theme().transparent)
+        .hover(accent.opacity(0.32))
+        .active(accent.opacity(0.44));
+    let half = Button::new(hint)
+        .tab_stop(false)
+        .custom(style)
+        // The component rounds all four corners, so the inner ones stay square.
+        .rounded(ButtonRounded::None)
+        .px_0()
+        .flex_1();
+    let half = round_outer(half, horizontal, leading);
+    let half = if horizontal {
+        half.h_full()
     } else {
-        half.flex_1().w_full()
+        half.w_full()
     };
-    half = if enabled && pressed {
-        // Pressed wins outright: a hover refinement would repaint the same
-        // shade the pointer already shows while it holds the button down.
-        half.bg(press)
-    } else if enabled {
-        half.hover(move |style| style.bg(hover))
-    } else {
-        half
-    };
-    if enabled {
-        let click = tooltip_action.boxed_clone();
-        half = half
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |plot, _, _, cx| {
-                    plot.pressed_zoom = Some(hint);
-                    cx.notify();
-                }),
-            )
-            .on_click(cx.listener(move |plot, _, window, cx| {
-                window.focus(&plot.focus, cx);
-                window.dispatch_action(click.boxed_clone(), cx);
-            }));
-    }
-    half = half
-        .on_mouse_up(
-            MouseButton::Left,
-            cx.listener(|plot, _, _, cx| plot.release_press(cx)),
-        )
-        .on_mouse_up_out(
-            MouseButton::Left,
-            cx.listener(|plot, _, _, cx| plot.release_press(cx)),
-        );
-    half.tooltip(move |window, cx| {
+    let click = tooltip_action.boxed_clone();
+    let mut half = half
+        .child(Icon::new(icon).size(px(12.)).text_color(glyph))
+        .disabled(!enabled)
+        .on_click(cx.listener(move |plot, _, window, cx| {
+            window.focus(&plot.focus, cx);
+            window.dispatch_action(click.boxed_clone(), cx);
+        }));
+    half.interactivity().tooltip(move |_, cx| {
         shortcut_tooltip(
             hint.to_owned(),
             Some(tooltip_action.boxed_clone()),
             "Plot",
             px(240.),
+            cx,
         )
-        .build(window, cx)
-    })
+    });
+    half
 }
 
 fn unit_tooltip(
@@ -591,7 +583,7 @@ fn unit_tooltip(
     index: usize,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::AnyView {
-    cx.new(|cx| {
+    hints::passive(cx, |cx| {
         if let Some(owner) = owner.upgrade() {
             cx.observe(&owner, |_, _, cx| cx.notify()).detach();
         }
@@ -617,7 +609,6 @@ fn unit_tooltip(
                 })
         })
     })
-    .into()
 }
 
 fn plot_geometry(
