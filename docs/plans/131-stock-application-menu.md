@@ -106,8 +106,9 @@ Current code:
   and make File `scrollable(true)`.
 - **Open and close:** the application button stays the #130 `Button` and becomes the
   trigger of a controlled `Popover` (`open(menu.is_some())`, `on_open_change`,
-  `appearance(false)`, anchored below the button's outer bottom-left edge) whose
-  content is the menu entity, following `hints::pinned`. The button click and F10
+  `appearance(false)`, `track_focus` on the menu's focus handle, anchored
+  `TopLeft` so it hangs 4 pixels below the button) whose content is the menu
+  entity, following `hints::pinned`. The button click and F10
   (`OpenApplicationMenu`, still bound in `Shell`) toggle it through the same Shell
   method, which interrupts the plot, closes the analysis hint and refreshes recent
   availability before building, as `toggle_application_menu` does now, and focuses
@@ -160,48 +161,29 @@ Current code:
 - Stock outside dismissal without a backdrop: the dismissing click would start a
   pan or a title drag, which the #129 isolation gate forbids.
 
-## ⚠️ Blocked on the controlled `Popover` (2026-09-28)
+## Resolved: focus inside the controlled `Popover` (2026-09-28)
 
-The "Open and close" decision cannot be delivered with the locked
-`gpui-component` 0.6.6: a stock `PopupMenu` drawn as the content of a controlled
-`Popover` never receives its own key actions, so the menu is pointer-operable
-only. Nothing below this note is implemented, and no checkbox is ticked.
+The first implementation run stopped on a stock menu inside a controlled `Popover`
+that never ran its own key actions. The cause is the composition, not the toolkit.
+When a `Popover` opens it focuses its `tracked_focus_handle`, or its own handle when
+none is set (`gpui-base` 0.6.6 `popover.rs`, `PopoverState` open path). Without
+`track_focus`, that open focuses the popover's handle after Shell focused the menu,
+so key actions dispatch from a node above the menu. The menu's ancestors see them,
+and its own `on_action` handlers never run.
 
-What was measured, with the menu built by `PopupMenu::build` and drawn as
-`Popover::content`:
-
-- The window's focus is the menu's own handle, so the menu sits where the
-  toolkit intends it: `window.focused(cx) == menu.read(cx).focus_handle(cx)`.
-- Its key context is on the focused node's dispatch path, so the stock bindings
-  match and the actions are dispatched. A handler on the popover content div,
-  an ancestor of the menu, does see `SelectRight`.
-- The menu's own handlers, registered in `PopupMenu::render` on the
-  `v_flex().id("popup-menu")` that tracks the same focus handle
-  (`popup_menu.rs:1468`), never run. `PopupMenu::select_right` neither focuses
-  the submenu nor closes the menu, and a `Confirm` dispatched on the window
-  reaches no row.
-
-It reproduces with the popover in the title bar and in the content area, on the
-frame that first draws the menu and on later cached frames, with and without a
-wrapper div between the popover content and the menu, and with a menu that has
-no submenus. The popover's own `Cancel` handler does close the menu, so Escape
-works while no row can be reached or confirmed.
-
-`gpui_component::menu::ContextMenu` delivers the same menu's key actions in this
-repository, through the ruler context menu in `navigation_ui.rs`, but it opens
-only on `MouseButton::Right` (`context_menu.rs:298`) and exposes no open call,
-so it cannot serve the application button or F10.
-
-Two further facts for whoever picks this up:
-
-- `Popover` places the content at the trigger's top-left corner
-  (`resolved_corner` with `Anchor::TopLeft`, `popover.rs`), the same alignment
-  `Button::dropdown_menu` uses. A content block below the button's own
-  bottom-left corner, as this plan describes, is not expressible through the
-  stock `Popover`.
-- The shell's own key bindings live in `run`'s closure and reach no headless
-  test. F10 could not be exercised until they moved into a function the tests
-  also call.
+- **Give the `Popover` `.track_focus(&menu.focus_handle(cx))`**, as `hints::pinned`
+  does with its own handle. A headless probe on this branch confirmed it. With
+  `track_focus`, Down then Enter runs the first row once, and Down, Down, Right,
+  Enter runs a row in a submenu. Without it, neither does. `Button::dropdown_menu`
+  and a menu drawn directly in the tree both work.
+- **Placement.** The stock `Popover` with `Anchor::TopLeft` puts the content below
+  the trigger. In the same probe the menu's top was 4 pixels under the trigger's
+  bottom edge (`render_popover_content` adds `top_1`), with its left edge at the
+  trigger's left, inside the window margin. Accept that stock offset rather than
+  measuring the button into `application_menu_anchor`.
+- **Headless F10.** Shell's key bindings are registered inside `run`'s closure,
+  which no test reaches. Move them into a function that `run` and the tests both
+  call, so F10 can be exercised headlessly.
 
 ## Implementation steps
 
