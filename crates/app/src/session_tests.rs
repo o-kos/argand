@@ -122,7 +122,6 @@ fn a_session_survives_the_round_trip() {
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
-        waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(12.0, 34.0, 1280.0, 800.0)),
         window_state: WindowState::Maximized,
         recent: Vec::new(),
@@ -178,7 +177,6 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
-        waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(0.0, 0.0, 800.0, 600.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -239,7 +237,6 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
-        waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -285,7 +282,6 @@ fn a_position_that_has_not_changed_is_not_written_again() {
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
-        waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -318,7 +314,6 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
-        waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -344,7 +339,6 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
-        waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -385,7 +379,6 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
-        waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -435,7 +428,6 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
-        waveform_fraction: Some(0.25),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -719,19 +711,20 @@ fn two_captures_with_the_same_name_share_the_bare_name() {
 }
 
 #[test]
-fn old_and_invalid_panel_splits_keep_the_font_relative_default() {
-    let dir = TempDir::new("panel-defaults");
+fn a_saved_panel_split_is_read_and_forgotten() {
+    let dir = TempDir::new("panel-split");
     let path = dir.join(FILE_NAME);
     for text in [
-        "version = 2\nwindow_state = \"normal\"\n",
-        "version = 3\nwindow_state = \"normal\"\nwaveform_fraction = nan\n",
-        "version = 3\nwindow_state = \"normal\"\nwaveform_fraction = 1.5\n",
+        "version = 3\nwindow_state = \"normal\"\nwaveform_fraction = 0.3\n",
+        "version = 10\nwindow_state = \"normal\"\nwaveform_fraction = nan\n",
     ] {
         std::fs::write(&path, text).expect("write session");
         let restored = Session::load(&path);
-        assert!(restored.writable);
-        assert_eq!(restored.session.waveform_fraction, None);
+        assert!(restored.writable, "{text}");
         assert_eq!(restored.session.version, VERSION);
+        assert!(restored.session.save(&path));
+        let written = std::fs::read_to_string(&path).expect("read session");
+        assert!(!written.contains("waveform_fraction"), "{written}");
     }
 }
 
@@ -757,7 +750,6 @@ fn analysis_settings_survive_restart_without_changing_configuration_or_older_geo
     assert_eq!(restored.analysis_settings, Some(crate::settings::Settings { dynamic_range: argand_dsp::DynamicRange::Default, ..settings }));
     assert!(!std::fs::read_to_string(&path).unwrap().contains("dynamic_range"));
     assert_eq!(restored.geometry, session.geometry);
-    assert_eq!(restored.waveform_fraction, Some(0.3));
     assert_eq!(std::fs::read_to_string(config_path).unwrap(), config_text);
 }
 

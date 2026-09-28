@@ -78,7 +78,7 @@ pub struct Config {
     pub stft: Stft,
     pub analysis: crate::execution::Settings,
     /// Legacy panel proportions, accepted for configuration compatibility.
-    /// The waveform starts at 3 rem; its adjusted split belongs to session state.
+    /// The waveform is always 3 rem high.
     pub panels: Panels,
 }
 

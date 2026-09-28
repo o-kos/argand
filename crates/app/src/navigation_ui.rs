@@ -466,11 +466,6 @@ impl Shell {
                 }
                 cx.notify();
             }
-            PlotIntent::WaveformFraction(fraction) => {
-                self.session.waveform_fraction = Some(fraction);
-                self.save();
-                cx.notify();
-            }
         }
     }
 
@@ -671,7 +666,6 @@ impl plot_view::PlotView {
         };
         if !(geometry.navigation.contains(&event.position)
             || geometry.frequency_ruler.contains(&event.position))
-            || self.splitter_dragging
             || geometry.controls_at(event.position)
         {
             return;
@@ -714,7 +708,6 @@ impl plot_view::PlotView {
         };
         if !(geometry.navigation.contains(&event.position)
             || geometry.frequency_ruler.contains(&event.position))
-            || self.splitter_dragging
             || geometry.controls_at(event.position)
         {
             return;
@@ -811,10 +804,8 @@ impl plot_view::PlotView {
     pub(super) fn pointer_moved(
         &mut self,
         event: &gpui_kit::MouseMoveEvent,
-        window: &Window,
         cx: &mut Context<Self>,
     ) {
-        self.drag_splitter(event, window, cx);
         let pointer = self.plot_pointer(event.position);
         if self.pan.is_none() && self.frequency_pan.is_none() && self.pointer == pointer {
             return;
@@ -866,7 +857,6 @@ impl plot_view::PlotView {
         if self.dragging() {
             self.pan = None;
             self.frequency_pan = None;
-            self.splitter_dragging = false;
             cx.notify();
         }
     }

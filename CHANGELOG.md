@@ -21,6 +21,8 @@ promise applies to.
 
 - The application menu now covers the window beneath it while it is open, so the click that dismisses it no longer reaches the plot or the title bar, and a wheel over the window behind it no longer reaches them either.
 
+- The waveform minimap above the spectrogram (left of it in vertical orientation) now has a fixed height of 3 rem and can no longer be resized by dragging its lower edge. A size saved by an earlier version is ignored.
+
 ### Fixed
 
 - The crosshair, cursor readout and Alt guides appear as soon as a file opens or a hint or menu closes under a resting pointer, without moving the mouse first.

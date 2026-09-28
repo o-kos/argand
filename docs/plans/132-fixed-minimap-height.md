@@ -64,18 +64,18 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 
 ## Implementation steps
 
-- [ ] Remove the splitter control, its drag state, intent and handler.
-- [ ] Fix the minimap at 3 rem in `panels.rs` and its callers; update its tests.
-- [ ] Remove `Session::waveform_fraction`; test that an old session carrying it loads.
-- [ ] Update AGENTS.md, the parent inventory row and phase-5 item, and CHANGELOG.
+- [x] Remove the splitter control, its drag state, intent and handler.
+- [x] Fix the minimap at 3 rem in `panels.rs` and its callers; update its tests.
+- [x] Remove `Session::waveform_fraction`; test that an old session carrying it loads.
+- [x] Update AGENTS.md, the parent inventory row and phase-5 item, and CHANGELOG.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] Native check on Linux (owner): both orientations, the minimap at 3 rem with a
       session that had an adjusted split, no resize cursor on the boundary, a press
