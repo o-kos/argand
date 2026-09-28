@@ -140,13 +140,13 @@ implementation or the word "custom" is not a justification.
 | --- | --- | --- |
 | Custom frame and Linux window controls (`chrome.rs`) | Borderless Root plus the existing Argand frame | Retain as the sole frame; remove only infrastructure duplicated by Root and verify resize/tiling/platform behavior |
 | Title-bar drag and double-click handlers (`shell.rs`) | Existing Argand title-bar behavior | Retain accepted behavior; controls must not start a window move and the accepted maximize-button double-click sequence remains non-blocking |
-| Zoom halves and `pressed_zoom` (`plot_ui.rs`, shell routing) | Button with shared group styling | Replace; remove custom pressed/release/reset state; retain geometry, translucency and enabled rules |
+| Zoom halves and `pressed_zoom` (`plot_ui.rs`, shell routing) | Button with shared group styling | **Replaced (#130).** Each half is a `Button` in the shared frame: the component owns press, disabled and click, and `pressed_zoom`, `release_press` and the ToggleScaleUi repair are gone. Geometry, translucency, the enabled rule and the tooltips are unchanged; the halves are `tab_stop(false)`, keep their ids and hand focus back to the plot. The frame and its border stay a `div` because it is layout, not a control |
 | Main cascading menu (`app_menu.rs`, `app_menu_ui.rs`) | PopupMenu and supported composition | Prototype one-level Escape, hover switching, keyboard selection, viewport placement; unresolved mismatch needs separate owner decision |
 | Waveform/spectrum splitter (`shell.rs`, `panels.rs`) | Resizable panels/handle | Compare both orientations, minimum sizes, 1-pixel separator, persisted fraction and non-restarting resize; replace if compatible, otherwise justify a narrow handle |
-| Toolbar, status range/FFT, start/recent buttons | Existing Button | Retain standard behavior; consolidate supported styling where useful; preserve hover/pressed colors and focus/disabled states |
-| Settings form | Existing NumberInput / Select / Button | Retain; prove in-window compatibility without changing #108 workflow here |
+| Toolbar, status range/FFT, start/recent buttons | Existing Button | **Toolbar replaced, rest retained (#130).** Toolbar controls carry no border, because a custom variant paints none, and their states are the accent surfaces in `toolbar_style`: an on control keeps the accent shade, and hover and pressed are the accent surfaces on top of it. The application button and the grid toggle are not `selected`, so they keep those hover and pressed states while they are on, and the grid glyph and the segment that changes the mode tint while hovered, while the application button's artwork does not. Orientation is a `ButtonGroup` of two segments in one frame, whose selected segment is the mode in force, is inert while selected, and names its own mode in its hint, with the Ctrl+T keycap on the unselected segment only; the divider is painted inside the second segment, because a border takes the colour of the states its own variant passes through, and each segment rounds its own outer corners, because GPUI clips to rectangles. The on state is accent 0.30 with 0.40 under the pointer and 0.52 while held. The segments and the grid toggle exist only with a document, so the title reserves exactly what is drawn. Status range/FFT keep their accepted colours and their manual hover foreground and background, because the painted hover state is that same colour, and the FFT summary additionally stays lit while its pinned hint is open. Start and recent rows keep the ghost variant, measured text-width hover surfaces and numbered shortcuts. The toolbar and zoom controls are `tab_stop(false)` and return focus to their owner on a click |
+| Settings form | Existing NumberInput / Select / Button | Retain; prove in-window compatibility without changing #108 workflow here. Audited in #130: the editor's Reset, Cancel and OK are standard outline and primary Buttons and the recommendation is a standard ghost Button, with no custom press, hover or focus machinery to remove |
 | Ruler context menu | Existing PopupMenu | Retain and verify focus return/navigation isolation |
-| Metadata/analysis/shortcut hints and keycaps | Existing Tooltip / Kbd | Keep standard composition; centralize surface contracts, not per-call-site guards |
+| Metadata/analysis/shortcut hints and keycaps | Existing Tooltip / Kbd | Keep standard composition; centralize surface contracts, not per-call-site guards. Audited in #130: the hints are the stock Tooltip and Popover surfaces behind one contract, and the keycaps are `Kbd` with a shared text refinement and a measured width, so nothing here is a custom control |
 | Ready-input capture canvas (`shell.rs`) | GPUI window event observation | Retain only a minimal passive registration adapter if no supported non-canvas hook exists; document verified API constraint and test status dismissal without consumption/navigation |
 | Global symbolic-key interceptor (`navigation_ui.rs`) | Plot-scoped bindings/key handling | Remove application-global consumption; any needed normalization adapter must be gated by focused PlotView before recognizing or consuming keys |
 | Spectrogram, waveform, axes, minimap and cursor badges | Existing domain canvas/texture rendering | Retain domain drawing; document domain requirement and interaction boundaries; ordinary controls over it remain standard |
@@ -248,11 +248,11 @@ control within it still needs replacement or a separately accepted exception.
 
 ### 5. Standard-control replacement
 
-- [ ] Replace zoom halves with standard Buttons and remove their obsolete state paths.
+- [x] Replace zoom halves with standard Buttons and remove their obsolete state paths. (#130)
 - [ ] Replace menu/splitter implementations where the checkpoint proved compatibility;
       obtain and record per-control decisions for any retained custom implementation.
-- [ ] Audit remaining forms, title/status/start controls, hints and keycaps; keep
-      standard controls and remove unnecessary duplicated interaction/style machinery.
+- [x] Audit remaining forms, title/status/start controls, hints and keycaps; keep
+      standard controls and remove unnecessary duplicated interaction/style machinery. (#130)
 - [ ] Complete the inventory with replacement evidence or accepted exceptions.
 - [ ] Remove temporary prototype UI; retain a focused verification fixture or tests
       that exercise standard in-window inputs without shipping another settings surface.
