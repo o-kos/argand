@@ -260,7 +260,7 @@ and its own `on_action` handlers never run.
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Native matrix on Linux (owner), recorded in the PR as
+- [x] Native matrix on Linux (owner), recorded in the PR as
       `case | revision | platform/backend, theme, orientation | input | expected |
       observed | pass/fail/not exercised`:
   - F1: after closing the menu each plot navigation key acts once;
@@ -403,6 +403,12 @@ The owner's first native check raised three items, decided with the owner.
       and its one-line rows; the ellipsis itself is a native check.
 - [x] Update AGENTS.md and the CHANGELOG entries that mention the stock keycaps or
       the directory suffix.
+
+The owner checked the feedback changes natively on Linux and accepted them. A
+targeted check by the same reviewer found one item: element rows expose no
+accessible name, because gpui-component 0.6.6 reads the name only from stock rows
+and keeps `MenuItemElement::aria_label` crate-private. The custom menu on `main`
+had no accessible names either, so it is not a regression; it is tracked in #161.
 
 ## Post-completion
 
