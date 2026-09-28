@@ -209,31 +209,33 @@ The exact toolchain comes from `rust-toolchain.toml`; the workspace's minimum Ru
 
 ## External review
 
-The implementer and the reviewer for an Issue come from its complexity class, which
-the plan declares before the work is handed over. "Agent roles and model selection"
-in `AGENTS.md` holds the table; it is the single place that decides, and this section
-does not repeat it.
-
-Select the model and reasoning effort explicitly when invoking the `codex` CLI, and
-use the same pair for every subsequent review round of that Pull Request.
+The implementer for an Issue is chosen with the owner and recorded in its plan, together
+with the complexity class. The reviewer is agreed with the owner before the first round:
+the class proposes one and the actual diff may argue for another. "Agent roles and model
+selection" in `AGENTS.md` holds the table; it is the single place that decides, and this
+section does not repeat it. The reviewer never shares the implementer's model, and the
+same model and reasoning effort serve every round of one Pull Request.
 
 Before presenting implementation results for owner review, including Draft feedback,
 the Pull Request goes through a review by a second
 agent. Run it read-only so that the changes stay deliberate and this repository's own
 rules -- in particular that suppressions need the owner's agreement -- are not bypassed
-by an agent that has not read them:
+by an agent that has not read them.
 
-Set `review_model` to the reviewer model for the Issue's class, then run:
+For a codex reviewer, set `review_model` and `review_effort` to the agreed pair, then run:
 
 ```sh
-codex exec -s read-only --model "${review_model:?Set review_model from the table above}" \
-  -c 'model_reasoning_effort="high"' \
+codex exec -s read-only --model "${review_model:?Set the agreed reviewer model}" \
+  -c "model_reasoning_effort=\"${review_effort:?Set the agreed reasoning effort}\"" \
   -C "$(git rev-parse --show-toplevel)" "$(cat review-prompt.md)" < /dev/null
 ```
 
 Closing stdin is required; without it the command waits for input forever. Note that
 `codex review --base <branch>` cannot be combined with a custom prompt, which is why
 `codex exec` is used with the diff range named in the prompt itself.
+
+For a Claude reviewer, give the same prompt to a subagent of the agreed model, with no
+file-editing tools and an instruction not to change the working tree.
 
 Write the prompt for this repository rather than asking for a general review:
 
@@ -252,7 +254,8 @@ Act on the findings, then run another round naming what was fixed and what was d
 and ask it to challenge the reasoning behind the declines. Repeat until a round returns
 nothing substantive.
 
-Then tell the owner what was accepted, what was rejected and why. A reviewer without the
+Then tell the owner which model reviewed, what was accepted and how it was addressed,
+what was rejected and why, and whether the final round was clean. A reviewer without the
 conversation's context will sometimes object to decisions the owner already made
 deliberately; decline those with the reason, never silently. Its most valuable findings
 are the ones that correct a claim in the Pull Request description or the plan.
