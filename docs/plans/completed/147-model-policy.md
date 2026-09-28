@@ -12,8 +12,8 @@ Request (#146 onwards), and the GPT-6 family has replaced the table's models. Th
 change writes the practiced policy into both documents and refreshes the model table.
 
 Class C: documentation only, no code. Implementer: Claude in the session. Reviewer:
-proposed as `gpt-6-luna` medium under the new table, agreed with the owner before the
-round.
+`gpt-6-luna` medium, proposed under the new table and agreed with the owner before the
+first round.
 
 ## Context
 
@@ -69,15 +69,16 @@ Agreed with the owner on 2026-09-28.
 - [x] Rewrite "External review" in `CONTRIBUTING.md`: reviewer agreement, the `codex exec`
       invocation with an agreed effort, the Claude subagent alternative, and the owner
       summary.
-- [ ] External review of this change.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] External review of this change: one round with `gpt-6-luna` medium, run with the
+      new `CONTRIBUTING.md` command, returned no findings.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked` does not apply: no code changes, and no behaviour
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked` does not apply: no code changes, and no behaviour
       is shown to the owner.
 - [x] Every model slug in the new text exists in the codex model cache.
 - [x] No remaining rule in `AGENTS.md` or `CONTRIBUTING.md` names codex as the only
