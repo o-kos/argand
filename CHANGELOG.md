@@ -13,7 +13,9 @@ promise applies to.
 
 ### Changed
 
-- Draw the application menu with the standard menu component. The menu still offers the same File and View branches, recent captures, checks and shortcuts, and still opens from the application button and F10.
+- Draw the application menu with the standard menu component. The menu still offers the same File and View branches, recent captures, checks and shortcuts, and still opens from the application button and F10. Its rows show the same framed shortcut keys as every other shortcut in the application, and a long recent capture name truncates in the middle instead of running past the row.
+
+- Recent captures are listed by file name alone, in the application menu and on the start page. A start-page row's hint shows the containing directory under the name, and two captures that share a name are told apart there.
 
 - Escape now closes the whole application menu instead of one level at a time, Home, End and Space do nothing in it, and Enter or Space on a branch row no longer opens it, so a branch is entered with Right.
 
