@@ -138,6 +138,13 @@ Current code:
     scale format does not open that branch, because the stock `confirm` ignores
     a submenu row. The owner accepted all three on 2026-09-28, and only Right
     enters a branch.
+- **The keyboard follows a branch that a hover takes away.** The stock menu draws
+  a submenu only while its row is selected, and hovering another row moves that
+  selection, so the focused submenu can leave the frame while its focus handle
+  stays focused; GPUI then routes keys to the root node. While the menu is open
+  the shell holds a `Context::on_focus_lost` subscription that focuses the open
+  menu's own handle again, and drops it on dismissal, so a lost focus that is not
+  a dismissal costs nothing and a dismissal already handled is left alone.
 - **Recent ordering stays toolkit-neutral and tested.** Keep `file_items` (or an
   equivalent pure function) with its test; delete `Menu`, `Effect`, `Kind`-driven
   navigation, `place`, their tests, `ApplicationMenu`, `application_menu_key`,
@@ -213,6 +220,8 @@ and its own `on_action` handlers never run.
     no view; a wheel over the plot changes no view and leaves the menu open;
   - a click on the application button while the menu is open closes it and it stays
     closed;
+  - F10, Down, Right into File, then a pointer hover onto the View row: the keys
+    still close the menu, hand the keyboard back and move the selection;
   - Enter on a View row dispatches its action exactly once (for example Show grid
     toggles once) and closes the menu; Enter on the branch row itself runs nothing
     and leaves the keyboard in the menu, where Right enters it;
@@ -261,6 +270,8 @@ and its own `on_action` handlers never run.
     open one, F10 and Tab close, digits with File focused open recent files;
   - hover: moving between File and View switches submenus; checked rows show their
     marks; keycaps present on every row that has a binding;
+  - hover: crossing from a focused branch to another branch, and back, keeps the
+    keyboard on the menu, which the headless test drives through one direction;
   - P1: click, wheel and drag inside the menu and outside it over the plot, the
     rulers and the minimap change no view and start no drag; an outside wheel
     leaves the menu open, and a click on a recent row and on Settings works by
@@ -328,6 +339,24 @@ and no row run, then presses Right and Enter and finds Show grid toggled. The
 second item is a comment correction, accepted: the recent row's deferred open is
 deferred because the toolkit dismisses the menu as the click handler returns, in
 the same `confirm`, and the comment now says that.
+
+Round 3 is the last round and adds two accepted items. The major one is the
+keyboard, which the stock menu can lose: it draws a submenu only while its row is
+selected, a hover moves that selection, and the handle that still holds the focus
+is no longer in the frame, so GPUI routes keys to the root node and F10, Tab,
+Escape, the arrows and the digits stop working. The fix is the supported hook, a
+`Context::on_focus_lost` subscription the shell takes while the menu is open and
+drops on dismissal, which focuses the open menu's own handle again; a focus lost
+because the menu closed is left to the dismissal, which has already handled it. A
+headless test opens the menu, walks into File, hovers the pointer onto the rendered
+View row and draws, and finds that F10, Tab and Escape each still close the menu
+and return focus, and that Down still moves the selection in the menu that is
+drawn; with the subscription removed that test fails on the first key, which is
+what makes it evidence. The native matrix keeps the same crossing in both
+directions and from the Time scale format branch. The second item is a nit,
+accepted: dismissal now clears the DismissEvent subscription and the focus-lost
+subscription with the entity and the File rows, so no subscription outlives the
+menu it belongs to.
 
 ## Post-completion
 

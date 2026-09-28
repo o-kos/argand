@@ -600,7 +600,11 @@ carries no handler of its own. Escape closes the whole chain, outside clicks clo
 it, Home, End and Space do nothing in the menu, and Enter or Space on File, View
 or Time scale format does not open that branch, so only Right enters one. F10, Tab and the File rows'
 digits are bound in an `ApplicationMenu` key context that wraps the menu, and the
-digits answer only while the File submenu entity holds the keyboard. While the
+digits answer only while the File submenu entity holds the keyboard. The stock
+menu draws a submenu only while its row is selected, and a hover moves that
+selection, so while the menu is open the shell holds a `Context::on_focus_lost`
+subscription that focuses the open menu's handle again whenever a branch holding
+the keyboard leaves the frame, and drops it on dismissal. While the
 menu is open a backdrop drawn below the popover's priority covers the window
 beneath it, so an outside click dismisses the menu and reaches no plot gesture, no
 title drag and no control, while an outside wheel reaches nothing and leaves the
