@@ -116,11 +116,12 @@ Current code:
   to the trigger itself. The button keeps its `On` look and its suppressed hint
   while the menu is open.
 - **Isolation:** while the menu is open a transparent occluding backdrop, as
-  `hints::backdrop`, covers the window beneath the menu layers. An outside click or
-  wheel therefore dismisses the menu (the stock capture-phase listener) and reaches
+  `hints::backdrop`, covers the window beneath the menu layers. An outside click
+  therefore dismisses the menu (the stock capture-phase listener) and reaches
   nothing else: no pan, no title drag or maximize, no button activation, and a click
-  on the application button closes the menu without reopening it. The stock menu
-  and its submenus already `occlude()` themselves.
+  on the application button closes the menu without reopening it. An outside wheel
+  reaches nothing either and leaves the menu open, which is what the overlay this
+  replaces did. The stock menu and its submenus already `occlude()` themselves.
 - **Keys the stock menu lacks, through composition only.** The Popover content wraps
   the menu in a `div` with key context `ApplicationMenu`; submenus sit on its
   dispatch path because deferred draws keep their parent's dispatch node.
@@ -204,25 +205,29 @@ and its own `on_action` handlers never run.
     Escape and an outside click close it and return focus to `focus_target`; the
     next key reaches the plot;
   - an outside click on the plot while the menu is open starts no pan and changes
-    no view; a wheel over the plot changes no view;
+    no view; a wheel over the plot changes no view and leaves the menu open;
   - a click on the application button while the menu is open closes it and it stays
     closed;
   - Enter on a View row dispatches its action exactly once (for example Show grid
     toggles once) and closes the menu;
   - a recent row click and its digit (with File focused) open that recent entry;
-    a digit with File not focused does nothing; recent rows follow the filtered
-    order with digits only on the first nine;
-  - opening a file and opening the settings window close the menu;
+    a digit with File not focused does nothing; a digit opens the row that was
+    drawn even when a probe changes the list while the menu is open; recent rows
+    follow the filtered order with digits only on the first nine;
+  - the settings window opens from the menu's own Settings row, not from a
+    direct call;
   - the ruler context menu's existing tests still pass unchanged.
   Where a case cannot be driven headlessly, say so here and leave it to the native
-  matrix. Two cases came out in part. "The next key reaches the plot" is checked as
-  the keyboard reaching the window again, because a headless `Shell` has no
+  matrix. Three cases came out in part. "The next key reaches the plot" is checked
+  as the keyboard reaching the window again, because a headless `Shell` has no
   described document and therefore no `PlotView`; the plot's own key routing is
   unchanged and already covered there. The pan and wheel cases are checked where
   they are observable without a plot: the view is unchanged, a control under the
   menu does not answer the dismissing click, and a press on the title bar starts
-  no window drag. Starting a pan on the plot itself needs the same document and
-  stays native.
+  no window drag. Starting a pan on the plot itself needs a described document
+  that a headless window cannot build, and stays a native-matrix case; a real
+  pointer click on a stock menu row is covered by the recent-row click test, which
+  finds the row by the index the toolkit records it under.
 - [x] Update the parent inventory rows (main cascading menu: replaced, with the
       accepted Escape/Home/End/Space change; ruler context menu: retained,
       re-verified) and tick phase 5's menu item for the menu half.
@@ -251,7 +256,11 @@ and its own `on_action` handlers never run.
   - hover: moving between File and View switches submenus; checked rows show their
     marks; keycaps present on every row that has a binding;
   - P1: click, wheel and drag inside the menu and outside it over the plot, the
-    rulers and the minimap change no view and start no drag;
+    rulers and the minimap change no view and start no drag; an outside wheel
+    leaves the menu open, and a click on a recent row and on Settings works by
+    pointer, which a headless test reaches only through the keyboard;
+  - the application button's own look while the menu is open, which the headless
+    tests cannot observe: the popover must not make it read as selected;
   - P3: open the menu during a drag, and via F10 during a drag: the drag ends;
   - R3: the application button opens and closes the menu without moving or
     maximizing the window; an outside click on the bare title closes the menu and
@@ -263,6 +272,42 @@ and its own `on_action` handlers never run.
     dismissal, as in #129.
 - [ ] Windows and macOS: `ci/full`; native interaction there is not exercised unless
       the owner runs it, and is reported as such.
+
+## Review round 1
+
+The arbiter's five decisions, all applied on this branch.
+
+- **Accepted, a digit could open the wrong capture.** The File rows were drawn from
+  the `recent_entries` snapshot taken when the menu opened, but a digit resolved its
+  index in `recent_files.shortcut`, which the asynchronous availability probes keep
+  changing. The shell now keeps the captures its numbered rows name, in
+  `application_file_rows` beside the File entity, resolves digits against that list
+  and clears it on dismissal, and a new test re-checks the first capture as gone
+  while the menu stands open and asserts that digit 1 still opens the row that was
+  drawn.
+- **Accepted, the popover was selecting the application button.**
+  `Popover::trigger` calls `selected(selected || is_open)`, and a selected button
+  loses its hover and pressed surfaces and paints the variant's active colour, which
+  #130 forbids for this control. The trigger is now a `Trigger` wrapper that
+  implements `Selectable` as a no-op and renders the wrapped `Button` unchanged, so
+  the button's own `ToolbarState::On` remains the only open-menu look and the
+  button is not reimplemented. A unit test asserts the wrapper never reports itself
+  selected; whether the painted button changes is not observable headlessly and is
+  in the native matrix.
+- **Declined in code, accepted as a documentation fix.** An outside wheel does not
+  dismiss the menu, and that is the behaviour this Issue inherited: the overlay it
+  replaces consumed the wheel and left the menu open. The plan's Isolation decision,
+  both `AGENTS.md` passages and the `CHANGELOG.md` entry now say that an outside
+  click dismisses the menu and reaches nothing else while an outside wheel reaches
+  nothing and leaves the menu open, and the existing test asserting that is kept.
+- **Accepted in part.** A real simulated click on a drawn recent row opens that
+  capture, with the row found by the index the toolkit records it under, and the
+  settings window opens from the menu's own Settings row instead of a direct call.
+  Pan prevention on a real `PlotView` stays native, because a headless window cannot
+  build a described document; the plan's test list says so where the case is listed.
+- **Accepted, three comments ran to two lines.** The `space` binding, the recent
+  row's deferred open and the application button's press are one line each now, and
+  no other comment in the branch spans a line.
 
 ## Post-completion
 

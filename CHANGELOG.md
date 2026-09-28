@@ -17,7 +17,7 @@ promise applies to.
 
 - Escape now closes the whole application menu instead of one level at a time, and Home, End and Space do nothing in it.
 
-- The application menu now covers the window beneath it while it is open, so the click or wheel that dismisses it no longer reaches the plot or the title bar.
+- The application menu now covers the window beneath it while it is open, so the click that dismisses it no longer reaches the plot or the title bar, and a wheel over the window behind it no longer reaches them either.
 
 ### Fixed
 

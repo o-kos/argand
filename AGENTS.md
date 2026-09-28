@@ -549,8 +549,9 @@ hover-based, so any blocking layer above it wins.
   status-bar readout (`PlotGeometry::over_scale_buttons`).
 - Menus: the application menu and the ruler `PopupMenu` `occlude()`, taking wheel,
   clicks and drags. The application menu additionally draws a backdrop at a lower
-  priority than its popover while it is open, so an outside click or wheel
-  dismisses the menu and reaches nothing beneath it.
+  priority than its popover while it is open, so an outside click dismisses the
+  menu and reaches nothing beneath it, and an outside wheel reaches nothing and
+  leaves the menu open.
 - Gestures: `PlotView::interrupt` ends drags, the ruler menu and the pointer.
   Shell calls it before the application menu, the settings window and the file
   chooser open. Opening the ruler menu and deactivating the window call
@@ -600,8 +601,9 @@ it, and Home, End and Space do nothing in the menu. F10, Tab and the File rows'
 digits are bound in an `ApplicationMenu` key context that wraps the menu, and the
 digits answer only while the File submenu entity holds the keyboard. While the
 menu is open a backdrop drawn below the popover's priority covers the window
-beneath it, so an outside click or wheel dismisses the menu and reaches no plot
-gesture, no title drag and no control. The independent ruler context menu
+beneath it, so an outside click dismisses the menu and reaches no plot gesture, no
+title drag and no control, while an outside wheel reaches nothing and leaves the
+menu open. The independent ruler context menu
 retains the stock PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
 Orientation is a two-segment control in one frame whose selected segment is the
 mode in force and whose tooltip names its own mode, and the segments and the grid
