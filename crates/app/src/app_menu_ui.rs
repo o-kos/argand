@@ -209,6 +209,7 @@ impl Shell {
         });
         self.application_menu_dismissed =
             Some(cx.subscribe_in(&menu, window, Self::application_menu_dismissed));
+        self.application_menu_focus = Some(cx.on_focus_lost(window, Self::recover_menu_focus));
         self.application_file_menu = Some(file);
         self.application_file_rows = Some(digits);
         self.application_menu = Some(menu.clone());
@@ -224,6 +225,8 @@ impl Shell {
         }
         self.application_file_menu = None;
         self.application_file_rows = None;
+        self.application_menu_dismissed = None;
+        self.application_menu_focus = None;
         window.focus(&self.focus_target(cx), cx);
         self.title_drag_pending = false;
         cx.notify();
@@ -240,6 +243,18 @@ impl Shell {
             return;
         }
         self.open_application_menu(window, cx);
+    }
+
+    /// Hands the keyboard back to the menu when its focused branch stops being drawn.
+    ///
+    /// The stock menu draws a submenu only while its row is selected, and a hover
+    /// moves that selection, so a focused submenu can vanish and take the keys with
+    /// it, because a handle missing from the frame routes them to the root.
+    fn recover_menu_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(menu) = self.application_menu.clone() else {
+            return;
+        };
+        window.focus(&menu.focus_handle(cx), cx);
     }
 
     fn application_menu_dismissed(
@@ -1349,6 +1364,41 @@ mod tests {
         assert!(!menu_focused(cx, &shell), "Right enters the branch");
         press(cx, "enter");
         assert_ne!(grid(cx, &shell), before, "where Enter runs its row");
+    }
+
+    /// The View row of the menu bar, found while it is the only menu on screen.
+    fn view_row(cx: &mut gpui_kit::VisualTestContext) -> gpui_kit::Point<gpui_kit::Pixels> {
+        cx.update(|window, _| {
+            let menu = window.find("popup-menu").bounds();
+            menu.center() + gpui_kit::point(px(0.), menu.size.height / 4.)
+        })
+    }
+
+    #[gpui_kit::test]
+    fn the_keys_reach_the_menu_after_a_hover_drops_the_focused_branch(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        for key in ["f10", "tab", "escape"] {
+            press(cx, "f10");
+            let row = view_row(cx);
+            press(cx, "down right");
+            assert!(file_focused(cx, &shell), "{key} found the File branch");
+            // The pointer crosses to View, so File stops being drawn and the
+            // focus the File submenu held points at nothing in the frame.
+            cx.simulate_mouse_move(row, None, gpui_kit::Modifiers::default());
+            draw(cx);
+            press(cx, "down right");
+            assert!(
+                file_focused(cx, &shell),
+                "{key} found the keys on the menu again, and Down moved the selection"
+            );
+            press(cx, key);
+            assert!(!menu_open(cx, &shell), "{key} closes the menu");
+            assert!(
+                keyboard_at_owner(cx, &shell),
+                "{key} hands the keyboard back"
+            );
+        }
     }
 
     #[test]

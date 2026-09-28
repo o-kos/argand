@@ -375,6 +375,8 @@ struct Shell {
     /// The captures its numbered rows name, as drawn when the menu opened.
     application_file_rows: Option<Vec<Origin>>,
     application_menu_dismissed: Option<Subscription>,
+    /// Refocuses the menu when the branch that held the keyboard stops being drawn.
+    application_menu_focus: Option<Subscription>,
     recent_files: RecentFiles,
     recent_updates: Option<Task<()>>,
     /// Kept because dropping it stops the notifications.
@@ -458,6 +460,7 @@ impl Shell {
             application_file_menu: None,
             application_file_rows: None,
             application_menu_dismissed: None,
+            application_menu_focus: None,
             recent_updates: None,
             _bounds: bounds,
             _activation: activation,
