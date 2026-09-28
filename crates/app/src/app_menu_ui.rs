@@ -103,7 +103,7 @@ impl Shell {
                 recent_row(number, label.clone(), cx.theme().muted_foreground)
             })
             .on_click(move |_, window, cx| {
-                // The menu dismisses itself a frame later, so the open waits.
+                // The menu dismisses as this returns, so the open waits a frame.
                 let owner = owner.clone();
                 let origin = origin.clone();
                 window.defer(cx, move |window, cx| {
@@ -1329,6 +1329,26 @@ mod tests {
             Some(Path::new("/captures/hfdl.iqw")),
             "the digit opened the row that was drawn, not the first available"
         );
+    }
+
+    #[gpui_kit::test]
+    fn enter_runs_no_branch_where_the_stock_menu_ignores_one(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let before = grid(cx, &shell);
+        press(cx, "f10");
+        // Down twice reaches the View branch, and Enter on a branch runs nothing.
+        press(cx, "down down enter");
+        assert!(menu_open(cx, &shell), "the menu stays open");
+        assert!(
+            menu_focused(cx, &shell),
+            "and the keyboard stays in the menu"
+        );
+        assert_eq!(grid(cx, &shell), before, "with no row run");
+        press(cx, "right");
+        assert!(!menu_focused(cx, &shell), "Right enters the branch");
+        press(cx, "enter");
+        assert_ne!(grid(cx, &shell), before, "where Enter runs its row");
     }
 
     #[test]
