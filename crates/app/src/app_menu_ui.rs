@@ -6,6 +6,7 @@ use crate::orientation::Mode;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::Selectable;
 use gpui_kit::component::button::{ButtonCustomVariant, ButtonGroup, ButtonRounded};
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::popover::Popover;
 use gpui_kit::{
     Anchor, AnyElement, App, CursorStyle, DismissEvent, Entity, Focusable, IntoElement, KeyBinding,
@@ -82,18 +83,21 @@ impl Shell {
             .collect();
         let owner = cx.entity().downgrade();
         let menu = PopupMenu::build(window, cx, move |menu, _, _| {
-            let menu = menu.action_context(focus).max_w(px(420.)).scrollable(true);
+            let menu = menu
+                .action_context(focus.clone())
+                .max_w(px(420.))
+                .scrollable(true);
             recent.into_iter().fold(menu, |menu, row| {
-                menu.item(Shell::file_row(row, owner.clone()))
+                menu.item(Shell::file_row(row, focus.clone(), owner.clone()))
             })
         });
         (menu, digits)
     }
 
-    fn file_row(row: Row<Origin>, owner: WeakEntity<Self>) -> PopupMenuItem {
+    fn file_row(row: Row<Origin>, focus: FocusHandle, owner: WeakEntity<Self>) -> PopupMenuItem {
         match row {
-            Row::Open => PopupMenuItem::new("Open file...").action(Box::new(ChooseFile)),
-            Row::Settings => PopupMenuItem::new("Settings").action(Box::new(EditAnalysis)),
+            Row::Open => action_row("Open file...", Box::new(ChooseFile), false, focus),
+            Row::Settings => action_row("Settings", Box::new(EditAnalysis), false, focus),
             Row::Separator => PopupMenuItem::separator(),
             Row::Recent {
                 number,
@@ -127,25 +131,38 @@ impl Shell {
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
         PopupMenu::build(window, cx, move |menu, _, _| {
-            menu.action_context(focus)
-                .item(
-                    PopupMenuItem::new("Show grid")
-                        .action(Box::new(ToggleGrid))
-                        .checked(show_grid),
-                )
-                .item(
-                    PopupMenuItem::new("Show scale controls")
-                        .action(Box::new(ToggleScaleUi))
-                        .checked(show_scale_ui),
-                )
-                .item(
-                    PopupMenuItem::new("Vertical orientation")
-                        .action(Box::new(ToggleOrientation))
-                        .checked(vertical),
-                )
+            menu.action_context(focus.clone())
+                .item(action_row(
+                    "Show grid",
+                    Box::new(ToggleGrid),
+                    show_grid,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Show scale controls",
+                    Box::new(ToggleScaleUi),
+                    show_scale_ui,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Vertical orientation",
+                    Box::new(ToggleOrientation),
+                    vertical,
+                    focus.clone(),
+                ))
                 .item(PopupMenuItem::separator())
-                .item(PopupMenuItem::new("Fit time").action(Box::new(FitCapture)))
-                .item(PopupMenuItem::new("Fit frequency").action(Box::new(FitFrequency)))
+                .item(action_row(
+                    "Fit time",
+                    Box::new(FitCapture),
+                    false,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Fit frequency",
+                    Box::new(FitFrequency),
+                    false,
+                    focus.clone(),
+                ))
                 .item(PopupMenuItem::separator())
                 .item(PopupMenuItem::submenu("Time scale format", scale))
         })
@@ -161,22 +178,25 @@ impl Shell {
         let ruler = self.session.time_ruler;
         PopupMenu::build(window, cx, move |menu, _, _| {
             use crate::time_ruler::Mode;
-            menu.action_context(focus)
-                .item(
-                    PopupMenuItem::new("Hours, minutes, seconds (hms)")
-                        .action(Box::new(ClockRuler))
-                        .checked(ruler == Mode::Clock),
-                )
-                .item(
-                    PopupMenuItem::new("Seconds")
-                        .action(Box::new(SecondsRuler))
-                        .checked(ruler == Mode::Seconds),
-                )
-                .item(
-                    PopupMenuItem::new("Sample numbers")
-                        .action(Box::new(SamplesRuler))
-                        .checked(ruler == Mode::Samples),
-                )
+            menu.action_context(focus.clone())
+                .item(action_row(
+                    "Hours, minutes, seconds (hms)",
+                    Box::new(ClockRuler),
+                    ruler == Mode::Clock,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Seconds",
+                    Box::new(SecondsRuler),
+                    ruler == Mode::Seconds,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Sample numbers",
+                    Box::new(SamplesRuler),
+                    ruler == Mode::Samples,
+                    focus.clone(),
+                ))
         })
     }
 
@@ -641,11 +661,47 @@ fn open_from(owner: &WeakEntity<Shell>, open: bool, window: &mut Window, cx: &mu
     });
 }
 
+/// A command row that keeps the stock dispatch and carries the shared keycap.
+///
+/// The stock menu paints its own keycaps, borderless and transparent, where every
+/// other shortcut in the application uses the framed one. The row is an element
+/// for that reason alone, and keeps `.action(..)` and `.checked(..)` so the menu
+/// still dispatches, checks, selects and navigates it.
+fn action_row(
+    label: &str,
+    action: Box<dyn Action>,
+    checked: bool,
+    focus: FocusHandle,
+) -> PopupMenuItem {
+    let label = label.to_owned();
+    let shortcut = action.boxed_clone();
+    PopupMenuItem::element(move |window, cx| {
+        let key = Kbd::binding_for_action_in(shortcut.as_ref(), &focus, window);
+        div()
+            .flex()
+            .w_full()
+            .min_w_0()
+            .gap_3()
+            .items_center()
+            .justify_between()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_ellipsis_middle()
+                    .child(label.clone()),
+            )
+            .when_some(key, |row, key| row.child(shortcuts::keycap(key, cx)))
+    })
+    .action(action)
+    .checked(checked)
+}
+
 /// The row one recent capture is drawn in: its digit, then its name.
 fn recent_row(number: Option<u8>, label: String, muted: gpui_kit::Hsla) -> impl IntoElement {
     div()
         .flex()
-        .flex_1()
+        .w_full()
         .min_w_0()
         .items_center()
         .gap_2()
@@ -658,7 +714,14 @@ fn recent_row(number: Option<u8>, label: String, muted: gpui_kit::Hsla) -> impl 
                     .child(crate::numbers::number(usize::from(number))),
             )
         })
-        .child(div().min_w_0().text_ellipsis().child(label))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_ellipsis_middle()
+                .child(label),
+        )
 }
 
 /// The width the title reserves for the toolbar.
@@ -1398,6 +1461,89 @@ mod tests {
                 "{key} hands the keyboard back"
             );
         }
+    }
+
+    /// How wide a stock menu row is, which changes with what the row carries.
+    fn row_width(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Pixels {
+        cx.update(|window, _| {
+            window
+                .find(gpui_kit::ElementId::Integer(index))
+                .bounds()
+                .size
+                .width
+        })
+    }
+
+    /// How tall a stock menu row is, which grows when a label wraps.
+    fn row_height(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Pixels {
+        cx.update(|window, _| {
+            window
+                .find(gpui_kit::ElementId::Integer(index))
+                .bounds()
+                .size
+                .height
+        })
+    }
+
+    /// The View submenu's "Vertical orientation" row, the first index only the
+    /// View branch has.
+    const ORIENTATION_ROW: u64 = 2;
+
+    /// The File submenu's separator, which spans the whole menu.
+    const FILE_SEPARATOR: u64 = 3;
+
+    #[gpui_kit::test]
+    fn an_action_row_draws_the_shared_keycap_when_its_binding_resolves(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let before = grid(cx, &shell);
+        press(cx, "f10");
+        press(cx, "down down right");
+        assert!(menu_open(cx, &shell), "the View branch is on screen");
+        // A headless window has no plot, so the row's own binding sits in a key
+        // context its focus target cannot reach, and the row carries no keycap.
+        let bare = row_width(cx, ORIENTATION_ROW);
+        press(cx, "escape");
+        cx.update(|_, cx| {
+            cx.bind_keys([gpui_kit::KeyBinding::new(
+                "ctrl-alt-v",
+                ToggleOrientation,
+                Some("Shell"),
+            )]);
+        });
+        press(cx, "f10");
+        press(cx, "down down right");
+        let capped = row_width(cx, ORIENTATION_ROW);
+        assert!(
+            capped > bare,
+            "the row grew to hold the framed keycap, {bare} then {capped}"
+        );
+        press(cx, "enter");
+        assert!(!menu_open(cx, &shell), "and the row still dispatches once");
+        assert_ne!(grid(cx, &shell), before, "one Enter ran one row");
+    }
+
+    #[gpui_kit::test]
+    fn a_long_recent_name_keeps_the_file_branch_within_its_width(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let long = format!(
+            "{}.iqw",
+            "capture-2026-09-28-145233-1440.000000-MHz-".repeat(4)
+        );
+        recent(cx, &shell, &long);
+        press(cx, "f10");
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell), "the File branch is on screen");
+        assert!(
+            row_width(cx, FILE_SEPARATOR) <= px(420.),
+            "a name too long for its row leaves the menu at its own maximum"
+        );
+
+        assert!(
+            row_height(cx, 2) <= px(26.),
+            "and the long name truncates in one line instead of wrapping"
+        );
     }
 
     #[test]
