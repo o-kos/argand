@@ -372,6 +372,8 @@ struct Shell {
     application_menu: Option<Entity<PopupMenu>>,
     /// The File branch, whose keyboard focus a digit row belongs to.
     application_file_menu: Option<Entity<PopupMenu>>,
+    /// The captures its numbered rows name, as drawn when the menu opened.
+    application_file_rows: Option<Vec<Origin>>,
     application_menu_dismissed: Option<Subscription>,
     recent_files: RecentFiles,
     recent_updates: Option<Task<()>>,
@@ -454,6 +456,7 @@ impl Shell {
             focus,
             application_menu: None,
             application_file_menu: None,
+            application_file_rows: None,
             application_menu_dismissed: None,
             recent_updates: None,
             _bounds: bounds,

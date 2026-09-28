@@ -8,8 +8,8 @@ use gpui_kit::component::Selectable;
 use gpui_kit::component::button::{ButtonCustomVariant, ButtonGroup, ButtonRounded};
 use gpui_kit::component::popover::Popover;
 use gpui_kit::{
-    Anchor, AnyElement, App, CursorStyle, DismissEvent, Entity, Focusable, KeyBinding, deferred,
-    img,
+    Anchor, AnyElement, App, CursorStyle, DismissEvent, Entity, Focusable, IntoElement, KeyBinding,
+    Styled, deferred, img,
 };
 
 actions!(
@@ -60,21 +60,34 @@ impl Shell {
     /// The branch that asks for a file, opens a recent capture, and does settings.
     ///
     /// The recent rows stand where `app_menu` places them, and a click hands the
-    /// capture to the shell.
+    /// capture to the shell. The captures the digits name come back with it, so
+    /// a digit cannot answer from a list the probes have changed since.
     fn file_menu(
         &self,
         focus: FocusHandle,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Entity<PopupMenu> {
+    ) -> (Entity<PopupMenu>, Vec<Origin>) {
         let recent = app_menu::file_items(self.recent_entries());
+        let digits = recent
+            .iter()
+            .filter_map(|row| match row {
+                Row::Recent {
+                    number: Some(_),
+                    origin,
+                    ..
+                } => Some(origin.clone()),
+                _ => None,
+            })
+            .collect();
         let owner = cx.entity().downgrade();
-        PopupMenu::build(window, cx, move |menu, _, _| {
+        let menu = PopupMenu::build(window, cx, move |menu, _, _| {
             let menu = menu.action_context(focus).max_w(px(420.)).scrollable(true);
             recent.into_iter().fold(menu, |menu, row| {
                 menu.item(Shell::file_row(row, owner.clone()))
             })
-        })
+        });
+        (menu, digits)
     }
 
     fn file_row(row: Row<Origin>, owner: WeakEntity<Self>) -> PopupMenuItem {
@@ -179,7 +192,7 @@ impl Shell {
         self.interrupt_plot(cx);
         self.recent_files.refresh(&self.session.recent);
         let focus = self.focus_target(cx);
-        let file = self.file_menu(focus.clone(), window, cx);
+        let (file, digits) = self.file_menu(focus.clone(), window, cx);
         let view = self
             .view
             .is_some()
@@ -197,6 +210,7 @@ impl Shell {
         self.application_menu_dismissed =
             Some(cx.subscribe_in(&menu, window, Self::application_menu_dismissed));
         self.application_file_menu = Some(file);
+        self.application_file_rows = Some(digits);
         self.application_menu = Some(menu.clone());
         self.title_drag_pending = false;
         window.focus(&menu.focus_handle(cx), cx);
@@ -209,6 +223,7 @@ impl Shell {
             return;
         }
         self.application_file_menu = None;
+        self.application_file_rows = None;
         window.focus(&self.focus_target(cx), cx);
         self.title_drag_pending = false;
         cx.notify();
@@ -255,12 +270,13 @@ impl Shell {
         if !in_file {
             return;
         }
-        let Some(entry) = self.recent_files.shortcut(index) else {
+        let Some(origin) = self
+            .application_file_rows
+            .as_ref()
+            .and_then(|rows| rows.get(index))
+            .cloned()
+        else {
             return;
-        };
-        let origin = Origin {
-            path: entry.path.clone(),
-            hints: entry.hints.to_open_hints(),
         };
         self.open(origin, window, cx);
     }
@@ -286,7 +302,8 @@ impl Shell {
     ///
     /// The tracked handle is the menu's own, so the popover's open leaves the
     /// keyboard inside the menu rather than taking it for itself.
-    fn application_menu_popover(&self, trigger: Button, cx: &mut Context<Self>) -> Popover {
+    fn application_menu_popover(&self, button: Button, cx: &mut Context<Self>) -> Popover {
+        let trigger = Trigger(button);
         let open = self.application_menu.is_some();
         let menu = self.application_menu.clone();
         let focus = self
@@ -506,6 +523,41 @@ impl Shell {
                 glyph.group_hover(id, |style| style.text_color(accent))
             })
             .into_any_element()
+    }
+}
+
+/// The application button as a trigger the popover may not mark selected.
+///
+/// `Popover::trigger` selects its trigger while the popover is open, and a
+/// selected button loses its hover and pressed surfaces and paints the variant's
+/// active colour, which is not the on state #130 accepted for this button.
+struct Trigger(Button);
+
+impl Selectable for Trigger {
+    fn selected(self, _selected: bool) -> Self {
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        false
+    }
+}
+
+impl Styled for Trigger {
+    fn style(&mut self) -> &mut gpui_kit::StyleRefinement {
+        self.0.style()
+    }
+}
+
+impl IntoElement for Trigger {
+    type Element = AnyElement;
+
+    fn into_element(self) -> Self::Element {
+        self.0.into_any_element()
+    }
+
+    fn into_any_element(self) -> AnyElement {
+        self.0.into_any_element()
     }
 }
 
@@ -986,17 +1038,55 @@ mod tests {
 
     /// One available capture in the recent list, with a digit waiting for it.
     fn recent(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>, path: &str) {
-        let path = PathBuf::from(path);
+        available_recent(cx, shell, std::slice::from_ref(&path.to_owned()), true);
+    }
+
+    /// Recent captures in a given availability, newest first.
+    fn available_recent(
+        cx: &mut gpui_kit::VisualTestContext,
+        shell: &Entity<Shell>,
+        paths: &[String],
+        available: bool,
+    ) {
         shell.update_in(cx, |shell, _, cx| {
-            shell.session.recent = vec![session::Recent {
-                path: path.clone(),
-                hints: Default::default(),
-            }];
+            shell.session.recent = paths
+                .iter()
+                .map(|path| session::Recent {
+                    path: PathBuf::from(path),
+                    hints: Default::default(),
+                })
+                .collect();
             shell.recent_files.refresh(&shell.session.recent);
-            shell.recent_files.apply(path, true);
+            for path in paths {
+                shell.recent_files.apply(PathBuf::from(path), available);
+            }
             cx.notify();
         });
         draw(cx);
+    }
+
+    /// A capture a probe has just re-checked while the menu is open.
+    fn recheck(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>, path: &str) {
+        shell.update_in(cx, |shell, _, cx| {
+            shell.recent_files.apply(PathBuf::from(path), false);
+            cx.notify();
+        });
+        draw(cx);
+    }
+
+    /// Where a stock menu row is, which the toolkit records under its index.
+    fn row(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Point<gpui_kit::Pixels> {
+        cx.update(|window, _| {
+            window
+                .find(gpui_kit::ElementId::Integer(index))
+                .bounds()
+                .center()
+        })
+    }
+
+    /// The settings window the menu's Settings row opens.
+    fn settings_open(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
+        shell.read_with(cx, |shell, _| shell.settings_window.is_some())
     }
 
     /// The document the open menu replaced, once one of its rows opened something.
@@ -1181,17 +1271,70 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn opening_the_settings_window_closes_the_menu(cx: &mut TestAppContext) {
+    fn the_settings_window_opens_from_the_menu_itself(cx: &mut TestAppContext) {
         let (shell, cx) = open_window(cx);
         open_capture(cx, &shell);
         press(cx, "f10");
-        assert!(menu_open(cx, &shell));
-        shell.update_in(cx, |shell, window, cx| {
-            shell.edit_analysis(&EditAnalysis, window, cx);
-        });
+        // Down to File, right into it, then past the command to Settings.
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell));
+        press(cx, "down enter");
         draw(cx);
-        assert!(!menu_open(cx, &shell));
+        assert!(!menu_open(cx, &shell), "the menu closed");
+        assert!(settings_open(cx, &shell), "and the settings window opened");
         shell.update_in(cx, |shell, _, cx| shell.finish_settings(false, cx));
         draw(cx);
+    }
+
+    #[gpui_kit::test]
+    fn a_click_on_a_recent_row_opens_that_capture(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        recent(cx, &shell, "/captures/beacon.iqw");
+        press(cx, "f10");
+        // The File branch is on screen, and its third row is the first capture.
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell));
+        let capture = row(cx, 2);
+        cx.simulate_click(capture, gpui_kit::Modifiers::default());
+        draw(cx);
+        assert!(!menu_open(cx, &shell), "the menu closed");
+        assert_eq!(
+            opened(cx, &shell).as_deref(),
+            Some(Path::new("/captures/beacon.iqw"))
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_digit_opens_the_row_that_was_drawn(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let paths = [
+            "/captures/hfdl.iqw".to_owned(),
+            "/captures/beacon.iqw".to_owned(),
+        ];
+        available_recent(cx, &shell, &paths, true);
+        press(cx, "f10");
+        press(cx, "down right");
+        assert!(file_focused(cx, &shell));
+        // A probe finds the first capture gone while the menu stands open.
+        recheck(cx, &shell, "/captures/hfdl.iqw");
+        assert!(
+            menu_open(cx, &shell),
+            "the menu keeps the rows it was drawn with"
+        );
+        press(cx, "1");
+        assert_eq!(
+            opened(cx, &shell).as_deref(),
+            Some(Path::new("/captures/hfdl.iqw")),
+            "the digit opened the row that was drawn, not the first available"
+        );
+    }
+
+    #[test]
+    fn the_popover_trigger_reports_itself_unselected() {
+        let trigger = Trigger(Button::new("application-menu-button"));
+        assert!(!trigger.is_selected());
+        assert!(!trigger.selected(true).is_selected());
     }
 }
