@@ -112,7 +112,7 @@ Kilo:
 - [x] Reconcile the parent plan: phases 1 and 2, Linux-only native scope, evidence
       links for each acceptance item.
 - [x] Update AGENTS.md "Current status", README and CHANGELOG as decided.
-- [ ] Full local gate.
+- [x] Full local gate.
 
 Claude and owner:
 
@@ -126,9 +126,9 @@ Claude and owner:
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] Linux native matrix recorded, every row pass or an accepted, tracked issue.
 - [ ] Performance comparison recorded with no uninvestigated regression.

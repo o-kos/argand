@@ -343,9 +343,9 @@ three-platform native matrix, and #124 closes without it. The decision is record
 [#133](133-ui-integration.md) and its results in
 [ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md).
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (workspace warnings denied)
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (workspace warnings denied)
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [x] Toolkit-free tests for navigation intents, geometry, persistence and existing
       analysis invariants; GPUI-level tests where supported for focus/action routing.
