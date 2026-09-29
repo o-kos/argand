@@ -78,16 +78,13 @@ without it.
   plan; drop sentences that only described migration steps. README and CHANGELOG are
   checked for claims #124 made obsolete; CHANGELOG gains nothing unless a shipped,
   user-visible change is missing from it.
-- **Linux native matrix (owner).** Claude prepares
-  `docs/ui/124-integration/linux-results.md` with one row per parent oracle and
-  parameter (R1 to S1, both orientations, dark and light, start and loaded states,
-  progressive updates, file replacement, settings preview and cancel, persistence)
-  in the format `case | build | environment | input | expected | observed | result`.
-  The owner runs it on the release build of this branch; Claude records the results.
-- **Performance comparison (owner, Linux).** Claude builds the baseline `c176ad2`
-  and the branch in release. The owner compares window resize, zoom and pan
-  responsiveness on the same capture, and Claude reads
-  `argand::ui_latency=trace` for both. A regression is investigated before merge.
+- **Native evidence map instead of a rerun (owner, 2026-09-29).** This stage changes
+  no shipped behaviour, so the owner does not repeat the native matrix.
+  `docs/ui/124-integration/linux-results.md` maps every parent oracle (R1 to S1) and
+  the toolbar, menu and minimap checks to the stage and PR where the owner verified
+  them natively on Linux. IME, clipboard and undo as editing behaviour, and the
+  responsiveness comparison against the baseline `c176ad2`, were never exercised; the
+  owner waived them, and the map records the waiver.
 - **Handoff.** Claude edits #108 to replace its no-Root constraint with the
   standard-infrastructure contract (PinnedHint, `Root`, standard inputs), without
   implementing it, and closes #124 after this PR merges with a comment mapping its
@@ -116,9 +113,8 @@ Kilo:
 
 Claude and owner:
 
-- [ ] Prepare `docs/ui/124-integration/linux-results.md`; owner runs it; record
-      results.
-- [ ] Baseline and branch release builds; performance comparison recorded.
+- [x] Map the native evidence in `docs/ui/124-integration/linux-results.md`
+      (owner waived a rerun and the performance comparison).
 - [ ] Review rounds with Codex `gpt-6-sol` high.
 - [ ] Reconcile #108; remove the Kilo worktree.
 - [ ] Move this plan and the parent plan to `docs/plans/completed/` before final
@@ -130,8 +126,8 @@ Claude and owner:
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Linux native matrix recorded, every row pass or an accepted, tracked issue.
-- [ ] Performance comparison recorded with no uninvestigated regression.
+- [x] Native evidence mapped to the stages that verified it; the waived cases are
+      recorded as not exercised.
 - [ ] `ci/full` on Linux, Windows and macOS for the final revision.
 
 ## Post-completion

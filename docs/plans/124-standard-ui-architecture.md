@@ -17,8 +17,8 @@ interaction verification or dependency change has been performed by this revisio
 complete and phase 6 is in progress. [#133](133-ui-integration.md) closed the
 inventory, removed the #126 prototype, brought this document and `AGENTS.md` from
 planned to implemented, and hands #108 its updated constraints. The owner's
-decision of 2026-09-29 replaces the three-platform native matrix with a Linux-only
-one; it is recorded under Validation, and its results in
+decision of 2026-09-29 replaces the three-platform native matrix with Linux-only
+evidence, gathered stage by stage and mapped in
 [ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md).
 The implementing and reviewing roles are those the repository's role policy
 names per Pull Request, not the planning revision's; #133 used Codex
@@ -340,8 +340,10 @@ explicit rather than replacing the matrix with a few successful screenshots.
 Windows and macOS are covered by `ci/full` builds and tests; their native behaviour is
 not verified, and a problem found there later becomes its own Issue. This replaces the
 three-platform native matrix, and #124 closes without it. The decision is recorded in
-[#133](133-ui-integration.md) and its results in
-[ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md).
+[#133](133-ui-integration.md). The owner verified each stage natively on Linux as it
+landed and did not repeat the matrix on the integrated build, which changes no
+shipped behaviour; [ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md)
+maps every oracle to the stage that verified it and records the waived cases.
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (workspace warnings denied)
@@ -353,24 +355,28 @@ three-platform native matrix, and #124 closes without it. The decision is record
       `spectrogram_tests.rs`, `minimap_tests.rs`, `axes_tests.rs`, and the headless
       GPUI tests in `plot_view.rs`, `hints.rs`, `app_menu_ui.rs`, `shell.rs` and
       `settings_editor.rs`.)
-- [ ] Native input matrix on Linux: plot, main/context menu, passive hint, popover,
+- [x] Native input matrix on Linux (per stage, #127 to #132, see the evidence map): plot, main/context menu, passive hint, popover,
       nested select and separate settings window; click, double-click, wheel,
       drag/release outside, arrows, symbols, Alt guides, Tab/Shift+Tab, Escape/Enter
       and focus restoration.
-- [ ] Native text editing on Linux: caret movement, selection, clipboard, undo/redo,
+- [x] Native text editing on Linux (key routing in #128; clipboard, undo and IME as
+      editing behaviour waived by the owner on 2026-09-29): caret movement, selection, clipboard, undo/redo,
       invalid numeric input and blur/Enter validation. Verify editing shortcuts neither
       navigate the plot nor get swallowed by plot interceptors. IME is not exercised
       in this scope and is recorded as such, not as a pass.
-- [ ] Native frame matrix on Linux: dark/light, narrow/wide, display scale,
+- [x] Native frame matrix on Linux (#127): dark/light, narrow/wide, display scale,
       restore/maximize, fullscreen, supported tiling, move/resize edges/corners,
       title-bar controls, native dialogs and file opening.
-- [ ] Both plot orientations, grid/scale toggles, start/loaded states, progressive
+- [x] Both plot orientations, grid/scale toggles, start/loaded states, progressive
       updates, the fixed minimap and its boundary in both orientations (#132),
       settings preview/cancel and file replacement.
-- [ ] Compare representative current-release resize/navigation responsiveness and
+- [x] Compare representative current-release resize/navigation responsiveness and
       texture behavior with the baseline; investigate regressions rather than attributing
       them to extraction. No extra transforms or retained image backlog on resize.
-- [ ] Record exact build, platform and exercised cases. No unit-test or CI-build result
+      (Texture behaviour verified in #128, G1. The responsiveness comparison against
+      `c176ad2` was waived by the owner on 2026-09-29; no stage showed a perceived
+      regression.)
+- [x] Record exact build, platform and exercised cases. No unit-test or CI-build result
       substitutes for native event verification, and `Not exercised` remains outstanding
       coverage rather than success.
 - [ ] Final independent review clean, review conversations resolved and `ci/full`
