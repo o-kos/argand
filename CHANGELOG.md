@@ -21,7 +21,7 @@ promise applies to.
 
 - The application menu now covers the window beneath it while it is open, so the click that dismisses it no longer reaches the plot or the title bar, and a wheel over the window behind it no longer reaches them either.
 
-- The waveform minimap now has a fixed size of 3 rem: its height above the spectrogram, or its width beside it in vertical orientation. Its boundary with the spectrogram can no longer be dragged, and a size saved by an earlier version is ignored.
+- The waveform minimap now has a fixed size of 4 rem, up from the former 3-rem default: its height above the spectrogram, or its width beside it in vertical orientation. Its boundary with the spectrogram can no longer be dragged, and a size saved by an earlier version is ignored.
 
 ### Fixed
 

@@ -560,8 +560,8 @@ This mode is optional, not an automatic speed optimization. See
 limitations and proposed automatic planning.
 
 The title is centred between the window edges. Normal client-decorated windows
-have subtly rounded corners. The waveform is always 3 rem
-(normally 48 logical pixels) high, or wide in vertical orientation, with a subtle separator ending at the waveform’s right edge. Ruler borders match their tick marks; the frequency border joins the separator. The boundary
+have subtly rounded corners. The waveform is always 4 rem
+(normally 64 logical pixels) high, or wide in vertical orientation, with a subtle separator ending at the waveform’s right edge. Ruler borders match their tick marks; the frequency border joins the separator. The boundary
 does not move, and a size saved by an earlier version is ignored.
 Real and I/Q captures use one merged min/max trace, exactly as `aspec` does,
 without grid lines, a zero-axis line, a legend or an amplitude caption. The older `panels.waveform_fraction`

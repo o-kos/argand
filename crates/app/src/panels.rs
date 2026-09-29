@@ -1,8 +1,8 @@
 //! Toolkit-independent vertical panel layout.
 
-/// The minimap's size across the panel, 3 rem on device pixels, never more than the panel holds.
+/// The minimap's size across the panel, 4 rem on device pixels, never more than the panel holds.
 pub fn waveform_height(total: f32, rem: f32, scale: f32) -> f32 {
-    let height = (3.0 * rem).min(total.max(0.0));
+    let height = (4.0 * rem).min(total.max(0.0));
     (height * scale).round() / scale
 }
 
@@ -12,9 +12,9 @@ mod tests {
 
     #[test]
     fn the_minimap_follows_the_font_and_not_the_window() {
-        assert_eq!(waveform_height(600.0, 16.0, 1.0), 48.0);
-        assert_eq!(waveform_height(800.0, 16.0, 1.0), 48.0);
-        assert_eq!(waveform_height(600.0, 20.0, 1.0), 60.0);
+        assert_eq!(waveform_height(600.0, 16.0, 1.0), 64.0);
+        assert_eq!(waveform_height(800.0, 16.0, 1.0), 64.0);
+        assert_eq!(waveform_height(600.0, 20.0, 1.0), 80.0);
     }
 
     #[test]

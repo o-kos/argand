@@ -15,9 +15,10 @@ pointer move, a `PlotIntent::WaveformFraction` and a persisted
 `Session::waveform_fraction`. The Issue asked to replace it with the standard
 `ResizablePanelGroup`.
 
-The owner decided on 2026-09-28 that the minimap is not resizable at all. It keeps
-the size it has by default today, 3 rem (48 logical pixels with the default font):
-its height in horizontal orientation and its width in vertical orientation. Removing the control is the maximum reduction of custom
+The owner decided on 2026-09-28 that the minimap is not resizable at all, and after
+trying the former 3-rem default chose 4 rem (64 logical pixels with the default font)
+on 2026-09-29: its height in horizontal orientation and its width in vertical
+orientation. Removing the control is the maximum reduction of custom
 interaction the inventory asks for, so no standard replacement is needed.
 
 Boundaries: the minimap's drawing, navigation, the 1-pixel separator, the spectrum
@@ -45,7 +46,8 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 
 ## Decisions
 
-- **The minimap is always 3 rem across**, high or wide by orientation, rounded to device pixels as today.
+- **The minimap is always 4 rem across**, high or wide by orientation, rounded to
+  device pixels as today.
   `panels::waveform_height` loses its fraction parameter.
 - **Delete the splitter:** `PlotView::splitter`, `drag_splitter`,
   `splitter_dragging` and every check of it, `PlotIntent::WaveformFraction` and its
@@ -65,10 +67,10 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 ## Implementation steps
 
 - [x] Remove the splitter control, its drag state, intent and handler.
-- [x] Fix the minimap at 3 rem in `panels.rs` and its callers; update its tests.
+- [x] Fix the minimap at 4 rem in `panels.rs` and its callers; update its tests.
 - [x] Remove `Session::waveform_fraction`; test that an old session carrying it loads.
 - [x] Update AGENTS.md, the parent inventory row and phase-5 item, and CHANGELOG.
-- [ ] Complete validation.
+- [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
@@ -76,8 +78,8 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Native check on Linux (owner): both orientations, the minimap at 3 rem with a
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Native check on Linux (owner): both orientations, the minimap at 4 rem with a
       session that had an adjusted split, no resize cursor on the boundary, a press
       on the boundary behaves as the minimap or spectrum beneath it, window resize
       keeps the minimap height.
@@ -97,6 +99,9 @@ Round 2 added two accepted items: the README still mentioned dragging the panel
 separator in its redraw paragraph, and several texts said the minimap is 3 rem
 high in both orientations where vertical orientation fixes its width. Both are
 fixed.
+
+Round 3 found no substantive issue. The owner then tried 4 rem natively and
+accepted it; the constant, its tests and every text that named 3 rem changed with it.
 
 ## Post-completion
 
