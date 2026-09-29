@@ -10,18 +10,31 @@ history stays in [126-compatibility](126-compatibility/).
 
 ## Reproducing the audit
 
-From the repository root:
+From the repository root. `PAT` names every render and input entry point plus the
+test-module marker, so the `awk` pass can drop test scaffolding without a second
+search:
 
 ```sh
-rg -n 'impl Render for|impl gpui_kit::Render for' crates/app/src
-rg -n 'on_mouse_[a-z_]*|on_scroll_wheel|on_key_[a-z_]*|on_action|on_drag[a-z_]*|intercept_keystrokes|observe_keystrokes|on_click|on_hover|on_double_click|on_modifiers_changed|on_drop|on_release|observe_release|observe_window_[a-z_]*|on_mouse_event|\.context_menu\(|on_open_change|\.tooltip\(' crates/app/src
+PAT='impl Render for|impl gpui_kit::Render for|on_mouse_[a-z_]*|on_scroll_wheel|on_key_[a-z_]*|on_action|on_drag[a-z_]*|intercept_keystrokes|observe_keystrokes|on_click|on_hover|on_double_click|on_modifiers_changed|on_drop|on_release|observe_release|observe_window_[a-z_]*|on_mouse_event|\.context_menu\(|on_open_change|\.tooltip\(|#\[cfg\(test\)\]'
+
+rg -n --no-heading "$PAT" crates/app/src | awk -F: '
+  { if (test[$1]) next; if ($0 ~ /#\[cfg\(test\)\]/) { test[$1] = 1; next } print }'
 ```
 
-The first search lists the render entry points; the second lists every explicit input
-handler, both element extension methods and window-level registrations. Handlers inside a
-`#[cfg(test)]` module are test scaffolding and are not listed. Toolkit-neutral models
-(`navigation`, `frequency`, `panels`, `time_ruler`, `numbers`, `session`, `settings`) name
-no toolkit type and are not entry points.
+That command returns 101 entry points at this revision. The frame's own render
+method is not an `impl Render` block and is found separately:
+
+```sh
+rg -n 'pub fn render' crates/app/src
+```
+
+`\.tooltip\(` covers both the element method and `interactivity().tooltip(`,
+which is why the control hints in I35 appear alongside the content hints in I19.
+One production hit is deliberately absent: `hints.rs:471` builds the passive hint
+inside `#[cfg(test)] mod tests` and is scaffolding, not an entry point.
+
+Toolkit-neutral models (`navigation`, `frequency`, `panels`, `time_ruler`,
+`numbers`, `session`, `settings`) name no toolkit type and are not entry points.
 
 `file:line` below is the position after the fixture removal, which is the position these
 commits leave behind.
@@ -71,8 +84,12 @@ commits leave behind.
 | I16 | `navigation_ui.rs:917` | `.context_menu` on the time ruler, which builds a stock `PopupMenu` | R8 | Retained |
 | I17 | `hints.rs:157` | The pinned hint's `Popover` open change, which is how the hint opens and closes | R9 | Retained |
 | I18 | `hints.rs:173` | `Cancel` inside the pinned hint's own key context, which closes it and asks for a revert | R9 | Retained |
-| I19 | `settings_ui.rs:283`, `settings_ui.rs:328`, `settings_ui.rs:410`, `plot_ui.rs:289` | Passive `Tooltip` metadata, range, shortcut and unit hints | R9 | Retained |
+| I19 | `settings_ui.rs:283`, `settings_ui.rs:328`, `settings_ui.rs:410`, `plot_ui.rs:289` | Passive `Tooltip` metadata, range, shortcut and unit hints over content | R9 | Retained |
 | I20 | `settings_ui.rs:433` | The analysis summary's hover, which starts the pinned hint's open delay | R9 | Retained |
+| I35 | `app_menu_ui.rs:383` | The application button's hint, which yields to `NoTooltip` while the menu is open | R4, R9 | Retained |
+| I36 | `app_menu_ui.rs:496`, `app_menu_ui.rs:528` | The orientation segment's and the grid toggle's framed shortcut hints | R6, R9 | Retained |
+| I37 | `plot_ui.rs:568` | A zoom half's framed shortcut hint, naming the axis and its binding | R3, R9 | Retained |
+| I38 | `shell.rs:1298`, `shell.rs:1328` | The start-page recent rows' and the chooser's hints, the rows carrying their digit binding | R6, R9 | Retained |
 
 ### Toolbar, status bar and start page
 
@@ -296,6 +313,13 @@ dismissal is a native row: F3 and P1.
 **Retained, and already standard.** Passive hints are the stock `Tooltip`; the pinned hint
 is the stock `Popover`; keycaps are `Kbd` with a shared text refinement and a measured
 width (`shortcuts.rs`). `hints.rs` centralizes the surface contracts, not the controls.
+
+Every passive hint registration in the production tree is I19 for the hints over content
+and I35 to I38 for the hints attached to a control: the application button, the
+orientation segment, the grid toggle, a zoom half, a start-page recent row and the
+chooser. Five of the six go through `shortcut_tooltip`, so they carry the same framed
+keycap as the status bar, and the application button's is the one `NoTooltip` stands in
+for.
 
 Verified limitations, both already met in code:
 
