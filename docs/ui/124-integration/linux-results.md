@@ -11,7 +11,7 @@ example from #126 (never part of the binary), `chrome` moving from a one-module
 library into the binary with the same code, the removal of `Frame::content_bounds`
 (unused since #131), and a headless test. The integrated product is therefore the
 sum of the stages the owner already verified natively, each on the release build of its final revision
-on Ubuntu (GNOME, Wayland). The owner decided on 2026-09-29 not to repeat the matrix.
+on Ubuntu (Wayland). The owner decided on 2026-09-29 not to repeat the matrix.
 
 ## Evidence
 
@@ -31,9 +31,9 @@ on Ubuntu (GNOME, Wayland). The owner decided on 2026-09-29 not to repeat the ma
 | G1 | Progressive updates, resize, deep zoom and orientation leave no stale image or upload backlog, including a file opened mid-flight | #128 (PR #143) |
 | S1 (settings) | Settings preview then Cancel restores view, frequency and labels; accept persists across a restart | #127 (PR #139), #128 (PR #143) |
 | S1 (file replacement) | Opening another file while old frames are in flight replaces the picture cleanly | #128 (PR #143, G1) |
-| Toolbar and zoom pairs | Standard buttons, states, both orientations, both themes | #130 (PR #157, per-case table) |
-| Application menu | Stock menu, keycaps, recent rows, placement | #131 (PR #160) |
-| Minimap | Fixed size, no splitter, `minimap_size` in both units | #132 (PR #162) |
+| Toolbar and zoom pairs | Standard buttons and their states, both orientations, as the PR #157 per-case table records them; themes are not recorded there | #130 (PR #157) |
+| Application menu | Stock menu, keycaps, recent rows, placement; accepted by the owner without per-case rows | #131 (PR #160) |
+| Minimap | Fixed size, no splitter, the default and a configured `minimap_size` natively; both units by tests | #132 (PR #162) |
 
 ## Not exercised
 

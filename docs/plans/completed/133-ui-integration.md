@@ -144,6 +144,18 @@ architecture links in the completed #126 and #128 plans are fixed by moving this
 and the parent plan to `docs/plans/completed/`, with every link to either plan
 updated and no broken relative link left in the documentation.
 
+## Review round 3
+
+The last round found three items, all accepted. The R1 exception in the inventory
+and the parent table rested partly on two claims the source does not support: the
+stock border does guard expanded windows (every edge is tiled on Wayland when
+maximized or fullscreen), and the stock title bar does zoom on a bare-title double
+click. Both claims are removed; the exception keeps its verified grounds, the
+`window_bounds()` geometry and the private window controls whose maximize button
+zooms on every click. The evidence map no longer attributes GNOME, both themes or
+both `minimap_size` units to native records that do not state them. The PR
+description was brought in line with the evidence map and the moved plan path.
+
 ## Post-completion
 
 - Close #124 with the evidence map.

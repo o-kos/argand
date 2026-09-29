@@ -153,17 +153,18 @@ Verified limitations in the locked sources, which are why the frame and its cont
   `window.viewport_size()`. The production frame measures `Frame::for_window` against
   `window.viewport_size()` (`chrome.rs:88`), which is what the owner accepted and what the
   #126 checkpoint found displaced in the stock frame.
-- `gpui-component-0.6.6/src/window_border.rs:196` to `:203` starts a resize from a single
-  `on_mouse_down` on the whole backdrop, and `resize_edge` at `:426` to `:441` is derived
-  from `window_decorations()`' `tiling` alone. There is no `is_maximized()` or
-  `is_fullscreen()` test, so an expanded window keeps resize candidates. The production
-  frame answers both and returns no regions at all
-  (`chrome.rs:94` to `:103`, `expanded_windows_have_no_resize_regions_or_corners`).
+- Not a limitation: `window_border.rs:188` to `:203` starts no resize when every edge is
+  tiled, and the Wayland backend reports a maximized or fullscreen window as tiled on
+  every edge (`gpui-pre-linux-0.3.6/src/linux/wayland/window.rs:1240` to `:1241`). The
+  production frame keeps its own guard for expanded windows (`chrome.rs:94` to `:103`,
+  `expanded_windows_have_no_resize_regions_or_corners`), which is equivalent there.
 - `WindowControls` (`gpui-component-0.6.6/src/title_bar.rs:248`) and `ControlIcon` (`:111`)
   are private types, and `TitleBar::render` appends `WindowControls` unconditionally
-  (`:400`). There is no supported way to suppress them, and the Linux branch of
-  `ControlIcon::render` (`:232`) calls `window.zoom_window()` for both `Maximize` and
-  `Restore`, so the accepted maximize double-click cannot be expressed through it.
+  (`:400`). There is no supported way to replace or restyle them. The Linux branch of
+  `ControlIcon::render` (`:232`) calls `window.zoom_window()` on every click of
+  `Maximize` and `Restore`, so a double click on that button toggles twice, which is the
+  #126 finding the retained controls answer. The bare title's double click is not the
+  issue: `TitleBar` zooms on it (`:344` to `:346`), as the production bar does.
 
 Composition is insufficient because the retained behaviour lives in the geometry the stock
 border computes and in a control subtree the stock bar will not surrender; there is no
