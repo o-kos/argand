@@ -638,10 +638,15 @@ mod standard_input_tests {
 
     type Handle = WindowHandle<Root>;
 
+    /// The real editor's context, so `init` binds its escape to `CloseSettings`.
+    const CONTEXT: &str = "AnalysisEditor";
+
     /// A window's worth of standard controls, with nothing of Argand's own.
     struct Form {
         number: Entity<InputState>,
         select: Entity<SelectState<Vec<String>>>,
+        /// How often the outer `CloseSettings` context saw an escape.
+        outer_escape: usize,
     }
 
     impl Form {
@@ -658,17 +663,25 @@ mod standard_input_tests {
                     cx,
                 )
             });
-            Self { number, select }
+            Self {
+                number,
+                select,
+                outer_escape: 0,
+            }
         }
     }
 
     impl Render for Form {
-        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             div()
                 .flex()
                 .flex_col()
                 .gap_4()
                 .p_4()
+                .key_context(CONTEXT)
+                .on_action(cx.listener(|form, _: &CloseSettings, _, _| {
+                    form.outer_escape += 1;
+                }))
                 .child(NumberInput::new(&self.number))
                 .child(Select::new(&self.select).id("select").w_full())
         }
@@ -725,6 +738,11 @@ mod standard_input_tests {
         with_form(cx, handle, |form, _, cx| {
             form.read(cx).number.read(cx).value().to_string()
         })
+    }
+
+    /// How many escapes reached the outer context instead of the select.
+    fn outer_escape(cx: &mut TestAppContext, handle: Handle) -> usize {
+        with_form(cx, handle, |form, _, cx| form.read(cx).outer_escape)
     }
 
     /// Whether the window is still open and the keyboard is on this handle.
@@ -789,6 +807,17 @@ mod standard_input_tests {
             number(cx, handle),
             "4096",
             "escape closed the list, not the window"
+        );
+        assert_eq!(
+            outer_escape(cx, handle),
+            0,
+            "the list consumed its escape instead of letting it reach the outer context"
+        );
+        press(cx, handle, "escape");
+        assert_eq!(
+            outer_escape(cx, handle),
+            1,
+            "a second escape, with the list shut, reaches the outer context"
         );
 
         open_list(cx, handle);
