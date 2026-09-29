@@ -98,8 +98,8 @@ pub fn column_texture(
     }
     let mut strip = SpectrogramImage::new(1, image.height);
     for row in 0..image.height {
-        let offset = (row * image.width + column) * 4;
-        strip.rgba[row * 4..row * 4 + 4].copy_from_slice(image.rgba.get(offset..offset + 4)?);
+        let pixel = image.get(column, row)?;
+        strip.rgba[row * CHANNELS..(row + 1) * CHANNELS].copy_from_slice(&pixel);
     }
     texture(&strip, orientation)
 }

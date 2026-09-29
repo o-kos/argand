@@ -58,13 +58,20 @@ sized:
 Other code addresses `image.rgba` directly rather than through the two accessors:
 `crates/app/src/spectrogram.rs` (`padded_bgra`, `column_texture`, `bgra`) and
 `crates/dsp/src/overview.rs` (`par_chunks_mut`). They are outside this Issue, which
-is about `get` and `put`, and saying more about them than that would be wrong: they
-are not all checked the same way. `padded_bgra`, `bgra` and `par_chunks_mut` work a
-whole row or the whole buffer at a time and rely on the length, while
-`column_texture` computes `(row * image.width + column) * 4` with a plain
-multiplication and relies on the declared shape, so it assumes the same invariant
-this Issue stops assuming and does not check it. That is a separate change in the
-application crate, not a claim this branch makes about a site it did not touch.
+is about `get` and `put`. `padded_bgra` and `bgra` settle the buffer length against
+the shape with `checked_mul` before working any offset out, and `par_chunks_mut`
+walks the whole buffer, so none of them depends on an unchecked product.
+
+`column_texture` was the one that computed `(row * image.width + column) * 4` with a
+plain multiplication. That path was not a reachable defect: with a buffer that
+matches the declared shape, `row < height` and `column < width` leave the slice in
+range on every iteration, and the multiplication could only overflow for a shape
+whose buffer cannot be allocated, which the strip allocation in the same function
+refuses first. It was consolidated onto `get` anyway, because the accessor already
+answers the same question and the hand-written product is a trap for the next
+caller. The test that came with it pins the contract, not a regression: a column of
+an image whose buffer is short of its shape is refused, which the old slice check
+also did.
 
 Nothing in the repository can reach either failing case today, which is why this
 is a latent trap in a public view model rather than a defect in current

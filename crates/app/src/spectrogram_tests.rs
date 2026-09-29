@@ -88,6 +88,21 @@ fn deep_zoom_column_keeps_every_frequency_row_and_channel_order() {
 }
 
 #[test]
+fn deep_zoom_column_refuses_an_image_whose_buffer_is_short_of_its_shape() {
+    // The declared shape says two columns of two rows, but the buffer holds
+    // only the first, so the column is refused rather than read past the end.
+    let mut source = SpectrogramImage::new(2, 2);
+    source.rgba = vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255];
+    source.rgba.truncate(8);
+    assert_eq!(source.shape(), None, "the buffer is short of the shape");
+    assert!(
+        column_texture(&source, 0, crate::orientation::Mode::Horizontal).is_none(),
+        "a column is refused when the image does not hold the shape it declares"
+    );
+    assert!(column_texture(&source, 2, crate::orientation::Mode::Horizontal).is_none());
+}
+
+#[test]
 fn texture_padding_replicates_edges_without_changing_the_interior() {
     let texture = texture(&two_pixels(), crate::orientation::Mode::Horizontal).unwrap();
     assert_eq!(u32::from(texture.size(0).width), 4);
