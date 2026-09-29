@@ -18,7 +18,7 @@ on Ubuntu (GNOME, Wayland). The owner decided on 2026-09-29 not to repeat the ma
 | Case | What | Verified in |
 | --- | --- | --- |
 | R1 | One Root per window, one Argand frame, no second border or shadow | #127 ([plan](../../plans/completed/127-borderless-root.md), PR #139) |
-| R2 | Edge and corner resize, maximize, restore, fullscreen, tiling, no stale resize zones, dark and light | #127 (PR #139) |
+| R2 | Edge and corner resize, maximize, restore, fullscreen, tiling, no stale resize zones | #127 (PR #139) |
 | R3 | Toolbar controls act once without moving or maximizing; bare title drags and double-click maximizes | #127 (PR #139); toolbar controls again in #130 (PR #157) and #131 (PR #160) |
 | F1 | Each navigation binding, both orientations, one view change and one analysis generation | #128 ([plan](../../plans/completed/128-plot-view.md), PR #143) |
 | F2 | Settings editor inputs, ruler popup and application menu receive their keys, no plot navigation behind; Tab and Shift+Tab never land on toolbar or status buttons | #128 (PR #143) |
