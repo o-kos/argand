@@ -22,7 +22,7 @@ pub(super) struct PlotSnapshot {
     pub held: Option<crate::navigation::PictureView>,
     pub first_picture: Option<(Instant, Arc<AtomicBool>)>,
     pub minimap: waveform::Panel,
-    pub fraction: Option<f32>,
+    pub minimap_size: crate::panels::MinimapSize,
     pub time_scheme: Option<argand_core::axis::TickScheme>,
     pub frequency_scheme: Option<argand_core::axis::TickScheme>,
     pub frequency: crate::frequency::View,
@@ -55,7 +55,6 @@ pub(super) enum PlotIntent {
         time: Option<crate::navigation::View>,
         frequency: Option<crate::frequency::View>,
     },
-    WaveformFraction(f32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -81,7 +80,6 @@ pub(super) struct PlotView {
     pub(super) pointer: Option<gpui_kit::Point<Pixels>>,
     pub(super) pan: Option<Pan>,
     pub(super) frequency_pan: Option<(gpui_kit::Point<Pixels>, crate::frequency::View)>,
-    pub(super) splitter_dragging: bool,
     pub(super) geometry: Option<PlotGeometry>,
     pub(super) panel_bounds: Option<Bounds<Pixels>>,
     pub(super) measured: Option<PlotSize>,
@@ -106,7 +104,6 @@ impl PlotView {
             pointer: None,
             pan: None,
             frequency_pan: None,
-            splitter_dragging: false,
             geometry: None,
             panel_bounds: None,
             measured: None,
@@ -119,7 +116,7 @@ impl PlotView {
     }
 
     pub(super) fn dragging(&self) -> bool {
-        self.pan.is_some() || self.frequency_pan.is_some() || self.splitter_dragging
+        self.pan.is_some() || self.frequency_pan.is_some()
     }
 
     /// The pointer over the plot and the layout it was measured against.
@@ -151,7 +148,6 @@ impl PlotView {
         if self.dragging() {
             self.pan = None;
             self.frequency_pan = None;
-            self.splitter_dragging = false;
             cx.notify();
         }
     }
@@ -197,7 +193,6 @@ impl PlotView {
         self.gutter_floor = 0.;
         self.pan = None;
         self.frequency_pan = None;
-        self.splitter_dragging = false;
         // The old layout serves until the next frame measures the new one, so the cursor and readout do not blink.
         cx.notify();
     }
@@ -294,7 +289,7 @@ impl PlotView {
 }
 
 impl Render for PlotView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(snapshot) = self.snapshot.clone() else {
             return div().flex_1().min_h_0().into_any_element();
         };
@@ -314,9 +309,7 @@ impl Render for PlotView {
             .cursor(cursor)
             .on_scroll_wheel(cx.listener(Self::wheel))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::begin_pan))
-            .on_mouse_move(
-                cx.listener(|plot, event, window, cx| plot.pointer_moved(event, window, cx)),
-            )
+            .on_mouse_move(cx.listener(|plot, event, _, cx| plot.pointer_moved(event, cx)))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_drags))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_drags))
             // Keys must not end the hover, and a plot uncovered under a still pointer takes it up.
@@ -332,7 +325,6 @@ impl Render for PlotView {
             .min_h_0()
             .relative()
             .child(self.surface(&snapshot, cx))
-            .child(self.splitter(&snapshot, window, cx))
             .children(self.time_context_menu(&snapshot, cx))
             .children(
                 self.panel_bounds
@@ -359,7 +351,7 @@ fn drag_tracker(plot: WeakEntity<PlotView>) -> impl IntoElement {
             let plot = plot.clone();
             window.on_mouse_event(move |event: &gpui_kit::MouseMoveEvent, phase, window, cx| {
                 if phase == gpui_kit::DispatchPhase::Bubble && !hitbox.is_hovered(window) {
-                    let _ = plot.update(cx, |plot, cx| plot.pointer_moved(event, window, cx));
+                    let _ = plot.update(cx, |plot, cx| plot.pointer_moved(event, cx));
                 }
             });
         },
@@ -391,84 +383,6 @@ fn symbol_shortcuts(
             cx.stop_propagation();
         }
     })
-}
-
-impl PlotView {
-    fn splitter(
-        &self,
-        snapshot: &PlotSnapshot,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let orientation = snapshot.extents.orientation;
-        let total = self.panel_bounds.map_or(0.0, |bounds| {
-            f32::from(orientation.axes(bounds.size.width, bounds.size.height).1)
-        });
-        let height = panels::waveform_height(
-            total,
-            f32::from(cx.theme().font_size),
-            snapshot.fraction,
-            window.scale_factor(),
-        );
-        let divider = div().id("waveform-splitter").absolute();
-        let divider = if orientation.vertical() {
-            divider
-                .top_0()
-                .bottom_0()
-                .left(px((height - 3.).max(0.)))
-                .w(px(5.))
-                .cursor(gpui_kit::CursorStyle::ResizeLeftRight)
-        } else {
-            divider
-                .left_0()
-                .right_0()
-                .top(px((height - 3.).max(0.)))
-                .h(px(5.))
-                .cursor(gpui_kit::CursorStyle::ResizeUpDown)
-        };
-        divider.on_mouse_down(
-            MouseButton::Left,
-            cx.listener(|plot, _, _, cx| {
-                plot.splitter_dragging = true;
-                cx.stop_propagation();
-                cx.notify();
-            }),
-        )
-    }
-
-    pub(super) fn drag_splitter(
-        &mut self,
-        event: &gpui_kit::MouseMoveEvent,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.splitter_dragging {
-            return;
-        }
-        if !event.dragging() {
-            self.splitter_dragging = false;
-            cx.notify();
-            return;
-        }
-        let (Some(bounds), Some(snapshot)) = (self.panel_bounds, &self.snapshot) else {
-            return;
-        };
-        let orientation = snapshot.extents.orientation;
-        let total = f32::from(orientation.axes(bounds.size.width, bounds.size.height).1);
-        if total <= 0.0 {
-            return;
-        }
-        let delta = event.position - bounds.origin;
-        let requested = f32::from(orientation.axes(delta.x, delta.y).1) / total;
-        let height = panels::waveform_height(
-            total,
-            f32::from(cx.theme().font_size),
-            Some(requested.clamp(0.0, 1.0)),
-            window.scale_factor(),
-        );
-        cx.emit(PlotIntent::WaveformFraction(height / total));
-        cx.notify();
-    }
 }
 
 #[cfg(test)]
@@ -550,7 +464,7 @@ mod tests {
                     muted: ink,
                 },
             },
-            fraction: None,
+            minimap_size: crate::panels::MinimapSize::default(),
             time_scheme: None,
             frequency_scheme: None,
             frequency: crate::frequency::View::default(),

@@ -280,9 +280,6 @@ pub struct Session {
     pub time_ruler: crate::time_ruler::Mode,
     #[serde(default)]
     pub analysis_settings: Option<crate::settings::Settings>,
-    /// User-adjusted waveform share; absence preserves the 3-rem default.
-    #[serde(default)]
-    pub waveform_fraction: Option<f32>,
     /// Layout of this file, checked before anything in it is believed.
     pub version: u32,
     pub geometry: Option<Geometry>,
@@ -309,7 +306,6 @@ impl Default for Session {
             orientation: crate::orientation::Mode::default(),
             time_ruler: crate::time_ruler::Mode::default(),
             analysis_settings: None,
-            waveform_fraction: None,
             geometry: None,
             window_state: WindowState::default(),
             recent: Vec::new(),
@@ -420,9 +416,6 @@ impl Session {
         match toml::from_str::<Self>(text) {
             Ok(mut session) => {
                 session.version = VERSION;
-                session.waveform_fraction = session
-                    .waveform_fraction
-                    .filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
                 Some(session)
             }
             Err(error) => {

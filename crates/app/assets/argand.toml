@@ -3,8 +3,8 @@
 # A file beside the executable takes priority over the user configuration.
 # Argand reads this file without rewriting it. Missing keys use built-in defaults.
 # Numeric values in TOML use a decimal point, regardless of number_format.
-# Saved analysis settings override their initial values below. Window geometry,
-# the minimap split and time scale format belong to session.toml, not this file.
+# Saved analysis settings override their initial values below. Window geometry
+# and time scale format belong to session.toml, not this file.
 
 # Window appearance: "system" follows OS light/dark changes, or use "dark" / "light".
 theme = "system"
@@ -49,6 +49,13 @@ batch_frames = 1024
 affinity = "none"
 
 [panels]
+# Size of the waveform minimap: its height above the spectrogram, or its width
+# beside it in vertical orientation. Write a number and a unit inside quotes:
+#   "3 rem"  -- in interface font sizes, so it grows with the font (1 to 20 rem)
+#   "48 px"  -- in logical pixels, independent of the font (16 to 320 px)
+# The quotes are required: TOML reads 3 rem without them as an error. A space
+# between the number and the unit is optional. An unreadable or out-of-range
+# value is logged and replaced by "3 rem"; the rest of this file still applies.
+minimap_size = "3 rem"
 # Legacy compatibility key, accepted from 0.05 to 0.9 but no longer used for layout.
-# The minimap starts at 3 rem; dragging its splitter saves the size in session.toml.
 waveform_fraction = 0.2

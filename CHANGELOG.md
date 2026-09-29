@@ -21,6 +21,8 @@ promise applies to.
 
 - The application menu now covers the window beneath it while it is open, so the click that dismisses it no longer reaches the plot or the title bar, and a wheel over the window behind it no longer reaches them either.
 
+- The waveform minimap now has a fixed size, 3 rem by default: its height above the spectrogram, or its width beside it in vertical orientation. Its boundary with the spectrogram can no longer be dragged, and a size saved by an earlier version is ignored.
+
 ### Fixed
 
 - The crosshair, cursor readout and Alt guides appear as soon as a file opens or a hint or menu closes under a resting pointer, without moving the mouse first.
@@ -97,6 +99,8 @@ promise applies to.
 - Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
 
 ### Added
+
+- Set the waveform minimap's size with `minimap_size` in the `[panels]` section of `argand.toml`, in font-relative or logical pixels, such as `"4 rem"` or `"64 px"`, written in quotes.
 
 - Translucent `[+|-]` zoom pairs in the spectrogram's corners, each beside the ruler of the axis it zooms in either orientation, with rounded corners; the cursor readout and Alt guides pause over them; View → Show scale controls (Ctrl+U) hides or shows them. Zoom tooltips use uniform key names: Ctrl+Plus, Ctrl+Shift+Plus, Ctrl+Minus, Ctrl+Shift+Minus.
 - File → Settings opens the existing analysis settings editor.

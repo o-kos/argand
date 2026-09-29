@@ -514,7 +514,7 @@ visible across palettes. Release Alt to hide the guides.
 File min/max values stay file-wide; they become available after the full-capture
 waveform scan, even if navigation interrupts the initial spectral analysis.
 
-Resizing the window or dragging the panel separator redraws from retained analysis
+Resizing the window redraws from retained analysis
 without rereading the file or restarting FFT refinement. The GUI keeps up to 4096
 time cells and 2048 frequency cells (native FFT bins whenever they fit), plus a
 separate min/max envelope of up to 65536 sample cells. Every FFT frame still
@@ -560,12 +560,13 @@ This mode is optional, not an automatic speed optimization. See
 limitations and proposed automatic planning.
 
 The title is centred between the window edges. Normal client-decorated windows
-have subtly rounded corners. The waveform starts at 3 rem
-(normally 48 logical pixels) high, with a subtle separator ending at the waveform’s right edge. Ruler borders match their tick marks; the frequency border joins the separator. Drag the boundary
-to change the panel proportion; the application remembers it between runs.
+have subtly rounded corners. The waveform is 3 rem
+(normally 48 logical pixels) high by default, or wide in vertical orientation; set
+`minimap_size` in the `[panels]` section of `argand.toml` to another size, in quotes,
+such as `"4 rem"` or `"64 px"`. It has a subtle separator ending at the waveform’s right edge. Ruler borders match their tick marks; the frequency border joins the separator. The boundary
+does not move, and a size saved by an earlier version is ignored.
 Real and I/Q captures use one merged min/max trace, exactly as `aspec` does,
-without grid lines, a zero-axis line, a legend or an amplitude caption. Dragging stretches the existing view and
-rebins the cached view as the separator moves without restarting analysis. The older `panels.waveform_fraction`
+without grid lines, a zero-axis line, a legend or an amplitude caption. The older `panels.waveform_fraction`
 setting is still accepted so existing files load, but no longer sizes this strip.
 The spectral preview keeps its colour scale while refinement runs,
 then resolves them once at completion. Replacing an analysis cancels its remaining

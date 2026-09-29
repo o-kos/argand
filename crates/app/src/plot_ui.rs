@@ -41,7 +41,7 @@ impl Shell {
             held,
             first_picture,
             minimap: self.minimap_panel(cx),
-            fraction: self.session.waveform_fraction,
+            minimap_size: self.config.panels.minimap_size,
             time_scheme: self.time_scheme,
             frequency_scheme: self.frequency_scheme,
             frequency: self.frequency,
@@ -67,7 +67,7 @@ impl Shell {
                     .1,
             ),
             f32::from(window.rem_size()),
-            self.session.waveform_fraction,
+            self.config.panels.minimap_size,
             window.scale_factor(),
         );
         let (dx, dy) = self.session.orientation.axes(px(0.), px(height));
@@ -136,7 +136,7 @@ impl PlotView {
             held: held_view,
             first_picture,
             minimap,
-            fraction,
+            minimap_size,
             time_scheme,
             frequency_scheme,
             show_grid,
@@ -164,7 +164,7 @@ impl PlotView {
                 let height = panels::waveform_height(
                     f32::from(orientation.axes(bounds.size.width, bounds.size.height).1),
                     rem,
-                    fraction,
+                    minimap_size,
                     scale,
                 );
                 let (dx, dy) = orientation.axes(px(0.), px(height));
@@ -272,8 +272,7 @@ impl PlotView {
             .as_ref()
             .and_then(WeakEntity::upgrade)
             .is_some();
-        if self.pan.is_some() || self.frequency_pan.is_some() || self.splitter_dragging || menu_open
-        {
+        if self.pan.is_some() || self.frequency_pan.is_some() || menu_open {
             return None;
         }
         let hint = self.geometry?.unit_hints[index]?;
