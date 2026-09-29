@@ -696,6 +696,53 @@ fn shading_a_grid_that_does_not_cover_its_shape_draws_nothing() {
     assert!(image.rgba.chunks_exact(4).all(|p| p[3] == 255));
 }
 
+#[test]
+fn shading_stops_rather_than_writing_pixels_an_image_cannot_hold() {
+    let grid = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 16],
+        t0: 0.0,
+        t1: 1.0,
+        f0: -12_000.0,
+        f1: 12_000.0,
+    };
+    let shading = Shading {
+        colormap: Colormap::Grayscale,
+        db_min: -110.0,
+        db_max: 0.0,
+    };
+
+    // An image one column short would take the first three columns and drop
+    // the fourth on the floor, so nothing is shaded at all.
+    let mut short = SpectrogramImage::new(3, 4);
+    shade_columns(&grid, shading, &mut short, 0..grid.width);
+    assert!(
+        short.rgba.chunks_exact(4).all(|p| p[3] == 0),
+        "an image that does not cover the grid keeps every pixel untouched"
+    );
+
+    // An image one row short has the same fate.
+    let mut squat = SpectrogramImage::new(4, 3);
+    shade_columns(&grid, shading, &mut squat, 0..grid.width);
+    assert!(
+        squat.rgba.chunks_exact(4).all(|p| p[3] == 0),
+        "an image that does not cover the grid keeps every pixel untouched"
+    );
+
+    // An image larger than the grid still shades the part they share.
+    let mut larger = SpectrogramImage::new(6, 5);
+    shade_columns(&grid, shading, &mut larger, 0..grid.width);
+    let shaded = larger.rgba.chunks_exact(4).filter(|p| p[3] == 255).count();
+    assert_eq!(shaded, grid.width * grid.height);
+
+    // And a grid that does cover itself is unaffected, which is the case every
+    // caller actually takes.
+    let mut exact = SpectrogramImage::new(4, 4);
+    shade_columns(&grid, shading, &mut exact, 0..grid.width);
+    assert!(exact.rgba.chunks_exact(4).all(|p| p[3] == 255));
+}
+
 include!("progressive_tests.rs");
 
 #[path = "aggregation_tests.rs"]

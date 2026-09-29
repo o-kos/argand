@@ -18,8 +18,9 @@ any bounds test could see them, because `width` and `height` are public fields a
 caller sets.
 
 This change gives `SpectrogramImage` the contract its neighbours have: a
-`shape()` that settles whether the buffer covers the declared shape, a checked
-`row()` / `row_mut()` pair, and `get` / `put` answering `Option` on top of them.
+`shape()` that settles whether the buffer covers the declared shape, a private
+`pixel()` that works one pixel's byte range out with checked arithmetic, and
+`get` / `put` answering `Option` on top of them.
 Every existing caller's behaviour is unchanged: `shade` builds the buffer from a
 shape it has already settled and `shade_columns` indexes inside it, and the CLI's
 `blit` already range-checks the source coordinate before calling `get`.
