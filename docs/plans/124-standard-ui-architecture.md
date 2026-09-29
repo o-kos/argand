@@ -297,9 +297,12 @@ control within it still needs replacement or a separately accepted exception.
 
 ### 6. Integration and handoff
 
-- [ ] Update AGENTS current status from its pre-#124 description to implemented ownership,
+- [x] Update AGENTS current status from its pre-#124 description to implemented ownership,
       relevant documentation and user-visible changelog entries only for shipped changes.
-      (#133.)
+      (#133; "Current status" now describes the implemented `Root`, frame, `PlotView`,
+      overlay and standard-control ownership and names the retained exceptions. The
+      README's description of the application menu matches the stock one. The changelog
+      already carried the shipped changes, so nothing was added to it.)
 - [ ] Run the full validation below and external class-A review; resolve substantive
       findings within the repository's three-round limit.
 - [ ] Move this plan to `docs/plans/completed/` before final owner review, only when

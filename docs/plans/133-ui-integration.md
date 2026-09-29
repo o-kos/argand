@@ -111,7 +111,7 @@ Kilo:
       in-window `NumberInput` / `Select` test.
 - [x] Reconcile the parent plan: phases 1 and 2, Linux-only native scope, evidence
       links for each acceptance item.
-- [ ] Update AGENTS.md "Current status", README and CHANGELOG as decided.
+- [x] Update AGENTS.md "Current status", README and CHANGELOG as decided.
 - [ ] Full local gate.
 
 Claude and owner:
