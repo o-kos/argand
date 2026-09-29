@@ -1092,10 +1092,12 @@ fn blit(canvas: &mut RgbImage, rect: Rect, img: &SpectrogramImage, orientation: 
                 Orientation::Horizontal => (px, py),
                 Orientation::Vertical => (py, rect.w - 1 - px),
             };
-            if sx < 0 || sy < 0 || sx as usize >= img.width || sy as usize >= img.height {
+            if sx < 0 || sy < 0 {
                 continue;
             }
-            let [r, g, b, _] = img.get(sx as usize, sy as usize);
+            let Some([r, g, b, _]) = img.get(sx as usize, sy as usize) else {
+                continue;
+            };
             put(canvas, rect.x + px, rect.y + py, Rgb([r, g, b]));
         }
     }

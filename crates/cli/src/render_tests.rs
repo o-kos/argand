@@ -323,7 +323,9 @@ fn the_waterfall_lands_inside_its_panel_and_nowhere_else() {
 
     // The tone's row inside the panel, counted from the top of the image.
     let img = &a.spectrogram;
-    let brightest_row = (0..img.height).max_by_key(|&y| img.get(4, y)[0]).unwrap();
+    let brightest_row = (0..img.height)
+        .max_by_key(|&y| img.get(4, y).expect("a pixel inside the image")[0])
+        .unwrap();
     let y = rect.y as u32 + brightest_row as u32;
     let inside = canvas.get_pixel(rect.x as u32 + 4, y);
     assert!(inside.0[0] > 100, "tone should be bright: {inside:?}");

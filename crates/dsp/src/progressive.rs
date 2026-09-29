@@ -636,9 +636,12 @@ mod cache_tests {
         cache.shade(&grid, shading);
         assert_eq!(cache.image.rgba, shade(&grid, shading).rgba);
         for y in 0..2 {
-            assert_ne!(cache.image.get(0, y), before.get(0, y));
-            assert_eq!(cache.image.get(3, y), cache.image.get(0, y));
-            assert_eq!(cache.image.get(4, y), before.get(4, y));
+            let pixel = |image: &SpectrogramImage, x: usize| {
+                image.get(x, y).expect("a pixel inside the image")
+            };
+            assert_ne!(pixel(&cache.image, 0), pixel(&before, 0));
+            assert_eq!(pixel(&cache.image, 3), pixel(&cache.image, 0));
+            assert_eq!(pixel(&cache.image, 4), pixel(&before, 4));
         }
     }
 
