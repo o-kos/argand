@@ -49,6 +49,9 @@ batch_frames = 1024
 affinity = "none"
 
 [panels]
+# The waveform minimap's fixed height, or its width in vertical orientation.
+# A number with its unit, "rem" (follows the interface font, 1 to 20) or "px"
+# (logical pixels, 16 to 320), such as "4 rem" or "64 px".
+minimap_size = "4 rem"
 # Legacy compatibility key, accepted from 0.05 to 0.9 but no longer used for layout.
-# The minimap is always 4 rem high, or 4 rem wide in vertical orientation.
 waveform_fraction = 0.2

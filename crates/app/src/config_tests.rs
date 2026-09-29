@@ -1,4 +1,5 @@
 use super::*;
+use crate::panels::MinimapSize;
 use argand_dsp::AnalysisRequest;
 use argand_dsp::Window;
 
@@ -61,7 +62,7 @@ fn distributed_template_explicitly_lists_every_configuration_key() {
         ),
         ("stft", &["fft_size", "window"]),
         ("analysis", &["workers", "batch_frames", "affinity"]),
-        ("panels", &["waveform_fraction"]),
+        ("panels", &["minimap_size", "waveform_fraction"]),
     ];
     for &(section, keys) in sections {
         let table = if section.is_empty() {
@@ -366,4 +367,30 @@ fn aggregation_defaults_and_switches_without_changing_the_transform_or_waveform(
         assert_eq!(AnalysisRequest { reduce: default.reduce, ..request }, default);
     }
     assert!(toml::from_str::<Config>("aggregation = \"mean\"").is_err());
+}
+
+#[test]
+fn the_minimap_size_reads_either_unit() {
+    let dir = TempDir::new("minimap-size");
+    for (text, size) in [
+        ("[panels]\nminimap_size = \"3 rem\"\n", MinimapSize::Rem(3.0)),
+        ("[panels]\nminimap_size = \"64px\"\n", MinimapSize::Px(64.0)),
+        ("theme = \"light\"\n", MinimapSize::default()),
+    ] {
+        let path = dir.write("argand.toml", text);
+        let config = Config::load(std::slice::from_ref(&path));
+        assert_eq!(config.panels.minimap_size, size, "{text}");
+    }
+}
+
+#[test]
+fn an_unusable_minimap_size_falls_back_alone() {
+    let dir = TempDir::new("minimap-size-bad");
+    for size in ["\"4\"", "\"4 em\"", "\"0 rem\"", "\"1000 px\""] {
+        let text = format!("theme = \"light\"\n[panels]\nminimap_size = {size}\n");
+        let path = dir.write("argand.toml", &text);
+        let config = Config::load(std::slice::from_ref(&path));
+        assert_eq!(config.panels.minimap_size, MinimapSize::default(), "{text}");
+        assert_eq!(config.theme, Theme::Light, "the rest of {text} is kept");
+    }
 }

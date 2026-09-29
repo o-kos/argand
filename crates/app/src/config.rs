@@ -13,6 +13,7 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use crate::panels::MinimapSize;
 use argand_core::Colormap;
 use argand_dsp::{DynamicRange, Reduce, Window};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -77,8 +78,7 @@ pub struct Config {
     pub aggregation: Aggregation,
     pub stft: Stft,
     pub analysis: crate::execution::Settings,
-    /// Legacy panel proportions, accepted for configuration compatibility.
-    /// The waveform is always 4 rem across the axis it shares with the spectrum.
+    /// The minimap's fixed size and a legacy proportion kept for compatibility.
     pub panels: Panels,
 }
 
@@ -155,24 +155,43 @@ where
     text.parse().map_err(serde::de::Error::custom)
 }
 
-/// Legacy panel proportions retained so existing configuration files still load.
-/// They no longer size the waveform panel.
+/// The waveform minimap's size, and a legacy proportion kept so older files load.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Panels {
+    /// The minimap's fixed size across the panel, such as `4 rem` or `64 px`.
+    #[serde(deserialize_with = "minimap_size")]
+    pub minimap_size: MinimapSize,
     /// Former share of the content height reserved for the waveform.
     ///
     /// Bounded well inside `0..1`: a strip taking none of the window or all of
-    /// it is not a layout, it is a missing panel.
+    /// it is not a layout, it is a missing panel. It no longer sizes anything.
     pub waveform_fraction: f32,
 }
 
 impl Default for Panels {
     fn default() -> Self {
         Self {
+            minimap_size: MinimapSize::default(),
             waveform_fraction: 0.2,
         }
     }
+}
+
+/// The minimap size, which falls back to its default on its own when unusable.
+///
+/// A size nobody can read is one value in an otherwise good file, so it is
+/// replaced with a log line instead of discarding the whole configuration.
+fn minimap_size<'de, D>(deserializer: D) -> Result<MinimapSize, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let text = String::deserialize(deserializer)?;
+    Ok(text.parse().unwrap_or_else(|reason: String| {
+        let using = MinimapSize::default();
+        tracing::warn!(found = text, %using, reason, "unusable minimap_size");
+        using
+    }))
 }
 
 impl Config {

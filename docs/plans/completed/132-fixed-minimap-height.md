@@ -103,6 +103,20 @@ fixed.
 Round 3 found no substantive issue. The owner then tried 4 rem natively and
 accepted it; the constant, its tests and every text that named 3 rem changed with it.
 
+## Owner feedback 1 (2026-09-29)
+
+- [x] **The size is a configuration option.** The owner asked for the minimap size in
+      the configuration, with its unit written out. `[panels].minimap_size` in
+      `argand.toml` takes `"<number> rem"` (1 to 20, following the interface font)
+      or `"<number> px"` (16 to 320 logical pixels), with or without a space and in
+      any case, default `"4 rem"`. `panels::MinimapSize` parses and prints it and
+      converts it to logical pixels. An unusable value is logged and replaced by
+      the default alone, keeping the rest of the file, as the other repaired keys
+      do. The size reaches the plot through `PlotSnapshot::minimap_size`. There is
+      no settings-window control. Tests cover both units, spacing and case,
+      out-of-range, missing and unknown units, the round trip through `Display`,
+      the fallback that keeps the rest of the file, and the distributed template.
+
 ## Post-completion
 
 - Continue with #133 (integration and handoff).
