@@ -13,6 +13,17 @@ demonstrated functional frame and composition blockers in the locked stack.
 This initial revision contains planning and policy only. No UI migration, native
 interaction verification or dependency change has been performed by this revision.
 
+**Where the plan stands.** The architecture is implemented. Phases 0 through 5 are
+complete and phase 6 is in progress. [#133](133-ui-integration.md) closed the
+inventory, removed the #126 prototype, brought this document and `AGENTS.md` from
+planned to implemented, and hands #108 its updated constraints. The owner's
+decision of 2026-09-29 replaces the three-platform native matrix with a Linux-only
+one; it is recorded under Validation, and its results in
+[ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md).
+The implementing and reviewing roles are those the repository's role policy
+names per Pull Request, not the planning revision's; #133 used Codex
+`gpt-6-sol` high as its reviewer.
+
 Implementation class: **A**, declared before implementation: the refactor spans
 more than five code files / roughly 400 lines and touches GUI interaction and
 texture-lifecycle ownership boundaries. Implementer: `gpt-5.6-sol` high; reviewer:
@@ -219,25 +230,38 @@ control within it still needs replacement or a separately accepted exception.
 
 - [x] Implement and test the explicit Root-to-Shell weak-owner bridge before changing
       root lookups or application command targets; verify closed-window no-ops.
+      (#127, PR #139; `Shell::bind_choose_file` and the `analysis_hint_tests` cases in
+      `shell.rs`.)
 - [x] Adopt `Root::bordered(false)` in the main window while retaining `chrome.rs` as
-      the sole frame, inset, resize and title-bar owner.
+      the sole frame, inset, resize and title-bar owner. (#127, PR #139;
+      `native_decorations_do_not_get_a_second_frame` in `chrome_tests.rs`.)
 - [x] Update typed window handles, Shell root lookups, theme/font setup, Tab traversal,
       ready-status observation and window-level actions without duplicate registration.
+      (#127, PR #139; `theme_tests` and `analysis_hint_tests` in `shell.rs`.)
 - [x] Preserve native title, activation, file chooser/drop behavior, session geometry
       and the existing Root-backed settings window. Verify a current release build.
+      (#127, PR #139; the `session_tests.rs` round trip and the `settings_editor` window
+      itself, whose root is a standard `Root`.)
 
 ### 4. Plot ownership and overlay isolation
 
 - [x] Introduce PlotView with bounded render inputs and typed navigation intents;
-      move plot focus, pointer/readout and gesture state out of Shell.
+      move plot focus, pointer/readout and gesture state out of Shell. (#128, PR #143;
+      `plot_view.rs` tests.)
 - [x] Route keyboard navigation through plot focus and commands through explicit
-      targets; keep required symbolic-key normalization scoped to plot input.
+      targets; keep required symbolic-key normalization scoped to plot input. (#128,
+      PR #143; `every_navigation_key_emits_exactly_one_intent` and
+      `plot_keys_need_the_plot_itself_focused`.)
 - [x] Remove or localize the global `cx.intercept_keystrokes` plot handler. If the
       toolkit only exposes a global registration, gate it on the active PlotView
       focus before matching, dispatching or stopping propagation; this is a scoped
       adapter, not a global navigation bypass. Verify focused Input/Select symbols,
       Control commands and IME remain untouched; test both top-row and keypad zoom.
+      (#128, PR #143; `another_window_never_reaches_the_plot`,
+      `a_replaced_plot_stops_intercepting`, and
+      `zoom_symbols_use_physical_shift_without_leaking_into_time_zoom`.)
 - [x] Preserve accepted snapshot labels, resize mailbox behavior and texture retirement.
+      (#128, PR #143; `retirement_clears_the_snapshot_first` in `plot_view.rs`.)
 - [x] Apply the surface contracts centrally and test dismissal, release outside,
       focus loss, overlay opening during drag and document replacement (#129,
       PR #155; see `completed/129-overlay-isolation.md`).
@@ -247,13 +271,19 @@ control within it still needs replacement or a separately accepted exception.
 
 ### 5. Standard-control replacement
 
-- [x] Replace zoom halves with standard Buttons and remove their obsolete state paths. (#130)
+- [x] Replace zoom halves with standard Buttons and remove their obsolete state paths.
+      (#130, PR #157; `the_halves_split_their_pair_in_two` and
+      `a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot` in `plot_view.rs`.)
 - [x] Replace menu/splitter implementations where the checkpoint proved compatibility;
       obtain and record per-control decisions for any retained custom implementation.
       The custom menu is replaced by the stock `PopupMenu` in a controlled `Popover`
-      (#131), and the splitter is removed, with the minimap at a fixed configurable size (#132).
+      (#131, PR #160; the `app_menu_ui.rs` tests), and the splitter is removed, with the
+      minimap at a fixed configurable size (#132, PR #162; the `panels.rs` tests).
 - [x] Audit remaining forms, title/status/start controls, hints and keycaps; keep
-      standard controls and remove unnecessary duplicated interaction/style machinery. (#130)
+      standard controls and remove unnecessary duplicated interaction/style machinery.
+      (#130, PR #157; `the_document_controls_join_the_toolbar`,
+      `the_title_reserves_exactly_what_the_toolbar_draws` and
+      `the_segment_group_carries_its_own_frame`.)
 - [x] Complete the inventory with replacement evidence or accepted exceptions.
       (#133; every row has a final disposition with its verified limitation, and
       [ui/124-inventory.md](../ui/124-inventory.md) maps every render and input entry
@@ -269,6 +299,7 @@ control within it still needs replacement or a separately accepted exception.
 
 - [ ] Update AGENTS current status from its pre-#124 description to implemented ownership,
       relevant documentation and user-visible changelog entries only for shipped changes.
+      (#133.)
 - [ ] Run the full validation below and external class-A review; resolve substantive
       findings within the repository's three-round limit.
 - [ ] Move this plan to `docs/plans/completed/` before final owner review, only when
@@ -302,33 +333,46 @@ listed separately from native cases. At minimum include these atomic oracles:
 Keep the full parameter coverage below; these oracles make its expected outcomes
 explicit rather than replacing the matrix with a few successful screenshots.
 
+**Platform scope (owner, 2026-09-29).** Native interaction is verified on Linux only.
+Windows and macOS are covered by `ci/full` builds and tests; their native behaviour is
+not verified, and a problem found there later becomes its own Issue. This replaces the
+three-platform native matrix, and #124 closes without it. The decision is recorded in
+[#133](133-ui-integration.md) and its results in
+[ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md).
+
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --all-targets --locked` (workspace warnings denied)
 - [ ] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Toolkit-free tests for navigation intents, geometry, persistence and existing
+- [x] Toolkit-free tests for navigation intents, geometry, persistence and existing
       analysis invariants; GPUI-level tests where supported for focus/action routing.
-- [ ] Native input matrix on Linux, Windows and macOS: plot, main/context menu,
-      passive hint, popover, nested select and separate settings window; click,
-      double-click, wheel, drag/release outside, arrows, symbols, Alt guides,
-      Tab/Shift+Tab, Escape/Enter and focus restoration.
-- [ ] Native text editing: caret movement, selection, clipboard, undo/redo, IME,
-      invalid numeric input, blur/Enter validation and disabled controls. Verify
-      editing shortcuts neither navigate the plot nor get swallowed by plot interceptors.
-- [ ] Native frame matrix: dark/light, narrow/wide, display scale, restore/maximize,
-      fullscreen, supported tiling, move/resize edges/corners, title-bar controls,
-      native dialogs and file opening. Mark platform-inapplicable cases explicitly.
+      (`navigation_tests.rs`, `panels.rs`, `session_tests.rs`, `document_tests.rs`,
+      `spectrogram_tests.rs`, `minimap_tests.rs`, `axes_tests.rs`, and the headless
+      GPUI tests in `plot_view.rs`, `hints.rs`, `app_menu_ui.rs`, `shell.rs` and
+      `settings_editor.rs`.)
+- [ ] Native input matrix on Linux: plot, main/context menu, passive hint, popover,
+      nested select and separate settings window; click, double-click, wheel,
+      drag/release outside, arrows, symbols, Alt guides, Tab/Shift+Tab, Escape/Enter
+      and focus restoration.
+- [ ] Native text editing on Linux: caret movement, selection, clipboard, undo/redo,
+      invalid numeric input and blur/Enter validation. Verify editing shortcuts neither
+      navigate the plot nor get swallowed by plot interceptors. IME is not exercised
+      in this scope and is recorded as such, not as a pass.
+- [ ] Native frame matrix on Linux: dark/light, narrow/wide, display scale,
+      restore/maximize, fullscreen, supported tiling, move/resize edges/corners,
+      title-bar controls, native dialogs and file opening.
 - [ ] Both plot orientations, grid/scale toggles, start/loaded states, progressive
       updates, the fixed minimap and its boundary in both orientations (#132),
       settings preview/cancel and file replacement.
 - [ ] Compare representative current-release resize/navigation responsiveness and
       texture behavior with the baseline; investigate regressions rather than attributing
       them to extraction. No extra transforms or retained image backlog on resize.
-- [ ] Record exact build, platform and exercised cases in the PR. No unit-test or
-      CI-build result substitutes for native event verification. Unavailable required
-      platform coverage remains outstanding; do not mark the gate complete.
+- [ ] Record exact build, platform and exercised cases. No unit-test or CI-build result
+      substitutes for native event verification, and `Not exercised` remains outstanding
+      coverage rather than success.
 - [ ] Final independent review clean, review conversations resolved and `ci/full`
       successful for the current up-to-date revision on Linux, Windows and macOS.
+      (Review: Codex `gpt-6-sol` high, agreed 2026-09-29. CI stays three-platform.)
 
 ## Post-completion
 
