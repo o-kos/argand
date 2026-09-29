@@ -670,7 +670,7 @@ mod standard_input_tests {
                 .gap_4()
                 .p_4()
                 .child(NumberInput::new(&self.number))
-                .child(Select::new(&self.select).id("window").w_full())
+                .child(Select::new(&self.select).id("select").w_full())
         }
     }
 
@@ -714,7 +714,7 @@ mod standard_input_tests {
     /// Clicks the select trigger, which opens the standard list.
     fn open_list(cx: &mut TestAppContext, handle: Handle) {
         cx.update_window(handle.into(), |_, window, cx| {
-            window.within("window").click("input", cx);
+            window.within("select").click("input", cx);
         })
         .expect("the window is open");
         cx.run_until_parked();
@@ -732,14 +732,17 @@ mod standard_input_tests {
         with_form(cx, handle, |_, window, _| target.is_focused(window))
     }
 
-    /// The focus handle of one of the form's standard controls.
-    fn handle_of(cx: &mut TestAppContext, handle: Handle, number: bool) -> FocusHandle {
+    /// The number input's own focus handle.
+    fn typed_handle(cx: &mut TestAppContext, handle: Handle) -> FocusHandle {
         with_form(cx, handle, |form, _, cx| {
-            if number {
-                form.read(cx).number.focus_handle(cx)
-            } else {
-                form.read(cx).select.focus_handle(cx)
-            }
+            form.read(cx).number.focus_handle(cx)
+        })
+    }
+
+    /// A shut select answers with its own handle, so this is the trigger's.
+    fn trigger_handle(cx: &mut TestAppContext, handle: Handle) -> FocusHandle {
+        with_form(cx, handle, |form, _, cx| {
+            form.read(cx).select.focus_handle(cx)
         })
     }
 
@@ -758,9 +761,8 @@ mod standard_input_tests {
                 form.number.read(cx).focus_handle(cx).focus(window, cx);
             });
         });
-        // A shut select answers with its own handle, so this is the trigger's.
-        let typed = handle_of(cx, handle, true);
-        let trigger = handle_of(cx, handle, false);
+        let typed = typed_handle(cx, handle);
+        let trigger = trigger_handle(cx, handle);
         cx.update_window(handle.into(), |_, window, cx| {
             window.press("ctrl-a", cx);
             window.input("4096", cx);
