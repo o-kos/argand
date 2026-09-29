@@ -560,10 +560,10 @@ This mode is optional, not an automatic speed optimization. See
 limitations and proposed automatic planning.
 
 The title is centred between the window edges. Normal client-decorated windows
-have subtly rounded corners. The waveform is 4 rem
-(normally 64 logical pixels) high by default, or wide in vertical orientation; set
-`minimap_size` in the `[panels]` section of `argand.toml` to another size, such as
-`"3 rem"` or `"80 px"`. It has a subtle separator ending at the waveform’s right edge. Ruler borders match their tick marks; the frequency border joins the separator. The boundary
+have subtly rounded corners. The waveform is 3 rem
+(normally 48 logical pixels) high by default, or wide in vertical orientation; set
+`minimap_size` in the `[panels]` section of `argand.toml` to another size, in quotes,
+such as `"4 rem"` or `"64 px"`. It has a subtle separator ending at the waveform’s right edge. Ruler borders match their tick marks; the frequency border joins the separator. The boundary
 does not move, and a size saved by an earlier version is ignored.
 Real and I/Q captures use one merged min/max trace, exactly as `aspec` does,
 without grid lines, a zero-axis line, a legend or an amplitude caption. The older `panels.waveform_fraction`

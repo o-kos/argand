@@ -28,7 +28,7 @@ impl MinimapSize {
 
 impl Default for MinimapSize {
     fn default() -> Self {
-        Self::Rem(4.0)
+        Self::Rem(3.0)
     }
 }
 
@@ -77,13 +77,13 @@ pub fn waveform_height(total: f32, rem: f32, size: MinimapSize, scale: f32) -> f
 mod tests {
     use super::*;
 
-    const DEFAULT: MinimapSize = MinimapSize::Rem(4.0);
+    const DEFAULT: MinimapSize = MinimapSize::Rem(3.0);
 
     #[test]
     fn a_rem_size_follows_the_font_and_not_the_window() {
-        assert_eq!(waveform_height(600.0, 16.0, DEFAULT, 1.0), 64.0);
-        assert_eq!(waveform_height(800.0, 16.0, DEFAULT, 1.0), 64.0);
-        assert_eq!(waveform_height(600.0, 20.0, DEFAULT, 1.0), 80.0);
+        assert_eq!(waveform_height(600.0, 16.0, DEFAULT, 1.0), 48.0);
+        assert_eq!(waveform_height(800.0, 16.0, DEFAULT, 1.0), 48.0);
+        assert_eq!(waveform_height(600.0, 20.0, DEFAULT, 1.0), 60.0);
     }
 
     #[test]

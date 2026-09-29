@@ -49,9 +49,13 @@ batch_frames = 1024
 affinity = "none"
 
 [panels]
-# The waveform minimap's fixed height, or its width in vertical orientation.
-# A number with its unit, "rem" (follows the interface font, 1 to 20) or "px"
-# (logical pixels, 16 to 320), such as "4 rem" or "64 px".
-minimap_size = "4 rem"
+# Size of the waveform minimap: its height above the spectrogram, or its width
+# beside it in vertical orientation. Write a number and a unit inside quotes:
+#   "3 rem"  -- in interface font sizes, so it grows with the font (1 to 20 rem)
+#   "48 px"  -- in logical pixels, independent of the font (16 to 320 px)
+# The quotes are required: TOML reads 3 rem without them as an error. A space
+# between the number and the unit is optional. An unreadable or out-of-range
+# value is logged and replaced by "3 rem"; the rest of this file still applies.
+minimap_size = "3 rem"
 # Legacy compatibility key, accepted from 0.05 to 0.9 but no longer used for layout.
 waveform_fraction = 0.2

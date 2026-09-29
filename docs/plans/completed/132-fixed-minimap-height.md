@@ -15,10 +15,10 @@ pointer move, a `PlotIntent::WaveformFraction` and a persisted
 `Session::waveform_fraction`. The Issue asked to replace it with the standard
 `ResizablePanelGroup`.
 
-The owner decided on 2026-09-28 that the minimap is not resizable at all, and after
-trying the former 3-rem default chose 4 rem (64 logical pixels with the default font)
-on 2026-09-29: its height in horizontal orientation and its width in vertical
-orientation. Removing the control is the maximum reduction of custom
+The owner decided on 2026-09-28 that the minimap is not resizable at all. Its size
+is fixed at 3 rem by default (48 logical pixels with the default font), and set in
+the configuration since owner feedback 1: its height in horizontal orientation and
+its width in vertical orientation. Removing the control is the maximum reduction of custom
 interaction the inventory asks for, so no standard replacement is needed.
 
 Boundaries: the minimap's drawing, navigation, the 1-pixel separator, the spectrum
@@ -46,7 +46,7 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 
 ## Decisions
 
-- **The minimap has a fixed size across**, high or wide by orientation, 4 rem by
+- **The minimap has a fixed size across**, high or wide by orientation, 3 rem by
   default and set in the configuration (owner feedback 1), rounded to device
   pixels as today.
   `panels::waveform_height` loses its fraction parameter.
@@ -80,7 +80,7 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [x] Native check on Linux (owner): both orientations, the minimap at 4 rem with a
+- [x] Native check on Linux (owner): both orientations, the minimap at its default and a configured size with a
       session that had an adjusted split, no resize cursor on the boundary, a press
       on the boundary behaves as the minimap or spectrum beneath it, window resize
       keeps the minimap height.
@@ -110,7 +110,10 @@ accepted it; the constant, its tests and every text that named 3 rem changed wit
       the configuration, with its unit written out. `[panels].minimap_size` in
       `argand.toml` takes `"<number> rem"` (1 to 20, following the interface font)
       or `"<number> px"` (16 to 320 logical pixels), with or without a space and in
-      any case, default `"4 rem"`. `panels::MinimapSize` parses and prints it and
+      any case, default `"3 rem"` after the owner tried 4 rem and chose to keep
+      3 rem as the default. The value must be quoted, because TOML cannot read a
+      bare `3 rem`; the owner kept that over accepting a bare number as rem, and
+      the distributed template's comment says so. `panels::MinimapSize` parses and prints it and
       converts it to logical pixels. An unusable value is logged and replaced by
       the default alone, keeping the rest of the file, as the other repaired keys
       do, including a value that is not a string at all. The unit is taken from

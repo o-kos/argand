@@ -189,7 +189,7 @@ where
     let value = toml::Value::deserialize(deserializer)?;
     let parsed = match &value {
         toml::Value::String(text) => text.parse(),
-        _ => Err("write the size as a string, such as \"4 rem\"".to_owned()),
+        _ => Err("write the size as a quoted string, such as \"3 rem\"".to_owned()),
     };
     Ok(parsed.unwrap_or_else(|reason| {
         let using = MinimapSize::default();
