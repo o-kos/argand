@@ -469,6 +469,10 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         self.dismiss_application_menu(window, cx);
+        // Without a document there is no summary to anchor the hint to.
+        if self.file.is_none() {
+            return;
+        }
         let hint = self.analysis_hint.clone();
         if hint.read(cx).is_open() {
             hint.update(cx, |hint, cx| hint.close(false, cx));

@@ -1795,6 +1795,28 @@ mod analysis_hint_tests {
     #[gpui_kit::test]
     fn edit_analysis_opens_the_hint_and_closes_it_keeping_the_values(cx: &mut TestAppContext) {
         let handle = open(cx);
+        let toggled = |cx: &mut TestAppContext| {
+            handle
+                .update(cx, |shell, window, cx| {
+                    shell.edit_analysis(&EditAnalysis, window, cx);
+                })
+                .unwrap();
+            cx.run_until_parked();
+            handle
+                .read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
+                .unwrap()
+        };
+        assert!(!toggled(cx), "without a document there is nothing to edit");
+        handle
+            .update(cx, |shell, window, cx| {
+                shell.open(
+                    Origin::new(std::path::PathBuf::from("/captures/a.iqw")),
+                    window,
+                    cx,
+                );
+            })
+            .unwrap();
+        cx.run_until_parked();
         let toggle = |cx: &mut TestAppContext| {
             handle
                 .update(cx, |shell, window, cx| {

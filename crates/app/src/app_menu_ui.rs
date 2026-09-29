@@ -70,6 +70,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> (Entity<PopupMenu>, Vec<Origin>) {
         let recent = app_menu::file_items(self.recent_entries());
+        let document = self.file.is_some();
         let digits = recent
             .iter()
             .filter_map(|row| match row {
@@ -88,16 +89,24 @@ impl Shell {
                 .max_w(px(420.))
                 .scrollable(true);
             recent.into_iter().fold(menu, |menu, row| {
-                menu.item(Shell::file_row(row, focus.clone(), owner.clone()))
+                menu.item(Shell::file_row(row, document, focus.clone(), owner.clone()))
             })
         });
         (menu, digits)
     }
 
-    fn file_row(row: Row<Origin>, focus: FocusHandle, owner: WeakEntity<Self>) -> PopupMenuItem {
+    fn file_row(
+        row: Row<Origin>,
+        document: bool,
+        focus: FocusHandle,
+        owner: WeakEntity<Self>,
+    ) -> PopupMenuItem {
         match row {
             Row::Open => action_row("Open file...", Box::new(ChooseFile), false, focus),
-            Row::Settings => action_row("Settings", Box::new(EditAnalysis), false, focus),
+            // Analysis settings belong to a document, so there are none to edit without one.
+            Row::Settings => {
+                action_row("Settings", Box::new(EditAnalysis), false, focus).disabled(!document)
+            }
             Row::Separator => PopupMenuItem::separator(),
             Row::Recent {
                 number,

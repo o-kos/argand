@@ -606,8 +606,8 @@ refinement. Transform changes cancel obsolete work and retain the previous pictu
 until a preview arrives. Style edits during that initial replacement interval apply
 to the incoming preview; the retained picture keeps its own transform and style
 until then. Invalid choices show an explanation.
-FFT, window, overlap, aggregation and colour choices persist after OK in session
-version 5; configuration defaults remain untouched. Range and its mode belong to
+FFT, window, overlap, aggregation and colour choices are saved to the session when
+the settings hint closes keeping them; configuration defaults remain untouched. Range and its mode belong to
 the current file: opening a file or restarting restores the configured range default.
 Older saved range values are ignored.
 The bar describes the displayed analysis while a replacement is pending.

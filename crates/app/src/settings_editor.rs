@@ -22,6 +22,9 @@ const WIDTH: f32 = 370.0;
 /// The width of every row's label column.
 const LABEL: f32 = 110.0;
 
+/// The height the status area keeps, which is the low-signal advice and its button.
+const STATUS: f32 = 68.0;
+
 /// The width of every row's value column, which each control fills.
 const VALUE: f32 = 200.0;
 
@@ -206,7 +209,8 @@ impl Editor {
 
     fn apply(&mut self, settings: Settings, window: &mut Window, cx: &mut Context<Self>) {
         if settings == self.settings {
-            self.error = None;
+            // The fields may still hold text the settings never took, such as a refused number.
+            self.sync(settings, window, cx);
             cx.notify();
             return;
         }
@@ -336,7 +340,7 @@ impl Editor {
             .owner
             .upgrade()
             .and_then(|shell| shell.read(cx).range_recommendation());
-        let line = div().min_h_5().text_xs();
+        let line = div().text_xs();
         if let Some(error) = &self.error {
             return line
                 .text_color(cx.theme().danger)
@@ -461,7 +465,12 @@ impl Render for Editor {
                 choice("analysis-palette", &self.palette, cx),
                 cx,
             ))
-            .child(self.status(pending, window, cx))
+            // The status area keeps the advice's height, so its changes never move the hint.
+            .child(
+                div()
+                    .min_h(px(STATUS))
+                    .child(self.status(pending, window, cx)),
+            )
             .child(self.defaults(cx))
     }
 }
@@ -919,7 +928,7 @@ mod hint_tests {
     }
 
     #[gpui_kit::test]
-    fn a_choice_in_a_list_previews_and_keeps_the_hint(cx: &mut TestAppContext) {
+    fn a_choice_in_a_list_applies_and_keeps_the_hint(cx: &mut TestAppContext) {
         let w = open(cx);
         open_hint(cx, &w);
         let opening = settings(cx, &w);
@@ -934,7 +943,7 @@ mod hint_tests {
         assert_ne!(
             settings(cx, &w).fft_size,
             opening.fft_size,
-            "the plot previews it"
+            "the choice applies"
         );
         assert!(is_open(cx, &w), "choosing in a list keeps the hint");
     }
@@ -977,20 +986,57 @@ mod hint_tests {
         w.shell.update(cx, |shell, _| shell.view = Some(full));
         open_hint(cx, &w);
         let opening = settings(cx, &w);
+        let frequency = w.shell.read_with(cx, |shell, _| shell.frequency);
         type_overlap(cx, &w, "10");
         press(cx, &w, "tab");
         assert_eq!(settings(cx, &w).overlap, 10, "blur previews the number");
+        let saved = w
+            .shell
+            .read_with(cx, |shell, _| shell.session.analysis_settings);
+        assert_ne!(saved.map(|s| s.overlap), Some(10), "a preview is not saved");
         w.shell.update(cx, |shell, _| {
             shell.view = Some(crate::navigation::View {
                 start: 10,
                 len: 100,
             });
+            shell.frequency = shell.frequency.zoom(2., 0.5, 2048);
         });
         press(cx, &w, "escape");
         assert!(!is_open(cx, &w));
         assert_eq!(settings(cx, &w), opening, "the settings come back");
-        let view = w.shell.read_with(cx, |shell, _| shell.view);
-        assert_eq!(view, Some(full), "and so does the view");
+        let (view, restored) = w
+            .shell
+            .read_with(cx, |shell, _| (shell.view, shell.frequency));
+        assert_eq!(view, Some(full), "and so does the time view");
+        assert_eq!(restored, frequency, "and the frequency view");
+    }
+
+    #[gpui_kit::test]
+    fn defaults_put_back_a_refused_number_even_when_nothing_changed(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        type_overlap(cx, &w, "96");
+        press(cx, &w, "tab");
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            window.click("analysis-defaults", cx);
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, &w);
+        let editor = editor(cx, &w);
+        let (text, error) = editor.read_with(cx, |editor, cx| {
+            (
+                editor.overlap.read(cx).value().to_string(),
+                editor.error.clone(),
+            )
+        });
+        let overlap = settings(cx, &w).overlap;
+        assert_eq!(
+            text,
+            crate::numbers::input(overlap),
+            "the field shows the value in force"
+        );
+        assert!(error.is_none());
     }
 
     #[gpui_kit::test]

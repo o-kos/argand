@@ -121,6 +121,31 @@ captured per window.
       progressive analysis every settings change has used; the owner checks it
       against `main` before deciding.
 
+## Review round 1
+
+Codex `gpt-6-sol` high reviewed the revision the owner first saw; its findings were
+arbitrated against owner feedback 1.
+
+- **Accepted: Ctrl+, and File → Settings opened an invisible hint without a
+  document**, whose backdrop then covered the start page. Without a document
+  `edit_analysis` does nothing and the Settings row is disabled; a test covers it.
+- **Accepted differently: a click on the summary closed the open hint.** After owner
+  feedback 1 the click is a toggle that closes the open hint and does not bring it
+  back; that matches a button that opens a popover and the owner's complaint about it
+  reappearing.
+- **Accepted: Reset to defaults left a refused number in its field** when the
+  settings already equalled the configuration. Applying equal settings now resyncs
+  the fields; a test covers it.
+- **Accepted: the hint moved when the advice appeared or went.** The status area
+  keeps the advice's height; verified in the running window.
+- **Owner decision needed: holding a stepper does not repeat.** The standard
+  `NumberInput` steps on click only, so repeating needs a custom press handler.
+- **Accepted: tests claimed more than they proved.** The choice test is named for
+  what it checks, the Escape test also checks the frequency view, and a preview is
+  asserted not to be saved.
+- **Accepted: stale documentation** in README (OK and session version 5), AGENTS.md
+  (#108 as future work) and the inventory (a renamed test).
+
 ## Rejected alternatives
 
 - Closing on pointer leave, from the Issue's description: the owner kept the #129
