@@ -1,21 +1,26 @@
-//! A separate toolkit root gives native inputs their focus and editing context.
+//! The analysis settings the pinned FFT hint edits, in the hint's own look.
+//!
+//! Every value is a standard select or number input drawn without its frame, so
+//! the surface reads as the hint it is. A choice previews as soon as it is made,
+//! a number on Enter, blur or a step, and the hint's own lifecycle decides
+//! whether the previewed settings are kept or restored.
 
 use super::*;
+use gpui_kit::Entity;
+use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::input::{
     InputEvent, InputState, NumberInput, NumberInputEvent, StepAction,
 };
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
-use gpui_kit::{Entity, Focusable};
 
-actions!(settings_editor, [CloseSettings]);
+/// The key context of the editor inside the hint.
+const CONTEXT: &str = "AnalysisEditor";
 
-pub(super) fn init(cx: &mut gpui_kit::App) {
-    cx.bind_keys([KeyBinding::new(
-        "escape",
-        CloseSettings,
-        Some("AnalysisEditor"),
-    )]);
-}
+/// The width of the surface, fixed so that changing values never move it.
+const WIDTH: f32 = 320.0;
+
+/// The width of every row's label column.
+const LABEL: f32 = 104.0;
 
 #[derive(Clone, Copy)]
 enum Choice {
@@ -25,6 +30,7 @@ enum Choice {
     Mode,
     Palette,
 }
+
 #[derive(Clone, Copy)]
 enum Number {
     Overlap,
@@ -50,11 +56,19 @@ pub(super) struct Editor {
 impl Editor {
     pub(super) fn new(
         owner: WeakEntity<Shell>,
-        settings: Settings,
-        effective_range: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let (settings, effective_range) = owner.upgrade().map_or(
+            (Settings::from_config(&Config::default()), 110.0),
+            |shell| {
+                let shell = shell.read(cx);
+                let range = shell
+                    .displayed_range()
+                    .map_or(110.0, |range| range.effective_db);
+                (shell.settings, range)
+            },
+        );
         let mut subscriptions = Vec::new();
         let fft = combo(Choice::Fft, settings, window, cx, &mut subscriptions);
         let window_choice = combo(Choice::Window, settings, window, cx, &mut subscriptions);
@@ -96,22 +110,6 @@ impl Editor {
                 cx.notify();
             }));
         }
-        if let Some(shell) = owner.upgrade() {
-            subscriptions.push(
-                cx.observe_release_in(&shell, window, |_, _, window, _| window.remove_window()),
-            );
-        }
-        let closing_owner = owner.clone();
-        let closing_id = window.window_handle().window_id();
-        cx.on_release(move |_, cx| {
-            cx.defer(move |cx| {
-                let _ = closing_owner.update(cx, |shell, cx| {
-                    shell.cancel_settings_window(closing_id, cx);
-                });
-            });
-        })
-        .detach();
-        fft.focus_handle(cx).focus(window, cx);
         Self {
             owner,
             settings,
@@ -125,33 +123,6 @@ impl Editor {
             error: None,
             _subscriptions: subscriptions,
         }
-    }
-
-    fn close(&mut self, accept: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if accept && !self.commit_numbers(window, cx) {
-            return;
-        }
-        let _ = self
-            .owner
-            .update(cx, |shell, cx| shell.finish_settings(accept, cx));
-        window.remove_window();
-    }
-
-    fn commit_numbers(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let overlap = self.overlap.read(cx).value();
-        let range = self.range.read(cx).value();
-        let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
-        match self
-            .settings
-            .edited_numbers(&overlap, fixed.then_some(range.as_ref()))
-        {
-            Ok(settings) => self.apply(settings, window, cx),
-            Err(error) => {
-                self.error = Some(error);
-                cx.notify();
-            }
-        }
-        self.error.is_none()
     }
 
     fn toggle_range(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -168,9 +139,6 @@ impl Editor {
                 window,
                 cx,
             );
-            if matches!(dynamic_range, DynamicRange::Fixed(_)) {
-                self.range.focus_handle(cx).focus(window, cx);
-            }
         }
     }
 
@@ -292,144 +260,113 @@ impl Editor {
         }
     }
 
+    /// Preview the number fields, reporting whether they hold usable values.
     fn edit_number(
         &mut self,
         field: Number,
         step: Option<StepAction>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
-        if matches!(field, Number::Range)
-            && !matches!(self.settings.dynamic_range, DynamicRange::Fixed(_))
-        {
-            return;
+    ) -> bool {
+        let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
+        if matches!(field, Number::Range) && !fixed {
+            return true;
         }
-        let input = match field {
-            Number::Overlap => &self.overlap,
-            Number::Range => &self.range,
-        };
-        let parsed = crate::numbers::parse::<f32>(input.read(cx).value().as_ref());
-        let Ok(mut value) = parsed else {
-            self.error = Some("Enter a number".into());
-            cx.notify();
-            return;
-        };
+        let mut overlap = self.overlap.read(cx).value().to_string();
+        let mut range = fixed.then(|| self.range.read(cx).value().to_string());
         if let Some(step) = step {
-            value += if step == StepAction::Increment {
+            let text = match field {
+                Number::Overlap => &mut overlap,
+                Number::Range => range.get_or_insert_with(String::new),
+            };
+            let Ok(value) = crate::numbers::parse::<f32>(text) else {
+                self.error = Some("Enter a number".into());
+                cx.notify();
+                return false;
+            };
+            let delta = if step == StepAction::Increment {
                 1.0
             } else {
                 -1.0
             };
+            *text = crate::numbers::input(value + delta);
         }
-        let mut settings = self.settings;
-        match field {
-            Number::Overlap
-                if value.is_finite() && (0.0..=95.0).contains(&value) && value.fract() == 0.0 =>
-            {
-                settings.overlap = value as u8
+        match self.settings.edited_numbers(&overlap, range.as_deref()) {
+            Ok(settings) => {
+                self.apply(settings, window, cx);
+                self.error.is_none()
             }
-            Number::Overlap => {
-                self.error = Some(crate::numbers::text(
-                    "Overlap must be a whole number from 0 to 95%",
-                ));
+            Err(error) => {
+                self.error = Some(error);
                 cx.notify();
-                return;
+                false
             }
-            Number::Range => settings.dynamic_range = DynamicRange::Fixed(value),
         }
-        self.apply(settings, window, cx);
     }
 
-    fn transform_rows(&self, cx: &gpui_kit::App) -> impl IntoElement {
+    fn heading(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
-            .flex_col()
-            .gap_3()
-            .child(section("Transform", cx))
-            .child(form_row("FFT size", Select::new(&self.fft), cx))
-            .child(form_row("Window", Select::new(&self.window), cx))
-            .child(form_row(
-                "Overlap",
-                NumberInput::new(&self.overlap).suffix("%"),
-                cx,
-            ))
-            .child(form_row("Aggregation", Select::new(&self.aggregation), cx))
+            .items_center()
+            .justify_between()
+            .gap_4()
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("Analysis settings"),
+            )
+            .child(
+                Button::new("analysis-defaults")
+                    .ghost()
+                    .xsmall()
+                    .label("Defaults")
+                    .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
+            )
     }
 
-    fn footer_status(
-        &self,
-        pending: bool,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> gpui_kit::AnyElement {
+    /// The row a status or advice line takes, reserved so the surface keeps its size.
+    fn status(&self, pending: bool, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let recommendation = self
+            .owner
+            .upgrade()
+            .and_then(|shell| shell.read(cx).range_recommendation());
+        let line = div().min_h_5().text_xs();
         if let Some(error) = &self.error {
-            return div()
-                .flex_1()
-                .text_xs()
+            return line
                 .text_color(cx.theme().danger)
                 .child(error.clone())
                 .into_any_element();
         }
-        if let Some(db) = self
-            .owner
-            .upgrade()
-            .and_then(|shell| shell.read(cx).range_recommendation())
-        {
-            return Button::new("use-recommendation")
-                .outline()
-                .small()
-                .label(format!(
-                    "Use recommended: {} dB",
-                    crate::numbers::number(db)
-                ))
-                .when_some(
-                    Kbd::binding_for_action(&UseRecommendedRange, None, window),
-                    |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
+        if let Some(db) = recommendation {
+            return div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    line.text_color(advice_color(cx))
+                        .child(low_signal_level_hint(db)),
                 )
-                .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
+                .child(
+                    Button::new("hint-recommendation")
+                        .ghost()
+                        .small()
+                        .label(format!(
+                            "Use recommended: {} dB",
+                            crate::numbers::number(db)
+                        ))
+                        .when_some(
+                            Kbd::binding_for_action(&UseRecommendedRange, None, window),
+                            |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
+                        )
+                        .on_click(
+                            cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)),
+                        ),
+                )
                 .into_any_element();
         }
-        div()
-            .text_xs()
-            .text_color(cx.theme().muted_foreground)
-            .child(if pending {
-                "Updating the picture…"
-            } else {
-                "Changes are previewed until OK"
-            })
+        line.text_color(cx.theme().muted_foreground)
+            .when(pending, |line| line.child("Updating the picture…"))
             .into_any_element()
-    }
-
-    fn display_rows(&self, cx: &gpui_kit::App) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(section("Display", cx))
-            .child(form_row("Colour scheme", Select::new(&self.palette), cx))
-            .child(form_row("Range mode", Select::new(&self.mode), cx))
-            .child(form_row(
-                "Range",
-                if matches!(self.settings.dynamic_range, DynamicRange::Fixed(_)) {
-                    NumberInput::new(&self.range)
-                        .suffix("dB")
-                        .into_any_element()
-                } else {
-                    div()
-                        .h_8()
-                        .px_3()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .rounded(cx.theme().radius)
-                        .bg(cx.theme().muted)
-                        .text_color(cx.theme().muted_foreground)
-                        .child(self.range.read(cx).value())
-                        .child("dB")
-                        .into_any_element()
-                },
-                cx,
-            ))
     }
 }
 
@@ -442,76 +379,83 @@ impl Render for Editor {
                     && !matches!(f.document.status(), Status::Failed(_))
             })
         });
+        let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
+        let range = if fixed {
+            editable(
+                NumberInput::new(&self.range)
+                    .appearance(false)
+                    .small()
+                    .suffix("dB"),
+                cx,
+            )
+            .into_any_element()
+        } else {
+            div()
+                .text_right()
+                .child(format!("{} dB", self.range.read(cx).value()))
+                .into_any_element()
+        };
         div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .key_context("AnalysisEditor")
+            .id("analysis-editor")
+            .key_context(CONTEXT)
             .on_action(cx.listener(|editor, _: &UseRecommendedRange, window, cx| {
                 editor.toggle_range(window, cx)
             }))
-            .on_action(
-                cx.listener(|editor, _: &CloseSettings, window, cx| {
-                    editor.close(false, window, cx)
-                }),
-            )
-            .child(TitleBar::new().child(div().text_sm().child("Analysis settings")))
-            .child(
-                div()
-                    .id("settings-form")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .p_5()
-                    .flex()
-                    .flex_col()
-                    .gap_5()
-                    .text_sm()
-                    .child(self.transform_rows(cx))
-                    .child(self.display_rows(cx)),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .px_5()
-                    .py_3()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .child(self.footer_status(pending, window, cx))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                Button::new("reset-settings")
-                                    .outline()
-                                    .label("Reset to defaults")
-                                    .on_click(cx.listener(|editor, _, window, cx| {
-                                        editor.reset(window, cx)
-                                    })),
-                            )
-                            .child(div().flex_1())
-                            .child(
-                                Button::new("cancel-settings")
-                                    .outline()
-                                    .label("Cancel")
-                                    .on_click(cx.listener(|editor, _, window, cx| {
-                                        editor.close(false, window, cx)
-                                    })),
-                            )
-                            .child(
-                                Button::new("accept-settings")
-                                    .primary()
-                                    .label("OK")
-                                    .on_click(cx.listener(|editor, _, window, cx| {
-                                        editor.close(true, window, cx)
-                                    })),
-                            ),
-                    ),
-            )
+            // Enter reaches the popover only once the numbers hold usable values.
+            .on_action(cx.listener(|editor, _: &Confirm, window, cx| {
+                if editor.edit_number(Number::Overlap, None, window, cx) {
+                    cx.propagate();
+                }
+            }))
+            .w(px(WIDTH).min(window.viewport_size().width - px(48.)))
+            .font_family(cx.theme().font_family.clone())
+            .bg(cx.theme().tokens.popover)
+            .text_color(cx.theme().popover_foreground)
+            .border_1()
+            .border_color(cx.theme().border)
+            .shadow_md()
+            .rounded(cx.theme().radius)
+            .px_3()
+            .py_2()
+            .text_sm()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(self.heading(cx))
+            .child(row("FFT size", choice("analysis-fft", &self.fft, cx), cx))
+            .child(row(
+                "Window",
+                choice("analysis-window", &self.window, cx),
+                cx,
+            ))
+            .child(row(
+                "Overlap",
+                editable(
+                    NumberInput::new(&self.overlap)
+                        .appearance(false)
+                        .small()
+                        .suffix("%"),
+                    cx,
+                ),
+                cx,
+            ))
+            .child(row(
+                "Aggregation",
+                choice("analysis-aggregation", &self.aggregation, cx),
+                cx,
+            ))
+            .child(row(
+                "Range mode",
+                choice("analysis-mode", &self.mode, cx),
+                cx,
+            ))
+            .child(row("Range", range, cx))
+            .child(row(
+                "Colour scheme",
+                choice("analysis-palette", &self.palette, cx),
+                cx,
+            ))
+            .child(self.status(pending, window, cx))
     }
 }
 
@@ -523,31 +467,35 @@ fn mode_name(range: DynamicRange) -> &'static str {
     }
 }
 
-fn section(title: &'static str, cx: &gpui_kit::App) -> impl IntoElement {
-    div()
-        .text_xs()
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(cx.theme().muted_foreground)
-        .child(title)
-}
-
-fn form_row(
-    label: &'static str,
-    control: impl IntoElement,
-    cx: &gpui_kit::App,
-) -> impl IntoElement {
+/// A label and its value, in the metadata hint's layout.
+fn row(label: &'static str, value: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .gap_4()
+        .w_full()
+        .min_h_7()
         .child(
             div()
-                .w(px(104.))
+                .w(px(LABEL))
                 .flex_shrink_0()
                 .text_color(cx.theme().muted_foreground)
                 .child(label),
         )
-        .child(div().flex_1().min_w_0().child(control))
+        .child(div().flex_1().min_w_0().flex().justify_end().child(value))
+}
+
+/// A value that opens a list or takes a number, marked by a dashed underline.
+fn editable(control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
+    div()
+        .border_b_1()
+        .border_dashed()
+        .border_color(cx.theme().muted_foreground.opacity(0.6))
+        .child(control)
+}
+
+fn choice(id: &'static str, state: &Combo, cx: &gpui_kit::App) -> impl IntoElement {
+    editable(Select::new(state).id(id).appearance(false).small(), cx)
 }
 
 fn combo(
@@ -613,11 +561,16 @@ fn number(
 ) -> Entity<InputState> {
     let state = cx.new(|cx| InputState::new(window, cx).default_value(value));
     subscriptions.push(
-        cx.subscribe_in(&state, window, move |editor, _, event, window, cx| {
-            if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
-                editor.edit_number(field, None, window, cx);
-            }
-        }),
+        cx.subscribe_in(
+            &state,
+            window,
+            move |editor, _, event, window, cx| match event {
+                InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                    editor.edit_number(field, None, window, cx);
+                }
+                _ => {}
+            },
+        ),
     );
     subscriptions.push(cx.subscribe_in(
         &state,
@@ -634,18 +587,20 @@ fn number(
 mod standard_input_tests {
     use super::*;
     use gpui_kit::test::TestWindowExt;
-    use gpui_kit::{App, TestAppContext, WindowHandle};
+    use gpui_kit::{App, Focusable, TestAppContext, WindowHandle};
 
     type Handle = WindowHandle<Root>;
 
-    /// The real editor's context, so `init` binds its escape to `CloseSettings`.
-    const CONTEXT: &str = "AnalysisEditor";
+    gpui_kit::actions!(standard_input_tests, [OuterEscape]);
+
+    /// An outer context whose escape stands for the surface around the controls.
+    const OUTER: &str = "StandardInputs";
 
     /// A window's worth of standard controls, with nothing of Argand's own.
     struct Form {
         number: Entity<InputState>,
         select: Entity<SelectState<Vec<String>>>,
-        /// How often the outer `CloseSettings` context saw an escape.
+        /// How often the outer context saw an escape.
         outer_escape: usize,
     }
 
@@ -678,8 +633,8 @@ mod standard_input_tests {
                 .flex_col()
                 .gap_4()
                 .p_4()
-                .key_context(CONTEXT)
-                .on_action(cx.listener(|form, _: &CloseSettings, _, _| {
+                .key_context(OUTER)
+                .on_action(cx.listener(|form, _: &OuterEscape, _, _| {
                     form.outer_escape += 1;
                 }))
                 .child(NumberInput::new(&self.number))
@@ -687,11 +642,11 @@ mod standard_input_tests {
         }
     }
 
-    /// Opens a window whose top-level entity is a standard `Root`, as the settings window is.
+    /// Opens a window whose top-level entity is a standard `Root`, as the main window is.
     fn open(cx: &mut TestAppContext) -> Handle {
         cx.update(|cx| {
             gpui_kit::init(cx);
-            init(cx);
+            cx.bind_keys([KeyBinding::new("escape", OuterEscape, Some(OUTER))]);
         });
         let handle = cx.add_window(|window, cx| {
             let form = cx.new(|cx| Form::new(window, cx));
@@ -837,5 +792,205 @@ mod standard_input_tests {
             focused(cx, handle, &trigger),
             "choosing returns the keyboard to the select"
         );
+    }
+}
+
+#[cfg(test)]
+mod hint_tests {
+    use super::*;
+    use gpui_kit::component::Root;
+    use gpui_kit::test::TestWindowExt;
+    use gpui_kit::{Focusable, TestAppContext, WindowHandle};
+    use std::path::PathBuf;
+
+    struct Window_ {
+        handle: WindowHandle<Root>,
+        shell: Entity<Shell>,
+    }
+
+    fn open(cx: &mut TestAppContext) -> Window_ {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            settings_ui::init(cx);
+            navigation_ui::init(cx);
+            hints::init(cx);
+        });
+        let mut shell = None;
+        let handle = cx.add_window(|window, cx| {
+            let view =
+                cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
+            shell = Some(view.clone());
+            Root::new(view, window, cx).bordered(false)
+        });
+        let shell = shell.expect("the window built its shell");
+        let window = Window_ { handle, shell };
+        // An inactive test window reports no focus path, so no field would ever blur.
+        cx.update_window(handle.into(), |_, window, _| window.activate_window())
+            .expect("the window is open");
+        frame(cx, &window);
+        // A document is what puts the FFT summary, and so the hint, in the status bar.
+        let opened = window.shell.clone();
+        cx.update_window(window.handle.into(), |_, win, cx| {
+            opened.update(cx, |shell, cx| {
+                shell.open(Origin::new(PathBuf::from("/captures/session.iqw")), win, cx);
+            });
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, &window);
+        window
+    }
+
+    fn frame(cx: &mut TestAppContext, w: &Window_) {
+        cx.update_window(w.handle.into(), |_, window, cx| window.render_frame(cx))
+            .expect("the window is open");
+        cx.run_until_parked();
+    }
+
+    /// Opens the hint the way Ctrl+, does.
+    fn open_hint(cx: &mut TestAppContext, w: &Window_) {
+        let shell = w.shell.clone();
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.edit_analysis(&EditAnalysis, window, cx)
+            });
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, w);
+    }
+
+    fn is_open(cx: &mut TestAppContext, w: &Window_) -> bool {
+        w.shell
+            .read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
+    }
+
+    fn settings(cx: &mut TestAppContext, w: &Window_) -> Settings {
+        w.shell.read_with(cx, |shell, _| shell.settings)
+    }
+
+    fn editor(cx: &mut TestAppContext, w: &Window_) -> Entity<Editor> {
+        w.shell.read_with(cx, |shell, cx| {
+            shell
+                .analysis_hint
+                .read(cx)
+                .view()
+                .and_then(|view| view.downcast::<Editor>().ok())
+                .expect("the open hint shows the editor")
+        })
+    }
+
+    fn press(cx: &mut TestAppContext, w: &Window_, key: &str) {
+        cx.update_window(w.handle.into(), |_, window, cx| window.press(key, cx))
+            .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, w);
+    }
+
+    /// Replaces the overlap field's text as a person typing into it would.
+    fn type_overlap(cx: &mut TestAppContext, w: &Window_, text: &str) {
+        let editor = editor(cx, w);
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            let field = editor.read(cx).overlap.focus_handle(cx);
+            field.focus(window, cx);
+            window.press("secondary-a", cx);
+            window.input(text, cx);
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        // A later blur is measured against the frame that drew the field focused.
+        frame(cx, w);
+    }
+
+    #[gpui_kit::test]
+    fn a_choice_in_a_list_previews_and_keeps_the_hint(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        let opening = settings(cx, &w);
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            window.within("analysis-fft").click("input", cx);
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, &w);
+        press(cx, &w, "down");
+        press(cx, &w, "enter");
+        assert_ne!(
+            settings(cx, &w).fft_size,
+            opening.fft_size,
+            "the plot previews it"
+        );
+        assert!(is_open(cx, &w), "choosing in a list keeps the hint");
+    }
+
+    #[gpui_kit::test]
+    fn enter_on_a_number_applies_it_closes_and_saves(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        type_overlap(cx, &w, "25");
+        press(cx, &w, "enter");
+        assert_eq!(settings(cx, &w).overlap, 25);
+        assert!(!is_open(cx, &w), "a valid number closes the hint");
+        let saved = w
+            .shell
+            .read_with(cx, |shell, _| shell.session.analysis_settings);
+        assert_eq!(
+            saved.map(|s| s.overlap),
+            Some(25),
+            "and the kept value is saved"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn an_unusable_number_keeps_the_hint_with_its_error(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        let opening = settings(cx, &w);
+        type_overlap(cx, &w, "96");
+        press(cx, &w, "enter");
+        assert!(is_open(cx, &w), "the hint stays for a correction");
+        let error = editor(cx, &w).read_with(cx, |editor, _| editor.error.clone());
+        assert!(error.is_some(), "the error is shown");
+        assert_eq!(settings(cx, &w), opening, "nothing is previewed");
+    }
+
+    #[gpui_kit::test]
+    fn escape_restores_the_settings_and_views_the_hint_opened_with(cx: &mut TestAppContext) {
+        let w = open(cx);
+        let full = crate::navigation::View::full(1000);
+        w.shell.update(cx, |shell, _| shell.view = Some(full));
+        open_hint(cx, &w);
+        let opening = settings(cx, &w);
+        type_overlap(cx, &w, "10");
+        press(cx, &w, "tab");
+        assert_eq!(settings(cx, &w).overlap, 10, "blur previews the number");
+        w.shell.update(cx, |shell, _| {
+            shell.view = Some(crate::navigation::View {
+                start: 10,
+                len: 100,
+            });
+        });
+        press(cx, &w, "escape");
+        assert!(!is_open(cx, &w));
+        assert_eq!(settings(cx, &w), opening, "the settings come back");
+        let view = w.shell.read_with(cx, |shell, _| shell.view);
+        assert_eq!(view, Some(full), "and so does the view");
+    }
+
+    #[gpui_kit::test]
+    fn defaults_apply_the_configuration_and_keep_the_hint(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        type_overlap(cx, &w, "10");
+        press(cx, &w, "tab");
+        assert_eq!(settings(cx, &w).overlap, 10);
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            window.click("analysis-defaults", cx);
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, &w);
+        assert_eq!(settings(cx, &w), Settings::from_config(&Config::default()));
+        assert!(is_open(cx, &w), "Defaults keeps the hint open");
     }
 }

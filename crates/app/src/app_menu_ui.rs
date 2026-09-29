@@ -1162,9 +1162,9 @@ mod tests {
         })
     }
 
-    /// The settings window the menu's Settings row opens.
+    /// The analysis settings hint the menu's Settings row opens.
     fn settings_open(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
-        shell.read_with(cx, |shell, _| shell.settings_window.is_some())
+        shell.read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
     }
 
     /// The document the open menu replaced, once one of its rows opened something.
@@ -1349,7 +1349,7 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn the_settings_window_opens_from_the_menu_itself(cx: &mut TestAppContext) {
+    fn the_settings_hint_opens_from_the_menu_itself(cx: &mut TestAppContext) {
         let (shell, cx) = open_window(cx);
         open_capture(cx, &shell);
         press(cx, "f10");
@@ -1359,9 +1359,7 @@ mod tests {
         press(cx, "down enter");
         draw(cx);
         assert!(!menu_open(cx, &shell), "the menu closed");
-        assert!(settings_open(cx, &shell), "and the settings window opened");
-        shell.update_in(cx, |shell, _, cx| shell.finish_settings(false, cx));
-        draw(cx);
+        assert!(settings_open(cx, &shell), "and the settings hint opened");
     }
 
     #[gpui_kit::test]
