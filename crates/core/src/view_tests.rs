@@ -154,17 +154,23 @@ fn an_envelope_refuses_a_column_past_its_shape_without_overflowing() {
     assert_eq!(short.column(3, 0), None, "a column past the buffers");
 
     // A shape whose product itself overflows is the case the checked
-    // arithmetic exists for: the column is inside the declared width, so only
-    // the multiplication stops it from wrapping into a valid-looking cell.
+    // arithmetic exists for: the column is inside the declared width and the
+    // product wraps onto a cell the buffers do hold, so a wrapping index would
+    // answer with that cell's values instead of refusing.
     let mut huge = env.clone();
     huge.columns = usize::MAX;
-    huge.min.clear();
-    huge.max.clear();
+    huge.min.truncate(1);
+    huge.max.truncate(1);
     assert_eq!(huge.shape(), None, "a product that overflows has no shape");
     assert_eq!(
-        huge.column(usize::MAX - 1, 1),
+        huge.column(1 << 63, 0),
         None,
-        "an in-width column whose offset overflows"
+        "a column whose offset wraps onto a cell the buffers hold"
+    );
+    assert_eq!(
+        huge.min[0],
+        -0.5,
+        "the wrapped index would have read this cell"
     );
 
     let mut over = env.clone();

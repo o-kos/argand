@@ -25,8 +25,11 @@ Every existing caller's behaviour is unchanged: `shade` builds the buffer from a
 shape it has already settled and `shade_columns` indexes inside it, and the CLI's
 `blit` already range-checks the source coordinate before calling `get`.
 
-Boundaries: `argand-core` only, plus the one CLI call site whose `get` signature
-changes. No other view model is refactored, and no render output changes.
+Boundaries: `argand-core` first, then the callers whose signature changes. The two
+review rounds widened it past the Issue's own type: `WaveformEnvelope::column`
+indexed its buffers the unchecked way this Issue describes, and `shade_columns`
+sliced a grid by hand, so both were brought onto the same checked contract. No
+render output changes.
 
 ## Context
 
@@ -52,11 +55,16 @@ sized:
 | `crates/dsp/src/stft.rs:1056` `shade_columns` | `image.put(x, y, colour)` | `x` from a `0..width` / dirty-column iterator, `y` from `0..height`, with `image` built by `SpectrogramImage::new(grid.width, grid.height)` after `DbGrid::shape()` settled the grid |
 | `crates/cli/src/render.rs:1098` `blit` | `img.get(sx as usize, sy as usize)` | `sx` / `sy` are `i64` already compared against `img.width` / `img.height` two lines above |
 
-Other code addresses `image.rgba` directly, by row: `crates/app/src/spectrogram.rs`
-(`padded_bgra`, `column_texture`, `bgra`) and `crates/dsp/src/overview.rs`
-(`par_chunks_mut`). Those are row-at-a-time or slice-at-a-time operations over a
-buffer whose length is checked against the shape in the same expression, so they
-are outside this Issue's two accessors and are not touched.
+Other code addresses `image.rgba` directly rather than through the two accessors:
+`crates/app/src/spectrogram.rs` (`padded_bgra`, `column_texture`, `bgra`) and
+`crates/dsp/src/overview.rs` (`par_chunks_mut`). They are outside this Issue, which
+is about `get` and `put`, and saying more about them than that would be wrong: they
+are not all checked the same way. `padded_bgra`, `bgra` and `par_chunks_mut` work a
+whole row or the whole buffer at a time and rely on the length, while
+`column_texture` computes `(row * image.width + column) * 4` with a plain
+multiplication and relies on the declared shape, so it assumes the same invariant
+this Issue stops assuming and does not check it. That is a separate change in the
+application crate, not a claim this branch makes about a site it did not touch.
 
 Nothing in the repository can reach either failing case today, which is why this
 is a latent trap in a public view model rather than a defect in current
@@ -175,8 +183,8 @@ the owner. Reviewer: GPT-6 Sol, medium reasoning effort, agreed with the owner.
       are equal.
 - [x] The comparison was repeated after the two review rounds, because both
       changed the shading path and the first result no longer described the
-      code. Commits `c3eed1e` and `c85b34c` moved the image-covers-grid check to
-      the entry of `shade_columns` and replaced the hand-written grid slice with
+      code. Those two commits moved the image-covers-grid check to the entry of
+      `shade_columns` and replaced the hand-written grid slice with
       `DbGrid::column`, so the branch `aspec` was rebuilt from that revision and
       every capture rendered again against the same base build. The result is the
       same: 19 PNGs byte-identical, 19 reports equal once the two fields above
@@ -184,10 +192,10 @@ the owner. Reviewer: GPT-6 Sol, medium reasoning effort, agreed with the owner.
 
 ## Review rounds
 
-Reviewer agreed with the owner: Codex `gpt-6-sol` at medium reasoning effort. Both
-rounds ran read-only through the `codex` CLI and neither found a major issue.
+Reviewer agreed with the owner: Codex `gpt-6-sol` at medium reasoning effort. The
+rounds run read-only through the `codex` CLI and none of them found a major issue.
 
-**Round 1.** Two minor findings, both accepted and fixed in `c3eed1e`.
+**Round 1.** Two minor findings, both accepted and fixed.
 
 - The only production caller of `put` was `let _ = image.put(...)` in
   `shade_columns`, so the reason the contract exists, that a wrongly sized image
@@ -198,10 +206,9 @@ rounds ran read-only through the `codex` CLI and neither found a major issue.
 - The new workspace rule in `AGENTS.md` claimed every view model checks every
   coordinate with `checked_mul`, and the plan described a `row()`/`row_mut()`
   pair the code does not have. The rule was narrowed to the view models that keep
-  those checks, and the plan's summary corrected to the private `pixel()`.
+  those checks, and the plan's summary corrected to the private `pixel()``.
 
-**Round 2.** Two minor findings, both accepted and fixed in the commit that
-follows.
+**Round 2.** Two minor findings, both accepted and fixed.
 
 - `WaveformEnvelope::shape` answers for the whole buffer while `column` answers
   for the cell it was asked for, so a cell inside the declared shape stays
