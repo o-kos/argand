@@ -2,7 +2,7 @@
 
 Resolves [#131](https://github.com/o-kos/argand/issues/131).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](../124-standard-ui-architecture.md), phase 5 (standard-control
+[approved architecture](124-standard-ui-architecture.md), phase 5 (standard-control
 replacement), inventory rows "Main cascading menu" and "Ruler context menu".
 Predecessor [#130](130-standard-buttons.md), merged in PR #157.
 

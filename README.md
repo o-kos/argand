@@ -441,9 +441,9 @@ Ctrl+G, the grid toolbar button or View → Show grid hides or shows the spectro
 between sessions; ruler baselines, ticks and labels remain visible. Valid time
 marks remain at the plot edges even when their labels cannot fit.
 Click the application button (icon and **Argand**) at the left of the title bar, or press **F10**, to open
-the File / View menu. Hover over a branch to open it; arrow keys navigate, Enter
-activates a command, and Escape closes one submenu at a time. Click outside to
-close the whole menu. Recent captures appear directly in File and retain their
+the File / View menu. Hover over a branch to open it; arrow keys navigate and Enter
+activates a command, while Right enters a branch. Escape closes the whole menu.
+Click outside to close it. Recent captures appear directly in File and retain their
 opening options; unavailable files and the current capture are omitted. The
 first nine carry digit keycaps — pressing that digit while the File list is
 open opens the capture. File →
@@ -662,6 +662,10 @@ Fixtures for all ten sample types are generated at test time rather than
 committed. Tests that use real captures look for them in `tests/signals/` and,
 for the wider format matrix, in `../sgvr/cli/tests` or wherever
 `ARGAND_EXTRA_FIXTURES` points; they report and skip when those are absent.
+
+The interface is covered by headless tests as well: focus and action routing,
+overlay input ownership, the application menu, and the standard dropdowns and
+numeric fields of the analysis settings window.
 
 The GUI minimap reopens its own cancellable reader using the resolved sample count
 and normalization divisor, without another count, normalization scan or FFT. It publishes a

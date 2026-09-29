@@ -1,7 +1,14 @@
 # Standard UI compatibility checkpoint (#126)
 
-Parent: [architecture plan](../../plans/124-standard-ui-architecture.md).
-Child: [implementation plan](../../plans/126-ui-compatibility.md).
+This directory is history. It records what the #126 checkpoint found on the
+GPUI 0.2.2 / gpui-component 0.5.1 graph, before #137 moved the application to
+GPUI Kit 0.6.x. The fixture it describes was removed by
+[#133](../../plans/completed/133-ui-integration.md); the current inventory, verified against
+the locked 0.6.6 sources, is [124-inventory.md](../124-inventory.md), and the
+in-window input check it replaced is a headless test in `settings_editor.rs`.
+
+Parent: [architecture plan](../../plans/completed/124-standard-ui-architecture.md).
+Child: [implementation plan](../../plans/completed/126-ui-compatibility.md).
 Source survey: [control inventory](inventory.md).
 
 ## Status
@@ -44,32 +51,30 @@ Initial GitHub reads failed; later API and Git reads succeeded and agreed on mai
 The branch starts from the locally accepted planning/policy branch, stacked on
 the still-unmerged PR #125. This task does not merge that parent.
 
-## Run the fixture
+## The fixture, as it was
 
-The standalone Cargo example is named `ui_compatibility`. Once built, run it in a
-real GPU-backed desktop session; do not run the production settings workflow to
-substitute for its in-window input checks.
+The fixture was the standalone Cargo example `crates/app/examples/ui_compatibility.rs`,
+run in a real GPU-backed desktop session:
 
 ```sh
 cargo run -p argand --example ui_compatibility --release --locked
 ```
 
-Use **Modal Dialog** for the separate standard modal-composition experiment. It
+**Modal Dialog** was the separate standard modal-composition experiment. It
 retains its own NumberInput/Select state; it is not an approved production editor.
-The known-crashing Popover composition is disabled in normal launches. To expose
-its explicitly labelled failure probe, run:
+The known-crashing Popover composition was disabled in normal launches and was
+exposed with `-- --popover-crash-probe`. Opening that probe and then its Reducer
+dropdown terminated the fixture on the locked graph.
 
-```sh
-cargo run -p argand --example ui_compatibility --release --locked -- --popover-crash-probe
-```
-
-Opening that probe and then its Reducer dropdown is expected to terminate the
-fixture on the locked graph. It is not necessary for trying the Dialog candidate.
-
-The fixture uses standard Root/frame, TitleBar, Button, NumberInput, Select,
-Dialog, opt-in Popover, PopupMenu, Tooltip and resizable components. Plot counters observe probe
+The fixture used standard Root/frame, TitleBar, Button, NumberInput, Select,
+Dialog, opt-in Popover, PopupMenu, Tooltip and resizable components. Plot counters observed probe
 events, not production worker generations. Preserve the stock behavior when
 recording a failure; do not patch the toolkit to make the checkpoint pass.
+
+None of this is runnable any more. The commands above are kept because the
+reproduction steps in [native-results.md](native-results.md) and
+[dialog-results.md](dialog-results.md) name them; the results they produced are
+the record, not the tool.
 
 ## Native case ledger
 
