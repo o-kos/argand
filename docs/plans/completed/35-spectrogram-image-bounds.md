@@ -163,16 +163,62 @@ the owner. Reviewer: GPT-6 Sol, medium reasoning effort, agreed with the owner.
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] Byte-identical `aspec` output against the merge base over every capture in
       `tests/signals/`. The base `aspec` was built at `origin/main` (`5ba088a`,
-      the merge base of this branch) into a separate `CARGO_TARGET_DIR`, and the
-      branch `aspec` from this revision's `target/release`; both were run over
-      every non-PNG file in `tests/signals/` (19 captures) with
+      the merge base of this branch) into its own `CARGO_TARGET_DIR`, and the
+      branch `aspec` into a second one; both were run over every non-PNG file in
+      `tests/signals/` (19 captures) with
       `-f 1024 -d 60 -i 640x360 --json --quiet -o <dir>/<name>.png`, with
       `--start 0 --duration 10` added for the captures above 100 MiB so the ten-
       and one-gigabyte files finish in reasonable time. All 19 PNGs compared
-      byte-identical with `cmp`. The JSON reports differ only in
-      `output.path`, which is the output directory that differs by construction,
-      and `elapsed_seconds`, which is a wall-clock measurement; with those two
-      fields dropped all 19 reports are equal.
+      byte-identical. The JSON reports differ only in `output.path`, which is the
+      output directory that differs by construction, and `elapsed_seconds`, which
+      is a wall-clock measurement; with those two fields dropped all 19 reports
+      are equal.
+- [x] The comparison was repeated after the two review rounds, because both
+      changed the shading path and the first result no longer described the
+      code. Commits `c3eed1e` and `c85b34c` moved the image-covers-grid check to
+      the entry of `shade_columns` and replaced the hand-written grid slice with
+      `DbGrid::column`, so the branch `aspec` was rebuilt from that revision and
+      every capture rendered again against the same base build. The result is the
+      same: 19 PNGs byte-identical, 19 reports equal once the two fields above
+      are dropped.
+
+## Review rounds
+
+Reviewer agreed with the owner: Codex `gpt-6-sol` at medium reasoning effort. Both
+rounds ran read-only through the `codex` CLI and neither found a major issue.
+
+**Round 1.** Two minor findings, both accepted and fixed in `c3eed1e`.
+
+- The only production caller of `put` was `let _ = image.put(...)` in
+  `shade_columns`, so the reason the contract exists, that a wrongly sized image
+  cannot drop a write unnoticed, did not hold where it mattered. The
+  image-covers-grid question is now settled once at the entry of the private
+  function, with a test for an image one column short, one row short, larger than
+  the grid and exact. The test was mutation-checked.
+- The new workspace rule in `AGENTS.md` claimed every view model checks every
+  coordinate with `checked_mul`, and the plan described a `row()`/`row_mut()`
+  pair the code does not have. The rule was narrowed to the view models that keep
+  those checks, and the plan's summary corrected to the private `pixel()`.
+
+**Round 2.** Two minor findings, both accepted and fixed in the commit that
+follows.
+
+- `WaveformEnvelope::shape` answers for the whole buffer while `column` answers
+  for the cell it was asked for, so a cell inside the declared shape stays
+  readable where the buffers run longer. The doc comment said anything indexing
+  the envelope has to ask `shape`, which is not true, and now follows `DbGrid`'s
+  wording about sizing a buffer. A test records the difference. `AGENTS.md` was
+  narrowed again, to the accessors by name, because `pixel_spans` still multiplies
+  a display step by `columns` and is not one of them.
+- The recorded byte-identical result described the code before the two rounds,
+  and the later commit changes the shading path. The comparison was repeated on
+  that revision and is recorded above.
+
+Round 2 also confirmed what the round 1 fixes relied on: `SpectrogramImage` bounds
+both dimensions and the slice length, a large or short `DbGrid`, empty shapes and
+an image larger than the grid all fail safely in `shade_columns`, `pixel_spans` and
+`minimap::rebin` derive their indices from `columns`, and the added per-column
+check is constant work.
 
 ## Post-completion
 

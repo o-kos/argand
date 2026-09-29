@@ -202,16 +202,20 @@ impl WaveformEnvelope {
     /// The shape the buffers actually cover, or `None` when they do not cover
     /// the one the envelope declares.
     ///
-    /// The fields are a caller's to set, so anything indexing this envelope has
-    /// to ask here rather than multiply them: a `columns` near `usize::MAX` makes
-    /// that product an overflow, not an envelope.
+    /// The fields are a caller's to set, so anything sizing a buffer from
+    /// `columns` and `channels` has to ask here rather than multiply them: a
+    /// `columns` near `usize::MAX` makes that product an overflow, not an
+    /// envelope. This answers for the whole buffer, where an accessor answers
+    /// for the one cell it was asked for, so a cell inside the declared shape
+    /// stays readable even where the buffers run longer than that shape.
     pub fn shape(&self) -> Option<(usize, usize)> {
         let cells = self.columns.checked_mul(self.channels)?;
         (cells == self.min.len() && cells == self.max.len())
             .then_some((self.columns, self.channels))
     }
 
-    /// Lowest and highest value `column` reached on `channel`.
+    /// Lowest and highest value `column` reached on `channel`, or `None` for a
+    /// coordinate outside the declared shape or outside the buffers.
     pub fn column(&self, column: usize, channel: usize) -> Option<(f32, f32)> {
         if column >= self.columns || channel >= self.channels {
             return None;

@@ -172,6 +172,20 @@ fn an_envelope_refuses_a_column_past_its_shape_without_overflowing() {
     assert_eq!(over.shape(), None, "no channel has no cell");
 
     assert_eq!(env.shape(), Some((3, 2)), "a whole envelope keeps its shape");
+
+    // `shape` answers for the whole buffer and an accessor for the one cell it
+    // was asked for, so buffers running longer than the declared shape still
+    // leave every cell the shape does cover readable.
+    let mut longer = env.clone();
+    longer.min.push(-1.0);
+    longer.max.push(1.0);
+    assert_eq!(longer.shape(), None, "more cells than the shape declares");
+    assert_eq!(
+        longer.column(0, 0),
+        Some((-0.5, 0.5)),
+        "the cell the shape does cover is still readable"
+    );
+    assert_eq!(longer.column(3, 0), None, "the shape still bounds it");
 }
 
 #[test]
