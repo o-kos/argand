@@ -6,10 +6,14 @@ Resolves #35.
 
 `SpectrogramImage::get` and `SpectrogramImage::put` in `crates/core/src/view.rs`
 work the buffer offset out as `(y * self.width + x) * 4` and check neither
-coordinate. `SpectrogramImage` is the last view model in `argand-core` that
-addresses its own buffer unchecked: `WaveformEnvelope::column` answers `Option`,
-and `DbGrid::value` / `DbGrid::column` answer `Option` with their arithmetic
-performed once behind `DbGrid::shape`.
+coordinate. `SpectrogramImage` was the last view model in `argand-core` that
+addresses its own buffer unchecked. Two contracts meet here rather than one.
+`SpectrogramImage::get` and `put` settle the whole buffer through `shape()` and
+answer nothing until it matches, so they are strict about the image as a whole.
+`DbGrid::value` and `DbGrid::column` do not consult `shape()`; they check the one
+coordinate, settle that offset with `checked_mul` and take the cell from the
+slice, so a cell inside the declared shape stays readable where the buffer runs
+longer than that shape. `WaveformEnvelope::column` follows the second form.
 
 A column index at or past `width` is a valid offset into a later row, so
 `get(width, 0)` answers with the first pixel of row 1 and the value looks exactly
@@ -25,7 +29,7 @@ Every existing caller's behaviour is unchanged: `shade` builds the buffer from a
 shape it has already settled and `shade_columns` indexes inside it, and the CLI's
 `blit` already range-checks the source coordinate before calling `get`.
 
-Boundaries: `argand-core` first, then the callers whose signature changes. The two
+Boundaries: `argand-core` first, then the callers whose signature changes. The
 review rounds widened it past the Issue's own type: `WaveformEnvelope::column`
 indexed its buffers the unchecked way this Issue describes, and `shade_columns`
 sliced a grid by hand, so both were brought onto the same checked contract. No
@@ -63,15 +67,14 @@ the shape with `checked_mul` before working any offset out, and `par_chunks_mut`
 walks the whole buffer, so none of them depends on an unchecked product.
 
 `column_texture` was the one that computed `(row * image.width + column) * 4` with a
-plain multiplication. That path was not a reachable defect: with a buffer that
-matches the declared shape, `row < height` and `column < width` leave the slice in
-range on every iteration, and the multiplication could only overflow for a shape
-whose buffer cannot be allocated, which the strip allocation in the same function
-refuses first. It was consolidated onto `get` anyway, because the accessor already
-answers the same question and the hand-written product is a trap for the next
-caller. The test that came with it pins the contract, not a regression: a column of
-an image whose buffer is short of its shape is refused, which the old slice check
-also did.
+plain multiplication, and that path was a reachable defect after all. The strip
+built beside the read is sized by `image.height`, so a width past any buffer passes
+the entry test; with `width = usize::MAX`, `height = 2`, a two-pixel buffer and
+`column = 1`, the second row computed `usize::MAX + 1`, which panicked on a checked
+build and wrapped onto a foreign pixel on a release one. The fields are public, so
+a caller can build that value. No production path does build one, and that is the
+only reason the defect never fired. It is consolidated onto `get`, which checks the
+product and refuses, and a test covers the overflowing width.
 
 Nothing in the repository can reach either failing case today, which is why this
 is a latent trap in a public view model rather than a defect in current
@@ -164,9 +167,9 @@ the owner. Reviewer: GPT-6 Sol, medium reasoning effort, agreed with the owner.
       or `put` for the new signatures.
 - [x] Record the contract in `AGENTS.md`'s `argand-core` description. No
       `CHANGELOG.md` entry: the change is a latent trap in an unpublished
-      workspace crate, and the byte-identical render proves no user outside the
-      repository can observe it, which is the case `CONTRIBUTING.md` exempts
-      from the changelog.
+      workspace crate, and the byte-identical render proves the checked outputs
+      agree with the base build, not that no observable difference is possible
+      on an input the render does not cover.
 - [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
@@ -188,7 +191,7 @@ the owner. Reviewer: GPT-6 Sol, medium reasoning effort, agreed with the owner.
       output directory that differs by construction, and `elapsed_seconds`, which
       is a wall-clock measurement; with those two fields dropped all 19 reports
       are equal.
-- [x] The comparison was repeated after the two review rounds, because both
+- [x] The comparison was repeated after the first two rounds, because both
       changed the shading path and the first result no longer described the
       code. Those two commits moved the image-covers-grid check to the entry of
       `shade_columns` and replaced the hand-written grid slice with
@@ -196,11 +199,25 @@ the owner. Reviewer: GPT-6 Sol, medium reasoning effort, agreed with the owner.
       every capture rendered again against the same base build. The result is the
       same: 19 PNGs byte-identical, 19 reports equal once the two fields above
       are dropped.
+- [x] The later rounds changed only `crates/app/src/spectrogram.rs`, its tests and
+      this plan. `aspec` does not link the application crate, so the comparison
+      above still describes what it would print; it was not re-run for those
+      rounds, and this line is that inference rather than a second measurement.
+      The 10-second window on captures above 100 MiB is the other limit on what
+      the result covers.
 
 ## Review rounds
 
 Reviewer agreed with the owner: Codex `gpt-6-sol` at medium reasoning effort. The
-rounds run read-only through the `codex` CLI and none of them found a major issue.
+rounds run read-only through the `codex` CLI and none of them found a major issue
+in the accessors.
+
+**Round 4, owner decision.** The process sets three rounds as the limit and says
+that findings still standing after the third mean the task was stated badly. The
+owner ran a fourth anyway, because round 3's disposition of `column_texture` rested
+on a claim the plan had not checked, and fixing that turned out to be a change of
+kind rather than a missing line. The extra round is recorded here so the exception
+is visible rather than assumed.
 
 **Round 1.** Two minor findings, both accepted and fixed.
 
@@ -233,6 +250,49 @@ both dimensions and the slice length, a large or short `DbGrid`, empty shapes an
 an image larger than the grid all fail safely in `shade_columns`, `pixel_spans` and
 `minimap::rebin` derive their indices from `columns`, and the added per-column
 check is constant work.
+
+**Round 3.** Two minor findings, both accepted and fixed.
+
+- The envelope's overflow test could not tell checked arithmetic from a wrapping
+  one, because it cleared the buffers first, so a wrapped offset still answered
+  with nothing while the comment claimed the multiplication was what refused. It
+  now keeps one cell and asks for a column inside the declared width whose
+  product wraps onto exactly that cell, where a wrapping index answers with that
+  cell's values instead of refusing.
+- The plan's boundaries paragraph still claimed `argand-core` alone while the
+  rounds had widened the change, and its note on direct buffer access claimed
+  every such site checks the length in the same expression, which is false of
+  `column_texture`. That site was named as separate work, and the commit hashes
+  the plan had recorded were removed, which `CONTRIBUTING.md` forbids.
+
+Round 3 also held the branch back: it confirmed the accessors, the criteria and
+the recorded render, and asked for the overflow test and the plan's wording
+rather than for a change to the code.
+
+**Round 4.** One substantial finding and two moderate ones, all accepted and fixed.
+
+- The substantial one refuted the argument the round 3 disposition rested on.
+  That disposition called `column_texture`'s hand-written product unreachable
+  because the strip built beside the read would refuse an impossible shape first,
+  but the strip is sized by the height, not the width, so a width past any buffer
+  passes the entry test and the product overflowed on the second row. The claim
+  is corrected, the site is consolidated onto `get`, and a test now covers the
+  overflowing width, which fails on the old arithmetic.
+- `AGENTS.md` and the plan's overview claimed every named accessor settles its
+  product behind `shape()`. `DbGrid::column`, `DbGrid::value` and
+  `WaveformEnvelope::column` do not consult it; they check one coordinate and
+  take the cell from the slice. Both documents now describe the two contracts
+  apart, since the difference is deliberate.
+- The plan still spoke of two rounds, its record lacked round 3, and its render
+  evidence and changelog reasoning overstated what the comparison proves. The
+  round count is corrected, round 3 is recorded, the render line names the
+  revision it covers and the inference that the later application-only change
+  preserves it, and the changelog reasoning now says the comparison proves the
+  checked outputs agree rather than that no difference is possible.
+
+Round 4 also listed the buffer-indexing sites this branch did not touch, with the
+guard each one relies on, and asked that they become their own tasks rather than
+ride along here.
 
 ## Post-completion
 
