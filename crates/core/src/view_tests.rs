@@ -4,11 +4,73 @@ use super::*;
 fn image_starts_transparent_and_stores_pixels() {
     let mut img = SpectrogramImage::new(4, 3);
     assert_eq!(img.rgba.len(), 4 * 3 * 4);
-    assert_eq!(img.get(0, 0), [0, 0, 0, 0]);
+    assert_eq!(img.shape(), Some((4, 3)));
+    assert_eq!(img.get(0, 0), Some([0, 0, 0, 0]));
 
     img.put(3, 2, [10, 20, 30]);
-    assert_eq!(img.get(3, 2), [10, 20, 30, 255]);
-    assert_eq!(img.get(2, 2), [0, 0, 0, 0]);
+    assert_eq!(img.get(3, 2), Some([10, 20, 30, 255]));
+    assert_eq!(img.get(2, 2), Some([0, 0, 0, 0]));
+}
+
+#[test]
+fn an_image_addresses_a_pixel_only_inside_its_shape() {
+    let mut img = SpectrogramImage::new(3, 2);
+    for x in 0..3 {
+        img.put(x, 0, [x as u8, 0, 0]);
+        img.put(x, 1, [0, x as u8, 0]);
+    }
+
+    // One past the end of a row is a valid offset into the next one, so asking
+    // for it has to fail rather than answer with the neighbour's pixel.
+    assert_eq!(img.get(3, 0), None, "the column past the width");
+    assert_eq!(img.get(3, 1), None);
+    assert_eq!(img.put(3, 0, [9, 9, 9]), None);
+    assert_eq!(img.get(0, 1), Some([0, 0, 0, 255]), "row 0 was untouched");
+
+    // The same for the row below the last one.
+    assert_eq!(img.get(0, 2), None, "the row past the height");
+    assert_eq!(img.put(0, 2, [9, 9, 9]), None);
+    assert_eq!(img.get(2, 1), Some([0, 2, 0, 255]), "the last row is intact");
+
+    // The far corner cannot wrap around into the buffer either.
+    assert_eq!(img.get(usize::MAX, usize::MAX), None);
+    assert_eq!(img.put(usize::MAX, 1, [9, 9, 9]), None);
+    assert_eq!(img.rgba.len(), 3 * 2 * 4, "no write landed");
+}
+
+#[test]
+fn an_image_whose_shape_does_not_fit_its_buffer_answers_nothing() {
+    // The fields are the caller's to set, so a shape the buffer cannot hold
+    // reaches these accessors, and a height this size overflows the offset
+    // before any comparison against the length could catch it.
+    let mut broken = SpectrogramImage {
+        width: 2,
+        height: usize::MAX,
+        rgba: vec![0; 8],
+        ..SpectrogramImage::new(0, 0)
+    };
+    assert_eq!(broken.shape(), None);
+    assert_eq!(broken.get(0, 0), None);
+    assert_eq!(broken.get(1, 1), None);
+    assert_eq!(broken.put(0, 0, [1, 2, 3]), None);
+    assert_eq!(broken.rgba, vec![0; 8]);
+
+    // A shape that multiplies without overflowing but the buffer still falls
+    // short of is refused on the same ground.
+    let mut short = SpectrogramImage {
+        width: 4,
+        height: 4,
+        rgba: vec![0; 8],
+        ..SpectrogramImage::new(0, 0)
+    };
+    assert_eq!(short.shape(), None);
+    assert_eq!(short.get(0, 0), None);
+    assert_eq!(short.get(3, 3), None);
+    assert_eq!(short.put(0, 0, [1, 2, 3]), None);
+    assert_eq!(short.rgba, vec![0; 8]);
+
+    // The first pixel is refused too: the image does not hold it.
+    assert_eq!(broken.get(0, 0), None);
 }
 
 fn psd(freqs: &[f64], db: &[f32]) -> Psd {

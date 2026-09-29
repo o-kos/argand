@@ -240,7 +240,7 @@ fn the_tone_is_the_brightest_row_of_the_image() {
     // Row 0 is the top of the image, which is +Fs/2.
     let expected_row = FFT - 1 - (FFT / 2 + TONE_BIN);
     let brightest = (0..img.height)
-        .max_by_key(|&y| img.get(4, y)[0])
+        .max_by_key(|&y| img.get(4, y).expect("a pixel inside the image")[0])
         .expect("non-empty image");
     assert_eq!(brightest, expected_row, "tone should sit above the midline");
     assert!(brightest < img.height / 2);
@@ -272,7 +272,9 @@ fn every_column_gets_covered_when_frames_outnumber_them() {
 
     let expected_row = 16 - 1 - (16 / 2 + 103 * 16 / FFT);
     for x in 0..img.width {
-        let brightest = (0..img.height).max_by_key(|&y| img.get(x, y)[0]).unwrap();
+        let brightest = (0..img.height)
+            .max_by_key(|&y| img.get(x, y).expect("a pixel inside the image")[0])
+            .unwrap();
         assert_eq!(brightest, expected_row, "column {x} is blank or wrong");
     }
 }
@@ -291,7 +293,7 @@ fn mean_and_max_differ_on_a_burst() {
 
     let brightest = |a: &Analysis| {
         (0..a.spectrogram.height)
-            .map(|y| a.spectrogram.get(0, y)[0])
+            .map(|y| a.spectrogram.get(0, y).expect("a pixel inside the image")[0])
             .max()
             .unwrap()
     };
@@ -320,7 +322,12 @@ fn a_fixed_range_stretches_a_quiet_signal_to_full_brightness() {
     assert_eq!(fs.spectrogram.db_max, 0.0);
     assert!(peak.spectrogram.db_max < -50.0, "{}", peak.spectrogram.db_max);
 
-    let brightest = |a: &Analysis| (0..a.spectrogram.height).map(|y| a.spectrogram.get(4, y)[0]).max().unwrap();
+    let brightest = |a: &Analysis| {
+        (0..a.spectrogram.height)
+            .map(|y| a.spectrogram.get(4, y).expect("a pixel inside the image")[0])
+            .max()
+            .unwrap()
+    };
     assert!(brightest(&peak) > brightest(&fs));
     assert_eq!(brightest(&peak), 255, "peak-relative range should reach the top");
 }
@@ -580,7 +587,10 @@ fn the_grid_holds_the_numbers_the_picture_was_shaded_from() {
         for y in 0..grid.height {
             let value = grid.value(x, grid.height - 1 - y).expect("a bin inside the grid");
             let expected = gradient[gradient_index((value - img.db_min) / span)];
-            assert_eq!(img.get(x, y), [expected[0], expected[1], expected[2], 255]);
+            assert_eq!(
+                img.get(x, y),
+                Some([expected[0], expected[1], expected[2], 255])
+            );
         }
     }
     assert!(

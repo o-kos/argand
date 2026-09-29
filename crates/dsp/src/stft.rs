@@ -1053,7 +1053,9 @@ fn shade_columns(
             } else {
                 0.0
             };
-            image.put(x, y, gradient[gradient_index(normalized)]);
+            // `image` was built from the grid's own shape, so every coordinate
+            // in this loop is inside it and the answer is always `Some`.
+            let _ = image.put(x, y, gradient[gradient_index(normalized)]);
         }
     }
     image.t0 = grid.t0;

@@ -4,8 +4,8 @@ use super::*;
 /// any permutation of the channels.
 fn two_pixels() -> SpectrogramImage {
     let mut image = SpectrogramImage::new(2, 1);
-    image.put(0, 0, [10, 20, 30]);
-    image.put(1, 0, [200, 100, 50]);
+    image.put(0, 0, [10, 20, 30]).expect("a pixel inside the image");
+    image.put(1, 0, [200, 100, 50]).expect("a pixel inside the image");
     image
 }
 
