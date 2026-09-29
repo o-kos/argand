@@ -656,6 +656,6 @@ group on their text, with no hovered flag in the shell, and the FFT summary stay
 lit while its pinned hint is open, which keeps the pointer off the window. The
 yellow range progression and the accepted colours are unchanged. The audit
 dispositions are recorded in the inventory table of
-`docs/plans/124-standard-ui-architecture.md`, one line per control, with the
+`docs/plans/completed/124-standard-ui-architecture.md`, one line per control, with the
 audit itself, every render and input entry point and each retained row's
 verified limitation in the locked 0.6.6 sources in `docs/ui/124-inventory.md`.

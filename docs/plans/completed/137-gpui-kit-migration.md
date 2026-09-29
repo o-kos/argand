@@ -2,7 +2,7 @@
 
 Resolves [#137](https://github.com/o-kos/argand/issues/137).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](../124-standard-ui-architecture.md), phase 2.
+[approved architecture](124-standard-ui-architecture.md), phase 2.
 Blocked by [#126](https://github.com/o-kos/argand/issues/126).
 
 > **Box reconciliation, 2026-09-29 (#133).** This plan merged in PR #138 with every
@@ -147,7 +147,7 @@ for all review rounds. Do not begin implementation until #126 is accepted and me
       native Linux fixture check was not run for #137; the production window was verified
       natively on Linux by #127 in PR #139, and the three-platform native half is
       replaced by the owner's Linux-only decision of 2026-09-29 recorded in
-      `docs/plans/133-ui-integration.md`.)
+      `docs/plans/completed/133-ui-integration.md`.)
 - [x] Complete the required external class-A review after implementation. This
       planning update does not run an automatic review.
       (The owner waived the external review pair for this stage; PR #138 records that

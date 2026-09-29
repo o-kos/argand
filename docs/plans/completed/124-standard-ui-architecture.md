@@ -19,7 +19,7 @@ inventory, removed the #126 prototype, brought this document and `AGENTS.md` fro
 planned to implemented, and hands #108 its updated constraints. The owner's
 decision of 2026-09-29 replaces the three-platform native matrix with Linux-only
 evidence, gathered stage by stage and mapped in
-[ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md).
+[ui/124-integration/linux-results.md](../../ui/124-integration/linux-results.md).
 The implementing and reviewing roles are those the repository's role policy
 names per Pull Request, not the planning revision's; #133 used Codex
 `gpt-6-sol` high as its reviewer.
@@ -149,24 +149,24 @@ implementation or the word "custom" is not a justification.
 
 | Existing implementation | Standard candidate / target | Verification or exception decision |
 | --- | --- | --- |
-| Custom frame and Linux window controls (`chrome.rs`) | Borderless Root plus the existing Argand frame | **Retained**, the sole frame. The locked `window_border` measures resize from the reported `window_bounds()` and has no maximized or fullscreen guard, and `TitleBar` always appends private window controls whose Linux click is `zoom_window()`; the production frame measures `viewport_size()` and answers both. [R1](../ui/124-inventory.md#r1-custom-frame-and-linux-window-controls) |
-| Title-bar drag and double-click handlers (`shell.rs`) | Existing Argand title-bar behavior | **Retained** for Linux, the composition of the stock `TitleBar`, which cannot be used because its private caption controls are unconditional. Controls still do not start a window move, and the accepted maximize double-click is unchanged. [R2](../ui/124-inventory.md#r2-title-bar-drag-and-double-click-handlers) |
+| Custom frame and Linux window controls (`chrome.rs`) | Borderless Root plus the existing Argand frame | **Retained**, the sole frame. The locked `window_border` measures resize from the reported `window_bounds()` and has no maximized or fullscreen guard, and `TitleBar` always appends private window controls whose Linux click is `zoom_window()`; the production frame measures `viewport_size()` and answers both. [R1](../../ui/124-inventory.md#r1-custom-frame-and-linux-window-controls) |
+| Title-bar drag and double-click handlers (`shell.rs`) | Existing Argand title-bar behavior | **Retained** for Linux, the composition of the stock `TitleBar`, which cannot be used because its private caption controls are unconditional. Controls still do not start a window move, and the accepted maximize double-click is unchanged. [R2](../../ui/124-inventory.md#r2-title-bar-drag-and-double-click-handlers) |
 | Zoom halves and `pressed_zoom` (`plot_ui.rs`, shell routing) | Button with shared group styling | **Replaced (#130).** Each half is a `Button` in the shared frame: the component owns press, disabled and click, and `pressed_zoom`, `release_press` and the ToggleScaleUi repair are gone. Geometry, translucency, the enabled rule and the tooltips are unchanged; the halves are `tab_stop(false)`, keep their ids and hand focus back to the plot. The frame and its border stay a `div` because it is layout, not a control |
 | Main cascading menu (`app_menu.rs`, `app_menu_ui.rs`) | PopupMenu and supported composition | **Replaced (#131).** One stock `PopupMenu` with the File, View and Time scale format submenus, drawn by a controlled `Popover` on the application button whose tracked focus handle is the menu's own, because the popover's open focuses that handle and would otherwise take the keyboard from the menu. Rows are stock items with stock checks and actions, and the recent captures are element rows that render their digit and name; the order and the first nine digits stay in the toolkit-neutral `app_menu::file_items`. Escape closes the whole chain, which the owner accepted in place of one level, Home, End and Space do nothing in the menu, because the stock key context has no bindings for them, and Enter or Space on File, View or Time scale format does not open that branch, because the stock `confirm` ignores a submenu row, so only Right enters one. F10, Tab and the File rows' digits come from an `ApplicationMenu` key context that wraps the menu, and the digits answer only while the File submenu entity holds the keyboard. A backdrop below the popover's priority keeps the dismissing click or wheel from the plot and the title bar. The popover anchors the menu to the button's top-left, which is the stock dropdown offset, and the popover's own press opens the menu, so the button carries no handler |
 | Waveform/spectrum splitter (`shell.rs`, `panels.rs`) | Resizable panels/handle | **Removed (#132).** The owner decided the minimap is not resizable: it has a fixed height, or width in vertical orientation, set by `[panels].minimap_size` (default `"3 rem"`). The drag strip, its state, the fraction intent and `Session::waveform_fraction` are gone; an old session carrying the field loads and drops it. The standard `ResizablePanelGroup` is not used |
 | Toolbar, status range/FFT, start/recent buttons | Existing Button | **Toolbar replaced, rest retained (#130).** Toolbar controls carry no border, because a custom variant paints none, and their states are the accent surfaces in `toolbar_style`: an on control keeps the accent shade, and hover and pressed are the accent surfaces on top of it. The application button and the grid toggle are not `selected`, so they keep those hover and pressed states while they are on, and the grid glyph and the segment that changes the mode tint while hovered, while the application button's artwork does not. Orientation is a `ButtonGroup` of two segments in one frame, whose selected segment is the mode in force, is inert while selected, and names its own mode in its hint, with the Ctrl+T keycap on the unselected segment only; the divider is painted inside the second segment, because a border takes the colour of the states its own variant passes through, and each segment rounds its own outer corners, because GPUI clips to rectangles. The on state is accent 0.30 with 0.40 under the pointer and 0.52 while held. The segments and the grid toggle exist only with a document, so the title reserves exactly what is drawn. Status range/FFT keep their accepted colours and their manual hover foreground and background, because the painted hover state is that same colour, and the FFT summary additionally stays lit while its pinned hint is open. Start and recent rows keep the ghost variant, measured text-width hover surfaces and numbered shortcuts. The toolbar and zoom controls are `tab_stop(false)` and return focus to their owner on a click |
-| Settings form | Existing NumberInput / Select / Button | **Retained, already standard.** Reset, Cancel and OK are standard outline and primary Buttons and the recommendation a standard ghost Button, with no custom press, hover or focus machinery. In-window compatibility is proved headlessly by `settings_editor::standard_input_tests`, which types in a `NumberInput` and chooses and dismisses a `Select` under a standard `Root`. [R7](../ui/124-inventory.md#r7-settings-form) |
-| Ruler context menu | Existing PopupMenu | **Retained, already standard.** A stock `PopupMenu`; only the entity tracking for its retained popup and its `DismissEvent` is Argand's, which is lifecycle, not a control. [R8](../ui/124-inventory.md#r8-ruler-context-menu) |
-| Metadata/analysis/shortcut hints and keycaps | Existing Tooltip / Kbd | **Retained, already standard.** Stock `Tooltip` and `Popover` behind one contract, and `Kbd` with a shared refinement and a measured width. Two binding facts are met in code: the popover binds Space to confirm, and `occlude()` also blocks the wheel. [R9](../ui/124-inventory.md#r9-metadata-analysis-and-shortcut-hints-and-keycaps) |
-| Ready-input capture canvas (`shell.rs`) | GPUI window event observation | **Retained** as a minimal passive adapter, and a canvas is required: `Window::on_mouse_event` is the only window-level mouse registration and is paint-phase only. Keys use the supported app-level observer. Dismissal never consumes or navigates. [R10](../ui/124-inventory.md#r10-ready-input-capture-canvas) |
-| Global symbolic-key interceptor (`navigation_ui.rs`) | Plot-scoped bindings/key handling | **Retained** as an adapter, one per `PlotView`, dropped with the plot and gated by window id and exact focus before it recognizes or consumes anything. `App::intercept_keystrokes` is the only pre-binding hook and is application-global. [R11](../ui/124-inventory.md#r11-global-symbolic-key-interceptor) |
-| Spectrogram, waveform, axes, minimap and cursor badges | Existing domain canvas/texture rendering | **Retained** domain drawing. The toolkit's `PlotAxis` and `Grid` take pre-computed pixels and caller-supplied labels and derive no ladder in physical units, no edge-mark policy, no locale formatting and no measured gutter. The audit found no ordinary control inside it. [R12](../ui/124-inventory.md#r12-spectrogram-waveform-axes-minimap-and-cursor-badges) |
-| Rejected numeric editor in PR #106 | NumberInput / Input | **Not ported.** The branch is unmerged and the editor rejected; #108 restarts on the standard `NumberInput` and `Input` the settings form already uses. [R13](../ui/124-inventory.md#r13-rejected-numeric-editor-in-pr-106) |
+| Settings form | Existing NumberInput / Select / Button | **Retained, already standard.** Reset, Cancel and OK are standard outline and primary Buttons and the recommendation a standard ghost Button, with no custom press, hover or focus machinery. In-window compatibility is proved headlessly by `settings_editor::standard_input_tests`, which types in a `NumberInput` and chooses and dismisses a `Select` under a standard `Root`. [R7](../../ui/124-inventory.md#r7-settings-form) |
+| Ruler context menu | Existing PopupMenu | **Retained, already standard.** A stock `PopupMenu`; only the entity tracking for its retained popup and its `DismissEvent` is Argand's, which is lifecycle, not a control. [R8](../../ui/124-inventory.md#r8-ruler-context-menu) |
+| Metadata/analysis/shortcut hints and keycaps | Existing Tooltip / Kbd | **Retained, already standard.** Stock `Tooltip` and `Popover` behind one contract, and `Kbd` with a shared refinement and a measured width. Two binding facts are met in code: the popover binds Space to confirm, and `occlude()` also blocks the wheel. [R9](../../ui/124-inventory.md#r9-metadata-analysis-and-shortcut-hints-and-keycaps) |
+| Ready-input capture canvas (`shell.rs`) | GPUI window event observation | **Retained** as a minimal passive adapter, and a canvas is required: `Window::on_mouse_event` is the only window-level mouse registration and is paint-phase only. Keys use the supported app-level observer. Dismissal never consumes or navigates. [R10](../../ui/124-inventory.md#r10-ready-input-capture-canvas) |
+| Global symbolic-key interceptor (`navigation_ui.rs`) | Plot-scoped bindings/key handling | **Retained** as an adapter, one per `PlotView`, dropped with the plot and gated by window id and exact focus before it recognizes or consumes anything. `App::intercept_keystrokes` is the only pre-binding hook and is application-global. [R11](../../ui/124-inventory.md#r11-global-symbolic-key-interceptor) |
+| Spectrogram, waveform, axes, minimap and cursor badges | Existing domain canvas/texture rendering | **Retained** domain drawing. The toolkit's `PlotAxis` and `Grid` take pre-computed pixels and caller-supplied labels and derive no ladder in physical units, no edge-mark policy, no locale formatting and no measured gutter. The audit found no ordinary control inside it. [R12](../../ui/124-inventory.md#r12-spectrogram-waveform-axes-minimap-and-cursor-badges) |
+| Rejected numeric editor in PR #106 | NumberInput / Input | **Not ported.** The branch is unmerged and the editor rejected; #108 restarts on the standard `NumberInput` and `Input` the settings form already uses. [R13](../../ui/124-inventory.md#r13-rejected-numeric-editor-in-pr-106) |
 
 Every row now carries its final disposition. The audit that closed it, with every
 `Render` implementation, control constructor, `on_mouse*`, `on_scroll*`, `on_key*`,
 `on_action`, `intercept_keystrokes` and window event registration in `crates/app/src`
-mapped to a row, is [ui/124-inventory.md](../ui/124-inventory.md). Infrastructure
+mapped to a row, is [ui/124-inventory.md](../../ui/124-inventory.md). Infrastructure
 observers and adapters are recorded there separately from ordinary controls. Each
 retained row's verified limitation is cited to the locked 0.6.6 sources, not to a
 prior decision.
@@ -207,8 +207,8 @@ control within it still needs replacement or a separately accepted exception.
 ### 1. Compatibility checkpoint before broad migration
 
 - [x] Capture the current native interaction/geometry baseline and finish the inventory.
-      (#126, PR #134; [completed/126-ui-compatibility.md](completed/126-ui-compatibility.md)
-      and [ui/126-compatibility/](../ui/126-compatibility/), whose `inventory.md` maps every
+      (#126, PR #134; [completed/126-ui-compatibility.md](126-ui-compatibility.md)
+      and [ui/126-compatibility/](../../ui/126-compatibility/), whose `inventory.md` maps every
       production control and whose `native-results.md` records the baseline build hashes,
       the Wayland/Sway run and its display scale.)
 - [x] Build a bounded verification fixture using top-level Root, its frame, a plot
@@ -216,21 +216,21 @@ control within it still needs replacement or a separately accepted exception.
       (#126, PR #134; the fixture was `crates/app/examples/ui_compatibility.rs` with
       `ui_compatibility/model.rs`, and #133 removed it in favour of
       `settings_editor::standard_input_tests`. See
-      [ui/124-inventory.md](../ui/124-inventory.md), "Removed verification surface".)
+      [ui/124-inventory.md](../../ui/124-inventory.md), "Removed verification surface".)
 - [x] Verify frame operations and the event matrix, including the stock menu Escape
       mismatch and passive-hint pointer/wheel distinction. Inspect locked toolkit
       APIs before choosing any replacement or exception.
       (#126, PR #134; the `Select`-inside-`Popover` deferred-draw panic is reproduced
-      step by step in [ui/126-compatibility/native-results.md](../ui/126-compatibility/native-results.md),
+      step by step in [ui/126-compatibility/native-results.md](../../ui/126-compatibility/native-results.md),
       and the `occlude()` wheel behaviour that separates a passive hint from a blocking
       one is a locked-toolkit observation in
-      [ui/124-inventory.md](../ui/124-inventory.md).)
+      [ui/124-inventory.md](../../ui/124-inventory.md).)
 - [x] Present native evidence and remaining limitations. Do not start broad migration
       if functional frame requirements fail; obtain decisions on any UX tradeoffs.
       (#126, PR #134; the recorded verdict is a gate termination, and the owner decided
       on 2026-09-22 to stop the checkpoint there rather than make a frame requirement
       fail the migration. That decision is the gate-termination step in
-      [completed/126-ui-compatibility.md](completed/126-ui-compatibility.md).)
+      [completed/126-ui-compatibility.md](126-ui-compatibility.md).)
 
 ### 2. GPUI Kit / GPUI 0.3.x migration
 
@@ -238,7 +238,7 @@ control within it still needs replacement or a separately accepted exception.
       `gpui-kit` facade and its aligned GPUI 0.3.x graph; commit `Cargo.lock`.
       (#137, PR #138; the workspace declares only `gpui-kit = "0.6"` in `Cargo.toml`,
       `crates/app/Cargo.toml` resolves it from the workspace, and `Cargo.lock` pins the
-      graph. See [completed/137-gpui-kit-migration.md](completed/137-gpui-kit-migration.md).)
+      graph. See [completed/137-gpui-kit-migration.md](137-gpui-kit-migration.md).)
 - [x] Adapt startup, focus, painting, assets and changed component APIs while keeping
       the production main window rooted directly at Shell and preserving behavior.
       (#137, PR #138; startup is `gpui_kit::application()` with `gpui_kit::init(cx)` in
@@ -253,10 +253,10 @@ control within it still needs replacement or a separately accepted exception.
 - [x] Repeat the local gates, release build, dependency/license inventory,
       representative performance checks and native/three-platform validation in #137.
       The local gate, the release build and the license inventory are recorded in
-      [completed/137-gpui-kit-migration.md](completed/137-gpui-kit-migration.md). The
+      [completed/137-gpui-kit-migration.md](137-gpui-kit-migration.md). The
       production borderless-`Root` window was verified natively on Linux by #127
       (PR #139; `native_decorations_do_not_get_a_second_frame` in `chrome_tests.rs` and
-      the native rows in [ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md)).
+      the native rows in [ui/124-integration/linux-results.md](../../ui/124-integration/linux-results.md)).
       The three-platform native part is not exercised: the owner's Linux-only decision
       of 2026-09-29 replaces the parent plan's native matrix, and Windows and macOS are
       covered by `ci/full` builds and tests only.
@@ -321,7 +321,7 @@ control within it still needs replacement or a separately accepted exception.
       `the_segment_group_carries_its_own_frame`.)
 - [x] Complete the inventory with replacement evidence or accepted exceptions.
       (#133; every row has a final disposition with its verified limitation, and
-      [ui/124-inventory.md](../ui/124-inventory.md) maps every render and input entry
+      [ui/124-inventory.md](../../ui/124-inventory.md) maps every render and input entry
       point in `crates/app/src` to a row.)
 - [x] Remove temporary prototype UI; retain a focused verification fixture or tests
       that exercise standard in-window inputs without shipping another settings surface.
@@ -377,7 +377,7 @@ not verified, and a problem found there later becomes its own Issue. This replac
 three-platform native matrix, and #124 closes without it. The decision is recorded in
 [#133](133-ui-integration.md). The owner verified each stage natively on Linux as it
 landed and did not repeat the matrix on the integrated build, which changes no
-shipped behaviour; [ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md)
+shipped behaviour; [ui/124-integration/linux-results.md](../../ui/124-integration/linux-results.md)
 maps every oracle to the stage that verified it and records the waived cases.
 
 - [x] `cargo fmt --all -- --check`
@@ -390,18 +390,21 @@ maps every oracle to the stage that verified it and records the waived cases.
       `spectrogram_tests.rs`, `minimap_tests.rs`, `axes_tests.rs`, and the headless
       GPUI tests in `plot_view.rs`, `hints.rs`, `app_menu_ui.rs`, `shell.rs` and
       `settings_editor.rs`.)
-- [x] Native input matrix on Linux (per stage, #127 to #132, see the evidence map): plot, main/context menu, passive hint, popover,
-      nested select and separate settings window; click, double-click, wheel,
-      drag/release outside, arrows, symbols, Alt guides, Tab/Shift+Tab, Escape/Enter
-      and focus restoration.
-- [x] Native text editing on Linux (key routing in #128; clipboard, undo and IME as
-      editing behaviour waived by the owner on 2026-09-29): caret movement, selection, clipboard, undo/redo,
-      invalid numeric input and blur/Enter validation. Verify editing shortcuts neither
-      navigate the plot nor get swallowed by plot interceptors. IME is not exercised
-      in this scope and is recorded as such, not as a pass.
-- [x] Native frame matrix on Linux (#127): dark/light, narrow/wide, display scale,
-      restore/maximize, fullscreen, supported tiling, move/resize edges/corners,
-      title-bar controls, native dialogs and file opening.
+- [x] Native input matrix on Linux, per stage (#127 to #132), for the cases the
+      evidence map lists as verified: plot navigation, main and context menus,
+      pinned and passive hints, drag and release outside, Alt guides, Tab/Shift+Tab
+      and focus restoration after menus. Escape on a nested select and on the
+      settings editor is proven headless only; its native run was waived by the owner
+      on 2026-09-29.
+- [x] Native text editing on Linux: key routing into the settings editor's fields
+      with no plot navigation behind them (#128). Caret movement, selection,
+      clipboard, undo/redo, invalid numeric input, blur/Enter validation and IME as
+      editing behaviour were not exercised; waived by the owner on 2026-09-29.
+- [x] Native frame matrix on Linux (#127): restore/maximize, fullscreen, supported
+      tiling, edge and corner resize without stale regions or doubled insets,
+      title-bar drag and double-click, title-bar controls, native dialogs and file
+      opening. Separate runs per theme, window size and display scale were not
+      recorded; waived by the owner on 2026-09-29.
 - [x] Both plot orientations, grid/scale toggles, start/loaded states, progressive
       updates, the fixed minimap and its boundary in both orientations (#132),
       settings preview/cancel and file replacement.

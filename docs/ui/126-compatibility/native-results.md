@@ -3,7 +3,7 @@
 Date: 2026-09-21. This is a limited Linux run, not the full architecture matrix.
 
 The fixture these steps name was removed by
-[#133](../../plans/133-ui-integration.md); the file is the record of what ran, and
+[#133](../../plans/completed/133-ui-integration.md); the file is the record of what ran, and
 the commands are kept so the reproduction stays legible.
 
 This file preserves the initial and post-review Popover observations. The later

@@ -4,7 +4,7 @@ Resolves [#133](https://github.com/o-kos/argand/issues/133).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
 [approved architecture](124-standard-ui-architecture.md), sections 5 (inventory
 closure) and 6 (integration and handoff). Predecessor
-[#132](completed/132-fixed-minimap-height.md), merged in PR #162.
+[#132](132-fixed-minimap-height.md), merged in PR #162.
 
 ## Overview
 
@@ -118,7 +118,7 @@ Claude and owner:
       (owner waived a rerun and the performance comparison).
 - [ ] Review rounds with Codex `gpt-6-sol` high.
 - [ ] Reconcile #108; remove the Kilo worktree.
-- [ ] Move this plan and the parent plan to `docs/plans/completed/` before final
+- [x] Move this plan and the parent plan to `docs/plans/completed/` before final
       review.
 
 ## Validation
@@ -130,6 +130,19 @@ Claude and owner:
 - [x] Native evidence mapped to the stages that verified it; the waived cases are
       recorded as not exercised.
 - [ ] `ci/full` on Linux, Windows and macOS for the final revision.
+
+## Review round 2
+
+Three accepted items, all in documents the planner owns. The evidence map claimed F3
+and S1 whole where the stages recorded only parts: F3 now separates the natively
+verified menus from the select list and settings editor, which only the headless
+test proves, and S1 separates the verified preview, cancel, persistence and file
+replacement from the label agreement and range reset, which were never recorded
+natively; both uncovered parts are listed as waived. The parent plan's ticked native
+items now name only the documented actions and list the waived ones. The approved
+architecture links in the completed #126 and #128 plans are fixed by moving this plan
+and the parent plan to `docs/plans/completed/`, with every link to either plan
+updated and no broken relative link left in the documentation.
 
 ## Post-completion
 
@@ -155,8 +168,8 @@ The final report claimed phases 1 and 2 were ticked while
 are now ticked, each with its evidence.
 
 Phase 1, delivered by #126 in PR #134
-([completed/126-ui-compatibility.md](completed/126-ui-compatibility.md),
-[ui/126-compatibility/](../ui/126-compatibility/)):
+([completed/126-ui-compatibility.md](126-ui-compatibility.md),
+[ui/126-compatibility/](../../ui/126-compatibility/)):
 
 - The native baseline and the finished inventory point at that directory's
   `native-results.md` (build hashes, Wayland/Sway run, display scale) and `inventory.md`.
@@ -169,7 +182,7 @@ Phase 1, delivered by #126 in PR #134
   skipped.
 
 Phase 2, delivered by #137 in PR #138
-([completed/137-gpui-kit-migration.md](completed/137-gpui-kit-migration.md)):
+([completed/137-gpui-kit-migration.md](137-gpui-kit-migration.md)):
 
 - The single facade entry and the committed graph, read from `Cargo.toml` and
   `crates/app/Cargo.toml`.

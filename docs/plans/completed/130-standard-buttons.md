@@ -2,7 +2,7 @@
 
 Resolves [#130](https://github.com/o-kos/argand/issues/130).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](../124-standard-ui-architecture.md), phase 5 (standard-control
+[approved architecture](124-standard-ui-architecture.md), phase 5 (standard-control
 replacement). Predecessor [#129](129-overlay-isolation.md), merged in PR #155.
 
 ## Overview

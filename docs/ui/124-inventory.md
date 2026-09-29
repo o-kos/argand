@@ -1,6 +1,6 @@
 # #124 control and interaction inventory
 
-Closure of the inventory the [parent plan](../plans/124-standard-ui-architecture.md) asked
+Closure of the inventory the [parent plan](../plans/completed/124-standard-ui-architecture.md) asked
 for: every render and input entry point in `crates/app/src`, the parent inventory row it
 belongs to, and a final disposition for every parent row.
 

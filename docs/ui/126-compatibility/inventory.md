@@ -2,9 +2,9 @@
 
 Scope: the production `crates/app/src` tree at the start of #126. No production
 control has been replaced by this checkpoint. The example is verification tooling,
-not a new production settings surface. Parent: [approved plan](../../plans/124-standard-ui-architecture.md).
+not a new production settings surface. Parent: [approved plan](../../plans/completed/124-standard-ui-architecture.md).
 
-This survey is history. [#133](../../plans/133-ui-integration.md) removed the example and
+This survey is history. [#133](../../plans/completed/133-ui-integration.md) removed the example and
 closed the inventory against the locked 0.6.6 sources in
 [124-inventory.md](../124-inventory.md); the source observations below were recorded
 against gpui-component 0.5.1 and GPUI 0.2.2.

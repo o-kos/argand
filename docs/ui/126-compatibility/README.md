@@ -3,11 +3,11 @@
 This directory is history. It records what the #126 checkpoint found on the
 GPUI 0.2.2 / gpui-component 0.5.1 graph, before #137 moved the application to
 GPUI Kit 0.6.x. The fixture it describes was removed by
-[#133](../../plans/133-ui-integration.md); the current inventory, verified against
+[#133](../../plans/completed/133-ui-integration.md); the current inventory, verified against
 the locked 0.6.6 sources, is [124-inventory.md](../124-inventory.md), and the
 in-window input check it replaced is a headless test in `settings_editor.rs`.
 
-Parent: [architecture plan](../../plans/124-standard-ui-architecture.md).
+Parent: [architecture plan](../../plans/completed/124-standard-ui-architecture.md).
 Child: [implementation plan](../../plans/completed/126-ui-compatibility.md).
 Source survey: [control inventory](inventory.md).
 
