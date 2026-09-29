@@ -348,7 +348,7 @@ release archives contain aspec only. System packages must not put an active
 default beside the executable, where it would override user configuration;
 adjacent configuration is intended for portable installations.
 
-The **Aggregation** control in the analysis settings window switches between **Peak (MAX)** and
+The **Aggregation** row of the analysis settings hint switches between **Peak (MAX)** and
 **Mean power** while a file is open. Peak preserves the strongest value in each
 pixel's time/frequency region. Mean power averages squared spectral amplitudes
 across the bins assigned to each row and the frames assigned to each column,
@@ -579,25 +579,27 @@ and decoded original sample minima/maxima, separately for I and Q. Extrema becom
 available after the complete waveform pass; decoding precision limits their precision.
 
 FFT sizes are powers of two from 2 to 1,048,576; overlap is rounded to a whole-sample hop.
-Hover over the analysis group, for example `2048 · hann · 110 dB`, for its details.
-Click it, choose **Edit settings…** in the hint, or press Ctrl+, (Cmd+, on macOS)
-to open the analysis settings window. Standard dropdowns select FFT size, window,
-aggregation and colour scheme; numeric fields edit overlap and fixed dynamic range.
-Tab and Shift+Tab move between controls, arrows navigate lists or step numbers,
-Enter confirms a choice or numeric edit, and Escape closes a list before closing
-the settings window and cancels its changes. Numeric edits also commit when focus leaves the field.
-Changes preview immediately; **OK** keeps them, while **Cancel**, Escape or closing
-the window restores the settings present when it opened. **Reset to defaults** previews
-the defaults from `argand.toml`, or built-in defaults when no configuration is present.
+The analysis settings live in the hint over the analysis group, for example
+`2048 · hann · 110 dB`. Hover it for a moment, click it, choose **File → Settings**,
+or press Ctrl+, (Cmd+, on macOS). Each value with a dashed underline is editable:
+click it to choose from a list (FFT size, window, aggregation, range mode, colour
+scheme) or to type a number (overlap, and the range in the fixed mode). Tab and
+Shift+Tab move between values, arrows navigate lists or step numbers. Every change
+previews on the spectrogram at once. A click outside the hint, Enter or Ctrl+, again
+keeps the changes and closes it; Escape closes an open list first and otherwise
+restores the settings and view the hint opened with. An unusable number keeps the
+hint open with its error. **Defaults** applies the values from `argand.toml`, or the
+built-in defaults when no configuration is present, and keeps the hint open.
 
 Range modes are absolute full scale (0 to -110 dBFS), a fixed span below the measured
 peak, and automatic. The effective range remains visible as a readout outside the fixed mode.
 The status text is muted and brightens on hover. Only a nonzero signal whose spectral
 peak falls in the lower half of the absolute scale produces a yellow range warning.
 A narrower recommendation by itself is not a warning; silence and peak-relative modes
-are excluded. The hover hint and settings window offer the measured recommended
+are excluded. The settings hint offers the measured recommended
 range used by `aspec`, and apply it with one action or Ctrl+R (Cmd+R on macOS).
-A yellow ⚠ accompanies the highlighted range. Opening the editor hides the hint.
+A yellow ⚠ accompanies the highlighted range; clicking it applies the recommendation
+directly, without opening the hint.
 
 Colour and range changes reuse cached values without a new FFT, including during
 refinement. Transform changes cancel obsolete work and retain the previous picture
@@ -665,7 +667,7 @@ for the wider format matrix, in `../sgvr/cli/tests` or wherever
 
 The interface is covered by headless tests as well: focus and action routing,
 overlay input ownership, the application menu, and the standard dropdowns and
-numeric fields of the analysis settings window.
+numeric fields of the analysis settings hint.
 
 The GUI minimap reopens its own cancellable reader using the resolved sample count
 and normalization divisor, without another count, normalization scan or FFT. It publishes a

@@ -56,7 +56,7 @@ the owner settled each difference.
   `cancel_settings_window` and `PinnedHint::set_enabled` are removed. The
   standard-input test in `settings_editor.rs` moves with the controls it proves.
 - **One surface, one entity.** `PinnedHint` holds any view instead of a `Tooltip`;
-  the analysis hint builds a fresh `AnalysisHint` entity each time it opens, synced
+  the analysis hint builds a fresh `Editor` entity (`settings_editor.rs`) each time it opens, synced
   from the shell while open (pending pictures, effective range, recommendation),
   and its layout does not change between hover and keyboard use.
 - The yellow range item in the status bar still applies the recommendation directly
@@ -70,6 +70,22 @@ input reaches the hint's `Cancel`. GPUI 0.3.6 supports nested deferred draws, wh
 the #126 Select-in-Popover panic lacked. `NumberInput` keeps its steppers without
 appearance, and `border_dashed` exists.
 
+Discovered during implementation:
+
+- A single-line input does not consume Enter, so the popover's `Confirm` closed the
+  hint and dropped the editor before the input's `PressEnter` reached it. The editor
+  now takes `Confirm` itself, previews the numbers and lets `Confirm` through only
+  when they are usable, so Enter applies, closes and keeps, and an unusable number
+  keeps the hint open with its error.
+- The editor reads the shell while it is built, so Shell opens the hint through
+  `window.defer` rather than inside its own update.
+- Settings previewed in the open hint are not saved until a keeping close, so a
+  crash mid-edit leaves the last kept settings in the session.
+- `Settings::edited_numbers` now backs the editor's number preview, instead of a
+  second copy of the overlap rule.
+- Headless focus loss needs an active test window: an inactive one reports no focus
+  path, so `InputEvent::Blur` never fires there.
+
 ## Rejected alternatives
 
 - Closing on pointer leave, from the Issue's description: the owner kept the #129
@@ -80,17 +96,17 @@ appearance, and `border_dashed` exists.
 
 ## Implementation steps
 
-- [ ] Generalize `PinnedHint` to hold any view; keep its lifecycle and tests.
-- [ ] `AnalysisHint` view: heading with Defaults, rows with standard controls,
+- [x] Generalize `PinnedHint` to hold any view; keep its lifecycle and tests.
+- [x] `Editor` view: heading with Defaults, rows with standard controls,
       advice, error; live preview, Enter/Escape/Defaults behaviour.
-- [ ] Capture and restore settings, time view and frequency view on a reverting close.
-- [ ] Route Ctrl+, / File → Settings / summary click to the pinned hint with focus in
+- [x] Capture and restore settings, time view and frequency view on a reverting close.
+- [x] Route Ctrl+, / File → Settings / summary click to the pinned hint with focus in
       it; remove the settings window and every piece of its state.
-- [ ] Headless tests: choose and preview, number Enter applies and closes, invalid
+- [x] Headless tests: choose and preview, number Enter applies and closes, invalid
       number keeps the hint with the error, Escape restores settings and views,
       click outside keeps, Defaults, Ctrl+, toggles, opening a file closes, the range
       item never opens the hint, the plot stays frozen while the hint is open.
-- [ ] Update AGENTS.md, README, CHANGELOG and the #124 inventory rows that name the
+- [x] Update AGENTS.md, README, CHANGELOG and the #124 inventory rows that name the
       settings window.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
