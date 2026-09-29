@@ -47,21 +47,21 @@ impl FromStr for MinimapSize {
     /// A number and its unit, `rem` or `px`, with or without a space between.
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         let text = text.trim();
-        let split = text
-            .find(|c: char| c.is_ascii_alphabetic())
-            .ok_or_else(|| format!("{text:?} names no unit, write rem or px"))?;
-        let (number, unit) = text.split_at(split);
+        let lower = text.to_ascii_lowercase();
+        let (number, unit) = ["rem", "px"]
+            .into_iter()
+            .find_map(|unit| lower.strip_suffix(unit).map(|number| (number, unit)))
+            .ok_or_else(|| format!("{text:?} ends in no unit, write rem or px"))?;
         let value: f32 = number
             .trim()
             .parse()
             .map_err(|_| format!("{:?} is not a number", number.trim()))?;
-        let (size, (low, high)) = match unit.trim().to_ascii_lowercase().as_str() {
+        let (size, (low, high)) = match unit {
             "rem" => (Self::Rem(value), Self::REM),
-            "px" => (Self::Px(value), Self::PX),
-            other => return Err(format!("{other:?} is not a unit, write rem or px")),
+            _ => (Self::Px(value), Self::PX),
         };
         if !(low..=high).contains(&value) {
-            return Err(format!("{size} is outside {low} to {high} {}", unit.trim()));
+            return Err(format!("{size} is outside {low} to {high} {unit}"));
         }
         Ok(size)
     }
@@ -115,6 +115,8 @@ mod tests {
             (" 2.5 REM ", MinimapSize::Rem(2.5)),
             ("64 px", MinimapSize::Px(64.0)),
             ("64px", MinimapSize::Px(64.0)),
+            ("1e1 rem", MinimapSize::Rem(10.0)),
+            ("+48 PX", MinimapSize::Px(48.0)),
         ] {
             assert_eq!(text.parse::<MinimapSize>(), Ok(size), "{text}");
         }
@@ -123,8 +125,8 @@ mod tests {
     #[test]
     fn unusable_sizes_are_refused() {
         for text in [
-            "", "4", "rem", "four rem", "4 em", "0 rem", "-4 rem", "nan rem", "21 rem", "8 px",
-            "1000 px",
+            "", "4", "rem", "four rem", "4 em", "0 rem", "-4 rem", "nan rem", "inf rem", "21 rem",
+            "8 px", "1000 px", "4 rem px", "4 remx",
         ] {
             assert!(text.parse::<MinimapSize>().is_err(), "{text}");
         }

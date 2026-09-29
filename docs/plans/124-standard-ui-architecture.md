@@ -252,7 +252,7 @@ control within it still needs replacement or a separately accepted exception.
 - [x] Replace menu/splitter implementations where the checkpoint proved compatibility;
       obtain and record per-control decisions for any retained custom implementation.
       The custom menu is replaced by the stock `PopupMenu` in a controlled `Popover`
-      (#131), and the splitter is removed, with the minimap fixed at 4 rem (#132).
+      (#131), and the splitter is removed, with the minimap at a fixed configurable size (#132).
 - [x] Audit remaining forms, title/status/start controls, hints and keycaps; keep
       standard controls and remove unnecessary duplicated interaction/style machinery. (#130)
 - [ ] Complete the inventory with replacement evidence or accepted exceptions.

@@ -386,7 +386,7 @@ fn the_minimap_size_reads_either_unit() {
 #[test]
 fn an_unusable_minimap_size_falls_back_alone() {
     let dir = TempDir::new("minimap-size-bad");
-    for size in ["\"4\"", "\"4 em\"", "\"0 rem\"", "\"1000 px\""] {
+    for size in ["\"4\"", "\"4 em\"", "\"0 rem\"", "\"1000 px\"", "64", "true", "[4]"] {
         let text = format!("theme = \"light\"\n[panels]\nminimap_size = {size}\n");
         let path = dir.write("argand.toml", &text);
         let config = Config::load(std::slice::from_ref(&path));

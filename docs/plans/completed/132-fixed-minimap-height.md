@@ -46,8 +46,9 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 
 ## Decisions
 
-- **The minimap is always 4 rem across**, high or wide by orientation, rounded to
-  device pixels as today.
+- **The minimap has a fixed size across**, high or wide by orientation, 4 rem by
+  default and set in the configuration (owner feedback 1), rounded to device
+  pixels as today.
   `panels::waveform_height` loses its fraction parameter.
 - **Delete the splitter:** `PlotView::splitter`, `drag_splitter`,
   `splitter_dragging` and every check of it, `PlotIntent::WaveformFraction` and its
@@ -67,7 +68,7 @@ Roles, set by the owner on 2026-09-28: implementer **Claude in session**; review
 ## Implementation steps
 
 - [x] Remove the splitter control, its drag state, intent and handler.
-- [x] Fix the minimap at 4 rem in `panels.rs` and its callers; update its tests.
+- [x] Fix the minimap at a set size in `panels.rs` and its callers; update its tests.
 - [x] Remove `Session::waveform_fraction`; test that an old session carrying it loads.
 - [x] Update AGENTS.md, the parent inventory row and phase-5 item, and CHANGELOG.
 - [x] Complete validation.
@@ -112,10 +113,15 @@ accepted it; the constant, its tests and every text that named 3 rem changed wit
       any case, default `"4 rem"`. `panels::MinimapSize` parses and prints it and
       converts it to logical pixels. An unusable value is logged and replaced by
       the default alone, keeping the rest of the file, as the other repaired keys
-      do. The size reaches the plot through `PlotSnapshot::minimap_size`. There is
+      do, including a value that is not a string at all. The unit is taken from
+      the end, so `1e1 rem` reads as 10 rem. The size reaches the plot through `PlotSnapshot::minimap_size`. There is
       no settings-window control. Tests cover both units, spacing and case,
       out-of-range, missing and unknown units, the round trip through `Display`,
       the fallback that keeps the rest of the file, and the distributed template.
+
+A targeted check of this change found three items, all accepted and fixed: a
+non-string value discarded the whole configuration, `1e1 rem` was refused, and
+two plan lines still said the minimap is fixed at 4 rem.
 
 ## Post-completion
 

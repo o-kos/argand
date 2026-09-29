@@ -186,10 +186,14 @@ fn minimap_size<'de, D>(deserializer: D) -> Result<MinimapSize, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let text = String::deserialize(deserializer)?;
-    Ok(text.parse().unwrap_or_else(|reason: String| {
+    let value = toml::Value::deserialize(deserializer)?;
+    let parsed = match &value {
+        toml::Value::String(text) => text.parse(),
+        _ => Err("write the size as a string, such as \"4 rem\"".to_owned()),
+    };
+    Ok(parsed.unwrap_or_else(|reason| {
         let using = MinimapSize::default();
-        tracing::warn!(found = text, %using, reason, "unusable minimap_size");
+        tracing::warn!(found = %value, %using, reason, "unusable minimap_size");
         using
     }))
 }
