@@ -3,7 +3,7 @@
 Resolves [#128](https://github.com/o-kos/argand/issues/128).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
 [approved architecture](124-standard-ui-architecture.md), phase 4 (ownership and
-keyboard routing). Blocked by [#127](completed/127-borderless-root.md), merged in PR #139.
+keyboard routing). Blocked by [#127](127-borderless-root.md), merged in PR #139.
 
 ## Overview
 

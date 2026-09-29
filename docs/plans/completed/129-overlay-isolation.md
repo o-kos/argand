@@ -3,7 +3,7 @@
 Resolves [#129](https://github.com/o-kos/argand/issues/129) and
 [#122](https://github.com/o-kos/argand/issues/122).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](../124-standard-ui-architecture.md), phase 4 (surface
+[approved architecture](124-standard-ui-architecture.md), phase 4 (surface
 contracts). Blocked by [#128](128-plot-view.md), merged in PR #143.
 
 ## Overview

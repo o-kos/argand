@@ -2,7 +2,7 @@
 
 Resolves [#132](https://github.com/o-kos/argand/issues/132).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](../124-standard-ui-architecture.md), phase 5 (standard-control
+[approved architecture](124-standard-ui-architecture.md), phase 5 (standard-control
 replacement), inventory row "Waveform/spectrum splitter".
 Predecessor [#131](131-stock-application-menu.md), merged in PR #160.
 

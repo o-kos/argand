@@ -120,7 +120,7 @@ when nested. `Root::render_dialog_layer` composes Dialog without an outer deferr
 draw; `WindowExt::open_dialog`/`close_dialog` save and restore prior focus. These
 source observations are hypotheses for native validation, not passing test cases.
 
-The [follow-up native ledger](../ui/126-compatibility/dialog-results.md) records
+The [follow-up native ledger](../../ui/126-compatibility/dialog-results.md) records
 the bounded Linux sequence: the standard modal composition works in those cases,
 while the explicitly enabled Popover reproducer still panics. Do not infer UX
 equivalence, complete input coverage or cross-platform compatibility from this.
