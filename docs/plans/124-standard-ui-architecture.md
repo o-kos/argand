@@ -258,8 +258,12 @@ control within it still needs replacement or a separately accepted exception.
       (#133; every row has a final disposition with its verified limitation, and
       [ui/124-inventory.md](../ui/124-inventory.md) maps every render and input entry
       point in `crates/app/src` to a row.)
-- [ ] Remove temporary prototype UI; retain a focused verification fixture or tests
+- [x] Remove temporary prototype UI; retain a focused verification fixture or tests
       that exercise standard in-window inputs without shipping another settings surface.
+      (#133: the fixture and the library face that existed only to share `chrome.rs`
+      with it are gone. `settings_editor::standard_input_tests` opens a window whose root
+      is a standard `Root`, types into a `NumberInput`, opens, chooses in and dismisses a
+      `Select` with one Escape, and keeps the window.)
 
 ### 6. Integration and handoff
 

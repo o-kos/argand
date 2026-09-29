@@ -107,7 +107,7 @@ Kilo:
 
 - [x] Inventory audit: `docs/ui/124-inventory.md` and a final disposition in every
       parent inventory row.
-- [ ] Remove the compatibility example and its references; keep or add the headless
+- [x] Remove the compatibility example and its references; keep or add the headless
       in-window `NumberInput` / `Select` test.
 - [ ] Reconcile the parent plan: phases 1 and 2, Linux-only native scope, evidence
       links for each acceptance item.
