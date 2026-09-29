@@ -4,9 +4,9 @@ Closure of the inventory the [parent plan](../plans/124-standard-ui-architecture
 for: every render and input entry point in `crates/app/src`, the parent inventory row it
 belongs to, and a final disposition for every parent row.
 
-Scope: the production application tree. `crates/app/examples` no longer exists; the #126
-compatibility fixture was removed in this stage and its history stays in
-[126-compatibility](126-compatibility/).
+Scope: the production application tree. The #126 compatibility fixture was removed in this
+stage, so `crates/app/examples` holds only the `fft_scheduling` benchmark; the fixture's
+history stays in [126-compatibility](126-compatibility/).
 
 ## Reproducing the audit
 
@@ -23,8 +23,8 @@ handler, both element extension methods and window-level registrations. Handlers
 (`navigation`, `frequency`, `panels`, `time_ruler`, `numbers`, `session`, `settings`) name
 no toolkit type and are not entry points.
 
-`file:line` below is the position at the time of the audit, before the fixture removal
-changed no line in this table.
+`file:line` below is the position after the fixture removal, which is the position these
+commits leave behind.
 
 ## Render entry points
 
@@ -35,7 +35,7 @@ changed no line in this table.
 | E02 | `hints.rs:128` | The pinned hint's open state; the hint body is a stock `Popover` | R9 |
 | E03 | `settings_editor.rs:436` | The separate settings window's form | R7 |
 | E04 | `app_menu_ui.rs:815` | `NoTooltip`, the empty view that stands in for the pressed application button's hint | R4 |
-| E05 | `chrome.rs:145` | `Frame::render`: insets, rounded corners, border, shadow, resize regions | R1 |
+| E05 | `chrome.rs:135` | `Frame::render`: insets, rounded corners, border, shadow, resize regions | R1 |
 
 ## Input entry points
 
@@ -45,7 +45,7 @@ changed no line in this table.
 | --- | --- | --- | --- | --- |
 | I01 | `chrome.rs:54` | Linux caption control press: `prevent_default` and `stop_propagation` so a control never starts a window move | R1 | Retained |
 | I02 | `chrome.rs:58` | Linux minimize, zoom and close clicks | R1 | Retained |
-| I03 | `chrome.rs:188` | Per-edge resize hitbox press, which calls `start_window_resize` | R1 | Retained |
+| I03 | `chrome.rs:178` | Per-edge resize hitbox press, which calls `start_window_resize` | R1 | Retained |
 | I04 | `shell.rs:1101` | Bare-title double click zooms the window | R2 | Retained |
 | I05 | `shell.rs:1102`, `shell.rs:1103`, `shell.rs:1107`, `shell.rs:1111` | Title drag: arm on press, disarm on release or a press outside, start the move on the first move | R2 | Retained |
 | I06 | `shell.rs:1122` | Title right click opens the platform window menu | R2 | Retained |
@@ -134,18 +134,18 @@ Verified limitations in the locked sources, which are why the frame and its cont
 - `gpui-component-0.6.6/src/window_border.rs:150` and `:195` take the resize geometry from
   `window.window_bounds().get_bounds().size`, the *reported* outer rectangle, not from
   `window.viewport_size()`. The production frame measures `Frame::for_window` against
-  `window.viewport_size()` (`chrome.rs:98`), which is what the owner accepted and what the
+  `window.viewport_size()` (`chrome.rs:88`), which is what the owner accepted and what the
   #126 checkpoint found displaced in the stock frame.
 - `gpui-component-0.6.6/src/window_border.rs:196` to `:203` starts a resize from a single
   `on_mouse_down` on the whole backdrop, and `resize_edge` at `:426` to `:441` is derived
   from `window_decorations()`' `tiling` alone. There is no `is_maximized()` or
   `is_fullscreen()` test, so an expanded window keeps resize candidates. The production
   frame answers both and returns no regions at all
-  (`chrome.rs:104` to `:113`, `expanded_windows_have_no_resize_regions_or_corners`).
+  (`chrome.rs:94` to `:103`, `expanded_windows_have_no_resize_regions_or_corners`).
 - `WindowControls` (`gpui-component-0.6.6/src/title_bar.rs:248`) and `ControlIcon` (`:111`)
   are private types, and `TitleBar::render` appends `WindowControls` unconditionally
-  (`:397`). There is no supported way to suppress them, and the Linux branch of
-  `ControlIcon::render` (`:222`) calls `window.zoom_window()` for both `Maximize` and
+  (`:400`). There is no supported way to suppress them, and the Linux branch of
+  `ControlIcon::render` (`:232`) calls `window.zoom_window()` for both `Maximize` and
   `Restore`, so the accepted maximize double-click cannot be expressed through it.
 
 Composition is insufficient because the retained behaviour lives in the geometry the stock
@@ -156,7 +156,7 @@ Covering tests: `resize_regions_leave_all_content_to_its_own_cursor`,
 `resize_grips_are_reachable_inside_the_visible_frame`,
 `expanded_windows_have_no_resize_regions_or_corners`,
 `only_free_tiled_edges_can_resize_or_round`, `native_decorations_do_not_get_a_second_frame`
-(`chrome_tests.rs`, included at `chrome.rs:244`). Native rows R1 to R3 in the Linux matrix.
+(`chrome_tests.rs`, included at `chrome.rs:234`). Native rows R1 to R3 in the Linux matrix.
 
 ### R2 Title-bar drag and double-click handlers
 
@@ -245,10 +245,9 @@ item, the FFT summary, the start-page chooser and the recent rows were already s
 `Button`s and stay. The custom variant paints no border, so `toolbar_style` supplies the
 surfaces (`app_menu_ui.rs:773`).
 
-Verified limitation, for the status items only: their hover background is the painted
-button colour itself, so the accepted warning and neutral states cannot be expressed by
-letting the stock hover run. They are standard `Button`s with a custom variant, and the
-inventory audits no custom press, hover or focus machinery in them.
+**No locked-toolkit limitation is claimed for the status items.** They are standard
+`Button`s with a custom variant, and the audit found no custom press, hover or focus
+machinery in them. The accepted warning and neutral colours are painted by that variant.
 
 Covering tests: `the_document_controls_join_the_toolbar`,
 `the_title_reserves_exactly_what_the_toolbar_draws`, `the_segment_group_carries_its_own_frame`,
@@ -345,11 +344,11 @@ press does not clear the plot. Native row O1.
 
 ### R11 Global symbolic-key interceptor
 
-**Retained as a scoped adapter.** `navigation_ui::init` no longer registers anything
-globally. `plot_view.rs:367` to `:386` registers one interceptor per `PlotView`, keeps it in
-a field so dropping the subscription drops with the plot, and returns before recognizing
-anything unless the event's window is the plot's own window and `focus.is_focused(window)`
-holds.
+**Retained as a scoped adapter.** `navigation_ui::init` binds key bindings but registers
+no interceptor. `plot_view.rs:366` to `:387` registers one interceptor per `PlotView`,
+keeps it in a field so dropping the subscription drops with the plot, and returns before
+recognizing anything unless the event's window is the plot's own window and
+`focus.is_focused(window)` holds.
 
 Verified limitation: `App::intercept_keystrokes` is the only hook that runs before binding
 match, and it is application-global. The locked source states this directly
@@ -384,8 +383,8 @@ locale, or reports the gutter it needs, which `argand_core::axis` and the measur
 
 Covering tests: `axes_tests.rs`, `navigation_tests.rs`, `spectrogram_tests.rs`,
 `minimap_tests.rs`, `document_tests.rs`, the plot-view gesture tests
-(`plot_view.rs:779` to `:1014`) and the shell's texture-lifetime tests. Native rows F1, G1
-and the orientation rows.
+(`plot_view.rs:779` to `:1014`) and `retirement_clears_the_snapshot_first`
+(`plot_view.rs:708`). Native rows F1, G1 and the orientation rows.
 
 ### R13 Rejected numeric editor in PR #106
 
