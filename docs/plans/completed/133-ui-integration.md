@@ -164,6 +164,10 @@ they remove unsupported claims from documents and change no code.
 sentence is replaced by the borderless `Root`, the `PinnedHint` contract from #129
 and standard `NumberInput` / `Select`, with its product behaviour unchanged.
 
+The first `ci/full` run failed on macOS: the standard-input test selected the old
+value with Ctrl+A, which is Cmd+A there. It now sends GPUI's `secondary-a`, the
+platform's own select-all.
+
 ## Post-completion
 
 - Close #124 with the evidence map.

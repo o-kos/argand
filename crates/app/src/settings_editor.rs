@@ -782,7 +782,7 @@ mod standard_input_tests {
         let typed = typed_handle(cx, handle);
         let trigger = trigger_handle(cx, handle);
         cx.update_window(handle.into(), |_, window, cx| {
-            window.press("ctrl-a", cx);
+            window.press("secondary-a", cx);
             window.input("4096", cx);
         })
         .expect("the window is open");
