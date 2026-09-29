@@ -294,6 +294,29 @@ Round 4 also listed the buffer-indexing sites this branch did not touch, with th
 guard each one relies on, and asked that they become their own tasks rather than
 ride along here.
 
+**Round 5, owner decision.** An independent pass by a different model (GLM-5.3)
+after four rounds, its findings arbitrated by the same Codex reviewer in a
+discussion rather than a re-review. It looked where the earlier rounds had not:
+`gradient_index` clamps, `argand-cli` links no application crate so the render
+inference holds, `Psd`, `SpectrumPeak` and `peak` carry no index accessors, and
+the minimap rebins into a result it just sized. Three findings, all text.
+
+- `AGENTS.md`'s `argand-core` bullet named `SpectrogramTile` among the view
+  models, a type that exists nowhere in `crates/`. The staleness predates this
+  branch, but the sentence is part of its diff, so the name is corrected here.
+- Three code comments this branch added carried colons. The reviewer pushed back
+  on calling that a rule, and it is right, since neither `AGENTS.md` nor
+  `CONTRIBUTING.md` forbids them and older comments use them, so this is an
+  editorial rewording rather than a compliance fix.
+- The comment above the shading entry check promised a caller could not drop
+  pixels without noticing, but the check returns without signalling anyone. It
+  guarantees no partial write, and now says that instead.
+
+The reviewer also confirmed the one remaining `let _ = image.put(...)`: the entry
+check settles both shapes, `DbGrid::column` skips foreign columns and the loop is
+bounded by the grid's height, so every `put` the loop reaches must answer
+`Some(())`.
+
 ## Post-completion
 
 - The Pull Request goes through the agreed external review round with GPT-6 Sol

@@ -69,7 +69,7 @@ fn an_image_whose_shape_does_not_fit_its_buffer_answers_nothing() {
     assert_eq!(short.put(0, 0, [1, 2, 3]), None);
     assert_eq!(short.rgba, vec![0; 8]);
 
-    // The first pixel is refused too: the image does not hold it.
+    // The first pixel is refused too because the image does not hold it.
     assert_eq!(broken.get(0, 0), None);
 }
 
@@ -154,9 +154,9 @@ fn an_envelope_refuses_a_column_past_its_shape_without_overflowing() {
     assert_eq!(short.column(3, 0), None, "a column past the buffers");
 
     // A shape whose product itself overflows is the case the checked
-    // arithmetic exists for: the column is inside the declared width and the
-    // product wraps onto a cell the buffers do hold, so a wrapping index would
-    // answer with that cell's values instead of refusing.
+    // arithmetic exists for, where the column is inside the declared width
+    // and the product wraps onto a cell the buffers do hold, so a wrapping
+    // index would answer with that cell's values instead of refusing.
     let mut huge = env.clone();
     huge.columns = usize::MAX;
     huge.min.truncate(1);
@@ -235,7 +235,7 @@ fn a_grid_whose_shape_does_not_fit_its_values_answers_nothing() {
     assert_eq!(broken.shape(), None);
     assert_eq!(broken.value(1, 1), None);
     assert_eq!(broken.column(1), None);
-    // And the first column is refused too: the grid does not hold it.
+    // And the first column is refused too because the grid does not hold it.
     assert_eq!(broken.column(0), None);
 
     // A shape that multiplies without overflowing but the values still fall
