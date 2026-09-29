@@ -199,12 +199,24 @@ impl WaveformEnvelope {
         }
     }
 
+    /// The shape the buffers actually cover, or `None` when they do not cover
+    /// the one the envelope declares.
+    ///
+    /// The fields are a caller's to set, so anything indexing this envelope has
+    /// to ask here rather than multiply them: a `columns` near `usize::MAX` makes
+    /// that product an overflow, not an envelope.
+    pub fn shape(&self) -> Option<(usize, usize)> {
+        let cells = self.columns.checked_mul(self.channels)?;
+        (cells == self.min.len() && cells == self.max.len())
+            .then_some((self.columns, self.channels))
+    }
+
     /// Lowest and highest value `column` reached on `channel`.
     pub fn column(&self, column: usize, channel: usize) -> Option<(f32, f32)> {
-        if channel >= self.channels {
+        if column >= self.columns || channel >= self.channels {
             return None;
         }
-        let i = column * self.channels + channel;
+        let i = column.checked_mul(self.channels)?.checked_add(channel)?;
         Some((*self.min.get(i)?, *self.max.get(i)?))
     }
 

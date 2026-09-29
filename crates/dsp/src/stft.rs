@@ -1057,7 +1057,9 @@ fn shade_columns(
         return;
     }
     for x in columns {
-        let column = &grid.values[x * height..(x + 1) * height];
+        let Some(column) = grid.column(x) else {
+            continue;
+        };
         for y in 0..height {
             let value = column[height - 1 - y];
             let normalized = if value.is_finite() {

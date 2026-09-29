@@ -130,6 +130,51 @@ fn an_envelope_addresses_channels_within_a_column() {
 }
 
 #[test]
+fn an_envelope_refuses_a_column_past_its_shape_without_overflowing() {
+    let mut env = WaveformEnvelope::new(3, 2);
+    env.min[0] = -0.5;
+    env.max[0] = 0.5;
+
+    // A column at or past the declared width is refused on the shape, not by
+    // landing on a later row's values, which is what the interleaved layout
+    // made an unchecked read do.
+    assert_eq!(env.column(3, 0), None, "the first column past the width");
+    assert_eq!(env.column(9, 1), None, "far past the width");
+
+    // A column whose offset would overflow the index arithmetic is refused
+    // rather than wrapping into a valid-looking cell.
+    assert_eq!(env.column(usize::MAX, 0), None, "an overflowing offset");
+    assert_eq!(env.column(usize::MAX / 2, 1), None, "an overflowing offset");
+
+    // A shape that multiplies without overflowing but the buffers fall short
+    // of is reported by `shape` and answers nothing.
+    let mut short = env.clone();
+    short.columns = 9;
+    assert_eq!(short.shape(), None);
+    assert_eq!(short.column(3, 0), None, "a column past the buffers");
+
+    // A shape whose product itself overflows is the case the checked
+    // arithmetic exists for: the column is inside the declared width, so only
+    // the multiplication stops it from wrapping into a valid-looking cell.
+    let mut huge = env.clone();
+    huge.columns = usize::MAX;
+    huge.min.clear();
+    huge.max.clear();
+    assert_eq!(huge.shape(), None, "a product that overflows has no shape");
+    assert_eq!(
+        huge.column(usize::MAX - 1, 1),
+        None,
+        "an in-width column whose offset overflows"
+    );
+
+    let mut over = env.clone();
+    over.channels = 0;
+    assert_eq!(over.shape(), None, "no channel has no cell");
+
+    assert_eq!(env.shape(), Some((3, 2)), "a whole envelope keeps its shape");
+}
+
+#[test]
 fn a_grid_addresses_a_bin_within_a_column() {
     // Column-major: a whole column of bins, then the next column.
     let grid = DbGrid {

@@ -743,6 +743,51 @@ fn shading_stops_rather_than_writing_pixels_an_image_cannot_hold() {
     assert!(exact.rgba.chunks_exact(4).all(|p| p[3] == 255));
 }
 
+#[test]
+fn shading_skips_a_column_the_grid_does_not_hold() {
+    let grid = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 16],
+        t0: 0.0,
+        t1: 1.0,
+        f0: -12_000.0,
+        f1: 12_000.0,
+    };
+    let shading = Shading {
+        colormap: Colormap::Grayscale,
+        db_min: -110.0,
+        db_max: 0.0,
+    };
+
+    // A column index past the grid is skipped instead of slicing out a range
+    // that belongs to no column it has values for.
+    let mut image = SpectrogramImage::new(8, 4);
+    shade_columns(&grid, shading, &mut image, 0..grid.width);
+    let mut beyond = SpectrogramImage::new(8, 4);
+    shade_columns(
+        &grid,
+        shading,
+        &mut beyond,
+        [0, 1, 2, 3, 4, 7, usize::MAX].iter().copied(),
+    );
+    assert_eq!(
+        image.rgba, beyond.rgba,
+        "columns outside the grid change nothing"
+    );
+
+    // A grid whose values fall short of its shape is skipped the same way,
+    // which the checked accessor answers rather than a slice that panics.
+    let mut broken = grid.clone();
+    broken.values.pop();
+    let mut image = SpectrogramImage::new(8, 4);
+    shade_columns(&broken, shading, &mut image, 0..broken.width);
+    assert!(
+        image.rgba.chunks_exact(4).all(|p| p[3] == 0),
+        "a grid that does not cover its shape shades nothing"
+    );
+}
+
 include!("progressive_tests.rs");
 
 #[path = "aggregation_tests.rs"]
