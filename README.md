@@ -588,7 +588,7 @@ Shift+Tab move between values, arrows navigate lists or step numbers. Every chan
 previews on the spectrogram at once. A click outside the hint, Enter or Ctrl+, again
 keeps the changes and closes it; Escape closes an open list first and otherwise
 restores the settings and view the hint opened with. An unusable number keeps the
-hint open with its error. **Defaults** applies the values from `argand.toml`, or the
+hint open with its error. **Reset to defaults**, below the values, applies the values from `argand.toml`, or the
 built-in defaults when no configuration is present, and keeps the hint open.
 
 Range modes are absolute full scale (0 to -110 dBFS), a fixed span below the measured

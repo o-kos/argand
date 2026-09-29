@@ -427,7 +427,9 @@ impl Shell {
                     .analysis_hint
                     .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
             }))
-            .on_click(
+            // A press, not a click, so the press that closes an open hint cannot reopen it.
+            .on_mouse_down(
+                MouseButton::Left,
                 cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
             )
             .child(
@@ -437,7 +439,7 @@ impl Shell {
                     .child(format!(
                         "{} · {}",
                         crate::numbers::number(visible.fft_size),
-                        visible.window
+                        editor::display_name(&visible.window.to_string())
                     )),
             );
         div()

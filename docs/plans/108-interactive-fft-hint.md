@@ -86,6 +86,41 @@ Discovered during implementation:
 - Headless focus loss needs an active test window: an inactive one reports no focus
   path, so `InputEvent::Blur` never fires there.
 
+## Owner feedback 1 (2026-09-29)
+
+The first native check found the surface unusable, and the implementation had not
+been run in a real window before it was shown. From here each change is checked in
+the running application first: the owner allowed launching it on the second monitor
+through XWayland with an isolated configuration and session, driven by XTEST and
+captured per window.
+
+- [x] **The Window list was cut off.** A frameless `Select` took the width of its
+      text and its list inherited it. The value column now has a fixed width, every
+      control fills it, and lists are wider than the column. Verified: Hann,
+      Hamming, Blackman-Harris and Rectangular are shown whole.
+- [x] **Names are title-cased.** Window and colour-scheme names show as Hann,
+      Blackman-Harris, Rectangular, Oceanic, including the status summary; the CLI
+      and configuration keep their lower-case names, which parse back unchanged.
+- [x] **Defaults was not discoverable.** It is now an outlined `Reset to defaults`
+      button in its own row below the values (owner's choice).
+- [x] **Overlap and Range showed only the steppers and the unit.** `NumberInput`
+      grows with `flex_1` and sat in a cell without a width, so its text collapsed to
+      nothing. With the fixed value column the number shows (verified: 75 %, 40 dB).
+- [x] **A click on the summary closed the hint and it came back.** Not the click: the
+      summary is under the pointer when the backdrop that took the press disappears,
+      so it is hovered again and the 500 ms hover opening fired. A hover within
+      400 ms of a close no longer opens the hint; leaving and returning does. The
+      summary also opens the hint on press rather than click. Verified both ways.
+- [x] **A stepper click then a drag recalculated the spectrum.** Not reproduced as a
+      second request: the debug log shows one `analysis settings requested` for the
+      step and none for the drag. The step's analysis takes about 0.9 s and refines
+      left to right, which is still running when the drag starts.
+- [ ] **The picture jerks after a change.** Frames captured every few hundred
+      milliseconds show the old picture replaced at once by a sparse preview
+      (`refined_columns: 0`), then refined left to right. This is the existing
+      progressive analysis every settings change has used; the owner checks it
+      against `main` before deciding.
+
 ## Rejected alternatives
 
 - Closing on pointer leave, from the Issue's description: the owner kept the #129
@@ -97,7 +132,7 @@ Discovered during implementation:
 ## Implementation steps
 
 - [x] Generalize `PinnedHint` to hold any view; keep its lifecycle and tests.
-- [x] `Editor` view: heading with Defaults, rows with standard controls,
+- [x] `Editor` view: heading, Reset to defaults, rows with standard controls,
       advice, error; live preview, Enter/Escape/Defaults behaviour.
 - [x] Capture and restore settings, time view and frequency view on a reverting close.
 - [x] Route Ctrl+, / File → Settings / summary click to the pinned hint with focus in

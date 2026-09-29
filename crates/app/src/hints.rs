@@ -11,7 +11,7 @@
 //! no pointer, clicks or wheel, and the click that closes the hint goes no
 //! further. Escape also asks its owner to revert what changed while it was open.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui_kit::base::actions::Cancel;
 use gpui_kit::component::button::Button;
@@ -33,6 +33,9 @@ pub(super) fn init(cx: &mut App) {
 
 /// How long the trigger must be hovered before a pinned hint opens, as for a tooltip.
 const OPEN_DELAY: Duration = Duration::from_millis(500);
+
+/// How soon after closing a hover counts as the trigger uncovered, not a new approach.
+const REHOVER_GRACE: Duration = Duration::from_millis(400);
 
 /// The view a `.tooltip` builder returns.
 pub(super) fn passive(
@@ -60,6 +63,8 @@ pub(super) struct PinnedHint {
     content: Option<AnyView>,
     focus: FocusHandle,
     pending: Option<Task<()>>,
+    /// When the hint last closed, so the trigger uncovered beneath a still pointer does not reopen it.
+    closed_at: Option<Instant>,
 }
 
 impl EventEmitter<Pinned> for PinnedHint {}
@@ -74,6 +79,7 @@ impl PinnedHint {
             content: None,
             focus: cx.focus_handle(),
             pending: None,
+            closed_at: None,
         }
     }
 
@@ -89,7 +95,7 @@ impl PinnedHint {
 
     /// Open after the trigger has been hovered for a moment, unless the pointer leaves first.
     pub(super) fn hover(&mut self, hovered: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if !hovered || self.is_open() {
+        if !hovered || self.is_open() || self.just_closed() {
             self.pending = None;
             return;
         }
@@ -109,9 +115,16 @@ impl PinnedHint {
         cx.notify();
     }
 
+    /// Whether a hover now is the trigger reappearing under the pointer that just closed the hint.
+    fn just_closed(&self) -> bool {
+        self.closed_at
+            .is_some_and(|closed| closed.elapsed() < REHOVER_GRACE)
+    }
+
     pub(super) fn close(&mut self, revert: bool, cx: &mut Context<Self>) {
         self.pending = None;
         if self.content.take().is_some() {
+            self.closed_at = Some(Instant::now());
             cx.emit(Pinned::Closed { revert });
             cx.notify();
         }

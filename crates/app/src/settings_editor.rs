@@ -17,10 +17,13 @@ use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 const CONTEXT: &str = "AnalysisEditor";
 
 /// The width of the surface, fixed so that changing values never move it.
-const WIDTH: f32 = 320.0;
+const WIDTH: f32 = 370.0;
 
 /// The width of every row's label column.
-const LABEL: f32 = 104.0;
+const LABEL: f32 = 110.0;
+
+/// The width of every row's value column, which each control fills.
+const VALUE: f32 = 200.0;
 
 #[derive(Clone, Copy)]
 enum Choice {
@@ -192,10 +195,10 @@ impl Editor {
         let settings = self.settings;
         for (state, value) in [
             (&self.fft, crate::numbers::number(settings.fft_size)),
-            (&self.window, settings.window.to_string()),
+            (&self.window, display_name(&settings.window.to_string())),
             (&self.aggregation, settings.aggregation.label().into()),
             (&self.mode, mode_name(settings.dynamic_range).into()),
-            (&self.palette, settings.colormap.to_string()),
+            (&self.palette, display_name(&settings.colormap.to_string())),
         ] {
             state.update(cx, |state, cx| state.set_selected_value(&value, window, cx));
         }
@@ -304,22 +307,25 @@ impl Editor {
         }
     }
 
-    fn heading(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn heading(&self) -> impl IntoElement {
         div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap_4()
-            .child(
-                div()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("Analysis settings"),
-            )
+            .pb_1()
+            .font_weight(FontWeight::SEMIBOLD)
+            .child("Analysis settings")
+    }
+
+    /// Resetting to the configuration, set apart below the values it replaces.
+    fn defaults(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .mt_1()
+            .pt_2()
+            .border_t_1()
+            .border_color(cx.theme().border)
             .child(
                 Button::new("analysis-defaults")
-                    .ghost()
-                    .xsmall()
-                    .label("Defaults")
+                    .outline()
+                    .small()
+                    .label("Reset to defaults")
                     .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
             )
     }
@@ -391,7 +397,7 @@ impl Render for Editor {
             .into_any_element()
         } else {
             div()
-                .text_right()
+                .px_2()
                 .child(format!("{} dB", self.range.read(cx).value()))
                 .into_any_element()
         };
@@ -421,7 +427,7 @@ impl Render for Editor {
             .flex()
             .flex_col()
             .gap_1()
-            .child(self.heading(cx))
+            .child(self.heading())
             .child(row("FFT size", choice("analysis-fft", &self.fft, cx), cx))
             .child(row(
                 "Window",
@@ -456,6 +462,7 @@ impl Render for Editor {
                 cx,
             ))
             .child(self.status(pending, window, cx))
+            .child(self.defaults(cx))
     }
 }
 
@@ -482,12 +489,13 @@ fn row(label: &'static str, value: impl IntoElement, cx: &gpui_kit::App) -> impl
                 .text_color(cx.theme().muted_foreground)
                 .child(label),
         )
-        .child(div().flex_1().min_w_0().flex().justify_end().child(value))
+        .child(div().w(px(VALUE)).flex_shrink_0().child(value))
 }
 
 /// A value that opens a list or takes a number, marked by a dashed underline.
 fn editable(control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
     div()
+        .w_full()
         .border_b_1()
         .border_dashed()
         .border_color(cx.theme().muted_foreground.opacity(0.6))
@@ -495,7 +503,15 @@ fn editable(control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
 }
 
 fn choice(id: &'static str, state: &Combo, cx: &gpui_kit::App) -> impl IntoElement {
-    editable(Select::new(state).id(id).appearance(false).small(), cx)
+    editable(
+        Select::new(state)
+            .id(id)
+            .appearance(false)
+            .small()
+            .w_full()
+            .menu_width(px(VALUE + 40.)),
+        cx,
+    )
 }
 
 fn combo(
@@ -513,10 +529,10 @@ fn combo(
                 .collect(),
         ),
         Choice::Window => (
-            settings.window.to_string(),
+            display_name(&settings.window.to_string()),
             argand_dsp::WINDOW_NAMES
                 .iter()
-                .map(|s| s.to_string())
+                .map(|s| display_name(s))
                 .collect(),
         ),
         Choice::Aggregation => (
@@ -530,10 +546,10 @@ fn combo(
                 .to_vec(),
         ),
         Choice::Palette => (
-            settings.colormap.to_string(),
+            display_name(&settings.colormap.to_string()),
             argand_core::COLORMAP_NAMES
                 .iter()
-                .map(|s| s.to_string())
+                .map(|s| display_name(s))
                 .collect(),
         ),
     };
@@ -993,4 +1009,20 @@ mod hint_tests {
         assert_eq!(settings(cx, &w), Settings::from_config(&Config::default()));
         assert!(is_open(cx, &w), "Defaults keeps the hint open");
     }
+}
+
+/// A window or palette name as the interface shows it, which parses back unchanged.
+pub(super) fn display_name(name: &str) -> String {
+    if name == "rect" {
+        return "Rectangular".into();
+    }
+    name.split('-')
+        .map(|part| {
+            let mut chars = part.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().chain(chars).collect()
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("-")
 }
