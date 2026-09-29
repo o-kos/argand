@@ -105,7 +105,7 @@ without it.
 
 Kilo:
 
-- [ ] Inventory audit: `docs/ui/124-inventory.md` and a final disposition in every
+- [x] Inventory audit: `docs/ui/124-inventory.md` and a final disposition in every
       parent inventory row.
 - [ ] Remove the compatibility example and its references; keep or add the headless
       in-window `NumberInput` / `Select` test.
