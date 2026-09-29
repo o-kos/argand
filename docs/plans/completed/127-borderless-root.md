@@ -2,7 +2,7 @@
 
 Resolves [#127](https://github.com/o-kos/argand/issues/127).
 Parent: [#124](https://github.com/o-kos/argand/issues/124),
-[approved architecture](124-standard-ui-architecture.md), phase 3.
+[approved architecture](../124-standard-ui-architecture.md), phase 3.
 Blocked by [#137](137-gpui-kit-migration.md), which landed in PR #138.
 
 ## Overview

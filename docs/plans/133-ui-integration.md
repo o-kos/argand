@@ -39,7 +39,8 @@ without it.
   ready-input capture, symbolic-key interceptor, domain drawing, settings form, ruler
   context menu, hints and keycaps rows still read as targets, not outcomes.
 - Parent phases 1 and 2 are unticked although #126 and #137 delivered them
-  (`completed/126-ui-compatibility.md`, `137-gpui-kit-migration.md`).
+  (`completed/126-ui-compatibility.md`, `completed/137-gpui-kit-migration.md`).
+  Both are reconciled and ticked in the "Review round 1" section below.
 - `crates/app/examples/ui_compatibility.rs` and `ui_compatibility/model.rs` (about
   1600 lines) are the #126/#137 probe. They are not shipped, but the Issue asks to
   remove temporary prototype UI while keeping a reproducible check of standard
@@ -134,3 +135,96 @@ Claude and owner:
 
 - Close #124 with the evidence map.
 - #108 can start on the standard infrastructure.
+
+## Review round 1
+
+External review, Codex `gpt-6-sol` high. Four findings: one major, three minor. Three
+were accepted and fixed on this branch; the fourth was addressed by the planner before
+this section was written.
+
+### Finding 1 (rejected, planner's evidence map)
+
+`docs/ui/124-integration/linux-results.md` was a rerun log that the planner had already
+reworked into a native evidence map. Not reopened. The owner's Linux-only decision of
+2026-09-29 stands, and the file is left exactly as the planner wrote it.
+
+### Finding 2 (accepted, major): parent phases 1 and 2 were unticked
+
+The final report claimed phases 1 and 2 were ticked while
+`docs/plans/124-standard-ui-architecture.md` still had every box open. All eight boxes
+are now ticked, each with its evidence.
+
+Phase 1, delivered by #126 in PR #134
+([completed/126-ui-compatibility.md](completed/126-ui-compatibility.md),
+[ui/126-compatibility/](../ui/126-compatibility/)):
+
+- The native baseline and the finished inventory point at that directory's
+  `native-results.md` (build hashes, Wayland/Sway run, display scale) and `inventory.md`.
+- The bounded fixture records the file #133 later deleted, and names
+  `settings_editor::standard_input_tests` as what replaced it.
+- The event matrix points at the reproduced `Select`-inside-`Popover` deferred-draw
+  panic and at the `occlude()` wheel observation, which is the passive-hint distinction.
+- The limitations and the go/no-go record the owner's 2026-09-22 gate-termination
+  decision, so the "do not migrate on a frame failure" condition was resolved, not
+  skipped.
+
+Phase 2, delivered by #137 in PR #138
+([completed/137-gpui-kit-migration.md](completed/137-gpui-kit-migration.md)):
+
+- The single facade entry and the committed graph, read from `Cargo.toml` and
+  `crates/app/Cargo.toml`.
+- Startup and asset adaptation, read from `shell.rs:118` and `shell.rs:121`, with the
+  production root still `Shell` until #127.
+- The borderless case, which #127 then adopted natively and #133 replaced with a
+  headless test.
+
+Phase 2's last box asks for the local gate, the release build, the license inventory,
+the performance comparison and native/three-platform validation. The plan now states
+exactly that: the gate, the release build and the license inventory are recorded in the
+#137 plan; the production borderless-`Root` window was verified natively on Linux by
+#127 in PR #139 (`native_decorations_do_not_get_a_second_frame` in `chrome_tests.rs`,
+oracles R1 to R3 in the evidence map); the three-platform native half is replaced by the
+owner's Linux-only decision, with Windows and macOS covered by `ci/full` builds and
+tests. The cold-start and plot-interaction comparison against the `c176ad2` baseline is
+not claimed: the #137 plan records it as undelivered.
+
+### Finding 3 (accepted, minor): the one-level Escape test could not fail
+
+`settings_editor::standard_input_tests` asserted that Escape closed the select list and
+not the window, but its form had no outer Escape handler, so an Escape that leaked
+outward would have passed unnoticed. The test form now carries the real editor's
+`AnalysisEditor` key context and the real `CloseSettings` action, so `init` binds escape
+to it, and it counts the escapes that arrive. The test asserts the first Escape leaves
+the count at zero while the list closes and the keyboard returns to the trigger, and
+that a second Escape raises it to one.
+
+The `Select` behaviour this proves is recorded in the inventory as a locked-toolkit
+observation: `Select::escape` stops at its own open list and propagates when it is shut
+(`src/select.rs:404` to `:415`).
+
+### Finding 4 (accepted, minor): the input-entry-point audit was incomplete
+
+The inventory claimed a complete list of explicit input entry points but missed the
+`.tooltip` registrations, because the search results were carried across by hand. The
+audit was re-run against the source and the document now carries the exact `rg` command
+and the `awk` filter that drop `#[cfg(test)]` scaffolding, so the list is reproducible
+rather than asserted.
+
+Six production registrations were missing and are now rows I35 to I38: the application
+button (`app_menu_ui.rs:383`), the orientation segment and the grid toggle
+(`app_menu_ui.rs:496`, `app_menu_ui.rs:528`), a zoom half (`plot_ui.rs:568`), and a
+start-page recent row and the chooser (`shell.rs:1298`, `shell.rs:1328`). They are
+passive hints through `hints::passive` or `shortcut_tooltip`, and the R9 disposition now
+names them. The command returns 101 entry points at this revision, and the one
+production-shaped hit that is absent, `hints.rs:471`, is inside `#[cfg(test)] mod tests`
+and is documented as such.
+
+While re-running the audit, the frame's own render method was found not to be an
+`impl Render` block, so the document gives the separate `rg -n 'pub fn render'` that
+finds `chrome.rs:135`.
+
+### Pre-existing, not fixed here
+
+`completed/126-ui-compatibility.md` and `completed/128-plot-view.md` each carry a link
+to a sibling that does not resolve from their directory. Both predate this stage and
+neither concerns this reconciliation, so they are left for their own issue.

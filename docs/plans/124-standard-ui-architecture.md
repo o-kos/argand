@@ -206,25 +206,60 @@ control within it still needs replacement or a separately accepted exception.
 
 ### 1. Compatibility checkpoint before broad migration
 
-- [ ] Capture the current native interaction/geometry baseline and finish the inventory.
-- [ ] Build a bounded verification fixture using top-level Root, its frame, a plot
+- [x] Capture the current native interaction/geometry baseline and finish the inventory.
+      (#126, PR #134; [completed/126-ui-compatibility.md](completed/126-ui-compatibility.md)
+      and [ui/126-compatibility/](../ui/126-compatibility/), whose `inventory.md` maps every
+      production control and whose `native-results.md` records the baseline build hashes,
+      the Wayland/Sway run and its display scale.)
+- [x] Build a bounded verification fixture using top-level Root, its frame, a plot
       canvas, standard numeric input/select in a popover, a menu and a passive hint.
-- [ ] Verify frame operations and the event matrix, including the stock menu Escape
+      (#126, PR #134; the fixture was `crates/app/examples/ui_compatibility.rs` with
+      `ui_compatibility/model.rs`, and #133 removed it in favour of
+      `settings_editor::standard_input_tests`. See
+      [ui/124-inventory.md](../ui/124-inventory.md), "Removed verification surface".)
+- [x] Verify frame operations and the event matrix, including the stock menu Escape
       mismatch and passive-hint pointer/wheel distinction. Inspect locked toolkit
       APIs before choosing any replacement or exception.
-- [ ] Present native evidence and remaining limitations. Do not start broad migration
+      (#126, PR #134; the `Select`-inside-`Popover` deferred-draw panic is reproduced
+      step by step in [ui/126-compatibility/native-results.md](../ui/126-compatibility/native-results.md),
+      and the `occlude()` wheel behaviour that separates a passive hint from a blocking
+      one is a locked-toolkit observation in
+      [ui/124-inventory.md](../ui/124-inventory.md).)
+- [x] Present native evidence and remaining limitations. Do not start broad migration
       if functional frame requirements fail; obtain decisions on any UX tradeoffs.
+      (#126, PR #134; the recorded verdict is a gate termination, and the owner decided
+      on 2026-09-22 to stop the checkpoint there rather than make a frame requirement
+      fail the migration. That decision is the gate-termination step in
+      [completed/126-ui-compatibility.md](completed/126-ui-compatibility.md).)
 
 ### 2. GPUI Kit / GPUI 0.3.x migration
 
-- [ ] Replace the independently versioned GUI dependencies with the crates.io
+- [x] Replace the independently versioned GUI dependencies with the crates.io
       `gpui-kit` facade and its aligned GPUI 0.3.x graph; commit `Cargo.lock`.
-- [ ] Adapt startup, focus, painting, assets and changed component APIs while keeping
+      (#137, PR #138; the workspace declares only `gpui-kit = "0.6"` in `Cargo.toml`,
+      `crates/app/Cargo.toml` resolves it from the workspace, and `Cargo.lock` pins the
+      graph. See [completed/137-gpui-kit-migration.md](completed/137-gpui-kit-migration.md).)
+- [x] Adapt startup, focus, painting, assets and changed component APIs while keeping
       the production main window rooted directly at Shell and preserving behavior.
-- [ ] Migrate the #126 fixture and prove borderless Root, standard input/select,
+      (#137, PR #138; startup is `gpui_kit::application()` with `gpui_kit::init(cx)` in
+      `shell.rs`, and `Shell` remained the production root until #127 put a borderless
+      `Root` above it in PR #139.)
+- [x] Migrate the #126 fixture and prove borderless Root, standard input/select,
       overlays and the Argand frame composition without a second frame layer.
-- [ ] Repeat the local gates, release build, dependency/license inventory,
+      (#137, PR #138; the fixture's borderless window wrapped representative content in
+      `chrome::Frame` so one native run exercised its border, shadow, inset and resize
+      hitboxes. #127 then adopted that composition natively, and #133 replaced the
+      fixture with `settings_editor::standard_input_tests`.)
+- [x] Repeat the local gates, release build, dependency/license inventory,
       representative performance checks and native/three-platform validation in #137.
+      The local gate, the release build and the license inventory are recorded in
+      [completed/137-gpui-kit-migration.md](completed/137-gpui-kit-migration.md). The
+      production borderless-`Root` window was verified natively on Linux by #127
+      (PR #139; `native_decorations_do_not_get_a_second_frame` in `chrome_tests.rs` and
+      the native rows in [ui/124-integration/linux-results.md](../ui/124-integration/linux-results.md)).
+      The three-platform native part is not exercised: the owner's Linux-only decision
+      of 2026-09-29 replaces the parent plan's native matrix, and Windows and macOS are
+      covered by `ci/full` builds and tests only.
 
 ### 3. Root and single-frame migration
 
