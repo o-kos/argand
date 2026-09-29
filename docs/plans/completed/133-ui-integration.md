@@ -91,7 +91,8 @@ without it.
   implementing it, and closes #124 after this PR merges with a comment mapping its
   acceptance criteria to evidence.
 - **Cleanup outside the repository.** The ignored Kilo worktree from #130
-  (`.kilo/worktrees/breezy-reptile`) is removed with `git worktree remove`.
+  (`.kilo/worktrees/breezy-reptile`) is removed. It was already gone when this
+  step ran.
 
 ## Rejected alternatives
 
@@ -116,8 +117,8 @@ Claude and owner:
 
 - [x] Map the native evidence in `docs/ui/124-integration/linux-results.md`
       (owner waived a rerun and the performance comparison).
-- [ ] Review rounds with Codex `gpt-6-sol` high.
-- [ ] Reconcile #108; remove the Kilo worktree.
+- [x] Review rounds with Codex `gpt-6-sol` high.
+- [x] Reconcile #108; remove the Kilo worktree.
 - [x] Move this plan and the parent plan to `docs/plans/completed/` before final
       review.
 
@@ -126,7 +127,7 @@ Claude and owner:
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo build --release --locked`, after the checks above pass
 - [x] Native evidence mapped to the stages that verified it; the waived cases are
       recorded as not exercised.
 - [ ] `ci/full` on Linux, Windows and macOS for the final revision.
@@ -155,6 +156,13 @@ click. Both claims are removed; the exception keeps its verified grounds, the
 zooms on every click. The evidence map no longer attributes GNOME, both themes or
 both `minimap_size` units to native records that do not state them. The PR
 description was brought in line with the evidence map and the moved plan path.
+
+The owner accepted the round-3 fixes without a further review round on 2026-09-29:
+they remove unsupported claims from documents and change no code.
+
+#108's description now builds on the standard infrastructure: the no-Root
+sentence is replaced by the borderless `Root`, the `PinnedHint` contract from #129
+and standard `NumberInput` / `Select`, with its product behaviour unchanged.
 
 ## Post-completion
 

@@ -14,7 +14,7 @@ This initial revision contains planning and policy only. No UI migration, native
 interaction verification or dependency change has been performed by this revision.
 
 **Where the plan stands.** The architecture is implemented. Phases 0 through 5 are
-complete and phase 6 is in progress. [#133](133-ui-integration.md) closed the
+complete, phase 6 with [#133](133-ui-integration.md), which closed the
 inventory, removed the #126 prototype, brought this document and `AGENTS.md` from
 planned to implemented, and hands #108 its updated constraints. The owner's
 decision of 2026-09-29 replaces the three-platform native matrix with Linux-only
@@ -338,9 +338,9 @@ control within it still needs replacement or a separately accepted exception.
       overlay and standard-control ownership and names the retained exceptions. The
       README's description of the application menu matches the stock one. The changelog
       already carried the shipped changes, so nothing was added to it.)
-- [ ] Run the full validation below and external class-A review; resolve substantive
+- [x] Run the full validation below and external class-A review; resolve substantive
       findings within the repository's three-round limit.
-- [ ] Move this plan to `docs/plans/completed/` before final owner review, only when
+- [x] Move this plan to `docs/plans/completed/` before final owner review, only when
       every in-scope implementation and validation task is complete.
 
 ## Validation
@@ -383,7 +383,7 @@ maps every oracle to the stage that verified it and records the waived cases.
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (workspace warnings denied)
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo build --release --locked`, after the checks above pass
 - [x] Toolkit-free tests for navigation intents, geometry, persistence and existing
       analysis invariants; GPUI-level tests where supported for focus/action routing.
       (`navigation_tests.rs`, `panels.rs`, `session_tests.rs`, `document_tests.rs`,
