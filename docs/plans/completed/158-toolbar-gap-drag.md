@@ -99,7 +99,7 @@ they can arm anything.
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] The existing toolbar and menu tests hold unchanged, including
+- [x] The existing toolbar and menu tests hold unchanged, including
       `the_backdrop_keeps_the_window_beneath_the_menu`,
       `the_document_controls_join_the_toolbar` and
       `the_title_reserves_exactly_what_the_toolbar_draws`.
