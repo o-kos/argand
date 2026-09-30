@@ -158,9 +158,22 @@ captured per window.
       range item, because the settings hint covers that place.
 - [x] **No reserved status line.** The pending state sits beside the title and an
       error takes the title's place, in one line of fixed height.
-- [ ] Native check of the heading line and of keyboard walking: the test bench
-      could not hold the window on the second screen or take keyboard focus while
-      the owner was working, so only the balloon was captured there.
+
+## Owner feedback 4 (2026-09-30)
+
+- [x] **Values looked wide again.** The fixed-width lists of feedback 3 underlined
+      their whole width. What moved under the keyboard was the popup, anchored to
+      the left edge of a content-sized list whose shown value follows the walk. The
+      list keeps the fixed width, so the popup stays, but shows its value at the
+      right beside the chevron and is underlined only under that value.
+- [x] **The balloon did not look like one.** It has a leader in the warning colour,
+      down from its body and along the status bar to an arrowhead at the sign, and
+      its body ends level with the settings hint.
+- [x] **While the balloon is shown the item reads `110 dB ⚠`**, sign last, so the
+      leader ends at the sign.
+- [x] Checked in the running application, in a private nested X server that needs
+      no focus from the desktop: the open hint with the balloon, the FFT list
+      walked with Down, an unusable overlap and the pending state.
 
 ## Review round 1
 

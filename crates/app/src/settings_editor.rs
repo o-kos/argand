@@ -9,7 +9,7 @@ use super::*;
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::IconName;
 use gpui_kit::component::input::{Input, InputEvent, InputState, StepAction};
-use gpui_kit::component::select::{Select, SelectEvent, SelectState};
+use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::{Entity, Focusable};
 use std::time::Duration;
 
@@ -52,7 +52,28 @@ enum Number {
     Range,
 }
 
-type Combo = Entity<SelectState<Vec<String>>>;
+/// A list item whose chosen name stands at the right of its list, beside the chevron.
+#[derive(Clone)]
+struct Name(String);
+
+impl SelectItem for Name {
+    type Value = String;
+
+    fn title(&self) -> gpui_kit::SharedString {
+        self.0.clone().into()
+    }
+
+    fn display_title(&self) -> Option<gpui_kit::AnyElement> {
+        let name = div().flex().justify_end().child(self.0.clone());
+        Some(name.into_any_element())
+    }
+
+    fn value(&self) -> &String {
+        &self.0
+    }
+}
+
+type Combo = Entity<SelectState<Vec<Name>>>;
 
 pub(super) struct Editor {
     owner: WeakEntity<Shell>,
@@ -62,8 +83,8 @@ pub(super) struct Editor {
     aggregation: Combo,
     mode: Combo,
     palette: Combo,
-    /// Each select's width, that of its widest item, so choosing never moves it.
-    widths: [Pixels; 5],
+    /// The width each item of each list takes when shown as the value.
+    widths: [Vec<Pixels>; 5],
     overlap: Entity<InputState>,
     range: Entity<InputState>,
     error: Option<String>,
@@ -89,10 +110,10 @@ impl Editor {
             },
         );
         let mut subscriptions = Vec::new();
-        let mut widths = [px(0.); 5];
+        let mut widths: [Vec<Pixels>; 5] = Default::default();
         let mut select = |choice: Choice, cx: &mut Context<Self>| {
-            let (state, width) = combo(choice, settings, window, cx, &mut subscriptions);
-            widths[choice as usize] = width;
+            let (state, shown) = combo(choice, settings, window, cx, &mut subscriptions);
+            widths[choice as usize] = shown;
             state
         };
         let fft = select(Choice::Fft, cx);
@@ -454,7 +475,7 @@ impl Editor {
             )
     }
 
-    /// A list at the width of its widest item, so choosing in it never moves it.
+    /// A list as wide as its widest item, underlined only under the value it shows.
     fn choice(&self, id: &'static str, choice: Choice, cx: &gpui_kit::App) -> impl IntoElement {
         let state = match choice {
             Choice::Fft => &self.fft,
@@ -463,15 +484,29 @@ impl Editor {
             Choice::Mode => &self.mode,
             Choice::Palette => &self.palette,
         };
-        editable(
-            Select::new(state)
-                .id(id)
-                .appearance(false)
-                .small()
-                .w(self.widths[choice as usize])
-                .menu_width(px(LIST)),
-            cx,
-        )
+        let widths = &self.widths[choice as usize];
+        let widest = widths.iter().copied().fold(px(0.), Pixels::max);
+        // The list keeps its place while the keyboard walks it, and the value shown follows the walk.
+        let shown = state
+            .read(cx)
+            .selected_index(cx)
+            .and_then(|index| widths.get(index.row).copied())
+            .unwrap_or(widest);
+        let underline = div()
+            .absolute()
+            .bottom_0()
+            .right_0()
+            .w(shown)
+            .border_b_1()
+            .border_dashed()
+            .border_color(underline_color(cx));
+        let list = Select::new(state)
+            .id(id)
+            .appearance(false)
+            .small()
+            .w_full()
+            .menu_width(px(LIST));
+        div().relative().w(widest).child(list).child(underline)
     }
 }
 
@@ -585,8 +620,12 @@ fn editable(control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
     div()
         .border_b_1()
         .border_dashed()
-        .border_color(cx.theme().muted_foreground.opacity(0.6))
+        .border_color(underline_color(cx))
         .child(control)
+}
+
+fn underline_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {
+    cx.theme().muted_foreground.opacity(0.6)
 }
 
 fn combo(
@@ -595,7 +634,7 @@ fn combo(
     window: &mut Window,
     cx: &mut Context<Editor>,
     subscriptions: &mut Vec<Subscription>,
-) -> (Combo, Pixels) {
+) -> (Combo, Vec<Pixels>) {
     let (selected, items): (String, Vec<String>) = match choice {
         Choice::Fft => (
             crate::numbers::number(settings.fft_size),
@@ -632,7 +671,8 @@ fn combo(
         .iter()
         .position(|value| value == &selected)
         .map(gpui_kit::component::IndexPath::new);
-    let width = widest(&items, window, cx);
+    let shown = shown_widths(&items, window, cx);
+    let items: Vec<Name> = items.into_iter().map(Name).collect();
     let state = cx.new(|cx| SelectState::new(items, index, window, cx));
     subscriptions.push(
         cx.subscribe_in(&state, window, move |editor, _, event, window, cx| {
@@ -641,27 +681,25 @@ fn combo(
             }
         }),
     );
-    (state, width)
+    (state, shown)
 }
 
-/// The width a frameless select needs to show the longest of its items.
-fn widest(items: &[String], window: &Window, cx: &gpui_kit::App) -> Pixels {
+/// The width a frameless select takes to show each of its items with the chevron.
+fn shown_widths(items: &[String], window: &Window, cx: &gpui_kit::App) -> Vec<Pixels> {
     let style = gpui_kit::TextStyle {
         font_family: cx.theme().font_family.clone(),
         ..Default::default()
     };
     let size = window.rem_size() * 0.875;
-    let text = items
+    let text = window.text_system();
+    items
         .iter()
         .map(|item| {
             let run = style.to_run(item.len());
-            window
-                .text_system()
-                .shape_line(item.clone().into(), size, &[run], None)
-                .width
+            let line = text.shape_line(item.clone().into(), size, &[run], None);
+            line.width.ceil() + px(CHEVRON)
         })
-        .fold(px(0.), Pixels::max);
-    text.ceil() + px(CHEVRON)
+        .collect()
 }
 
 fn number(
