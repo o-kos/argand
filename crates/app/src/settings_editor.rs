@@ -6,12 +6,12 @@
 //! whether the previewed settings are kept or restored.
 
 use super::*;
-use gpui_kit::Entity;
 use gpui_kit::base::actions::Confirm;
-use gpui_kit::component::input::{
-    InputEvent, InputState, NumberInput, NumberInputEvent, StepAction,
-};
+use gpui_kit::component::IconName;
+use gpui_kit::component::input::{Input, InputEvent, InputState, StepAction};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
+use gpui_kit::{Entity, Focusable};
+use std::time::Duration;
 
 /// The key context of the editor inside the hint.
 const CONTEXT: &str = "AnalysisEditor";
@@ -25,8 +25,17 @@ const LABEL: f32 = 110.0;
 /// The height the status area keeps, which is the low-signal advice and its button.
 const STATUS: f32 = 68.0;
 
-/// The width of every row's value column, which each control fills.
-const VALUE: f32 = 200.0;
+/// The width of a list, which is wider than any value it offers.
+const LIST: f32 = 220.0;
+
+/// The width of the text in a number field, enough for any value it takes.
+const NUMBER: f32 = 44.0;
+
+/// How long a stepper is held before it starts repeating.
+const REPEAT_DELAY: Duration = Duration::from_millis(400);
+
+/// How often a held stepper repeats.
+const REPEAT_EVERY: Duration = Duration::from_millis(80);
 
 #[derive(Clone, Copy)]
 enum Choice {
@@ -56,6 +65,8 @@ pub(super) struct Editor {
     overlap: Entity<InputState>,
     range: Entity<InputState>,
     error: Option<String>,
+    /// The repeating step of a held stepper, dropped when it is released.
+    repeat: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -127,8 +138,100 @@ impl Editor {
             overlap,
             range,
             error: None,
+            repeat: None,
             _subscriptions: subscriptions,
         }
+    }
+
+    /// Step once at the press, then keep stepping while the stepper stays held.
+    fn start_repeat(
+        &mut self,
+        field: Number,
+        step: StepAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.edit_number(field, Some(step), window, cx) {
+            return;
+        }
+        self.repeat = Some(cx.spawn_in(window, async move |editor, cx| {
+            cx.background_executor().timer(REPEAT_DELAY).await;
+            loop {
+                let stepped = editor.update_in(cx, |editor, window, cx| {
+                    editor.edit_number(field, Some(step), window, cx)
+                });
+                if !matches!(stepped, Ok(true)) {
+                    break;
+                }
+                cx.background_executor().timer(REPEAT_EVERY).await;
+            }
+        }));
+    }
+
+    fn stop_repeat(&mut self) {
+        self.repeat = None;
+    }
+
+    /// A number with its unit between two steppers that act on press and repeat while held.
+    fn stepper(
+        &self,
+        field: Number,
+        unit: &'static str,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        let state = match field {
+            Number::Overlap => &self.overlap,
+            Number::Range => &self.range,
+        };
+        let (down, up) = match field {
+            Number::Overlap => ("overlap-down", "overlap-up"),
+            Number::Range => ("range-down", "range-up"),
+        };
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(self.step_button(down, IconName::Minus, field, StepAction::Decrement, cx))
+            .child(editable(
+                Input::new(state)
+                    .appearance(false)
+                    .small()
+                    .w(px(NUMBER))
+                    .text_align(gpui_kit::TextAlign::Right),
+                cx,
+            ))
+            .child(div().text_color(cx.theme().muted_foreground).child(unit))
+            .child(self.step_button(up, IconName::Plus, field, StepAction::Increment, cx))
+            .into_any_element()
+    }
+
+    fn step_button(
+        &self,
+        id: &'static str,
+        icon: IconName,
+        field: Number,
+        step: StepAction,
+        cx: &mut Context<Self>,
+    ) -> Button {
+        Button::new(id)
+            .ghost()
+            .xsmall()
+            .icon(icon)
+            .tab_stop(false)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |editor, _, window, cx| {
+                    editor.start_repeat(field, step, window, cx);
+                }),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|editor, _, _, _| editor.stop_repeat()),
+            )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|editor, _, _, _| editor.stop_repeat()),
+            )
     }
 
     fn toggle_range(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -390,18 +493,11 @@ impl Render for Editor {
             })
         });
         let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
+        let overlap = self.stepper(Number::Overlap, "%", cx);
         let range = if fixed {
-            editable(
-                NumberInput::new(&self.range)
-                    .appearance(false)
-                    .small()
-                    .suffix("dB"),
-                cx,
-            )
-            .into_any_element()
+            self.stepper(Number::Range, "dB", cx)
         } else {
             div()
-                .px_2()
                 .child(format!("{} dB", self.range.read(cx).value()))
                 .into_any_element()
         };
@@ -411,9 +507,12 @@ impl Render for Editor {
             .on_action(cx.listener(|editor, _: &UseRecommendedRange, window, cx| {
                 editor.toggle_range(window, cx)
             }))
-            // Enter reaches the popover only once the numbers hold usable values.
+            // Enter in a number applies it and keeps the hint, and elsewhere closes it on usable numbers.
             .on_action(cx.listener(|editor, _: &Confirm, window, cx| {
-                if editor.edit_number(Number::Overlap, None, window, cx) {
+                let usable = editor.edit_number(Number::Overlap, None, window, cx);
+                let in_number = editor.overlap.focus_handle(cx).is_focused(window)
+                    || editor.range.focus_handle(cx).is_focused(window);
+                if usable && !in_number {
                     cx.propagate();
                 }
             }))
@@ -438,17 +537,7 @@ impl Render for Editor {
                 choice("analysis-window", &self.window, cx),
                 cx,
             ))
-            .child(row(
-                "Overlap",
-                editable(
-                    NumberInput::new(&self.overlap)
-                        .appearance(false)
-                        .small()
-                        .suffix("%"),
-                    cx,
-                ),
-                cx,
-            ))
+            .child(row("Overlap", overlap, cx))
             .child(row(
                 "Aggregation",
                 choice("analysis-aggregation", &self.aggregation, cx),
@@ -498,13 +587,12 @@ fn row(label: &'static str, value: impl IntoElement, cx: &gpui_kit::App) -> impl
                 .text_color(cx.theme().muted_foreground)
                 .child(label),
         )
-        .child(div().w(px(VALUE)).flex_shrink_0().child(value))
+        .child(div().flex_1().min_w_0().flex().justify_end().child(value))
 }
 
 /// A value that opens a list or takes a number, marked by a dashed underline.
 fn editable(control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
     div()
-        .w_full()
         .border_b_1()
         .border_dashed()
         .border_color(cx.theme().muted_foreground.opacity(0.6))
@@ -517,8 +605,7 @@ fn choice(id: &'static str, state: &Combo, cx: &gpui_kit::App) -> impl IntoEleme
             .id(id)
             .appearance(false)
             .small()
-            .w_full()
-            .menu_width(px(VALUE + 40.)),
+            .menu_width(px(LIST)),
         cx,
     )
 }
@@ -597,22 +684,15 @@ fn number(
             },
         ),
     );
-    subscriptions.push(cx.subscribe_in(
-        &state,
-        window,
-        move |editor, _, event: &NumberInputEvent, window, cx| {
-            let NumberInputEvent::Step(step) = event;
-            editor.edit_number(field, Some(*step), window, cx);
-        },
-    ));
     state
 }
 
 #[cfg(test)]
 mod standard_input_tests {
     use super::*;
+    use gpui_kit::component::input::NumberInput;
     use gpui_kit::test::TestWindowExt;
-    use gpui_kit::{App, Focusable, TestAppContext, WindowHandle};
+    use gpui_kit::{App, TestAppContext, WindowHandle};
 
     type Handle = WindowHandle<Root>;
 
@@ -825,7 +905,7 @@ mod hint_tests {
     use super::*;
     use gpui_kit::component::Root;
     use gpui_kit::test::TestWindowExt;
-    use gpui_kit::{Focusable, TestAppContext, WindowHandle};
+    use gpui_kit::{TestAppContext, WindowHandle};
     use std::path::PathBuf;
 
     struct Window_ {
@@ -949,13 +1029,16 @@ mod hint_tests {
     }
 
     #[gpui_kit::test]
-    fn enter_on_a_number_applies_it_closes_and_saves(cx: &mut TestAppContext) {
+    fn enter_on_a_number_applies_it_and_a_keeping_close_saves_it(cx: &mut TestAppContext) {
         let w = open(cx);
         open_hint(cx, &w);
         type_overlap(cx, &w, "25");
         press(cx, &w, "enter");
         assert_eq!(settings(cx, &w).overlap, 25);
-        assert!(!is_open(cx, &w), "a valid number closes the hint");
+        assert!(is_open(cx, &w), "Enter in a number keeps the hint");
+        // Ctrl+, again closes the hint keeping what it applied.
+        open_hint(cx, &w);
+        assert!(!is_open(cx, &w));
         let saved = w
             .shell
             .read_with(cx, |shell, _| shell.session.analysis_settings);
