@@ -37,7 +37,13 @@ they can arm anything.
   should drag.
 - The real window move and maximize cannot be proven in CI. The headless test
   asserts the arming state the title bar's drag reads, `Shell::title_drag_pending`,
-  which the existing test module already reaches.
+  which the existing test module already reaches. That state machine is
+  Linux-only (`shell.rs` builds the dragging title bar under
+  `cfg!(target_os = "linux")`; the other platforms leave moving and zooming to
+  the native title bar), so the test is gated the same way. The production
+  change is platform-neutral: the gaps fall through to whatever owns the title
+  gestures on each platform, and the controls consume their own presses
+  everywhere.
 
 ## Decisions
 

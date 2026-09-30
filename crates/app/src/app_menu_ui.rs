@@ -1310,6 +1310,9 @@ mod tests {
         draw(cx);
     }
 
+    // The arming this observes lives in the Linux title bar alone, since the
+    // other platforms leave moving and zooming the window to the native one.
+    #[cfg(target_os = "linux")]
     #[gpui_kit::test]
     fn the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not(cx: &mut TestAppContext) {
         let (shell, cx) = open_window(cx);
