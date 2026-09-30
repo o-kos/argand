@@ -152,6 +152,8 @@ pub(super) fn pinned(
     Popover::new(id)
         .anchor(Anchor::BottomLeft)
         .appearance(false)
+        // The backdrop closes the hint, so a part of it drawn outside its panel is not outside it.
+        .overlay_closable(false)
         // The left click keeps its own meaning on the trigger.
         .mouse_button(MouseButton::Right)
         .open(content.is_some())
@@ -182,16 +184,20 @@ pub(super) fn pinned(
         .into_any_element()
 }
 
-/// While the hint is open, covers the window beneath it so nothing else sees the pointer.
+/// While the hint is open, covers the window beneath it and closes the hint on a press, keeping its values.
 pub(super) fn backdrop(hint: &Entity<PinnedHint>, cx: &App) -> Option<AnyElement> {
     hint.read(cx).is_open().then(|| {
+        let pressed = hint.downgrade();
         deferred(
             div()
                 .id("pinned-hint-backdrop")
                 .absolute()
                 .inset_0()
                 .occlude()
-                .cursor(CursorStyle::Arrow),
+                .cursor(CursorStyle::Arrow)
+                .on_any_mouse_down(move |_, _, cx| {
+                    let _ = pressed.update(cx, |hint, cx| hint.close(false, cx));
+                }),
         )
         .with_priority(1)
         .into_any_element()

@@ -517,7 +517,7 @@ hover-based, so any blocking layer above it wins.
   standard gpui-component `Popover` anchored above the summary, drawn in the
   `Tooltip` look (`appearance(false)`); a right click toggles it, and a left
   click, Ctrl+, and File → Settings open it with the keyboard in it. Moving the
-  pointer away does not close it. Only a click outside (consumed), Enter (keeps
+  pointer away does not close it. Only a press outside (taken by the backdrop), Enter (keeps
   the values), Escape (reverts to the settings and views at opening), Ctrl+, again,
   F10, Ctrl+O and opening a file close it. `PinnedHint` holds any view; Shell opens
   it through `window.defer`, because the editor reads the shell as it is built. While it is open the plot is frozen: a transparent deferred
@@ -539,7 +539,11 @@ hover-based, so any blocking layer above it wins.
   item's warning text and the Ctrl+R keycap, edged in the warning colour, with a
   pointer (`balloon_pointer`, a canvas path) whose tip stands at the sign. It is
   deferred above `POPUP_PRIORITY`, because the hint's popover would otherwise be
-  painted over it. The status bar's range item is the same with the hint open or
+  painted over it. While Ctrl+R can act, the value carries the dashed underline
+  in the warning colour, and a click on it or on the balloon applies the
+  recommended range, which removes the balloon and keeps the hint. The popover is
+  `overlay_closable(false)` and the backdrop closes the hint on any press, keeping
+  its values, so a press on the balloon outside the panel is not an outside press. The status bar's range item is the same with the hint open or
   closed.
 - The pointer over the plot: `time-plot` uses `on_hover` with
   `HoverListenerMode::InputModalityIndependent`. GPUI's default mode ends hover

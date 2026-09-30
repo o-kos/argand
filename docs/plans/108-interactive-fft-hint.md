@@ -187,6 +187,19 @@ captured per window.
       and the Ctrl+R keycap, and its pointer's tip at the sign. Checked in the
       running application.
 
+## Owner feedback 6 (2026-09-30)
+
+- [x] **A click applies the recommendation.** The warned value is underlined like
+      every editable value, in the warning colour, and a click on it or on the
+      balloon does what Ctrl+R does: the balloon goes and the hint stays. The
+      popover dismissed itself on any press outside its panel, which the balloon
+      is, so the hint's backdrop now closes it instead (`overlay_closable(false)`).
+- [x] **No rule above Reset to defaults.**
+- [ ] Owner's question, left as it is pending the answer: hiding the status bar's
+      range item while the balloon is shown.
+- [x] Checked in the running application: both clicks, Ctrl+R back, a press
+      outside closing the hint with 40 dB kept, and reopening.
+
 ## Review round 1
 
 Codex `gpt-6-sol` high reviewed the revision the owner first saw; its findings were

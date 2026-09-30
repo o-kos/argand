@@ -463,20 +463,15 @@ impl Editor {
             .when(pending, |line| line.child(updating))
     }
 
-    /// Resetting to the configuration, set apart below the values it replaces.
+    /// Resetting to the configuration, below the values it replaces.
     fn defaults(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .mt_1()
-            .pt_2()
-            .border_t_1()
-            .border_color(cx.theme().border)
-            .child(
-                Button::new("analysis-defaults")
-                    .outline()
-                    .small()
-                    .label("Reset to defaults")
-                    .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
-            )
+        div().mt_1().pt_1().child(
+            Button::new("analysis-defaults")
+                .outline()
+                .small()
+                .label("Reset to defaults")
+                .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
+        )
     }
 
     /// The effective range, with its warning in a balloon pointing at the sign that ends it.
@@ -495,6 +490,12 @@ impl Editor {
         // The warning colour edges the balloon, which a border of the hint's own would lose on the hint.
         let edge = advice_color(cx);
         let body = div()
+            .id("analysis-range-balloon")
+            .occlude()
+            .when(actionable, |body| {
+                body.cursor_pointer()
+                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
+            })
             .ml(px(POINTER - 1.0))
             .max_w(px(BALLOON))
             .flex()
@@ -533,8 +534,17 @@ impl Editor {
             .child(body)
             .child(pointer);
         div()
+            .id("analysis-range-advice")
             .relative()
-            .text_color(advice_color(cx))
+            .text_color(edge)
+            .when(actionable, |value| {
+                value
+                    .border_b_1()
+                    .border_dashed()
+                    .border_color(edge.opacity(0.6))
+                    .cursor_pointer()
+                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
+            })
             .child(format!("{text} ⚠"))
             .child(gpui_kit::deferred(balloon).with_priority(gpui_kit::base::POPUP_PRIORITY + 1))
             .into_any_element()
