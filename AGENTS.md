@@ -543,7 +543,9 @@ hover-based, so any blocking layer above it wins.
   in the warning colour, and a click on it or on the balloon applies the
   recommended range, which removes the balloon and keeps the hint. The popover is
   `overlay_closable(false)` and the backdrop closes the hint on any press, keeping
-  its values, so a press on the balloon outside the panel is not an outside press. The status bar's range item is the same with the hint open or
+  its values, so a press on the balloon outside the panel is not an outside press. The backdrop
+  leaves the title bar's height uncovered and only observes presses there, so the
+  press that closes the hint also reaches the caption and toolbar controls. The status bar's range item is the same with the hint open or
   closed.
 - The pointer over the plot: `time-plot` uses `on_hover` with
   `HoverListenerMode::InputModalityIndependent`. GPUI's default mode ends hover

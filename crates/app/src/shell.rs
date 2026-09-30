@@ -1484,7 +1484,11 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, cx))
             .children(menu_backdrop)
-            .children(hints::backdrop(&self.analysis_hint, cx))
+            .children(hints::backdrop(
+                &self.analysis_hint,
+                gpui_kit::component::TITLE_BAR_HEIGHT,
+                cx,
+            ))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))
     }

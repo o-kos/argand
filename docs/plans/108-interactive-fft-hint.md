@@ -200,6 +200,15 @@ captured per window.
 - [x] Checked in the running application: both clicks, Ctrl+R back, a press
       outside closing the hint with 40 dB kept, and reopening.
 
+## Owner feedback 7 (2026-09-30)
+
+- [x] **The close button needed two clicks while the hint was open.** The backdrop
+      covered the title bar and took the first press. It now starts below the title
+      bar; a press in the title bar closes the hint, keeping its values, and still
+      reaches the control under it. Checked in the running application: a press on
+      the title closes the hint, and one press on the close button ends the process.
+- [ ] The colour of the stepper buttons is left for a colours issue (owner's call).
+
 ## Review round 1
 
 Codex `gpt-6-sol` high reviewed the revision the owner first saw; its findings were

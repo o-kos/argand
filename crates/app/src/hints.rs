@@ -184,23 +184,46 @@ pub(super) fn pinned(
         .into_any_element()
 }
 
-/// While the hint is open, covers the window beneath it and closes the hint on a press, keeping its values.
-pub(super) fn backdrop(hint: &Entity<PinnedHint>, cx: &App) -> Option<AnyElement> {
+/// While the hint is open, covers the window below `clear` and closes the hint on a press, keeping its values.
+///
+/// The strip above `clear` stays live, so a title bar's controls act on the press that closes the hint.
+pub(super) fn backdrop(
+    hint: &Entity<PinnedHint>,
+    clear: gpui_kit::Pixels,
+    cx: &App,
+) -> Option<AnyElement> {
     hint.read(cx).is_open().then(|| {
         let pressed = hint.downgrade();
-        deferred(
-            div()
-                .id("pinned-hint-backdrop")
-                .absolute()
-                .inset_0()
-                .occlude()
-                .cursor(CursorStyle::Arrow)
-                .on_any_mouse_down(move |_, _, cx| {
-                    let _ = pressed.update(cx, |hint, cx| hint.close(false, cx));
-                }),
+        let cover = div()
+            .id("pinned-hint-backdrop")
+            .absolute()
+            .inset_0()
+            .top(clear)
+            .occlude()
+            .cursor(CursorStyle::Arrow)
+            .on_any_mouse_down(move |_, _, cx| {
+                let _ = pressed.update(cx, |hint, cx| hint.close(false, cx));
+            });
+        let pressed = hint.downgrade();
+        let strip = gpui_kit::canvas(
+            |_, _, _| (),
+            move |bounds, _, window, _| {
+                window.on_mouse_event(move |event: &gpui_kit::MouseDownEvent, phase, _, cx| {
+                    if phase == gpui_kit::DispatchPhase::Capture && bounds.contains(&event.position)
+                    {
+                        let _ = pressed.update(cx, |hint, cx| hint.close(false, cx));
+                    }
+                });
+            },
         )
-        .with_priority(1)
-        .into_any_element()
+        .absolute()
+        .top_0()
+        .left_0()
+        .right_0()
+        .h(clear);
+        deferred(div().absolute().inset_0().child(cover).child(strip))
+            .with_priority(1)
+            .into_any_element()
     })
 }
 
@@ -263,7 +286,7 @@ mod tests {
                         .top(px(260.))
                         .child(pinned("hint", &self.hint, trigger, cx)),
                 )
-                .children(backdrop(&self.hint, cx))
+                .children(backdrop(&self.hint, px(0.), cx))
         }
     }
 
