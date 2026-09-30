@@ -580,7 +580,7 @@ available after the complete waveform pass; decoding precision limits their prec
 
 FFT sizes are powers of two from 2 to 1,048,576; overlap is rounded to a whole-sample hop.
 The analysis settings live in the hint over the analysis group, for example
-`2048 · hann · 110 dB`. Hover it for a moment, click it, choose **File → Settings**,
+`2048 · Hann`, beside the separate range item. Hover it for a moment, click it, choose **File → Settings**,
 or press Ctrl+, (Cmd+, on macOS). Each value with a dashed underline is editable:
 click it to choose from a list (FFT size, window, aggregation, range mode, colour
 scheme) or to type a number (overlap, and the range in the fixed mode). Tab and

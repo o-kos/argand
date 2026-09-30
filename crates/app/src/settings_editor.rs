@@ -260,6 +260,11 @@ impl Editor {
                 MouseButton::Left,
                 cx.listener(|editor, _, _, _| editor.stop_repeat()),
             )
+            .on_hover(cx.listener(|editor, hovered: &bool, _, _| {
+                if !hovered {
+                    editor.stop_repeat();
+                }
+            }))
     }
 
     fn toggle_range(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -357,6 +362,8 @@ impl Editor {
     }
 
     fn choose(&mut self, choice: Choice, value: &str, window: &mut Window, cx: &mut Context<Self>) {
+        // A list can remove the stepper a repeat was started on.
+        self.stop_repeat();
         let mut settings = self.settings;
         match choice {
             Choice::Fft => {
@@ -514,6 +521,13 @@ impl Editor {
                 body.child(shortcuts::keycap(shortcut, cx))
             });
         let pointer = div()
+            .id("analysis-range-balloon-pointer")
+            .occlude()
+            .when(actionable, |pointer| {
+                pointer
+                    .cursor_pointer()
+                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
+            })
             .absolute()
             .left_0()
             .top_0()
@@ -1196,6 +1210,47 @@ mod hint_tests {
             bounds(cx),
             resting,
             "a name of another length moves nothing"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_held_stepper_repeats_until_the_pointer_leaves_it(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        let opening = settings(cx, &w).overlap;
+        let button = cx
+            .update_window(w.handle.into(), |_, window, _| {
+                window.find("overlap-up").bounds().center()
+            })
+            .expect("the window is open");
+        let none = gpui_kit::Modifiers::default();
+        let mut input = gpui_kit::VisualTestContext::from_window(w.handle.into(), cx);
+        input.simulate_mouse_move(button, None, none);
+        input.simulate_mouse_down(button, MouseButton::Left, none);
+        input.run_until_parked();
+        assert_eq!(
+            settings(&mut input, &w).overlap,
+            opening + 1,
+            "the press steps"
+        );
+        input
+            .executor()
+            .advance_clock(REPEAT_DELAY + REPEAT_EVERY * 3);
+        input.run_until_parked();
+        let held = settings(&mut input, &w).overlap;
+        assert!(held > opening + 1, "holding repeats");
+        input.simulate_mouse_move(
+            gpui_kit::point(px(5.), px(5.)),
+            Some(MouseButton::Left),
+            none,
+        );
+        input.run_until_parked();
+        input.executor().advance_clock(REPEAT_EVERY * 10);
+        input.run_until_parked();
+        assert_eq!(
+            settings(&mut input, &w).overlap,
+            held,
+            "leaving stops the repeat"
         );
     }
 

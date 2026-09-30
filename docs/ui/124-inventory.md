@@ -100,7 +100,7 @@ commits leave behind.
 | I23 | `plot_ui.rs:564` | A zoom half dispatches its registered zoom action and hands focus back to the plot | R3 | Replaced (#130) |
 | I24 | `settings_ui.rs:382` | The actionable range item dispatches `UseRecommendedRange`; the informational item has no handler | R6 | Retained |
 | I25 | `settings_ui.rs:431` | The analysis summary opens the settings hint with the keyboard in it (#108) | R6 | Retained |
-| I26 | `settings_ui.rs:619`, `settings_ui.rs:639` | The hint's recommendation and edit buttons | R9 | Retained |
+| I26 | `settings_editor.rs` (`range_readout`) | The hint's recommendation and edit buttons are gone (#108); the warned Range value and its balloon apply the recommendation on a click | R9 | Removed |
 | I27 | `shell.rs:1287` | A recent row opens its capture | R6 | Retained |
 | I28 | `shell.rs:1327` | The start page's chooser dispatches `ChooseFile` | R6 | Retained |
 | I29 | `app_menu_ui.rs:109` | A recent row inside the File branch opens its capture | R4 | Replaced (#131) |
@@ -277,12 +277,18 @@ for the range item's action and its labels.
 ### R7 Settings form
 
 **Retained, and already standard; moved into the FFT hint by #108.** The settings are
-gpui-component `Select` and `NumberInput` drawn with `appearance(false)` in the pinned
-hint's popover (`settings_editor.rs:373`), plus a standard `Button` for Reset to defaults. The separate `Root`-backed window with Reset, Cancel and OK is gone. There
-is no custom editing, focus, press or validation machinery; the numeric policy is a small
-application-value adapter on the standard `NumberInputEvent` and `InputEvent`, and the
-editor takes `Confirm` before the popover so that Enter closes the hint only on usable
-numbers.
+gpui-component `Select` and `Input` drawn with `appearance(false)` in the pinned hint's
+popover (`settings_editor.rs`), plus standard `Button`s for the steppers and Reset to
+defaults. The separate `Root`-backed window with Reset, Cancel and OK is gone. There is
+no custom editing, focus or validation machinery; the numeric policy is a small
+application-value adapter on the standard `InputEvent`, and the editor takes `Confirm`
+before the popover so that Enter in a number applies it and keeps the hint. One piece of
+press handling is custom and owner-approved: a stepper steps at the press and repeats
+while held (`Editor::start_repeat`), until release, the pointer leaving the button or a
+list choice. The standard alternative is `NumberInput`, whose steppers in the locked
+0.6.6 sources step on click only and expose no press hook, so composition cannot reach
+a hold-to-repeat; the steppers are not tab stops, the keyboard steps through the input's
+own arrows, and the repeat stops on an unusable value.
 
 The standard alternative is the same component, so no limitation is claimed. Composition
 would not help: the form's contract is a preview-and-keep transaction over a signal

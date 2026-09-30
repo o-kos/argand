@@ -130,7 +130,7 @@ captured per window.
       on click only and offer no press hook.
 - [x] **Steppers repeat while held** (owner-approved custom press handling): one step
       at the press, then every 80 ms after 400 ms, until the button is released or
-      the pointer leaves it. A step that yields an unusable value stops the repeat.
+      the pointer leaves it (the leave itself was only handled from review round 2). A step that yields an unusable value stops the repeat.
       Verified in the running window: 14 steps in 1.5 s, none after release.
 - [x] **Enter in Overlap or Range applies the number and keeps the hint.** Enter
       elsewhere in the hint still closes it keeping the values.
@@ -274,3 +274,21 @@ arbitrated against owner feedback 1.
 ## Post-completion
 
 - None planned.
+
+## Review round 2
+
+Codex `gpt-6-sol` high reviewed the whole branch after owner feedback 1 to 7. It found
+no blocking error in the final-only replacement path, and three findings, all accepted.
+
+- **Accepted: a held stepper kept repeating after the pointer left it.** The repeat
+  stopped on release, inside or outside the button, but not on the pointer leaving, which
+  the owner's decision names. The stepper now stops on its hover ending, and a list choice
+  stops a repeat whose stepper it may remove. A test holds the stepper, moves the pointer
+  away and fails without the change (90 against 80).
+- **Accepted: a press on the balloon's pointer closed the hint.** The pointer had no
+  handler and did not take the press, so the backdrop closed the hint. The pointer now
+  takes the press and applies the recommendation like the balloon's body.
+- **Accepted: stale documentation.** The inventory still named `NumberInput`, claimed no
+  custom press handling and kept the removed hint buttons as retained; the README's
+  example showed one combined group. Both describe the code as it is now, and the
+  inventory carries the stepper's justification.
