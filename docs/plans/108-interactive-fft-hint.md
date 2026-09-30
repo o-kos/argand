@@ -121,6 +121,29 @@ captured per window.
       progressive analysis every settings change has used; the owner checks it
       against `main` before deciding.
 
+## Owner feedback 2 (2026-09-30)
+
+- [x] **Values take their own width**, right-aligned in the panel, instead of one
+      shared column width. Lists open 220 pixels wide whatever the value's width.
+- [x] **Steppers act on the press.** Overlap and Range are now a standard `Input`
+      between two standard `Button`s rather than `NumberInput`, whose steppers step
+      on click only and offer no press hook.
+- [x] **Steppers repeat while held** (owner-approved custom press handling): one step
+      at the press, then every 80 ms after 400 ms, until the button is released or
+      the pointer leaves it. A step that yields an unusable value stops the repeat.
+      Verified in the running window: 14 steps in 1.5 s, none after release.
+- [x] **Enter in Overlap or Range applies the number and keeps the hint.** Enter
+      elsewhere in the hint still closes it keeping the values.
+- [x] **The picture jerked after every change.** The owner's recording showed four
+      states in a row: a 128-frame blocky preview, a denser preview with a brighter
+      background, a left-to-right refinement brighter than the result, then the
+      result. A settings change restarted the first-analysis sequence. Every analysis
+      after a file's first is now a final-only replacement, as navigation already
+      was: the shown picture stays, the status bar shows progress, and the new
+      picture replaces it once (owner's choice). A test fails without the change.
+      On the test bench the step's analysis took 0.85 s against 1.3 s for the
+      file's first analysis, with no intermediate snapshot in the log.
+
 ## Review round 1
 
 Codex `gpt-6-sol` high reviewed the revision the owner first saw; its findings were
@@ -138,8 +161,9 @@ arbitrated against owner feedback 1.
   the fields; a test covers it.
 - **Accepted: the hint moved when the advice appeared or went.** The status area
   keeps the advice's height; verified in the running window.
-- **Owner decision needed: holding a stepper does not repeat.** The standard
-  `NumberInput` steps on click only, so repeating needs a custom press handler.
+- **Accepted with the owner's agreement: holding a stepper repeats.** The standard
+  `NumberInput` steps on click only, so the steppers are standard `Button`s with a
+  press handler and a repeat task (owner feedback 2).
 - **Accepted: tests claimed more than they proved.** The choice test is named for
   what it checks, the Escape test also checks the frequency view, and a preview is
   asserted not to be saved.

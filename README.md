@@ -587,8 +587,9 @@ scheme) or to type a number (overlap, and the range in the fixed mode). Tab and
 Shift+Tab move between values, arrows navigate lists or step numbers. Every change
 previews on the spectrogram at once. A click outside the hint, Enter or Ctrl+, again
 keeps the changes and closes it; Escape closes an open list first and otherwise
-restores the settings and view the hint opened with. An unusable number keeps the
-hint open with its error. **Reset to defaults**, below the values, applies the values from `argand.toml`, or the
+restores the settings and view the hint opened with. The − and + beside a number
+step it at once and repeat while held; Enter in a number applies it and keeps the
+hint open, and an unusable number shows its error. **Reset to defaults**, below the values, applies the values from `argand.toml`, or the
 built-in defaults when no configuration is present, and keeps the hint open.
 
 Range modes are absolute full scale (0 to -110 dBFS), a fixed span below the measured
@@ -602,10 +603,11 @@ A yellow ⚠ accompanies the highlighted range; clicking it applies the recommen
 directly, without opening the hint.
 
 Colour and range changes reuse cached values without a new FFT, including during
-refinement. Transform changes cancel obsolete work and retain the previous picture
-until a preview arrives. Style edits during that initial replacement interval apply
-to the incoming preview; the retained picture keeps its own transform and style
-until then. Invalid choices show an explanation.
+refinement. Transform changes cancel obsolete work and keep the previous picture
+until the new one is complete, with progress in the status bar, so the spectrogram
+changes once and shows no coarse preview on the way. Only the first analysis of an
+opened file draws a preview and refines it. Style edits made meanwhile apply to the
+incoming picture; the retained one keeps its own transform and style until then. Invalid choices show an explanation.
 FFT, window, overlap, aggregation and colour choices are saved to the session when
 the settings hint closes keeping them; configuration defaults remain untouched. Range and its mode belong to
 the current file: opening a file or restarting restores the configured range default.

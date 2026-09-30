@@ -56,7 +56,8 @@ struct Requested {
     generation: u64,
     view_revision: u64,
     analysis: AnalysisRequest,
-    navigation: bool,
+    /// Replaces a picture already shown, so no preview or partial picture is published.
+    replacement: bool,
     frequency: Option<(f64, f64)>,
 }
 
@@ -161,14 +162,9 @@ impl Analyst {
         }) {
             return !self.requests.is_closed();
         }
-        let navigation = latest.is_some_and(|previous| {
-            same_analysis(
-                AnalysisRequest {
-                    range: analysis.range,
-                    ..previous.analysis
-                },
-                analysis,
-            ) && (previous.navigation || previous.analysis.range != analysis.range)
+        // Only a file's first analysis has no picture to keep, so every later one is delivered whole.
+        let replacement = latest.is_some_and(|previous| {
+            previous.replacement || !same_analysis(previous.analysis, analysis)
         });
         let generation = match *latest {
             Some(previous) if same_analysis(previous.analysis, analysis) => previous.generation,
@@ -179,7 +175,7 @@ impl Analyst {
             generation,
             view_revision,
             analysis,
-            navigation,
+            replacement,
             frequency,
         });
         drop(latest);
@@ -378,7 +374,7 @@ impl Cached {
         }
         let started = Instant::now();
         let view = request.analysis;
-        let width = if request.navigation && self.overview.dimensions().0 == 1 {
+        let width = if request.replacement && self.overview.dimensions().0 == 1 {
             1
         } else {
             view.width
@@ -425,7 +421,7 @@ fn compute(
     let mut render_error = None;
     let last_view = std::cell::Cell::new(None);
     let options = ProgressiveOptions::new(settings.batch_frames).unwrap_or_default();
-    let options = if request.navigation {
+    let options = if request.replacement {
         options.final_only()
     } else {
         options
