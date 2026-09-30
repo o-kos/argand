@@ -533,13 +533,14 @@ hover-based, so any blocking layer above it wins.
   chevron (`Name::display_title`) with the dashed underline only under that value,
   so every value looks content-sized and right-aligned. The heading line shows the pending state
   beside the title, or an error in the title's place, so the hint keeps one height
-  with no reserved empty line. The hint carries no range advice: while it is open
-  and the range is warned, Shell draws the range item's own hint (`shortcut_tooltip`
-  with the Ctrl+R keycap) as a balloon beside the settings hint, above the status
-  bar, because the backdrop keeps the pointer from hovering the item and the
-  settings hint covers the place above it. The item then reads `110 dB ⚠`, sign
-  last, and a leader in the warning colour (`balloon_leader`, a canvas path) runs
-  down from the balloon and along the status bar to an arrowhead at the sign.
+  with no reserved empty line. A warned range is shown in the hint's own
+  Range row and nowhere else: the row reads `110 dB ⚠` in the warning colour, and
+  a balloon to the right of the hint (`Editor::range_readout`) carries the range
+  item's warning text and the Ctrl+R keycap, edged in the warning colour, with a
+  pointer (`balloon_pointer`, a canvas path) whose tip stands at the sign. It is
+  deferred above `POPUP_PRIORITY`, because the hint's popover would otherwise be
+  painted over it. The status bar's range item is the same with the hint open or
+  closed.
 - The pointer over the plot: `time-plot` uses `on_hover` with
   `HoverListenerMode::InputModalityIndependent`. GPUI's default mode ends hover
   on every key press until the mouse moves, which cleared the readout and the

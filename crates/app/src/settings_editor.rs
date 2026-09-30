@@ -17,7 +17,7 @@ use std::time::Duration;
 const CONTEXT: &str = "AnalysisEditor";
 
 /// The width of the surface, fixed so that changing values never move it.
-pub(super) const WIDTH: f32 = 370.0;
+const WIDTH: f32 = 370.0;
 
 /// The width of every row's label column.
 const LABEL: f32 = 110.0;
@@ -27,6 +27,10 @@ const CHEVRON: f32 = 34.0;
 
 /// The width of a list, which is wider than any value it offers.
 const LIST: f32 = 220.0;
+/// The widest the balloon's body grows, its pointer's length and the tip's distance from the sign.
+const BALLOON: f32 = 320.0;
+const POINTER: f32 = 9.0;
+const BALLOON_GAP: f32 = 3.0;
 
 /// The width of the text in a number field, enough for any value it takes.
 const NUMBER: f32 = 44.0;
@@ -475,6 +479,67 @@ impl Editor {
             )
     }
 
+    /// The effective range, with its warning in a balloon pointing at the sign that ends it.
+    fn range_readout(&self, window: &Window, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
+        let text = format!("{} dB", self.range.read(cx).value());
+        let warning = self
+            .owner
+            .upgrade()
+            .and_then(|shell| shell.read(cx).range_warning());
+        let Some((warning, actionable)) = warning else {
+            return div().child(text).into_any_element();
+        };
+        let shortcut = actionable
+            .then(|| Kbd::binding_for_action(&UseRecommendedRange, Some("Shell"), window))
+            .flatten();
+        // The warning colour edges the balloon, which a border of the hint's own would lose on the hint.
+        let edge = advice_color(cx);
+        let body = div()
+            .ml(px(POINTER - 1.0))
+            .max_w(px(BALLOON))
+            .flex()
+            .items_center()
+            .gap_3()
+            .px_2()
+            .py_0p5()
+            .bg(cx.theme().tokens.popover)
+            .border_1()
+            .border_color(edge)
+            .rounded(cx.theme().radius)
+            .shadow_md()
+            .text_color(cx.theme().popover_foreground)
+            .child(div().min_w_0().child(warning))
+            .when_some(shortcut, |body, shortcut| {
+                body.child(shortcuts::keycap(shortcut, cx))
+            });
+        let pointer = div()
+            .absolute()
+            .left_0()
+            .top_0()
+            .bottom_0()
+            .flex()
+            .items_center()
+            .child(balloon_pointer(cx.theme().tokens.popover, edge));
+        // The pointer comes last so it is painted over the border of the body it joins.
+        let balloon = div()
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .left_full()
+            .ml(px(BALLOON_GAP))
+            .w(px(BALLOON + POINTER))
+            .flex()
+            .items_center()
+            .child(body)
+            .child(pointer);
+        div()
+            .relative()
+            .text_color(advice_color(cx))
+            .child(format!("{text} ⚠"))
+            .child(gpui_kit::deferred(balloon).with_priority(gpui_kit::base::POPUP_PRIORITY + 1))
+            .into_any_element()
+    }
+
     /// A list as wide as its widest item, underlined only under the value it shows.
     fn choice(&self, id: &'static str, choice: Choice, cx: &gpui_kit::App) -> impl IntoElement {
         let state = match choice {
@@ -524,9 +589,7 @@ impl Render for Editor {
         let range = if fixed {
             self.stepper(Number::Range, "dB", cx)
         } else {
-            div()
-                .child(format!("{} dB", self.range.read(cx).value()))
-                .into_any_element()
+            self.range_readout(window, cx)
         };
         div()
             .id("analysis-editor")
@@ -622,6 +685,31 @@ fn editable(control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
         .border_dashed()
         .border_color(underline_color(cx))
         .child(control)
+}
+
+/// The pointer on the balloon's left side, its tip towards the warning sign.
+fn balloon_pointer(fill: impl Into<gpui_kit::Hsla>, edge: gpui_kit::Hsla) -> impl IntoElement {
+    let fill = fill.into();
+    gpui_kit::canvas(
+        |_, _, _| (),
+        move |bounds, _, window, _| {
+            let tip = gpui_kit::point(bounds.left(), bounds.center().y);
+            let upper = gpui_kit::point(bounds.right(), bounds.top());
+            let lower = gpui_kit::point(bounds.right(), bounds.bottom());
+            let mut body = gpui_kit::PathBuilder::fill();
+            body.add_polygon(&[upper, tip, lower], true);
+            if let Ok(path) = body.build() {
+                window.paint_path(path, fill);
+            }
+            let mut outline = gpui_kit::PathBuilder::stroke(px(1.0));
+            outline.add_polygon(&[upper, tip, lower], false);
+            if let Ok(path) = outline.build() {
+                window.paint_path(path, edge);
+            }
+        },
+    )
+    .w(px(POINTER))
+    .h(px(16.0))
 }
 
 fn underline_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {

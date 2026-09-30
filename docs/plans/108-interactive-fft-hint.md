@@ -171,9 +171,21 @@ captured per window.
       its body ends level with the settings hint.
 - [x] **While the balloon is shown the item reads `110 dB ⚠`**, sign last, so the
       leader ends at the sign.
+- [x] **Superseded by feedback 5**: the leader and the reordered status item are gone.
 - [x] Checked in the running application, in a private nested X server that needs
       no focus from the desktop: the open hint with the balloon, the FFT list
       walked with Down, an unusable overlap and the pending state.
+
+## Owner feedback 5 (2026-09-30)
+
+- [x] **The status bar's range item is not to be touched.** It is back to what it
+      was before this issue's feedback, with the hint open or closed.
+- [x] **The warning lives in the hint's Range row.** The row reads `110 dB ⚠` in
+      the warning colour.
+- [x] **A balloon is a bubble with a pointer.** It stands to the right of the hint,
+      centred on the Range row, edged in the warning colour, with the warning text
+      and the Ctrl+R keycap, and its pointer's tip at the sign. Checked in the
+      running application.
 
 ## Review round 1
 

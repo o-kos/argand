@@ -76,44 +76,6 @@ impl ControlForegrounds {
 const SUMMARY_HOVER: &str = "analysis-summary-hover";
 const RANGE_HOVER: &str = "analysis-range-hover";
 
-/// Where the balloon's body starts, clear of the settings hint, from the summary's left edge.
-const BALLOON_LEFT: f32 = editor::WIDTH + 20.0;
-/// The margin the tooltip look keeps around its body.
-const BALLOON_MARGIN: f32 = 12.0;
-/// How far the balloon is lowered so its body ends level with the settings hint.
-const BALLOON_DROP: f32 = 7.0;
-
-/// The balloon's leader, down from its body and along the status bar to the warning sign.
-fn balloon_leader(color: gpui_kit::Hsla) -> impl IntoElement {
-    gpui_kit::canvas(
-        |_, _, _| (),
-        move |bounds, _, window, _| {
-            let row = bounds.center().y;
-            let body = bounds.top() - px(BALLOON_MARGIN - BALLOON_DROP);
-            let stem = bounds.left() + px(BALLOON_LEFT + 16.0);
-            let head = bounds.right() - px(4.0);
-            let at = gpui_kit::point;
-            let mut line = gpui_kit::PathBuilder::stroke(px(1.0));
-            line.add_polygon(&[at(stem, body), at(stem, row), at(head, row)], false);
-            if let Ok(path) = line.build() {
-                window.paint_path(path, color);
-            }
-            let wing = px(3.5);
-            let barbs = [
-                at(head + px(7.0), row - wing),
-                at(head + px(7.0), row + wing),
-            ];
-            let mut arrow = gpui_kit::PathBuilder::fill();
-            arrow.add_polygon(&[at(head, row), barbs[0], barbs[1]], true);
-            if let Ok(path) = arrow.build() {
-                window.paint_path(path, color);
-            }
-        },
-    )
-    .absolute()
-    .size_full()
-}
-
 fn document_range_presentation(
     document: &Document,
     displayed_settings: Option<Settings>,
@@ -267,6 +229,14 @@ impl Shell {
         ))
     }
 
+    /// The warning of the range shown, and whether Ctrl+R can act on it.
+    fn range_warning(&self) -> Option<(String, bool)> {
+        let presentation = self.range_presentation()?;
+        let state = presentation.displayed?.state;
+        matches!(state, RangeState::Warned(_))
+            .then(|| (range_hint(state), presentation.next_action.is_some()))
+    }
+
     pub(super) fn status_bar(
         &self,
         corners: Corners<Pixels>,
@@ -365,7 +335,7 @@ impl Shell {
         &self,
         displayed: Option<Settings>,
         cx: &mut Context<Self>,
-    ) -> (gpui_kit::AnyElement, Option<gpui_kit::AnyView>) {
+    ) -> impl IntoElement {
         let visible = displayed.unwrap_or(self.settings);
         let presentation = self.range_presentation();
         let displayed_range = presentation.and_then(|presentation| presentation.displayed);
@@ -380,14 +350,9 @@ impl Shell {
             || RangeState::from_request(None, visible.dynamic_range),
             |range| range.state,
         );
-        // The item cannot be hovered under the settings hint's backdrop, so its hint is shown for it.
-        let warned = matches!(range_state, RangeState::Warned(_));
-        let ballooned = warned && self.analysis_hint.read(cx).is_open();
-        let range_label = match (warned, ballooned) {
-            // The balloon's leader reaches the sign from the right, so the sign ends the item.
-            (true, true) => format!("{range_text} ⚠"),
-            (true, false) => format!("⚠ {range_text}"),
-            (false, _) => range_text,
+        let range_label = match range_state {
+            RangeState::Warned(_) => format!("⚠ {range_text}"),
+            RangeState::Corrected | RangeState::Full => range_text,
         };
         let actionable =
             presentation.is_some_and(|presentation| presentation.next_action.is_some());
@@ -431,12 +396,7 @@ impl Shell {
                 .into_any_element()
         };
         let range_hint = range_hint(range_state);
-        let balloon = ballooned.then(|| {
-            let action =
-                actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
-            shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
-        });
-        let item = div()
+        div()
             .id("analysis-range-item")
             .border_l_1()
             .border_color(cx.theme().border)
@@ -446,8 +406,6 @@ impl Shell {
                 shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
             })
             .child(range_content)
-            .into_any_element();
-        (item, balloon)
     }
 
     fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -485,21 +443,7 @@ impl Shell {
                         editor::display_name(&visible.window.to_string())
                     )),
             );
-        let (range, balloon) = self.range_control(displayed, cx);
-        // Beside the settings hint, which starts at the summary's left edge and would cover it.
-        let balloon = balloon.map(|hint| {
-            let beside = div()
-                .absolute()
-                .bottom_full()
-                .mb(px(-BALLOON_DROP))
-                .left(px(BALLOON_LEFT - BALLOON_MARGIN))
-                .child(hint);
-            let tail = balloon_leader(advice_color(cx));
-            gpui_kit::deferred(div().absolute().inset_0().child(beside).child(tail))
-                .with_priority(2)
-        });
         div()
-            .relative()
             .flex()
             .items_center()
             .gap_2()
@@ -515,8 +459,7 @@ impl Shell {
                         cx,
                     )),
             )
-            .child(range)
-            .children(balloon)
+            .child(self.range_control(displayed, cx))
     }
 
     /// Open the analysis hint with the keyboard in it, or close it keeping its values.

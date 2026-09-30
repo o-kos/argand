@@ -598,7 +598,7 @@ The status text is muted and brightens on hover. Only a nonzero signal whose spe
 peak falls in the lower half of the absolute scale produces a yellow range warning.
 A narrower recommendation by itself is not a warning; silence and peak-relative modes
 are excluded. While the settings hint is
-open, a warned range shows its own hint as a balloon with an arrow to the ⚠ sign, and Ctrl+R (Cmd+R on macOS) applies
+open, its Range row marks a warned range with ⚠ and explains it in a balloon pointing at the sign, and Ctrl+R (Cmd+R on macOS) applies
 the measured recommended range used by `aspec`.
 A yellow ⚠ accompanies the highlighted range; clicking it applies the recommendation
 directly, without opening the hint.

@@ -111,7 +111,7 @@ commits leave behind.
 
 | # | Location | What it does | Parent row | Disposition |
 | --- | --- | --- | --- | --- |
-| I32 | `settings_ui.rs` (`range_control`) | The recommendation button left the hint; a warned range shows the range item's own hint as a balloon with a leader beside the open settings hint | R7 | Removed |
+| I32 | `settings_editor.rs` (`range_readout`) | The recommendation button left the hint; its Range row marks a warned range and explains it in a balloon with a pointer | R7 | Removed |
 | I33 | `settings_editor.rs:401`, `settings_editor.rs:405` | `UseRecommendedRange`, and `Confirm` taken before the popover so Enter keeps an unusable number open | R7 | Retained |
 | I34 | `settings_editor.rs:319` | Defaults | R7 | Retained |
 | I39 | `settings_editor.rs:547`, `settings_editor.rs:568`, `settings_editor.rs:579` | The standard select's confirm, the input's Enter and blur, and the number steppers preview a value | R7 | Retained |
