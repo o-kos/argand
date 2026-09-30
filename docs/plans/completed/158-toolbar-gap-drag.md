@@ -91,7 +91,7 @@ they can arm anything.
 - [x] Update `docs/ui/124-inventory.md` rows I07 and the R-disposition text for
       the moved entry points, re-running its recorded audit command.
 - [x] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
