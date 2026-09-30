@@ -195,8 +195,8 @@ captured per window.
       popover dismissed itself on any press outside its panel, which the balloon
       is, so the hint's backdrop now closes it instead (`overlay_closable(false)`).
 - [x] **No rule above Reset to defaults.**
-- [ ] Owner's question, left as it is pending the answer: hiding the status bar's
-      range item while the balloon is shown.
+- [x] Owner's decision: the status bar's range item stays visible while the
+      balloon is shown.
 - [x] Checked in the running application: both clicks, Ctrl+R back, a press
       outside closing the hint with 40 dB kept, and reopening.
 
