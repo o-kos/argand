@@ -144,6 +144,24 @@ captured per window.
       On the test bench the step's analysis took 0.85 s against 1.3 s for the
       file's first analysis, with no intermediate snapshot in the log.
 
+## Owner feedback 3 (2026-09-30)
+
+- [x] **Lists moved while the keyboard walked them.** A list was as wide as its
+      current name and right-aligned, so every name of another length shifted it.
+      Each list now has the fixed width of its widest name. A headless test walks
+      the Window list with Down and Enter and compares the bounds; it fails on
+      content-sized lists (95 px against 70 px).
+- [x] **The low-level warning was off-centre and left an empty line when absent.**
+      The advice and its button left the hint. While the hint is open and the range
+      is warned, the range item's own hint, with its Ctrl+R keycap, is drawn beside
+      the settings hint above the status bar. It cannot sit directly above the
+      range item, because the settings hint covers that place.
+- [x] **No reserved status line.** The pending state sits beside the title and an
+      error takes the title's place, in one line of fixed height.
+- [ ] Native check of the heading line and of keyboard walking: the test bench
+      could not hold the window on the second screen or take keyboard focus while
+      the owner was working, so only the balloon was captured there.
+
 ## Review round 1
 
 Codex `gpt-6-sol` high reviewed the revision the owner first saw; its findings were

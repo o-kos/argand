@@ -13,7 +13,7 @@ promise applies to.
 
 ### Changed
 
-- Edit the analysis settings directly in the FFT hint over the status bar. Hover it, click it, choose File → Settings or press Ctrl+, (Cmd+, on macOS); each value with a dashed underline opens a list or takes a number, and every change previews at once. A click outside, Enter or Ctrl+, again keeps the changes; Escape restores the settings and view the hint opened with; Reset to defaults applies the configuration values. The separate settings window with OK and Cancel is gone.
+- Edit the analysis settings directly in the FFT hint over the status bar. Hover it, click it, choose File → Settings or press Ctrl+, (Cmd+, on macOS); each value with a dashed underline opens a list or takes a number, and every change previews at once. A click outside, Enter or Ctrl+, again keeps the changes; Escape restores the settings and view the hint opened with; Reset to defaults applies the configuration values. While the hint is open, a low-level range warning shows its own hint with Ctrl+R beside it. The separate settings window with OK and Cancel is gone.
 
 - Draw the application menu with the standard menu component. The menu still offers the same File and View branches, recent captures, checks and shortcuts, and still opens from the application button and F10. Its rows show the same framed shortcut keys as every other shortcut in the application, and a long recent capture name truncates in the middle instead of running past the row.
 

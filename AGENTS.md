@@ -528,7 +528,13 @@ hover-based, so any blocking layer above it wins.
   key context). Values changed from
   it preview live. `PinnedHint` emits `Pinned::Opened` / `Pinned::Closed { revert }`;
   Shell interrupts the plot on opening and restores `hint_opening` on a reverting
-  close.
+  close. Each list has the fixed width of its widest name, so choosing or walking
+  it with the keyboard moves nothing. The heading line shows the pending state
+  beside the title, or an error in the title's place, so the hint keeps one height
+  with no reserved empty line. The hint carries no range advice: while it is open
+  and the range is warned, Shell draws the range item's own hint (`shortcut_tooltip`
+  with the Ctrl+R keycap) beside the settings hint, above the status bar, because
+  the backdrop keeps the pointer from hovering the item.
 - The pointer over the plot: `time-plot` uses `on_hover` with
   `HoverListenerMode::InputModalityIndependent`. GPUI's default mode ends hover
   on every key press until the mouse moves, which cleared the readout and the

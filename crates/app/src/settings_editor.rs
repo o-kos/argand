@@ -17,13 +17,13 @@ use std::time::Duration;
 const CONTEXT: &str = "AnalysisEditor";
 
 /// The width of the surface, fixed so that changing values never move it.
-const WIDTH: f32 = 370.0;
+pub(super) const WIDTH: f32 = 370.0;
 
 /// The width of every row's label column.
 const LABEL: f32 = 110.0;
 
-/// The height the status area keeps, which is the low-signal advice and its button.
-const STATUS: f32 = 68.0;
+/// What a frameless select adds to its text, which is its padding and chevron.
+const CHEVRON: f32 = 34.0;
 
 /// The width of a list, which is wider than any value it offers.
 const LIST: f32 = 220.0;
@@ -62,6 +62,8 @@ pub(super) struct Editor {
     aggregation: Combo,
     mode: Combo,
     palette: Combo,
+    /// Each select's width, that of its widest item, so choosing never moves it.
+    widths: [Pixels; 5],
     overlap: Entity<InputState>,
     range: Entity<InputState>,
     error: Option<String>,
@@ -87,17 +89,17 @@ impl Editor {
             },
         );
         let mut subscriptions = Vec::new();
-        let fft = combo(Choice::Fft, settings, window, cx, &mut subscriptions);
-        let window_choice = combo(Choice::Window, settings, window, cx, &mut subscriptions);
-        let aggregation = combo(
-            Choice::Aggregation,
-            settings,
-            window,
-            cx,
-            &mut subscriptions,
-        );
-        let mode = combo(Choice::Mode, settings, window, cx, &mut subscriptions);
-        let palette = combo(Choice::Palette, settings, window, cx, &mut subscriptions);
+        let mut widths = [px(0.); 5];
+        let mut select = |choice: Choice, cx: &mut Context<Self>| {
+            let (state, width) = combo(choice, settings, window, cx, &mut subscriptions);
+            widths[choice as usize] = width;
+            state
+        };
+        let fft = select(Choice::Fft, cx);
+        let window_choice = select(Choice::Window, cx);
+        let aggregation = select(Choice::Aggregation, cx);
+        let mode = select(Choice::Mode, cx);
+        let palette = select(Choice::Palette, cx);
         let overlap = number(
             Number::Overlap,
             crate::numbers::input(settings.overlap),
@@ -135,6 +137,7 @@ impl Editor {
             aggregation,
             mode,
             palette,
+            widths,
             overlap,
             range,
             error: None,
@@ -414,11 +417,25 @@ impl Editor {
         }
     }
 
-    fn heading(&self) -> impl IntoElement {
-        div()
-            .pb_1()
+    /// The title with the pending state beside it, or an error in its place, always one fixed line.
+    fn heading(&self, pending: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let line = div().h_6().mb_1().flex().items_center();
+        if let Some(error) = &self.error {
+            return line
+                .text_xs()
+                .text_color(cx.theme().danger)
+                .child(error.clone());
+        }
+        let title = div()
             .font_weight(FontWeight::SEMIBOLD)
-            .child("Analysis settings")
+            .child("Analysis settings");
+        let updating = div()
+            .text_xs()
+            .text_color(cx.theme().muted_foreground)
+            .child("Updating the picture…");
+        line.justify_between()
+            .child(title)
+            .when(pending, |line| line.child(updating))
     }
 
     /// Resetting to the configuration, set apart below the values it replaces.
@@ -437,49 +454,24 @@ impl Editor {
             )
     }
 
-    /// The row a status or advice line takes, reserved so the surface keeps its size.
-    fn status(&self, pending: bool, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let recommendation = self
-            .owner
-            .upgrade()
-            .and_then(|shell| shell.read(cx).range_recommendation());
-        let line = div().text_xs();
-        if let Some(error) = &self.error {
-            return line
-                .text_color(cx.theme().danger)
-                .child(error.clone())
-                .into_any_element();
-        }
-        if let Some(db) = recommendation {
-            return div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .child(
-                    line.text_color(advice_color(cx))
-                        .child(low_signal_level_hint(db)),
-                )
-                .child(
-                    Button::new("hint-recommendation")
-                        .ghost()
-                        .small()
-                        .label(format!(
-                            "Use recommended: {} dB",
-                            crate::numbers::number(db)
-                        ))
-                        .when_some(
-                            Kbd::binding_for_action(&UseRecommendedRange, None, window),
-                            |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
-                        )
-                        .on_click(
-                            cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)),
-                        ),
-                )
-                .into_any_element();
-        }
-        line.text_color(cx.theme().muted_foreground)
-            .when(pending, |line| line.child("Updating the picture…"))
-            .into_any_element()
+    /// A list at the width of its widest item, so choosing in it never moves it.
+    fn choice(&self, id: &'static str, choice: Choice, cx: &gpui_kit::App) -> impl IntoElement {
+        let state = match choice {
+            Choice::Fft => &self.fft,
+            Choice::Window => &self.window,
+            Choice::Aggregation => &self.aggregation,
+            Choice::Mode => &self.mode,
+            Choice::Palette => &self.palette,
+        };
+        editable(
+            Select::new(state)
+                .id(id)
+                .appearance(false)
+                .small()
+                .w(self.widths[choice as usize])
+                .menu_width(px(LIST)),
+            cx,
+        )
     }
 }
 
@@ -530,36 +522,34 @@ impl Render for Editor {
             .flex()
             .flex_col()
             .gap_1()
-            .child(self.heading())
-            .child(row("FFT size", choice("analysis-fft", &self.fft, cx), cx))
+            .child(self.heading(pending, cx))
+            .child(row(
+                "FFT size",
+                self.choice("analysis-fft", Choice::Fft, cx),
+                cx,
+            ))
             .child(row(
                 "Window",
-                choice("analysis-window", &self.window, cx),
+                self.choice("analysis-window", Choice::Window, cx),
                 cx,
             ))
             .child(row("Overlap", overlap, cx))
             .child(row(
                 "Aggregation",
-                choice("analysis-aggregation", &self.aggregation, cx),
+                self.choice("analysis-aggregation", Choice::Aggregation, cx),
                 cx,
             ))
             .child(row(
                 "Range mode",
-                choice("analysis-mode", &self.mode, cx),
+                self.choice("analysis-mode", Choice::Mode, cx),
                 cx,
             ))
             .child(row("Range", range, cx))
             .child(row(
                 "Colour scheme",
-                choice("analysis-palette", &self.palette, cx),
+                self.choice("analysis-palette", Choice::Palette, cx),
                 cx,
             ))
-            // The status area keeps the advice's height, so its changes never move the hint.
-            .child(
-                div()
-                    .min_h(px(STATUS))
-                    .child(self.status(pending, window, cx)),
-            )
             .child(self.defaults(cx))
     }
 }
@@ -599,24 +589,13 @@ fn editable(control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
         .child(control)
 }
 
-fn choice(id: &'static str, state: &Combo, cx: &gpui_kit::App) -> impl IntoElement {
-    editable(
-        Select::new(state)
-            .id(id)
-            .appearance(false)
-            .small()
-            .menu_width(px(LIST)),
-        cx,
-    )
-}
-
 fn combo(
     choice: Choice,
     settings: Settings,
     window: &mut Window,
     cx: &mut Context<Editor>,
     subscriptions: &mut Vec<Subscription>,
-) -> Combo {
+) -> (Combo, Pixels) {
     let (selected, items): (String, Vec<String>) = match choice {
         Choice::Fft => (
             crate::numbers::number(settings.fft_size),
@@ -653,6 +632,7 @@ fn combo(
         .iter()
         .position(|value| value == &selected)
         .map(gpui_kit::component::IndexPath::new);
+    let width = widest(&items, window, cx);
     let state = cx.new(|cx| SelectState::new(items, index, window, cx));
     subscriptions.push(
         cx.subscribe_in(&state, window, move |editor, _, event, window, cx| {
@@ -661,7 +641,27 @@ fn combo(
             }
         }),
     );
-    state
+    (state, width)
+}
+
+/// The width a frameless select needs to show the longest of its items.
+fn widest(items: &[String], window: &Window, cx: &gpui_kit::App) -> Pixels {
+    let style = gpui_kit::TextStyle {
+        font_family: cx.theme().font_family.clone(),
+        ..Default::default()
+    };
+    let size = window.rem_size() * 0.875;
+    let text = items
+        .iter()
+        .map(|item| {
+            let run = style.to_run(item.len());
+            window
+                .text_system()
+                .shape_line(item.clone().into(), size, &[run], None)
+                .width
+        })
+        .fold(px(0.), Pixels::max);
+    text.ceil() + px(CHEVRON)
 }
 
 fn number(
@@ -1026,6 +1026,41 @@ mod hint_tests {
             "the choice applies"
         );
         assert!(is_open(cx, &w), "choosing in a list keeps the hint");
+    }
+
+    #[gpui_kit::test]
+    fn a_list_stays_where_it_is_while_the_keyboard_walks_it(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        let opening = settings(cx, &w);
+        let bounds = |cx: &mut TestAppContext| {
+            cx.update_window(w.handle.into(), |_, window, _| {
+                window.find("analysis-window").bounds()
+            })
+            .expect("the window is open")
+        };
+        let resting = bounds(cx);
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            window.within("analysis-window").click("input", cx);
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, &w);
+        for _ in 0..3 {
+            press(cx, &w, "down");
+            assert_eq!(bounds(cx), resting, "walking the list moves nothing");
+        }
+        press(cx, &w, "enter");
+        assert_ne!(
+            settings(cx, &w).window,
+            opening.window,
+            "the choice applies"
+        );
+        assert_eq!(
+            bounds(cx),
+            resting,
+            "a name of another length moves nothing"
+        );
     }
 
     #[gpui_kit::test]

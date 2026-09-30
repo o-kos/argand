@@ -111,7 +111,7 @@ commits leave behind.
 
 | # | Location | What it does | Parent row | Disposition |
 | --- | --- | --- | --- | --- |
-| I32 | `settings_editor.rs:350` | The recommendation button applies the measured range | R7 | Retained |
+| I32 | `settings_ui.rs` (`range_control`) | The recommendation button left the hint; a warned range shows the range item's own hint beside the open settings hint | R7 | Removed |
 | I33 | `settings_editor.rs:401`, `settings_editor.rs:405` | `UseRecommendedRange`, and `Confirm` taken before the popover so Enter keeps an unusable number open | R7 | Retained |
 | I34 | `settings_editor.rs:319` | Defaults | R7 | Retained |
 | I39 | `settings_editor.rs:547`, `settings_editor.rs:568`, `settings_editor.rs:579` | The standard select's confirm, the input's Enter and blur, and the number steppers preview a value | R7 | Retained |
@@ -278,8 +278,7 @@ for the range item's action and its labels.
 
 **Retained, and already standard; moved into the FFT hint by #108.** The settings are
 gpui-component `Select` and `NumberInput` drawn with `appearance(false)` in the pinned
-hint's popover (`settings_editor.rs:373`), plus standard `Button`s for Defaults and the
-recommendation. The separate `Root`-backed window with Reset, Cancel and OK is gone. There
+hint's popover (`settings_editor.rs:373`), plus a standard `Button` for Reset to defaults. The separate `Root`-backed window with Reset, Cancel and OK is gone. There
 is no custom editing, focus, press or validation machinery; the numeric policy is a small
 application-value adapter on the standard `NumberInputEvent` and `InputEvent`, and the
 editor takes `Confirm` before the popover so that Enter closes the hint only on usable

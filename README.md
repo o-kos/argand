@@ -597,8 +597,9 @@ peak, and automatic. The effective range remains visible as a readout outside th
 The status text is muted and brightens on hover. Only a nonzero signal whose spectral
 peak falls in the lower half of the absolute scale produces a yellow range warning.
 A narrower recommendation by itself is not a warning; silence and peak-relative modes
-are excluded. The settings hint offers the measured recommended
-range used by `aspec`, and apply it with one action or Ctrl+R (Cmd+R on macOS).
+are excluded. While the settings hint is
+open, a warned range shows its own hint beside it, and Ctrl+R (Cmd+R on macOS) applies
+the measured recommended range used by `aspec`.
 A yellow ⚠ accompanies the highlighted range; clicking it applies the recommendation
 directly, without opening the hint.
 

@@ -229,13 +229,6 @@ impl Shell {
         ))
     }
 
-    fn range_recommendation(&self) -> Option<f32> {
-        match self.next_range_action() {
-            Some(DynamicRange::Fixed(db)) => Some(db),
-            Some(DynamicRange::Default | DynamicRange::Auto) | None => None,
-        }
-    }
-
     pub(super) fn status_bar(
         &self,
         corners: Corners<Pixels>,
@@ -334,7 +327,7 @@ impl Shell {
         &self,
         displayed: Option<Settings>,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> (gpui_kit::AnyElement, Option<gpui_kit::AnyView>) {
         let visible = displayed.unwrap_or(self.settings);
         let presentation = self.range_presentation();
         let displayed_range = presentation.and_then(|presentation| presentation.displayed);
@@ -395,7 +388,14 @@ impl Shell {
                 .into_any_element()
         };
         let range_hint = range_hint(range_state);
-        div()
+        // The item cannot be hovered under the settings hint's backdrop, so its hint is shown for it.
+        let warned = matches!(range_state, RangeState::Warned(_));
+        let balloon = (warned && self.analysis_hint.read(cx).is_open()).then(|| {
+            let action =
+                actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
+            shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
+        });
+        let item = div()
             .id("analysis-range-item")
             .border_l_1()
             .border_color(cx.theme().border)
@@ -405,6 +405,8 @@ impl Shell {
                 shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
             })
             .child(range_content)
+            .into_any_element();
+        (item, balloon)
     }
 
     fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -442,6 +444,16 @@ impl Shell {
                         editor::display_name(&visible.window.to_string())
                     )),
             );
+        let (range, balloon) = self.range_control(displayed, cx);
+        // Beside the settings hint, which starts at the summary's left edge and would cover it.
+        let balloon = balloon.map(|hint| {
+            let beside = div()
+                .absolute()
+                .bottom_full()
+                .left(px(editor::WIDTH + 8.0))
+                .child(hint);
+            gpui_kit::deferred(beside).with_priority(2)
+        });
         div()
             .flex()
             .items_center()
@@ -449,6 +461,7 @@ impl Shell {
             .child(
                 div()
                     .id("analysis-summary")
+                    .relative()
                     .border_l_1()
                     .border_color(cx.theme().border)
                     .child(hints::pinned(
@@ -456,9 +469,10 @@ impl Shell {
                         &self.analysis_hint,
                         summary,
                         cx,
-                    )),
+                    ))
+                    .children(balloon),
             )
-            .child(self.range_control(displayed, cx))
+            .child(range)
     }
 
     /// Open the analysis hint with the keyboard in it, or close it keeping its values.
