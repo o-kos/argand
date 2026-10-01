@@ -116,8 +116,8 @@ owner also made the default reviewer for class A.
       over rulers, plot, panels and status bar, checked with the owner.
 - [x] Update `AGENTS.md`, `README.md`, `CHANGELOG.md`, `crates/app/assets/argand.toml`
       comments if the theme key's meaning changes, and `docs/ui/124-inventory.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -144,3 +144,8 @@ Codex `gpt-6.1-sol` high. Two findings, both accepted.
   and sheet colours after Light, Dark and Light switches, and the menu tests run with the
   installed theme and check the status bar colour of each choice.
 
+## Review round 2
+
+Codex `gpt-6.1-sol` high confirmed both fixes, including that the theme and menu tests
+fail when the configurations are not installed or not applied on a switch, and found
+nothing else. The round is clean.
