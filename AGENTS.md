@@ -146,7 +146,7 @@ seeing the result.
 
 | Class | Applies to | Proposed reviewer |
 | --- | --- | --- |
-| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 code files | `gpt-6-sol` high |
+| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 code files | `gpt-6.1-sol` high |
 | B | A feature or fix in one or two GUI modules with local, known invariants and concrete acceptance criteria | `gpt-6-sol` medium |
 | C | Documentation, README, configuration, renames, single-file changes with no behavioural consequence | `gpt-6-luna` medium |
 
