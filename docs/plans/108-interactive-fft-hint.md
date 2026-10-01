@@ -292,3 +292,15 @@ no blocking error in the final-only replacement path, and three findings, all ac
   custom press handling and kept the removed hint buttons as retained; the README's
   example showed one combined group. Both describe the code as it is now, and the
   inventory carries the stepper's justification.
+
+## Review round 3
+
+The last round. Codex `gpt-6-sol` high confirmed the round 2 fixes and the new test,
+and raised two findings, both accepted.
+
+- **Accepted: a repeat could outlive its stepper.** Reset to defaults from the keyboard
+  while a Range stepper was held left the repeat running with no button to release.
+  Reset and the recommendation now stop the repeat, and the repeat itself stops once
+  its stepper is no longer shown.
+- **Accepted: the inventory's test list still said Enter in a number closes the hint.**
+  It now lists what the tests establish.

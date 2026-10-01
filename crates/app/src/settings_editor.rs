@@ -186,7 +186,7 @@ impl Editor {
             cx.background_executor().timer(REPEAT_DELAY).await;
             loop {
                 let stepped = editor.update_in(cx, |editor, window, cx| {
-                    editor.edit_number(field, Some(step), window, cx)
+                    editor.shows_stepper(field) && editor.edit_number(field, Some(step), window, cx)
                 });
                 if !matches!(stepped, Ok(true)) {
                     break;
@@ -198,6 +198,14 @@ impl Editor {
 
     fn stop_repeat(&mut self) {
         self.repeat = None;
+    }
+
+    /// Whether the steppers of a number are on screen, which a held repeat needs.
+    fn shows_stepper(&self, field: Number) -> bool {
+        match field {
+            Number::Overlap => true,
+            Number::Range => matches!(self.settings.dynamic_range, DynamicRange::Fixed(_)),
+        }
     }
 
     /// A number with its unit between two steppers that act on press and repeat while held.
@@ -268,6 +276,7 @@ impl Editor {
     }
 
     fn toggle_range(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.stop_repeat();
         let dynamic_range = self
             .owner
             .upgrade()
@@ -285,6 +294,7 @@ impl Editor {
     }
 
     fn reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.stop_repeat();
         let Some(owner) = self.owner.upgrade() else {
             return;
         };

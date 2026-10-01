@@ -288,14 +288,16 @@ while held (`Editor::start_repeat`), until release, the pointer leaving the butt
 list choice. The standard alternative is `NumberInput`, whose steppers in the locked
 0.6.6 sources step on click only and expose no press hook, so composition cannot reach
 a hold-to-repeat; the steppers are not tab stops, the keyboard steps through the input's
-own arrows, and the repeat stops on an unusable value.
+own arrows, and the repeat stops on an unusable value, on Reset to defaults, on the
+recommendation and once its stepper is no longer shown.
 
-The standard alternative is the same component, so no limitation is claimed. Composition
+For the rest of the form the standard alternative is the same component, so no limitation is claimed. Composition
 would not help: the form's contract is a preview-and-keep transaction over a signal
 document, not a control.
 
-Covering tests: `settings_editor::hint_tests` (choosing previews and keeps the hint, Enter
-applies, closes and saves, an unusable number keeps the hint with its error, Escape restores
+Covering tests: `settings_editor::hint_tests` (choosing previews and keeps the hint, Enter in a number
+applies it and keeps the hint, a keeping close saves, a held stepper stops when the pointer
+leaves it, a list stays put while the keyboard walks it, an unusable number keeps the hint with its error, Escape restores
 settings and views, Defaults) and `settings_editor::standard_input_tests` (standard
 in-window typing, choosing and one-level Escape in a window whose root is a standard
 `Root`). `confirming_numeric_edits_validates_both_fields_without_losing_either` and
