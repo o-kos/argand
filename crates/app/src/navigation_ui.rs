@@ -269,9 +269,9 @@ impl Shell {
         self.frequency_scheme = None;
         self.time_scheme = None;
         self.tick_pan = None;
-        if self.settings_backup.is_some() {
-            self.settings_view_backup = self.view;
-            self.settings_frequency_backup = Some(self.frequency);
+        if let Some(opening) = &mut self.hint_opening {
+            opening.view = self.view;
+            opening.frequency = self.frequency;
         }
     }
 
@@ -326,8 +326,8 @@ impl Shell {
         }
         self.tick_pan = None;
         self.view = Some(view);
-        if self.settings_backup.is_some() {
-            self.settings_view_backup = Some(view);
+        if let Some(opening) = &mut self.hint_opening {
+            opening.view = Some(view);
         }
         tracing::debug!(start = view.start, len = view.len, "time view requested");
         true
@@ -544,8 +544,8 @@ impl Shell {
             self.frequency_scheme = None;
         }
         self.frequency = view;
-        if self.settings_backup.is_some() {
-            self.settings_frequency_backup = Some(view);
+        if let Some(opening) = &mut self.hint_opening {
+            opening.frequency = view;
         }
         tracing::debug!(
             start = view.start,

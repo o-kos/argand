@@ -46,7 +46,7 @@ commits leave behind.
 | E00 | `shell.rs:1421` | The Argand frame's content: title bar, panels, status bar | R1, R6, R12 |
 | E01 | `plot_view.rs:291` | The plot surface, its rulers, its overlays and the corner zoom pairs | R3, R8, R9, R12 |
 | E02 | `hints.rs:128` | The pinned hint's open state; the hint body is a stock `Popover` | R9 |
-| E03 | `settings_editor.rs:436` | The separate settings window's form | R7 |
+| E03 | `settings_editor.rs:373` | The analysis settings editor the pinned FFT hint shows (#108) | R7 |
 | E04 | `app_menu_ui.rs:815` | `NoTooltip`, the empty view that stands in for the pressed application button's hint | R4 |
 | E05 | `chrome.rs:135` | `Frame::render`: insets, rounded corners, border, shadow, resize regions | R1 |
 
@@ -99,21 +99,22 @@ commits leave behind.
 | I22 | `app_menu_ui.rs:524` | The grid `Button` dispatches `ToggleGrid` | R6 | Replaced (#130) |
 | I23 | `plot_ui.rs:564` | A zoom half dispatches its registered zoom action and hands focus back to the plot | R3 | Replaced (#130) |
 | I24 | `settings_ui.rs:382` | The actionable range item dispatches `UseRecommendedRange`; the informational item has no handler | R6 | Retained |
-| I25 | `settings_ui.rs:438` | The analysis summary opens the settings editor | R6 | Retained |
-| I26 | `settings_ui.rs:619`, `settings_ui.rs:639` | The hint's recommendation and edit buttons | R9 | Retained |
+| I25 | `settings_ui.rs:431` | The analysis summary opens the settings hint with the keyboard in it (#108) | R6 | Retained |
+| I26 | `settings_editor.rs` (`range_readout`) | The hint's recommendation and edit buttons are gone (#108); the warned Range value and its balloon apply the recommendation on a click | R9 | Removed |
 | I27 | `shell.rs:1287` | A recent row opens its capture | R6 | Retained |
 | I28 | `shell.rs:1327` | The start page's chooser dispatches `ChooseFile` | R6 | Retained |
 | I29 | `app_menu_ui.rs:109` | A recent row inside the File branch opens its capture | R4 | Replaced (#131) |
 | I30 | `app_menu_ui.rs:357` | The application `Popover` follows the menu's own open state | R4 | Replaced (#131) |
 | I31 | `app_menu_ui.rs:622`, `app_menu_ui.rs:626` | The `ApplicationMenu` key context carries F10, Tab and the File rows' digits | R4 | Replaced (#131) |
 
-### Settings window
+### Settings hint (#108, which replaced the settings window)
 
 | # | Location | What it does | Parent row | Disposition |
 | --- | --- | --- | --- | --- |
-| I32 | `settings_editor.rs:389` | The range button cycles the dynamic-range mode | R7 | Retained |
-| I33 | `settings_editor.rs:450`, `settings_editor.rs:453` | `UseRecommendedRange` and `CloseSettings` in the editor's own key context | R7 | Retained |
-| I34 | `settings_editor.rs:492`, `settings_editor.rs:501`, `settings_editor.rs:509` | Reset, Cancel and OK | R7 | Retained |
+| I32 | `settings_editor.rs` (`range_readout`) | The recommendation button left the hint; its Range row marks a warned range and explains it in a balloon with a pointer | R7 | Removed |
+| I33 | `settings_editor.rs:401`, `settings_editor.rs:405` | `UseRecommendedRange`, and `Confirm` taken before the popover so Enter keeps an unusable number open | R7 | Retained |
+| I34 | `settings_editor.rs:319` | Defaults | R7 | Retained |
+| I39 | `settings_editor.rs:547`, `settings_editor.rs:568`, `settings_editor.rs:579` | The standard select's confirm, the input's Enter and blur, and the number steppers preview a value | R7 | Retained |
 
 ### Infrastructure observers and adapters
 
@@ -131,7 +132,6 @@ These are recorded separately from ordinary controls, as the parent plan require
 | A08 | `shell.rs:1452`, `shell.rs:1453`, `shell.rs:1454`, `shell.rs:1455` | The shell's own action handlers, reached by bubbling from the plot and by global dispatch | R4, R6 | Retained |
 | A09 | `shell.rs:1459`, `shell.rs:1464` | Tab traversal, held while a pinned hint holds the keyboard | R9 | Retained |
 | A10 | `shell.rs:1471` | A capture dropped on the window opens | A05 | Retained |
-| A11 | `settings_editor.rs:101`, `settings_editor.rs:106` | The editor's window teardown, which reports the closed window to its owner | A06 | Retained |
 | A12 | `navigation_ui.rs:600` to `navigation_ui.rs:619` | Six session commands, which change the session rather than the view | R6, R12 | Retained |
 
 ## Final disposition of every parent inventory row
@@ -231,7 +231,7 @@ Covering tests: `the_button_and_the_key_open_the_menu_with_the_keyboard_in_it`,
 `the_backdrop_keeps_the_window_beneath_the_menu`,
 `enter_on_a_view_row_dispatches_its_action_once`,
 `a_digit_answers_only_in_the_file_branch`, `a_recent_row_opens_its_capture`,
-`the_settings_window_opens_from_the_menu_itself`,
+`the_settings_hint_opens_from_the_menu_itself`,
 `a_click_on_a_recent_row_opens_that_capture`,
 `a_digit_opens_the_row_that_was_drawn`,
 `enter_runs_no_branch_where_the_stock_menu_ignores_one`,
@@ -279,21 +279,33 @@ for the range item's action and its labels.
 
 ### R7 Settings form
 
-**Retained, and already standard.** The form is gpui-component `NumberInput`, `Select` and
-`Button` in a separate `Root`-backed window (`settings_editor.rs:436` to `:515`). There is
-no custom editing, focus, press or validation machinery to remove; the numeric policy is a
-small application-value adapter on the standard `NumberInputEvent` and `InputEvent`
-(`settings_editor.rs:607` to `:639`), which is the documented use of those events.
+**Retained, and already standard; moved into the FFT hint by #108.** The settings are
+gpui-component `Select` and `Input` drawn with `appearance(false)` in the pinned hint's
+popover (`settings_editor.rs`), plus standard `Button`s for the steppers and Reset to
+defaults. The separate `Root`-backed window with Reset, Cancel and OK is gone. There is
+no custom editing, focus or validation machinery; the numeric policy is a small
+application-value adapter on the standard `InputEvent`, and the editor takes `Confirm`
+before the popover so that Enter in a number applies it and keeps the hint. One piece of
+press handling is custom and owner-approved: a stepper steps at the press and repeats
+while held (`Editor::start_repeat`), until release, the pointer leaving the button or a
+list choice. The standard alternative is `NumberInput`, whose steppers in the locked
+0.6.6 sources step on click only and expose no press hook, so composition cannot reach
+a hold-to-repeat; the steppers are not tab stops, the keyboard steps through the input's
+own arrows, and the repeat stops on an unusable value, on Reset to defaults, on the
+recommendation and once its stepper is no longer shown.
 
-The standard alternative is the same component, so no limitation is claimed. Composition
-would not help: the form's contract is a preview-and-commit transaction over a signal
+For the rest of the form the standard alternative is the same component, so no limitation is claimed. Composition
+would not help: the form's contract is a preview-and-keep transaction over a signal
 document, not a control.
 
-Covering tests: `settings_editor::standard_input_tests` in
-`settings_editor.rs` proves standard in-window typing, choosing and one-level Escape in a
-window whose root is a standard `Root`. `confirming_numeric_edits_validates_both_fields_without_losing_either`
-(`settings.rs:213`) and `saved_choices_round_trip_and_invalid_values_fall_back`
-(`settings.rs:231`) cover the transaction. Native row S1.
+Covering tests: `settings_editor::hint_tests` (choosing previews and keeps the hint, Enter in a number
+applies it and keeps the hint, a keeping close saves, a held stepper stops when the pointer
+leaves it, a list stays put while the keyboard walks it, an unusable number keeps the hint with its error, Escape restores
+settings and views, Defaults) and `settings_editor::standard_input_tests` (standard
+in-window typing, choosing and one-level Escape in a window whose root is a standard
+`Root`). `confirming_numeric_edits_validates_both_fields_without_losing_either` and
+`saved_choices_round_trip_and_invalid_values_fall_back` in `settings.rs` cover the
+transaction. Native row S1.
 
 ### R8 Ruler context menu
 
@@ -343,10 +355,9 @@ Covering tests: `a_short_hover_opens_nothing`, `leaving_the_trigger_keeps_the_hi
 `a_click_outside_closes_the_hint_and_goes_no_further`,
 `enter_closes_the_hint_and_keeps_the_values`, `space_leaves_the_hint_open`,
 `escape_closes_the_hint_and_reverts`,
-`a_disabled_hint_opens_neither_on_hover_nor_on_a_right_click`,
 `a_passive_hint_leaves_its_trigger_the_click` (`hints.rs:337` to `:481`);
 `the_shell_follows_the_mouse_into_and_out_of_the_window`,
-`the_hint_stays_shut_while_the_settings_editor_is_open`,
+`edit_analysis_opens_the_hint_and_closes_it_keeping_the_values`,
 `escape_restores_the_settings_the_hint_opened_with`,
 `other_closes_keep_what_changed` (`shell.rs:1777` to `:1831`). Native row P2.
 
@@ -427,7 +438,7 @@ the registry. Every limitation claimed above is one of these.
 
 | Observation | Source | Consequence |
 | --- | --- | --- |
-| The window's top-level entity must be `Root` | `gpui-component-0.6.6/src/root.rs:160` to `:163`, `:176` to `:181` | Standard in-window inputs need a real `Root`, which is why the new headless test opens one and why the settings editor keeps its own |
+| The window's top-level entity must be `Root` | `gpui-component-0.6.6/src/root.rs:160` to `:163`, `:176` to `:181` | Standard in-window inputs need a real `Root`, which is why the headless tests open one |
 | `Root` always composes `window_border` unless told otherwise | `src/root.rs:143`, `:604` to `:605` | Production asks for `bordered(false)`; a second frame would double the border |
 | The stock border measures resize from `window_bounds()` and has no expanded guard | `src/window_border.rs:150`, `:195`, `:426` to `:441` | R1 is retained |
 | `WindowControls` and `ControlIcon` are private and always appended by `TitleBar` | `src/title_bar.rs:248`, `:400`; Linux click at `:232` | R1 and R2 are retained |

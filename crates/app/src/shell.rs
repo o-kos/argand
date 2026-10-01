@@ -301,6 +301,14 @@ struct PlotSize {
     height: usize,
 }
 
+/// What the analysis hint opened with, which a reverting close restores.
+#[derive(Clone, Copy)]
+struct HintOpening {
+    settings: Settings,
+    view: Option<crate::navigation::View>,
+    frequency: crate::frequency::View,
+}
+
 /// The window's content: a title bar, the spectrogram, and the status bar.
 struct Shell {
     /// What the person configured.
@@ -309,17 +317,13 @@ struct Shell {
     /// analysis request built below.
     config: Config,
     settings: Settings,
-    settings_window: Option<gpui_kit::WindowHandle<gpui_kit::component::Root>>,
-    /// The analysis hint, pinned open until a click outside, Enter or Escape.
+    /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
-    /// The settings when the analysis hint opened, which Escape restores.
-    hint_opening: Option<Settings>,
+    /// What the analysis hint opened with, which Escape restores.
+    hint_opening: Option<HintOpening>,
     ready_status_dismissed: bool,
     /// Whether the mouse has moved in the window since it last left it.
     pointer_in_window: bool,
-    settings_backup: Option<Settings>,
-    settings_view_backup: Option<crate::navigation::View>,
-    settings_frequency_backup: Option<crate::frequency::View>,
     settings_error: Option<String>,
 
     /// Absent when the platform offers nowhere to keep state, or when the file
@@ -422,19 +426,18 @@ impl Shell {
         let settings = Settings::restored(saved.analysis_settings, &config);
         let owner = cx.entity().downgrade();
         let analysis_hint = cx.new(|cx| {
-            hints::PinnedHint::new(move |_, _| settings_ui::analysis_tooltip(owner.clone()), cx)
+            hints::PinnedHint::new(
+                move |window, cx| settings_ui::analysis_editor(owner.clone(), window, cx),
+                cx,
+            )
         });
         let pinned = cx.subscribe(&analysis_hint, Self::analysis_hint_changed);
         Self {
             settings,
-            settings_window: None,
             analysis_hint,
             hint_opening: None,
             ready_status_dismissed: false,
             pointer_in_window: false,
-            settings_backup: None,
-            settings_view_backup: None,
-            settings_frequency_backup: None,
             settings_error: None,
 
             config,
@@ -566,11 +569,6 @@ impl Shell {
         self.close_analysis_hint(cx);
         // The old plot goes with its document, so focus must not stay on it.
         window.focus(&self.focus, cx);
-        let editor = self.settings_window;
-        self.finish_settings(false, cx);
-        if let Some(editor) = editor {
-            let _ = editor.update(cx, |_, window, _| window.remove_window());
-        }
         self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
         window.set_window_title(&format!("{} – {TITLE}", origin.name()));
@@ -1486,7 +1484,11 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, cx))
             .children(menu_backdrop)
-            .children(hints::backdrop(&self.analysis_hint, cx))
+            .children(hints::backdrop(
+                &self.analysis_hint,
+                gpui_kit::component::TITLE_BAR_HEIGHT,
+                cx,
+            ))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))
     }
@@ -1753,13 +1755,13 @@ mod analysis_hint_tests {
     /// Opens the hint, changes the range as its recommendation would, then closes it.
     fn change_and_close(cx: &mut TestAppContext, revert: bool) -> (Settings, Settings) {
         let handle = open(cx);
-        let opening = handle
-            .update(cx, |shell, window, cx| {
-                let hint = shell.analysis_hint.clone();
-                hint.update(cx, |hint, cx| hint.open(window, cx));
-                shell.settings
-            })
+        let (hint, opening) = handle
+            .read_with(cx, |shell, _| (shell.analysis_hint.clone(), shell.settings))
             .unwrap();
+        cx.update_window(handle.into(), |_, window, cx| {
+            hint.update(cx, |hint, cx| hint.open(window, cx));
+        })
+        .unwrap();
         cx.run_until_parked();
         handle
             .update(cx, |shell, _, cx| {
@@ -1795,29 +1797,54 @@ mod analysis_hint_tests {
     }
 
     #[gpui_kit::test]
-    fn the_hint_stays_shut_while_the_settings_editor_is_open(cx: &mut TestAppContext) {
+    fn edit_analysis_opens_the_hint_and_closes_it_keeping_the_values(cx: &mut TestAppContext) {
         let handle = open(cx);
-        let try_open = |cx: &mut TestAppContext| {
+        let toggled = |cx: &mut TestAppContext| {
             handle
                 .update(cx, |shell, window, cx| {
-                    let hint = shell.analysis_hint.clone();
-                    hint.update(cx, |hint, cx| hint.open(window, cx));
-                    hint.read(cx).is_open()
+                    shell.edit_analysis(&EditAnalysis, window, cx);
                 })
+                .unwrap();
+            cx.run_until_parked();
+            handle
+                .read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
                 .unwrap()
         };
+        assert!(!toggled(cx), "without a document there is nothing to edit");
         handle
             .update(cx, |shell, window, cx| {
-                shell.edit_analysis(&EditAnalysis, window, cx)
+                shell.open(
+                    Origin::new(std::path::PathBuf::from("/captures/a.iqw")),
+                    window,
+                    cx,
+                );
             })
             .unwrap();
         cx.run_until_parked();
-        assert!(!try_open(cx), "the editor has its own rollback");
+        let toggle = |cx: &mut TestAppContext| {
+            handle
+                .update(cx, |shell, window, cx| {
+                    shell.edit_analysis(&EditAnalysis, window, cx);
+                })
+                .unwrap();
+            cx.run_until_parked();
+            handle
+                .read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
+                .unwrap()
+        };
+        assert!(toggle(cx), "the first press opens the hint");
         handle
-            .update(cx, |shell, _, cx| shell.finish_settings(false, cx))
+            .update(cx, |shell, _, _| {
+                shell.settings.dynamic_range = DynamicRange::Fixed(42.);
+            })
             .unwrap();
-        cx.run_until_parked();
-        assert!(try_open(cx), "the editor has closed");
+        assert!(!toggle(cx), "the second press closes it");
+        let kept = handle.read_with(cx, |shell, _| shell.settings).unwrap();
+        assert_eq!(
+            kept.dynamic_range,
+            DynamicRange::Fixed(42.),
+            "keeping the values"
+        );
     }
 
     #[gpui_kit::test]

@@ -113,7 +113,6 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         UseRecommendedRange,
         None,
     )]);
-    editor::init(cx);
 }
 
 impl Shell {
@@ -143,40 +142,17 @@ impl Shell {
         }
         self.settings = settings;
         self.bound_view(cx);
-        if self.settings_backup.is_none() {
-            self.session.analysis_settings = Some(settings);
-            self.save();
+        // Settings previewed in the open hint are saved when it closes keeping them.
+        if self.hint_opening.is_none() {
+            self.persist_settings();
         }
         self.ask_for_a_picture();
         cx.notify();
     }
 
-    fn cancel_settings_window(&mut self, id: gpui_kit::WindowId, cx: &mut Context<Self>) {
-        if self
-            .settings_window
-            .is_some_and(|handle| handle.window_id() == id)
-        {
-            self.finish_settings(false, cx);
-        }
-    }
-
-    pub(super) fn finish_settings(&mut self, accept: bool, cx: &mut Context<Self>) {
-        let Some(backup) = self.settings_backup.take() else {
-            return;
-        };
-        self.settings_window = None;
-        self.analysis_hint
-            .update(cx, |hint, cx| hint.set_enabled(true, cx));
-        let view = self.settings_view_backup.take();
-        let frequency = self.settings_frequency_backup.take();
-        if !accept {
-            self.view = view;
-            if let Some(frequency) = frequency {
-                self.frequency = frequency;
-                self.frequency_scheme = None;
-            }
-        }
-        self.apply_settings(if accept { self.settings } else { backup }, cx);
+    fn persist_settings(&mut self) {
+        self.session.analysis_settings = Some(self.settings);
+        self.save();
     }
 
     /// Close the analysis hint, keeping what was changed while it was open.
@@ -194,18 +170,34 @@ impl Shell {
         match *event {
             hints::Pinned::Opened => {
                 self.interrupt_plot(cx);
-                self.hint_opening = Some(self.settings);
+                self.hint_opening = Some(HintOpening {
+                    settings: self.settings,
+                    view: self.view,
+                    frequency: self.frequency,
+                });
             }
             hints::Pinned::Closed { revert } => {
-                if let Some(opening) = self.hint_opening.take()
-                    && revert
-                    && opening != self.settings
-                {
-                    self.set_settings(opening, cx);
+                let Some(opening) = self.hint_opening.take() else {
+                    return;
+                };
+                if revert {
+                    self.restore_opening(opening, cx);
+                } else {
+                    self.persist_settings();
                 }
             }
         }
         cx.notify();
+    }
+
+    /// Put back the settings and views the hint opened with.
+    fn restore_opening(&mut self, opening: HintOpening, cx: &mut Context<Self>) {
+        self.view = opening.view;
+        if self.frequency != opening.frequency {
+            self.frequency = opening.frequency;
+            self.frequency_scheme = None;
+        }
+        self.apply_settings(opening.settings, cx);
     }
 
     pub(super) fn use_recommended_range(&mut self, cx: &mut Context<Self>) {
@@ -237,11 +229,12 @@ impl Shell {
         ))
     }
 
-    fn range_recommendation(&self) -> Option<f32> {
-        match self.next_range_action() {
-            Some(DynamicRange::Fixed(db)) => Some(db),
-            Some(DynamicRange::Default | DynamicRange::Auto) | None => None,
-        }
+    /// The warning of the range shown, and whether Ctrl+R can act on it.
+    fn range_warning(&self) -> Option<(String, bool)> {
+        let presentation = self.range_presentation()?;
+        let state = presentation.displayed?.state;
+        matches!(state, RangeState::Warned(_))
+            .then(|| (range_hint(state), presentation.next_action.is_some()))
     }
 
     pub(super) fn status_bar(
@@ -435,7 +428,9 @@ impl Shell {
                     .analysis_hint
                     .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
             }))
-            .on_click(
+            // A press, not a click, so the press that closes an open hint cannot reopen it.
+            .on_mouse_down(
+                MouseButton::Left,
                 cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
             )
             .child(
@@ -445,7 +440,7 @@ impl Shell {
                     .child(format!(
                         "{} · {}",
                         crate::numbers::number(visible.fft_size),
-                        visible.window
+                        editor::display_name(&visible.window.to_string())
                     )),
             );
         div()
@@ -467,6 +462,7 @@ impl Shell {
             .child(self.range_control(displayed, cx))
     }
 
+    /// Open the analysis hint with the keyboard in it, or close it keeping its values.
     pub(super) fn edit_analysis(
         &mut self,
         _: &EditAnalysis,
@@ -474,62 +470,18 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         self.dismiss_application_menu(window, cx);
-        self.close_analysis_hint(cx);
-        if self.settings_window.is_some_and(|handle| {
-            handle
-                .update(cx, |_, window, _| window.activate_window())
-                .is_ok()
-        }) {
+        // Without a document there is no summary to anchor the hint to.
+        if self.file.is_none() {
             return;
         }
-        if self.settings_backup.is_some() {
+        let hint = self.analysis_hint.clone();
+        if hint.read(cx).is_open() {
+            hint.update(cx, |hint, cx| hint.close(false, cx));
             return;
         }
-        self.interrupt_plot(cx);
-        // The editor keeps its own rollback, so the hint must not open beside it.
-        self.analysis_hint
-            .update(cx, |hint, cx| hint.set_enabled(false, cx));
-        self.settings_backup = Some(self.settings);
-        self.settings_view_backup = self.view;
-        self.settings_frequency_backup = Some(self.frequency);
-        cx.notify();
-        let owner = cx.entity().downgrade();
-        let settings = self.settings;
-        let range = self
-            .displayed_range()
-            .map_or(110.0, |range| range.effective_db);
-        let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                None,
-                size(px(460.), px(560.)),
-                cx,
-            ))),
-            window_min_size: Some(size(px(440.), px(540.))),
-            window_decorations: Some(WindowDecorations::Client),
-            titlebar: Some(TitleBar::title_bar_options()),
-            app_id: Some(APP_ID.into()),
-            // The frame draws its shadow into the client inset; an opaque
-            // surface would show that ring as a solid border instead.
-            window_background: WindowBackgroundAppearance::Transparent,
-            ..Default::default()
-        };
-        cx.defer(move |cx| {
-            let form_owner = owner.clone();
-            let opened = cx.open_window(options, move |window, cx| {
-                window.set_window_title("Analysis settings · argand");
-                let form =
-                    cx.new(|cx| editor::Editor::new(form_owner, settings, range, window, cx));
-                cx.new(|cx| gpui_kit::component::Root::new(form, window, cx))
-            });
-            match opened {
-                Ok(handle) => {
-                    let _ = owner.update(cx, |shell, _| shell.settings_window = Some(handle));
-                }
-                Err(error) => {
-                    let _ = owner.update(cx, |shell, cx| shell.finish_settings(false, cx));
-                    tracing::error!(%error, "cannot open analysis settings");
-                }
-            }
+        // The editor reads the shell as it is built, so it waits until this update ends.
+        window.defer(cx, move |window, cx| {
+            hint.update(cx, |hint, cx| hint.open(window, cx));
         });
     }
 }
@@ -554,96 +506,13 @@ pub(super) fn detail_row(
         .child(div().flex_1().min_w_0().text_right().child(value.into()))
 }
 
-pub(super) fn analysis_tooltip(owner: WeakEntity<Shell>) -> Tooltip {
-    Tooltip::element(move |window, cx| {
-        let Some(shell) = owner.upgrade() else {
-            return div();
-        };
-        let shell = shell.read(cx);
-        let settings = shell
-            .file
-            .as_ref()
-            .and_then(|f| f.displayed_settings)
-            .unwrap_or(shell.settings);
-        let mode = match settings.dynamic_range {
-            DynamicRange::Default => "Absolute full scale",
-            DynamicRange::Auto => "Automatic",
-            DynamicRange::Fixed(_) => "Below measured peak",
-        };
-        let recommendation = shell.range_recommendation();
-        let range = shell
-            .displayed_range()
-            .map(|r| format!("{} dB", crate::numbers::number(r.effective_db)))
-            .unwrap_or_else(|| crate::numbers::text(&settings.dynamic_range.to_string()));
-        let fft = crate::numbers::number(settings.fft_size);
-        let overlap = format!("{}%", crate::numbers::number(settings.overlap));
-        let edit_owner = owner.clone();
-        div()
-            .w(px(300.).min(window.viewport_size().width - px(48.)))
-            .py_2()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(div().font_weight(FontWeight::SEMIBOLD).child("Spectrogram"))
-            .child(detail_row("FFT size", fft, cx))
-            .child(detail_row("Window", settings.window.to_string(), cx))
-            .child(detail_row("Overlap", overlap, cx))
-            .child(detail_row("Aggregation", settings.aggregation.label(), cx))
-            .child(detail_row("Range mode", mode, cx))
-            .child(detail_row("Range", range, cx))
-            .child(detail_row(
-                "Colour scheme",
-                settings.colormap.to_string(),
-                cx,
-            ))
-            .when_some(recommendation, |hint, db| {
-                hint.child(
-                    div()
-                        .text_xs()
-                        .text_color(advice_color(cx))
-                        .child(low_signal_level_hint(db)),
-                )
-                .child(
-                    Button::new("hint-recommendation")
-                        .tab_stop(false)
-                        .ghost()
-                        .small()
-                        .label(format!(
-                            "Use recommended: {} dB",
-                            crate::numbers::number(db)
-                        ))
-                        .when_some(
-                            Kbd::binding_for_action(&UseRecommendedRange, None, window),
-                            |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
-                        )
-                        .on_click(move |_, window, cx| {
-                            window.dispatch_action(Box::new(UseRecommendedRange), cx);
-                        }),
-                )
-            })
-            .child(
-                div()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .pt_2()
-                    .child(
-                        Button::new("edit-analysis-hint")
-                            .tab_stop(false)
-                            .ghost()
-                            .small()
-                            .label("Edit settings…")
-                            .when_some(
-                                Kbd::binding_for_action(&EditAnalysis, Some("Shell"), window),
-                                |button, kbd| button.child(shortcuts::keycap(kbd, cx)),
-                            )
-                            .on_click(move |_, window, cx| {
-                                let _ = edit_owner.update(cx, |shell, cx| {
-                                    shell.edit_analysis(&EditAnalysis, window, cx)
-                                });
-                            }),
-                    ),
-            )
-    })
+/// The analysis settings surface the pinned hint shows, built afresh each time it opens.
+pub(super) fn analysis_editor(
+    owner: WeakEntity<Shell>,
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::AnyView {
+    cx.new(|cx| editor::Editor::new(owner, window, cx)).into()
 }
 
 fn advice_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {
