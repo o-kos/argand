@@ -86,12 +86,12 @@ owner also made the default reviewer for class A.
 ## Implementation steps
 
 - [x] Agree the class A default reviewer in `AGENTS.md`.
-- [ ] `theme.rs` with Argand's light and dark configurations, installed at start-up.
+- [x] `theme.rs` with Argand's light and dark configurations, installed at start-up.
 - [ ] Hint, menu and settings-hint surfaces and the stepper colours (#123).
 - [ ] Window border and status bar in the dark theme (#151).
-- [ ] Title bar active and inactive palettes, Linux caption icon states (#140).
-- [ ] Session version 11 with the theme preference, migration and defaults (#142).
-- [ ] View shown without a document, its Theme submenu, actions and disabled rows (#142).
+- [x] Title bar active and inactive palettes, Linux caption icon states (#140).
+- [x] Session version 11 with the theme preference, migration and defaults (#142).
+- [x] View shown without a document, its Theme submenu, actions and disabled rows (#142).
 - [ ] Tests: defaults, all three selections, persistence and migration, configuration
       compatibility, separation from the spectral palette and from analysis, View without
       a document.

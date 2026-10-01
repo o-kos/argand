@@ -128,7 +128,7 @@ impl Shell {
 
     /// The branch that carries the session's own choices.
     ///
-    /// Absent while no document is open, which is what the menu bar offers.
+    /// Shown with and without a document, which only the fitting rows need.
     fn view_menu(
         &self,
         focus: FocusHandle,
@@ -136,6 +136,8 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
         let scale = self.time_scale_menu(focus.clone(), window, cx);
+        let theme = self.theme_menu(focus.clone(), window, cx);
+        let document = self.view.is_some();
         let show_grid = self.session.show_grid;
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
@@ -160,20 +162,53 @@ impl Shell {
                     focus.clone(),
                 ))
                 .item(PopupMenuItem::separator())
-                .item(action_row(
-                    "Fit time",
-                    Box::new(FitCapture),
-                    false,
-                    focus.clone(),
-                ))
-                .item(action_row(
-                    "Fit frequency",
-                    Box::new(FitFrequency),
-                    false,
-                    focus.clone(),
-                ))
+                .item(
+                    action_row("Fit time", Box::new(FitCapture), false, focus.clone())
+                        .disabled(!document),
+                )
+                .item(
+                    action_row(
+                        "Fit frequency",
+                        Box::new(FitFrequency),
+                        false,
+                        focus.clone(),
+                    )
+                    .disabled(!document),
+                )
                 .item(PopupMenuItem::separator())
                 .item(PopupMenuItem::submenu("Time scale format", scale))
+                .item(PopupMenuItem::submenu("Theme", theme))
+        })
+    }
+
+    /// The interface themes, one row each, the one in force checked.
+    fn theme_menu(
+        &self,
+        focus: FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<PopupMenu> {
+        let theme = self.theme();
+        PopupMenu::build(window, cx, move |menu, _, _| {
+            menu.action_context(focus.clone())
+                .item(action_row(
+                    "System",
+                    Box::new(SystemTheme),
+                    theme == Theme::System,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Light",
+                    Box::new(LightTheme),
+                    theme == Theme::Light,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Dark",
+                    Box::new(DarkTheme),
+                    theme == Theme::Dark,
+                    focus.clone(),
+                ))
         })
     }
 
@@ -222,19 +257,12 @@ impl Shell {
         self.recent_files.refresh(&self.session.recent);
         let focus = self.focus_target(cx);
         let (file, digits) = self.file_menu(focus.clone(), window, cx);
-        let view = self
-            .view
-            .is_some()
-            .then(|| self.view_menu(focus.clone(), window, cx));
+        let view = self.view_menu(focus.clone(), window, cx);
         let branch = file.clone();
         let menu = PopupMenu::build(window, cx, move |menu, _, _| {
-            let menu = menu
-                .action_context(focus)
-                .item(PopupMenuItem::submenu("File", branch));
-            match view {
-                Some(view) => menu.item(PopupMenuItem::submenu("View", view)),
-                None => menu,
-            }
+            menu.action_context(focus)
+                .item(PopupMenuItem::submenu("File", branch))
+                .item(PopupMenuItem::submenu("View", view))
         });
         self.application_menu_dismissed =
             Some(cx.subscribe_in(&menu, window, Self::application_menu_dismissed));
@@ -1382,6 +1410,30 @@ mod tests {
         press(cx, "down down right enter");
         assert!(!menu_open(cx, &shell), "the menu closed");
         assert_ne!(grid(cx, &shell), before, "one confirmation is one toggle");
+    }
+
+    #[gpui_kit::test]
+    fn view_offers_the_theme_without_a_document(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        let palette = shell.read_with(cx, |shell, _| shell.settings.colormap);
+        let chosen = |cx: &mut gpui_kit::VisualTestContext| {
+            let mode = cx.update(|_, cx| cx.theme().mode);
+            let session = shell.read_with(cx, |shell, _| shell.session.theme);
+            (mode, session)
+        };
+        // View is the second branch, and its last row is the Theme branch.
+        press(cx, "f10");
+        press(cx, "down down right up right down enter");
+        assert!(!menu_open(cx, &shell), "the menu closed");
+        assert_eq!(chosen(cx), (ThemeMode::Light, Some(Theme::Light)));
+        press(cx, "f10");
+        press(cx, "down down right up right down down enter");
+        assert_eq!(chosen(cx), (ThemeMode::Dark, Some(Theme::Dark)));
+        assert_eq!(
+            shell.read_with(cx, |shell, _| shell.settings.colormap),
+            palette,
+            "the interface theme leaves the spectrogram palette alone"
+        );
     }
 
     #[gpui_kit::test]

@@ -8,6 +8,7 @@
 use super::*;
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::IconName;
+use gpui_kit::component::button::ButtonCustomVariant;
 use gpui_kit::component::input::{Input, InputEvent, InputState, StepAction};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::{Entity, Focusable};
@@ -249,8 +250,15 @@ impl Editor {
         step: StepAction,
         cx: &mut Context<Self>,
     ) -> Button {
+        let ink = cx.theme().foreground;
+        // Quiet at rest on the hint, so the value between the steppers leads.
+        let style = ButtonCustomVariant::new(cx)
+            .color(cx.theme().transparent)
+            .foreground(cx.theme().muted_foreground)
+            .hover(ink.opacity(0.10))
+            .active(ink.opacity(0.18));
         Button::new(id)
-            .ghost()
+            .custom(style)
             .xsmall()
             .icon(icon)
             .tab_stop(false)
