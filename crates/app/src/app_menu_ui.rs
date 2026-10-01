@@ -1066,6 +1066,7 @@ mod tests {
             hints::init(cx);
             app_menu_ui::init(cx);
             window_keys(cx);
+            crate::theme::install(ThemeMode::Dark, cx);
         });
         let (shell, cx) = cx.add_window_view(|window, cx| {
             Shell::new(Config::default(), None, Session::default(), window, cx)
@@ -1417,7 +1418,7 @@ mod tests {
         let (shell, cx) = open_window(cx);
         let palette = shell.read_with(cx, |shell, _| shell.settings.colormap);
         let chosen = |cx: &mut gpui_kit::VisualTestContext| {
-            let mode = cx.update(|_, cx| cx.theme().mode);
+            let mode = cx.update(|_, cx| (cx.theme().mode, cx.theme().status_bar));
             let session = shell.read_with(cx, |shell, _| shell.session.theme);
             (mode, session)
         };
@@ -1425,10 +1426,15 @@ mod tests {
         press(cx, "f10");
         press(cx, "down down right up right down enter");
         assert!(!menu_open(cx, &shell), "the menu closed");
-        assert_eq!(chosen(cx), (ThemeMode::Light, Some(Theme::Light)));
+        let light_bar = gpui_kit::rgb(0xf3f3f3).into();
+        let dark_bar = gpui_kit::rgb(0x171717).into();
+        assert_eq!(
+            chosen(cx),
+            ((ThemeMode::Light, light_bar), Some(Theme::Light))
+        );
         press(cx, "f10");
         press(cx, "down down right up right down down enter");
-        assert_eq!(chosen(cx), (ThemeMode::Dark, Some(Theme::Dark)));
+        assert_eq!(chosen(cx), ((ThemeMode::Dark, dark_bar), Some(Theme::Dark)));
         assert_eq!(
             shell.read_with(cx, |shell, _| shell.settings.colormap),
             palette,

@@ -131,3 +131,16 @@ owner also made the default reviewer for class A.
 ## Post-completion
 
 - Close #123, #151, #140 and #142 through the merge.
+
+## Review round 1
+
+Codex `gpt-6.1-sol` high. Two findings, both accepted.
+
+- **Accepted: the inactive title bar was muted on Linux only.** Windows and macOS draw the
+  stock `TitleBar`, which ignores window activation. It now takes the same palette for its
+  background, border and text, keeping the native caption controls.
+- **Accepted: no test covered the installed theme.** The menu test ran without
+  `theme::install`. A test now installs Argand's themes and checks the popover, status bar
+  and sheet colours after Light, Dark and Light switches, and the menu tests run with the
+  installed theme and check the status bar colour of each choice.
+

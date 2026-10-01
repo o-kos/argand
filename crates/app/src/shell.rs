@@ -1126,6 +1126,9 @@ impl Shell {
                 .into_any_element()
         } else {
             TitleBar::new()
+                .bg(palette.background)
+                .border_color(palette.border)
+                .text_color(palette.foreground)
                 .child(self.title_contents(window, cx))
                 .into_any_element()
         };
