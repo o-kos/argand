@@ -372,23 +372,26 @@ impl Shell {
             }
         };
         let range_content = if actionable {
-            Button::new("analysis-range")
-                .tab_stop(false)
-                .group(RANGE_HOVER)
-                .custom(foregrounds.button_style(cx))
-                .small()
-                .h_5()
-                .px_2()
-                .on_click(move |_, window, cx| {
-                    window.dispatch_action(Box::new(UseRecommendedRange), cx);
-                })
-                .child(
-                    foregrounds
-                        .text(RANGE_HOVER)
-                        .whitespace_nowrap()
-                        .child(range_label),
-                )
-                .into_any_element()
+            super::app_menu_ui::keeps_focus(
+                "analysis-range-keeps-focus",
+                Button::new("analysis-range")
+                    .tab_stop(false)
+                    .group(RANGE_HOVER)
+                    .custom(foregrounds.button_style(cx))
+                    .small()
+                    .h_5()
+                    .px_2()
+                    .on_click(move |_, window, cx| {
+                        window.dispatch_action(Box::new(UseRecommendedRange), cx);
+                    })
+                    .child(
+                        foregrounds
+                            .text(RANGE_HOVER)
+                            .whitespace_nowrap()
+                            .child(range_label),
+                    ),
+            )
+            .into_any_element()
         } else {
             div()
                 .id("analysis-range")
@@ -457,11 +460,9 @@ impl Shell {
                     .id("analysis-summary")
                     .border_l_1()
                     .border_color(cx.theme().border)
-                    .child(hints::pinned(
-                        "analysis-hint",
-                        &self.analysis_hint,
-                        summary,
-                        cx,
+                    .child(super::app_menu_ui::keeps_focus(
+                        "fft-summary-keeps-focus",
+                        hints::pinned("analysis-hint", &self.analysis_hint, summary, cx),
                     )),
             )
             .child(self.range_control(displayed, cx))

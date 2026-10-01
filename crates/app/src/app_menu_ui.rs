@@ -757,19 +757,33 @@ pub(super) fn toolbar_accent(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     }
 }
 
+/// A chrome control's box, which keeps the keyboard where it was when it is
+/// pressed with any button. The toolkit's own left-press handler prevents the
+/// focusing default on the button itself, but the right and middle press have
+/// no such handler, and a `tab_stop(false)` button still takes focus from a
+/// click. The prevention runs in the capture phase, because the button's
+/// automatic focus transfer listens in the bubble phase and would have taken
+/// the keyboard before an ordinary handler on this box could answer.
+pub(super) fn keeps_focus(
+    id: &'static str,
+    child: impl IntoElement,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
+    div()
+        .id(id)
+        .flex()
+        .capture_any_mouse_down(|_, window, _| window.prevent_default())
+        .child(child)
+}
+
 /// One toolbar control's box, which consumes its own left press and double
 /// click so neither arms the title-bar drag that the bare pixels around it,
 /// including the toolbar's gaps, fall through to.
 fn title_control(id: &'static str, child: impl IntoElement) -> gpui_kit::Stateful<gpui_kit::Div> {
-    div()
-        .id(id)
-        .flex()
-        .on_mouse_down(MouseButton::Left, |_, window, cx| {
-            window.prevent_default();
+    keeps_focus(id, child)
+        .on_mouse_down(MouseButton::Left, |_, _, cx| {
             cx.stop_propagation();
         })
         .on_double_click(|_, _, cx| cx.stop_propagation())
-        .child(child)
 }
 
 /// The state a toolbar control is in, which decides its whole surface.
@@ -1361,6 +1375,60 @@ mod tests {
         );
         press(cx, "escape");
         assert!(!menu_open(cx, &shell));
+    }
+
+    #[gpui_kit::test]
+    fn a_right_or_middle_press_on_a_chrome_button_keeps_the_plot_focused(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let none = gpui_kit::Modifiers::default();
+        let plot_focused = |cx: &mut gpui_kit::VisualTestContext| {
+            shell.update_in(cx, |shell, window, cx| {
+                shell.focus_target(cx).is_focused(window)
+            })
+        };
+        assert!(plot_focused(cx), "the plot holds the keyboard first");
+
+        // The summary comes last on the right button, because its press opens
+        // the pinned hint, which takes the keyboard while it is open by
+        // design. What matters there is that the press still reaches the
+        // button's own toggle through the wrapper, and that the plot has the
+        // keyboard back once the hint closes.
+        let hint_open = |cx: &mut gpui_kit::VisualTestContext| {
+            shell.read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
+        };
+        for (name, button) in [
+            ("middle", gpui_kit::MouseButton::Middle),
+            ("right", gpui_kit::MouseButton::Right),
+        ] {
+            for id in [
+                "application-menu-button",
+                "orientation-horizontal",
+                "toggle-grid",
+            ] {
+                let at = at(cx, id);
+                cx.simulate_mouse_down(at, button, none);
+                draw(cx);
+                assert!(plot_focused(cx), "{name} on {id} keeps the plot focused");
+                cx.simulate_mouse_up(at, button, none);
+                draw(cx);
+            }
+        }
+
+        let at = at(cx, "analysis-settings");
+        cx.simulate_mouse_down(at, gpui_kit::MouseButton::Right, none);
+        draw(cx);
+        assert!(
+            hint_open(cx),
+            "the right press still toggles the pinned hint through the wrapper"
+        );
+        press(cx, "escape");
+        draw(cx);
+        assert!(!hint_open(cx), "and escape closes it again");
+        assert!(
+            plot_focused(cx),
+            "the plot has the keyboard back at the end"
+        );
     }
 
     #[gpui_kit::test]
