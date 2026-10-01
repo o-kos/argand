@@ -7,10 +7,10 @@
 
 use super::*;
 use gpui_kit::base::actions::Confirm;
-use gpui_kit::component::IconName;
 use gpui_kit::component::button::ButtonCustomVariant;
 use gpui_kit::component::input::{Input, InputEvent, InputState, StepAction};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
+use gpui_kit::component::{Icon, IconName};
 use gpui_kit::{Entity, Focusable};
 use std::time::Duration;
 
@@ -251,16 +251,15 @@ impl Editor {
         cx: &mut Context<Self>,
     ) -> Button {
         let ink = cx.theme().foreground;
-        // Quiet at rest on the hint, so the value between the steppers leads.
         let style = ButtonCustomVariant::new(cx)
             .color(cx.theme().transparent)
-            .foreground(cx.theme().muted_foreground)
             .hover(ink.opacity(0.10))
             .active(ink.opacity(0.18));
         Button::new(id)
             .custom(style)
+            .group(id)
             .xsmall()
-            .icon(icon)
+            .child(pointer_ink(id, cx).child(Icon::new(icon).xsmall()))
             .tab_stop(false)
             .on_mouse_down(
                 MouseButton::Left,
@@ -492,9 +491,17 @@ impl Editor {
     fn defaults(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div().mt_1().pt_1().child(
             Button::new("analysis-defaults")
-                .outline()
+                .custom(
+                    ButtonCustomVariant::new(cx)
+                        .color(cx.theme().popover)
+                        .hover(cx.theme().accent)
+                        .active(cx.theme().border),
+                )
+                .group(DEFAULTS)
+                .border_1()
+                .border_color(cx.theme().muted_foreground.opacity(0.45))
                 .small()
-                .label("Reset to defaults")
+                .child(pointer_ink(DEFAULTS, cx).child("Reset to defaults"))
                 .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
         )
     }
@@ -650,7 +657,7 @@ impl Render for Editor {
             }))
             .w(px(WIDTH).min(window.viewport_size().width - px(48.)))
             .font_family(cx.theme().font_family.clone())
-            .bg(cx.theme().tokens.popover)
+            .bg(crate::theme::sheet(cx))
             .text_color(cx.theme().popover_foreground)
             .border_1()
             .border_color(cx.theme().border)
@@ -752,6 +759,19 @@ fn balloon_pointer(fill: impl Into<gpui_kit::Hsla>, edge: gpui_kit::Hsla) -> imp
     )
     .w(px(POINTER))
     .h(px(16.0))
+}
+
+const DEFAULTS: &str = "analysis-defaults";
+
+/// The ink of a button's sign or text, brighter under the pointer and dimmer while held.
+fn pointer_ink(group: &'static str, cx: &gpui_kit::App) -> gpui_kit::Stateful<gpui_kit::Div> {
+    let rest = cx.theme().muted_foreground;
+    let lit = cx.theme().foreground;
+    div()
+        .id(group)
+        .text_color(rest)
+        .group_hover(group, move |style| style.text_color(lit))
+        .group_active(group, move |style| style.text_color(rest.opacity(0.6)))
 }
 
 fn underline_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {

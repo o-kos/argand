@@ -262,8 +262,8 @@ impl Shell {
             .rounded_bl(corners.bottom_left)
             .rounded_br(corners.bottom_right)
             .border_t_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().secondary)
+            .border_color(cx.theme().status_bar_border)
+            .bg(cx.theme().status_bar)
             .text_xs()
             .text_color(cx.theme().muted_foreground)
             .when_some(file, |bar, field| {

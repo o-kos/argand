@@ -285,7 +285,9 @@ popover (`settings_editor.rs`), plus standard `Button`s for the steppers and Res
 defaults. The separate `Root`-backed window with Reset, Cancel and OK is gone. There is
 no custom editing, focus or validation machinery; the numeric policy is a small
 application-value adapter on the standard `InputEvent`, and the editor takes `Confirm`
-before the popover so that Enter in a number applies it and keeps the hint. One piece of
+before the popover so that Enter in a number applies it and keeps the hint. Their signs and the Reset to defaults label follow the pointer through `pointer_ink` (a
+group hover and group active over the button), because a custom button variant has one
+foreground for every state (#123). One piece of
 press handling is custom and owner-approved: a stepper steps at the press and repeats
 while held (`Editor::start_repeat`), until release, the pointer leaving the button or a
 list choice. The standard alternative is `NumberInput`, whose steppers in the locked

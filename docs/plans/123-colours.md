@@ -75,6 +75,23 @@ owner also made the default reviewer for class A.
 - Changing the theme updates every window, keeps the spectrogram palette and requests no
   analysis.
 
+## Owner review of the colours (2026-10-01)
+
+- The first proposal was rejected: buttons kept one ink for every state, Reset to
+  defaults barely showed, the settings hint, menus, the status bar and hints shared one
+  colour, and the hot row of a menu was hard to see.
+- The owner asked for a gallery before any further code. Every theme in the toolkit's
+  repository (21 sets, 40 variants), the toolkit default and an Adwaita palette were
+  captured with every surface and state. No theme was free of the problems, and the
+  owner chose to keep the current theme and fix what the review found.
+- Fixed: the minimap stands on the palette's darkest colour in both themes; the
+  steppers and Reset to defaults change their ink under the pointer and while held,
+  Reset has a frame; surfaces step up from window to bars, settings sheet and popovers;
+  the hot row uses a raised accent.
+- Left to a separate issue: the toolkit paints the list's keyboard row and the row under
+  the pointer alike, and only a custom row rendering, which needs the owner's agreement,
+  could tell them apart.
+
 ## Rejected alternatives
 
 - Writing colours into the live theme after each `Theme::change`: every switch path
@@ -87,17 +104,17 @@ owner also made the default reviewer for class A.
 
 - [x] Agree the class A default reviewer in `AGENTS.md`.
 - [x] `theme.rs` with Argand's light and dark configurations, installed at start-up.
-- [ ] Hint, menu and settings-hint surfaces and the stepper colours (#123).
-- [ ] Window border and status bar in the dark theme (#151).
+- [x] Hint, menu and settings-hint surfaces and the stepper colours (#123).
+- [x] Window border and status bar in the dark theme (#151).
 - [x] Title bar active and inactive palettes, Linux caption icon states (#140).
 - [x] Session version 11 with the theme preference, migration and defaults (#142).
 - [x] View shown without a document, its Theme submenu, actions and disabled rows (#142).
-- [ ] Tests: defaults, all three selections, persistence and migration, configuration
+- [x] Tests: defaults, all three selections, persistence and migration, configuration
       compatibility, separation from the spectral palette and from analysis, View without
       a document.
-- [ ] Screenshots of both themes, active and inactive, hover and pressed, hints and menus
+- [x] Screenshots of both themes, active and inactive, hover and pressed, hints and menus
       over rulers, plot, panels and status bar, checked with the owner.
-- [ ] Update `AGENTS.md`, `README.md`, `CHANGELOG.md`, `crates/app/assets/argand.toml`
+- [x] Update `AGENTS.md`, `README.md`, `CHANGELOG.md`, `crates/app/assets/argand.toml`
       comments if the theme key's meaning changes, and `docs/ui/124-inventory.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.

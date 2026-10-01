@@ -459,6 +459,7 @@ mod tests {
                 waveform: None,
                 viewport: Some((view, 1_000_000)),
                 separator: gpui_kit::black(),
+                paper: gpui_kit::black(),
                 ink: waveform::Ink {
                     active: ink,
                     muted: ink,

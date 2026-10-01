@@ -77,7 +77,8 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 - Prefer standard gpui-component controls and GPUI interaction mechanisms. Try supported styling, composition and configuration before implementing an ordinary control yourself; appearance differences alone do not justify replacing its behavior. Every new or retained custom UI control must have a separate justification in the active plan: name the standard alternative, the verified limitation in the locked version, why composition is insufficient, and the required focus, keyboard, pointer, disabled-state and regression coverage. Obtain the owner's agreement before introducing a custom replacement or changing product behavior to avoid a toolkit limitation. Domain-specific canvases (spectrograms, waveforms, axes and minimaps) are legitimate custom drawing, not permission to reimplement buttons, text editing or menus. Review this inventory when the relevant UI is reorganized; remove superseded custom implementations rather than maintaining parallel paths.
 - Use `thiserror` in libraries and `anyhow` in binaries. Non-test code must not use `unwrap` or `expect` on external data. Panics must not unwind across FFI boundaries.
 - Read `argand.toml` at startup from beside the binary or from the platform-specific configuration directory.
-- The default `theme = "system"` follows GPUI's OS appearance at startup and through a retained main-window appearance subscription. Theme changes refresh all windows. Explicit `dark` / `light` stay fixed; interface theme does not change the spectral palette.
+- The default `theme = "system"` follows GPUI's OS appearance at startup and through a retained main-window appearance subscription. Theme changes refresh all windows. Explicit `dark` / `light` stay fixed; interface theme does not change the spectral palette. View → Theme chooses System, Light or Dark (#142); the choice is kept in the session (version 11, `Session::theme`) and, while the session holds none, `argand.toml` decides. The menu never rewrites `argand.toml`.
+- Interface colours (#123, #140, #151) live in `theme.rs`, which derives Argand's light and dark `ThemeConfig` from the toolkit defaults and installs both once at start-up, so every later `Theme::change` applies them. Surfaces step up from the window to the title and status bars (`status_bar` token), the settings sheet (`theme::sheet`) and the popovers (hints, menus, lists), so each stands apart from what it lies over; the menu and list row under the pointer uses a raised `accent`. Do not set a surface colour at a call site that the theme can carry. The title bar is muted while the window is inactive (`chrome::TitlePalette`), and the Linux caption icons brighten under the pointer and dim while held. Buttons whose ink must follow the pointer (the settings steppers and Reset to defaults) draw it through `pointer_ink`, because a custom button variant has one foreground for every state.
 - `crates/app/assets/argand.toml` is the single complete, commented default configuration for distribution. Keep it synchronized with `Config::default()` and all supported keys; its test parses without repairs. Package delivery is tracked in #86. Installations must preserve existing user configuration and must not place a default beside a system-installed executable, which would shadow the user file under the portable-first search policy.
 - Express units and axes in physical hertz and seconds. Never confuse audio sample rates with the true RF capture sample rate.
 - Direct conversation with the project owner must be in Russian only.
@@ -328,7 +329,7 @@ The shell no longer requests or retains per-range spectral waveforms. File hints
 accept extrema from the complete minimap; a read failure clears its picture and
 appears in the file hint, without discarding the spectrum.
 `waveform.rs` caches conservatively rebinned pixel spans by device width and height.
-Minimap ink derives from the displayed spectral colormap and the interface theme,
+Minimap ink derives from the displayed spectral colormap, drawn in its dark-theme form on that colormap's darkest colour in both interface themes,
 falling back to the requested colormap before the first spectral picture arrives.
 Navigation changes only waveform ink, active inside the requested time viewport
 and muted outside, with no border or fill. Full capture has no dimmed portion. Sample
@@ -587,9 +588,9 @@ File contains Open file, availability-filtered recent rows directly in the menu,
 and Settings (`EditAnalysis`). Empty recent lists leave one separator between
 Open and Settings, and a long name truncates in the middle rather than wrapping. The first nine recent rows carry digit keycaps, and pressing
 that digit while the File branch holds the keyboard activates the row. View
-appears only with a file and
+appears with and without a file and
 contains grid, scale
-controls, orientation, Fit time, Fit frequency and Time scale format; pan/zoom
+controls, orientation, Fit time, Fit frequency (both disabled without a file), Time scale format and Theme; pan/zoom
 commands remain available through keys and gestures rather than menu rows.
 The menu is the toolkit's own `PopupMenu`, drawn by a controlled `Popover` on the
 application button, whose tracked focus handle is the menu's own so that the
