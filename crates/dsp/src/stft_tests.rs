@@ -240,7 +240,7 @@ fn the_tone_is_the_brightest_row_of_the_image() {
     // Row 0 is the top of the image, which is +Fs/2.
     let expected_row = FFT - 1 - (FFT / 2 + TONE_BIN);
     let brightest = (0..img.height)
-        .max_by_key(|&y| img.get(4, y)[0])
+        .max_by_key(|&y| img.get(4, y).expect("a pixel inside the image")[0])
         .expect("non-empty image");
     assert_eq!(brightest, expected_row, "tone should sit above the midline");
     assert!(brightest < img.height / 2);
@@ -272,7 +272,9 @@ fn every_column_gets_covered_when_frames_outnumber_them() {
 
     let expected_row = 16 - 1 - (16 / 2 + 103 * 16 / FFT);
     for x in 0..img.width {
-        let brightest = (0..img.height).max_by_key(|&y| img.get(x, y)[0]).unwrap();
+        let brightest = (0..img.height)
+            .max_by_key(|&y| img.get(x, y).expect("a pixel inside the image")[0])
+            .unwrap();
         assert_eq!(brightest, expected_row, "column {x} is blank or wrong");
     }
 }
@@ -291,7 +293,7 @@ fn mean_and_max_differ_on_a_burst() {
 
     let brightest = |a: &Analysis| {
         (0..a.spectrogram.height)
-            .map(|y| a.spectrogram.get(0, y)[0])
+            .map(|y| a.spectrogram.get(0, y).expect("a pixel inside the image")[0])
             .max()
             .unwrap()
     };
@@ -320,7 +322,12 @@ fn a_fixed_range_stretches_a_quiet_signal_to_full_brightness() {
     assert_eq!(fs.spectrogram.db_max, 0.0);
     assert!(peak.spectrogram.db_max < -50.0, "{}", peak.spectrogram.db_max);
 
-    let brightest = |a: &Analysis| (0..a.spectrogram.height).map(|y| a.spectrogram.get(4, y)[0]).max().unwrap();
+    let brightest = |a: &Analysis| {
+        (0..a.spectrogram.height)
+            .map(|y| a.spectrogram.get(4, y).expect("a pixel inside the image")[0])
+            .max()
+            .unwrap()
+    };
     assert!(brightest(&peak) > brightest(&fs));
     assert_eq!(brightest(&peak), 255, "peak-relative range should reach the top");
 }
@@ -580,7 +587,10 @@ fn the_grid_holds_the_numbers_the_picture_was_shaded_from() {
         for y in 0..grid.height {
             let value = grid.value(x, grid.height - 1 - y).expect("a bin inside the grid");
             let expected = gradient[gradient_index((value - img.db_min) / span)];
-            assert_eq!(img.get(x, y), [expected[0], expected[1], expected[2], 255]);
+            assert_eq!(
+                img.get(x, y),
+                Some([expected[0], expected[1], expected[2], 255])
+            );
         }
     }
     assert!(
@@ -684,6 +694,98 @@ fn shading_a_grid_that_does_not_cover_its_shape_draws_nothing() {
     let image = shade(&whole, shading);
     assert_eq!((image.width, image.height), (4, 4));
     assert!(image.rgba.chunks_exact(4).all(|p| p[3] == 255));
+}
+
+#[test]
+fn shading_stops_rather_than_writing_pixels_an_image_cannot_hold() {
+    let grid = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 16],
+        t0: 0.0,
+        t1: 1.0,
+        f0: -12_000.0,
+        f1: 12_000.0,
+    };
+    let shading = Shading {
+        colormap: Colormap::Grayscale,
+        db_min: -110.0,
+        db_max: 0.0,
+    };
+
+    // An image one column short would take the first three columns and drop
+    // the fourth on the floor, so nothing is shaded at all.
+    let mut short = SpectrogramImage::new(3, 4);
+    shade_columns(&grid, shading, &mut short, 0..grid.width);
+    assert!(
+        short.rgba.chunks_exact(4).all(|p| p[3] == 0),
+        "an image that does not cover the grid keeps every pixel untouched"
+    );
+
+    // An image one row short has the same fate.
+    let mut squat = SpectrogramImage::new(4, 3);
+    shade_columns(&grid, shading, &mut squat, 0..grid.width);
+    assert!(
+        squat.rgba.chunks_exact(4).all(|p| p[3] == 0),
+        "an image that does not cover the grid keeps every pixel untouched"
+    );
+
+    // An image larger than the grid still shades the part they share.
+    let mut larger = SpectrogramImage::new(6, 5);
+    shade_columns(&grid, shading, &mut larger, 0..grid.width);
+    let shaded = larger.rgba.chunks_exact(4).filter(|p| p[3] == 255).count();
+    assert_eq!(shaded, grid.width * grid.height);
+
+    // And a grid that does cover itself is unaffected, which is the case every
+    // caller actually takes.
+    let mut exact = SpectrogramImage::new(4, 4);
+    shade_columns(&grid, shading, &mut exact, 0..grid.width);
+    assert!(exact.rgba.chunks_exact(4).all(|p| p[3] == 255));
+}
+
+#[test]
+fn shading_skips_a_column_the_grid_does_not_hold() {
+    let grid = DbGrid {
+        width: 4,
+        height: 4,
+        values: vec![-10.0; 16],
+        t0: 0.0,
+        t1: 1.0,
+        f0: -12_000.0,
+        f1: 12_000.0,
+    };
+    let shading = Shading {
+        colormap: Colormap::Grayscale,
+        db_min: -110.0,
+        db_max: 0.0,
+    };
+
+    // A column index past the grid is skipped instead of slicing out a range
+    // that belongs to no column it has values for.
+    let mut image = SpectrogramImage::new(8, 4);
+    shade_columns(&grid, shading, &mut image, 0..grid.width);
+    let mut beyond = SpectrogramImage::new(8, 4);
+    shade_columns(
+        &grid,
+        shading,
+        &mut beyond,
+        [0, 1, 2, 3, 4, 7, usize::MAX].iter().copied(),
+    );
+    assert_eq!(
+        image.rgba, beyond.rgba,
+        "columns outside the grid change nothing"
+    );
+
+    // A grid whose values fall short of its shape is skipped the same way,
+    // which the checked accessor answers rather than a slice that panics.
+    let mut broken = grid.clone();
+    broken.values.pop();
+    let mut image = SpectrogramImage::new(8, 4);
+    shade_columns(&broken, shading, &mut image, 0..broken.width);
+    assert!(
+        image.rgba.chunks_exact(4).all(|p| p[3] == 0),
+        "a grid that does not cover its shape shades nothing"
+    );
 }
 
 include!("progressive_tests.rs");

@@ -62,7 +62,7 @@ commits leave behind.
 | I04 | `shell.rs:1101` | Bare-title double click zooms the window | R2 | Retained |
 | I05 | `shell.rs:1102`, `shell.rs:1103`, `shell.rs:1107`, `shell.rs:1111` | Title drag: arm on press, disarm on release or a press outside, start the move on the first move | R2 | Retained |
 | I06 | `shell.rs:1122` | Title right click opens the platform window menu | R2 | Retained |
-| I07 | `app_menu_ui.rs:406`, `app_menu_ui.rs:410`, `app_menu_ui.rs:411` | The toolbar hitbox consumes left press, right press and double click so a control never reaches the title gestures | R2, R4 | Retained |
+| I07 | `app_menu_ui.rs:405`, `app_menu_ui.rs:767`, `app_menu_ui.rs:771` | Each toolbar control consumes its own left press and double click through `title_control`, and the container keeps its right-press stop, so a control never reaches the title gestures while the gaps between them do | R2, R4 | Retained (#158) |
 
 ### Plot gestures and keyboard
 
@@ -190,12 +190,15 @@ Verified limitation: `TitleBar` cannot be composed without its private caption c
 (`title_bar.rs:248`, `:400`), which on Linux call `zoom_window()` on every click
 (`:232`) and take their hover and active colours from the global secondary tokens
 (`:168` to `:191`) with no per-control style hook. The production bar additionally carries
-a filename region centred on the full window, and the toolbar inside the bar must consume
-drag and double click, which `app_menu_ui.rs:406` to `:411` does by stopping propagation on
-its own hitbox.
+a filename region centred on the full window. Each control in the toolbar consumes its own
+left press and double click through `title_control` (`app_menu_ui.rs:767` to `:771`), and
+the container keeps only its right-press stop, so the gaps between controls stay bare
+title-bar pixels that carry the drag and the double click (#158).
 
 Covering tests: `the_document_controls_join_the_toolbar`,
-`the_title_reserves_exactly_what_the_toolbar_draws` (`app_menu_ui.rs:894`, `:906`).
+`the_title_reserves_exactly_what_the_toolbar_draws` (`app_menu_ui.rs:894`, `:906`) and
+`the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not`, which mutation checks
+against both the occluding container and a consumption-free wrapper.
 Native rows R3 and O1.
 
 ### R3 Zoom halves and `pressed_zoom`

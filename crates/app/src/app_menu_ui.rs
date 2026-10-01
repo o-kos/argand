@@ -407,24 +407,24 @@ impl Shell {
         });
         div()
             .id("title-toolbar")
-            .occlude()
             .flex()
             .items_center()
             .gap_1()
             .flex_shrink_0()
-            .on_mouse_down(MouseButton::Left, |_, window, cx| {
-                window.prevent_default();
-                cx.stop_propagation();
-            })
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-            .on_double_click(|_, _, cx| cx.stop_propagation())
-            .child(self.application_menu_popover(app, cx))
-            // Without a document these act on nothing, and their hitbox would block a title drag.
+            .child(title_control(
+                "title-app-control",
+                self.application_menu_popover(app, cx),
+            ))
+            // Without a document these act on nothing, and each consumes only
+            // its own box, so the gaps between them stay bare title-bar pixels.
             .when(self.view.is_some(), |bar| {
                 let separator = div().w(px(1.)).h(px(16.)).mx_1().bg(cx.theme().border);
                 let orientation = self.orientation_segments(cx);
                 let grid = self.grid_button(cx);
-                bar.child(separator).child(orientation).child(grid)
+                bar.child(separator)
+                    .child(title_control("title-orientation-control", orientation))
+                    .child(title_control("title-grid-control", grid))
             })
     }
 
@@ -764,6 +764,21 @@ pub(super) fn toolbar_accent(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     } else {
         cx.theme().blue.darken(0.2)
     }
+}
+
+/// One toolbar control's box, which consumes its own left press and double
+/// click so neither arms the title-bar drag that the bare pixels around it,
+/// including the toolbar's gaps, fall through to.
+fn title_control(id: &'static str, child: impl IntoElement) -> gpui_kit::Stateful<gpui_kit::Div> {
+    div()
+        .id(id)
+        .flex()
+        .on_mouse_down(MouseButton::Left, |_, window, cx| {
+            window.prevent_default();
+            cx.stop_propagation();
+        })
+        .on_double_click(|_, _, cx| cx.stop_propagation())
+        .child(child)
 }
 
 /// The state a toolbar control is in, which decides its whole surface.
@@ -1302,6 +1317,59 @@ mod tests {
         );
         cx.simulate_mouse_up(bar, gpui_kit::MouseButton::Left, none);
         draw(cx);
+    }
+
+    // The arming this observes lives in the Linux title bar alone, since the
+    // other platforms leave moving and zooming the window to the native one.
+    #[cfg(target_os = "linux")]
+    #[gpui_kit::test]
+    fn the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let none = gpui_kit::Modifiers::default();
+        let pending = |cx: &mut gpui_kit::VisualTestContext| {
+            shell.read_with(cx, |shell, _| shell.title_drag_pending)
+        };
+
+        // The pixels between the application button and the orientation group
+        // hold a gap, the separator and its margins, all bare title-bar pixels.
+        let gap = cx.update(|window, _| {
+            let first = window.find("application-menu-button").bounds();
+            let second = window.find("orientation-horizontal").bounds();
+            gpui_kit::point((first.right() + second.origin.x) / 2., first.center().y)
+        });
+        cx.simulate_mouse_down(gap, gpui_kit::MouseButton::Left, none);
+        draw(cx);
+        assert!(pending(cx), "a press in a toolbar gap arms the title drag");
+        cx.simulate_mouse_up(gap, gpui_kit::MouseButton::Left, none);
+        draw(cx);
+        assert!(!pending(cx), "and releasing it clears the arming");
+
+        // A press on a segment, on the group's own frame between the segments,
+        // on Grid and on the application button never arms the drag.
+        let frame = cx.update(|window, _| {
+            let first = window.find("orientation-horizontal").bounds().center();
+            let second = window.find("orientation-vertical").bounds().center();
+            gpui_kit::point((first.x + second.x) / 2., first.y)
+        });
+        for at in [
+            at(cx, "orientation-horizontal"),
+            frame,
+            at(cx, "toggle-grid"),
+            at(cx, "application-menu-button"),
+        ] {
+            cx.simulate_mouse_down(at, gpui_kit::MouseButton::Left, none);
+            draw(cx);
+            assert!(!pending(cx), "a control press never arms the title drag");
+            cx.simulate_mouse_up(at, gpui_kit::MouseButton::Left, none);
+            draw(cx);
+        }
+        assert!(
+            menu_open(cx, &shell),
+            "the application button still opens its menu on its own press"
+        );
+        press(cx, "escape");
+        assert!(!menu_open(cx, &shell));
     }
 
     #[gpui_kit::test]

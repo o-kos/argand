@@ -4,8 +4,8 @@ use super::*;
 /// any permutation of the channels.
 fn two_pixels() -> SpectrogramImage {
     let mut image = SpectrogramImage::new(2, 1);
-    image.put(0, 0, [10, 20, 30]);
-    image.put(1, 0, [200, 100, 50]);
+    image.put(0, 0, [10, 20, 30]).expect("a pixel inside the image");
+    image.put(1, 0, [200, 100, 50]).expect("a pixel inside the image");
     image
 }
 
@@ -85,6 +85,45 @@ fn deep_zoom_column_keeps_every_frequency_row_and_channel_order() {
     let bottom = [12, 11, 10, 255].repeat(3);
     assert_eq!(strip.as_bytes(0).unwrap(), [top.clone(), top, bottom.clone(), bottom].concat());
     assert!(column_texture(&source, 2, crate::orientation::Mode::Horizontal).is_none());
+}
+
+#[test]
+fn deep_zoom_column_refuses_an_image_whose_buffer_is_short_of_its_shape() {
+    // A buffer short of the declared width is refused rather than read past.
+    let mut source = SpectrogramImage::new(2, 2);
+    source.rgba = vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255];
+    source.rgba.truncate(8);
+    assert_eq!(source.shape(), None, "the buffer is short of the shape");
+    assert!(
+        column_texture(&source, 0, crate::orientation::Mode::Horizontal).is_none(),
+        "a column is refused when the image does not hold the shape it declares"
+    );
+    assert!(column_texture(&source, 2, crate::orientation::Mode::Horizontal).is_none());
+}
+
+#[test]
+fn deep_zoom_column_refuses_a_width_whose_offset_would_overflow() {
+    // The fields are a caller's to set, and the strip built beside the read is
+    // sized by the height, so a width past any buffer still reaches the loop.
+    // The hand-written product the accessor replaced overflowed on the second
+    // row, which panicked on a checked build and wrapped onto a foreign pixel
+    // on a release one.
+    let source = SpectrogramImage {
+        width: usize::MAX,
+        height: 2,
+        rgba: vec![1, 2, 3, 255, 4, 5, 6, 255],
+        t0: 0.0,
+        t1: 1.0,
+        f0: -1.0,
+        f1: 1.0,
+        db_min: -110.0,
+        db_max: 0.0,
+    };
+    assert_eq!(source.shape(), None, "no buffer covers that width");
+    assert!(
+        column_texture(&source, 1, crate::orientation::Mode::Horizontal).is_none(),
+        "an overflowing offset must refuse rather than wrap onto a pixel"
+    );
 }
 
 #[test]

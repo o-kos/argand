@@ -3,6 +3,8 @@
 //! `argand-cli` turns these into a PNG; a future GPUI front end uploads the
 //! same RGBA buffer as a texture. Nothing here may grow a GUI dependency.
 
+use std::ops::Range;
+
 use serde::Serialize;
 
 /// Decibel values and the shape they are laid out in, before any colour is
@@ -92,11 +94,14 @@ pub struct SpectrogramImage {
 }
 
 impl SpectrogramImage {
+    /// Bytes per pixel in the RGBA buffer.
+    const CHANNELS: usize = 4;
+
     pub fn new(width: usize, height: usize) -> Self {
         Self {
             width,
             height,
-            rgba: vec![0; width * height * 4],
+            rgba: vec![0; width * height * Self::CHANNELS],
             t0: 0.0,
             t1: 0.0,
             f0: 0.0,
@@ -106,22 +111,56 @@ impl SpectrogramImage {
         }
     }
 
-    pub fn put(&mut self, x: usize, y: usize, rgb: [u8; 3]) {
-        let i = (y * self.width + x) * 4;
-        self.rgba[i] = rgb[0];
-        self.rgba[i + 1] = rgb[1];
-        self.rgba[i + 2] = rgb[2];
-        self.rgba[i + 3] = 255;
+    /// The shape the pixels actually cover, or `None` when they do not cover
+    /// the one the image declares.
+    ///
+    /// The fields are a caller's to set, so anything addressing the buffer has
+    /// to ask here rather than multiply them: a height near `usize::MAX` makes
+    /// that product an overflow, not a picture.
+    pub fn shape(&self) -> Option<(usize, usize)> {
+        let bytes = self
+            .width
+            .checked_mul(self.height)?
+            .checked_mul(Self::CHANNELS)?;
+        (bytes == self.rgba.len()).then_some((self.width, self.height))
     }
 
-    pub fn get(&self, x: usize, y: usize) -> [u8; 4] {
-        let i = (y * self.width + x) * 4;
-        [
-            self.rgba[i],
-            self.rgba[i + 1],
-            self.rgba[i + 2],
-            self.rgba[i + 3],
-        ]
+    /// The bytes one pixel at column `x`, row `y` occupies, or `None` when the
+    /// image does not hold that pixel.
+    ///
+    /// This is the one place the offset is worked out, which is why the
+    /// arithmetic is checked here: the fields are a caller's to set, and a
+    /// height near `usize::MAX` would otherwise overflow past the bounds test.
+    /// Both coordinates are tested against the declared shape, because one past
+    /// the end of a row is a valid offset into the next one, and a caller that
+    /// asked for a pixel the image does not have would be answered with its
+    /// neighbour's data, which looks exactly like a picture.
+    fn pixel(&self, x: usize, y: usize) -> Option<Range<usize>> {
+        let (width, height) = self.shape()?;
+        if x >= width || y >= height {
+            return None;
+        }
+        let stride = width.checked_mul(Self::CHANNELS)?;
+        let start = y
+            .checked_mul(stride)?
+            .checked_add(x.checked_mul(Self::CHANNELS)?)?;
+        Some(start..start.checked_add(Self::CHANNELS)?)
+    }
+
+    /// Write `rgb` at column `x`, row `y`, opaque, or answer `None` and leave
+    /// the picture untouched when the image holds no such pixel.
+    pub fn put(&mut self, x: usize, y: usize, rgb: [u8; 3]) -> Option<()> {
+        let pixel = self.pixel(x, y)?;
+        self.rgba
+            .get_mut(pixel)?
+            .copy_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
+        Some(())
+    }
+
+    /// The RGBA pixel at column `x`, row `y`, or `None` when the image holds no
+    /// such pixel.
+    pub fn get(&self, x: usize, y: usize) -> Option<[u8; 4]> {
+        self.rgba.get(self.pixel(x, y)?)?.try_into().ok()
     }
 }
 
@@ -160,12 +199,28 @@ impl WaveformEnvelope {
         }
     }
 
-    /// Lowest and highest value `column` reached on `channel`.
+    /// The shape the buffers actually cover, or `None` when they do not cover
+    /// the one the envelope declares.
+    ///
+    /// The fields are a caller's to set, so anything sizing a buffer from
+    /// `columns` and `channels` has to ask here rather than multiply them: a
+    /// `columns` near `usize::MAX` makes that product an overflow, not an
+    /// envelope. This answers for the whole buffer, where an accessor answers
+    /// for the one cell it was asked for, so a cell inside the declared shape
+    /// stays readable even where the buffers run longer than that shape.
+    pub fn shape(&self) -> Option<(usize, usize)> {
+        let cells = self.columns.checked_mul(self.channels)?;
+        (cells == self.min.len() && cells == self.max.len())
+            .then_some((self.columns, self.channels))
+    }
+
+    /// Lowest and highest value `column` reached on `channel`, or `None` for a
+    /// coordinate outside the declared shape or outside the buffers.
     pub fn column(&self, column: usize, channel: usize) -> Option<(f32, f32)> {
-        if channel >= self.channels {
+        if column >= self.columns || channel >= self.channels {
             return None;
         }
-        let i = column * self.channels + channel;
+        let i = column.checked_mul(self.channels)?.checked_add(channel)?;
         Some((*self.min.get(i)?, *self.max.get(i)?))
     }
 

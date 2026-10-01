@@ -1044,8 +1044,23 @@ fn shade_columns(
     let height = grid.height;
     let gradient = colormap.gradient();
     let span = (db_max - db_min).max(1e-6);
+    // The image has to cover every coordinate this loop writes, and `put`
+    // answers `None` rather than clipping. Settle that once here, so a caller
+    // that sizes the image wrongly gets no shading at all rather than a
+    // picture with pixels quietly missing.
+    let covered = match (grid.shape(), image.shape()) {
+        (Some((grid_width, grid_height)), Some((image_width, image_height))) => {
+            image_width >= grid_width && image_height >= grid_height
+        }
+        _ => false,
+    };
+    if !covered {
+        return;
+    }
     for x in columns {
-        let column = &grid.values[x * height..(x + 1) * height];
+        let Some(column) = grid.column(x) else {
+            continue;
+        };
         for y in 0..height {
             let value = column[height - 1 - y];
             let normalized = if value.is_finite() {
@@ -1053,7 +1068,8 @@ fn shade_columns(
             } else {
                 0.0
             };
-            image.put(x, y, gradient[gradient_index(normalized)]);
+            // The entry check settled that this coordinate is inside the image.
+            let _ = image.put(x, y, gradient[gradient_index(normalized)]);
         }
     }
     image.t0 = grid.t0;
