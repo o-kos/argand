@@ -72,14 +72,14 @@ pub const RECENT_LIMIT: usize = 10;
 /// whatever that version was recording. The number goes up whenever the layout
 /// gains something, so that an older binary sees a number it does not know and
 /// leaves the file rather than quietly rewriting it without what it could not
-/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility; version 9 adds orientation; version 10 adds scale UI visibility.
-pub const VERSION: u32 = 10;
+/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility; version 9 adds orientation; version 10 adds scale UI visibility; version 11 adds the interface theme chosen in the menu.
+pub const VERSION: u32 = 11;
 
 /// Every layout this program can read, oldest first.
 ///
 /// An older file is read into the current shape and written back at
 /// [`VERSION`]: missing fields have defaults; legacy dynamic range values are ignored.
-const READABLE: [u32; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, VERSION];
+const READABLE: [u32; 11] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -278,6 +278,9 @@ pub struct Session {
     pub show_scale_ui: bool,
     #[serde(default)]
     pub time_ruler: crate::time_ruler::Mode,
+    /// The interface theme chosen in the menu, or none to follow the configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<crate::config::Theme>,
     #[serde(default)]
     pub analysis_settings: Option<crate::settings::Settings>,
     /// Layout of this file, checked before anything in it is believed.
@@ -305,6 +308,7 @@ impl Default for Session {
             show_scale_ui: true,
             orientation: crate::orientation::Mode::default(),
             time_ruler: crate::time_ruler::Mode::default(),
+            theme: None,
             analysis_settings: None,
             geometry: None,
             window_state: WindowState::default(),

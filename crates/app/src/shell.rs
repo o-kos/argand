@@ -124,11 +124,8 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
             navigation_ui::init(cx);
             app_menu_ui::init(cx);
             window_keys(cx);
-            gpui_kit::component::theme::Theme::change(
-                theme_mode(config.theme, cx.window_appearance()),
-                None,
-                cx,
-            );
+            let theme = saved.theme.unwrap_or(config.theme);
+            crate::theme::install(theme_mode(theme, cx.window_appearance()), cx);
 
             // Opening from a spawned task rather than straight from `run` follows
             // the toolkit's own examples and gives the platform a turn of its event
@@ -416,9 +413,9 @@ impl Shell {
             }
             cx.notify();
         });
-        sync_theme(config.theme, window, cx);
+        sync_theme(saved.theme.unwrap_or(config.theme), window, cx);
         let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
-            sync_theme(shell.config.theme, window, cx);
+            sync_theme(shell.theme(), window, cx);
         });
         let keystrokes = gpui_kit::App::observe_keystrokes(cx, |_, window, cx| {
             Self::dismiss_window_ready_status(window, cx);
@@ -1084,6 +1081,7 @@ impl Shell {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let palette = chrome::TitlePalette::for_window(window, cx);
         let bar = if cfg!(target_os = "linux") {
             div()
                 .id("title-bar")
@@ -1094,8 +1092,9 @@ impl Shell {
                 .rounded_tl(corners.top_left)
                 .rounded_tr(corners.top_right)
                 .border_b_1()
-                .border_color(cx.theme().title_bar_border)
-                .bg(cx.theme().title_bar)
+                .border_color(palette.border)
+                .bg(palette.background)
+                .text_color(palette.foreground)
                 .on_double_click(|_, window, _| window.zoom_window())
                 .on_mouse_down_out(cx.listener(|shell, _, _, _| shell.title_drag_pending = false))
                 .on_mouse_down(
@@ -1127,6 +1126,9 @@ impl Shell {
                 .into_any_element()
         } else {
             TitleBar::new()
+                .bg(palette.background)
+                .border_color(palette.border)
+                .text_color(palette.foreground)
                 .child(self.title_contents(window, cx))
                 .into_any_element()
         };

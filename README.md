@@ -341,6 +341,9 @@ Keep any existing user configuration when installing or updating.
 The default `theme = "system"` follows the operating system's light/dark appearance,
 including changes while Argand is running. Set `"dark"` or `"light"` to keep a fixed
 appearance. This controls the interface, independently of the spectrogram palette.
+**View → Theme** chooses System, Light or Dark while Argand runs, with or without a
+file open. The choice is remembered in `session.toml` and takes precedence over
+`argand.toml`, which the menu never rewrites.
 
 Argand packages and package-manager delivery are tracked in [#86](https://github.com/o-kos/argand/issues/86),
 including shipping this template and documenting its installed location. Current
@@ -365,8 +368,9 @@ rewrite `argand.toml`; effective settings are saved in `session.toml`.
 
 The waveform is a full-capture minimap. Its content and amplitude scale remain
 fixed during spectrogram navigation and analysis-setting changes. The visible
-interval stays bright; the waveform outside it is darkened, without a border or
-background fill. At full capture the whole waveform stays bright. Sub-pixel
+interval stays bright; the waveform outside it is darkened, without a border. The
+minimap stands on the darkest colour of the spectrogram's palette in both interface
+themes. At full capture the whole waveform stays bright. Sub-pixel
 intervals retain a one-device-pixel minimum width.
 Click outside the interval to pan one time-ruler division toward the pointer;
 Ctrl+click pans five divisions, matching the arrow shortcuts. Single and double

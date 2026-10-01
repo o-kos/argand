@@ -2,7 +2,7 @@
 
 use gpui_kit::component::{ActiveTheme, Icon, IconName, Sizable};
 use gpui_kit::{
-    App, Bounds, BoxShadow, Corners, CursorStyle, Decorations, Edges, InteractiveElement,
+    App, Bounds, BoxShadow, Corners, CursorStyle, Decorations, Edges, Hsla, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Pixels, ResizeEdge, Size, StatefulInteractiveElement,
     Styled, Tiling, Window, div, point, prelude::FluentBuilder, px, size,
 };
@@ -11,8 +11,41 @@ const SHADOW: Pixels = px(12.0);
 const RESIZE_GRIP: Pixels = px(6.0);
 const RADIUS: Pixels = px(8.0);
 
+/// The title bar's colours, muted while the window is not the active one.
+#[derive(Clone, Copy)]
+pub struct TitlePalette {
+    pub background: Hsla,
+    pub border: Hsla,
+    pub foreground: Hsla,
+    /// A caption icon at rest, under the pointer and held.
+    icon: [Hsla; 3],
+}
+
+impl TitlePalette {
+    pub fn for_window(window: &Window, cx: &App) -> Self {
+        let theme = cx.theme();
+        if window.is_window_active() {
+            let ink = theme.foreground;
+            return Self {
+                background: theme.title_bar,
+                border: theme.title_bar_border,
+                foreground: ink,
+                icon: [ink.opacity(0.72), ink, ink.opacity(0.45)],
+            };
+        }
+        let ink = theme.muted_foreground;
+        Self {
+            background: theme.background,
+            border: theme.title_bar_border,
+            foreground: ink,
+            icon: [ink.opacity(0.7), theme.foreground, ink.opacity(0.45)],
+        }
+    }
+}
+
 /// Linux controls paint their own corners; GPUI only clips children rectangularly.
 pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
+    let palette = TitlePalette::for_window(window, cx);
     let maximize_icon = if window.is_maximized() {
         IconName::WindowRestore
     } else {
@@ -28,17 +61,22 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
         .enumerate()
         .map(|(index, icon)| {
             let close = index == 2;
-            let (hover, active, foreground) = if close {
+            let [resting, hovered, held] = palette.icon;
+            // Close keeps its danger surface, with its icon dimmed while held like the others.
+            let (hover, active, hovered, held) = if close {
+                let ink = cx.theme().danger_foreground;
                 (
                     cx.theme().danger,
                     cx.theme().danger_active,
-                    cx.theme().danger_foreground,
+                    ink,
+                    ink.opacity(0.6),
                 )
             } else {
                 (
                     cx.theme().secondary_hover,
                     cx.theme().secondary_active,
-                    cx.theme().secondary_foreground,
+                    hovered,
+                    held,
                 )
             };
             div()
@@ -49,8 +87,9 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
                 .items_center()
                 .justify_center()
                 .when(close, |button| button.rounded_tr(corner))
-                .hover(move |style| style.bg(hover).text_color(foreground))
-                .active(move |style| style.bg(active).text_color(foreground))
+                .text_color(resting)
+                .hover(move |style| style.bg(hover).text_color(hovered))
+                .active(move |style| style.bg(active).text_color(held))
                 .on_mouse_down(MouseButton::Left, |_, window, cx| {
                     window.prevent_default();
                     cx.stop_propagation();

@@ -31,6 +31,7 @@ mod session;
 mod settings;
 mod shell;
 mod spectrogram;
+mod theme;
 mod time_ruler;
 mod waveform;
 

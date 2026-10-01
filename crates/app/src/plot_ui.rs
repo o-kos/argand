@@ -90,10 +90,10 @@ impl Shell {
 
     fn minimap_panel(&self, cx: &gpui_kit::App) -> waveform::Panel {
         let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
-        let ink = self
-            .settings
-            .minimap_colormap(displayed)
-            .waveform_ink(cx.theme().mode.is_dark());
+        let colormap = self.settings.minimap_colormap(displayed);
+        // The minimap stands on the bottom of the spectrogram's own scale in either theme.
+        let [r, g, b] = colormap.gradient()[0];
+        let ink = colormap.waveform_ink(true);
         waveform::Panel {
             waveform: self.waveform.clone(),
             viewport: self.view.zip(
@@ -103,6 +103,7 @@ impl Shell {
                     .map(|meta| meta.len_samples),
             ),
             separator: cx.theme().border,
+            paper: gpui_kit::rgb((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)).into(),
             ink: waveform::Ink {
                 active: gpui_kit::rgb(ink.active),
                 muted: gpui_kit::rgb(ink.muted),

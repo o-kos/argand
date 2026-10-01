@@ -11,7 +11,16 @@ promise applies to.
 
 ## [Unreleased]
 
+### Added
+
+- View → Theme chooses System, Light or Dark for the interface, with or without a file open, and remembers the choice. The View menu is now available before a file is opened.
+
 ### Changed
+
+- Hints, menus, lists, the settings hint and the status bar now stand apart from each other and from the window in the dark theme, the row under the pointer in a menu or list is clearly marked, and the window's outline is visible beside other dark windows.
+- The title bar is muted while the window is inactive, and on Linux the minimize and maximize icons brighten under the pointer and dim while pressed.
+- The settings hint's − and + and Reset to defaults change their ink under the pointer and while pressed, and Reset to defaults has a visible frame.
+- The waveform minimap is dark in the light theme too, on the darkest colour of the spectrogram palette.
 
 - Edit the analysis settings directly in the FFT hint over the status bar. Hover it, click it, choose File → Settings or press Ctrl+, (Cmd+, on macOS); each value with a dashed underline opens a list or takes a number, and every change previews at once. A click outside, Enter or Ctrl+, again keeps the changes; Escape restores the settings and view the hint opened with; Reset to defaults applies the configuration values. A low-level range is marked with ⚠ in the hint's Range row and explained, with Ctrl+R, in a balloon pointing at the sign; a click on either applies the recommended range. The separate settings window with OK and Cancel is gone.
 

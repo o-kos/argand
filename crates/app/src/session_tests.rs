@@ -119,6 +119,7 @@ fn a_session_survives_the_round_trip() {
     let session = Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -174,6 +175,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
     let first = Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -234,6 +236,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
     let moved = |x: f32| Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -279,6 +282,7 @@ fn a_position_that_has_not_changed_is_not_written_again() {
     let held = Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -311,6 +315,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
     let moved = |x: f32| Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -336,6 +341,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let at = |x: f32| Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -376,6 +382,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
     let moved = Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -425,6 +432,7 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
     let at = |x: f32| Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -688,9 +696,35 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 10"),
-        "the current session layout is version 10: {text}"
+        text.contains("version = 11"),
+        "the current session layout is version 11: {text}"
     );
+}
+
+#[test]
+fn a_chosen_theme_round_trips_and_an_older_session_chooses_none() {
+    use crate::config::Theme;
+    let dir = TempDir::new("theme");
+    let path = dir.join(FILE_NAME);
+    std::fs::write(&path, "version = 10
+window_state = \"normal\"\n")
+        .expect("write session");
+    let restored = Session::load(&path);
+    assert!(restored.writable);
+    assert_eq!(restored.session.theme, None, "an older session follows the configuration");
+
+    for theme in [Theme::System, Theme::Light, Theme::Dark] {
+        let session = Session {
+            theme: Some(theme),
+            ..Session::default()
+        };
+        assert!(session.save(&path));
+        assert_eq!(Session::load(&path).session.theme, Some(theme));
+    }
+
+    assert!(Session::default().save(&path));
+    let text = std::fs::read_to_string(&path).expect("read back");
+    assert!(!text.contains("theme"), "no choice writes no theme: {text}");
 }
 
 #[test]
