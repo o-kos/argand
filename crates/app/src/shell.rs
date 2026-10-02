@@ -57,7 +57,7 @@ use crate::chrome;
 use crate::config::{Aggregation, Config, Theme};
 use crate::document::{Document, Effect, MetadataHint, Origin, Status};
 use crate::recent::RecentFiles;
-use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
+use crate::session::{Geometry, Saver, Session, WindowState, place, restore_rectangle};
 use crate::spectrogram;
 use crate::{panels, waveform};
 
@@ -111,7 +111,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
 }
 
 /// Open the window and run until it closes.
-pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Option<Origin>) {
+pub fn run(config: Config, saved: Session, writer: Option<Saver>, opening: Option<Origin>) {
     // The toolkit's own icons -- the window controls among them -- are loaded
     // by path through an asset source. Without one they resolve to nothing and
     // the buttons render as blank space that still responds to a click.
@@ -326,7 +326,7 @@ struct Shell {
     /// Absent when the platform offers nowhere to keep state, or when the file
     /// there was written by a version this one must not overwrite. Either way
     /// the window simply does not remember itself.
-    writer: Option<Writer>,
+    writer: Option<Saver>,
     /// What the next run should get back.
     ///
     /// Held whole rather than assembled at each offer, because two unrelated
@@ -391,14 +391,14 @@ struct Shell {
 impl Shell {
     fn new(
         config: Config,
-        writer: Option<Writer>,
+        writer: Option<Saver>,
         saved: Session,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         // The toolkit says when the window has moved or resized, so nothing
         // here has to ask on every frame. It still says it once per step of a
-        // drag, which is what [`Writer`] is for.
+        // drag, which is what [`crate::session::Writer`] is for.
         crate::profiling::watch_ui(cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
@@ -683,8 +683,8 @@ impl Shell {
 
     /// Offer the session as it now stands.
     fn save(&mut self) {
-        if let Some(writer) = self.writer.as_mut() {
-            writer.offer(self.session.clone(), Instant::now());
+        if let Some(writer) = &self.writer {
+            writer.offer(self.session.clone());
         }
     }
 
@@ -959,14 +959,6 @@ impl Shell {
             self.session.geometry = Some(rectangle);
         }
         self.save();
-    }
-}
-
-impl Drop for Shell {
-    fn drop(&mut self) {
-        if let Some(writer) = self.writer.as_mut() {
-            writer.flush(Instant::now());
-        }
     }
 }
 

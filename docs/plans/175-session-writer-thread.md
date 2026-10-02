@@ -38,6 +38,10 @@ and the exit waits for the final write with a bound of its own.
   ends with the process; the atomic rename keeps the file whole.
 - A thread that cannot be spawned costs the session for that run with one
   warning, as a missing state directory already does.
+- The stalled-write test makes its FIFO through `libc::mkfifo`, not a
+  `mkfifo` process: a fork briefly shares the lock files other tests hold, so
+  their `try_lock` sees Busy and they fail at random. The test is Linux-only,
+  where the crate already depends on `libc`.
 
 ## Rejected alternatives
 
@@ -50,23 +54,25 @@ and the exit waits for the final write with a bound of its own.
 
 ## Implementation steps
 
-- [ ] `Writer::due_at` and `Writer::tick`, with tests.
-- [ ] `Saver` with the mailbox, the thread loop and the bounded close, with
+- [x] `Writer::due_at` and `Writer::tick`, with tests.
+- [x] `Saver` with the mailbox, the thread loop and the bounded close, with
   tests for a write without a further offer, the final flush, and an offer and
   a close that do not wait on a stalled write.
-- [ ] The shell and `main` use `Saver`; `Drop for Shell` goes.
-- [ ] Update `AGENTS.md`, `CHANGELOG.md` and the `session.rs` documentation.
+- [x] The shell and `main` use `Saver`; `Drop for Shell` goes.
+- [x] Update `AGENTS.md`, `CHANGELOG.md` and the `session.rs` documentation.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] The release binary killed with SIGTERM four seconds after opening a file
+  keeps the file in its recent list; `main` lost it in the same run.
 - [ ] The release binary remembers a moved window and an opened file after a
-  normal close.
+  normal close (owner).
 
 ## Post-completion
 

@@ -1191,3 +1191,101 @@ fn the_lock_is_released_once_a_write_is_done() {
     let lock = std::fs::File::open(path.with_extension("toml.lock")).expect("lock file");
     assert!(lock.try_lock().is_ok(), "the writer kept the lock after writing");
 }
+
+#[test]
+fn a_held_back_offer_is_written_when_its_interval_ends() {
+    let dir = TempDir::new("tick");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let at = |x: f32| Session {
+        geometry: Some(Geometry::new(x, 0.0, 800.0, 600.0)),
+        ..Session::default()
+    };
+    let start = Instant::now();
+
+    writer.offer(at(1.0), start);
+    writer.offer(at(2.0), start + Duration::from_millis(1));
+    assert_eq!(writer.due_at(), Some(start + Writer::INTERVAL));
+    writer.tick(start + Duration::from_millis(2));
+    assert_eq!(Session::load(&path).session, at(1.0), "written before its time");
+
+    writer.tick(start + Writer::INTERVAL);
+    assert_eq!(Session::load(&path).session, at(2.0));
+    assert_eq!(writer.due_at(), None);
+}
+
+/// Wait until `done` holds, failing the test after a generous bound.
+fn eventually(what: &str, mut done: impl FnMut() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !done() {
+        assert!(Instant::now() < deadline, "{what} never happened");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn the_saver_writes_a_held_back_offer_without_another_one() {
+    let dir = TempDir::new("saver-tick");
+    let path = dir.join(FILE_NAME);
+    let saver = Saver::spawn(Writer::new(path.clone(), Session::default())).expect("a thread");
+    let at = |x: f32| Session {
+        geometry: Some(Geometry::new(x, 0.0, 800.0, 600.0)),
+        ..Session::default()
+    };
+
+    saver.offer(at(1.0));
+    eventually("the first write", || Session::load(&path).session == at(1.0));
+    saver.offer(at(2.0));
+    eventually("the held-back write", || {
+        Session::load(&path).session == at(2.0)
+    });
+    assert!(saver.close(Saver::EXIT_WAIT));
+}
+
+#[test]
+fn closing_the_saver_writes_the_last_offer() {
+    let dir = TempDir::new("saver-close");
+    let path = dir.join(FILE_NAME);
+    let saver = Saver::spawn(Writer::new(path.clone(), Session::default())).expect("a thread");
+    let at = |x: f32| Session {
+        geometry: Some(Geometry::new(x, 0.0, 800.0, 600.0)),
+        ..Session::default()
+    };
+
+    saver.offer(at(1.0));
+    saver.offer(at(2.0));
+    saver.offer(at(3.0));
+    drop(saver);
+    assert_eq!(Session::load(&path).session, at(3.0));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stalled_write_holds_up_neither_an_offer_nor_the_exit_for_long() {
+    let dir = TempDir::new("saver-stall");
+    let path = dir.join(FILE_NAME);
+    let lock = path.with_extension("toml.lock");
+    // Opening a FIFO for writing blocks until a reader comes, as a hung mount would.
+    let name = std::ffi::CString::new(lock.as_os_str().as_encoded_bytes()).expect("a C path");
+    // `name` is a NUL-terminated path that outlives the call.
+    assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0, "mkfifo");
+    let saver = Saver::spawn(Writer::new(path.clone(), Session::default())).expect("a thread");
+
+    let offered = Instant::now();
+    for x in 0..100 {
+        saver.offer(Session {
+            geometry: Some(Geometry::new(x as f32, 0.0, 800.0, 600.0)),
+            ..Session::default()
+        });
+    }
+    assert!(offered.elapsed() < Duration::from_millis(500));
+
+    let closing = Instant::now();
+    assert!(!saver.close(Duration::from_millis(200)));
+    assert!(closing.elapsed() < Saver::EXIT_WAIT);
+
+    // A reader releases the stalled open so the thread can finish.
+    let _reader = std::fs::File::open(&lock).expect("open the FIFO for reading");
+    eventually("the released write", || Session::load(&path).session.geometry.is_some());
+    std::mem::forget(saver);
+}
