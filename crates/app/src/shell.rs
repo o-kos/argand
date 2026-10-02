@@ -1434,6 +1434,13 @@ impl Render for Shell {
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;
+        let free = frame.free;
+        // The hint leaves the title bar live as well as the frame's edges.
+        let title = (frame.title_bottom() - free.origin.y).max(px(0.));
+        let hint_area = gpui_kit::Bounds::new(
+            free.origin + gpui_kit::point(px(0.), title),
+            gpui_kit::size(free.size.width, (free.size.height - title).max(px(0.))),
+        );
         let content =
             div()
                 .size_full()
@@ -1480,17 +1487,13 @@ impl Render for Shell {
         let menu_backdrop = self
             .application_menu
             .is_some()
-            .then(|| self.application_menu_backdrop());
+            .then(|| self.application_menu_backdrop(free, cx));
         div()
             .relative()
             .size_full()
             .child(frame.render(content, cx))
             .children(menu_backdrop)
-            .children(hints::backdrop(
-                &self.analysis_hint,
-                gpui_kit::component::TITLE_BAR_HEIGHT,
-                cx,
-            ))
+            .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))
     }

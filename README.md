@@ -587,8 +587,11 @@ The analysis settings live in the hint over the analysis group, for example
 `2048 · Hann`, beside the separate range item. Hover it for a moment, click it, choose **File → Settings**,
 or press Ctrl+, (Cmd+, on macOS). Each value with a dashed underline is editable:
 click it to choose from a list (FFT size, window, aggregation, range mode, colour
-scheme) or to type a number (overlap, and the range in the fixed mode). Tab and
-Shift+Tab move between values, arrows navigate lists or step numbers. Every change
+scheme) or to type a number (overlap, and the range in the fixed mode). The hint
+works from the keyboard alone: it opens with the keyboard on FFT size, Tab and
+Shift+Tab move between the values and **Reset to defaults**, Enter, Up or Down open a
+list and its arrows choose, Up and Down step a number, and Enter on Reset to defaults
+resets. Every change
 previews on the spectrogram at once. A click outside the hint, Enter or Ctrl+, again
 keeps the changes and closes it; Escape closes an open list first and otherwise
 restores the settings and view the hint opened with. The − and + beside a number
@@ -602,7 +605,7 @@ The status text is muted and brightens on hover. Only a nonzero signal whose spe
 peak falls in the lower half of the absolute scale produces a yellow range warning.
 A narrower recommendation by itself is not a warning; silence and peak-relative modes
 are excluded. While the settings hint is
-open, its Range row marks a warned range with ⚠ and explains it in a balloon pointing at the sign, and Ctrl+R (Cmd+R on macOS) applies
+open, its Range row marks a warned range with ⚠ and explains it in a balloon pointing at the sign, which wraps or moves to the hint's left in a narrow window, hides while a list is open and closes with its ×, and Ctrl+R (Cmd+R on macOS) applies
 the measured recommended range used by `aspec`.
 A yellow ⚠ accompanies the highlighted range; clicking it applies the recommendation
 directly, without opening the hint.

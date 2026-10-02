@@ -12,10 +12,28 @@ use gpui_kit::component::input::{Input, InputEvent, InputState, StepAction};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{Icon, IconName};
 use gpui_kit::{Entity, Focusable};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 /// The key context of the editor inside the hint.
 const CONTEXT: &str = "AnalysisEditor";
+
+gpui_kit::actions!(analysis_editor, [PreviousValue, NextValue]);
+
+pub(super) fn init(cx: &mut gpui_kit::App) {
+    cx.bind_keys([
+        KeyBinding::new("up", PreviousValue, Some(CONTEXT)),
+        KeyBinding::new("down", NextValue, Some(CONTEXT)),
+    ]);
+}
+
+/// A value of the hint that holds the keyboard.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Stop {
+    Choice(Choice),
+    Number(Number),
+}
 
 /// The width of the surface, fixed so that changing values never move it.
 const WIDTH: f32 = 370.0;
@@ -32,6 +50,10 @@ const LIST: f32 = 220.0;
 const BALLOON: f32 = 320.0;
 const POINTER: f32 = 9.0;
 const BALLOON_GAP: f32 = 3.0;
+/// The narrowest body the balloon takes on the right before it moves to the left.
+const BALLOON_MIN: f32 = 220.0;
+/// How far the balloon keeps from the window's edge, clear of the frame's resize grips.
+const BALLOON_MARGIN: f32 = 24.0;
 
 /// The width of the text in a number field, enough for any value it takes.
 const NUMBER: f32 = 44.0;
@@ -42,7 +64,7 @@ const REPEAT_DELAY: Duration = Duration::from_millis(400);
 /// How often a held stepper repeats.
 const REPEAT_EVERY: Duration = Duration::from_millis(80);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Choice {
     Fft,
     Window,
@@ -51,7 +73,7 @@ enum Choice {
     Palette,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Number {
     Overlap,
     Range,
@@ -95,7 +117,79 @@ pub(super) struct Editor {
     error: Option<String>,
     /// The repeating step of a held stepper, dropped when it is released.
     repeat: Option<Task<()>>,
+    /// Each list's handle while it is closed, which an open list no longer answers with.
+    closed: [FocusHandle; 5],
+    /// Where the last frame drew the hint and its Range value, which place the balloon.
+    drawn: Rc<Cell<Drawn>>,
+    /// Whether the balloon was closed with its ×, until the hint closes.
+    balloon_closed: bool,
+    /// Whether the first frame has put the keyboard on the first value.
+    placed: bool,
+    /// The hint's own scope, which Tab and Shift+Tab never leave.
+    scope: FocusHandle,
+    /// The keyboard's place on Reset to defaults, marked as the values are.
+    defaults_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
+}
+
+/// Records where an element was drawn into one field of `drawn`, and redraws the editor on a change.
+fn measure(
+    drawn: Rc<Cell<Drawn>>,
+    editor: gpui_kit::EntityId,
+    field: fn(&mut Drawn) -> &mut Option<gpui_kit::Bounds<Pixels>>,
+) -> impl IntoElement {
+    gpui_kit::canvas(
+        move |bounds, _, cx| {
+            let mut now = drawn.get();
+            if *field(&mut now) != Some(bounds) {
+                *field(&mut now) = Some(bounds);
+                drawn.set(now);
+                cx.notify(editor);
+            }
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .size_full()
+}
+
+/// Where the last frame drew the hint and its Range value.
+#[derive(Clone, Copy, Default, PartialEq)]
+struct Drawn {
+    sheet: Option<gpui_kit::Bounds<Pixels>>,
+    readout: Option<gpui_kit::Bounds<Pixels>>,
+}
+
+/// Which side of the hint the balloon stands on, and how wide its body may grow.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Side {
+    Right(Pixels),
+    /// With the distance from the Range value's right edge to the balloon's right edge.
+    Left(Pixels, Pixels),
+}
+
+/// Where the balloon fits beside a hint drawn at `sheet` with its Range value at `readout`.
+///
+/// It stands right of the hint, wrapping into the room there is, and moves left of the hint
+/// once that room is narrower than a readable line. Without room on either side it is not
+/// shown, and the value's hover hint says the same.
+fn balloon_side(
+    sheet: gpui_kit::Bounds<Pixels>,
+    readout: gpui_kit::Bounds<Pixels>,
+    viewport: Pixels,
+) -> Option<Side> {
+    let reach = px(BALLOON_GAP + POINTER + BALLOON_MARGIN);
+    let right = (viewport - readout.right() - reach).min(px(BALLOON));
+    let left = (sheet.left() - reach).min(px(BALLOON));
+    let beside = readout.right() - sheet.left() + px(BALLOON_GAP);
+    let readable = px(BALLOON_MIN);
+    if right >= readable {
+        Some(Side::Right(right))
+    } else if left >= readable {
+        Some(Side::Left(left, beside))
+    } else {
+        None
+    }
 }
 
 impl Editor {
@@ -126,6 +220,8 @@ impl Editor {
         let aggregation = select(Choice::Aggregation, cx);
         let mode = select(Choice::Mode, cx);
         let palette = select(Choice::Palette, cx);
+        let closed = [&fft, &window_choice, &aggregation, &mode, &palette]
+            .map(|state| state.read(cx).focus_handle(cx));
         let overlap = number(
             Number::Overlap,
             crate::numbers::input(settings.overlap),
@@ -168,6 +264,12 @@ impl Editor {
             range,
             error: None,
             repeat: None,
+            closed,
+            drawn: Rc::default(),
+            balloon_closed: false,
+            placed: false,
+            scope: cx.focus_handle(),
+            defaults_focus: cx.focus_handle().tab_stop(true),
             _subscriptions: subscriptions,
         }
     }
@@ -214,12 +316,11 @@ impl Editor {
         &self,
         field: Number,
         unit: &'static str,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> gpui_kit::AnyElement {
-        let state = match field {
-            Number::Overlap => &self.overlap,
-            Number::Range => &self.range,
-        };
+        let state = self.number_state(field);
+        let focused = self.holds(Stop::Number(field), window, cx);
         let (down, up) = match field {
             Number::Overlap => ("overlap-down", "overlap-up"),
             Number::Range => ("range-down", "range-up"),
@@ -229,14 +330,18 @@ impl Editor {
             .items_center()
             .gap_1()
             .child(self.step_button(down, IconName::Minus, field, StepAction::Decrement, cx))
-            .child(editable(
-                Input::new(state)
-                    .appearance(false)
-                    .small()
-                    .w(px(NUMBER))
-                    .text_align(gpui_kit::TextAlign::Right),
-                cx,
-            ))
+            .child(
+                div()
+                    .border_b_1()
+                    .map(|line| mark(line, focused, cx))
+                    .child(
+                        Input::new(state)
+                            .appearance(false)
+                            .small()
+                            .w(px(NUMBER))
+                            .text_align(gpui_kit::TextAlign::Right),
+                    ),
+            )
             .child(div().text_color(cx.theme().muted_foreground).child(unit))
             .child(self.step_button(up, IconName::Plus, field, StepAction::Increment, cx))
             .into_any_element()
@@ -488,22 +593,154 @@ impl Editor {
     }
 
     /// Resetting to the configuration, below the values it replaces.
-    fn defaults(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div().mt_1().pt_1().child(
-            Button::new("analysis-defaults")
-                .custom(
-                    ButtonCustomVariant::new(cx)
-                        .color(cx.theme().popover)
-                        .hover(cx.theme().accent)
-                        .active(cx.theme().border),
-                )
-                .group(DEFAULTS)
-                .border_1()
-                .border_color(cx.theme().muted_foreground.opacity(0.45))
-                .small()
-                .child(pointer_ink(DEFAULTS, cx).child("Reset to defaults"))
-                .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
-        )
+    fn defaults(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Enter on the focused button resets, where elsewhere it would close the hint.
+        let enter = cx.listener(|editor, _: &Confirm, window, cx| editor.reset(window, cx));
+        let focused = self.defaults_focus.is_focused(window);
+        let frame = if focused {
+            super::super::app_menu_ui::toolbar_accent(cx)
+        } else {
+            cx.theme().muted_foreground.opacity(0.45)
+        };
+        div()
+            .mt_1()
+            .pt_1()
+            .track_focus(&self.defaults_focus)
+            .on_action(enter)
+            .child(
+                Button::new("analysis-defaults")
+                    .custom(
+                        ButtonCustomVariant::new(cx)
+                            .color(cx.theme().popover)
+                            .hover(cx.theme().accent)
+                            .active(cx.theme().border),
+                    )
+                    .group(DEFAULTS)
+                    .tab_stop(false)
+                    .when(focused, |button| button.border_2())
+                    .when(!focused, |button| button.border_1())
+                    .border_color(frame)
+                    .small()
+                    .child(pointer_ink(DEFAULTS, cx).child("Reset to defaults"))
+                    .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
+            )
+    }
+
+    fn combo(&self, choice: Choice) -> &Combo {
+        match choice {
+            Choice::Fft => &self.fft,
+            Choice::Window => &self.window,
+            Choice::Aggregation => &self.aggregation,
+            Choice::Mode => &self.mode,
+            Choice::Palette => &self.palette,
+        }
+    }
+
+    fn number_state(&self, field: Number) -> &Entity<InputState> {
+        match field {
+            Number::Overlap => &self.overlap,
+            Number::Range => &self.range,
+        }
+    }
+
+    /// The hint's values, Range only while it is a number.
+    fn stops(&self) -> Vec<Stop> {
+        let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
+        let range = fixed.then_some(Stop::Number(Number::Range));
+        [
+            Some(Stop::Choice(Choice::Fft)),
+            Some(Stop::Choice(Choice::Window)),
+            Some(Stop::Number(Number::Overlap)),
+            Some(Stop::Choice(Choice::Aggregation)),
+            Some(Stop::Choice(Choice::Mode)),
+            range,
+            Some(Stop::Choice(Choice::Palette)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    }
+
+    /// Whether `stop` holds the keyboard, a list counting while it is open.
+    fn holds(&self, stop: Stop, window: &Window, cx: &gpui_kit::App) -> bool {
+        match stop {
+            Stop::Choice(choice) => self
+                .combo(choice)
+                .read(cx)
+                .focus_handle(cx)
+                .is_focused(window),
+            Stop::Number(field) => self.number_state(field).focus_handle(cx).is_focused(window),
+        }
+    }
+
+    fn focused(&self, window: &Window, cx: &gpui_kit::App) -> Option<Stop> {
+        self.stops()
+            .into_iter()
+            .find(|&stop| self.holds(stop, window, cx))
+    }
+
+    /// Up or Down on a focused number steps it, which a plain input would not.
+    fn arrow(&mut self, up: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(Stop::Number(field)) = self.focused(window, cx) else {
+            cx.propagate();
+            return;
+        };
+        let step = if up {
+            StepAction::Increment
+        } else {
+            StepAction::Decrement
+        };
+        self.edit_number(field, Some(step), window, cx);
+    }
+
+    /// Moves the keyboard to the window's next or previous stop that lies in the hint.
+    fn traverse(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let stops = self.stops().len() + 2;
+        for _ in 0..stops {
+            if forward {
+                window.focus_next(cx);
+            } else {
+                window.focus_prev(cx);
+            }
+            if self.scope.contains_focused(window, cx) {
+                break;
+            }
+        }
+        cx.notify();
+    }
+
+    /// Tab, Shift+Tab, Up and Down within the hint.
+    fn arrows(
+        editor: gpui_kit::Stateful<gpui_kit::Div>,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::Stateful<gpui_kit::Div> {
+        editor
+            .on_action(
+                cx.listener(|editor, _: &FocusNext, window, cx| editor.traverse(true, window, cx)),
+            )
+            .on_action(cx.listener(|editor, _: &FocusPrevious, window, cx| {
+                editor.traverse(false, window, cx)
+            }))
+            .on_action(
+                cx.listener(|editor, _: &PreviousValue, window, cx| editor.arrow(true, window, cx)),
+            )
+            .on_action(
+                cx.listener(|editor, _: &NextValue, window, cx| editor.arrow(false, window, cx)),
+            )
+    }
+
+    /// Whether any list of the hint is open, which the balloon would cover.
+    fn list_open(&self, cx: &gpui_kit::App) -> bool {
+        [
+            &self.fft,
+            &self.window,
+            &self.aggregation,
+            &self.mode,
+            &self.palette,
+        ]
+        .iter()
+        .zip(&self.closed)
+        .any(|(state, closed)| state.read(cx).focus_handle(cx) != *closed)
     }
 
     /// The effective range, with its warning in a balloon pointing at the sign that ends it.
@@ -516,62 +753,22 @@ impl Editor {
         let Some((warning, actionable)) = warning else {
             return div().child(text).into_any_element();
         };
-        let shortcut = actionable
-            .then(|| Kbd::binding_for_action(&UseRecommendedRange, Some("Shell"), window))
-            .flatten();
         // The warning colour edges the balloon, which a border of the hint's own would lose on the hint.
         let edge = advice_color(cx);
-        let body = div()
-            .id("analysis-range-balloon")
-            .occlude()
-            .when(actionable, |body| {
-                body.cursor_pointer()
-                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
-            })
-            .ml(px(POINTER - 1.0))
-            .max_w(px(BALLOON))
-            .flex()
-            .items_center()
-            .gap_3()
-            .px_2()
-            .py_0p5()
-            .bg(cx.theme().tokens.popover)
-            .border_1()
-            .border_color(edge)
-            .rounded(cx.theme().radius)
-            .shadow_md()
-            .text_color(cx.theme().popover_foreground)
-            .child(div().min_w_0().child(warning))
-            .when_some(shortcut, |body, shortcut| {
-                body.child(shortcuts::keycap(shortcut, cx))
-            });
-        let pointer = div()
-            .id("analysis-range-balloon-pointer")
-            .occlude()
-            .when(actionable, |pointer| {
-                pointer
-                    .cursor_pointer()
-                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
-            })
-            .absolute()
-            .left_0()
-            .top_0()
-            .bottom_0()
-            .flex()
-            .items_center()
-            .child(balloon_pointer(cx.theme().tokens.popover, edge));
-        // The pointer comes last so it is painted over the border of the body it joins.
-        let balloon = div()
-            .absolute()
-            .top_0()
-            .bottom_0()
-            .left_full()
-            .ml(px(BALLOON_GAP))
-            .w(px(BALLOON + POINTER))
-            .flex()
-            .items_center()
-            .child(body)
-            .child(pointer);
+        let drawn = self.drawn.get();
+        let measured = drawn.sheet.zip(drawn.readout);
+        let side = measured.and_then(|(sheet, readout)| {
+            balloon_side(sheet, readout, window.viewport_size().width)
+        });
+        // Without a balloon of its own the value carries the warning as an ordinary hover hint.
+        let hover = self.balloon_closed || (measured.is_some() && side.is_none());
+        let balloon = side
+            .filter(|_| !self.balloon_closed && !self.list_open(cx))
+            .map(|side| self.balloon(side, warning.clone(), actionable, edge, window, cx));
+        let hint = warning.clone();
+        let measure = measure(self.drawn.clone(), cx.entity_id(), |drawn| {
+            &mut drawn.readout
+        });
         div()
             .id("analysis-range-advice")
             .relative()
@@ -584,20 +781,118 @@ impl Editor {
                     .cursor_pointer()
                     .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
             })
+            .when(hover, |value| {
+                value.tooltip(move |_, cx| {
+                    let action = actionable
+                        .then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
+                    shortcut_tooltip(hint.clone(), action, "Shell", px(BALLOON), cx)
+                })
+            })
             .child(format!("{text} ⚠"))
-            .child(gpui_kit::deferred(balloon).with_priority(gpui_kit::base::POPUP_PRIORITY + 1))
+            .child(measure)
+            .children(balloon)
+            .into_any_element()
+    }
+
+    /// The warning in a balloon on `side` of the hint, with its pointer towards the Range row.
+    fn balloon(
+        &self,
+        side: Side,
+        warning: String,
+        actionable: bool,
+        edge: gpui_kit::Hsla,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        let shortcut = actionable
+            .then(|| Kbd::binding_for_action(&UseRecommendedRange, Some("Shell"), window))
+            .flatten();
+        let (room, left) = match side {
+            Side::Right(room) => (room, true),
+            Side::Left(room, _) => (room, false),
+        };
+        let close = Button::new("analysis-range-balloon-close")
+            .ghost()
+            .xsmall()
+            .icon(IconName::Close)
+            .tab_stop(false)
+            .on_click(cx.listener(|editor, _, _, cx| {
+                cx.stop_propagation();
+                editor.balloon_closed = true;
+                cx.notify();
+            }));
+        let body = div()
+            .id("analysis-range-balloon")
+            .occlude()
+            .when(actionable, |body| {
+                body.cursor_pointer()
+                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
+            })
+            .when(left, |body| body.ml(px(POINTER - 1.0)))
+            .when(!left, |body| body.mr(px(POINTER - 1.0)))
+            .max_w(room)
+            .flex()
+            .items_center()
+            .gap_2()
+            .pl_2()
+            .pr_1()
+            .py_0p5()
+            .bg(cx.theme().tokens.popover)
+            .border_1()
+            .border_color(edge)
+            .rounded(cx.theme().radius)
+            .shadow_md()
+            .text_color(cx.theme().popover_foreground)
+            .child(div().flex_1().min_w_0().child(warning))
+            .when_some(shortcut, |body, shortcut| {
+                body.child(shortcuts::keycap(shortcut, cx))
+            })
+            .child(close);
+        let pointer = div()
+            .id("analysis-range-balloon-pointer")
+            .occlude()
+            .when(actionable, |pointer| {
+                pointer
+                    .cursor_pointer()
+                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
+            })
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .when(left, |pointer| pointer.left_0())
+            .when(!left, |pointer| pointer.right_0())
+            .flex()
+            .items_center()
+            .child(balloon_pointer(cx.theme().tokens.popover, edge, left));
+        // The pointer comes last so it is painted over the border of the body it joins.
+        let balloon = div()
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .w(room + px(POINTER))
+            .flex()
+            .items_center()
+            .map(|balloon| match side {
+                Side::Right(_) => balloon.left_full().ml(px(BALLOON_GAP)),
+                Side::Left(_, beside) => balloon.right(beside).justify_end(),
+            })
+            .child(body)
+            .child(pointer);
+        gpui_kit::deferred(balloon)
+            .with_priority(gpui_kit::base::POPUP_PRIORITY + 1)
             .into_any_element()
     }
 
     /// A list as wide as its widest item, underlined only under the value it shows.
-    fn choice(&self, id: &'static str, choice: Choice, cx: &gpui_kit::App) -> impl IntoElement {
-        let state = match choice {
-            Choice::Fft => &self.fft,
-            Choice::Window => &self.window,
-            Choice::Aggregation => &self.aggregation,
-            Choice::Mode => &self.mode,
-            Choice::Palette => &self.palette,
-        };
+    fn choice(
+        &self,
+        id: &'static str,
+        choice: Choice,
+        window: &Window,
+        cx: &gpui_kit::App,
+    ) -> impl IntoElement {
+        let state = self.combo(choice);
+        let focused = self.holds(Stop::Choice(choice), window, cx);
         let widths = &self.widths[choice as usize];
         let widest = widths.iter().copied().fold(px(0.), Pixels::max);
         // The list keeps its place while the keyboard walks it, and the value shown follows the walk.
@@ -612,8 +907,7 @@ impl Editor {
             .right_0()
             .w(shown)
             .border_b_1()
-            .border_dashed()
-            .border_color(underline_color(cx));
+            .map(|line| mark(line, focused, cx));
         let list = Select::new(state)
             .id(id)
             .appearance(false)
@@ -634,24 +928,33 @@ impl Render for Editor {
             })
         });
         let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
-        let overlap = self.stepper(Number::Overlap, "%", cx);
+        let overlap = self.stepper(Number::Overlap, "%", window, cx);
         let range = if fixed {
-            self.stepper(Number::Range, "dB", cx)
+            self.stepper(Number::Range, "dB", window, cx)
         } else {
             self.range_readout(window, cx)
         };
+        let measure = measure(self.drawn.clone(), cx.entity_id(), |drawn| &mut drawn.sheet);
+        // The keyboard comes to the first value once the popover has taken it for itself.
+        if !self.placed {
+            self.placed = true;
+            let first = self.closed[Choice::Fft as usize].clone();
+            window.defer(cx, move |window, cx| first.focus(window, cx));
+        }
         div()
             .id("analysis-editor")
+            .relative()
+            .child(measure)
             .key_context(CONTEXT)
+            .track_focus(&self.scope)
+            .map(|editor| Self::arrows(editor, cx))
             .on_action(cx.listener(|editor, _: &UseRecommendedRange, window, cx| {
                 editor.toggle_range(window, cx)
             }))
-            // Enter in a number applies it and keeps the hint, and elsewhere closes it on usable numbers.
+            // Enter belongs to a focused list or number, and elsewhere closes the hint on usable numbers.
             .on_action(cx.listener(|editor, _: &Confirm, window, cx| {
                 let usable = editor.edit_number(Number::Overlap, None, window, cx);
-                let in_number = editor.overlap.focus_handle(cx).is_focused(window)
-                    || editor.range.focus_handle(cx).is_focused(window);
-                if usable && !in_number {
+                if usable && editor.focused(window, cx).is_none() {
                     cx.propagate();
                 }
             }))
@@ -672,32 +975,32 @@ impl Render for Editor {
             .child(self.heading(pending, cx))
             .child(row(
                 "FFT size",
-                self.choice("analysis-fft", Choice::Fft, cx),
+                self.choice("analysis-fft", Choice::Fft, window, cx),
                 cx,
             ))
             .child(row(
                 "Window",
-                self.choice("analysis-window", Choice::Window, cx),
+                self.choice("analysis-window", Choice::Window, window, cx),
                 cx,
             ))
             .child(row("Overlap", overlap, cx))
             .child(row(
                 "Aggregation",
-                self.choice("analysis-aggregation", Choice::Aggregation, cx),
+                self.choice("analysis-aggregation", Choice::Aggregation, window, cx),
                 cx,
             ))
             .child(row(
                 "Range mode",
-                self.choice("analysis-mode", Choice::Mode, cx),
+                self.choice("analysis-mode", Choice::Mode, window, cx),
                 cx,
             ))
             .child(row("Range", range, cx))
             .child(row(
                 "Colour scheme",
-                self.choice("analysis-palette", Choice::Palette, cx),
+                self.choice("analysis-palette", Choice::Palette, window, cx),
                 cx,
             ))
-            .child(self.defaults(cx))
+            .child(self.defaults(window, cx))
     }
 }
 
@@ -727,24 +1030,24 @@ fn row(label: &'static str, value: impl IntoElement, cx: &gpui_kit::App) -> impl
         .child(div().flex_1().min_w_0().flex().justify_end().child(value))
 }
 
-/// A value that opens a list or takes a number, marked by a dashed underline.
-fn editable(control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
-    div()
-        .border_b_1()
-        .border_dashed()
-        .border_color(underline_color(cx))
-        .child(control)
-}
-
-/// The pointer on the balloon's left side, its tip towards the warning sign.
-fn balloon_pointer(fill: impl Into<gpui_kit::Hsla>, edge: gpui_kit::Hsla) -> impl IntoElement {
+/// The balloon's pointer, its tip towards the Range row on the left or the right.
+fn balloon_pointer(
+    fill: impl Into<gpui_kit::Hsla>,
+    edge: gpui_kit::Hsla,
+    leftward: bool,
+) -> impl IntoElement {
     let fill = fill.into();
     gpui_kit::canvas(
         |_, _, _| (),
         move |bounds, _, window, _| {
-            let tip = gpui_kit::point(bounds.left(), bounds.center().y);
-            let upper = gpui_kit::point(bounds.right(), bounds.top());
-            let lower = gpui_kit::point(bounds.right(), bounds.bottom());
+            let (tip, base) = if leftward {
+                (bounds.left(), bounds.right())
+            } else {
+                (bounds.right(), bounds.left())
+            };
+            let tip = gpui_kit::point(tip, bounds.center().y);
+            let upper = gpui_kit::point(base, bounds.top());
+            let lower = gpui_kit::point(base, bounds.bottom());
             let mut body = gpui_kit::PathBuilder::fill();
             body.add_polygon(&[upper, tip, lower], true);
             if let Ok(path) = body.build() {
@@ -772,6 +1075,16 @@ fn pointer_ink(group: &'static str, cx: &gpui_kit::App) -> gpui_kit::Stateful<gp
         .text_color(rest)
         .group_hover(group, move |style| style.text_color(lit))
         .group_active(group, move |style| style.text_color(rest.opacity(0.6)))
+}
+
+/// The underline of a value, dashed at rest and solid in the accent while it holds the keyboard.
+fn mark(line: gpui_kit::Div, focused: bool, cx: &gpui_kit::App) -> gpui_kit::Div {
+    if focused {
+        line.border_b_2()
+            .border_color(super::super::app_menu_ui::toolbar_accent(cx))
+    } else {
+        line.border_dashed().border_color(underline_color(cx))
+    }
 }
 
 fn underline_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {
@@ -1292,6 +1605,144 @@ mod hint_tests {
         );
     }
 
+    /// Which value holds the keyboard, or `None` while Reset to defaults or nothing does.
+    fn focused(cx: &mut TestAppContext, w: &Window_) -> Option<Stop> {
+        let editor = editor(cx, w);
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            editor.read(cx).focused(window, cx)
+        })
+        .expect("the window is open")
+    }
+
+    fn on_reset(cx: &mut TestAppContext, w: &Window_) -> bool {
+        let editor = editor(cx, w);
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            editor.read(cx).defaults_focus.is_focused(window)
+        })
+        .expect("the window is open")
+    }
+
+    #[gpui_kit::test]
+    fn the_keyboard_starts_on_the_first_value_and_tab_goes_round_the_hint(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        frame(cx, &w);
+        assert_eq!(
+            focused(cx, &w),
+            Some(Stop::Choice(Choice::Fft)),
+            "Ctrl+, puts the keyboard on FFT size"
+        );
+        for stop in [
+            Stop::Choice(Choice::Window),
+            Stop::Number(Number::Overlap),
+            Stop::Choice(Choice::Aggregation),
+            Stop::Choice(Choice::Mode),
+            Stop::Choice(Choice::Palette),
+        ] {
+            press(cx, &w, "tab");
+            assert_eq!(
+                focused(cx, &w),
+                Some(stop),
+                "Tab reaches every value in order"
+            );
+        }
+        press(cx, &w, "tab");
+        assert!(on_reset(cx, &w), "then Reset to defaults");
+        press(cx, &w, "tab");
+        assert_eq!(
+            focused(cx, &w),
+            Some(Stop::Choice(Choice::Fft)),
+            "and goes round"
+        );
+        press(cx, &w, "shift-tab");
+        assert!(on_reset(cx, &w), "Shift+Tab goes back round");
+        assert!(is_open(cx, &w), "and none of it closes the hint");
+    }
+
+    #[gpui_kit::test]
+    fn the_keyboard_chooses_in_a_list_and_steps_a_number(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        frame(cx, &w);
+        let opening = settings(cx, &w);
+        let editor = editor(cx, &w);
+        let list_open = |cx: &mut TestAppContext| editor.read_with(cx, |e, cx| e.list_open(cx));
+        press(cx, &w, "enter");
+        assert!(list_open(cx), "Enter opens the focused list");
+        press(cx, &w, "escape");
+        assert!(!list_open(cx), "Escape closes the list");
+        assert!(is_open(cx, &w), "and only the list");
+        press(cx, &w, "down");
+        assert!(list_open(cx), "Down opens it too");
+        press(cx, &w, "down");
+        press(cx, &w, "enter");
+        assert!(!list_open(cx), "Enter chooses");
+        assert_eq!(
+            settings(cx, &w).fft_size,
+            opening.fft_size * 2,
+            "the next size"
+        );
+        assert_eq!(
+            focused(cx, &w),
+            Some(Stop::Choice(Choice::Fft)),
+            "and the keyboard stays"
+        );
+        press(cx, &w, "tab");
+        press(cx, &w, "tab");
+        assert_eq!(focused(cx, &w), Some(Stop::Number(Number::Overlap)));
+        press(cx, &w, "up");
+        assert_eq!(
+            settings(cx, &w).overlap,
+            opening.overlap + 1,
+            "Up steps a number"
+        );
+        press(cx, &w, "down");
+        press(cx, &w, "down");
+        assert_eq!(
+            settings(cx, &w).overlap,
+            opening.overlap - 1,
+            "Down steps it back"
+        );
+        assert!(is_open(cx, &w));
+    }
+
+    #[gpui_kit::test]
+    fn enter_on_reset_to_defaults_resets_and_keeps_the_hint(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        frame(cx, &w);
+        type_overlap(cx, &w, "10");
+        press(cx, &w, "enter");
+        assert_eq!(settings(cx, &w).overlap, 10);
+        press(cx, &w, "tab");
+        press(cx, &w, "tab");
+        press(cx, &w, "tab");
+        press(cx, &w, "tab");
+        assert!(on_reset(cx, &w));
+        press(cx, &w, "enter");
+        assert_eq!(settings(cx, &w), Settings::from_config(&Config::default()));
+        assert!(is_open(cx, &w), "Enter on Reset keeps the hint");
+    }
+
+    #[gpui_kit::test]
+    fn an_open_list_is_told_from_a_closed_one(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        let editor = editor(cx, &w);
+        let open =
+            |cx: &mut TestAppContext| editor.read_with(cx, |editor, cx| editor.list_open(cx));
+        assert!(!open(cx), "no list is open with the hint");
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            window.within("analysis-palette").click("input", cx);
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, &w);
+        assert!(open(cx), "the balloon gives way to an open list");
+        press(cx, &w, "escape");
+        assert!(!open(cx), "and comes back once it closes");
+    }
+
     #[gpui_kit::test]
     fn enter_on_a_number_applies_it_and_a_keeping_close_saves_it(cx: &mut TestAppContext) {
         let w = open(cx);
@@ -1418,4 +1869,53 @@ pub(super) fn display_name(name: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("-")
+}
+
+#[cfg(test)]
+mod balloon_tests {
+    use super::*;
+    use gpui_kit::{Bounds, point, size};
+
+    /// A hint 370 wide from `left`, with its Range value ending 12 inside its right edge.
+    fn at(left: f32) -> (Bounds<Pixels>, Bounds<Pixels>) {
+        let sheet = Bounds::new(point(px(left), px(400.)), size(px(WIDTH), px(300.)));
+        let readout = Bounds::new(point(px(left + 300.), px(600.)), size(px(58.), px(20.)));
+        (sheet, readout)
+    }
+
+    #[test]
+    fn the_balloon_stands_right_while_a_readable_line_fits_there() {
+        let (sheet, readout) = at(170.);
+        assert_eq!(
+            balloon_side(sheet, readout, px(1400.)),
+            Some(Side::Right(px(BALLOON))),
+            "a wide window gives the whole balloon"
+        );
+        let room = px(820.) - readout.right() - px(BALLOON_GAP + POINTER + BALLOON_MARGIN);
+        assert_eq!(
+            balloon_side(sheet, readout, px(820.)),
+            Some(Side::Right(room)),
+            "a narrower one wraps it into the room up to the edge"
+        );
+    }
+
+    #[test]
+    fn the_balloon_moves_left_of_the_hint_without_room_on_the_right() {
+        let (sheet, readout) = at(600.);
+        let Some(Side::Left(room, beside)) = balloon_side(sheet, readout, px(1000.)) else {
+            panic!("the balloon should stand on the left");
+        };
+        assert_eq!(room, px(BALLOON), "the left has room for all of it");
+        assert_eq!(
+            readout.right() - beside,
+            sheet.left() - px(BALLOON_GAP),
+            "its right edge stands just clear of the hint"
+        );
+    }
+
+    #[test]
+    fn without_room_on_either_side_there_is_no_balloon() {
+        let (sheet, readout) = at(170.);
+        assert_eq!(balloon_side(sheet, readout, px(700.)), None);
+    }
 }

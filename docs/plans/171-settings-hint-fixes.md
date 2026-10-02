@@ -47,7 +47,7 @@ Claude in session. Reviewer: Codex `gpt-6.1-sol` high.
   only that rectangle, and a capture-phase observer closes the hint or the menu on a press
   outside it, so the press that starts a resize also closes the overlay; the hint keeps its
   values.
-- **#169 keyboard (owner: arrows change a list's value).**
+- **#169 keyboard** (see the corrections below: the stock list keys are kept).
   - Ctrl+, and File → Settings put the keyboard on FFT size.
   - Tab and Shift+Tab cycle through the hint's own stops in order: FFT size, Window, Overlap,
     Aggregation, Range mode, Range (while it is a number), Colour scheme, Reset to defaults.
@@ -60,6 +60,22 @@ Claude in session. Reviewer: Codex `gpt-6.1-sol` high.
   - The focused value is marked: its underline turns solid in the accent colour, and Reset to
     defaults gets an accent ring.
 
+## Corrections during implementation
+
+- **The stock `Select` does take the keyboard.** gpui-base 0.6.6's `Select` root binds
+  Up, Down, Enter and Escape in its `Select` context and is a tab stop; the owner's choice
+  of arrows that change a closed list's value rested on my wrong reading that it had no
+  key handling. With the keyboard on a list, the stock behaviour opens it on Enter, Up or
+  Down, its arrows walk it and Enter chooses, which is what #169 asked for, so the hint
+  keeps the stock behaviour and adds nothing for lists. Reported to the owner.
+- Nothing had the keyboard after Ctrl+, apart from the popover itself, which is why Tab
+  seemed to do nothing and Enter closed the hint.
+- **Tab traversal** comes from the window's tab order, bounded to the hint: `Shell` binds
+  Tab to its own `FocusNext`, which it swallowed while the hint was open, so the editor
+  takes `FocusNext` and `FocusPrevious` first and skips stops outside its focus scope.
+- **No balloon without room on either side**: in a window too narrow for both, a balloon
+  wrapped into a sliver ran off the panel; the value's hover hint carries the words instead.
+
 ## Rejected alternatives
 
 - Opening a list from the keyboard by a synthetic click on the closed field: it depends on
@@ -70,14 +86,20 @@ Claude in session. Reviewer: Codex `gpt-6.1-sol` high.
 
 ## Implementation steps
 
-- [ ] #170: `Frame` free rectangle, both backdrops cover it, presses outside close the overlay.
-- [ ] #171 and #168: measured placement, wrapping, left side, × and hidden while a list is open.
-- [ ] #169: initial focus, traversal, arrows on lists and numbers, Enter on Reset, focus marks.
-- [ ] Headless tests for each of the above.
-- [ ] Screenshots in the running application: a narrow window in both orientations, an open
-      list with the balloon, the ×, every focus mark, and a resize from each edge with the hint
-      and the menu open.
-- [ ] Update `AGENTS.md`, `README.md`, `CHANGELOG.md` and `docs/ui/124-inventory.md`.
+- [x] #170: `Frame` free rectangle, both backdrops cover it, presses outside close the overlay.
+- [x] #171 and #168: measured placement, wrapping, left side, × and hidden while a list is open.
+- [x] #169: initial focus, traversal, arrows on lists and numbers, Enter on Reset, focus marks.
+- [x] Headless tests for each of the above.
+- [x] Screenshots in the running application: the balloon at four window widths (right,
+      wrapped, hidden), an open list without the balloon, the × and the hover hint after it,
+      every Tab stop with its mark, a list chosen with Enter and Down, a number stepped with
+      Up, and Enter on Reset to defaults.
+- ⚠️ A resize from each edge with the hint and the menu open: the nested X server the
+  bench runs in has no window manager, so a resize cannot start there. Headless tests
+  cover the free area and a press on an edge; the owner checks it natively.
+- ➕ The left placement is covered by a unit test; no window on the bench puts the hint
+  far enough right to need it.
+- [x] Update `AGENTS.md`, `README.md`, `CHANGELOG.md` and `docs/ui/124-inventory.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

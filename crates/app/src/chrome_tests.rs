@@ -43,6 +43,24 @@ fn resize_grips_are_reachable_inside_the_visible_frame() {
 }
 
 #[test]
+fn the_free_area_meets_every_resize_region_without_overlapping_it() {
+    let frame = normal();
+    assert_eq!(
+        frame.free,
+        Bounds::new(point(px(18.0), px(18.0)), size(px(988.0), px(688.0)))
+    );
+    for (_, region) in &frame.regions {
+        assert!(!region.intersects(&frame.free), "{region:?} lies in the free area");
+    }
+    let expanded = Frame::new(size(px(1600.0), px(1000.0)), Some(Tiling::default()), true);
+    assert_eq!(
+        expanded.free,
+        Bounds::new(point(px(0.0), px(0.0)), size(px(1600.0), px(1000.0))),
+        "a window without resize regions is free everywhere"
+    );
+}
+
+#[test]
 fn expanded_windows_have_no_resize_regions_or_corners() {
     // Decorations can lag a state change: an untiled report must not leave
     // resize handlers over the right-hand part of a maximized title bar.

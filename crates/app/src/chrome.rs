@@ -111,10 +111,17 @@ pub struct Frame {
     padding: Edges<Pixels>,
     pub corners: Corners<Pixels>,
     regions: Vec<(ResizeEdge, Bounds<Pixels>)>,
+    /// What the resize regions leave of the window, where an overlay may take the pointer.
+    pub free: Bounds<Pixels>,
     shadow: bool,
 }
 
 impl Frame {
+    /// Where the title bar ends, below the frame's top inset.
+    pub fn title_bottom(&self) -> Pixels {
+        self.padding.top + gpui_kit::component::TITLE_BAR_HEIGHT
+    }
+
     pub fn for_window(window: &mut Window) -> Self {
         let decorated = cfg!(target_os = "linux")
             && matches!(window.window_decorations(), Decorations::Client { .. });
@@ -136,6 +143,7 @@ impl Frame {
                 padding: Edges::default(),
                 corners: Corners::default(),
                 regions: Vec::new(),
+                free: Bounds::new(point(px(0.0), px(0.0)), viewport),
                 shadow: false,
             };
         };
@@ -147,6 +155,13 @@ impl Frame {
             bottom: inset(tiling.bottom),
             left: inset(tiling.left),
         };
+        let grips = padding.map(|&inset| {
+            if inset > px(0.0) {
+                inset + RESIZE_GRIP
+            } else {
+                inset
+            }
+        });
         Self {
             padding,
             corners: Corners {
@@ -157,15 +172,13 @@ impl Frame {
             },
             // Some compositors exclude shadows from pointer input. Extend
             // each grip into the visible edge instead of relying on the shadow.
-            regions: resize_regions(
-                viewport,
-                padding.map(|&inset| {
-                    if inset > px(0.0) {
-                        inset + RESIZE_GRIP
-                    } else {
-                        inset
-                    }
-                }),
+            regions: resize_regions(viewport, grips),
+            free: Bounds::new(
+                point(grips.left, grips.top),
+                size(
+                    viewport.width - grips.left - grips.right,
+                    viewport.height - grips.top - grips.bottom,
+                ),
             ),
             shadow: !tiling.is_tiled(),
         }

@@ -114,6 +114,8 @@ commits leave behind.
 | I32 | `settings_editor.rs` (`range_readout`) | The recommendation button left the hint; its Range row marks a warned range and explains it in a balloon with a pointer | R7 | Removed |
 | I33 | `settings_editor.rs:401`, `settings_editor.rs:405` | `UseRecommendedRange`, and `Confirm` taken before the popover so Enter keeps an unusable number open | R7 | Retained |
 | I34 | `settings_editor.rs:319` | Defaults | R7 | Retained |
+| I39 | `settings_editor.rs` (`traverse`, `arrow`, `defaults`) | Tab and Shift+Tab bounded to the hint's focus scope, Up and Down stepping a focused number, and Enter on Reset to defaults' own focus place (#169) | R7 | Retained |
+| I40 | `hints.rs` (`press_outside`), `app_menu_ui.rs` (`application_menu_backdrop`) | Backdrops cover only the frame's free area and observe presses beyond it, which closes the overlay and still reaches the resize edges (#170) | R4, R9 | Retained |
 | I39 | `settings_editor.rs:547`, `settings_editor.rs:568`, `settings_editor.rs:579` | The standard select's confirm, the input's Enter and blur, and the number steppers preview a value | R7 | Retained |
 
 ### Infrastructure observers and adapters
