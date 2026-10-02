@@ -63,8 +63,8 @@ and the exit waits for the final write with a bound of its own.
   a close that do not wait on a stalled write.
 - [x] The shell and `main` use `Saver`; `Drop for Shell` goes.
 - [x] Update `AGENTS.md`, `CHANGELOG.md` and the `session.rs` documentation.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation, except the normal-close check by the owner.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
