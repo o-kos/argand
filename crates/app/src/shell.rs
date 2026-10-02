@@ -396,9 +396,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // The toolkit says when the window has moved or resized, so nothing
-        // here has to ask on every frame. It still says it once per step of a
-        // drag, which is what [`crate::session::Writer`] is for.
+        // A drag reports every step, which the session writer throttles
         crate::profiling::watch_ui(cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);

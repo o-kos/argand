@@ -13,9 +13,11 @@
 //! Several instances can run at once, so a write is a read-modify-write under
 //! an advisory lock beside the file: [`Writer`] reads what is on disk, keeps
 //! whatever another instance changed there and lays only its own changes over
-//! it, see [`merge`]. The lock is only ever tried, never waited for, and a
-//! filesystem without locks still gets the merge. All of it runs on a thread
-//! of its own, see [`Saver`], so a stalled filesystem never stalls the window.
+//! it, see [`merge`]. The lock is tried without blocking, and a held one is
+//! tried again at the next interval or, at exit, a few times over a bounded
+//! wait. A filesystem without locks still gets the merge. All of it runs on a
+//! thread of its own, see [`Saver`], so a stalled filesystem stalls the save
+//! and not the window, and the exit waits for it at most [`Saver::EXIT_WAIT`].
 //! [`VERSION`] guards a *downgrade* both at start-up and at every write: a file
 //! from a newer layout is left alone.
 

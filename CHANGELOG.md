@@ -40,7 +40,7 @@ promise applies to.
 
 ### Fixed
 
-- Remembering the window and the recent files no longer pauses the window on a slow or stalled disk, and a change made just before the application is killed is no longer lost when nothing else changed after it.
+- Remembering the window and the recent files no longer pauses the window on a slow or stalled disk, and a change held back for half a second is now saved when that time is up rather than waiting for the next change or the window closing.
 - Two Argand windows running at once no longer lose each other's remembered state: both keep the files they opened in the recent list, with the options that open them, and a setting changed in one is not reverted by the other.
 - The crosshair, cursor readout and Alt guides appear as soon as a file opens or a hint or menu closes under a resting pointer, without moving the mouse first.
 

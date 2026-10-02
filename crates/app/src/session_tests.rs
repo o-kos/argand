@@ -1270,22 +1270,72 @@ fn a_stalled_write_holds_up_neither_an_offer_nor_the_exit_for_long() {
     // `name` is a NUL-terminated path that outlives the call.
     assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0, "mkfifo");
     let saver = Saver::spawn(Writer::new(path.clone(), Session::default())).expect("a thread");
+    let at = |x: f32| Session {
+        geometry: Some(Geometry::new(x, 0.0, 800.0, 600.0)),
+        ..Session::default()
+    };
 
+    // The first offer sends the thread into the open that cannot finish.
+    saver.offer(at(0.0));
+    std::thread::sleep(Duration::from_millis(100));
     let offered = Instant::now();
-    for x in 0..100 {
-        saver.offer(Session {
-            geometry: Some(Geometry::new(x as f32, 0.0, 800.0, 600.0)),
-            ..Session::default()
-        });
+    for x in 1..100 {
+        saver.offer(at(x as f32));
     }
     assert!(offered.elapsed() < Duration::from_millis(500));
 
     let closing = Instant::now();
-    assert!(!saver.close(Duration::from_millis(200)));
+    assert!(
+        !saver.close(Duration::from_millis(200)),
+        "the write was not stalled"
+    );
     assert!(closing.elapsed() < Saver::EXIT_WAIT);
 
-    // A reader releases the stalled open so the thread can finish.
-    let _reader = std::fs::File::open(&lock).expect("open the FIFO for reading");
-    eventually("the released write", || Session::load(&path).session.geometry.is_some());
-    std::mem::forget(saver);
+    // A reader held to the end releases every open of the FIFO.
+    let reader = std::fs::File::open(&lock).expect("open the FIFO for reading");
+    assert!(saver.close(Duration::from_secs(10)), "the final flush never finished");
+    assert_eq!(Session::load(&path).session, at(99.0));
+    drop(saver);
+    drop(reader);
+}
+
+#[test]
+fn a_held_lock_is_tried_again_by_the_tick_once_its_interval_ends() {
+    let dir = TempDir::new("tick-busy");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let moved = Session {
+        show_grid: false,
+        ..Session::default()
+    };
+    let start = Instant::now();
+
+    let held = hold_lock(&path);
+    writer.offer(moved.clone(), start);
+    assert_eq!(writer.due_at(), Some(start + Writer::INTERVAL));
+    drop(held);
+    writer.tick(start + Duration::from_millis(1));
+    assert!(!path.exists(), "the busy write was retried before its interval");
+
+    writer.tick(start + Writer::INTERVAL);
+    assert_eq!(Session::load(&path).session, moved);
+}
+
+#[test]
+fn a_writer_closed_by_a_newer_version_has_nothing_due() {
+    let dir = TempDir::new("tick-foreign");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let text = "version = 9999\n";
+    std::fs::write(&path, text).expect("write fixture");
+
+    writer.offer(
+        Session {
+            show_grid: false,
+            ..Session::default()
+        },
+        Instant::now(),
+    );
+    assert_eq!(writer.due_at(), None);
+    assert_eq!(std::fs::read_to_string(&path).expect("still there"), text);
 }

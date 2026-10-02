@@ -52,6 +52,11 @@ and the exit waits for the final write with a bound of its own.
 - Joining the thread at exit: unbounded on a stalled filesystem, which is
   the case this Issue exists for.
 
+- Logging the warning after an exit wait that timed out on a non-blocking
+  channel: the whole application logs synchronously to stderr, including on
+  the UI thread, so a blocked stderr already stalls the window. The bound is
+  on waiting for the writer, and the docs say so.
+
 ## Implementation steps
 
 - [x] `Writer::due_at` and `Writer::tick`, with tests.
