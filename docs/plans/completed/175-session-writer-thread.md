@@ -63,7 +63,7 @@ and the exit waits for the final write with a bound of its own.
   a close that do not wait on a stalled write.
 - [x] The shell and `main` use `Saver`; `Drop for Shell` goes.
 - [x] Update `AGENTS.md`, `CHANGELOG.md` and the `session.rs` documentation.
-- [x] Complete validation, except the normal-close check by the owner.
+- [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
@@ -74,8 +74,9 @@ and the exit waits for the final write with a bound of its own.
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] The release binary killed with SIGTERM four seconds after opening a file
   keeps the file in its recent list; `main` lost it in the same run.
-- [ ] The release binary remembers a moved window and an opened file after a
-  normal close (owner).
+- [x] The release binary remembers the window size and an opened file after a
+  normal close (owner, GNOME on Wayland, where the position is not restored,
+  see #37).
 
 ## Post-completion
 
