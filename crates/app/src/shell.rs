@@ -521,6 +521,16 @@ impl Shell {
         .size_full()
     }
 
+    /// A press on a resize edge closes whatever overlay is open, keeping the hint's values.
+    fn edge_pressed(shell: WeakEntity<Self>) -> impl Fn(&mut Window, &mut gpui_kit::App) {
+        move |window, cx| {
+            let _ = shell.update(cx, |shell, cx| {
+                shell.close_analysis_hint(cx);
+                shell.dismiss_application_menu(window, cx);
+            });
+        }
+    }
+
     fn set_pointer_in_window(&mut self, inside: bool, cx: &mut Context<Self>) {
         if self.pointer_in_window == inside {
             return;
@@ -1132,7 +1142,11 @@ impl Shell {
                 .child(self.title_contents(window, cx))
                 .into_any_element()
         };
-        div().flex_shrink_0().child(bar)
+        // A press on the title bar closes the settings hint and still reaches the control there.
+        div()
+            .flex_shrink_0()
+            .capture_any_mouse_down(cx.listener(|shell, _, _, cx| shell.close_analysis_hint(cx)))
+            .child(bar)
     }
 
     fn title_contents(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1434,6 +1448,13 @@ impl Render for Shell {
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;
+        let free = frame.free;
+        // The hint leaves the title bar live as well as the frame's edges.
+        let title = (frame.title_bottom() - free.origin.y).max(px(0.));
+        let hint_area = gpui_kit::Bounds::new(
+            free.origin + gpui_kit::point(px(0.), title),
+            gpui_kit::size(free.size.width, (free.size.height - title).max(px(0.))),
+        );
         let content =
             div()
                 .size_full()
@@ -1480,17 +1501,13 @@ impl Render for Shell {
         let menu_backdrop = self
             .application_menu
             .is_some()
-            .then(|| self.application_menu_backdrop());
+            .then(|| self.application_menu_backdrop(free));
         div()
             .relative()
             .size_full()
-            .child(frame.render(content, cx))
+            .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
-            .children(hints::backdrop(
-                &self.analysis_hint,
-                gpui_kit::component::TITLE_BAR_HEIGHT,
-                cx,
-            ))
+            .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))
     }

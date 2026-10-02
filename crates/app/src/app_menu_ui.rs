@@ -357,17 +357,18 @@ impl Shell {
     ///
     /// Drawn below the menu, which the toolkit paints at the window's topmost
     /// priority.
-    pub(super) fn application_menu_backdrop(&self) -> AnyElement {
-        deferred(
-            div()
-                .id("application-menu-backdrop")
-                .absolute()
-                .inset_0()
-                .occlude()
-                .cursor(CursorStyle::Arrow),
-        )
-        .with_priority(1)
-        .into_any_element()
+    /// Covers `area` while the menu is open, leaving the frame's resize edges beyond it live.
+    pub(super) fn application_menu_backdrop(&self, area: gpui_kit::Bounds<Pixels>) -> AnyElement {
+        let cover = div()
+            .id("application-menu-backdrop")
+            .absolute()
+            .left(area.origin.x)
+            .top(area.origin.y)
+            .w(area.size.width)
+            .h(area.size.height)
+            .occlude()
+            .cursor(CursorStyle::Arrow);
+        deferred(cover).with_priority(1).into_any_element()
     }
 
     /// The popover that carries the menu, which only the shell opens or closes.

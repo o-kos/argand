@@ -445,3 +445,16 @@ fn minimap_failure_replaces_pending_extrema_hint() {
     assert!(hint.contains("Waveform unavailable: test read failure"), "{hint}");
     assert!(!hint.contains("available after"), "{hint}");
 }
+
+impl Document {
+    /// Shows a picture whose spectral peak leaves the upper half of the full scale unused.
+    pub(crate) fn show_a_warned_range(&mut self) {
+        self.apply(Update::Opened(meta(), FileInfo::default()));
+        let mut warned = analysis(64);
+        warned.db.values.fill(-60.0);
+        self.apply(Update::Ready {
+            analysis: warned,
+            elapsed: Duration::ZERO,
+        });
+    }
+}

@@ -184,12 +184,12 @@ pub(super) fn pinned(
         .into_any_element()
 }
 
-/// While the hint is open, covers the window below `clear` and closes the hint on a press, keeping its values.
+/// While the hint is open, covers `area` and closes the hint on a press there, keeping its values.
 ///
-/// The strip above `clear` stays live, so a title bar's controls act on the press that closes the hint.
+/// Outside `area` the title bar and the frame's resize edges stay live, and close the hint themselves.
 pub(super) fn backdrop(
     hint: &Entity<PinnedHint>,
-    clear: gpui_kit::Pixels,
+    area: gpui_kit::Bounds<gpui_kit::Pixels>,
     cx: &App,
 ) -> Option<AnyElement> {
     hint.read(cx).is_open().then(|| {
@@ -197,33 +197,16 @@ pub(super) fn backdrop(
         let cover = div()
             .id("pinned-hint-backdrop")
             .absolute()
-            .inset_0()
-            .top(clear)
+            .left(area.origin.x)
+            .top(area.origin.y)
+            .w(area.size.width)
+            .h(area.size.height)
             .occlude()
             .cursor(CursorStyle::Arrow)
             .on_any_mouse_down(move |_, _, cx| {
                 let _ = pressed.update(cx, |hint, cx| hint.close(false, cx));
             });
-        let pressed = hint.downgrade();
-        let strip = gpui_kit::canvas(
-            |_, _, _| (),
-            move |bounds, _, window, _| {
-                window.on_mouse_event(move |event: &gpui_kit::MouseDownEvent, phase, _, cx| {
-                    if phase == gpui_kit::DispatchPhase::Capture && bounds.contains(&event.position)
-                    {
-                        let _ = pressed.update(cx, |hint, cx| hint.close(false, cx));
-                    }
-                });
-            },
-        )
-        .absolute()
-        .top_0()
-        .left_0()
-        .right_0()
-        .h(clear);
-        deferred(div().absolute().inset_0().child(cover).child(strip))
-            .with_priority(1)
-            .into_any_element()
+        deferred(cover).with_priority(1).into_any_element()
     })
 }
 
@@ -237,6 +220,9 @@ mod tests {
     };
 
     gpui_kit::actions!(hint_tests, [Nudge]);
+
+    /// The band at the window's edges a frame keeps for resizing, which the backdrop leaves uncovered.
+    const EDGE: f32 = 10.;
 
     /// A plot filling the window, with a pinned hint's trigger at its bottom left.
     struct Harness {
@@ -286,7 +272,14 @@ mod tests {
                         .top(px(260.))
                         .child(pinned("hint", &self.hint, trigger, cx)),
                 )
-                .children(backdrop(&self.hint, px(0.), cx))
+                .children(backdrop(
+                    &self.hint,
+                    Bounds::new(
+                        point(px(EDGE), px(EDGE)),
+                        size(px(400. - 2. * EDGE), px(300. - 2. * EDGE)),
+                    ),
+                    cx,
+                ))
         }
     }
 
@@ -409,6 +402,21 @@ mod tests {
             [Pinned::Opened, Pinned::Closed { revert: false }]
         );
         assert_eq!(nudge(cx, &harness), 1, "the keyboard is back");
+    }
+
+    #[gpui_kit::test]
+    fn the_backdrop_leaves_the_edges_beyond_its_area_to_what_lies_there(cx: &mut TestAppContext) {
+        let (harness, cx) = open_and_leave(cx);
+        let edge = point(px(EDGE / 2.), px(150.));
+        cx.simulate_mouse_down(edge, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(edge, MouseButton::Left, Modifiers::default());
+        frame(cx);
+        assert_eq!(
+            read(cx, &harness, |h, _| h.presses),
+            1,
+            "the press reaches the edge"
+        );
+        assert!(is_open(cx, &harness), "whose owner decides what it closes");
     }
 
     #[gpui_kit::test]

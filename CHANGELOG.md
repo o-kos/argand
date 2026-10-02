@@ -13,10 +13,14 @@ promise applies to.
 
 ### Added
 
+- The analysis settings hint works from the keyboard alone: it opens on FFT size, Tab and Shift+Tab go round its values and Reset to defaults, Enter or the arrows open a list, the arrows step a number, and the focused value is marked.
+- The range warning balloon has an × that hides it until the hint closes; the warned value then shows the same words on hover.
 - View → Theme chooses System, Light or Dark for the interface, with or without a file open, and remembers the choice. The View menu is now available before a file is opened.
 
 ### Changed
 
+- The range warning balloon wraps into the room left in a narrow window and moves to the left of the settings hint when the right has none, and it no longer covers an open list.
+- The window can be resized by its edges while the settings hint or the application menu is open; the press closes the overlay.
 - Hints, menus, lists, the settings hint and the status bar now stand apart from each other and from the window in the dark theme, the row under the pointer in a menu or list is clearly marked, and the window's outline is visible beside other dark windows.
 - The title bar is muted while the window is inactive, and on Linux the minimize and maximize icons brighten under the pointer and dim while pressed.
 - The settings hint's − and + and Reset to defaults change their ink under the pointer and while pressed, and Reset to defaults has a visible frame.

@@ -111,10 +111,17 @@ pub struct Frame {
     padding: Edges<Pixels>,
     pub corners: Corners<Pixels>,
     regions: Vec<(ResizeEdge, Bounds<Pixels>)>,
+    /// What the resize regions leave of the window, where an overlay may take the pointer.
+    pub free: Bounds<Pixels>,
     shadow: bool,
 }
 
 impl Frame {
+    /// Where the title bar ends, below the frame's top inset.
+    pub fn title_bottom(&self) -> Pixels {
+        self.padding.top + gpui_kit::component::TITLE_BAR_HEIGHT
+    }
+
     pub fn for_window(window: &mut Window) -> Self {
         let decorated = cfg!(target_os = "linux")
             && matches!(window.window_decorations(), Decorations::Client { .. });
@@ -136,6 +143,7 @@ impl Frame {
                 padding: Edges::default(),
                 corners: Corners::default(),
                 regions: Vec::new(),
+                free: Bounds::new(point(px(0.0), px(0.0)), viewport),
                 shadow: false,
             };
         };
@@ -147,6 +155,13 @@ impl Frame {
             bottom: inset(tiling.bottom),
             left: inset(tiling.left),
         };
+        let grips = padding.map(|&inset| {
+            if inset > px(0.0) {
+                inset + RESIZE_GRIP
+            } else {
+                inset
+            }
+        });
         Self {
             padding,
             corners: Corners {
@@ -157,21 +172,26 @@ impl Frame {
             },
             // Some compositors exclude shadows from pointer input. Extend
             // each grip into the visible edge instead of relying on the shadow.
-            regions: resize_regions(
-                viewport,
-                padding.map(|&inset| {
-                    if inset > px(0.0) {
-                        inset + RESIZE_GRIP
-                    } else {
-                        inset
-                    }
-                }),
+            regions: resize_regions(viewport, grips),
+            free: Bounds::new(
+                point(grips.left, grips.top),
+                size(
+                    viewport.width - grips.left - grips.right,
+                    viewport.height - grips.top - grips.bottom,
+                ),
             ),
             shadow: !tiling.is_tiled(),
         }
     }
 
-    pub fn render(self, content: impl IntoElement, cx: &App) -> impl IntoElement {
+    /// The frame around `content`, whose resize edges call `on_edge` before they resize.
+    pub fn render(
+        self,
+        content: impl IntoElement,
+        on_edge: impl Fn(&mut Window, &mut App) + 'static,
+        cx: &App,
+    ) -> impl IntoElement {
+        let on_edge = std::rc::Rc::new(on_edge);
         let border = |inset: Pixels| if inset > px(0.0) { px(1.0) } else { px(0.0) };
         div()
             .id("window-frame")
@@ -206,7 +226,8 @@ impl Frame {
                     })
                     .child(content),
             )
-            .children(self.regions.into_iter().map(|(edge, bounds)| {
+            .children(self.regions.into_iter().map(move |(edge, bounds)| {
+                let on_edge = on_edge.clone();
                 div()
                     .absolute()
                     .left(bounds.origin.x)
@@ -217,6 +238,7 @@ impl Frame {
                     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                         cx.stop_propagation();
                         window.prevent_default();
+                        on_edge(window, cx);
                         window.start_window_resize(edge);
                     })
             }))
