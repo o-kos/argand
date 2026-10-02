@@ -1111,3 +1111,83 @@ fn a_corrupt_file_found_at_write_time_is_replaced_by_this_instances_session() {
     writer.offer(moved.clone(), Instant::now());
     assert_eq!(Session::load(&path).session, moved);
 }
+
+#[test]
+fn a_range_change_the_file_never_keeps_does_not_take_back_anothers_settings() {
+    let saved = crate::settings::Settings::from_config(&crate::config::Config::default());
+    let base = Session {
+        analysis_settings: Some(saved),
+        ..Session::default()
+    };
+    let mine = Session {
+        analysis_settings: Some(crate::settings::Settings {
+            dynamic_range: argand_dsp::DynamicRange::Fixed(60.0),
+            ..saved
+        }),
+        ..base.clone()
+    };
+    let theirs = Session {
+        analysis_settings: Some(crate::settings::Settings {
+            fft_size: saved.fft_size * 4,
+            ..saved
+        }),
+        ..base.clone()
+    };
+
+    let merged = merge(&base, &mine, &theirs);
+    assert_eq!(
+        merged.analysis_settings.map(|settings| settings.fft_size),
+        Some(saved.fft_size * 4)
+    );
+}
+
+#[test]
+fn orientation_and_analysis_settings_merge_as_their_own_units() {
+    let saved = crate::settings::Settings::from_config(&crate::config::Config::default());
+    let base = Session::default();
+    let mine = Session {
+        orientation: crate::orientation::Mode::Vertical,
+        ..Session::default()
+    };
+    let theirs = Session {
+        analysis_settings: Some(saved),
+        ..Session::default()
+    };
+
+    let merged = merge(&base, &mine, &theirs);
+    assert_eq!(merged.orientation, crate::orientation::Mode::Vertical);
+    assert_eq!(merged.analysis_settings, Some(saved));
+}
+
+#[test]
+fn a_lock_that_cannot_be_taken_still_lets_the_session_be_saved() {
+    let dir = TempDir::new("no-lock");
+    let path = dir.join(FILE_NAME);
+    // A directory where the lock file belongs cannot be opened as one.
+    std::fs::create_dir_all(path.with_extension("toml.lock")).expect("block the lock");
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let moved = Session {
+        show_grid: false,
+        ..Session::default()
+    };
+
+    writer.offer(moved.clone(), Instant::now());
+    assert_eq!(Session::load(&path).session, moved);
+}
+
+#[test]
+fn the_lock_is_released_once_a_write_is_done() {
+    let dir = TempDir::new("released");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    writer.offer(
+        Session {
+            show_grid: false,
+            ..Session::default()
+        },
+        Instant::now(),
+    );
+
+    let lock = std::fs::File::open(path.with_extension("toml.lock")).expect("lock file");
+    assert!(lock.try_lock().is_ok(), "the writer kept the lock after writing");
+}

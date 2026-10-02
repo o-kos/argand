@@ -13,8 +13,9 @@ entries and the only record of the hints that open a headerless capture.
 
 Each write becomes a read-modify-write under an advisory cross-process lock:
 the writer re-reads the file and merges its own changes into it. A single
-instance behaves as before: writes stay atomic and advisory, and nothing about
-the lock can stop the application starting or block the UI thread.
+instance behaves as before: writes stay atomic and advisory, the lock cannot
+stop the application starting, and the UI thread never waits for another
+instance's lock beyond the bounded retry at exit.
 
 ## Context
 
@@ -38,7 +39,9 @@ the lock can stop the application starting or block the UI thread.
   from the base, otherwise from the file.
 - Merge units: `geometry` and `window_state` together (a rectangle belongs to
   its state), then `orientation`, `show_grid`, `show_scale_ui`, `time_ruler`,
-  `theme` and `analysis_settings` each on its own.
+  `theme` and `analysis_settings` each on its own. Analysis settings are
+  compared as the file stores them (`Settings::persisted`), because the
+  dynamic range is never written and a change to it alone is no change.
 - Recent list: the entries this process put at the head since the base are the
   shortest prefix of mine whose removal from the base, truncated, gives the
   rest of mine. That prefix goes at the head of the file's list, which loses
@@ -61,6 +64,13 @@ the lock can stop the application starting or block the UI thread.
 
 ## Rejected alternatives
 
+- Moving the read-modify-write to a worker thread so a hung filesystem cannot
+  stall the window: the write was already synchronous on the UI thread before
+  this change, which adds only an open and a read of small local files beside
+  it. That is a separate concern, raised as #175.
+- A two-process test that pauses one writer between read and rename: it needs
+  a test-only hook inside the critical section. The tests instead show a held
+  lock deferring a write and the lock released after one.
 - Re-read and merge without a lock: leaves a window between read and rename in
   which two writers still lose one update.
 - A separate append-only recent file: splits the format and its version gate,
@@ -71,9 +81,9 @@ the lock can stop the application starting or block the UI thread.
 
 ## Implementation steps
 
-- [x] Merge function over `(base, mine, theirs)` with unit tests for every
-  unit, the recent prefix rule, the fallback union and truncation.
-- [x] Locked read-modify-write in `Writer::write`, with lock-busy, unsupported
+- [x] Merge function over `(base, mine, theirs)` with unit tests for the
+  units, the recent prefix rule, the fallback union and truncation.
+- [x] Locked read-modify-write in `Writer::write`, with lock-busy, unavailable
   lock and newer-version outcomes, and tests with two writers on one file.
 - [x] Bounded retry on the final flush.
 - [x] Replace the limitation in the `session.rs` module documentation; update

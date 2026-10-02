@@ -565,16 +565,19 @@ pub fn merge(base: &Session, mine: &Session, theirs: &Session) -> Session {
         ),
         time_ruler: pick(&base.time_ruler, &mine.time_ruler, &theirs.time_ruler),
         theme: pick(&base.theme, &mine.theme, &theirs.theme),
-        analysis_settings: pick(
-            &base.analysis_settings,
-            &mine.analysis_settings,
-            &theirs.analysis_settings,
-        ),
+        analysis_settings: pick(&persisted(base), &persisted(mine), &persisted(theirs)),
         version: VERSION,
         geometry: window.0,
         window_state: window.1,
         recent,
     }
+}
+
+/// The analysis settings as the file holds them, so a change it never stores is no change.
+fn persisted(session: &Session) -> Option<crate::settings::Settings> {
+    session
+        .analysis_settings
+        .map(crate::settings::Settings::persisted)
 }
 
 fn pick<T: Clone + PartialEq>(base: &T, mine: &T, theirs: &T) -> T {
@@ -752,10 +755,7 @@ impl Writer {
                 self.pending = None;
                 self.closed = true;
             }
-            // A write that did not happen is not a write. Keeping it pending is
-            // what gives a transient failure -- a full disk, a permission that
-            // comes back, a lock another instance releases -- another chance at
-            // the next interval or at the flush.
+            // Kept pending for another chance at the next interval or at the flush
             Outcome::Failed | Outcome::Busy => {}
         }
         outcome
