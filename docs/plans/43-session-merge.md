@@ -71,22 +71,22 @@ the lock can stop the application starting or block the UI thread.
 
 ## Implementation steps
 
-- [ ] Merge function over `(base, mine, theirs)` with unit tests for every
+- [x] Merge function over `(base, mine, theirs)` with unit tests for every
   unit, the recent prefix rule, the fallback union and truncation.
-- [ ] Locked read-modify-write in `Writer::write`, with lock-busy, unsupported
+- [x] Locked read-modify-write in `Writer::write`, with lock-busy, unsupported
   lock and newer-version outcomes, and tests with two writers on one file.
-- [ ] Bounded retry on the final flush.
-- [ ] Replace the limitation in the `session.rs` module documentation; update
+- [x] Bounded retry on the final flush.
+- [x] Replace the limitation in the `session.rs` module documentation; update
   `AGENTS.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Two release instances open different files and both exit: the recent
   list holds both, with their hints.
 
