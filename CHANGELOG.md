@@ -40,6 +40,7 @@ promise applies to.
 
 ### Fixed
 
+- Two Argand windows running at once no longer lose each other's remembered state: both keep the files they opened in the recent list, with the options that open them, and a setting changed in one is not reverted by the other.
 - The crosshair, cursor readout and Alt guides appear as soon as a file opens or a hint or menu closes under a resting pointer, without moving the mouse first.
 
 - Tab and the navigation keys no longer hide the mouse pointer, and the first key press no longer makes the crosshair and cursor readout blink.
