@@ -859,6 +859,8 @@ struct Slot {
     offer: Option<Session>,
     closing: bool,
     finished: bool,
+    /// Set when the exit stopped waiting before the final flush finished.
+    abandoned: bool,
 }
 
 impl Saver {
@@ -903,6 +905,7 @@ impl Saver {
         while !slot.finished {
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
+                slot.abandoned = true;
                 return false;
             }
             slot = match self.shared.finished.wait_timeout(slot, left) {
@@ -915,12 +918,9 @@ impl Saver {
 }
 
 impl Drop for Saver {
+    /// Nothing is logged here, because a blocked log would hold up the exit past its bound.
     fn drop(&mut self) {
-        if !self.close(Self::EXIT_WAIT) {
-            tracing::warn!(
-                "the session is still being written at exit; this run's last changes may be lost"
-            );
-        }
+        self.close(Self::EXIT_WAIT);
     }
 }
 
@@ -943,6 +943,11 @@ impl Mailbox {
                 let mut slot = self.lock();
                 slot.finished = true;
                 self.finished.notify_all();
+                if slot.abandoned {
+                    tracing::warn!(
+                        "the session was still being written when the exit stopped waiting for it"
+                    );
+                }
                 return;
             }
             writer.tick(Instant::now());

@@ -1275,14 +1275,19 @@ fn a_stalled_write_holds_up_neither_an_offer_nor_the_exit_for_long() {
         ..Session::default()
     };
 
-    // The first offer sends the thread into the open that cannot finish.
+    // Once the thread takes the first offer its next stop is the open that cannot finish.
     saver.offer(at(0.0));
-    std::thread::sleep(Duration::from_millis(100));
+    eventually("the first offer taken", || saver.shared.lock().offer.is_none());
     let offered = Instant::now();
     for x in 1..100 {
         saver.offer(at(x as f32));
     }
     assert!(offered.elapsed() < Duration::from_millis(500));
+    assert_eq!(
+        saver.shared.lock().offer,
+        Some(at(99.0)),
+        "the thread took an offer it should have been stalled before"
+    );
 
     let closing = Instant::now();
     assert!(

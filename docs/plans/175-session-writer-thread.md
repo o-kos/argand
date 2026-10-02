@@ -36,6 +36,9 @@ and the exit waits for the final write with a bound of its own.
   `Saver` asks the thread for a final flush and waits for it at most
   `Saver::EXIT_WAIT` (1 s). A thread still stuck after that is left behind and
   ends with the process; the atomic rename keeps the file whole.
+- The exit logs nothing after its wait times out, because a blocked stderr
+  would hold the exit past its bound. The thread warns instead, if it ever
+  finishes a flush the exit stopped waiting for.
 - A thread that cannot be spawned costs the session for that run with one
   warning, as a missing state directory already does.
 - The stalled-write test makes its FIFO through `libc::mkfifo`, not a
@@ -51,11 +54,6 @@ and the exit waits for the final write with a bound of its own.
   depends on the executor still running while the application shuts down.
 - Joining the thread at exit: unbounded on a stalled filesystem, which is
   the case this Issue exists for.
-
-- Logging the warning after an exit wait that timed out on a non-blocking
-  channel: the whole application logs synchronously to stderr, including on
-  the UI thread, so a blocked stderr already stalls the window. The bound is
-  on waiting for the writer, and the docs say so.
 
 ## Implementation steps
 
