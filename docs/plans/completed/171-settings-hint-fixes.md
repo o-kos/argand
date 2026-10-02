@@ -100,8 +100,8 @@ Claude in session. Reviewer: Codex `gpt-6.1-sol` high.
 - ➕ The left placement is covered by a unit test; no window on the bench puts the hint
   far enough right to need it.
 - [x] Update `AGENTS.md`, `README.md`, `CHANGELOG.md` and `docs/ui/124-inventory.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -131,4 +131,8 @@ Codex `gpt-6.1-sol` high. Three findings, all accepted.
 - **Accepted: no test drew the balloon.** A document helper gives the test document a warned
   range; the test sees the balloon drawn, gone while a list is open and back after it, and
   gone after its × without the range applied. It fails without the hiding filter.
+
+## Review round 2
+
+Codex `gpt-6.1-sol` high confirmed the three fixes and found nothing else. The round is clean.
 
