@@ -184,7 +184,14 @@ impl Frame {
         }
     }
 
-    pub fn render(self, content: impl IntoElement, cx: &App) -> impl IntoElement {
+    /// The frame around `content`, whose resize edges call `on_edge` before they resize.
+    pub fn render(
+        self,
+        content: impl IntoElement,
+        on_edge: impl Fn(&mut Window, &mut App) + 'static,
+        cx: &App,
+    ) -> impl IntoElement {
+        let on_edge = std::rc::Rc::new(on_edge);
         let border = |inset: Pixels| if inset > px(0.0) { px(1.0) } else { px(0.0) };
         div()
             .id("window-frame")
@@ -219,7 +226,8 @@ impl Frame {
                     })
                     .child(content),
             )
-            .children(self.regions.into_iter().map(|(edge, bounds)| {
+            .children(self.regions.into_iter().map(move |(edge, bounds)| {
+                let on_edge = on_edge.clone();
                 div()
                     .absolute()
                     .left(bounds.origin.x)
@@ -230,6 +238,7 @@ impl Frame {
                     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                         cx.stop_propagation();
                         window.prevent_default();
+                        on_edge(window, cx);
                         window.start_window_resize(edge);
                     })
             }))

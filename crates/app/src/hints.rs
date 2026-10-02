@@ -184,10 +184,9 @@ pub(super) fn pinned(
         .into_any_element()
 }
 
-/// While the hint is open, covers `area` and closes the hint on a press, keeping its values.
+/// While the hint is open, covers `area` and closes the hint on a press there, keeping its values.
 ///
-/// Outside `area` the window stays live, so the title bar's controls and the frame's resize
-/// edges act on the press that closes the hint.
+/// Outside `area` the title bar and the frame's resize edges stay live, and close the hint themselves.
 pub(super) fn backdrop(
     hint: &Entity<PinnedHint>,
     area: gpui_kit::Bounds<gpui_kit::Pixels>,
@@ -207,35 +206,8 @@ pub(super) fn backdrop(
             .on_any_mouse_down(move |_, _, cx| {
                 let _ = pressed.update(cx, |hint, cx| hint.close(false, cx));
             });
-        let pressed = hint.downgrade();
-        let outside = press_outside(area, move |_, cx| {
-            let _ = pressed.update(cx, |hint, cx| hint.close(false, cx));
-        });
-        deferred(div().absolute().inset_0().child(cover).child(outside))
-            .with_priority(1)
-            .into_any_element()
+        deferred(cover).with_priority(1).into_any_element()
     })
-}
-
-/// Observes a press anywhere outside `area` without taking it from what lies there.
-pub(super) fn press_outside(
-    area: gpui_kit::Bounds<gpui_kit::Pixels>,
-    on_press: impl Fn(&mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    let on_press = std::rc::Rc::new(on_press);
-    gpui_kit::canvas(
-        |_, _, _| (),
-        move |_, _, window, _| {
-            let on_press = on_press.clone();
-            window.on_mouse_event(move |event: &gpui_kit::MouseDownEvent, phase, window, cx| {
-                if phase == gpui_kit::DispatchPhase::Capture && !area.contains(&event.position) {
-                    on_press(window, cx);
-                }
-            });
-        },
-    )
-    .absolute()
-    .size_full()
 }
 
 #[cfg(test)]
@@ -433,23 +405,18 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn a_press_on_an_edge_closes_the_hint_and_reaches_what_lies_there(cx: &mut TestAppContext) {
+    fn the_backdrop_leaves_the_edges_beyond_its_area_to_what_lies_there(cx: &mut TestAppContext) {
         let (harness, cx) = open_and_leave(cx);
         let edge = point(px(EDGE / 2.), px(150.));
         cx.simulate_mouse_down(edge, MouseButton::Left, Modifiers::default());
         cx.simulate_mouse_up(edge, MouseButton::Left, Modifiers::default());
         frame(cx);
-        assert!(!is_open(cx, &harness), "the press closes the hint");
         assert_eq!(
             read(cx, &harness, |h, _| h.presses),
             1,
-            "and still reaches the edge"
+            "the press reaches the edge"
         );
-        assert_eq!(
-            events(cx, &harness),
-            [Pinned::Opened, Pinned::Closed { revert: false }],
-            "keeping its values"
-        );
+        assert!(is_open(cx, &harness), "whose owner decides what it closes");
     }
 
     #[gpui_kit::test]

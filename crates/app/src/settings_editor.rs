@@ -11,7 +11,7 @@ use gpui_kit::component::button::ButtonCustomVariant;
 use gpui_kit::component::input::{Input, InputEvent, InputState, StepAction};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{Icon, IconName};
-use gpui_kit::{Entity, Focusable};
+use gpui_kit::{Entity, Focusable, TestSupportExt};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -847,7 +847,8 @@ impl Editor {
             .when_some(shortcut, |body, shortcut| {
                 body.child(shortcuts::keycap(shortcut, cx))
             })
-            .child(close);
+            .child(close)
+            .test_support();
         let pointer = div()
             .id("analysis-range-balloon-pointer")
             .occlude()
@@ -1420,6 +1421,8 @@ mod hint_tests {
             settings_ui::init(cx);
             navigation_ui::init(cx);
             hints::init(cx);
+            // The window's own Tab binding, which the shell swallows while the hint is open.
+            window_keys(cx);
         });
         let mut shell = None;
         let handle = cx.add_window(|window, cx| {
@@ -1656,7 +1659,46 @@ mod hint_tests {
         );
         press(cx, &w, "shift-tab");
         assert!(on_reset(cx, &w), "Shift+Tab goes back round");
+        press(cx, &w, "shift-tab");
+        assert_eq!(
+            focused(cx, &w),
+            Some(Stop::Choice(Choice::Palette)),
+            "and back"
+        );
         assert!(is_open(cx, &w), "and none of it closes the hint");
+    }
+
+    #[gpui_kit::test]
+    fn a_fixed_range_is_a_stop_of_its_own(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        frame(cx, &w);
+        for _ in 0..4 {
+            press(cx, &w, "tab");
+        }
+        assert_eq!(focused(cx, &w), Some(Stop::Choice(Choice::Mode)));
+        // Below measured peak is the second mode, which makes Range a number.
+        press(cx, &w, "enter");
+        press(cx, &w, "down");
+        press(cx, &w, "enter");
+        assert!(matches!(
+            settings(cx, &w).dynamic_range,
+            DynamicRange::Fixed(_)
+        ));
+        press(cx, &w, "tab");
+        assert_eq!(
+            focused(cx, &w),
+            Some(Stop::Number(Number::Range)),
+            "Tab reaches Range"
+        );
+        press(cx, &w, "tab");
+        assert_eq!(focused(cx, &w), Some(Stop::Choice(Choice::Palette)));
+        press(cx, &w, "shift-tab");
+        assert_eq!(
+            focused(cx, &w),
+            Some(Stop::Number(Number::Range)),
+            "and Shift+Tab"
+        );
     }
 
     #[gpui_kit::test]
@@ -1722,6 +1764,59 @@ mod hint_tests {
         press(cx, &w, "enter");
         assert_eq!(settings(cx, &w), Settings::from_config(&Config::default()));
         assert!(is_open(cx, &w), "Enter on Reset keeps the hint");
+    }
+
+    /// Gives the open document a warned range, as a quiet capture's first picture does.
+    fn warn(cx: &mut TestAppContext, w: &Window_) {
+        w.shell.update(cx, |shell, cx| {
+            if let Some(file) = shell.file.as_mut() {
+                file.document.show_a_warned_range();
+            }
+            cx.notify();
+        });
+        frame(cx, w);
+    }
+
+    fn balloon_drawn(cx: &mut TestAppContext, w: &Window_) -> bool {
+        cx.update_window(w.handle.into(), |_, window, _| {
+            window.try_find("analysis-range-balloon").is_some()
+        })
+        .expect("the window is open")
+    }
+
+    #[gpui_kit::test]
+    fn a_warned_range_shows_its_balloon_until_a_list_opens_or_its_cross(cx: &mut TestAppContext) {
+        let w = open(cx);
+        warn(cx, &w);
+        open_hint(cx, &w);
+        // The first frame measures where the balloon goes, the next one draws it.
+        frame(cx, &w);
+        assert!(
+            balloon_drawn(cx, &w),
+            "the warning is explained beside the hint"
+        );
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            window.within("analysis-palette").click("input", cx);
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, &w);
+        assert!(!balloon_drawn(cx, &w), "an open list is not covered");
+        press(cx, &w, "escape");
+        assert!(
+            balloon_drawn(cx, &w),
+            "the balloon comes back with the list closed"
+        );
+        let opening = settings(cx, &w);
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            window.click("analysis-range-balloon-close", cx);
+        })
+        .expect("the window is open");
+        cx.run_until_parked();
+        frame(cx, &w);
+        assert!(!balloon_drawn(cx, &w), "the cross hides the balloon");
+        assert_eq!(settings(cx, &w), opening, "without applying the range");
+        assert!(is_open(cx, &w), "and keeps the hint");
     }
 
     #[gpui_kit::test]

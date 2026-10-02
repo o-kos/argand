@@ -44,9 +44,9 @@ Claude in session. Reviewer: Codex `gpt-6.1-sol` high.
   its warning colour, its click and an ordinary hover hint with the same text.
 - **#168.** The balloon is hidden while any list of the hint is open.
 - **#170.** `Frame` reports the rectangle its resize regions leave free. Both backdrops cover
-  only that rectangle, and a capture-phase observer closes the hint or the menu on a press
-  outside it, so the press that starts a resize also closes the overlay; the hint keeps its
-  values.
+  only that rectangle. The resize edges tell the shell before they resize, and the title bar
+  tells it in its capture phase, so the press that starts a resize or reaches a title-bar
+  control also closes the overlay; the hint keeps its values.
 - **#169 keyboard** (see the corrections below: the stock list keys are kept).
   - Ctrl+, and File → Settings put the keyboard on FFT size.
   - Tab and Shift+Tab cycle through the hint's own stops in order: FFT size, Window, Overlap,
@@ -114,3 +114,21 @@ Claude in session. Reviewer: Codex `gpt-6.1-sol` high.
 ## Post-completion
 
 - Close #171, #168, #170 and #169 through the merge.
+
+## Review round 1
+
+Codex `gpt-6.1-sol` high. Three findings, all accepted.
+
+- **Accepted: a window-wide observer closed the overlay on presses inside it.** A hint, a
+  list or a submenu lying over the title bar or a resize band in a small window lost the
+  press that should have reached its own row or button. The observer is gone: the resize
+  edges call the shell before they resize (`Frame::render`'s `on_edge`), and the title bar
+  closes the hint in its own capture phase, both reached only where nothing covers them.
+- **Accepted: the Tab test did not run the window's own Tab binding.** The hint tests now
+  bind `window_keys`, so Tab reaches `Shell::FocusNext` as in the application; the test
+  fails without the editor's traversal. A second test reaches a fixed Range in both
+  directions.
+- **Accepted: no test drew the balloon.** A document helper gives the test document a warned
+  range; the test sees the balloon drawn, gone while a list is open and back after it, and
+  gone after its × without the range applied. It fails without the hiding filter.
+

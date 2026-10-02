@@ -525,9 +525,12 @@ hover-based, so any blocking layer above it wins.
   backdrop (`hints::backdrop`) covers what the frame's resize regions leave of the
   window (`chrome::Frame::free`, #170), below the title bar, so the plot gets no pointer,
   readout, Alt guides, clicks or wheel, and the popover holds keyboard focus,
-  so `Plot` bindings do not match. A capture-phase observer (`hints::press_outside`)
-  closes the hint on a press beyond that cover, keeping its values, and lets the press
-  reach the title bar's controls and the frame's resize edges. Space, which the
+  so `Plot` bindings do not match. Beyond that cover the title bar and the resize edges
+  stay live and close the overlay themselves, so a press inside a hint, list or
+  submenu lying over them is never taken for an outside press: the title bar closes
+  the hint in its capture phase (only when its own hitbox is hit), and
+  `chrome::Frame::render` calls the shell's `edge_pressed` before a resize, which
+  closes the hint keeping its values and dismisses the application menu. Space, which the
   popover would treat as Enter, does nothing (`NoAction` in the `PinnedHint`
   key context). The keyboard (#169): the first frame puts it on FFT size; Tab and
   Shift+Tab go round the hint's own stops through the window's tab order
@@ -647,7 +650,7 @@ menu is open a backdrop drawn below the popover's priority covers the window
 beneath it, so an outside click dismisses the menu and reaches no plot gesture, no
 title drag and no control, while an outside wheel reaches nothing and leaves the
 menu open. It covers only `chrome::Frame::free`, so the frame's resize edges keep
-working, and a press on them also dismisses the menu (#170). The independent ruler context menu
+working, and a press on them also dismisses the menu through `Shell::edge_pressed` (#170). The independent ruler context menu
 retains the stock PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
 Orientation is a two-segment control in one frame whose selected segment is the
 mode in force and whose tooltip names its own mode, and the segments and the grid
