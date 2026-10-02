@@ -91,8 +91,8 @@ instance's lock beyond the bounded retry at exit.
 - [x] Bounded retry on the final flush.
 - [x] Replace the limitation in the `session.rs` module documentation; update
   `AGENTS.md` and `CHANGELOG.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -100,7 +100,7 @@ instance's lock beyond the bounded retry at exit.
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Two release instances open different files and both exit: the recent
+- [x] Two release instances open different files and both exit: the recent
   list holds both, with their hints.
 
 ## Post-completion
