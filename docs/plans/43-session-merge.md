@@ -41,7 +41,10 @@ instance's lock beyond the bounded retry at exit.
   its state), then `orientation`, `show_grid`, `show_scale_ui`, `time_ruler`,
   `theme` and `analysis_settings` each on its own. Analysis settings are
   compared as the file stores them (`Settings::persisted`), because the
-  dynamic range is never written and a change to it alone is no change.
+  dynamic range is never written and a change to it alone is no change. For
+  the same reason the shell stores analysis settings only when their stored
+  part differs from the settings in effect, so a session without saved
+  settings keeps none after a range-only change.
 - Recent list: the entries this process put at the head since the base are the
   shortest prefix of mine whose removal from the base, truncated, gives the
   rest of mine. That prefix goes at the head of the file's list, which loses

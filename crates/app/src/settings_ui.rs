@@ -151,7 +151,13 @@ impl Shell {
         cx.notify();
     }
 
+    /// Save the settings, unless the file would keep exactly what it already has in effect.
     fn persist_settings(&mut self) {
+        let in_effect = Settings::restored(self.session.analysis_settings, &self.config);
+        // A range change alone is never stored and must not claim the settings as this instance's
+        if in_effect.persisted() == self.settings.persisted() {
+            return;
+        }
         self.session.analysis_settings = Some(self.settings);
         self.save();
     }

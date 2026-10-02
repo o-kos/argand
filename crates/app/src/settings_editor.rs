@@ -1860,6 +1860,29 @@ mod hint_tests {
     }
 
     #[gpui_kit::test]
+    fn a_kept_range_alone_does_not_claim_the_saved_settings(cx: &mut TestAppContext) {
+        let w = open(cx);
+        open_hint(cx, &w);
+        let opening = settings(cx, &w);
+        for _ in 0..4 {
+            press(cx, &w, "tab");
+        }
+        press(cx, &w, "enter");
+        press(cx, &w, "down");
+        press(cx, &w, "enter");
+        open_hint(cx, &w);
+        assert!(!is_open(cx, &w));
+        assert_ne!(settings(cx, &w).dynamic_range, opening.dynamic_range);
+        let saved = w
+            .shell
+            .read_with(cx, |shell, _| shell.session.analysis_settings);
+        assert_eq!(
+            saved, None,
+            "a range the file never keeps was saved as a change"
+        );
+    }
+
+    #[gpui_kit::test]
     fn an_unusable_number_keeps_the_hint_with_its_error(cx: &mut TestAppContext) {
         let w = open(cx);
         open_hint(cx, &w);
