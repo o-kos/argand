@@ -11,6 +11,8 @@ promise applies to.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-05
+
 ### Added
 
 - Select a time range with a left drag on the spectrogram, in either orientation. The selection is tinted on the spectrogram and the minimap, and the status bar shows its start, end and length in the time ruler's units. A click on the spectrogram or Escape clears it.
@@ -21,10 +23,10 @@ promise applies to.
 
 ### Fixed
 
+- Release archives are published again. The v0.1.0 tag exists, but its release build failed and published nothing, so this is the first published release with the 0.1.0 changes; they are listed under 0.1.0 in `CHANGELOG.md`, which every archive includes.
 - A right or middle click on an application-menu, toolbar or status-bar button no longer moves the keyboard focus away from the plot, so plot keys keep working without clicking the plot again.
 
 ## [0.1.0] - 2026-10-05
-
 
 ### Added
 
@@ -268,7 +270,8 @@ promise applies to.
 - A workspace-wide lint policy: ten maintainability lints with explicit
   thresholds, enforced identically on a developer's machine and in CI.
 
-[Unreleased]: https://github.com/o-kos/argand/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/o-kos/argand/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/o-kos/argand/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/o-kos/argand/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/o-kos/argand/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/o-kos/argand/releases/tag/v0.0.1
