@@ -13,8 +13,11 @@
 //! Several instances can run at once, so a write is a read-modify-write under
 //! an advisory lock beside the file: [`Writer`] reads what is on disk, keeps
 //! whatever another instance changed there and lays only its own changes over
-//! it, see [`merge`]. The lock is only ever tried, never waited for on the
-//! interface thread, and a filesystem without locks still gets the merge.
+//! it, see [`merge`]. The lock is tried without blocking, and a held one is
+//! tried again at the next interval or, at exit, a few times over a bounded
+//! wait. A filesystem without locks still gets the merge. All of it runs on a
+//! thread of its own, see [`Saver`], so a stalled filesystem stalls the save
+//! and not the window, and the exit waits for it at most [`Saver::EXIT_WAIT`].
 //! [`VERSION`] guards a *downgrade* both at start-up and at every write: a file
 //! from a newer layout is left alone.
 
@@ -715,6 +718,22 @@ impl Writer {
         }
     }
 
+    /// When the pending offer may be written, if there is one to write.
+    pub fn due_at(&self) -> Option<Instant> {
+        self.pending.as_ref()?;
+        Some(
+            self.last_attempt
+                .map_or_else(Instant::now, |last| last + Self::INTERVAL),
+        )
+    }
+
+    /// Write the pending offer if its interval has ended, without a new offer.
+    pub fn tick(&mut self, now: Instant) {
+        if self.due_at().is_some_and(|due| now >= due) {
+            self.write(now);
+        }
+    }
+
     /// Write whatever is still pending, whatever the schedule says.
     ///
     /// Another instance holding the lock is waited for, briefly and boundedly,
@@ -806,6 +825,159 @@ impl Writer {
             );
         }
         Lock::Unavailable
+    }
+}
+
+/// Writes the session on a thread of its own, so a stalled filesystem stalls
+/// the save rather than the window.
+///
+/// The shell hands over the session as it stands and goes on. Offers pass
+/// through a mailbox of one: a newer offer replaces one the thread has not
+/// taken yet, so however long a write hangs, the thread is owed one session
+/// and not a queue of them. The thread runs a [`Writer`], which keeps its
+/// schedule, and writes a throttled offer once its interval ends.
+///
+/// Dropping it asks for a final flush and waits for that at most
+/// [`Self::EXIT_WAIT`]. A thread still writing after that is left to the end
+/// of the process, and the atomic rename keeps the file whole whatever moment
+/// that is.
+pub struct Saver {
+    shared: std::sync::Arc<Mailbox>,
+}
+
+/// What the shell and the writing thread share.
+struct Mailbox {
+    slot: std::sync::Mutex<Slot>,
+    /// Signalled when an offer or the closing request arrives.
+    arrived: std::sync::Condvar,
+    /// Signalled once the final flush is done.
+    finished: std::sync::Condvar,
+}
+
+#[derive(Default)]
+struct Slot {
+    offer: Option<Session>,
+    closing: bool,
+    finished: bool,
+    /// Set when the exit stopped waiting before the final flush finished.
+    abandoned: bool,
+}
+
+impl Saver {
+    /// Longest the exit waits for the final write.
+    pub const EXIT_WAIT: Duration = Duration::from_secs(1);
+
+    /// Start the thread, or answer nothing when the platform will not give one.
+    pub fn spawn(writer: Writer) -> Option<Self> {
+        let shared = std::sync::Arc::new(Mailbox {
+            slot: std::sync::Mutex::new(Slot::default()),
+            arrived: std::sync::Condvar::new(),
+            finished: std::sync::Condvar::new(),
+        });
+        let thread = std::sync::Arc::clone(&shared);
+        let spawned = std::thread::Builder::new()
+            .name("argand-session".to_owned())
+            .spawn(move || thread.run(writer));
+        match spawned {
+            Ok(_) => Some(Self { shared }),
+            Err(error) => {
+                tracing::warn!(%error, "cannot start the session writer; this run is not remembered");
+                None
+            }
+        }
+    }
+
+    /// Hand over the session as it now stands, without waiting for any write.
+    pub fn offer(&self, session: Session) {
+        let mut slot = self.shared.lock();
+        slot.offer = Some(session);
+        self.shared.arrived.notify_one();
+    }
+
+    /// Ask for the final flush and wait for it at most `wait`.
+    ///
+    /// Answers whether the flush finished in time.
+    fn close(&self, wait: Duration) -> bool {
+        let mut slot = self.shared.lock();
+        slot.closing = true;
+        self.shared.arrived.notify_one();
+        let deadline = Instant::now() + wait;
+        while !slot.finished {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                slot.abandoned = true;
+                return false;
+            }
+            slot = match self.shared.finished.wait_timeout(slot, left) {
+                Ok((slot, _)) => slot,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        }
+        true
+    }
+}
+
+impl Drop for Saver {
+    /// Nothing is logged here, because a blocked log would hold up the exit past its bound.
+    fn drop(&mut self) {
+        self.close(Self::EXIT_WAIT);
+    }
+}
+
+impl Mailbox {
+    /// The slot, even after a panic elsewhere left the lock poisoned.
+    fn lock(&self) -> std::sync::MutexGuard<'_, Slot> {
+        self.slot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn run(&self, mut writer: Writer) {
+        loop {
+            let (offer, closing) = self.next(writer.due_at());
+            if let Some(session) = offer {
+                writer.offer(session, Instant::now());
+            }
+            if closing {
+                writer.flush(Instant::now());
+                let mut slot = self.lock();
+                slot.finished = true;
+                self.finished.notify_all();
+                if slot.abandoned {
+                    tracing::warn!(
+                        "the session was still being written when the exit stopped waiting for it"
+                    );
+                }
+                return;
+            }
+            writer.tick(Instant::now());
+        }
+    }
+
+    /// Wait for an offer, the closing request or `due`, whichever comes first.
+    fn next(&self, due: Option<Instant>) -> (Option<Session>, bool) {
+        let mut slot = self.lock();
+        loop {
+            if slot.offer.is_some() || slot.closing {
+                return (slot.offer.take(), slot.closing);
+            }
+            slot = match due {
+                None => self
+                    .arrived
+                    .wait(slot)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+                Some(due) => {
+                    let left = due.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return (None, false);
+                    }
+                    match self.arrived.wait_timeout(slot, left) {
+                        Ok((slot, _)) => slot,
+                        Err(poisoned) => poisoned.into_inner().0,
+                    }
+                }
+            };
+        }
     }
 }
 
