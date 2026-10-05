@@ -21,7 +21,7 @@ rg -n --no-heading "$PAT" crates/app/src | awk -F: '
   { if (test[$1]) next; if ($0 ~ /#\[cfg\(test\)\]/) { test[$1] = 1; next } print }'
 ```
 
-That command returns 102 entry points at this revision, of which one is a
+That command returns 111 entry points at this revision, of which one is a
 `capture_any_mouse_down` registration, named since #156, which the earlier
 `on_mouse_` alternation missed. The frame's own render
 method is not an `impl Render` block and is found separately:
@@ -64,7 +64,7 @@ commits leave behind.
 | I04 | `shell.rs:1101` | Bare-title double click zooms the window | R2 | Retained |
 | I05 | `shell.rs:1102`, `shell.rs:1103`, `shell.rs:1107`, `shell.rs:1111` | Title drag: arm on press, disarm on release or a press outside, start the move on the first move | R2 | Retained |
 | I06 | `shell.rs:1122` | Title right click opens the platform window menu | R2 | Retained |
-| I07 | `app_menu_ui.rs:405`, `app_menu_ui.rs:774`, `app_menu_ui.rs:783`, `app_menu_ui.rs:786` | Each toolbar control consumes its own left press and double click through `title_control`, the container keeps its right-press stop, and `keeps_focus` prevents the focusing default in the capture phase for every button, so a control never reaches the title gestures and never takes the keyboard while the gaps between them do carry the drag | R2, R4 | Retained (#158, #156) |
+| I07 | `app_menu_ui.rs:405`, `app_menu_ui.rs:816` to `:819`, `app_menu_ui.rs:827`, `:828`, `:830` | Each toolbar control consumes its own left press and double click through `title_control`, the container keeps its right-press stop, and `keeps_focus` prevents the focusing default in the capture phase for a press that is not the left one, so a control never reaches the title gestures and never takes the keyboard from a right or middle press while the gaps between them do carry the drag | R2, R4 | Retained (#158, #156) |
 
 ### Plot gestures and keyboard
 
@@ -100,15 +100,9 @@ commits leave behind.
 | I21 | `app_menu_ui.rs:448` | The orientation `ButtonGroup` reports its selected segment | R6 | Replaced (#130) |
 | I22 | `app_menu_ui.rs:524` | The grid `Button` dispatches `ToggleGrid` | R6 | Replaced (#130) |
 | I23 | `plot_ui.rs:564` | A zoom half dispatches its registered zoom action and hands focus back to the plot | R3 | Replaced (#130) |
-<<<<<<< HEAD
-| I24 | `settings_ui.rs:382` | The actionable range item dispatches `UseRecommendedRange`, wrapped by `keeps_focus` so no press takes the keyboard from the plot; the informational item has no handler | R6 | Retained (#156) |
-| I25 | `settings_ui.rs:438` | The analysis summary opens the settings editor, wrapped by `keeps_focus` so no press takes the keyboard from the plot | R6 | Retained (#156) |
-| I26 | `settings_ui.rs:619`, `settings_ui.rs:639` | The hint's recommendation and edit buttons | R9 | Retained |
-=======
-| I24 | `settings_ui.rs:382` | The actionable range item dispatches `UseRecommendedRange`; the informational item has no handler | R6 | Retained |
-| I25 | `settings_ui.rs:431` | The analysis summary opens the settings hint with the keyboard in it (#108) | R6 | Retained |
+| I24 | `settings_ui.rs:377` | The actionable range item dispatches `UseRecommendedRange`, wrapped by `keeps_focus` so no press takes the keyboard from the plot; the informational item has no handler | R6 | Retained (#156) |
+| I25 | `settings_ui.rs:428` | The analysis summary opens the settings hint with the keyboard in it (#108), wrapped by `keeps_focus` so no press takes the keyboard from the plot | R6 | Retained (#156) |
 | I26 | `settings_editor.rs` (`range_readout`) | The hint's recommendation and edit buttons are gone (#108); the warned Range value and its balloon apply the recommendation on a click | R9 | Removed |
->>>>>>> origin/main
 | I27 | `shell.rs:1287` | A recent row opens its capture | R6 | Retained |
 | I28 | `shell.rs:1327` | The start page's chooser dispatches `ChooseFile` | R6 | Retained |
 | I29 | `app_menu_ui.rs:109` | A recent row inside the File branch opens its capture | R4 | Replaced (#131) |
