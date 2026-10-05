@@ -496,6 +496,31 @@ fn a_queued_style_preview_invalidated_by_resize_is_republished_during_preview() 
 }
 
 #[test]
+fn a_transform_change_on_an_analysed_file_publishes_only_its_final_picture() {
+    let dir = TempDir::new("transform-replacement");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
+    analyst.request(request());
+    assert!(matches!(next_result(&updates), Some(Update::Ready { .. })));
+    let mut stepped = request();
+    stepped.cfg.hop = 60;
+    analyst.request(stepped);
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        match delivery.update {
+            Update::Progress { .. } => {},
+            Update::Ready { .. } => break,
+            _ => panic!("the shown picture stays until the new one is whole"),
+        }
+    }
+    // A size change afterwards belongs to the same replacement and restarts nothing.
+    let generation = analyst.mailbox.latest().unwrap().generation;
+    analyst.request(AnalysisRequest { width: 120, ..stepped });
+    assert_eq!(analyst.mailbox.latest().unwrap().generation, generation);
+}
+
+#[test]
 fn zoom_publishes_only_a_compact_final_picture_and_keeps_display_cache_semantics() {
     let dir = TempDir::new("compact-zoom");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());

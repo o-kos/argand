@@ -10,16 +10,18 @@
 //! future-versioned file costs a log line and the defaults, never a start-up
 //! failure.
 //!
-//! What it is not is serialized between processes. Each run reads the file once
-//! and writes it whole, so two running at the same time keep whatever the last
-//! one wrote and lose the other's -- including a recent entry and the only copy
-//! of the hints that open the capture it names. [`VERSION`] guards a
-//! *downgrade*, where a binary that cannot read the layout leaves the file
-//! alone, and not a race: an older binary already running has read its own copy
-//! and will rewrite it in its own layout whatever the number on disk says.
-//! Issue #43 carries that, and until it is answered what this file remembers is
-//! what the last instance to write it remembered.
+//! Several instances can run at once, so a write is a read-modify-write under
+//! an advisory lock beside the file: [`Writer`] reads what is on disk, keeps
+//! whatever another instance changed there and lays only its own changes over
+//! it, see [`merge`]. The lock is tried without blocking, and a held one is
+//! tried again at the next interval or, at exit, a few times over a bounded
+//! wait. A filesystem without locks still gets the merge. All of it runs on a
+//! thread of its own, see [`Saver`], so a stalled filesystem stalls the save
+//! and not the window, and the exit waits for it at most [`Saver::EXIT_WAIT`].
+//! [`VERSION`] guards a *downgrade* both at start-up and at every write: a file
+//! from a newer layout is left alone.
 
+use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -72,14 +74,14 @@ pub const RECENT_LIMIT: usize = 10;
 /// whatever that version was recording. The number goes up whenever the layout
 /// gains something, so that an older binary sees a number it does not know and
 /// leaves the file rather than quietly rewriting it without what it could not
-/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility; version 9 adds orientation; version 10 adds scale UI visibility.
-pub const VERSION: u32 = 10;
+/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility; version 9 adds orientation; version 10 adds scale UI visibility; version 11 adds the interface theme chosen in the menu.
+pub const VERSION: u32 = 11;
 
 /// Every layout this program can read, oldest first.
 ///
 /// An older file is read into the current shape and written back at
 /// [`VERSION`]: missing fields have defaults; legacy dynamic range values are ignored.
-const READABLE: [u32; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, VERSION];
+const READABLE: [u32; 11] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -278,6 +280,9 @@ pub struct Session {
     pub show_scale_ui: bool,
     #[serde(default)]
     pub time_ruler: crate::time_ruler::Mode,
+    /// The interface theme chosen in the menu, or none to follow the configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<crate::config::Theme>,
     #[serde(default)]
     pub analysis_settings: Option<crate::settings::Settings>,
     /// Layout of this file, checked before anything in it is believed.
@@ -305,12 +310,23 @@ impl Default for Session {
             show_scale_ui: true,
             orientation: crate::orientation::Mode::default(),
             time_ruler: crate::time_ruler::Mode::default(),
+            theme: None,
             analysis_settings: None,
             geometry: None,
             window_state: WindowState::default(),
             recent: Vec::new(),
         }
     }
+}
+
+/// The file as one read of it found it.
+enum OnDisk {
+    /// A layout this binary reads, already in the current shape.
+    Readable(Session),
+    /// A layout from a newer binary, which must be left alone.
+    Foreign,
+    /// Missing, unreadable or corrupt, so nothing in it is worth keeping.
+    Unusable,
 }
 
 /// What the file's own version says about this binary.
@@ -330,40 +346,38 @@ impl Session {
     /// corrupt session has nothing worth keeping. A session from a newer
     /// version does, so that one is read as defaults *and* closed to writing.
     pub fn load(path: &Path) -> Restored {
-        let fresh = Restored {
-            session: Self::default(),
-            writable: true,
-        };
+        match Self::read(path) {
+            OnDisk::Readable(session) => Restored {
+                session,
+                writable: true,
+            },
+            OnDisk::Foreign => Restored {
+                session: Self::default(),
+                writable: false,
+            },
+            OnDisk::Unusable => Restored {
+                session: Self::default(),
+                writable: true,
+            },
+        }
+    }
 
+    /// What the file holds now, as start-up and every write see it.
+    fn read(path: &Path) -> OnDisk {
         // The version is read on its own, before anything else is asked of the
         // text. A file from a newer layout is exactly the file whose *other*
         // fields this version cannot parse, so a single parse would fail on
         // them and report a corrupt session -- and then overwrite it, which is
         // the one thing that must not happen to a file another version wrote.
         let Some(text) = Self::read_text(path) else {
-            return fresh;
+            return OnDisk::Unusable;
         };
         match Self::version_gate(path, &text) {
             VersionGate::Readable => {}
-            // A newer binary's session is left alone and closed to writing,
-            // so this run never overwrites what it cannot parse.
-            VersionGate::ForeignVersion => {
-                return Restored {
-                    session: Self::default(),
-                    writable: false,
-                };
-            }
-            // Corrupt at the version probe: nothing worth keeping, and free
-            // to write over.
-            VersionGate::Corrupt => return fresh,
+            VersionGate::ForeignVersion => return OnDisk::Foreign,
+            VersionGate::Corrupt => return OnDisk::Unusable,
         }
-        let Some(session) = Self::parse_payload(path, &text) else {
-            return fresh;
-        };
-        Restored {
-            session,
-            writable: true,
-        }
+        Self::parse_payload(path, &text).map_or(OnDisk::Unusable, OnDisk::Readable)
     }
 
     /// The file's text, or nothing when there is no session to read.
@@ -374,11 +388,11 @@ impl Session {
         match std::fs::read_to_string(path) {
             Ok(text) => Some(text),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                tracing::debug!(path = %path.display(), "no session yet, starting fresh");
+                tracing::debug!(path = %path.display(), "no session yet");
                 None
             }
             Err(error) => {
-                tracing::warn!(path = %path.display(), %error, "cannot read session, starting fresh");
+                tracing::warn!(path = %path.display(), %error, "cannot read session, ignoring it");
                 None
             }
         }
@@ -398,12 +412,12 @@ impl Session {
                     path = %path.display(),
                     found = version,
                     expected = VERSION,
-                    "session written by another version; starting fresh and leaving it alone"
+                    "session written by another version; leaving it alone"
                 );
                 VersionGate::ForeignVersion
             }
             Err(error) => {
-                tracing::warn!(path = %path.display(), %error, "corrupt session, starting fresh");
+                tracing::warn!(path = %path.display(), %error, "corrupt session, ignoring it");
                 VersionGate::Corrupt
             }
         }
@@ -419,7 +433,7 @@ impl Session {
                 Some(session)
             }
             Err(error) => {
-                tracing::warn!(path = %path.display(), %error, "corrupt session, starting fresh");
+                tracing::warn!(path = %path.display(), %error, "corrupt session, ignoring it");
                 None
             }
         }
@@ -516,6 +530,111 @@ pub fn normalize_recent_path(path: &Path) -> PathBuf {
     })
 }
 
+/// What another instance left in the file, with this instance's changes on top.
+///
+/// `base` is the session this instance last read or wrote, `mine` is what it
+/// holds now and `theirs` is the file as it stands. A setting comes from `mine`
+/// only where `mine` changed it since `base`, so a setting another instance
+/// changed meanwhile survives unless this one changed it too. The window
+/// rectangle and its state travel as one, because a rectangle belongs to the
+/// state it was measured in.
+///
+/// The recent list is merged by entry rather than taken whole: the files this
+/// instance opened since `base` go to the head of the file's list, in the order
+/// it opened them, and the rest of that list follows.
+pub fn merge(base: &Session, mine: &Session, theirs: &Session) -> Session {
+    let window = pick(
+        &(base.geometry, base.window_state),
+        &(mine.geometry, mine.window_state),
+        &(theirs.geometry, theirs.window_state),
+    );
+    let opened = &mine.recent[..opened_since(&base.recent, &mine.recent)];
+    let mut recent = opened.to_vec();
+    recent.extend(
+        theirs
+            .recent
+            .iter()
+            .filter(|entry| !opened.iter().any(|head| head.path == entry.path))
+            .cloned(),
+    );
+    recent.truncate(RECENT_LIMIT);
+    Session {
+        orientation: pick(&base.orientation, &mine.orientation, &theirs.orientation),
+        show_grid: pick(&base.show_grid, &mine.show_grid, &theirs.show_grid),
+        show_scale_ui: pick(
+            &base.show_scale_ui,
+            &mine.show_scale_ui,
+            &theirs.show_scale_ui,
+        ),
+        time_ruler: pick(&base.time_ruler, &mine.time_ruler, &theirs.time_ruler),
+        theme: pick(&base.theme, &mine.theme, &theirs.theme),
+        analysis_settings: pick(&persisted(base), &persisted(mine), &persisted(theirs)),
+        version: VERSION,
+        geometry: window.0,
+        window_state: window.1,
+        recent,
+    }
+}
+
+/// The analysis settings as the file holds them, so a change it never stores is no change.
+fn persisted(session: &Session) -> Option<crate::settings::Settings> {
+    session
+        .analysis_settings
+        .map(crate::settings::Settings::persisted)
+}
+
+fn pick<T: Clone + PartialEq>(base: &T, mine: &T, theirs: &T) -> T {
+    if mine == base {
+        theirs.clone()
+    } else {
+        mine.clone()
+    }
+}
+
+/// How many entries at the head of `mine` were put there since `base`.
+///
+/// [`Session::remember`] moves an entry to the head and drops its path from
+/// the rest, so `mine` is that head followed by what is left of `base`. The
+/// shortest head that explains `mine` this way is the answer. A list no head
+/// explains counts as opened whole, which merges it as a union rather than
+/// losing any of it.
+fn opened_since(base: &[Recent], mine: &[Recent]) -> usize {
+    if mine == base {
+        return 0;
+    }
+    (0..mine.len())
+        .find(|&count| {
+            let head = &mine[..count];
+            let rest = base
+                .iter()
+                .filter(|entry| !head.iter().any(|opened| opened.path == entry.path))
+                .take(RECENT_LIMIT.saturating_sub(count));
+            rest.eq(mine[count..].iter())
+        })
+        .unwrap_or(mine.len())
+}
+
+/// What one attempt to write the session came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Outcome {
+    Written,
+    /// The write failed and stays pending for another attempt.
+    Failed,
+    /// Another instance holds the lock and the write stays pending.
+    Busy,
+    /// A newer version wrote the file, so this run no longer writes it.
+    Foreign,
+}
+
+/// The advisory lock around one read-modify-write.
+enum Lock {
+    /// Released when the file closes.
+    Held(File),
+    Busy,
+    /// The filesystem cannot lock, so the write goes ahead without one.
+    Unavailable,
+}
+
 /// Turns a stream of window positions into occasional writes.
 ///
 /// The window's geometry is read on every frame it is drawn, so a drag offers
@@ -524,11 +643,19 @@ pub fn normalize_recent_path(path: &Path) -> PathBuf {
 /// and written at most once per [`Self::INTERVAL`]. Whatever the last offer
 /// left unwritten is flushed when the window closes.
 ///
+/// Every write merges with what another instance may have written since, see
+/// [`merge`], under a lock beside the file that is tried rather than waited
+/// for: an instance that finds it held keeps its offer for the next interval.
+///
 /// Time arrives as a parameter rather than being read here, so the schedule can
 /// be tested without waiting for it.
 pub struct Writer {
     path: PathBuf,
-    /// What the file holds, as far as this knows.
+    /// What this instance last read from or wrote to the file, as it saw it.
+    ///
+    /// It is the base of every [`merge`], and it is this instance's own view
+    /// rather than the merged file, so another instance's changes never read
+    /// as this one's.
     stored: Session,
     /// An offer newer than `stored` that has not been written yet.
     pending: Option<Session>,
@@ -539,6 +666,10 @@ pub struct Writer {
     /// attempt and a warning on every frame, because the last success would
     /// never move.
     last_attempt: Option<Instant>,
+    /// Set once a newer version is found to have written the file.
+    closed: bool,
+    /// Whether writing without a lock has been reported yet.
+    reported_unlocked: bool,
 }
 
 impl Writer {
@@ -548,17 +679,28 @@ impl Writer {
     /// short enough that a session killed without closing loses almost nothing.
     pub const INTERVAL: Duration = Duration::from_millis(500);
 
+    /// Attempts the final flush makes while another instance holds the lock.
+    const FLUSH_ATTEMPTS: u32 = 10;
+
+    /// Pause between those attempts, which bounds the wait at exit.
+    const FLUSH_PAUSE: Duration = Duration::from_millis(20);
+
     pub fn new(path: PathBuf, stored: Session) -> Self {
         Self {
             path,
             stored,
             pending: None,
             last_attempt: None,
+            closed: false,
+            reported_unlocked: false,
         }
     }
 
     /// Record where the window is now, and write if enough time has passed.
     pub fn offer(&mut self, session: Session, now: Instant) {
+        if self.closed {
+            return;
+        }
         // A window that has come back to where the file already has it leaves
         // nothing to write -- including anything offered in between, which the
         // window has since moved off.
@@ -576,28 +718,266 @@ impl Writer {
         }
     }
 
-    /// Write whatever is still pending, whatever the schedule says.
-    pub fn flush(&mut self, now: Instant) {
-        if self.pending.is_some() {
+    /// When the pending offer may be written, if there is one to write.
+    pub fn due_at(&self) -> Option<Instant> {
+        self.pending.as_ref()?;
+        Some(
+            self.last_attempt
+                .map_or_else(Instant::now, |last| last + Self::INTERVAL),
+        )
+    }
+
+    /// Write the pending offer if its interval has ended, without a new offer.
+    pub fn tick(&mut self, now: Instant) {
+        if self.due_at().is_some_and(|due| now >= due) {
             self.write(now);
         }
     }
 
-    fn write(&mut self, now: Instant) {
+    /// Write whatever is still pending, whatever the schedule says.
+    ///
+    /// Another instance holding the lock is waited for, briefly and boundedly,
+    /// because nothing comes after this to try again.
+    pub fn flush(&mut self, now: Instant) {
+        for attempt in 0..Self::FLUSH_ATTEMPTS {
+            if attempt > 0 {
+                std::thread::sleep(Self::FLUSH_PAUSE);
+            }
+            if self.pending.is_none() || self.write(now) != Outcome::Busy {
+                return;
+            }
+        }
+        tracing::warn!(
+            path = %self.path.display(),
+            "another instance kept the session locked; this run's last changes are not saved"
+        );
+    }
+
+    fn write(&mut self, now: Instant) -> Outcome {
         let Some(session) = self.pending.clone() else {
-            return;
+            return Outcome::Written;
         };
         // The attempt counts whatever came of it, so a failure waits its turn
         // like a success does.
         self.last_attempt = Some(now);
-        // A write that did not happen is not a write. Keeping it pending is
-        // what gives a transient failure -- a full disk, a permission that
-        // comes back -- another chance at the next interval or at the flush.
-        if !session.save(&self.path) {
-            return;
+        let outcome = self.merge_and_save(&session);
+        match outcome {
+            Outcome::Written => {
+                self.pending = None;
+                self.stored = session;
+            }
+            Outcome::Foreign => {
+                tracing::warn!(
+                    path = %self.path.display(),
+                    "a newer version has written the session; this run no longer saves it"
+                );
+                self.pending = None;
+                self.closed = true;
+            }
+            // Kept pending for another chance at the next interval or at the flush
+            Outcome::Failed | Outcome::Busy => {}
         }
-        self.pending = None;
-        self.stored = session;
+        outcome
+    }
+
+    fn merge_and_save(&mut self, mine: &Session) -> Outcome {
+        if let Some(parent) = self.path.parent()
+            && let Err(error) = std::fs::create_dir_all(parent)
+        {
+            tracing::warn!(path = %self.path.display(), %error, "cannot save session");
+            return Outcome::Failed;
+        }
+        let _held = match self.lock() {
+            Lock::Held(file) => Some(file),
+            Lock::Unavailable => None,
+            Lock::Busy => return Outcome::Busy,
+        };
+        let merged = match Session::read(&self.path) {
+            OnDisk::Readable(theirs) => merge(&self.stored, mine, &theirs),
+            OnDisk::Foreign => return Outcome::Foreign,
+            OnDisk::Unusable => mine.clone(),
+        };
+        if merged.save(&self.path) {
+            Outcome::Written
+        } else {
+            Outcome::Failed
+        }
+    }
+
+    /// Try the lock beside the session, without waiting for it.
+    fn lock(&mut self) -> Lock {
+        let opened = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(self.path.with_extension("toml.lock"));
+        let error = match opened.map(|file| (file.try_lock(), file)) {
+            Ok((Ok(()), file)) => return Lock::Held(file),
+            Ok((Err(TryLockError::WouldBlock), _)) => return Lock::Busy,
+            Ok((Err(TryLockError::Error(error)), _)) | Err(error) => error,
+        };
+        if !self.reported_unlocked {
+            self.reported_unlocked = true;
+            tracing::warn!(
+                path = %self.path.display(),
+                %error,
+                "cannot lock the session; saving it without a lock"
+            );
+        }
+        Lock::Unavailable
+    }
+}
+
+/// Writes the session on a thread of its own, so a stalled filesystem stalls
+/// the save rather than the window.
+///
+/// The shell hands over the session as it stands and goes on. Offers pass
+/// through a mailbox of one: a newer offer replaces one the thread has not
+/// taken yet, so however long a write hangs, the thread is owed one session
+/// and not a queue of them. The thread runs a [`Writer`], which keeps its
+/// schedule, and writes a throttled offer once its interval ends.
+///
+/// Dropping it asks for a final flush and waits for that at most
+/// [`Self::EXIT_WAIT`]. A thread still writing after that is left to the end
+/// of the process, and the atomic rename keeps the file whole whatever moment
+/// that is.
+pub struct Saver {
+    shared: std::sync::Arc<Mailbox>,
+}
+
+/// What the shell and the writing thread share.
+struct Mailbox {
+    slot: std::sync::Mutex<Slot>,
+    /// Signalled when an offer or the closing request arrives.
+    arrived: std::sync::Condvar,
+    /// Signalled once the final flush is done.
+    finished: std::sync::Condvar,
+}
+
+#[derive(Default)]
+struct Slot {
+    offer: Option<Session>,
+    closing: bool,
+    finished: bool,
+    /// Set when the exit stopped waiting before the final flush finished.
+    abandoned: bool,
+}
+
+impl Saver {
+    /// Longest the exit waits for the final write.
+    pub const EXIT_WAIT: Duration = Duration::from_secs(1);
+
+    /// Start the thread, or answer nothing when the platform will not give one.
+    pub fn spawn(writer: Writer) -> Option<Self> {
+        let shared = std::sync::Arc::new(Mailbox {
+            slot: std::sync::Mutex::new(Slot::default()),
+            arrived: std::sync::Condvar::new(),
+            finished: std::sync::Condvar::new(),
+        });
+        let thread = std::sync::Arc::clone(&shared);
+        let spawned = std::thread::Builder::new()
+            .name("argand-session".to_owned())
+            .spawn(move || thread.run(writer));
+        match spawned {
+            Ok(_) => Some(Self { shared }),
+            Err(error) => {
+                tracing::warn!(%error, "cannot start the session writer; this run is not remembered");
+                None
+            }
+        }
+    }
+
+    /// Hand over the session as it now stands, without waiting for any write.
+    pub fn offer(&self, session: Session) {
+        let mut slot = self.shared.lock();
+        slot.offer = Some(session);
+        self.shared.arrived.notify_one();
+    }
+
+    /// Ask for the final flush and wait for it at most `wait`.
+    ///
+    /// Answers whether the flush finished in time.
+    fn close(&self, wait: Duration) -> bool {
+        let mut slot = self.shared.lock();
+        slot.closing = true;
+        self.shared.arrived.notify_one();
+        let deadline = Instant::now() + wait;
+        while !slot.finished {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                slot.abandoned = true;
+                return false;
+            }
+            slot = match self.shared.finished.wait_timeout(slot, left) {
+                Ok((slot, _)) => slot,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        }
+        true
+    }
+}
+
+impl Drop for Saver {
+    /// Nothing is logged here, because a blocked log would hold up the exit past its bound.
+    fn drop(&mut self) {
+        self.close(Self::EXIT_WAIT);
+    }
+}
+
+impl Mailbox {
+    /// The slot, even after a panic elsewhere left the lock poisoned.
+    fn lock(&self) -> std::sync::MutexGuard<'_, Slot> {
+        self.slot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn run(&self, mut writer: Writer) {
+        loop {
+            let (offer, closing) = self.next(writer.due_at());
+            if let Some(session) = offer {
+                writer.offer(session, Instant::now());
+            }
+            if closing {
+                writer.flush(Instant::now());
+                let mut slot = self.lock();
+                slot.finished = true;
+                self.finished.notify_all();
+                if slot.abandoned {
+                    tracing::warn!(
+                        "the session was still being written when the exit stopped waiting for it"
+                    );
+                }
+                return;
+            }
+            writer.tick(Instant::now());
+        }
+    }
+
+    /// Wait for an offer, the closing request or `due`, whichever comes first.
+    fn next(&self, due: Option<Instant>) -> (Option<Session>, bool) {
+        let mut slot = self.lock();
+        loop {
+            if slot.offer.is_some() || slot.closing {
+                return (slot.offer.take(), slot.closing);
+            }
+            slot = match due {
+                None => self
+                    .arrived
+                    .wait(slot)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+                Some(due) => {
+                    let left = due.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return (None, false);
+                    }
+                    match self.arrived.wait_timeout(slot, left) {
+                        Ok((slot, _)) => slot,
+                        Err(poisoned) => poisoned.into_inner().0,
+                    }
+                }
+            };
+        }
     }
 }
 

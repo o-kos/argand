@@ -76,6 +76,14 @@ fn spelled<T: std::fmt::Display, S: Serializer>(
 }
 
 impl Settings {
+    /// What `session.toml` keeps of these settings, which leaves the range out.
+    pub fn persisted(self) -> Self {
+        Self {
+            dynamic_range: default_range(),
+            ..self
+        }
+    }
+
     pub fn minimap_colormap(self, displayed: Option<Self>) -> Colormap {
         displayed.unwrap_or(self).colormap
     }

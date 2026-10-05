@@ -1,0 +1,83 @@
+# Issue #175: Session writes run synchronously on the UI thread
+
+Resolves #175.
+
+Class A (threads, data safety). Implementer: Claude in the session. Reviewer:
+`gpt-6.1-sol` high, agreed with the owner.
+
+## Overview
+
+`session::Writer` opens the lock, reads, merges, writes and renames
+`session.toml` on the UI thread, inside the shell's handlers. A stalled
+filesystem stalls the window for as long as it does. The writes move to a
+thread of their own; the shell hands it the latest session without waiting,
+and the exit waits for the final write with a bound of its own.
+
+## Context
+
+- `crates/app/src/session.rs`: `Writer` throttles offers to one write per
+  `Writer::INTERVAL`, merges under `session.toml.lock` (#43) and retries a held
+  lock briefly in `flush`.
+- `crates/app/src/main.rs` builds the `Writer`; `crates/app/src/shell.rs` keeps
+  it in `Shell::writer`, offers in `Shell::save` and flushes in `Drop for Shell`.
+- A throttled offer is written only by the next offer or the flush, so a run
+  killed after an idle change loses it.
+
+## Decisions
+
+- `Writer` stays the synchronous core with its time-injected tests. It gains
+  `due_at` and `tick`, so a throttled offer is written when its interval ends
+  without waiting for another offer.
+- A new `session::Saver` owns the thread. Offers go through a one-slot mailbox
+  (mutex and condition variable) where the newest replaces the older, so a
+  stalled thread holds one session, never a queue. The thread waits for an
+  offer or the next due time, and never holds the mailbox lock during I/O.
+- The shell keeps an `Option<Saver>` in place of the `Writer`. Dropping the
+  `Saver` asks the thread for a final flush and waits for it at most
+  `Saver::EXIT_WAIT` (1 s). A thread still stuck after that is left behind and
+  ends with the process; the atomic rename keeps the file whole.
+- The exit logs nothing after its wait times out, because a blocked stderr
+  would hold the exit past its bound. The thread warns instead, if it ever
+  finishes a flush the exit stopped waiting for.
+- A thread that cannot be spawned costs the session for that run with one
+  warning, as a missing state directory already does.
+- The stalled-write test makes its FIFO through `libc::mkfifo`, not a
+  `mkfifo` process: a fork briefly shares the lock files other tests hold, so
+  their `try_lock` sees Busy and they fail at random. The test is Linux-only,
+  where the crate already depends on `libc`.
+
+## Rejected alternatives
+
+- An unbounded channel of offers: a hung filesystem during a drag would queue
+  every frame's session.
+- Running the write on the GPUI background executor: the exit wait then
+  depends on the executor still running while the application shuts down.
+- Joining the thread at exit: unbounded on a stalled filesystem, which is
+  the case this Issue exists for.
+
+## Implementation steps
+
+- [x] `Writer::due_at` and `Writer::tick`, with tests.
+- [x] `Saver` with the mailbox, the thread loop and the bounded close, with
+  tests for a write without a further offer, the final flush, and an offer and
+  a close that do not wait on a stalled write.
+- [x] The shell and `main` use `Saver`; `Drop for Shell` goes.
+- [x] Update `AGENTS.md`, `CHANGELOG.md` and the `session.rs` documentation.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
+
+## Validation
+
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] The release binary killed with SIGTERM four seconds after opening a file
+  keeps the file in its recent list; `main` lost it in the same run.
+- [x] The release binary remembers the window size and an opened file after a
+  normal close (owner, GNOME on Wayland, where the position is not restored,
+  see #37).
+
+## Post-completion
+
+None.

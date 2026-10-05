@@ -57,7 +57,7 @@ use crate::chrome;
 use crate::config::{Aggregation, Config, Theme};
 use crate::document::{Document, Effect, MetadataHint, Origin, Status};
 use crate::recent::RecentFiles;
-use crate::session::{Geometry, Session, WindowState, Writer, place, restore_rectangle};
+use crate::session::{Geometry, Saver, Session, WindowState, place, restore_rectangle};
 use crate::spectrogram;
 use crate::{panels, waveform};
 
@@ -111,7 +111,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
 }
 
 /// Open the window and run until it closes.
-pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Option<Origin>) {
+pub fn run(config: Config, saved: Session, writer: Option<Saver>, opening: Option<Origin>) {
     // The toolkit's own icons -- the window controls among them -- are loaded
     // by path through an asset source. Without one they resolve to nothing and
     // the buttons render as blank space that still responds to a click.
@@ -124,11 +124,8 @@ pub fn run(config: Config, saved: Session, writer: Option<Writer>, opening: Opti
             navigation_ui::init(cx);
             app_menu_ui::init(cx);
             window_keys(cx);
-            gpui_kit::component::theme::Theme::change(
-                theme_mode(config.theme, cx.window_appearance()),
-                None,
-                cx,
-            );
+            let theme = saved.theme.unwrap_or(config.theme);
+            crate::theme::install(theme_mode(theme, cx.window_appearance()), cx);
 
             // Opening from a spawned task rather than straight from `run` follows
             // the toolkit's own examples and gives the platform a turn of its event
@@ -301,6 +298,14 @@ struct PlotSize {
     height: usize,
 }
 
+/// What the analysis hint opened with, which a reverting close restores.
+#[derive(Clone, Copy)]
+struct HintOpening {
+    settings: Settings,
+    view: Option<crate::navigation::View>,
+    frequency: crate::frequency::View,
+}
+
 /// The window's content: a title bar, the spectrogram, and the status bar.
 struct Shell {
     /// What the person configured.
@@ -309,23 +314,19 @@ struct Shell {
     /// analysis request built below.
     config: Config,
     settings: Settings,
-    settings_window: Option<gpui_kit::WindowHandle<gpui_kit::component::Root>>,
-    /// The analysis hint, pinned open until a click outside, Enter or Escape.
+    /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
-    /// The settings when the analysis hint opened, which Escape restores.
-    hint_opening: Option<Settings>,
+    /// What the analysis hint opened with, which Escape restores.
+    hint_opening: Option<HintOpening>,
     ready_status_dismissed: bool,
     /// Whether the mouse has moved in the window since it last left it.
     pointer_in_window: bool,
-    settings_backup: Option<Settings>,
-    settings_view_backup: Option<crate::navigation::View>,
-    settings_frequency_backup: Option<crate::frequency::View>,
     settings_error: Option<String>,
 
     /// Absent when the platform offers nowhere to keep state, or when the file
     /// there was written by a version this one must not overwrite. Either way
     /// the window simply does not remember itself.
-    writer: Option<Writer>,
+    writer: Option<Saver>,
     /// What the next run should get back.
     ///
     /// Held whole rather than assembled at each offer, because two unrelated
@@ -390,14 +391,12 @@ struct Shell {
 impl Shell {
     fn new(
         config: Config,
-        writer: Option<Writer>,
+        writer: Option<Saver>,
         saved: Session,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // The toolkit says when the window has moved or resized, so nothing
-        // here has to ask on every frame. It still says it once per step of a
-        // drag, which is what [`Writer`] is for.
+        // A drag reports every step, which the session writer throttles
         crate::profiling::watch_ui(cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
@@ -412,9 +411,9 @@ impl Shell {
             }
             cx.notify();
         });
-        sync_theme(config.theme, window, cx);
+        sync_theme(saved.theme.unwrap_or(config.theme), window, cx);
         let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
-            sync_theme(shell.config.theme, window, cx);
+            sync_theme(shell.theme(), window, cx);
         });
         let keystrokes = gpui_kit::App::observe_keystrokes(cx, |_, window, cx| {
             Self::dismiss_window_ready_status(window, cx);
@@ -422,19 +421,18 @@ impl Shell {
         let settings = Settings::restored(saved.analysis_settings, &config);
         let owner = cx.entity().downgrade();
         let analysis_hint = cx.new(|cx| {
-            hints::PinnedHint::new(move |_, _| settings_ui::analysis_tooltip(owner.clone()), cx)
+            hints::PinnedHint::new(
+                move |window, cx| settings_ui::analysis_editor(owner.clone(), window, cx),
+                cx,
+            )
         });
         let pinned = cx.subscribe(&analysis_hint, Self::analysis_hint_changed);
         Self {
             settings,
-            settings_window: None,
             analysis_hint,
             hint_opening: None,
             ready_status_dismissed: false,
             pointer_in_window: false,
-            settings_backup: None,
-            settings_view_backup: None,
-            settings_frequency_backup: None,
             settings_error: None,
 
             config,
@@ -521,6 +519,16 @@ impl Shell {
         .size_full()
     }
 
+    /// A press on a resize edge closes whatever overlay is open, keeping the hint's values.
+    fn edge_pressed(shell: WeakEntity<Self>) -> impl Fn(&mut Window, &mut gpui_kit::App) {
+        move |window, cx| {
+            let _ = shell.update(cx, |shell, cx| {
+                shell.close_analysis_hint(cx);
+                shell.dismiss_application_menu(window, cx);
+            });
+        }
+    }
+
     fn set_pointer_in_window(&mut self, inside: bool, cx: &mut Context<Self>) {
         if self.pointer_in_window == inside {
             return;
@@ -566,11 +574,6 @@ impl Shell {
         self.close_analysis_hint(cx);
         // The old plot goes with its document, so focus must not stay on it.
         window.focus(&self.focus, cx);
-        let editor = self.settings_window;
-        self.finish_settings(false, cx);
-        if let Some(editor) = editor {
-            let _ = editor.update(cx, |_, window, _| window.remove_window());
-        }
         self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
         window.set_window_title(&format!("{} – {TITLE}", origin.name()));
@@ -678,8 +681,8 @@ impl Shell {
 
     /// Offer the session as it now stands.
     fn save(&mut self) {
-        if let Some(writer) = self.writer.as_mut() {
-            writer.offer(self.session.clone(), Instant::now());
+        if let Some(writer) = &self.writer {
+            writer.offer(self.session.clone());
         }
     }
 
@@ -957,14 +960,6 @@ impl Shell {
     }
 }
 
-impl Drop for Shell {
-    fn drop(&mut self) {
-        if let Some(writer) = self.writer.as_mut() {
-            writer.flush(Instant::now());
-        }
-    }
-}
-
 impl Shell {
     /// Bind the app-level actions to this window's shell.
     ///
@@ -1086,6 +1081,7 @@ impl Shell {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let palette = chrome::TitlePalette::for_window(window, cx);
         let bar = if cfg!(target_os = "linux") {
             div()
                 .id("title-bar")
@@ -1096,8 +1092,9 @@ impl Shell {
                 .rounded_tl(corners.top_left)
                 .rounded_tr(corners.top_right)
                 .border_b_1()
-                .border_color(cx.theme().title_bar_border)
-                .bg(cx.theme().title_bar)
+                .border_color(palette.border)
+                .bg(palette.background)
+                .text_color(palette.foreground)
                 .on_double_click(|_, window, _| window.zoom_window())
                 .on_mouse_down_out(cx.listener(|shell, _, _, _| shell.title_drag_pending = false))
                 .on_mouse_down(
@@ -1129,10 +1126,17 @@ impl Shell {
                 .into_any_element()
         } else {
             TitleBar::new()
+                .bg(palette.background)
+                .border_color(palette.border)
+                .text_color(palette.foreground)
                 .child(self.title_contents(window, cx))
                 .into_any_element()
         };
-        div().flex_shrink_0().child(bar)
+        // A press on the title bar closes the settings hint and still reaches the control there.
+        div()
+            .flex_shrink_0()
+            .capture_any_mouse_down(cx.listener(|shell, _, _, cx| shell.close_analysis_hint(cx)))
+            .child(bar)
     }
 
     fn title_contents(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1434,6 +1438,13 @@ impl Render for Shell {
         window.set_rem_size(cx.theme().font_size);
         let frame = chrome::Frame::for_window(window);
         let corners = frame.corners;
+        let free = frame.free;
+        // The hint leaves the title bar live as well as the frame's edges.
+        let title = (frame.title_bottom() - free.origin.y).max(px(0.));
+        let hint_area = gpui_kit::Bounds::new(
+            free.origin + gpui_kit::point(px(0.), title),
+            gpui_kit::size(free.size.width, (free.size.height - title).max(px(0.))),
+        );
         let content =
             div()
                 .size_full()
@@ -1480,13 +1491,13 @@ impl Render for Shell {
         let menu_backdrop = self
             .application_menu
             .is_some()
-            .then(|| self.application_menu_backdrop());
+            .then(|| self.application_menu_backdrop(free));
         div()
             .relative()
             .size_full()
-            .child(frame.render(content, cx))
+            .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
-            .children(hints::backdrop(&self.analysis_hint, cx))
+            .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))
     }
@@ -1753,13 +1764,13 @@ mod analysis_hint_tests {
     /// Opens the hint, changes the range as its recommendation would, then closes it.
     fn change_and_close(cx: &mut TestAppContext, revert: bool) -> (Settings, Settings) {
         let handle = open(cx);
-        let opening = handle
-            .update(cx, |shell, window, cx| {
-                let hint = shell.analysis_hint.clone();
-                hint.update(cx, |hint, cx| hint.open(window, cx));
-                shell.settings
-            })
+        let (hint, opening) = handle
+            .read_with(cx, |shell, _| (shell.analysis_hint.clone(), shell.settings))
             .unwrap();
+        cx.update_window(handle.into(), |_, window, cx| {
+            hint.update(cx, |hint, cx| hint.open(window, cx));
+        })
+        .unwrap();
         cx.run_until_parked();
         handle
             .update(cx, |shell, _, cx| {
@@ -1795,29 +1806,54 @@ mod analysis_hint_tests {
     }
 
     #[gpui_kit::test]
-    fn the_hint_stays_shut_while_the_settings_editor_is_open(cx: &mut TestAppContext) {
+    fn edit_analysis_opens_the_hint_and_closes_it_keeping_the_values(cx: &mut TestAppContext) {
         let handle = open(cx);
-        let try_open = |cx: &mut TestAppContext| {
+        let toggled = |cx: &mut TestAppContext| {
             handle
                 .update(cx, |shell, window, cx| {
-                    let hint = shell.analysis_hint.clone();
-                    hint.update(cx, |hint, cx| hint.open(window, cx));
-                    hint.read(cx).is_open()
+                    shell.edit_analysis(&EditAnalysis, window, cx);
                 })
+                .unwrap();
+            cx.run_until_parked();
+            handle
+                .read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
                 .unwrap()
         };
+        assert!(!toggled(cx), "without a document there is nothing to edit");
         handle
             .update(cx, |shell, window, cx| {
-                shell.edit_analysis(&EditAnalysis, window, cx)
+                shell.open(
+                    Origin::new(std::path::PathBuf::from("/captures/a.iqw")),
+                    window,
+                    cx,
+                );
             })
             .unwrap();
         cx.run_until_parked();
-        assert!(!try_open(cx), "the editor has its own rollback");
+        let toggle = |cx: &mut TestAppContext| {
+            handle
+                .update(cx, |shell, window, cx| {
+                    shell.edit_analysis(&EditAnalysis, window, cx);
+                })
+                .unwrap();
+            cx.run_until_parked();
+            handle
+                .read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
+                .unwrap()
+        };
+        assert!(toggle(cx), "the first press opens the hint");
         handle
-            .update(cx, |shell, _, cx| shell.finish_settings(false, cx))
+            .update(cx, |shell, _, _| {
+                shell.settings.dynamic_range = DynamicRange::Fixed(42.);
+            })
             .unwrap();
-        cx.run_until_parked();
-        assert!(try_open(cx), "the editor has closed");
+        assert!(!toggle(cx), "the second press closes it");
+        let kept = handle.read_with(cx, |shell, _| shell.settings).unwrap();
+        assert_eq!(
+            kept.dynamic_range,
+            DynamicRange::Fixed(42.),
+            "keeping the values"
+        );
     }
 
     #[gpui_kit::test]

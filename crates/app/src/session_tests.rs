@@ -119,6 +119,7 @@ fn a_session_survives_the_round_trip() {
     let session = Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -174,6 +175,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
     let first = Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -234,6 +236,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
     let moved = |x: f32| Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -279,6 +282,7 @@ fn a_position_that_has_not_changed_is_not_written_again() {
     let held = Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -311,6 +315,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
     let moved = |x: f32| Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -336,6 +341,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let at = |x: f32| Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -376,6 +382,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
     let moved = Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -425,6 +432,7 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
     let at = |x: f32| Session {
         show_grid: true,
         show_scale_ui: true,
+        theme: None,
         orientation: crate::orientation::Mode::default(),
         analysis_settings: None,        version: VERSION,
         time_ruler: crate::time_ruler::Mode::Clock,
@@ -688,9 +696,35 @@ fn the_version_goes_up_when_the_layout_gains_something() {
 
     let text = std::fs::read_to_string(&path).expect("read back");
     assert!(
-        text.contains("version = 10"),
-        "the current session layout is version 10: {text}"
+        text.contains("version = 11"),
+        "the current session layout is version 11: {text}"
     );
+}
+
+#[test]
+fn a_chosen_theme_round_trips_and_an_older_session_chooses_none() {
+    use crate::config::Theme;
+    let dir = TempDir::new("theme");
+    let path = dir.join(FILE_NAME);
+    std::fs::write(&path, "version = 10
+window_state = \"normal\"\n")
+        .expect("write session");
+    let restored = Session::load(&path);
+    assert!(restored.writable);
+    assert_eq!(restored.session.theme, None, "an older session follows the configuration");
+
+    for theme in [Theme::System, Theme::Light, Theme::Dark] {
+        let session = Session {
+            theme: Some(theme),
+            ..Session::default()
+        };
+        assert!(session.save(&path));
+        assert_eq!(Session::load(&path).session.theme, Some(theme));
+    }
+
+    assert!(Session::default().save(&path));
+    let text = std::fs::read_to_string(&path).expect("read back");
+    assert!(!text.contains("theme"), "no choice writes no theme: {text}");
 }
 
 #[test]
@@ -827,4 +861,486 @@ fn orientation_round_trips_and_older_sessions_keep_horizontal_default() {
         assert_eq!(restored.session.orientation, Mode::Horizontal);
         assert_eq!(restored.session.window_state, WindowState::Maximized);
     }
+}
+
+/// Two instances that started from one file, as `main` seeds each `Writer`.
+fn two_instances(path: &Path, start: &Session) -> (Writer, Writer, Session, Session) {
+    (
+        Writer::new(path.to_owned(), start.clone()),
+        Writer::new(path.to_owned(), start.clone()),
+        start.clone(),
+        start.clone(),
+    )
+}
+
+fn recent_paths(session: &Session) -> Vec<PathBuf> {
+    session.recent.iter().map(|entry| entry.path.clone()).collect()
+}
+
+#[test]
+fn two_instances_that_both_exit_keep_both_recent_files_and_their_hints() {
+    let dir = TempDir::new("two-recent");
+    let path = dir.join(FILE_NAME);
+    let mut start = Session::default();
+    start.remember(&dir.join("old.wav"), &OpenHints::default());
+    assert!(start.save(&path));
+
+    let (mut first, mut second, mut a, mut b) = two_instances(&path, &start);
+    let now = Instant::now();
+    a.remember(&dir.join("first.bin"), &raw_hints());
+    first.offer(a.clone(), now);
+    b.remember(&dir.join("second.wav"), &OpenHints::default());
+    second.offer(b.clone(), now);
+    first.flush(now);
+    second.flush(now);
+
+    let stored = Session::load(&path).session;
+    assert_eq!(
+        recent_paths(&stored),
+        [dir.join("second.wav"), dir.join("first.bin"), dir.join("old.wav")]
+    );
+    assert_eq!(stored.recent[1].hints.to_open_hints().byte_offset, 44);
+}
+
+#[test]
+fn a_setting_one_instance_changed_survives_the_other_writing_its_own() {
+    let dir = TempDir::new("two-settings");
+    let path = dir.join(FILE_NAME);
+    let (mut first, mut second, mut a, mut b) = two_instances(&path, &Session::default());
+    let now = Instant::now();
+
+    a.show_grid = false;
+    a.theme = Some(crate::config::Theme::Dark);
+    first.offer(a.clone(), now);
+    b.geometry = Some(Geometry::new(40.0, 30.0, 900.0, 700.0));
+    b.window_state = WindowState::Maximized;
+    second.offer(b.clone(), now);
+
+    let stored = Session::load(&path).session;
+    assert!(!stored.show_grid);
+    assert_eq!(stored.theme, Some(crate::config::Theme::Dark));
+    assert_eq!(stored.geometry, b.geometry);
+    assert_eq!(stored.window_state, WindowState::Maximized);
+
+    // The first instance writing again must not take back what the second changed.
+    a.show_scale_ui = false;
+    first.offer(a.clone(), now + Writer::INTERVAL);
+    let stored = Session::load(&path).session;
+    assert_eq!(stored.geometry, b.geometry);
+    assert!(!stored.show_scale_ui && !stored.show_grid);
+}
+
+#[test]
+fn the_same_setting_changed_by_both_is_the_last_writers() {
+    let dir = TempDir::new("two-same");
+    let path = dir.join(FILE_NAME);
+    let (mut first, mut second, mut a, mut b) = two_instances(&path, &Session::default());
+    let now = Instant::now();
+
+    a.time_ruler = crate::time_ruler::Mode::Seconds;
+    first.offer(a, now);
+    b.time_ruler = crate::time_ruler::Mode::Samples;
+    second.offer(b, now);
+
+    assert_eq!(
+        Session::load(&path).session.time_ruler,
+        crate::time_ruler::Mode::Samples
+    );
+}
+
+#[test]
+fn a_file_reopened_with_corrected_hints_carries_them_into_the_merge() {
+    let dir = TempDir::new("reopen");
+    let mut base = Session::default();
+    for name in ["a.bin", "b.wav", "c.wav"] {
+        base.remember(&dir.join(name), &OpenHints::default());
+    }
+    let mut mine = base.clone();
+    mine.remember(&dir.join("a.bin"), &raw_hints());
+    let mut theirs = base.clone();
+    theirs.remember(&dir.join("d.wav"), &OpenHints::default());
+
+    let merged = merge(&base, &mine, &theirs);
+    assert_eq!(
+        recent_paths(&merged),
+        [
+            dir.join("a.bin"),
+            dir.join("d.wav"),
+            dir.join("c.wav"),
+            dir.join("b.wav")
+        ]
+    );
+    assert_eq!(merged.recent[0].hints.to_open_hints().byte_offset, 44);
+}
+
+#[test]
+fn the_merged_recent_list_is_still_bounded() {
+    let dir = TempDir::new("merge-limit");
+    let base = Session::default();
+    let mut mine = base.clone();
+    let mut theirs = base.clone();
+    for i in 0..RECENT_LIMIT {
+        mine.remember(&dir.join(&format!("mine-{i}.wav")), &OpenHints::default());
+        theirs.remember(&dir.join(&format!("theirs-{i}.wav")), &OpenHints::default());
+    }
+
+    let merged = merge(&base, &mine, &theirs);
+    assert_eq!(merged.recent, mine.recent);
+}
+
+#[test]
+fn a_recent_list_no_opening_explains_is_merged_as_a_union() {
+    let dir = TempDir::new("merge-union");
+    let mut base = Session::default();
+    base.remember(&dir.join("kept.wav"), &OpenHints::default());
+    let mine = Session {
+        recent: vec![Recent {
+            path: dir.join("odd.wav"),
+            hints: Hints::default(),
+        }],
+        ..Session::default()
+    };
+    let mut theirs = base.clone();
+    theirs.remember(&dir.join("theirs.wav"), &OpenHints::default());
+
+    assert_eq!(
+        recent_paths(&merge(&base, &mine, &theirs)),
+        [dir.join("odd.wav"), dir.join("theirs.wav"), dir.join("kept.wav")]
+    );
+}
+
+#[test]
+fn an_unchanged_session_takes_everything_from_the_file() {
+    let dir = TempDir::new("merge-unchanged");
+    let base = Session::default();
+    let mut theirs = Session {
+        show_grid: false,
+        geometry: Some(Geometry::new(1.0, 2.0, 300.0, 200.0)),
+        ..Session::default()
+    };
+    theirs.remember(&dir.join("theirs.wav"), &OpenHints::default());
+
+    assert_eq!(merge(&base, &base, &theirs), theirs);
+}
+
+/// The lock another instance would hold while it writes.
+fn hold_lock(path: &Path) -> std::fs::File {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path.with_extension("toml.lock"))
+        .expect("open lock");
+    file.lock().expect("take lock");
+    file
+}
+
+#[test]
+fn a_held_lock_defers_the_write_to_a_later_interval() {
+    let dir = TempDir::new("busy");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let moved = Session {
+        geometry: Some(Geometry::new(5.0, 6.0, 800.0, 600.0)),
+        ..Session::default()
+    };
+    let start = Instant::now();
+
+    let held = hold_lock(&path);
+    writer.offer(moved.clone(), start);
+    assert!(!path.exists(), "a write went ahead under another instance's lock");
+
+    drop(held);
+    writer.offer(moved.clone(), start + Writer::INTERVAL);
+    assert_eq!(Session::load(&path).session, moved);
+}
+
+#[test]
+fn a_lock_held_through_the_exit_costs_a_bounded_wait() {
+    let dir = TempDir::new("busy-exit");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let start = Instant::now();
+    let _held = hold_lock(&path);
+
+    writer.offer(
+        Session {
+            show_grid: false,
+            ..Session::default()
+        },
+        start,
+    );
+    let waited = Instant::now();
+    writer.flush(start);
+
+    assert!(waited.elapsed() < Duration::from_secs(2));
+    assert!(!path.exists());
+}
+
+#[test]
+fn a_newer_version_written_while_running_is_left_alone() {
+    let dir = TempDir::new("future-running");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let text = "version = 9999\nsomething_new = true\n";
+    std::fs::write(&path, text).expect("write fixture");
+    let start = Instant::now();
+
+    let moved = |x: f32| Session {
+        geometry: Some(Geometry::new(x, 0.0, 800.0, 600.0)),
+        ..Session::default()
+    };
+    writer.offer(moved(1.0), start);
+    writer.offer(moved(2.0), start + Writer::INTERVAL);
+    writer.flush(start + Writer::INTERVAL * 2);
+
+    assert_eq!(std::fs::read_to_string(&path).expect("still there"), text);
+}
+
+#[test]
+fn a_corrupt_file_found_at_write_time_is_replaced_by_this_instances_session() {
+    let dir = TempDir::new("corrupt-running");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    std::fs::write(&path, "not = [toml").expect("write fixture");
+    let moved = Session {
+        show_grid: false,
+        ..Session::default()
+    };
+
+    writer.offer(moved.clone(), Instant::now());
+    assert_eq!(Session::load(&path).session, moved);
+}
+
+#[test]
+fn a_range_change_the_file_never_keeps_does_not_take_back_anothers_settings() {
+    let saved = crate::settings::Settings::from_config(&crate::config::Config::default());
+    let base = Session {
+        analysis_settings: Some(saved),
+        ..Session::default()
+    };
+    let mine = Session {
+        analysis_settings: Some(crate::settings::Settings {
+            dynamic_range: argand_dsp::DynamicRange::Fixed(60.0),
+            ..saved
+        }),
+        ..base.clone()
+    };
+    let theirs = Session {
+        analysis_settings: Some(crate::settings::Settings {
+            fft_size: saved.fft_size * 4,
+            ..saved
+        }),
+        ..base.clone()
+    };
+
+    let merged = merge(&base, &mine, &theirs);
+    assert_eq!(
+        merged.analysis_settings.map(|settings| settings.fft_size),
+        Some(saved.fft_size * 4)
+    );
+}
+
+#[test]
+fn orientation_and_analysis_settings_merge_as_their_own_units() {
+    let saved = crate::settings::Settings::from_config(&crate::config::Config::default());
+    let base = Session::default();
+    let mine = Session {
+        orientation: crate::orientation::Mode::Vertical,
+        ..Session::default()
+    };
+    let theirs = Session {
+        analysis_settings: Some(saved),
+        ..Session::default()
+    };
+
+    let merged = merge(&base, &mine, &theirs);
+    assert_eq!(merged.orientation, crate::orientation::Mode::Vertical);
+    assert_eq!(merged.analysis_settings, Some(saved));
+}
+
+#[test]
+fn a_lock_that_cannot_be_taken_still_lets_the_session_be_saved() {
+    let dir = TempDir::new("no-lock");
+    let path = dir.join(FILE_NAME);
+    // A directory where the lock file belongs cannot be opened as one.
+    std::fs::create_dir_all(path.with_extension("toml.lock")).expect("block the lock");
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let moved = Session {
+        show_grid: false,
+        ..Session::default()
+    };
+
+    writer.offer(moved.clone(), Instant::now());
+    assert_eq!(Session::load(&path).session, moved);
+}
+
+#[test]
+fn the_lock_is_released_once_a_write_is_done() {
+    let dir = TempDir::new("released");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    writer.offer(
+        Session {
+            show_grid: false,
+            ..Session::default()
+        },
+        Instant::now(),
+    );
+
+    let lock = std::fs::File::open(path.with_extension("toml.lock")).expect("lock file");
+    assert!(lock.try_lock().is_ok(), "the writer kept the lock after writing");
+}
+
+#[test]
+fn a_held_back_offer_is_written_when_its_interval_ends() {
+    let dir = TempDir::new("tick");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let at = |x: f32| Session {
+        geometry: Some(Geometry::new(x, 0.0, 800.0, 600.0)),
+        ..Session::default()
+    };
+    let start = Instant::now();
+
+    writer.offer(at(1.0), start);
+    writer.offer(at(2.0), start + Duration::from_millis(1));
+    assert_eq!(writer.due_at(), Some(start + Writer::INTERVAL));
+    writer.tick(start + Duration::from_millis(2));
+    assert_eq!(Session::load(&path).session, at(1.0), "written before its time");
+
+    writer.tick(start + Writer::INTERVAL);
+    assert_eq!(Session::load(&path).session, at(2.0));
+    assert_eq!(writer.due_at(), None);
+}
+
+/// Wait until `done` holds, failing the test after a generous bound.
+fn eventually(what: &str, mut done: impl FnMut() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !done() {
+        assert!(Instant::now() < deadline, "{what} never happened");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn the_saver_writes_a_held_back_offer_without_another_one() {
+    let dir = TempDir::new("saver-tick");
+    let path = dir.join(FILE_NAME);
+    let saver = Saver::spawn(Writer::new(path.clone(), Session::default())).expect("a thread");
+    let at = |x: f32| Session {
+        geometry: Some(Geometry::new(x, 0.0, 800.0, 600.0)),
+        ..Session::default()
+    };
+
+    saver.offer(at(1.0));
+    eventually("the first write", || Session::load(&path).session == at(1.0));
+    saver.offer(at(2.0));
+    eventually("the held-back write", || {
+        Session::load(&path).session == at(2.0)
+    });
+    assert!(saver.close(Saver::EXIT_WAIT));
+}
+
+#[test]
+fn closing_the_saver_writes_the_last_offer() {
+    let dir = TempDir::new("saver-close");
+    let path = dir.join(FILE_NAME);
+    let saver = Saver::spawn(Writer::new(path.clone(), Session::default())).expect("a thread");
+    let at = |x: f32| Session {
+        geometry: Some(Geometry::new(x, 0.0, 800.0, 600.0)),
+        ..Session::default()
+    };
+
+    saver.offer(at(1.0));
+    saver.offer(at(2.0));
+    saver.offer(at(3.0));
+    drop(saver);
+    assert_eq!(Session::load(&path).session, at(3.0));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stalled_write_holds_up_neither_an_offer_nor_the_exit_for_long() {
+    let dir = TempDir::new("saver-stall");
+    let path = dir.join(FILE_NAME);
+    let lock = path.with_extension("toml.lock");
+    // Opening a FIFO for writing blocks until a reader comes, as a hung mount would.
+    let name = std::ffi::CString::new(lock.as_os_str().as_encoded_bytes()).expect("a C path");
+    // `name` is a NUL-terminated path that outlives the call.
+    assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0, "mkfifo");
+    let saver = Saver::spawn(Writer::new(path.clone(), Session::default())).expect("a thread");
+    let at = |x: f32| Session {
+        geometry: Some(Geometry::new(x, 0.0, 800.0, 600.0)),
+        ..Session::default()
+    };
+
+    // Once the thread takes the first offer its next stop is the open that cannot finish.
+    saver.offer(at(0.0));
+    eventually("the first offer taken", || saver.shared.lock().offer.is_none());
+    let offered = Instant::now();
+    for x in 1..100 {
+        saver.offer(at(x as f32));
+    }
+    assert!(offered.elapsed() < Duration::from_millis(500));
+    assert_eq!(
+        saver.shared.lock().offer,
+        Some(at(99.0)),
+        "the thread took an offer it should have been stalled before"
+    );
+
+    let closing = Instant::now();
+    assert!(
+        !saver.close(Duration::from_millis(200)),
+        "the write was not stalled"
+    );
+    assert!(closing.elapsed() < Saver::EXIT_WAIT);
+
+    // A reader held to the end releases every open of the FIFO.
+    let reader = std::fs::File::open(&lock).expect("open the FIFO for reading");
+    assert!(saver.close(Duration::from_secs(10)), "the final flush never finished");
+    assert_eq!(Session::load(&path).session, at(99.0));
+    drop(saver);
+    drop(reader);
+}
+
+#[test]
+fn a_held_lock_is_tried_again_by_the_tick_once_its_interval_ends() {
+    let dir = TempDir::new("tick-busy");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let moved = Session {
+        show_grid: false,
+        ..Session::default()
+    };
+    let start = Instant::now();
+
+    let held = hold_lock(&path);
+    writer.offer(moved.clone(), start);
+    assert_eq!(writer.due_at(), Some(start + Writer::INTERVAL));
+    drop(held);
+    writer.tick(start + Duration::from_millis(1));
+    assert!(!path.exists(), "the busy write was retried before its interval");
+
+    writer.tick(start + Writer::INTERVAL);
+    assert_eq!(Session::load(&path).session, moved);
+}
+
+#[test]
+fn a_writer_closed_by_a_newer_version_has_nothing_due() {
+    let dir = TempDir::new("tick-foreign");
+    let path = dir.join(FILE_NAME);
+    let mut writer = Writer::new(path.clone(), Session::default());
+    let text = "version = 9999\n";
+    std::fs::write(&path, text).expect("write fixture");
+
+    writer.offer(
+        Session {
+            show_grid: false,
+            ..Session::default()
+        },
+        Instant::now(),
+    );
+    assert_eq!(writer.due_at(), None);
+    assert_eq!(std::fs::read_to_string(&path).expect("still there"), text);
 }

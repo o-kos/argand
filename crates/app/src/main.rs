@@ -31,13 +31,14 @@ mod session;
 mod settings;
 mod shell;
 mod spectrogram;
+mod theme;
 mod time_ruler;
 mod waveform;
 
 use clap::Parser;
 use cli::Args;
 use config::Config;
-use session::{Session, Writer};
+use session::{Saver, Session, Writer};
 
 fn main() {
     let args = Args::parse();
@@ -60,7 +61,7 @@ fn main() {
     );
     let writer = state_path
         .filter(|_| restored.writable)
-        .map(|path| Writer::new(path, restored.session.clone()));
+        .and_then(|path| Saver::spawn(Writer::new(path, restored.session.clone())));
 
     shell::run(config, restored.session, writer, args.origin());
 }

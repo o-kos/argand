@@ -11,7 +11,7 @@
 //! no pointer, clicks or wheel, and the click that closes the hint goes no
 //! further. Escape also asks its owner to revert what changed while it was open.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui_kit::base::actions::Cancel;
 use gpui_kit::component::button::Button;
@@ -34,6 +34,9 @@ pub(super) fn init(cx: &mut App) {
 /// How long the trigger must be hovered before a pinned hint opens, as for a tooltip.
 const OPEN_DELAY: Duration = Duration::from_millis(500);
 
+/// How soon after closing a hover counts as the trigger uncovered, not a new approach.
+const REHOVER_GRACE: Duration = Duration::from_millis(400);
+
 /// The view a `.tooltip` builder returns.
 pub(super) fn passive(
     cx: &mut App,
@@ -52,23 +55,23 @@ pub(super) enum Pinned {
     },
 }
 
-type Build = Box<dyn Fn(&mut Window, &mut App) -> Tooltip>;
+type Build = Box<dyn Fn(&mut Window, &mut App) -> AnyView>;
 
 /// The open state of one pinned hint and the content it shows while open.
 pub(super) struct PinnedHint {
     build: Build,
-    content: Option<Entity<Tooltip>>,
+    content: Option<AnyView>,
     focus: FocusHandle,
     pending: Option<Task<()>>,
-    /// Cleared while another surface edits what the hint shows.
-    enabled: bool,
+    /// When the hint last closed, so the trigger uncovered beneath a still pointer does not reopen it.
+    closed_at: Option<Instant>,
 }
 
 impl EventEmitter<Pinned> for PinnedHint {}
 
 impl PinnedHint {
     pub(super) fn new(
-        build: impl Fn(&mut Window, &mut App) -> Tooltip + 'static,
+        build: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
@@ -76,26 +79,23 @@ impl PinnedHint {
             content: None,
             focus: cx.focus_handle(),
             pending: None,
-            enabled: true,
+            closed_at: None,
         }
-    }
-
-    /// Allow or forbid opening, closing the hint and keeping its changes when forbidden.
-    pub(super) fn set_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        self.enabled = enabled;
-        if !enabled {
-            self.close(false, cx);
-        }
-        cx.notify();
     }
 
     pub(super) fn is_open(&self) -> bool {
         self.content.is_some()
     }
 
+    /// The view the open hint shows, for tests that drive it.
+    #[cfg(test)]
+    pub(super) fn view(&self) -> Option<AnyView> {
+        self.content.clone()
+    }
+
     /// Open after the trigger has been hovered for a moment, unless the pointer leaves first.
     pub(super) fn hover(&mut self, hovered: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if !hovered || self.is_open() {
+        if !hovered || self.is_open() || self.just_closed() {
             self.pending = None;
             return;
         }
@@ -107,18 +107,24 @@ impl PinnedHint {
 
     pub(super) fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.pending = None;
-        if self.is_open() || !self.enabled {
+        if self.is_open() {
             return;
         }
-        let tooltip = (self.build)(window, cx).m_0();
-        self.content = Some(cx.new(|_| tooltip));
+        self.content = Some((self.build)(window, cx));
         cx.emit(Pinned::Opened);
         cx.notify();
+    }
+
+    /// Whether a hover now is the trigger reappearing under the pointer that just closed the hint.
+    fn just_closed(&self) -> bool {
+        self.closed_at
+            .is_some_and(|closed| closed.elapsed() < REHOVER_GRACE)
     }
 
     pub(super) fn close(&mut self, revert: bool, cx: &mut Context<Self>) {
         self.pending = None;
         if self.content.take().is_some() {
+            self.closed_at = Some(Instant::now());
             cx.emit(Pinned::Closed { revert });
             cx.notify();
         }
@@ -139,10 +145,6 @@ pub(super) fn pinned(
     cx: &App,
 ) -> AnyElement {
     let state = hint.read(cx);
-    if !state.enabled {
-        // Without a popover there is nothing for a click to open.
-        return trigger.into_any_element();
-    }
     let content = state.content.clone();
     let focus = state.focus.clone();
     let changed = hint.downgrade();
@@ -150,6 +152,8 @@ pub(super) fn pinned(
     Popover::new(id)
         .anchor(Anchor::BottomLeft)
         .appearance(false)
+        // The backdrop closes the hint, so a part of it drawn outside its panel is not outside it.
+        .overlay_closable(false)
         // The left click keeps its own meaning on the trigger.
         .mouse_button(MouseButton::Right)
         .open(content.is_some())
@@ -180,19 +184,29 @@ pub(super) fn pinned(
         .into_any_element()
 }
 
-/// While the hint is open, covers the window beneath it so nothing else sees the pointer.
-pub(super) fn backdrop(hint: &Entity<PinnedHint>, cx: &App) -> Option<AnyElement> {
+/// While the hint is open, covers `area` and closes the hint on a press there, keeping its values.
+///
+/// Outside `area` the title bar and the frame's resize edges stay live, and close the hint themselves.
+pub(super) fn backdrop(
+    hint: &Entity<PinnedHint>,
+    area: gpui_kit::Bounds<gpui_kit::Pixels>,
+    cx: &App,
+) -> Option<AnyElement> {
     hint.read(cx).is_open().then(|| {
-        deferred(
-            div()
-                .id("pinned-hint-backdrop")
-                .absolute()
-                .inset_0()
-                .occlude()
-                .cursor(CursorStyle::Arrow),
-        )
-        .with_priority(1)
-        .into_any_element()
+        let pressed = hint.downgrade();
+        let cover = div()
+            .id("pinned-hint-backdrop")
+            .absolute()
+            .left(area.origin.x)
+            .top(area.origin.y)
+            .w(area.size.width)
+            .h(area.size.height)
+            .occlude()
+            .cursor(CursorStyle::Arrow)
+            .on_any_mouse_down(move |_, _, cx| {
+                let _ = pressed.update(cx, |hint, cx| hint.close(false, cx));
+            });
+        deferred(cover).with_priority(1).into_any_element()
     })
 }
 
@@ -206,6 +220,9 @@ mod tests {
     };
 
     gpui_kit::actions!(hint_tests, [Nudge]);
+
+    /// The band at the window's edges a frame keeps for resizing, which the backdrop leaves uncovered.
+    const EDGE: f32 = 10.;
 
     /// A plot filling the window, with a pinned hint's trigger at its bottom left.
     struct Harness {
@@ -255,7 +272,14 @@ mod tests {
                         .top(px(260.))
                         .child(pinned("hint", &self.hint, trigger, cx)),
                 )
-                .children(backdrop(&self.hint, cx))
+                .children(backdrop(
+                    &self.hint,
+                    Bounds::new(
+                        point(px(EDGE), px(EDGE)),
+                        size(px(400. - 2. * EDGE), px(300. - 2. * EDGE)),
+                    ),
+                    cx,
+                ))
         }
     }
 
@@ -281,7 +305,8 @@ mod tests {
         let (harness, cx) = cx.add_window_view(|window, cx| {
             let focus = cx.focus_handle();
             window.focus(&focus, cx);
-            let hint = cx.new(|cx| PinnedHint::new(|_, _| Tooltip::new("Analysis"), cx));
+            let hint = cx
+                .new(|cx| PinnedHint::new(|_, cx| cx.new(|_| Tooltip::new("Analysis")).into(), cx));
             let events = cx.subscribe(&hint, |harness: &mut Harness, _, event, _| {
                 harness.events.push(*event)
             });
@@ -380,6 +405,21 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn the_backdrop_leaves_the_edges_beyond_its_area_to_what_lies_there(cx: &mut TestAppContext) {
+        let (harness, cx) = open_and_leave(cx);
+        let edge = point(px(EDGE / 2.), px(150.));
+        cx.simulate_mouse_down(edge, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(edge, MouseButton::Left, Modifiers::default());
+        frame(cx);
+        assert_eq!(
+            read(cx, &harness, |h, _| h.presses),
+            1,
+            "the press reaches the edge"
+        );
+        assert!(is_open(cx, &harness), "whose owner decides what it closes");
+    }
+
+    #[gpui_kit::test]
     fn enter_closes_the_hint_and_keeps_the_values(cx: &mut TestAppContext) {
         let (harness, cx) = open_and_leave(cx);
         cx.simulate_keystrokes("enter");
@@ -390,41 +430,6 @@ mod tests {
             [Pinned::Opened, Pinned::Closed { revert: false }]
         );
         assert_eq!(nudge(cx, &harness), 1);
-    }
-
-    #[gpui_kit::test]
-    fn a_disabled_hint_opens_neither_on_hover_nor_on_a_right_click(cx: &mut TestAppContext) {
-        let (harness, cx) = open_window(cx);
-        harness.update(cx, |harness, cx| {
-            harness
-                .hint
-                .update(cx, |hint, cx| hint.set_enabled(false, cx));
-            cx.notify();
-        });
-        frame(cx);
-        cx.simulate_mouse_move(at(TRIGGER), None, Modifiers::default());
-        cx.executor().advance_clock(Duration::from_secs(1));
-        frame(cx);
-        assert!(!is_open(cx, &harness), "hover");
-        cx.simulate_mouse_down(at(TRIGGER), MouseButton::Right, Modifiers::default());
-        cx.simulate_mouse_up(at(TRIGGER), MouseButton::Right, Modifiers::default());
-        frame(cx);
-        assert!(!is_open(cx, &harness), "right click");
-        assert!(events(cx, &harness).is_empty());
-        let focused =
-            cx.update(|window, cx| harness.read(cx).hint.read(cx).focus.is_focused(window));
-        assert!(!focused, "a shut hint takes no focus");
-        harness.update(cx, |harness, cx| {
-            harness
-                .hint
-                .update(cx, |hint, cx| hint.set_enabled(true, cx));
-            cx.notify();
-        });
-        frame(cx);
-        cx.simulate_mouse_down(at(TRIGGER), MouseButton::Right, Modifiers::default());
-        cx.simulate_mouse_up(at(TRIGGER), MouseButton::Right, Modifiers::default());
-        frame(cx);
-        assert!(is_open(cx, &harness), "enabled again");
     }
 
     #[gpui_kit::test]

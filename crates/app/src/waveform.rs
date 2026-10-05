@@ -114,11 +114,25 @@ pub struct Panel {
     pub waveform: Option<Arc<Waveform>>,
     pub viewport: Option<(View, u64)>,
     pub separator: gpui_kit::Hsla,
+    /// The ground the envelope is drawn on, dark in both themes like the spectrogram beside it.
+    pub paper: gpui_kit::Hsla,
     pub ink: Ink,
 }
 
 impl Panel {
     pub fn paint(&self, frame: &Frame, origin: Point<Pixels>, height: f32, window: &mut Window) {
+        let ground = if frame.orientation.vertical() {
+            Bounds::new(
+                origin + point(px(0.), px(frame.plot.y)),
+                size(px(height - 1.), px(frame.plot.height)),
+            )
+        } else {
+            Bounds::new(
+                origin + point(px(frame.plot.x), px(0.)),
+                size(px(frame.plot.width), px(height - 1.)),
+            )
+        };
+        window.paint_quad(fill(ground, self.paper));
         if let Some(waveform) = &self.waveform {
             waveform.paint(frame, origin, height, self.viewport, self.ink, window);
         }

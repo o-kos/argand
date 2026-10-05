@@ -49,7 +49,7 @@ impl SampleSource for Source<'_, '_> {
         self.done = self
             .done
             .saturating_add((read / self.source.meta().channels()) as u64);
-        if self.request.navigation && self.last.elapsed() >= Duration::from_millis(50) {
+        if self.request.replacement && self.last.elapsed() >= Duration::from_millis(50) {
             self.last = Instant::now();
             let total = self
                 .request
@@ -93,7 +93,7 @@ mod tests {
             .analysis_request(input.meta(), 10, 10);
         analyst.request(analysis);
         let mut request = analyst.mailbox.latest().unwrap();
-        request.navigation = true;
+        request.replacement = true;
         let (_sender, requests) = async_channel::bounded(1);
         let (outgoing, receiver) = async_channel::bounded(1);
         let replies = Replies {

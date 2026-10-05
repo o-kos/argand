@@ -12,6 +12,9 @@ actions!(
         ClockRuler,
         SecondsRuler,
         SamplesRuler,
+        SystemTheme,
+        LightTheme,
+        DarkTheme,
         ZoomIn,
         ZoomOut,
         FitCapture,
@@ -269,9 +272,9 @@ impl Shell {
         self.frequency_scheme = None;
         self.time_scheme = None;
         self.tick_pan = None;
-        if self.settings_backup.is_some() {
-            self.settings_view_backup = self.view;
-            self.settings_frequency_backup = Some(self.frequency);
+        if let Some(opening) = &mut self.hint_opening {
+            opening.view = self.view;
+            opening.frequency = self.frequency;
         }
     }
 
@@ -326,8 +329,8 @@ impl Shell {
         }
         self.tick_pan = None;
         self.view = Some(view);
-        if self.settings_backup.is_some() {
-            self.settings_view_backup = Some(view);
+        if let Some(opening) = &mut self.hint_opening {
+            opening.view = Some(view);
         }
         tracing::debug!(start = view.start, len = view.len, "time view requested");
         true
@@ -544,8 +547,8 @@ impl Shell {
             self.frequency_scheme = None;
         }
         self.frequency = view;
-        if self.settings_backup.is_some() {
-            self.settings_frequency_backup = Some(view);
+        if let Some(opening) = &mut self.hint_opening {
+            opening.frequency = view;
         }
         tracing::debug!(
             start = view.start,
@@ -619,6 +622,31 @@ impl Shell {
             .on_action(cx.listener(|shell, _: &SamplesRuler, _, cx| {
                 shell.set_time_ruler(crate::time_ruler::Mode::Samples, cx)
             }))
+            .on_action(cx.listener(|shell, _: &SystemTheme, window, cx| {
+                shell.set_theme(Theme::System, window, cx)
+            }))
+            .on_action(cx.listener(|shell, _: &LightTheme, window, cx| {
+                shell.set_theme(Theme::Light, window, cx)
+            }))
+            .on_action(cx.listener(|shell, _: &DarkTheme, window, cx| {
+                shell.set_theme(Theme::Dark, window, cx)
+            }))
+    }
+
+    /// The interface theme the session chose, or the configuration's while it chose none.
+    pub(super) fn theme(&self) -> Theme {
+        self.session.theme.unwrap_or(self.config.theme)
+    }
+
+    /// Remembers a theme chosen in the menu and repaints every window with it.
+    fn set_theme(&mut self, theme: Theme, window: &mut Window, cx: &mut Context<Self>) {
+        if self.session.theme == Some(theme) {
+            return;
+        }
+        self.session.theme = Some(theme);
+        self.save();
+        sync_theme(theme, window, cx);
+        cx.notify();
     }
 
     fn set_time_ruler(&mut self, mode: crate::time_ruler::Mode, cx: &mut Context<Self>) {

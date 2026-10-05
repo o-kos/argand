@@ -341,6 +341,9 @@ Keep any existing user configuration when installing or updating.
 The default `theme = "system"` follows the operating system's light/dark appearance,
 including changes while Argand is running. Set `"dark"` or `"light"` to keep a fixed
 appearance. This controls the interface, independently of the spectrogram palette.
+**View → Theme** chooses System, Light or Dark while Argand runs, with or without a
+file open. The choice is remembered in `session.toml` and takes precedence over
+`argand.toml`, which the menu never rewrites.
 
 Argand packages and package-manager delivery are tracked in [#86](https://github.com/o-kos/argand/issues/86),
 including shipping this template and documenting its installed location. Current
@@ -348,7 +351,7 @@ release archives contain aspec only. System packages must not put an active
 default beside the executable, where it would override user configuration;
 adjacent configuration is intended for portable installations.
 
-The **Aggregation** control in the analysis settings window switches between **Peak (MAX)** and
+The **Aggregation** row of the analysis settings hint switches between **Peak (MAX)** and
 **Mean power** while a file is open. Peak preserves the strongest value in each
 pixel's time/frequency region. Mean power averages squared spectral amplitudes
 across the bins assigned to each row and the frames assigned to each column,
@@ -365,8 +368,9 @@ rewrite `argand.toml`; effective settings are saved in `session.toml`.
 
 The waveform is a full-capture minimap. Its content and amplitude scale remain
 fixed during spectrogram navigation and analysis-setting changes. The visible
-interval stays bright; the waveform outside it is darkened, without a border or
-background fill. At full capture the whole waveform stays bright. Sub-pixel
+interval stays bright; the waveform outside it is darkened, without a border. The
+minimap stands on the darkest colour of the spectrogram's palette in both interface
+themes. At full capture the whole waveform stays bright. Sub-pixel
 intervals retain a one-device-pixel minimum width.
 Click outside the interval to pan one time-ruler division toward the pointer;
 Ctrl+click pans five divisions, matching the arrow shortcuts. Single and double
@@ -579,33 +583,41 @@ and decoded original sample minima/maxima, separately for I and Q. Extrema becom
 available after the complete waveform pass; decoding precision limits their precision.
 
 FFT sizes are powers of two from 2 to 1,048,576; overlap is rounded to a whole-sample hop.
-Hover over the analysis group, for example `2048 · hann · 110 dB`, for its details.
-Click it, choose **Edit settings…** in the hint, or press Ctrl+, (Cmd+, on macOS)
-to open the analysis settings window. Standard dropdowns select FFT size, window,
-aggregation and colour scheme; numeric fields edit overlap and fixed dynamic range.
-Tab and Shift+Tab move between controls, arrows navigate lists or step numbers,
-Enter confirms a choice or numeric edit, and Escape closes a list before closing
-the settings window and cancels its changes. Numeric edits also commit when focus leaves the field.
-Changes preview immediately; **OK** keeps them, while **Cancel**, Escape or closing
-the window restores the settings present when it opened. **Reset to defaults** previews
-the defaults from `argand.toml`, or built-in defaults when no configuration is present.
+The analysis settings live in the hint over the analysis group, for example
+`2048 · Hann`, beside the separate range item. Hover it for a moment, click it, choose **File → Settings**,
+or press Ctrl+, (Cmd+, on macOS). Each value with a dashed underline is editable:
+click it to choose from a list (FFT size, window, aggregation, range mode, colour
+scheme) or to type a number (overlap, and the range in the fixed mode). The hint
+works from the keyboard alone: it opens with the keyboard on FFT size, Tab and
+Shift+Tab move between the values and **Reset to defaults**, Enter, Up or Down open a
+list and its arrows choose, Up and Down step a number, and Enter on Reset to defaults
+resets. Every change
+previews on the spectrogram at once. A click outside the hint, Enter or Ctrl+, again
+keeps the changes and closes it; Escape closes an open list first and otherwise
+restores the settings and view the hint opened with. The − and + beside a number
+step it at once and repeat while held; Enter in a number applies it and keeps the
+hint open, and an unusable number shows its error. **Reset to defaults**, below the values, applies the values from `argand.toml`, or the
+built-in defaults when no configuration is present, and keeps the hint open.
 
 Range modes are absolute full scale (0 to -110 dBFS), a fixed span below the measured
 peak, and automatic. The effective range remains visible as a readout outside the fixed mode.
 The status text is muted and brightens on hover. Only a nonzero signal whose spectral
 peak falls in the lower half of the absolute scale produces a yellow range warning.
 A narrower recommendation by itself is not a warning; silence and peak-relative modes
-are excluded. The hover hint and settings window offer the measured recommended
-range used by `aspec`, and apply it with one action or Ctrl+R (Cmd+R on macOS).
-A yellow ⚠ accompanies the highlighted range. Opening the editor hides the hint.
+are excluded. While the settings hint is
+open, its Range row marks a warned range with ⚠ and explains it in a balloon pointing at the sign, which wraps or moves to the hint's left in a narrow window, hides while a list is open and closes with its ×, and Ctrl+R (Cmd+R on macOS) applies
+the measured recommended range used by `aspec`.
+A yellow ⚠ accompanies the highlighted range; clicking it applies the recommendation
+directly, without opening the hint.
 
 Colour and range changes reuse cached values without a new FFT, including during
-refinement. Transform changes cancel obsolete work and retain the previous picture
-until a preview arrives. Style edits during that initial replacement interval apply
-to the incoming preview; the retained picture keeps its own transform and style
-until then. Invalid choices show an explanation.
-FFT, window, overlap, aggregation and colour choices persist after OK in session
-version 5; configuration defaults remain untouched. Range and its mode belong to
+refinement. Transform changes cancel obsolete work and keep the previous picture
+until the new one is complete, with progress in the status bar, so the spectrogram
+changes once and shows no coarse preview on the way. Only the first analysis of an
+opened file draws a preview and refines it. Style edits made meanwhile apply to the
+incoming picture; the retained one keeps its own transform and style until then. Invalid choices show an explanation.
+FFT, window, overlap, aggregation and colour choices are saved to the session when
+the settings hint closes keeping them; configuration defaults remain untouched. Range and its mode belong to
 the current file: opening a file or restarting restores the configured range default.
 Older saved range values are ignored.
 The bar describes the displayed analysis while a replacement is pending.
@@ -665,7 +677,7 @@ for the wider format matrix, in `../sgvr/cli/tests` or wherever
 
 The interface is covered by headless tests as well: focus and action routing,
 overlay input ownership, the application menu, and the standard dropdowns and
-numeric fields of the analysis settings window.
+numeric fields of the analysis settings hint.
 
 The GUI minimap reopens its own cancellable reader using the resolved sample count
 and normalization divisor, without another count, normalization scan or FFT. It publishes a

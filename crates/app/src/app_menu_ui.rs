@@ -70,6 +70,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> (Entity<PopupMenu>, Vec<Origin>) {
         let recent = app_menu::file_items(self.recent_entries());
+        let document = self.file.is_some();
         let digits = recent
             .iter()
             .filter_map(|row| match row {
@@ -88,16 +89,24 @@ impl Shell {
                 .max_w(px(420.))
                 .scrollable(true);
             recent.into_iter().fold(menu, |menu, row| {
-                menu.item(Shell::file_row(row, focus.clone(), owner.clone()))
+                menu.item(Shell::file_row(row, document, focus.clone(), owner.clone()))
             })
         });
         (menu, digits)
     }
 
-    fn file_row(row: Row<Origin>, focus: FocusHandle, owner: WeakEntity<Self>) -> PopupMenuItem {
+    fn file_row(
+        row: Row<Origin>,
+        document: bool,
+        focus: FocusHandle,
+        owner: WeakEntity<Self>,
+    ) -> PopupMenuItem {
         match row {
             Row::Open => action_row("Open file...", Box::new(ChooseFile), false, focus),
-            Row::Settings => action_row("Settings", Box::new(EditAnalysis), false, focus),
+            // Analysis settings belong to a document, so there are none to edit without one.
+            Row::Settings => {
+                action_row("Settings", Box::new(EditAnalysis), false, focus).disabled(!document)
+            }
             Row::Separator => PopupMenuItem::separator(),
             Row::Recent {
                 number,
@@ -119,7 +128,7 @@ impl Shell {
 
     /// The branch that carries the session's own choices.
     ///
-    /// Absent while no document is open, which is what the menu bar offers.
+    /// Shown with and without a document, which only the fitting rows need.
     fn view_menu(
         &self,
         focus: FocusHandle,
@@ -127,6 +136,8 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
         let scale = self.time_scale_menu(focus.clone(), window, cx);
+        let theme = self.theme_menu(focus.clone(), window, cx);
+        let document = self.view.is_some();
         let show_grid = self.session.show_grid;
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
@@ -151,20 +162,53 @@ impl Shell {
                     focus.clone(),
                 ))
                 .item(PopupMenuItem::separator())
-                .item(action_row(
-                    "Fit time",
-                    Box::new(FitCapture),
-                    false,
-                    focus.clone(),
-                ))
-                .item(action_row(
-                    "Fit frequency",
-                    Box::new(FitFrequency),
-                    false,
-                    focus.clone(),
-                ))
+                .item(
+                    action_row("Fit time", Box::new(FitCapture), false, focus.clone())
+                        .disabled(!document),
+                )
+                .item(
+                    action_row(
+                        "Fit frequency",
+                        Box::new(FitFrequency),
+                        false,
+                        focus.clone(),
+                    )
+                    .disabled(!document),
+                )
                 .item(PopupMenuItem::separator())
                 .item(PopupMenuItem::submenu("Time scale format", scale))
+                .item(PopupMenuItem::submenu("Theme", theme))
+        })
+    }
+
+    /// The interface themes, one row each, the one in force checked.
+    fn theme_menu(
+        &self,
+        focus: FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<PopupMenu> {
+        let theme = self.theme();
+        PopupMenu::build(window, cx, move |menu, _, _| {
+            menu.action_context(focus.clone())
+                .item(action_row(
+                    "System",
+                    Box::new(SystemTheme),
+                    theme == Theme::System,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Light",
+                    Box::new(LightTheme),
+                    theme == Theme::Light,
+                    focus.clone(),
+                ))
+                .item(action_row(
+                    "Dark",
+                    Box::new(DarkTheme),
+                    theme == Theme::Dark,
+                    focus.clone(),
+                ))
         })
     }
 
@@ -213,19 +257,12 @@ impl Shell {
         self.recent_files.refresh(&self.session.recent);
         let focus = self.focus_target(cx);
         let (file, digits) = self.file_menu(focus.clone(), window, cx);
-        let view = self
-            .view
-            .is_some()
-            .then(|| self.view_menu(focus.clone(), window, cx));
+        let view = self.view_menu(focus.clone(), window, cx);
         let branch = file.clone();
         let menu = PopupMenu::build(window, cx, move |menu, _, _| {
-            let menu = menu
-                .action_context(focus)
-                .item(PopupMenuItem::submenu("File", branch));
-            match view {
-                Some(view) => menu.item(PopupMenuItem::submenu("View", view)),
-                None => menu,
-            }
+            menu.action_context(focus)
+                .item(PopupMenuItem::submenu("File", branch))
+                .item(PopupMenuItem::submenu("View", view))
         });
         self.application_menu_dismissed =
             Some(cx.subscribe_in(&menu, window, Self::application_menu_dismissed));
@@ -320,17 +357,18 @@ impl Shell {
     ///
     /// Drawn below the menu, which the toolkit paints at the window's topmost
     /// priority.
-    pub(super) fn application_menu_backdrop(&self) -> AnyElement {
-        deferred(
-            div()
-                .id("application-menu-backdrop")
-                .absolute()
-                .inset_0()
-                .occlude()
-                .cursor(CursorStyle::Arrow),
-        )
-        .with_priority(1)
-        .into_any_element()
+    /// Covers `area` while the menu is open, leaving the frame's resize edges beyond it live.
+    pub(super) fn application_menu_backdrop(&self, area: gpui_kit::Bounds<Pixels>) -> AnyElement {
+        let cover = div()
+            .id("application-menu-backdrop")
+            .absolute()
+            .left(area.origin.x)
+            .top(area.origin.y)
+            .w(area.size.width)
+            .h(area.size.height)
+            .occlude()
+            .cursor(CursorStyle::Arrow);
+        deferred(cover).with_priority(1).into_any_element()
     }
 
     /// The popover that carries the menu, which only the shell opens or closes.
@@ -1053,6 +1091,7 @@ mod tests {
             hints::init(cx);
             app_menu_ui::init(cx);
             window_keys(cx);
+            crate::theme::install(ThemeMode::Dark, cx);
         });
         let (shell, cx) = cx.add_window_view(|window, cx| {
             Shell::new(Config::default(), None, Session::default(), window, cx)
@@ -1201,9 +1240,9 @@ mod tests {
         })
     }
 
-    /// The settings window the menu's Settings row opens.
+    /// The analysis settings hint the menu's Settings row opens.
     fn settings_open(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
-        shell.read_with(cx, |shell, _| shell.settings_window.is_some())
+        shell.read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
     }
 
     /// The document the open menu replaced, once one of its rows opened something.
@@ -1508,6 +1547,35 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn view_offers_the_theme_without_a_document(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        let palette = shell.read_with(cx, |shell, _| shell.settings.colormap);
+        let chosen = |cx: &mut gpui_kit::VisualTestContext| {
+            let mode = cx.update(|_, cx| (cx.theme().mode, cx.theme().status_bar));
+            let session = shell.read_with(cx, |shell, _| shell.session.theme);
+            (mode, session)
+        };
+        // View is the second branch, and its last row is the Theme branch.
+        press(cx, "f10");
+        press(cx, "down down right up right down enter");
+        assert!(!menu_open(cx, &shell), "the menu closed");
+        let light_bar = gpui_kit::rgb(0xf3f3f3).into();
+        let dark_bar = gpui_kit::rgb(0x171717).into();
+        assert_eq!(
+            chosen(cx),
+            ((ThemeMode::Light, light_bar), Some(Theme::Light))
+        );
+        press(cx, "f10");
+        press(cx, "down down right up right down down enter");
+        assert_eq!(chosen(cx), ((ThemeMode::Dark, dark_bar), Some(Theme::Dark)));
+        assert_eq!(
+            shell.read_with(cx, |shell, _| shell.settings.colormap),
+            palette,
+            "the interface theme leaves the spectrogram palette alone"
+        );
+    }
+
+    #[gpui_kit::test]
     fn a_digit_answers_only_in_the_file_branch(cx: &mut TestAppContext) {
         let (shell, cx) = open_window(cx);
         open_capture(cx, &shell);
@@ -1549,7 +1617,7 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn the_settings_window_opens_from_the_menu_itself(cx: &mut TestAppContext) {
+    fn the_settings_hint_opens_from_the_menu_itself(cx: &mut TestAppContext) {
         let (shell, cx) = open_window(cx);
         open_capture(cx, &shell);
         press(cx, "f10");
@@ -1559,9 +1627,7 @@ mod tests {
         press(cx, "down enter");
         draw(cx);
         assert!(!menu_open(cx, &shell), "the menu closed");
-        assert!(settings_open(cx, &shell), "and the settings window opened");
-        shell.update_in(cx, |shell, _, cx| shell.finish_settings(false, cx));
-        draw(cx);
+        assert!(settings_open(cx, &shell), "and the settings hint opened");
     }
 
     #[gpui_kit::test]

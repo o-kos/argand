@@ -2,7 +2,7 @@
 
 use gpui_kit::component::{ActiveTheme, Icon, IconName, Sizable};
 use gpui_kit::{
-    App, Bounds, BoxShadow, Corners, CursorStyle, Decorations, Edges, InteractiveElement,
+    App, Bounds, BoxShadow, Corners, CursorStyle, Decorations, Edges, Hsla, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Pixels, ResizeEdge, Size, StatefulInteractiveElement,
     Styled, Tiling, Window, div, point, prelude::FluentBuilder, px, size,
 };
@@ -11,8 +11,41 @@ const SHADOW: Pixels = px(12.0);
 const RESIZE_GRIP: Pixels = px(6.0);
 const RADIUS: Pixels = px(8.0);
 
+/// The title bar's colours, muted while the window is not the active one.
+#[derive(Clone, Copy)]
+pub struct TitlePalette {
+    pub background: Hsla,
+    pub border: Hsla,
+    pub foreground: Hsla,
+    /// A caption icon at rest, under the pointer and held.
+    icon: [Hsla; 3],
+}
+
+impl TitlePalette {
+    pub fn for_window(window: &Window, cx: &App) -> Self {
+        let theme = cx.theme();
+        if window.is_window_active() {
+            let ink = theme.foreground;
+            return Self {
+                background: theme.title_bar,
+                border: theme.title_bar_border,
+                foreground: ink,
+                icon: [ink.opacity(0.72), ink, ink.opacity(0.45)],
+            };
+        }
+        let ink = theme.muted_foreground;
+        Self {
+            background: theme.background,
+            border: theme.title_bar_border,
+            foreground: ink,
+            icon: [ink.opacity(0.7), theme.foreground, ink.opacity(0.45)],
+        }
+    }
+}
+
 /// Linux controls paint their own corners; GPUI only clips children rectangularly.
 pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
+    let palette = TitlePalette::for_window(window, cx);
     let maximize_icon = if window.is_maximized() {
         IconName::WindowRestore
     } else {
@@ -28,17 +61,22 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
         .enumerate()
         .map(|(index, icon)| {
             let close = index == 2;
-            let (hover, active, foreground) = if close {
+            let [resting, hovered, held] = palette.icon;
+            // Close keeps its danger surface, with its icon dimmed while held like the others.
+            let (hover, active, hovered, held) = if close {
+                let ink = cx.theme().danger_foreground;
                 (
                     cx.theme().danger,
                     cx.theme().danger_active,
-                    cx.theme().danger_foreground,
+                    ink,
+                    ink.opacity(0.6),
                 )
             } else {
                 (
                     cx.theme().secondary_hover,
                     cx.theme().secondary_active,
-                    cx.theme().secondary_foreground,
+                    hovered,
+                    held,
                 )
             };
             div()
@@ -49,8 +87,9 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
                 .items_center()
                 .justify_center()
                 .when(close, |button| button.rounded_tr(corner))
-                .hover(move |style| style.bg(hover).text_color(foreground))
-                .active(move |style| style.bg(active).text_color(foreground))
+                .text_color(resting)
+                .hover(move |style| style.bg(hover).text_color(hovered))
+                .active(move |style| style.bg(active).text_color(held))
                 .on_mouse_down(MouseButton::Left, |_, window, cx| {
                     window.prevent_default();
                     cx.stop_propagation();
@@ -72,10 +111,17 @@ pub struct Frame {
     padding: Edges<Pixels>,
     pub corners: Corners<Pixels>,
     regions: Vec<(ResizeEdge, Bounds<Pixels>)>,
+    /// What the resize regions leave of the window, where an overlay may take the pointer.
+    pub free: Bounds<Pixels>,
     shadow: bool,
 }
 
 impl Frame {
+    /// Where the title bar ends, below the frame's top inset.
+    pub fn title_bottom(&self) -> Pixels {
+        self.padding.top + gpui_kit::component::TITLE_BAR_HEIGHT
+    }
+
     pub fn for_window(window: &mut Window) -> Self {
         let decorated = cfg!(target_os = "linux")
             && matches!(window.window_decorations(), Decorations::Client { .. });
@@ -97,6 +143,7 @@ impl Frame {
                 padding: Edges::default(),
                 corners: Corners::default(),
                 regions: Vec::new(),
+                free: Bounds::new(point(px(0.0), px(0.0)), viewport),
                 shadow: false,
             };
         };
@@ -108,6 +155,13 @@ impl Frame {
             bottom: inset(tiling.bottom),
             left: inset(tiling.left),
         };
+        let grips = padding.map(|&inset| {
+            if inset > px(0.0) {
+                inset + RESIZE_GRIP
+            } else {
+                inset
+            }
+        });
         Self {
             padding,
             corners: Corners {
@@ -118,21 +172,26 @@ impl Frame {
             },
             // Some compositors exclude shadows from pointer input. Extend
             // each grip into the visible edge instead of relying on the shadow.
-            regions: resize_regions(
-                viewport,
-                padding.map(|&inset| {
-                    if inset > px(0.0) {
-                        inset + RESIZE_GRIP
-                    } else {
-                        inset
-                    }
-                }),
+            regions: resize_regions(viewport, grips),
+            free: Bounds::new(
+                point(grips.left, grips.top),
+                size(
+                    viewport.width - grips.left - grips.right,
+                    viewport.height - grips.top - grips.bottom,
+                ),
             ),
             shadow: !tiling.is_tiled(),
         }
     }
 
-    pub fn render(self, content: impl IntoElement, cx: &App) -> impl IntoElement {
+    /// The frame around `content`, whose resize edges call `on_edge` before they resize.
+    pub fn render(
+        self,
+        content: impl IntoElement,
+        on_edge: impl Fn(&mut Window, &mut App) + 'static,
+        cx: &App,
+    ) -> impl IntoElement {
+        let on_edge = std::rc::Rc::new(on_edge);
         let border = |inset: Pixels| if inset > px(0.0) { px(1.0) } else { px(0.0) };
         div()
             .id("window-frame")
@@ -167,7 +226,8 @@ impl Frame {
                     })
                     .child(content),
             )
-            .children(self.regions.into_iter().map(|(edge, bounds)| {
+            .children(self.regions.into_iter().map(move |(edge, bounds)| {
+                let on_edge = on_edge.clone();
                 div()
                     .absolute()
                     .left(bounds.origin.x)
@@ -178,6 +238,7 @@ impl Frame {
                     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                         cx.stop_propagation();
                         window.prevent_default();
+                        on_edge(window, cx);
                         window.start_window_resize(edge);
                     })
             }))

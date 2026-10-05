@@ -43,6 +43,24 @@ fn resize_grips_are_reachable_inside_the_visible_frame() {
 }
 
 #[test]
+fn the_free_area_meets_every_resize_region_without_overlapping_it() {
+    let frame = normal();
+    assert_eq!(
+        frame.free,
+        Bounds::new(point(px(18.0), px(18.0)), size(px(988.0), px(688.0)))
+    );
+    for (_, region) in &frame.regions {
+        assert!(!region.intersects(&frame.free), "{region:?} lies in the free area");
+    }
+    let expanded = Frame::new(size(px(1600.0), px(1000.0)), Some(Tiling::default()), true);
+    assert_eq!(
+        expanded.free,
+        Bounds::new(point(px(0.0), px(0.0)), size(px(1600.0), px(1000.0))),
+        "a window without resize regions is free everywhere"
+    );
+}
+
+#[test]
 fn expanded_windows_have_no_resize_regions_or_corners() {
     // Decorations can lag a state change: an untiled report must not leave
     // resize handlers over the right-hand part of a maximized title bar.
@@ -77,4 +95,33 @@ fn native_decorations_do_not_get_a_second_frame() {
     assert_eq!(frame.padding, Edges::default());
     assert_eq!(frame.corners, Corners::default());
     assert!(!frame.shadow);
+}
+
+/// A frame drawn for its resize edges alone, counting the presses its owner hears of.
+struct Framed {
+    edges: std::rc::Rc<std::cell::Cell<usize>>,
+}
+
+impl gpui_kit::Render for Framed {
+    fn render(&mut self, _: &mut Window, cx: &mut gpui_kit::Context<Self>) -> impl IntoElement {
+        let edges = self.edges.clone();
+        normal().render(div(), move |_, _| edges.set(edges.get() + 1), cx)
+    }
+}
+
+#[gpui_kit::test]
+fn a_press_on_a_resize_edge_tells_the_frames_owner(cx: &mut gpui_kit::TestAppContext) {
+    cx.update(gpui_kit::init);
+    let edges = std::rc::Rc::new(std::cell::Cell::new(0));
+    let counted = edges.clone();
+    let (_, cx) = cx.add_window_view(|_, _| Framed { edges: counted });
+    cx.simulate_resize(size(px(1024.0), px(724.0)));
+    cx.run_until_parked();
+    let none = gpui_kit::Modifiers::default();
+    cx.simulate_mouse_down(point(px(6.0), px(350.0)), MouseButton::Left, none);
+    cx.simulate_mouse_up(point(px(6.0), px(350.0)), MouseButton::Left, none);
+    assert_eq!(edges.get(), 1, "the left edge");
+    cx.simulate_mouse_down(point(px(500.0), px(350.0)), MouseButton::Left, none);
+    cx.simulate_mouse_up(point(px(500.0), px(350.0)), MouseButton::Left, none);
+    assert_eq!(edges.get(), 1, "but not the content");
 }

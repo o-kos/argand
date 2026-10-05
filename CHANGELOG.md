@@ -15,139 +15,43 @@ promise applies to.
 
 - A right or middle click on an application-menu, toolbar or status-bar button no longer moves the keyboard focus away from the plot, so plot keys keep working without clicking the plot again.
 
-### Changed
+## [0.1.0] - 2026-10-05
 
-- Draw the application menu with the standard menu component. The menu still offers the same File and View branches, recent captures, checks and shortcuts, and still opens from the application button and F10. Its rows show the same framed shortcut keys as every other shortcut in the application, and a long recent capture name truncates in the middle instead of running past the row.
-
-- Recent captures are listed by file name alone, in the application menu and on the start page. A start-page row's hint shows the containing directory under the name, and two captures that share a name are told apart there.
-
-- Escape now closes the whole application menu instead of one level at a time, Home, End and Space do nothing in it, and Enter or Space on a branch row no longer opens it, so a branch is entered with Right.
-
-- The application menu now covers the window beneath it while it is open, so the click that dismisses it no longer reaches the plot or the title bar, and a wheel over the window behind it no longer reaches them either.
-
-- The waveform minimap now has a fixed size, 3 rem by default: its height above the spectrogram, or its width beside it in vertical orientation. Its boundary with the spectrogram can no longer be dragged, and a size saved by an earlier version is ignored.
-
-### Fixed
-
-- The crosshair, cursor readout and Alt guides appear as soon as a file opens or a hint or menu closes under a resting pointer, without moving the mouse first.
-
-- Tab and the navigation keys no longer hide the mouse pointer, and the first key press no longer makes the crosshair and cursor readout blink.
-
-- The cursor readout clears when the mouse leaves the window, and switching orientation keeps the crosshair under a resting pointer.
-
-- The analysis hint now stays open once shown: moving the pointer away no longer closes it. A click outside, Enter or Escape closes it; Escape also undoes a range applied from it. While it is open, the plot ignores the pointer, wheel and navigation keys, and the click that closes the hint does not start a pan. A right click on the FFT summary also opens it.
-
-- Opening a menu, the analysis settings or the file chooser, or switching to another window, now ends a drag in progress, and a drag keeps following the pointer across a hint.
-
-- Stop Ctrl+U and other plot shortcuts from acting behind the open time-ruler context menu.
-
-- Make the hinted spectrogram range in the status bar apply an available recommendation or restore the full range on click and Ctrl+R / Cmd+R without opening analysis settings.
-
-- Correct the README Rust version badge to state Rust 1.97+.
-
-- Hide the currently loaded file from Recent lists while preserving saved history and opening hints.
-
-- Match the minimap waveform colour to the displayed spectrogram palette and keep the active and muted spans distinct in both interface themes.
-
-- Show vertical time-ruler labels near both ends when they fit between the unit captions.
-
-- Restore the README logo using the current B0 application artwork.
-
-- Remove the four-pixel top gap above the vertical spectrogram and minimap.
-
-- Restore Ctrl+Shift+plus/minus frequency zoom and prevent shifted symbol shortcuts from also zooming time. Top-row and keypad keys use the physical Shift state consistently.
-
-
-- Spectrum dragging now pans both axes; ruler and minimap dragging remain constrained. Shift+wheel frequency pan and Ctrl+Shift+wheel frequency zoom also handle horizontal deltas emitted by Linux backends.
-
-### Changed
-
-- Outline the Alt coordinate badges with a thin ring in the background colour, so a badge over a bright part of the spectrogram keeps its full size.
-
-- Draw the Alt guide lines as a background-coloured stroke around a foreground core, matching the badges: black–white–black in the dark theme.
-
-- Place vertical-orientation frequency labels beside their ticks like the horizontal time ruler. Both bottom rulers leave a little more room below their labels than above, so the labels no longer crowd the status bar.
-
-- Size the right-hand ruler to its visible labels. Zooming in or panning never narrows it. Zooming out or fitting the axis shown on the right lets it fit its labels again, and so do opening a file, switching orientation, and changing the time format while time is on the right.
-
-- Place horizontal time-ruler labels right beside their ticks and give the freed space to the spectrogram.
-
-- Align the Alt coordinate badges with their rulers. Bottom badge text shares the ruler labels' row without covering the ruler line, and the right badge keeps the same margin to the window edge as the bottom badge keeps to the ruler's edge.
-
-- Keep keyboard focus on the plot while a signal is shown. Tab no longer moves focus onto toolbar or status-bar buttons, so plot shortcuts keep working after any button is used.
-
-- Hide the completed-analysis status and its timing hint after a mouse button press, a key press, a wheel scroll or the cursor readout appearing. Each completed analysis shows its timing again.
-
-- Show cursor frequency before time and place the signal level in a separate status-bar field. Match the Alt guide badges, including the selected time-ruler mode, frequency units and precision.
-
-- Leave the status group empty before a file is opened.
-
-- Simplify File and View: recent captures appear directly in File, and View keeps grid, orientation, Fit time, Fit frequency and time-scale format controls. The first nine recent rows carry digit keycaps; the digit opens that capture while the File list is open. Frequency fit now uses Ctrl+Shift+0 instead of Ctrl+Shift+Home, and the File menu drops from the application button's edge without covering it.
-
-- Replace the application and desktop launcher icon with the B0 intertwined I/Q ribbons, including dedicated 16- and 24-pixel artwork.
-
-- Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with slightly stronger text and border contrast, platform-specific notation and matching menu-width measurement.
-
-- Enlarge and brighten the toolbar icons for better visibility within their buttons, with orientation before grid.
-
-- The orientation control is a two-segment switch that shows the mode in force, rather than one button naming the next mode. The segments and the grid toggle appear only while a file is open.
-
-- Toolbar buttons lose their outline frames. The current orientation, a grid that is on, hover and a pressed button are now the accent surfaces of the interface theme, and the grid icon and the orientation segment that changes the mode tint while hovered.
-
-- The orientation control is one framed group of two segments with a divider, showing a panel strip on the top or the left for the mode in force. A grid that is on, and the application button while its menu is open, take a stronger accent that still reads under the pointer.
-
-- The FFT summary and the range item follow the pointer directly, and the FFT summary stays lit while its analysis hint is open.
-
-- In vertical mode, place frequency units at the lower right and time units at the top of the right ruler. Captions reserve space from numeric labels, keep unit/resolution hints and use an arrow cursor without starting navigation gestures.
-
-- Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
 
 ### Added
 
+- The analysis settings hint works from the keyboard alone: it opens on FFT size, Tab and Shift+Tab go round its values and Reset to defaults, Enter or the arrows open a list, the arrows step a number, and the focused value is marked.
+- The range warning balloon has an × that hides it until the hint closes; the warned value then shows the same words on hover.
+- View → Theme chooses System, Light or Dark for the interface, with or without a file open, and remembers the choice. The View menu is now available before a file is opened.
 - Set the waveform minimap's size with `minimap_size` in the `[panels]` section of `argand.toml`, in font-relative or logical pixels, such as `"4 rem"` or `"64 px"`, written in quotes.
-
 - Translucent `[+|-]` zoom pairs in the spectrogram's corners, each beside the ruler of the axis it zooms in either orientation, with rounded corners; the cursor readout and Alt guides pause over them; View → Show scale controls (Ctrl+U) hides or shows them. Zoom tooltips use uniform key names: Ctrl+Plus, Ctrl+Shift+Plus, Ctrl+Minus, Ctrl+Shift+Minus.
 - File → Settings opens the existing analysis settings editor.
-
 - Ctrl+T switches between Horizontal and Vertical spectrogram orientation and appears in the mode button tooltip.
-
 - Ctrl+G toggles spectrogram grid visibility using the same saved setting as View → Show grid.
-
-
 - A persistent Horizontal/Vertical spectrogram button. Vertical mode places time downwards, frequency to the right and the minimap on the left; rulers, navigation and Alt guides follow the selected layout. Switching reuses the transform unless a longer time axis needs the existing coordinate-precision guard to widen an extreme-index range.
-
 - View → Show grid toggles the spectrogram grid and remembers the choice between sessions. Both rulers have longer ticks; time ticks and grid lines remain visible when an edge label cannot fit.
-
 - Independent frequency zoom, pan and fit, with draggable frequency ruler, Shift+wheel panning and Ctrl+Shift+wheel zoom. Rulers and cursor guides follow the visible band immediately; cached redraws need no new FFTs. Every file opening restores the full frequency range.
-
 - Hover hints describe the time and frequency ruler units and report the current resolution per screen pixel. The frequency caption sits beside the minimap at the top of the frequency ruler in horizontal mode and at the lower-right end of the frequency ruler in vertical mode; the spectrum meets its separator without a dark top gap. Ruler hand cursors appear only when panning is available.
 - The default `theme = "system"` follows OS light/dark appearance changes; explicit `dark` and `light` overrides remain available.
 - A complete `argand.toml` template with English comments and explicit built-in defaults in the application installation assets.
-
 - View → Time scale format and the time-ruler context menu select hours/minutes/seconds, elapsed seconds or zero-based sample numbers, with the unit shown once at the right. The Alt time badge follows the selection, and the format survives restarts without preserving file zoom or position.
 - GUI numbers, hints and analysis settings follow the system numeric locale, including decimal marks, digit grouping and localized numeric input. The configuration-only `number_format` option can override it with an explicit locale such as `ru-RU`.
-
 - Hold Alt over the spectrogram to show guide lines to the time and frequency rulers with rounded coordinate badges, vertically centred text and white/black/white lines visible across palettes.
-
 - Two compact status-bar groups: combined file details with sample count, file size
   and sample extrema, and analysis controls. Adjust FFT, window,
   overlap, aggregation, colours and display range; settings survive restarts.
   Colour/range changes reuse analysis, and a yellow range offers a clickable recommendation.
-
 - Select Peak (MAX) or Mean power from the GUI analysis settings window. The new mean
   averages squared spectral amplitudes across time and frequency before conversion
   to dB, and is also available as `aspec --reduce mean-power`. The existing CLI
   `mean` keeps its dB averaging behavior. The top-level `aggregation` configuration
   sets the GUI's initial choice.
-
 - The GUI shows a sparse signal preview before full analysis, then refines both
   panels from left to right. New requests cancel obsolete work, interim display
   scales remain stable, and opening-level scans have a 64 MiB budget.
-
 - A linear waveform above the GUI spectrogram, preserving short transients and
   merging I and Q into one trace, matching `aspec` without extra labels. The waveform has no grid or extra captions; both panels share the time
   scale, and a subtle draggable separator ends at the waveform edge and remembers their proportions between runs. Ruler borders match the tick marks, with the frequency border joined to the separator.
-
 - Starting without a file shows links to existing recent captures, with Alt+1
   through Alt+9 for the first nine. Availability checks run in the background,
   independently for each path, so offline network locations do not block startup.
@@ -156,7 +60,6 @@ promise applies to.
   the binding separately at the right edge and wrap long paths within the window.
 - Ctrl+O (Cmd+O on macOS) opens the file chooser. The File menu and start-page
   button use the same action and show its registered shortcut.
-
 - A second binary, `argand`: the graphical application. It opens a signal file
   and shows its spectrogram, with time and frequency axes placed by the same
   tick policy `aspec` uses -- two-sided around the centre frequency for an I/Q
@@ -184,52 +87,52 @@ promise applies to.
   Neither file can prevent the application starting: a missing, unreadable,
   malformed or future-versioned one is logged and replaced by the defaults.
 
-### Fixed
-
-- File > Recent now shares the start page's available-file list, hiding missing
-  files and directories without removing saved history or raw opening hints.
-  Availability refreshes in the background when returning to the window or
-  opening File; an already open menu keeps its entries stable until reopened.
-
-- Alt coordinate badges keep a fixed width for the current ruler range and precision, center their text, and meet the guide lines without a gap.
-
-- FLAC seeks discard old decoder packets, preventing incomplete progressive analysis and full-capture waveform scans.
-
-- Time zoom keeps the current detail until a complete replacement is ready instead
-  of flashing sparse previews. Deep zoom computes short ranges in one pass and
-  avoids repeating identical display work; a retained wider picture fills known areas on zoom out.
-
-- Resizing the GUI window or dragging its panel separator reuses a bounded
-  spectral overview instead of restarting complete file analysis. Refinement
-  continues during resizing, and status timing and colour levels remain stable.
-  Cached cell overlap preserves peaks and weights mean power before shading;
-  detail within a cache cell is limited by the documented overview resolution.
-
-- Replacing a spectrogram during resize no longer destroys its GPU texture
-  while a preceding frame can still be using it, which could freeze the window.
-- Resize cursors return to the normal pointer inside the window, and the
-  right-hand title-bar area no longer starts a resize when the window is expanded.
-
 ### Changed
+
+- The range warning balloon wraps into the room left in a narrow window and moves to the left of the settings hint when the right has none, and it no longer covers an open list.
+- The window can be resized by its edges while the settings hint or the application menu is open; the press closes the overlay.
+- Hints, menus, lists, the settings hint and the status bar now stand apart from each other and from the window in the dark theme, the row under the pointer in a menu or list is clearly marked, and the window's outline is visible beside other dark windows.
+- The title bar is muted while the window is inactive, and on Linux the minimize and maximize icons brighten under the pointer and dim while pressed.
+- The settings hint's − and + and Reset to defaults change their ink under the pointer and while pressed, and Reset to defaults has a visible frame.
+- The waveform minimap is dark in the light theme too, on the darkest colour of the spectrogram palette.
+- Edit the analysis settings directly in the FFT hint over the status bar. Hover it, click it, choose File → Settings or press Ctrl+, (Cmd+, on macOS); each value with a dashed underline opens a list or takes a number, and every change previews at once. A click outside, Enter or Ctrl+, again keeps the changes; Escape restores the settings and view the hint opened with; Reset to defaults applies the configuration values. A low-level range is marked with ⚠ in the hint's Range row and explained, with Ctrl+R, in a balloon pointing at the sign; a click on either applies the recommended range. The separate settings window with OK and Cancel is gone.
+- Draw the application menu with the standard menu component. The menu still offers the same File and View branches, recent captures, checks and shortcuts, and still opens from the application button and F10. Its rows show the same framed shortcut keys as every other shortcut in the application, and a long recent capture name truncates in the middle instead of running past the row.
+- Recent captures are listed by file name alone, in the application menu and on the start page. A start-page row's hint shows the containing directory under the name, and two captures that share a name are told apart there.
+- Escape now closes the whole application menu instead of one level at a time, Home, End and Space do nothing in it, and Enter or Space on a branch row no longer opens it, so a branch is entered with Right.
+- The application menu now covers the window beneath it while it is open, so the click that dismisses it no longer reaches the plot or the title bar, and a wheel over the window behind it no longer reaches them either.
+- The waveform minimap now has a fixed size, 3 rem by default: its height above the spectrogram, or its width beside it in vertical orientation. Its boundary with the spectrogram can no longer be dragged, and a size saved by an earlier version is ignored.
+- Outline the Alt coordinate badges with a thin ring in the background colour, so a badge over a bright part of the spectrogram keeps its full size.
+- Draw the Alt guide lines as a background-coloured stroke around a foreground core, matching the badges: black–white–black in the dark theme.
+- Place vertical-orientation frequency labels beside their ticks like the horizontal time ruler. Both bottom rulers leave a little more room below their labels than above, so the labels no longer crowd the status bar.
+- Size the right-hand ruler to its visible labels. Zooming in or panning never narrows it. Zooming out or fitting the axis shown on the right lets it fit its labels again, and so do opening a file, switching orientation, and changing the time format while time is on the right.
+- Place horizontal time-ruler labels right beside their ticks and give the freed space to the spectrogram.
+- Align the Alt coordinate badges with their rulers. Bottom badge text shares the ruler labels' row without covering the ruler line, and the right badge keeps the same margin to the window edge as the bottom badge keeps to the ruler's edge.
+- Keep keyboard focus on the plot while a signal is shown. Tab no longer moves focus onto toolbar or status-bar buttons, so plot shortcuts keep working after any button is used.
+- Hide the completed-analysis status and its timing hint after a mouse button press, a key press, a wheel scroll or the cursor readout appearing. Each completed analysis shows its timing again.
+- Show cursor frequency before time and place the signal level in a separate status-bar field. Match the Alt guide badges, including the selected time-ruler mode, frequency units and precision.
+- Leave the status group empty before a file is opened.
+- Simplify File and View: recent captures appear directly in File, and View keeps grid, orientation, Fit time, Fit frequency and time-scale format controls. The first nine recent rows carry digit keycaps; the digit opens that capture while the File list is open. Frequency fit now uses Ctrl+Shift+0 instead of Ctrl+Shift+Home, and the File menu drops from the application button's edge without covering it.
+- Replace the application and desktop launcher icon with the B0 intertwined I/Q ribbons, including dedicated 16- and 24-pixel artwork.
+- Menu shortcuts and toolbar/start-page hints use the same framed keycaps as analysis settings hints, with slightly stronger text and border contrast, platform-specific notation and matching menu-width measurement.
+- Enlarge and brighten the toolbar icons for better visibility within their buttons, with orientation before grid.
+- The orientation control is a two-segment switch that shows the mode in force, rather than one button naming the next mode. The segments and the grid toggle appear only while a file is open.
+- Toolbar buttons lose their outline frames. The current orientation, a grid that is on, hover and a pressed button are now the accent surfaces of the interface theme, and the grid icon and the orientation segment that changes the mode tint while hovered.
+- The orientation control is one framed group of two segments with a divider, showing a panel strip on the top or the left for the mode in force. A grid that is on, and the application button while its menu is open, take a stronger accent that still reads under the pointer.
+- The FFT summary and the range item follow the pointer directly, and the FFT summary stays lit while its analysis hint is open.
+- In vertical mode, place frequency units at the lower right and time units at the top of the right ruler. Captions reserve space from numeric labels, keep unit/resolution hints and use an arrow cursor without starting navigation gestures.
+- Frequency resolution hints choose their own Hz/kHz/MHz/GHz units and omit redundant decimal zeros, independently of the ruler unit.
 - The waveform is now a full-capture minimap that darkens the waveform outside the visible interval, without a frame. Zoom, pan and spectral settings leave its content unchanged; outside click/Ctrl+click pan one/five ruler divisions, outside double-click centres, inside clicks leave the range unchanged, and dragging moves the interval. When zoomed in, open-hand cursors mark the interval and time ruler. Its independent bounded scan continues when the initial FFT analysis is interrupted.
-
-
 - Every file opening resets time zoom and position. Ctrl+wheel zoom and wheel horizontal pan work over both the spectrogram and time ruler. Left/Right move by one ruler division, Ctrl+Left/Right by five, preserving ruler spacing and format. The crosshair is limited to the spectrogram. Zoom keys use Ctrl+Plus/Minus and Ctrl+0 (fit).
-
 - Analysis settings preview until OK, with Cancel and Reset to defaults controls.
   Dynamic range now belongs to the current file rather than the saved session.
   Opening the editor dismisses its hint; Ctrl+R (Cmd+R on macOS)
   applies range advice, and a yellow ⚠ marks the warning.
-
 - File details use aligned hint rows; FFT details appear on hover with muted status text. Analysis settings use standard dropdowns and numeric fields with full keyboard access. Yellow range warnings are limited to low-level signals in the absolute display scale.
-
 - Reduce full-pass spectrogram overhead by reusing FFT scratch buffers and updating only changed display columns during refinement.
-
 - The GUI frequency scale sits on the right with vertically centered labels,
   and time labels follow their ticks. The frequency unit sits inside the right
   gutter beside the image, while a separate time row and 4-logical-pixel outer
   margins keep the scales clear of adjacent panels and window edges.
-
 - The window title is centred, normal client-decorated windows have subtle rounded
   corners, and the waveform placeholder stays 3 rem (normally 48 logical pixels) high. The legacy
   `panels.waveform_fraction` setting is still accepted but no longer controls it.
@@ -242,6 +145,44 @@ promise applies to.
   Wrapped explanations contribute their full height and stay inside the hint background.
 - The Rust toolchain is now 1.97.1, which the GUI toolkit requires. `aspec`
   renders identically.
+
+### Fixed
+
+- Remembering the window and the recent files no longer pauses the window on a slow or stalled disk, and a change held back for half a second is now saved when that time is up rather than waiting for the next change or the window closing.
+- Two Argand windows running at once no longer lose each other's remembered state: both keep the files they opened in the recent list, with the options that open them, and a setting changed in one is not reverted by the other.
+- The crosshair, cursor readout and Alt guides appear as soon as a file opens or a hint or menu closes under a resting pointer, without moving the mouse first.
+- Tab and the navigation keys no longer hide the mouse pointer, and the first key press no longer makes the crosshair and cursor readout blink.
+- The cursor readout clears when the mouse leaves the window, and switching orientation keeps the crosshair under a resting pointer.
+- The analysis hint now stays open once shown: moving the pointer away no longer closes it. A click outside, Enter or Escape closes it; Escape also undoes a range applied from it. While it is open, the plot ignores the pointer, wheel and navigation keys, and the click that closes the hint does not start a pan. A right click on the FFT summary also opens it.
+- Opening a menu, the analysis settings or the file chooser, or switching to another window, now ends a drag in progress, and a drag keeps following the pointer across a hint.
+- Stop Ctrl+U and other plot shortcuts from acting behind the open time-ruler context menu.
+- Make the hinted spectrogram range in the status bar apply an available recommendation or restore the full range on click and Ctrl+R / Cmd+R without opening analysis settings.
+- Correct the README Rust version badge to state Rust 1.97+.
+- Hide the currently loaded file from Recent lists while preserving saved history and opening hints.
+- Match the minimap waveform colour to the displayed spectrogram palette and keep the active and muted spans distinct in both interface themes.
+- Show vertical time-ruler labels near both ends when they fit between the unit captions.
+- Restore the README logo using the current B0 application artwork.
+- Remove the four-pixel top gap above the vertical spectrogram and minimap.
+- Restore Ctrl+Shift+plus/minus frequency zoom and prevent shifted symbol shortcuts from also zooming time. Top-row and keypad keys use the physical Shift state consistently.
+- Spectrum dragging now pans both axes; ruler and minimap dragging remain constrained. Shift+wheel frequency pan and Ctrl+Shift+wheel frequency zoom also handle horizontal deltas emitted by Linux backends.
+- File > Recent now shares the start page's available-file list, hiding missing
+  files and directories without removing saved history or raw opening hints.
+  Availability refreshes in the background when returning to the window or
+  opening File; an already open menu keeps its entries stable until reopened.
+- Alt coordinate badges keep a fixed width for the current ruler range and precision, center their text, and meet the guide lines without a gap.
+- FLAC seeks discard old decoder packets, preventing incomplete progressive analysis and full-capture waveform scans.
+- Time zoom keeps the current detail until a complete replacement is ready instead
+  of flashing sparse previews. Deep zoom computes short ranges in one pass and
+  avoids repeating identical display work; a retained wider picture fills known areas on zoom out.
+- Resizing the GUI window or dragging its panel separator reuses a bounded
+  spectral overview instead of restarting complete file analysis. Refinement
+  continues during resizing, and status timing and colour levels remain stable.
+  Cached cell overlap preserves peaks and weights mean power before shading;
+  detail within a cache cell is limited by the documented overview resolution.
+- Replacing a spectrogram during resize no longer destroys its GPU texture
+  while a preceding frame can still be using it, which could freeze the window.
+- Resize cursors return to the normal pointer inside the window, and the
+  right-hand title-bar area no longer starts a resize when the window is expanded.
 
 ## [0.0.2] - 2026-09-01
 
@@ -319,6 +260,7 @@ promise applies to.
 - A workspace-wide lint policy: ten maintainability lints with explicit
   thresholds, enforced identically on a developer's machine and in CI.
 
-[Unreleased]: https://github.com/o-kos/argand/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/o-kos/argand/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/o-kos/argand/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/o-kos/argand/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/o-kos/argand/releases/tag/v0.0.1

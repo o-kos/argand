@@ -7,6 +7,7 @@
 # and time scale format belong to session.toml, not this file.
 
 # Window appearance: "system" follows OS light/dark changes, or use "dark" / "light".
+# A choice made in View > Theme is kept in session.toml and takes precedence.
 theme = "system"
 
 # Numeric display and input: "system", a BCP 47 tag such as "ru-RU" or "en-US",
