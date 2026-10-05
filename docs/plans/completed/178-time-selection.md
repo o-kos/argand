@@ -46,15 +46,15 @@ The first step of phase 5 in `IMPLEMENTATION_PLAN.md`. A left drag on the spectr
 - [x] Status-bar readout.
 - [x] Headless tests for the gestures; existing left-drag pan tests moved to the new gestures.
 - [x] Update `AGENTS.md` and `CHANGELOG.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation, except the owner's check of the release binary.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] The owner checks the release binary: selecting in both orientations, clearing, panning with the middle button and Space.
 
 ## Post-completion
