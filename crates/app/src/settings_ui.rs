@@ -372,23 +372,26 @@ impl Shell {
             }
         };
         let range_content = if actionable {
-            Button::new("analysis-range")
-                .tab_stop(false)
-                .group(RANGE_HOVER)
-                .custom(foregrounds.button_style(cx))
-                .small()
-                .h_5()
-                .px_2()
-                .on_click(move |_, window, cx| {
-                    window.dispatch_action(Box::new(UseRecommendedRange), cx);
-                })
-                .child(
-                    foregrounds
-                        .text(RANGE_HOVER)
-                        .whitespace_nowrap()
-                        .child(range_label),
-                )
-                .into_any_element()
+            super::app_menu_ui::keeps_focus(
+                "analysis-range-keeps-focus",
+                Button::new("analysis-range")
+                    .tab_stop(false)
+                    .group(RANGE_HOVER)
+                    .custom(foregrounds.button_style(cx))
+                    .small()
+                    .h_5()
+                    .px_2()
+                    .on_click(move |_, window, cx| {
+                        window.dispatch_action(Box::new(UseRecommendedRange), cx);
+                    })
+                    .child(
+                        foregrounds
+                            .text(RANGE_HOVER)
+                            .whitespace_nowrap()
+                            .child(range_label),
+                    ),
+            )
+            .into_any_element()
         } else {
             div()
                 .id("analysis-range")
@@ -459,11 +462,9 @@ impl Shell {
                     .id("analysis-summary")
                     .border_l_1()
                     .border_color(cx.theme().border)
-                    .child(hints::pinned(
-                        "analysis-hint",
-                        &self.analysis_hint,
-                        summary,
-                        cx,
+                    .child(super::app_menu_ui::keeps_focus(
+                        "fft-summary-keeps-focus",
+                        hints::pinned("analysis-hint", &self.analysis_hint, summary, cx),
                     )),
             )
             .child(self.range_control(displayed, cx))
@@ -536,44 +537,47 @@ fn advice_hover_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {
 }
 
 #[cfg(test)]
+use argand_core::{DbGrid, Psd, SpectrogramImage};
+#[cfg(test)]
+use argand_dsp::{Analysis, DynamicRangeResult};
+
+#[cfg(test)]
+pub(super) fn warned_analysis() -> Box<Analysis> {
+    Box::new(Analysis {
+        spectrogram: SpectrogramImage::new(1, 1),
+        db: DbGrid {
+            width: 1,
+            height: 1,
+            values: vec![-60.0],
+            t0: 0.0,
+            t1: 1.0,
+            f0: 0.0,
+            f1: 1.0,
+        },
+        psd: Psd {
+            freqs_hz: Vec::new(),
+            db: Vec::new(),
+            segments: 0,
+        },
+        waveform: None,
+        time_peak: 0.01,
+        frames: 1,
+        enbw_hz: 1.0,
+        dynamic_range: DynamicRangeResult {
+            requested: DynamicRange::Default,
+            effective_db: 110.0,
+            recommended_db: 42.0,
+        },
+    })
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::analysis::{FileInfo, Update};
-    use argand_core::{
-        DbGrid, Domain, Psd, SampleFormat, SampleType, SignalMeta, SpectrogramImage,
-    };
-    use argand_dsp::{Analysis, DynamicRangeResult};
+    use argand_core::{Domain, SampleFormat, SampleType, SignalMeta};
     use std::path::PathBuf;
     use std::time::Duration;
-
-    fn warned_analysis() -> Box<Analysis> {
-        Box::new(Analysis {
-            spectrogram: SpectrogramImage::new(1, 1),
-            db: DbGrid {
-                width: 1,
-                height: 1,
-                values: vec![-60.0],
-                t0: 0.0,
-                t1: 1.0,
-                f0: 0.0,
-                f1: 1.0,
-            },
-            psd: Psd {
-                freqs_hz: Vec::new(),
-                db: Vec::new(),
-                segments: 0,
-            },
-            waveform: None,
-            time_peak: 0.01,
-            frames: 1,
-            enbw_hz: 1.0,
-            dynamic_range: DynamicRangeResult {
-                requested: DynamicRange::Default,
-                effective_db: 110.0,
-                recommended_db: 42.0,
-            },
-        })
-    }
 
     #[test]
     fn control_foregrounds_keep_a_resting_colour_and_a_distinct_state_one() {

@@ -11,7 +11,12 @@ promise applies to.
 
 ## [Unreleased]
 
+### Fixed
+
+- A right or middle click on an application-menu, toolbar or status-bar button no longer moves the keyboard focus away from the plot, so plot keys keep working without clicking the plot again.
+
 ## [0.1.0] - 2026-10-05
+
 
 ### Added
 

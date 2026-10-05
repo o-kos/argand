@@ -15,13 +15,15 @@ test-module marker, so the `awk` pass can drop test scaffolding without a second
 search:
 
 ```sh
-PAT='impl Render for|impl gpui_kit::Render for|on_mouse_[a-z_]*|on_scroll_wheel|on_key_[a-z_]*|on_action|on_drag[a-z_]*|intercept_keystrokes|observe_keystrokes|on_click|on_hover|on_double_click|on_modifiers_changed|on_drop|on_release|observe_release|observe_window_[a-z_]*|on_mouse_event|\.context_menu\(|on_open_change|\.tooltip\(|#\[cfg\(test\)\]'
+PAT='impl Render for|impl gpui_kit::Render for|on_mouse_[a-z_]*|capture_any_mouse_down|on_scroll_wheel|on_key_[a-z_]*|on_action|on_drag[a-z_]*|intercept_keystrokes|observe_keystrokes|on_click|on_hover|on_double_click|on_modifiers_changed|on_drop|on_release|observe_release|observe_window_[a-z_]*|on_mouse_event|\.context_menu\(|on_open_change|\.tooltip\(|#\[cfg\(test\)\]'
 
 rg -n --no-heading "$PAT" crates/app/src | awk -F: '
   { if (test[$1]) next; if ($0 ~ /#\[cfg\(test\)\]/) { test[$1] = 1; next } print }'
 ```
 
-That command returns 101 entry points at this revision. The frame's own render
+That command returns 111 entry points at this revision, of which one is a
+`capture_any_mouse_down` registration, named since #156, which the earlier
+`on_mouse_` alternation missed. The frame's own render
 method is not an `impl Render` block and is found separately:
 
 ```sh
@@ -62,7 +64,7 @@ commits leave behind.
 | I04 | `shell.rs:1101` | Bare-title double click zooms the window | R2 | Retained |
 | I05 | `shell.rs:1102`, `shell.rs:1103`, `shell.rs:1107`, `shell.rs:1111` | Title drag: arm on press, disarm on release or a press outside, start the move on the first move | R2 | Retained |
 | I06 | `shell.rs:1122` | Title right click opens the platform window menu | R2 | Retained |
-| I07 | `app_menu_ui.rs:405`, `app_menu_ui.rs:767`, `app_menu_ui.rs:771` | Each toolbar control consumes its own left press and double click through `title_control`, and the container keeps its right-press stop, so a control never reaches the title gestures while the gaps between them do | R2, R4 | Retained (#158) |
+| I07 | `app_menu_ui.rs:405`, `app_menu_ui.rs:816` to `:819`, `app_menu_ui.rs:827`, `:828`, `:830` | Each toolbar control consumes its own left press and double click through `title_control`, the container keeps its right-press stop, and `keeps_focus` prevents the focusing default in the capture phase for a press that is not the left one, so a control never reaches the title gestures and never takes the keyboard from a right or middle press while the gaps between them do carry the drag | R2, R4 | Retained (#158, #156) |
 
 ### Plot gestures and keyboard
 
@@ -98,8 +100,8 @@ commits leave behind.
 | I21 | `app_menu_ui.rs:448` | The orientation `ButtonGroup` reports its selected segment | R6 | Replaced (#130) |
 | I22 | `app_menu_ui.rs:524` | The grid `Button` dispatches `ToggleGrid` | R6 | Replaced (#130) |
 | I23 | `plot_ui.rs:564` | A zoom half dispatches its registered zoom action and hands focus back to the plot | R3 | Replaced (#130) |
-| I24 | `settings_ui.rs:382` | The actionable range item dispatches `UseRecommendedRange`; the informational item has no handler | R6 | Retained |
-| I25 | `settings_ui.rs:431` | The analysis summary opens the settings hint with the keyboard in it (#108) | R6 | Retained |
+| I24 | `settings_ui.rs:377` | The actionable range item dispatches `UseRecommendedRange`, wrapped by `keeps_focus` so no press takes the keyboard from the plot; the informational item has no handler | R6 | Retained (#156) |
+| I25 | `settings_ui.rs:428` | The analysis summary opens the settings hint with the keyboard in it (#108), wrapped by `keeps_focus` so no press takes the keyboard from the plot | R6 | Retained (#156) |
 | I26 | `settings_editor.rs` (`range_readout`) | The hint's recommendation and edit buttons are gone (#108); the warned Range value and its balloon apply the recommendation on a click | R9 | Removed |
 | I27 | `shell.rs:1287` | A recent row opens its capture | R6 | Retained |
 | I28 | `shell.rs:1327` | The start page's chooser dispatches `ChooseFile` | R6 | Retained |
