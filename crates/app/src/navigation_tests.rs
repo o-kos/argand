@@ -176,3 +176,15 @@ fn a_selection_is_shown_by_the_part_of_it_in_view() {
     assert_eq!(view.fractions_of(span(0, 1000)), None);
     assert_eq!(view.fractions_of(span(2000, 2100)), None);
 }
+
+#[test]
+fn the_view_edges_are_exact_past_what_f64_holds() {
+    let past = View::full((1 << 53) + 1);
+    assert_eq!(past.boundary(1.0), (1 << 53) + 1);
+    let top = View {
+        start: 1024,
+        len: u64::MAX - 1024,
+    };
+    assert_eq!(top.boundary(1.0), u64::MAX);
+    assert_eq!(top.boundary(0.0), 1024);
+}

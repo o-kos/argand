@@ -57,12 +57,16 @@ impl View {
     }
 
     /// The sample boundary at `fraction` of this view, held inside the view.
+    ///
+    /// The two edges are exact whatever the length, because a length past 2^53
+    /// does not survive the trip through `f64`.
     pub fn boundary(self, fraction: f64) -> u64 {
-        let fraction = if fraction.is_finite() {
-            fraction.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
+        if !fraction.is_finite() || fraction <= 0.0 {
+            return self.start;
+        }
+        if fraction >= 1.0 {
+            return self.start + self.len;
+        }
         self.start + ((self.len as f64 * fraction).round() as u64).min(self.len)
     }
 

@@ -43,17 +43,18 @@ impl Mode {
     ///
     /// Samples name the first and the last sample selected, the way the ruler
     /// numbers them. Clock and seconds give the boundaries in time, with as many
-    /// decimals as one sample needs.
+    /// decimals as one sample needs, and fall back to samples where seconds
+    /// cannot tell neighbouring samples apart.
     pub fn selection(self, span: argand_core::SampleSpan, rate: f64) -> String {
-        if self == Self::Samples || !(rate.is_finite() && rate > 0.) {
+        let Some(precision) = exact_time_precision(span, rate).filter(|_| self != Self::Samples)
+        else {
             return format!(
                 "#{} – #{} ({})",
                 crate::numbers::number(span.start()),
                 crate::numbers::number(span.end() - 1),
                 crate::numbers::number(span.count())
             );
-        }
-        let precision = crate::navigation::time_precision(1. / rate);
+        };
         let end = span.end() as f64 / rate;
         let time = |seconds: f64| match self {
             Self::Clock => crate::numbers::current().axis_label(
@@ -71,6 +72,20 @@ impl Mode {
             crate::numbers::text(&format!("{:.precision$} s", span.count() as f64 / rate))
         )
     }
+}
+
+/// The decimals that tell every sample of `span` apart in seconds, or nothing where `f64` cannot.
+///
+/// A boundary is exact in `f64` only up to 2^53, and the seconds it prints need
+/// their integer digits plus one decimal per tenfold of the sample rate, which
+/// together must stay within the 15 significant digits a double carries.
+fn exact_time_precision(span: argand_core::SampleSpan, rate: f64) -> Option<usize> {
+    if !(rate.is_finite() && rate > 0.) || span.end() > 1 << 53 {
+        return None;
+    }
+    let precision = (rate.log10().ceil().max(0.) as usize).max(3);
+    let whole = (span.end() as f64 / rate).max(1.).log10().floor() as usize + 1;
+    (whole + precision <= 15).then_some(precision)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -185,6 +200,22 @@ mod tests {
         assert_eq!(
             Mode::Clock.selection(span, 2e6),
             "0:02.0000000 – 0:02.0005000 (0.0005000 s)"
+        );
+    }
+
+    #[test]
+    fn a_selection_seconds_cannot_tell_apart_is_given_in_samples() {
+        let span = |a, b| argand_core::SampleSpan::between(a, b).expect("a span");
+        let fast = Mode::Seconds.selection(span(100, 101), 4e9);
+        assert_eq!(fast, "0.0000000250 s – 0.0000000253 s (0.0000000003 s)");
+        assert_eq!(
+            Mode::Clock.selection(span(u64::MAX - 1, u64::MAX), 24e6),
+            Mode::Samples.selection(span(u64::MAX - 1, u64::MAX), 24e6)
+        );
+        assert_eq!(
+            Mode::Seconds.selection(span(0, 10), 0.),
+            "#0 – #9 (10)",
+            "no rate, no seconds"
         );
     }
 }

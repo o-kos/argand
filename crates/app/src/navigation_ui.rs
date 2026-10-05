@@ -952,22 +952,30 @@ impl plot_view::PlotView {
 
     /// Carry a time selection to the pointer, once it has gone beyond a click.
     fn extend_selection(&mut self, event: &gpui_kit::MouseMoveEvent, cx: &mut Context<Self>) {
-        let Some(mut selecting) = self.selecting else {
+        if self.selecting.is_none() {
             return;
-        };
+        }
         if !event.dragging() {
             self.selecting = None;
             return;
         }
+        self.select_to(event.position, cx);
+    }
+
+    /// Report the selection from its anchor to `position`, unless the press is still a click.
+    fn select_to(&mut self, position: gpui_kit::Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(mut selecting) = self.selecting else {
+            return;
+        };
         let (Some(geometry), Some(snapshot)) = (self.geometry, &self.snapshot) else {
             return;
         };
-        let delta = event.position - selecting.origin;
+        let delta = position - selecting.origin;
         selecting.moved |= f32::from(delta.x).hypot(f32::from(delta.y)) >= CLICK_SLOP;
         self.selecting = Some(selecting);
         if selecting.moved {
             let view = snapshot.extents.time.view;
-            let boundary = view.boundary(geometry.fractions(event.position).0);
+            let boundary = view.boundary(geometry.fractions(position).0);
             cx.emit(plot_view::PlotIntent::Select(
                 argand_core::SampleSpan::between(selecting.anchor, boundary),
             ));
@@ -980,11 +988,14 @@ impl plot_view::PlotView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event.button == MouseButton::Left
-            && let Some(selecting) = self.selecting.take()
-        {
-            // A click on the spectrum clears whatever was selected
-            if !selecting.moved {
+        if event.button == MouseButton::Left && self.selecting.is_some() {
+            // The release can lie beyond the last move, so it settles the far end
+            self.select_to(event.position, cx);
+            if self
+                .selecting
+                .take()
+                .is_some_and(|selecting| !selecting.moved)
+            {
                 cx.emit(plot_view::PlotIntent::Select(None));
             }
             cx.notify();

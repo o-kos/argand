@@ -120,8 +120,8 @@ pub fn time_band(
     scale: f32,
 ) -> Bounds<Pixels> {
     let length = f32::from(orientation.axes(bounds.size.width, bounds.size.height).0);
-    let start = from as f32 * length;
-    let span = ((to - from) as f32 * length).max(1. / scale);
+    let span = ((to - from) as f32 * length).max(1. / scale).min(length);
+    let start = (from as f32 * length).min(length - span).max(0.);
     if orientation.vertical() {
         Bounds::new(
             bounds.origin + point(px(0.), px(start)),
@@ -181,5 +181,26 @@ impl Panel {
             )
         };
         window.paint_quad(fill(bounds, self.separator));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::orientation::Mode;
+
+    #[test]
+    fn a_thin_band_at_the_far_edge_stays_inside_its_bounds() {
+        let bounds = Bounds::new(point(px(10.), px(20.)), size(px(800.), px(300.)));
+        for scale in [1., 2.] {
+            let band = time_band(bounds, Mode::Horizontal, (0.9999999, 1.0), scale);
+            assert!(band.right() <= bounds.right(), "{band:?}");
+            assert!(f32::from(band.size.width) >= 1. / scale - 1e-4);
+            let band = time_band(bounds, Mode::Vertical, (0.9999999, 1.0), scale);
+            assert!(band.bottom() <= bounds.bottom(), "{band:?}");
+            assert_eq!(band.size.width, bounds.size.width);
+        }
+        let whole = time_band(bounds, Mode::Horizontal, (0.0, 1.0), 1.);
+        assert_eq!(whole, bounds);
     }
 }

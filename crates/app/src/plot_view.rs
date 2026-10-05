@@ -254,13 +254,16 @@ impl PlotView {
                 }
             }))
             .on_key_up(cx.listener(|plot, event: &gpui_kit::KeyUpEvent, _, cx| {
-                if is_space(&event.keystroke) {
+                // Released with a modifier still down is still released
+                if event.keystroke.key == "space" {
                     plot.release_space(cx);
                 }
             }))
-            .on_action(
-                cx.listener(|_, _: &ClearSelection, _, cx| cx.emit(PlotIntent::Select(None))),
-            )
+            .on_action(cx.listener(|plot, _: &ClearSelection, _, cx| {
+                plot.selecting = None;
+                cx.emit(PlotIntent::Select(None));
+                cx.notify();
+            }))
             .on_action(cx.listener(|plot, _: &ZoomIn, _, cx| {
                 plot.time(
                     TimeIntent::Zoom {
@@ -1235,6 +1238,50 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn the_release_settles_the_far_end_of_a_selection(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let from = spectrum.center();
+        let release = from + point(px(120.), px(0.));
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(from, None, none);
+        input.simulate_mouse_down(from, MouseButton::Left, none);
+        input.simulate_mouse_move(from + point(px(1.), px(0.)), MouseButton::Left, none);
+        input.simulate_mouse_up(release, MouseButton::Left, none);
+        cx.run_until_parked();
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            span(
+                boundary_at(spectrum, from.x),
+                boundary_at(spectrum, release.x)
+            ),
+            "a release far from the last move is a drag to where it happened"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn escape_during_a_drag_ends_the_selection_gesture(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let from = spectrum(cx, handle).center();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(from, None, none);
+        input.simulate_mouse_down(from, MouseButton::Left, none);
+        input.simulate_mouse_move(from + point(px(40.), px(0.)), MouseButton::Left, none);
+        press(cx, handle, "escape");
+        selections(cx, handle);
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(from + point(px(80.), px(0.)), MouseButton::Left, none);
+        input.simulate_mouse_up(from + point(px(80.), px(0.)), MouseButton::Left, none);
+        cx.run_until_parked();
+        assert!(
+            selections(cx, handle).is_empty(),
+            "the moves after Escape do not bring it back"
+        );
+    }
+
+    #[gpui_kit::test]
     fn ctrl_drag_on_the_spectrum_is_kept_for_the_rectangle(cx: &mut TestAppContext) {
         let handle = open(cx);
         let from = spectrum(cx, handle).center();
@@ -1279,6 +1326,18 @@ mod tests {
             gpui_kit::Modifiers::default(),
         );
         assert_eq!(drag_steps(cx, handle), 0, "without Space it selects again");
+    }
+
+    #[gpui_kit::test]
+    fn space_released_with_a_modifier_down_is_released(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        space(cx, handle, true);
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_event(gpui_kit::KeyUpEvent {
+            keystroke: gpui_kit::Keystroke::parse("shift-space").unwrap(),
+        });
+        cx.run_until_parked();
+        assert!(!space_held(cx, handle));
     }
 
     #[gpui_kit::test]

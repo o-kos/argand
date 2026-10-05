@@ -22,11 +22,13 @@ The first step of phase 5 in `IMPLEMENTATION_PLAN.md`. A left drag on the spectr
 - A pointer maps to a sample boundary as `view.start + round(fraction × view.len)`, the fraction clamped to the plot, so a drag beyond the plot stops at the visible edge. This lives in `navigation.rs` (`View::boundary`), free of GPUI.
 - `PlotView` gains a `Selecting { anchor, origin, moved }` gesture beside `pan`, and remembers which button drives a pan so a middle-button pan is continued by `pressed_button`, not `dragging()`.
 - A press decides the gesture once: middle button, or left with Space held, pans exactly as the left button does today; left on the spectrum without Ctrl selects; left with Ctrl on the spectrum does nothing (reserved for the rectangle); left on the rulers and the minimap pans as today.
-- A left press and release that moved less than 3 logical pixels is a click and clears the selection; Escape on the focused plot clears it too.
+- A left press and release that moved less than 3 logical pixels is a click and clears the selection; the release position settles the far end, since it can lie beyond the last move. Escape on the focused plot clears the selection and ends a selection drag in progress.
 - Space is followed with key down and key up on the plot surface and forgotten whenever the plot ends its gestures (blur, overlays, deactivation), so a release elsewhere cannot leave it stuck. While Space is held the spectrum shows an open hand.
 - `PlotIntent::Select(Option<SampleSpan>)` reports the selection while dragging; Shell keeps it in `Shell::selection`, clears it when a file opens, and passes it to the plot in `PlotSnapshot` as fractions of the view (`View::fractions_of`), which keeps the spectrogram painter within its line limit.
 - The band is the theme's `blue_light` at 0.3 opacity, because the spectrum and minimap are dark in both themes; it is over the picture, below the grid and guides, across the whole frequency extent, clipped to the plot; the minimap draws the same band under its waveform.
-- The status bar shows `start – end (duration)` in the time ruler's format beside the cursor readout while a selection exists.
+- The status bar shows `start – end (duration)` in the time ruler's format beside the cursor readout while a selection exists, with one decimal per tenfold of the sample rate. Where `f64` cannot tell neighbouring samples apart in seconds (past 2^53 samples or 15 significant digits) it shows sample indices instead.
+- `View::boundary` returns the view's two edges exactly, since a length past 2^53 does not survive `f64`.
+- A minimum-width band (one device pixel) is held inside the plot or minimap rather than spilling onto a ruler.
 
 ## Rejected alternatives
 
