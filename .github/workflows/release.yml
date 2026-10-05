@@ -18,7 +18,8 @@ defaults:
 jobs:
   verify:
     name: verify
-    runs-on: ubuntu-latest
+    # The image CI tests on, so the GPUI libraries come from the same sources.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,6 +37,22 @@ jobs:
             exit 1
           fi
           echo "$GITHUB_REF_NAME is on main"
+
+      - name: Test Ubuntu source isolation
+        run: python3 .github/scripts/test-ubuntu-packages.py
+
+      # The workspace test builds the GUI, which links against these, exactly as in ci.yml.
+      - name: Install the system libraries GPUI needs
+        run: |
+          sudo bash .github/scripts/install-ubuntu-packages.sh \
+            /etc/apt/sources.list.d/ubuntu.sources \
+            libasound2-dev \
+            libfontconfig-dev \
+            libvulkan-dev \
+            libwayland-dev \
+            libxcb1-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev
 
       - name: Install the toolchain pinned by rust-toolchain.toml
         run: |
@@ -83,8 +100,9 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      # Only aspec ships here; building the GUI would need GPUI libraries for nothing.
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --release --locked -p argand-cli --target ${{ matrix.target }}
 
       - name: Stage the archive contents
         run: |
