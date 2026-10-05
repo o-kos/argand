@@ -46,7 +46,7 @@ The first step of phase 5 in `IMPLEMENTATION_PLAN.md`. A left drag on the spectr
 - [x] Status-bar readout.
 - [x] Headless tests for the gestures; existing left-drag pan tests moved to the new gestures.
 - [x] Update `AGENTS.md` and `CHANGELOG.md`.
-- [x] Complete validation, except the owner's check of the release binary.
+- [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
@@ -55,8 +55,8 @@ The first step of phase 5 in `IMPLEMENTATION_PLAN.md`. A left drag on the spectr
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] The owner checks the release binary: selecting in both orientations, clearing, panning with the middle button and Space.
+- [x] The owner checks the release binary: selecting in both orientations, clearing, panning with the middle button and Space. Accepted; the status-bar readout of start, end and length is to be replaced by on-plot labels in the style of ocenaudio, #183.
 
 ## Post-completion
 
-None.
+- #183 replaces the status-bar selection readout with on-plot labels.
