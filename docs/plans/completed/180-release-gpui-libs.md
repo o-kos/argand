@@ -27,8 +27,8 @@ The `v0.1.0` tag ran `release.yml`, whose `verify` job failed in `cargo test --l
 
 - [x] `verify` on `ubuntu-24.04` with source isolation and GPUI packages.
 - [x] `build` limited to `argand-cli`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation, except the release run itself, which only a tag can start.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
