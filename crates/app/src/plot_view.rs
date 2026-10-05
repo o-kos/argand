@@ -30,6 +30,8 @@ pub(super) struct PlotSnapshot {
     pub show_scale_ui: bool,
     /// The mouse position counts only while this holds, since it goes stale once the pointer leaves.
     pub pointer_in_window: bool,
+    /// The time selection as fractions of the view, where any of it shows.
+    pub selection: Option<(f64, f64)>,
 }
 
 /// What the plot asks of the shell.
@@ -43,6 +45,8 @@ pub(super) enum PlotIntent {
     },
     /// The pointer, and with it the readout, changed.
     Pointer,
+    /// The time selection a drag or a click left, if any.
+    Select(Option<argand_core::SampleSpan>),
     /// A drag began on these axes, whose tick schemes are held from here.
     GestureStarted {
         time: bool,
@@ -80,6 +84,11 @@ pub(super) struct PlotView {
     pub(super) pointer: Option<gpui_kit::Point<Pixels>>,
     pub(super) pan: Option<Pan>,
     pub(super) frequency_pan: Option<(gpui_kit::Point<Pixels>, crate::frequency::View)>,
+    /// The button that drives the pan in progress.
+    pub(super) pan_button: MouseButton,
+    pub(super) selecting: Option<Selecting>,
+    /// Space is held over the focused plot, so a left drag pans.
+    pub(super) space: bool,
     pub(super) geometry: Option<PlotGeometry>,
     pub(super) panel_bounds: Option<Bounds<Pixels>>,
     pub(super) measured: Option<PlotSize>,
@@ -90,20 +99,26 @@ pub(super) struct PlotView {
     pub(super) menu_dismiss: Option<Subscription>,
     /// Kept because dropping it stops the symbol shortcuts.
     _symbols: Subscription,
+    /// Forgets Space when the plot loses focus, since its release goes elsewhere.
+    _blur: Subscription,
 }
 
 impl EventEmitter<PlotIntent> for PlotView {}
 
 impl PlotView {
-    pub(super) fn new(window: &Window, cx: &mut Context<Self>) -> Self {
+    pub(super) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle().tab_stop(true);
         let symbols = symbol_shortcuts(focus.clone(), window.window_handle().window_id(), cx);
+        let blur = cx.on_blur(&focus, window, |plot, _, cx| plot.release_space(cx));
         Self {
             focus,
             snapshot: None,
             pointer: None,
             pan: None,
             frequency_pan: None,
+            pan_button: MouseButton::Left,
+            selecting: None,
+            space: false,
             geometry: None,
             panel_bounds: None,
             measured: None,
@@ -112,11 +127,23 @@ impl PlotView {
             open_menu: None,
             menu_dismiss: None,
             _symbols: symbols,
+            _blur: blur,
         }
     }
 
     pub(super) fn dragging(&self) -> bool {
+        self.panning() || self.selecting.is_some()
+    }
+
+    pub(super) fn panning(&self) -> bool {
         self.pan.is_some() || self.frequency_pan.is_some()
+    }
+
+    fn release_space(&mut self, cx: &mut Context<Self>) {
+        if self.space {
+            self.space = false;
+            cx.notify();
+        }
     }
 
     /// The pointer over the plot and the layout it was measured against.
@@ -127,6 +154,7 @@ impl PlotView {
     pub(super) fn cancel_drags(&mut self, cx: &mut Context<Self>) {
         self.pan = None;
         self.frequency_pan = None;
+        self.selecting = None;
         cx.notify();
     }
 
@@ -145,9 +173,11 @@ impl PlotView {
 
     /// End the drags, which only the pointer that began them may finish.
     pub(super) fn end_gestures(&mut self, cx: &mut Context<Self>) {
-        if self.dragging() {
+        if self.dragging() || self.space {
             self.pan = None;
             self.frequency_pan = None;
+            self.selecting = None;
+            self.space = false;
             cx.notify();
         }
     }
@@ -193,6 +223,7 @@ impl PlotView {
         self.gutter_floor = 0.;
         self.pan = None;
         self.frequency_pan = None;
+        self.selecting = None;
         // The old layout serves until the next frame measures the new one, so the cursor and readout do not blink.
         cx.notify();
     }
@@ -216,6 +247,20 @@ impl PlotView {
             } else {
                 "Plot Horizontal"
             })
+            .on_key_down(cx.listener(|plot, event: &gpui_kit::KeyDownEvent, _, cx| {
+                if is_space(&event.keystroke) && !plot.space {
+                    plot.space = true;
+                    cx.notify();
+                }
+            }))
+            .on_key_up(cx.listener(|plot, event: &gpui_kit::KeyUpEvent, _, cx| {
+                if is_space(&event.keystroke) {
+                    plot.release_space(cx);
+                }
+            }))
+            .on_action(
+                cx.listener(|_, _: &ClearSelection, _, cx| cx.emit(PlotIntent::Select(None))),
+            )
             .on_action(cx.listener(|plot, _: &ZoomIn, _, cx| {
                 plot.time(
                     TimeIntent::Zoom {
@@ -296,22 +341,34 @@ impl Render for PlotView {
         let cursor = self
             .geometry
             .map_or(gpui_kit::CursorStyle::Arrow, |geometry| {
-                geometry.cursor(
-                    self.pointer,
-                    self.pan.is_some() || self.frequency_pan.is_some(),
-                    Some((snapshot.extents.time.view, snapshot.extents.time.total)),
-                    snapshot.frequency.span < 1.,
-                )
+                geometry
+                    .selection_cursor(
+                        self.pointer,
+                        self.panning(),
+                        self.selecting.is_some(),
+                        self.space,
+                    )
+                    .unwrap_or_else(|| {
+                        geometry.cursor(
+                            self.pointer,
+                            self.panning(),
+                            Some((snapshot.extents.time.view, snapshot.extents.time.total)),
+                            snapshot.frequency.span < 1.,
+                        )
+                    })
             });
         // Focusable overlays sit beside the surface, so they never inherit Plot bindings.
         div()
             .id("time-plot")
             .cursor(cursor)
             .on_scroll_wheel(cx.listener(Self::wheel))
-            .on_mouse_down(MouseButton::Left, cx.listener(Self::begin_pan))
+            .on_mouse_down(MouseButton::Left, cx.listener(Self::press))
+            .on_mouse_down(MouseButton::Middle, cx.listener(Self::press))
             .on_mouse_move(cx.listener(|plot, event, _, cx| plot.pointer_moved(event, cx)))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_drags))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::finish_drags))
+            .on_mouse_up(MouseButton::Middle, cx.listener(Self::finish_drags))
+            .on_mouse_up_out(MouseButton::Middle, cx.listener(Self::finish_drags))
             // Keys must not end the hover, and a plot uncovered under a still pointer takes it up.
             .hover_listener_mode(gpui_kit::HoverListenerMode::InputModalityIndependent)
             .on_hover(cx.listener(|plot, hovered, window, cx| {
@@ -358,6 +415,11 @@ fn drag_tracker(plot: WeakEntity<PlotView>) -> impl IntoElement {
     )
     .absolute()
     .inset_0()
+}
+
+/// Space alone, which turns a left drag on the spectrum into a pan.
+fn is_space(keystroke: &gpui_kit::Keystroke) -> bool {
+    keystroke.key == "space" && !keystroke.modifiers.modified()
 }
 
 /// Symbol zoom keys whose Shift GPUI loses before binding match, for one focused plot.
@@ -458,6 +520,8 @@ mod tests {
             minimap: waveform::Panel {
                 waveform: None,
                 viewport: Some((view, 1_000_000)),
+                selection: None,
+                selection_fill: gpui_kit::black(),
                 separator: gpui_kit::black(),
                 paper: gpui_kit::black(),
                 ink: waveform::Ink {
@@ -472,6 +536,7 @@ mod tests {
             show_grid: true,
             show_scale_ui: false,
             pointer_in_window: true,
+            selection: None,
         }
     }
 
@@ -731,7 +796,7 @@ mod tests {
         .unwrap();
     }
 
-    /// Drags the spectrum from its centre to `to` and returns the last view it asked for.
+    /// Pans the spectrum with the middle button from its centre to `to` and returns the last view it asked for.
     fn drag_time(
         cx: &mut TestAppContext,
         handle: WindowHandle<Harness>,
@@ -742,8 +807,13 @@ mod tests {
         handle
             .update(cx, |harness, _, _| harness.intents.clear())
             .unwrap();
-        cx.update_window(handle.into(), |_, window, cx| window.drag(from, to, cx))
-            .unwrap();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(from, None, none);
+        input.simulate_mouse_down(from, MouseButton::Middle, none);
+        input.simulate_mouse_move(from + (to - from) / 2., MouseButton::Middle, none);
+        input.simulate_mouse_move(to, MouseButton::Middle, none);
+        input.simulate_mouse_up(to, MouseButton::Middle, none);
         cx.run_until_parked();
         let dragging = handle
             .update(cx, |harness, _, cx| {
@@ -962,7 +1032,7 @@ mod tests {
         assert_eq!(pointer(cx, handle), Some(resting));
     }
 
-    /// Presses in the spectrum's centre and drags a little, returning the drag's input.
+    /// Presses the middle button in the spectrum's centre and pans a little, returning the drag's input.
     fn start_drag(
         cx: &mut TestAppContext,
         handle: WindowHandle<Harness>,
@@ -971,8 +1041,8 @@ mod tests {
         let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
         let none = gpui_kit::Modifiers::default();
         input.simulate_mouse_move(from, None, none);
-        input.simulate_mouse_down(from, MouseButton::Left, none);
-        input.simulate_mouse_move(from - point(px(10.), px(0.)), MouseButton::Left, none);
+        input.simulate_mouse_down(from, MouseButton::Middle, none);
+        input.simulate_mouse_move(from - point(px(10.), px(0.)), MouseButton::Middle, none);
         let dragging = handle
             .update(cx, |harness, _, cx| {
                 harness.plot.as_ref().unwrap().read(cx).dragging()
@@ -1009,8 +1079,8 @@ mod tests {
         assert_eq!(pointer(cx, handle), None, "the readout goes with the drag");
         drag_steps(cx, handle);
         let none = gpui_kit::Modifiers::default();
-        input.simulate_mouse_move(from - point(px(60.), px(0.)), MouseButton::Left, none);
-        input.simulate_mouse_up(from - point(px(60.), px(0.)), MouseButton::Left, none);
+        input.simulate_mouse_move(from - point(px(60.), px(0.)), MouseButton::Middle, none);
+        input.simulate_mouse_up(from - point(px(60.), px(0.)), MouseButton::Middle, none);
         assert_eq!(drag_steps(cx, handle), 0, "later moves do not resume it");
     }
 
@@ -1031,6 +1101,255 @@ mod tests {
             drag_time(cx, handle, spectrum, to),
             expected,
             "the step over the hint was followed"
+        );
+    }
+
+    /// The selections reported since the last call.
+    fn selections(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+    ) -> Vec<Option<argand_core::SampleSpan>> {
+        handle
+            .update(cx, |harness, _, _| {
+                std::mem::take(&mut harness.intents)
+                    .into_iter()
+                    .filter_map(|intent| match intent {
+                        PlotIntent::Select(span) => Some(span),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap()
+    }
+
+    /// Drags with the left button through a midpoint, as a hand does.
+    fn left_drag(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        from: gpui_kit::Point<Pixels>,
+        to: gpui_kit::Point<Pixels>,
+        modifiers: gpui_kit::Modifiers,
+    ) {
+        handle
+            .update(cx, |harness, _, _| harness.intents.clear())
+            .unwrap();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(from, None, modifiers);
+        input.simulate_mouse_down(from, MouseButton::Left, modifiers);
+        input.simulate_mouse_move(from + (to - from) / 2., MouseButton::Left, modifiers);
+        input.simulate_mouse_move(to, MouseButton::Left, modifiers);
+        input.simulate_mouse_up(to, MouseButton::Left, modifiers);
+        cx.run_until_parked();
+    }
+
+    /// The sample boundary under `x` in the test snapshot's horizontal view.
+    fn boundary_at(spectrum: Bounds<Pixels>, x: Pixels) -> u64 {
+        let fraction =
+            f32::from(x - spectrum.left()) as f64 / f32::from(spectrum.size.width) as f64;
+        snapshot().extents.time.view.boundary(fraction)
+    }
+
+    fn span(a: u64, b: u64) -> Option<argand_core::SampleSpan> {
+        argand_core::SampleSpan::between(a, b)
+    }
+
+    fn space(cx: &mut TestAppContext, handle: WindowHandle<Harness>, down: bool) {
+        let keystroke = gpui_kit::Keystroke::parse("space").unwrap();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        if down {
+            input.simulate_event(gpui_kit::KeyDownEvent {
+                keystroke,
+                is_held: false,
+                prefer_character_input: false,
+            });
+        } else {
+            input.simulate_event(gpui_kit::KeyUpEvent { keystroke });
+        }
+        cx.run_until_parked();
+    }
+
+    fn space_held(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> bool {
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().read(cx).space
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn a_left_drag_on_the_spectrum_selects_time_and_does_not_pan(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let from = spectrum.center();
+        let to = from - point(px(100.), px(0.));
+        left_drag(cx, handle, from, to, gpui_kit::Modifiers::default());
+        let intents = handle
+            .update(cx, |harness, _, _| harness.intents.clone())
+            .unwrap();
+        assert!(
+            !intents
+                .iter()
+                .any(|intent| matches!(intent, PlotIntent::Drag { .. })),
+            "a selection is not a pan: {intents:?}"
+        );
+        let reported = selections(cx, handle);
+        assert_eq!(
+            reported.last().copied().flatten(),
+            span(boundary_at(spectrum, to.x), boundary_at(spectrum, from.x)),
+            "the span runs from the press to the pointer, whichever way it went"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_selection_dragged_beyond_the_plot_stops_at_the_visible_edge(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let from = spectrum.center();
+        let beyond = point(spectrum.left() - px(60.), from.y + px(400.));
+        left_drag(cx, handle, from, beyond, gpui_kit::Modifiers::default());
+        let view = snapshot().extents.time.view;
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            span(view.start, boundary_at(spectrum, from.x))
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_click_and_escape_clear_the_selection(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let at = spectrum(cx, handle).center();
+        left_drag(
+            cx,
+            handle,
+            at,
+            at + point(px(1.), px(1.)),
+            gpui_kit::Modifiers::default(),
+        );
+        assert_eq!(
+            selections(cx, handle),
+            [None],
+            "a press that barely moved is a click"
+        );
+        press(cx, handle, "escape");
+        assert_eq!(selections(cx, handle), [None]);
+    }
+
+    #[gpui_kit::test]
+    fn ctrl_drag_on_the_spectrum_is_kept_for_the_rectangle(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let from = spectrum(cx, handle).center();
+        let ctrl = gpui_kit::Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        left_drag(cx, handle, from, from - point(px(80.), px(0.)), ctrl);
+        let intents = handle
+            .update(cx, |harness, _, _| std::mem::take(&mut harness.intents))
+            .unwrap();
+        assert!(
+            !intents
+                .iter()
+                .any(|intent| matches!(intent, PlotIntent::Drag { .. } | PlotIntent::Select(_))),
+            "{intents:?}"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn space_turns_a_left_drag_into_a_pan_until_it_is_released(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let from = spectrum.center();
+        space(cx, handle, true);
+        assert!(space_held(cx, handle));
+        left_drag(
+            cx,
+            handle,
+            from,
+            from - point(px(100.), px(0.)),
+            gpui_kit::Modifiers::default(),
+        );
+        assert!(drag_steps(cx, handle) > 0, "Space and a left drag pan");
+        space(cx, handle, false);
+        assert!(!space_held(cx, handle));
+        left_drag(
+            cx,
+            handle,
+            from,
+            from - point(px(100.), px(0.)),
+            gpui_kit::Modifiers::default(),
+        );
+        assert_eq!(drag_steps(cx, handle), 0, "without Space it selects again");
+    }
+
+    #[gpui_kit::test]
+    fn space_is_forgotten_when_the_plot_loses_focus(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        // GPUI reports focus changes only within an active window.
+        cx.update_window(handle.into(), |_, window, _| window.activate_window())
+            .unwrap();
+        frame(cx, handle);
+        space(cx, handle, true);
+        handle
+            .update(cx, |harness, window, cx| window.focus(&harness.other, cx))
+            .unwrap();
+        frame(cx, handle);
+        assert!(!space_held(cx, handle), "its release would go elsewhere");
+    }
+
+    #[gpui_kit::test]
+    fn a_left_drag_on_the_time_ruler_still_pans(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let ruler = handle
+            .update(cx, |harness, _, cx| {
+                harness
+                    .plot
+                    .as_ref()
+                    .unwrap()
+                    .read(cx)
+                    .geometry
+                    .unwrap()
+                    .time_ruler
+            })
+            .unwrap();
+        let from = ruler.center();
+        left_drag(
+            cx,
+            handle,
+            from,
+            from - point(px(60.), px(0.)),
+            gpui_kit::Modifiers::default(),
+        );
+        assert!(drag_steps(cx, handle) > 0);
+    }
+
+    #[gpui_kit::test]
+    fn a_vertical_plot_selects_along_its_time_axis(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, cx| {
+                    plot.snapshot.as_mut().unwrap().extents.orientation =
+                        crate::orientation::Mode::Vertical;
+                    plot.reorient(cx);
+                });
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
+        let spectrum = spectrum(cx, handle);
+        let from = spectrum.center();
+        let to = from + point(px(40.), px(80.));
+        left_drag(cx, handle, from, to, gpui_kit::Modifiers::default());
+        let along = |y: Pixels| {
+            let fraction =
+                f32::from(y - spectrum.top()) as f64 / f32::from(spectrum.size.height) as f64;
+            snapshot().extents.time.view.boundary(fraction)
+        };
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            span(along(from.y), along(to.y)),
+            "time runs down, so only the vertical movement counts"
         );
     }
 

@@ -24,8 +24,8 @@ The first step of phase 5 in `IMPLEMENTATION_PLAN.md`. A left drag on the spectr
 - A press decides the gesture once: middle button, or left with Space held, pans exactly as the left button does today; left on the spectrum without Ctrl selects; left with Ctrl on the spectrum does nothing (reserved for the rectangle); left on the rulers and the minimap pans as today.
 - A left press and release that moved less than 3 logical pixels is a click and clears the selection; Escape on the focused plot clears it too.
 - Space is followed with key down and key up on the plot surface and forgotten whenever the plot ends its gestures (blur, overlays, deactivation), so a release elsewhere cannot leave it stuck. While Space is held the spectrum shows an open hand.
-- `PlotIntent::Select(Option<SampleSpan>)` reports the selection while dragging; Shell keeps it in `Shell::selection`, clears it when a file opens, and passes it to the plot in `PlotSnapshot`.
-- The band is the theme accent at low opacity over the picture, below the grid and guides, across the whole frequency extent, clipped to the plot; the minimap draws the same band under its waveform.
+- `PlotIntent::Select(Option<SampleSpan>)` reports the selection while dragging; Shell keeps it in `Shell::selection`, clears it when a file opens, and passes it to the plot in `PlotSnapshot` as fractions of the view (`View::fractions_of`), which keeps the spectrogram painter within its line limit.
+- The band is the theme's `blue_light` at 0.3 opacity, because the spectrum and minimap are dark in both themes; it is over the picture, below the grid and guides, across the whole frequency extent, clipped to the plot; the minimap draws the same band under its waveform.
 - The status bar shows `start – end (duration)` in the time ruler's format beside the cursor readout while a selection exists.
 
 ## Rejected alternatives
@@ -36,22 +36,22 @@ The first step of phase 5 in `IMPLEMENTATION_PLAN.md`. A left drag on the spectr
 
 ## Implementation steps
 
-- [ ] `argand_core::selection` with tests.
-- [ ] `View::boundary` with tests.
-- [ ] Gesture split in `PlotView`: selection, middle-button and Space pans, click and Escape clearing, cursor.
-- [ ] `PlotIntent::Select`, `Shell::selection`, reset on file opening, snapshot.
-- [ ] Drawing on the spectrum and the minimap.
-- [ ] Status-bar readout.
-- [ ] Headless tests for the gestures; existing left-drag pan tests moved to the new gestures.
-- [ ] Update `AGENTS.md` and `CHANGELOG.md`.
+- [x] `argand_core::selection` with tests.
+- [x] `View::boundary` with tests.
+- [x] Gesture split in `PlotView`: selection, middle-button and Space pans, click and Escape clearing, cursor.
+- [x] `PlotIntent::Select`, `Shell::selection`, reset on file opening, snapshot.
+- [x] Drawing on the spectrum and the minimap.
+- [x] Status-bar readout.
+- [x] Headless tests for the gestures; existing left-drag pan tests moved to the new gestures.
+- [x] Update `AGENTS.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] The owner checks the release binary: selecting in both orientations, clearing, panning with the middle button and Space.
 

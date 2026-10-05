@@ -11,6 +11,14 @@ promise applies to.
 
 ## [Unreleased]
 
+### Added
+
+- Select a time range with a left drag on the spectrogram, in either orientation. The selection is tinted on the spectrogram and the minimap, and the status bar shows its start, end and length in the time ruler's units. A click on the spectrogram or Escape clears it.
+
+### Changed
+
+- Panning the spectrogram by dragging now uses the middle mouse button, or the left button while Space is held, because a left drag selects. Dragging the rulers and the minimap, and the wheel, are unchanged.
+
 ### Fixed
 
 - A right or middle click on an application-menu, toolbar or status-bar button no longer moves the keyboard focus away from the plot, so plot keys keep working without clicking the plot again.

@@ -109,10 +109,39 @@ impl Waveform {
     }
 }
 
+/// The stretch of `bounds` that time fractions `(from, to)` cover, across its whole other side.
+///
+/// It is never thinner than one device pixel, so a selection far shorter than
+/// a pixel still shows where it is.
+pub fn time_band(
+    bounds: Bounds<Pixels>,
+    orientation: crate::orientation::Mode,
+    (from, to): (f64, f64),
+    scale: f32,
+) -> Bounds<Pixels> {
+    let length = f32::from(orientation.axes(bounds.size.width, bounds.size.height).0);
+    let start = from as f32 * length;
+    let span = ((to - from) as f32 * length).max(1. / scale);
+    if orientation.vertical() {
+        Bounds::new(
+            bounds.origin + point(px(0.), px(start)),
+            size(bounds.size.width, px(span)),
+        )
+    } else {
+        Bounds::new(
+            bounds.origin + point(px(start), px(0.)),
+            size(px(span), bounds.size.height),
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct Panel {
     pub waveform: Option<Arc<Waveform>>,
     pub viewport: Option<(View, u64)>,
+    /// The time selection as fractions of the whole capture.
+    pub selection: Option<(f64, f64)>,
+    pub selection_fill: gpui_kit::Hsla,
     pub separator: gpui_kit::Hsla,
     /// The ground the envelope is drawn on, dark in both themes like the spectrogram beside it.
     pub paper: gpui_kit::Hsla,
@@ -133,6 +162,10 @@ impl Panel {
             )
         };
         window.paint_quad(fill(ground, self.paper));
+        if let Some(fractions) = self.selection {
+            let band = time_band(ground, frame.orientation, fractions, window.scale_factor());
+            window.paint_quad(fill(band, self.selection_fill));
+        }
         if let Some(waveform) = &self.waveform {
             waveform.paint(frame, origin, height, self.viewport, self.ink, window);
         }
