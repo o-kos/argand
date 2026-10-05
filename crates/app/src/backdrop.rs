@@ -97,7 +97,7 @@ impl Shell {
         let accepted = self
             .file
             .as_ref()
-            .is_some_and(|file| file.analyst.accepts(&refresh.delivery));
+            .is_some_and(|file| file.state.analyst.accepts(&refresh.delivery));
         let plot = self.plot_entity();
         let Some(backdrop) = &mut self.backdrop else {
             return;
@@ -153,7 +153,7 @@ impl Shell {
 
     pub(super) fn prepare_backdrop(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         let Some(file) = &self.file else { return };
-        let Some(settings) = file.displayed_settings else {
+        let Some(settings) = file.state.displayed_settings().cloned() else {
             return;
         };
         if self
@@ -185,8 +185,8 @@ impl Shell {
         // must survive until that delivery is applied or explicitly invalidated.
         let refreshing = self.backdrop_refresh.is_some();
         let Some(file) = &self.file else { return };
-        let complete = matches!(file.document.status(), Status::Ready { .. });
-        let Some(analysis) = file.document.analysis() else {
+        let complete = matches!(file.state.document.status(), Status::Ready { .. });
+        let Some(analysis) = file.state.document.analysis() else {
             return;
         };
         let incoming = crate::navigation::PictureView::grid(&analysis.db);

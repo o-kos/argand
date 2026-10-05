@@ -19,7 +19,7 @@ impl Shell {
         (
             self.file
                 .as_ref()
-                .and_then(|file| file.document.analysis())
+                .and_then(|file| file.state.document.analysis())
                 .map(|analysis| crate::navigation::PictureView::grid(&analysis.db)),
             self.file
                 .as_ref()
@@ -89,7 +89,10 @@ impl Shell {
     }
 
     fn minimap_panel(&self, cx: &gpui_kit::App) -> waveform::Panel {
-        let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
+        let displayed = self
+            .file
+            .as_ref()
+            .and_then(|file| file.state.displayed_settings().cloned());
         let colormap = self.settings.minimap_colormap(displayed);
         // The minimap stands on the bottom of the spectrogram's own scale in either theme.
         let [r, g, b] = colormap.gradient()[0];
@@ -99,7 +102,7 @@ impl Shell {
             viewport: self.view.zip(
                 self.file
                     .as_ref()
-                    .and_then(|file| file.document.meta())
+                    .and_then(|file| file.state.document.meta())
                     .map(|meta| meta.len_samples),
             ),
             separator: cx.theme().border,
@@ -770,7 +773,11 @@ impl Shell {
         let Some(extents) = self.extents() else {
             return;
         };
-        let Some(analysis) = self.file.as_ref().and_then(|file| file.document.analysis()) else {
+        let Some(analysis) = self
+            .file
+            .as_ref()
+            .and_then(|file| file.state.document.analysis())
+        else {
             return;
         };
         let image = &analysis.spectrogram;
