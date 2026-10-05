@@ -11,6 +11,10 @@ promise applies to.
 
 ## [Unreleased]
 
+### Fixed
+
+- A right or middle click on an application-menu, toolbar or status-bar button no longer moves the keyboard focus away from the plot, so plot keys keep working without clicking the plot again.
+
 ### Changed
 
 - Draw the application menu with the standard menu component. The menu still offers the same File and View branches, recent captures, checks and shortcuts, and still opens from the application button and F10. Its rows show the same framed shortcut keys as every other shortcut in the application, and a long recent capture name truncates in the middle instead of running past the row.
