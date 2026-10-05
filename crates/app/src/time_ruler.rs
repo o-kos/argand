@@ -46,8 +46,11 @@ impl Mode {
     /// decimals as one sample needs, and fall back to samples where seconds
     /// cannot tell neighbouring samples apart.
     pub fn selection(self, span: argand_core::SampleSpan, rate: f64) -> String {
-        let Some(precision) = exact_time_precision(span, rate).filter(|_| self != Self::Samples)
-        else {
+        let Some(precision) = exact_time_precision(span, rate).filter(|&precision| match self {
+            Self::Samples => false,
+            Self::Clock => precision <= CLOCK_DECIMALS,
+            Self::Seconds => true,
+        }) else {
             return format!(
                 "#{} – #{} ({})",
                 crate::numbers::number(span.start()),
@@ -73,6 +76,9 @@ impl Mode {
         )
     }
 }
+
+/// The most decimals the clock format prints, which `argand_core::axis::format_time` caps.
+const CLOCK_DECIMALS: usize = 9;
 
 /// The decimals that tell every sample of `span` apart in seconds, or nothing where `f64` cannot.
 ///
@@ -208,6 +214,11 @@ mod tests {
         let span = |a, b| argand_core::SampleSpan::between(a, b).expect("a span");
         let fast = Mode::Seconds.selection(span(100, 101), 4e9);
         assert_eq!(fast, "0.0000000250 s – 0.0000000253 s (0.0000000003 s)");
+        assert_eq!(
+            Mode::Clock.selection(span(100, 101), 4e9),
+            "#100 – #100 (1)",
+            "the clock stops at nanoseconds"
+        );
         assert_eq!(
             Mode::Clock.selection(span(u64::MAX - 1, u64::MAX), 24e6),
             Mode::Samples.selection(span(u64::MAX - 1, u64::MAX), 24e6)
