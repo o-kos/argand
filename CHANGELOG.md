@@ -11,6 +11,8 @@ promise applies to.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-05
+
 ### Added
 
 - The analysis settings hint works from the keyboard alone: it opens on FFT size, Tab and Shift+Tab go round its values and Reset to defaults, Enter or the arrows open a list, the arrows step a number, and the focused value is marked.
@@ -332,6 +334,7 @@ promise applies to.
 - A workspace-wide lint policy: ten maintainability lints with explicit
   thresholds, enforced identically on a developer's machine and in CI.
 
-[Unreleased]: https://github.com/o-kos/argand/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/o-kos/argand/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/o-kos/argand/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/o-kos/argand/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/o-kos/argand/releases/tag/v0.0.1
