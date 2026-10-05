@@ -47,11 +47,15 @@ pub enum Update {
 /// Build a delivery with a chosen generation and view revision for a test.
 /// The fields are private so that production code cannot forge them.
 #[cfg(test)]
-pub(crate) fn for_test(update: Update, generation: Option<u64>) -> Delivery {
+pub(crate) fn for_test(
+    update: Update,
+    generation: Option<u64>,
+    view_revision: Option<u64>,
+) -> Delivery {
     Delivery {
         prepared_at: Instant::now(),
         generation,
-        view_revision: None,
+        view_revision,
         update,
     }
 }

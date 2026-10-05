@@ -44,12 +44,19 @@ opening values, and a second file opened while a preview is pending.
   `document` and `analyst` move one level down, which touches every use site;
   the diff is mechanical and the compiler lists any site the rename misses.
 - `displayed_settings` becomes private to the neutral struct with an accessor.
-  Recording happens only inside its `accept`, which is the property the issue
-  asks to protect.
+  Two production paths may record: `accept` for a delivered picture, and
+  `retake_equivalent` for the settings editor applying a preview it has
+  already seen without re-requesting. Everything else reads. The tests live
+  in `open_file.rs`'s own `#[cfg(test)]` module, following `analysis.rs`'s
+  layout, not in a separate test file.
 - The gate runs twice on an accepted delivery - once in `shell.rs` ahead of the
   backdrop park, once inside `accept` - because the second check is what keeps
   the neutral method self-contained, and a second evaluation of a pure
   generation comparison costs nothing.
+- Hand-written deliveries need the private generation and view revision, so
+  `analysis.rs` grows a `#[cfg(test)] for_test` constructor next to `Delivery`;
+  production code cannot forge those fields, which is why it is test-only.
+
 - Hand-written deliveries need the private generation and view revision, so
   `analysis.rs` grows a `#[cfg(test)] for_test` constructor next to `Delivery`;
   production code cannot forge those fields, which is why it is test-only.
@@ -77,11 +84,15 @@ opening values, and a second file opened while a preview is pending.
 - [x] Embed `OpenFileState` in `Shell`'s `OpenFile`, rename the moved uses, and
       reduce `Shell::receive` to the gate, the backdrop park, the effect
       dispatch and the window concerns.
-- [x] Cover the four states in `open_file_tests.rs`: a superseded delivery is
-      rejected and records nothing; a failed analysis keeps the last good
-      settings; a cancelled preview's next accepted analysis records the
-      restored settings; a second file starts with no recorded settings while
-      the first keeps its own.
+- [x] Cover the four states in `open_file.rs`'s test module, driven through
+      the real request sequence (`Analyst::request_view`) so generations and
+      view revisions come from the worker's own arithmetic rather than test
+      assumptions: a superseded delivery is rejected and records nothing; a
+      failed analysis keeps the last good settings while the document reports
+      Failed; a cancelled preview is superseded by the restored request and the
+      restored settings' own picture records them; a second file starts with no
+      record while the first keeps its own. Mutation check: recording on every
+      accepted delivery fails the failure test.
 - [x] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -90,7 +101,7 @@ opening values, and a second file opened while a preview is pending.
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] The existing status-bar, settings-editor and analysis tests hold unchanged.
 
 ## Post-completion

@@ -106,6 +106,37 @@ mod tests {
         })
     }
 
+    /// Two analysis requests that differ, so each gets its own generation.
+    fn request_a() -> argand_dsp::AnalysisRequest {
+        argand_dsp::AnalysisRequest {
+            cfg: argand_dsp::StftConfig::new(256, argand_dsp::Window::Hann),
+            range: argand_core::SampleRange::new(0, 1000),
+            width: 64,
+            height: 32,
+            reduce: argand_dsp::Reduce::Max,
+            colormap: argand_core::Colormap::Oceanic,
+            dynamic_range: argand_dsp::DynamicRange::Default,
+            waveform_columns: None,
+        }
+    }
+
+    fn request_b() -> argand_dsp::AnalysisRequest {
+        // Changing the reduction changes the transform itself, so this request
+        // takes its own generation, unlike a style-only change.
+        argand_dsp::AnalysisRequest {
+            reduce: argand_dsp::Reduce::Mean,
+            dynamic_range: argand_dsp::DynamicRange::Fixed(42.0),
+            ..request_a()
+        }
+    }
+
+    /// The settings the second request carries.
+    fn requested_b(settings: &Settings) -> Settings {
+        let mut requested = *settings;
+        requested.dynamic_range = argand_dsp::DynamicRange::Fixed(42.0);
+        requested
+    }
+
     /// A real analyst over a file that will not open, which is the cheapest
     /// one to build and gates exactly like any other.
     fn state() -> OpenFileState {
@@ -119,20 +150,22 @@ mod tests {
         OpenFileState::new(document, analyst)
     }
 
-    fn ready(generation: u64) -> Delivery {
+    fn ready(generation: u64, view_revision: u64) -> Delivery {
         crate::analysis::for_test(
             Update::Ready {
                 analysis: analysis(),
                 elapsed: Duration::ZERO,
             },
             Some(generation),
+            Some(view_revision),
         )
     }
 
-    fn failed(generation: u64) -> Delivery {
+    fn failed(generation: u64, view_revision: u64) -> Delivery {
         crate::analysis::for_test(
             Update::Failed(anyhow::anyhow!("transform failed")),
             Some(generation),
+            Some(view_revision),
         )
     }
 
@@ -140,48 +173,87 @@ mod tests {
     fn a_superseded_delivery_is_rejected_and_records_nothing() {
         let settings = Settings::from_config(&crate::config::Config::default());
         let mut state = state();
-        assert_eq!(state.accept(ready(7), &settings), None);
-        assert_eq!(state.displayed_settings(), None);
-        assert!(
-            matches!(state.document.status(), crate::document::Status::Opening),
-            "and the document never saw it"
+
+        state.analyst.request_view(request_a(), None);
+        assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
+        assert_eq!(state.displayed_settings(), Some(&settings));
+
+        // A second request for a different picture advances the generation,
+        // so anything the first request's pipeline still delivers is
+        // superseded: the record and the document must not move.
+        state.analyst.request_view(request_b(), None);
+        assert_eq!(state.accept(ready(1, 2), &settings), None);
+        assert_eq!(state.accept(failed(1, 3), &settings), None);
+        assert_eq!(
+            state.displayed_settings(),
+            Some(&settings),
+            "superseded deliveries never touch the record"
         );
+
+        assert_eq!(
+            state.accept(ready(2, 2), &requested_b(&settings)),
+            Some(Effect::Analysis),
+            "and the newer request's picture lands"
+        );
+        assert_eq!(state.displayed_settings(), Some(&requested_b(&settings)));
     }
 
     #[test]
     fn a_failed_analysis_leaves_the_last_good_settings_in_place() {
         let settings = Settings::from_config(&crate::config::Config::default());
         let mut state = state();
-        assert_eq!(
-            state.accept(ready(0), &settings),
-            Some(Effect::Analysis),
-            "the picture lands first"
-        );
+
+        state.analyst.request_view(request_a(), None);
+        assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
         assert_eq!(state.displayed_settings(), Some(&settings));
 
-        assert_eq!(state.accept(failed(0), &settings), Some(Effect::Status));
+        // A preview request carries different settings, and its analysis
+        // fails. The failure is accepted as a status, the record stays with
+        // the picture on screen, and the document says Failed.
+        state.analyst.request_view(request_b(), None);
+        let preview = requested_b(&settings);
+        assert_eq!(state.accept(failed(2, 2), &preview), Some(Effect::Status));
         assert_eq!(
             state.displayed_settings(),
             Some(&settings),
-            "and the failure keeps the settings behind the picture"
+            "the failure never records the requested settings"
         );
+        assert!(matches!(
+            state.document.status(),
+            crate::document::Status::Failed(_)
+        ));
+
+        // Restoring the opening settings changes the transform back, which
+        // takes its own generation, whose first view revision records them.
+        state.analyst.request_view(request_a(), None);
+        assert_eq!(state.accept(ready(3, 3), &settings), Some(Effect::Analysis));
+        assert_eq!(state.displayed_settings(), Some(&settings));
     }
 
     #[test]
-    fn a_cancelled_preview_records_the_restored_settings_on_the_next_picture() {
+    fn a_cancelled_preview_is_superseded_and_the_restored_settings_record_their_own_picture() {
         let settings = Settings::from_config(&crate::config::Config::default());
-        let mut preview = settings;
-        preview.dynamic_range = argand_dsp::DynamicRange::Fixed(42.0);
+        let preview = requested_b(&settings);
         let mut state = state();
 
-        assert_eq!(state.accept(ready(0), &preview), Some(Effect::Analysis));
-        assert_eq!(state.displayed_settings(), Some(&preview));
+        state.analyst.request_view(request_a(), None);
+        assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
 
-        // The editor's cancel restores the opening values, and the picture the
-        // restored settings then produce records them.
-        let restored = settings;
-        assert_eq!(state.accept(ready(0), &restored), Some(Effect::Analysis));
-        assert_eq!(state.displayed_settings(), Some(&restored));
+        // The editor previews the advised settings, which requests their
+        // analysis; cancelling then restores the opening settings, which
+        // returns to the original picture's generation and advances only the
+        // view revision.
+        state.analyst.request_view(request_b(), None);
+        state.analyst.request_view(request_a(), None);
+
+        // The preview that lands late lost its view revision to the restored
+        // request and must not record.
+        assert_eq!(state.accept(ready(2, 2), &preview), None);
+        assert_eq!(state.displayed_settings(), Some(&settings));
+
+        // The restored settings produce their own picture and record them.
+        assert_eq!(state.accept(ready(3, 3), &settings), Some(Effect::Analysis));
+        assert_eq!(state.displayed_settings(), Some(&settings));
         assert_ne!(
             state.displayed_settings(),
             Some(&preview),
@@ -192,18 +264,22 @@ mod tests {
     #[test]
     fn a_second_file_starts_with_no_recorded_settings_while_the_first_keeps_its_own() {
         let settings = Settings::from_config(&crate::config::Config::default());
+        let preview = requested_b(&settings);
         let mut first = state();
-        let mut preview = settings;
-        preview.dynamic_range = argand_dsp::DynamicRange::Fixed(42.0);
-        assert_eq!(first.accept(ready(0), &preview), Some(Effect::Analysis));
 
+        first.analyst.request_view(request_a(), None);
+        assert_eq!(first.accept(ready(1, 1), &settings), Some(Effect::Analysis));
+
+        // The editor requests a preview whose analysis has not landed, and a
+        // second file is opened in that moment.
+        first.analyst.request_view(request_b(), None);
         let second = state();
         assert_eq!(second.displayed_settings(), None);
 
-        assert_eq!(
-            first.displayed_settings(),
-            Some(&preview),
-            "and the first file keeps its own record"
-        );
+        // The pending preview belongs to the first file alone: it lands
+        // there, and the second file's record stays independent.
+        assert_eq!(first.accept(ready(2, 2), &preview), Some(Effect::Analysis));
+        assert_eq!(first.displayed_settings(), Some(&preview));
+        assert_eq!(second.displayed_settings(), None);
     }
 }
