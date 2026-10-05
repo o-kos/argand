@@ -354,6 +354,8 @@ struct Shell {
     /// overview without restarting analysis when only these dimensions change.
     plot: Option<PlotSize>,
     view: Option<crate::navigation::View>,
+    /// The time selection, in samples of the open file.
+    selection: Option<argand_core::SampleSpan>,
     frequency: crate::frequency::View,
     frequency_scheme: Option<argand_core::axis::TickScheme>,
     time_scheme: Option<argand_core::axis::TickScheme>,
@@ -442,6 +444,7 @@ impl Shell {
             file: None,
             plot: None,
             view: None,
+            selection: None,
             frequency: crate::frequency::View::default(),
             frequency_scheme: None,
             time_scheme: None,
@@ -586,6 +589,7 @@ impl Shell {
         self.release(window, cx);
         self.plot = None;
         self.view = None;
+        self.selection = None;
         self.recent_files.clear_current();
         self.time_scheme = None;
         self.tick_pan = None;

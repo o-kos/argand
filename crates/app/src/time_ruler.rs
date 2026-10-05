@@ -38,6 +38,62 @@ impl Mode {
     }
 }
 
+impl Mode {
+    /// A selection as its start, end and length, exact to the sample in this mode's units.
+    ///
+    /// Samples name the first and the last sample selected, the way the ruler
+    /// numbers them. Clock and seconds give the boundaries in time, with as many
+    /// decimals as one sample needs, and fall back to samples where seconds
+    /// cannot tell neighbouring samples apart.
+    pub fn selection(self, span: argand_core::SampleSpan, rate: f64) -> String {
+        let Some(precision) = exact_time_precision(span, rate).filter(|&precision| match self {
+            Self::Samples => false,
+            Self::Clock => precision <= CLOCK_DECIMALS,
+            Self::Seconds => true,
+        }) else {
+            return format!(
+                "#{} – #{} ({})",
+                crate::numbers::number(span.start()),
+                crate::numbers::number(span.end() - 1),
+                crate::numbers::number(span.count())
+            );
+        };
+        let end = span.end() as f64 / rate;
+        let time = |seconds: f64| match self {
+            Self::Clock => crate::numbers::current().axis_label(
+                &axis::format_time(seconds, end, 10_f64.powi(-(precision as i32))),
+                AxisKind::PreciseTime,
+            ),
+            Self::Seconds | Self::Samples => {
+                crate::numbers::text(&format!("{seconds:.precision$} s"))
+            }
+        };
+        format!(
+            "{} – {} ({})",
+            time(span.start() as f64 / rate),
+            time(end),
+            crate::numbers::text(&format!("{:.precision$} s", span.count() as f64 / rate))
+        )
+    }
+}
+
+/// The most decimals the clock format prints, which `argand_core::axis::format_time` caps.
+const CLOCK_DECIMALS: usize = 9;
+
+/// The decimals that tell every sample of `span` apart in seconds, or nothing where `f64` cannot.
+///
+/// A boundary is exact in `f64` only up to 2^53, and the seconds it prints need
+/// their integer digits plus one decimal per tenfold of the sample rate, which
+/// together must stay within the 15 significant digits a double carries.
+fn exact_time_precision(span: argand_core::SampleSpan, rate: f64) -> Option<usize> {
+    if !(rate.is_finite() && rate > 0.) || span.end() > 1 << 53 {
+        return None;
+    }
+    let precision = (rate.log10().ceil().max(0.) as usize).max(3);
+    let whole = (span.end() as f64 / rate).max(1.).log10().floor() as usize + 1;
+    (whole + precision <= 15).then_some(precision)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ruler {
     pub mode: Mode,
@@ -133,6 +189,44 @@ mod tests {
         assert_eq!(
             ruler.readout(0., 1., 1000., 1.),
             format!("#{}", crate::numbers::number(u64::MAX - 1))
+        );
+    }
+
+    #[test]
+    fn a_selection_reads_sample_exact_in_every_mode() {
+        let span = argand_core::SampleSpan::between(4_000_000, 4_001_000).expect("a span");
+        assert_eq!(
+            Mode::Samples.selection(span, 2e6),
+            "#4,000,000 – #4,000,999 (1,000)"
+        );
+        assert_eq!(
+            Mode::Seconds.selection(span, 2e6),
+            "2.0000000 s – 2.0005000 s (0.0005000 s)"
+        );
+        assert_eq!(
+            Mode::Clock.selection(span, 2e6),
+            "0:02.0000000 – 0:02.0005000 (0.0005000 s)"
+        );
+    }
+
+    #[test]
+    fn a_selection_seconds_cannot_tell_apart_is_given_in_samples() {
+        let span = |a, b| argand_core::SampleSpan::between(a, b).expect("a span");
+        let fast = Mode::Seconds.selection(span(100, 101), 4e9);
+        assert_eq!(fast, "0.0000000250 s – 0.0000000253 s (0.0000000003 s)");
+        assert_eq!(
+            Mode::Clock.selection(span(100, 101), 4e9),
+            "#100 – #100 (1)",
+            "the clock stops at nanoseconds"
+        );
+        assert_eq!(
+            Mode::Clock.selection(span(u64::MAX - 1, u64::MAX), 24e6),
+            Mode::Samples.selection(span(u64::MAX - 1, u64::MAX), 24e6)
+        );
+        assert_eq!(
+            Mode::Seconds.selection(span(0, 10), 0.),
+            "#0 – #9 (10)",
+            "no rate, no seconds"
         );
     }
 }
