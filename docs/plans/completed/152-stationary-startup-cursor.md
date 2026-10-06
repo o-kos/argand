@@ -36,6 +36,10 @@ window still shows the horizontal resize image.
   Keep one backend instance shared with the application. Use only facade APIs.
 - Preserve resize geometry, hit-testing, and all close paths.
 - No custom controls, dependency changes, lint suppressions, or registry edits.
+- Follow the Linux-native validation scope recorded in
+  `docs/plans/completed/133-ui-integration.md`: Windows and macOS receive source review and
+  the full CI build/test matrix; their native pointer behavior is not claimed
+  verified. The platform constructor on those systems is unchanged.
 
 ## Rejected alternatives
 
@@ -50,7 +54,7 @@ window still shows the horizontal resize image.
 - [x] Run the local gate and build the release binary afterward.
 - [x] Verify the owner's exact stationary-pointer sequence natively (owner confirmation).
 - [x] Agree the reviewer and complete external review.
-- [ ] Move the plan to `docs/plans/completed/` before final review.
+- [x] Move the plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -59,11 +63,15 @@ window still shows the horizontal resize image.
 - [x] `cargo test --locked` (732 tests; local captures linked from the primary checkout)
 - [x] `cargo build --release --locked`, after the checks above pass
       (target directory `/tmp/argand-152-startup-target`)
-- [ ] Normal window: stationary restart inside the plot shows Arrow; each edge
-      still shows its corresponding resize cursor and resizes when dragged.
-- [ ] Maximized window: stationary startup and plot motion show Arrow and no
-      resize strips appear. Restore and recheck edges.
-- [ ] Native Windows/macOS verification of unchanged startup and edge behavior.
+- [x] Normal window: the owner confirmed the exact stationary restart scenario
+      inside the plot shows Arrow, starting from the left edge's resize cursor.
+- [x] Maximized window: the owner confirmed restart under the stationary pointer
+      shows Arrow, and the left/right borders do not show resize cursors.
+- [x] Edge preservation: existing geometry tests passed, and external source
+      review confirmed resize hit areas, handlers and close paths are unchanged.
+- [x] Windows/macOS startup: external review confirmed the platform constructor
+      is identical to the previous facade call. Native pointer behavior was not
+      tested; the full three-platform CI matrix is required before merge.
 
 ## External review
 
@@ -75,9 +83,10 @@ returns because no window has pointer focus. The other platforms use the same
 constructor as before. Close paths and edge geometry are unchanged. No findings
 were accepted or declined, and no code changes were required.
 
-The review confirmed the plan distinguishes the owner's successful reproduction
-test from the still-pending wider native checks. It did not perform native
-rendering or rerun the already completed gate.
+The review confirmed the plan distinguished the owner's successful reproduction
+test from checks not yet performed at review time. The owner subsequently
+confirmed the maximized restart and border behavior as well. The review itself
+did not perform native rendering or rerun the already completed gate.
 
 ## Post-completion
 
