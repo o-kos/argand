@@ -1845,7 +1845,7 @@ mod tests {
             let Some(file) = shell.file.as_mut() else {
                 panic!("the capture never opened");
             };
-            file.document.apply(Update::Opened(
+            file.state.document.apply(Update::Opened(
                 SignalMeta {
                     sample_rate: 24_000.0,
                     center_freq: 0.0,

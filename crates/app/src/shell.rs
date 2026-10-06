@@ -761,7 +761,7 @@ impl Shell {
             Effect::Opened => {
                 if let Some(file) = &mut self.file {
                     file.stamp =
-                        argand_io::write::SourceStamp::of(&file.document.origin().path).ok();
+                        argand_io::write::SourceStamp::of(&file.state.document.origin().path).ok();
                 }
                 self.reset_view();
                 self.attach_plot(window, cx);

@@ -30,7 +30,7 @@ impl Shell {
             && self
                 .file
                 .as_ref()
-                .is_some_and(|file| file.document.meta().is_some())
+                .is_some_and(|file| file.state.document.meta().is_some())
             && (!selection_only || self.selection.is_some())
     }
 
@@ -51,10 +51,10 @@ impl Shell {
         window.focus(&self.focus_target(cx), cx);
         cx.notify();
         let Some(file) = &self.file else { return };
-        let Some(meta) = file.document.meta().cloned() else {
+        let Some(meta) = file.state.document.meta().cloned() else {
             return;
         };
-        let hints = file.document.origin().hints.clone();
+        let hints = file.state.document.origin().hints.clone();
         let stamp = file.stamp;
         let span = if selection_only { self.selection } else { None };
         let as_wave = argand_io::write::writes_as_wave(&meta, &hints);
