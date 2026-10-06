@@ -501,6 +501,11 @@ impl Shell {
     }
 
     fn dismiss_ready_status(&mut self, cx: &mut Context<Self>) {
+        // A finished save is announced the same way, until the next input.
+        if matches!(self.save_notice, Some(saving_ui::Notice::Saved(_))) {
+            self.save_notice = None;
+            cx.notify();
+        }
         if self.ready_status_dismissed
             || !self
                 .file

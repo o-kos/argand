@@ -478,9 +478,11 @@ at most one second for the temporary file to go. `saving_ui.rs` owns File → Sa
 without a described capture, during a save, and for the second without a time selection.
 The dialog is `App::prompt_for_new_path` in the source folder with
 `<stem>_<start>-<end>s.<ext>` (seconds to the millisecond) or `<stem>.<ext>`, `.wav` for
-a headerless source. The status bar shows progress with a cancelling ×, then the outcome
-until its × is pressed or another save starts, saying when a FLAC source was saved as WAV;
-a cancellation shows nothing. A save
+a headerless source. The status bar shows the save last, at its right end, so it keeps its place: progress with a
+cancelling ×, then "Saved", which goes with the next mouse press, key or wheel as the
+ready status does (saying when a FLAC source was saved as WAV), or an error that stays
+until its × is pressed or another save starts; a cancellation shows nothing. Each save
+start is logged at info with its source, target and span. A save
 outlives opening another file, but the file it is writing cannot be opened until it ends.
 
 ## Ruler marks and grid visibility (#71, #72)

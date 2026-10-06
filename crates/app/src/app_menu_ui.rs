@@ -1898,4 +1898,35 @@ mod tests {
         assert!(shell.read_with(cx, |shell, _| shell.save_notice.is_none()));
         assert!(cx.update(|window, _| window.try_find("save-close").is_none()));
     }
+
+    #[gpui_kit::test]
+    fn a_saved_notice_goes_with_the_next_press_and_a_failure_stays(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let notice = |cx: &mut gpui_kit::VisualTestContext| {
+            shell.read_with(cx, |shell, _| match &shell.save_notice {
+                Some(saving_ui::Notice::Saved(_)) => "saved",
+                Some(saving_ui::Notice::Failed(_)) => "failed",
+                None => "none",
+            })
+        };
+        shell.update_in(cx, |shell, _, cx| {
+            shell.save_notice = Some(saving_ui::Notice::Saved("b.wav".into()));
+            cx.notify();
+        });
+        draw(cx);
+        assert!(
+            cx.update(|window, _| window.try_find("save-close").is_none()),
+            "a saved notice has nothing to close"
+        );
+        click_outside(cx);
+        assert_eq!(notice(cx), "none");
+        shell.update_in(cx, |shell, _, cx| {
+            shell.save_notice = Some(saving_ui::Notice::Failed("disk full".into()));
+            cx.notify();
+        });
+        draw(cx);
+        click_outside(cx);
+        assert_eq!(notice(cx), "failed");
+    }
 }

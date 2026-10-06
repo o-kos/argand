@@ -309,7 +309,6 @@ impl Shell {
             })
             .when(has_file, |bar| bar.child(self.analysis_control(cx)))
             .child(div().flex_1().min_w_0())
-            .children(self.save_item(cx))
             .children(self.selection_item(cx))
             .when_some(self.cursor_readout(cx), |bar, (text, level)| {
                 bar.child(
@@ -352,6 +351,8 @@ impl Shell {
                         ),
                 )
             })
+            // Last, so it keeps its place whatever the readouts beside it do.
+            .children(self.save_item(cx))
     }
 
     fn range_control(

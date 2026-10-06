@@ -82,6 +82,12 @@ impl Shell {
         if self.saving.is_some() {
             return;
         }
+        tracing::info!(
+            source = %request.meta.source.display(),
+            target = %request.target.display(),
+            span = ?request.span.map(|span| (span.start(), span.end())),
+            "saving"
+        );
         let name = file_name(&request.target);
         let target = request.target.clone();
         let as_wave = (request.meta.container == "flac"
@@ -172,7 +178,7 @@ impl Shell {
             }),
             _ => None,
         };
-        let (text, failed, cancels) = match (&self.saving, &self.save_notice) {
+        let (text, failed, closes) = match (&self.saving, &self.save_notice) {
             (Some(saving), _) => {
                 let percent = saving
                     .progress
@@ -188,7 +194,7 @@ impl Shell {
                 (text, false, true)
             }
             (None, Some(Notice::Saved(name))) => (format!("Saved {name}"), false, false),
-            (None, Some(Notice::Failed(error))) => (format!("Save failed: {error}"), true, false),
+            (None, Some(Notice::Failed(error))) => (format!("Save failed: {error}"), true, true),
             (None, None) => return None,
         };
         let close = Button::new("save-close")
@@ -198,7 +204,7 @@ impl Shell {
             .tab_stop(false)
             .on_click(cx.listener(move |shell, _, _, cx| {
                 cx.stop_propagation();
-                if cancels {
+                if shell.saving.is_some() {
                     shell.cancel_save(cx);
                 } else {
                     shell.save_notice = None;
@@ -225,7 +231,7 @@ impl Shell {
                         .whitespace_nowrap()
                         .child(text),
                 )
-                .child(close)
+                .when(closes, |item| item.child(close))
                 .into_any_element(),
         )
     }
