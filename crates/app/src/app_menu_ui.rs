@@ -1900,7 +1900,9 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn a_saved_notice_goes_with_the_next_press_and_a_failure_stays(cx: &mut TestAppContext) {
+    fn a_saved_notice_goes_with_the_next_press_or_move_and_a_failure_stays(
+        cx: &mut TestAppContext,
+    ) {
         let (shell, cx) = open_window(cx);
         open_capture(cx, &shell);
         let notice = |cx: &mut gpui_kit::VisualTestContext| {
@@ -1922,11 +1924,21 @@ mod tests {
         click_outside(cx);
         assert_eq!(notice(cx), "none");
         shell.update_in(cx, |shell, _, cx| {
+            shell.save_notice = Some(saving_ui::Notice::Saved("b.wav".into()));
+            cx.notify();
+        });
+        draw(cx);
+        cx.simulate_mouse_move(outside(), None, gpui_kit::Modifiers::default());
+        draw(cx);
+        assert_eq!(notice(cx), "none", "a move takes it away too");
+        shell.update_in(cx, |shell, _, cx| {
             shell.save_notice = Some(saving_ui::Notice::Failed("disk full".into()));
             cx.notify();
         });
         draw(cx);
         click_outside(cx);
+        cx.simulate_mouse_move(outside(), None, gpui_kit::Modifiers::default());
+        draw(cx);
         assert_eq!(notice(cx), "failed");
     }
 }

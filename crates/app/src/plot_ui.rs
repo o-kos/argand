@@ -52,6 +52,10 @@ impl Shell {
                 .selection
                 .zip(self.view)
                 .and_then(|(span, view)| view.fractions_of(span)),
+            notice: match &self.save_notice {
+                Some(saving_ui::Notice::Saved(name)) => Some(format!("Saved {name}").into()),
+                _ => None,
+            },
         })
     }
 
@@ -299,6 +303,47 @@ impl PlotView {
                 .w(px(hint.bounds.width))
                 .h(px(hint.bounds.height))
                 .tooltip(move |_, cx| unit_tooltip(owner.clone(), index, cx))
+                .into_any_element(),
+        )
+    }
+
+    /// A finished save in the spectrum's bottom-right corner, which no zoom pair takes in either orientation.
+    pub(super) fn saved_notice(
+        &self,
+        snapshot: &PlotSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
+        let text = snapshot.notice.clone()?;
+        let spectrum = self.geometry?.spectrum;
+        let origin = self.panel_bounds?.origin;
+        Some(
+            div()
+                .absolute()
+                .left(spectrum.left() - origin.x)
+                .top(spectrum.top() - origin.y)
+                .w(spectrum.size.width)
+                .h(spectrum.size.height)
+                .p(px(SCALE_INSET))
+                .flex()
+                .items_end()
+                .justify_end()
+                .child(
+                    div()
+                        .id("saved-notice")
+                        .min_w_0()
+                        .px_2()
+                        .py_0p5()
+                        .border_1()
+                        .border_color(cx.theme().border.opacity(0.75))
+                        .bg(cx.theme().background.opacity(0.85))
+                        .rounded(px(SCALE_ROUNDING))
+                        .text_xs()
+                        .text_color(cx.theme().foreground)
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .whitespace_nowrap()
+                        .child(text),
+                )
                 .into_any_element(),
         )
     }

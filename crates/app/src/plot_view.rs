@@ -32,6 +32,8 @@ pub(super) struct PlotSnapshot {
     pub pointer_in_window: bool,
     /// The time selection as fractions of the view, where any of it shows.
     pub selection: Option<(f64, f64)>,
+    /// A finished save, said over the picture until the next input.
+    pub notice: Option<gpui_kit::SharedString>,
 }
 
 /// What the plot asks of the shell.
@@ -391,6 +393,7 @@ impl Render for PlotView {
                     .and_then(|bounds| self.unit_hint(1, bounds.origin, cx)),
             )
             .children(self.ruler_zoom_buttons(&snapshot, cx))
+            .children(self.saved_notice(&snapshot, cx))
             .when(self.dragging(), |plot| {
                 plot.child(drag_tracker(cx.entity().downgrade()))
             })
@@ -540,6 +543,7 @@ mod tests {
             show_scale_ui: false,
             pointer_in_window: true,
             selection: None,
+            notice: None,
         }
     }
 

@@ -193,9 +193,8 @@ impl Shell {
                 };
                 (text, false, true)
             }
-            (None, Some(Notice::Saved(name))) => (format!("Saved {name}"), false, false),
             (None, Some(Notice::Failed(error))) => (format!("Save failed: {error}"), true, true),
-            (None, None) => return None,
+            (None, Some(Notice::Saved(_)) | None) => return None,
         };
         let close = Button::new("save-close")
             .ghost()

@@ -479,9 +479,11 @@ without a described capture, during a save, and for the second without a time se
 The dialog is `App::prompt_for_new_path` in the source folder with
 `<stem>_<start>-<end>s.<ext>` (seconds to the millisecond) or `<stem>.<ext>`, `.wav` for
 a headerless source. The status bar shows the save last, at its right end, so it keeps its place: progress with a
-cancelling ×, then "Saved", which goes with the next mouse press, key or wheel as the
-ready status does (saying when a FLAC source was saved as WAV), or an error that stays
-until its × is pressed or another save starts; a cancellation shows nothing. Each save
+cancelling ×, or an error that stays until its × is pressed or another save starts. A
+finished save is said over the picture instead, `Saved <name>` in the spectrum's
+bottom-right corner (`PlotView::saved_notice`, framed like the zoom pairs and free of
+them in both orientations, taking no input), saying when a FLAC source was saved as WAV,
+until the next mouse press, key, wheel or mouse move. A cancellation shows nothing. Each save
 start is logged at info with its source, target and span. A save
 outlives opening another file, but the file it is writing cannot be opened until it ends.
 

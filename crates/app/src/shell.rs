@@ -500,12 +500,16 @@ impl Shell {
         }
     }
 
-    fn dismiss_ready_status(&mut self, cx: &mut Context<Self>) {
-        // A finished save is announced the same way, until the next input.
+    /// A finished save is announced until the next input, a mouse move included.
+    fn dismiss_saved_notice(&mut self, cx: &mut Context<Self>) {
         if matches!(self.save_notice, Some(saving_ui::Notice::Saved(_))) {
             self.save_notice = None;
             cx.notify();
         }
+    }
+
+    fn dismiss_ready_status(&mut self, cx: &mut Context<Self>) {
+        self.dismiss_saved_notice(cx);
         if self.ready_status_dismissed
             || !self
                 .file
@@ -541,7 +545,7 @@ impl Shell {
                 let moved = shell.clone();
                 window.on_mouse_event(move |_: &gpui_kit::MouseMoveEvent, phase, _, cx| {
                     if phase == gpui_kit::DispatchPhase::Capture {
-                        let _ = moved.update(cx, |shell, cx| shell.set_pointer_in_window(true, cx));
+                        let _ = moved.update(cx, Self::pointer_moved);
                     }
                 });
                 let left = shell.clone();
@@ -564,6 +568,11 @@ impl Shell {
                 shell.dismiss_application_menu(window, cx);
             });
         }
+    }
+
+    fn pointer_moved(&mut self, cx: &mut Context<Self>) {
+        self.set_pointer_in_window(true, cx);
+        self.dismiss_saved_notice(cx);
     }
 
     fn set_pointer_in_window(&mut self, inside: bool, cx: &mut Context<Self>) {
