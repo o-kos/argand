@@ -12,9 +12,9 @@ window still shows the horizontal resize image.
 ## Context
 
 - Class B. Implementer: Codex in this session, selected by the owner's request.
-- Proposed reviewer: gpt-6-sol, medium. On 2026-10-06 the owner deferred
-  reviewer selection and external review until native confirmation of the fix,
-  explicitly allowing feedback on the candidate before review.
+- Agreed reviewer: gpt-6-sol, medium. On 2026-10-06 the owner first deferred
+  review until native confirmation, then confirmed the fix works and requested
+  review using the proposed reviewer.
 - Worktree: `/tmp/argand-152-startup`; branch based on current `origin/main`.
 - The existing dirty #152 worktree is preserved. Its reverted close interception
   and geometry experiment are not part of this change.
@@ -25,8 +25,10 @@ window still shows the horizontal resize image.
   before opening any window seeds the cache; Enter then applies it using its
   valid serial. Normal frame hit-testing can subsequently select the edge cursor.
 - The backend also synthesizes a MouseMove on Enter. Why that path fails to
-  replace the stale image in the reported launch remains unverified; native
-  reproduction is required before claiming this initialization fixes the issue.
+  replace the stale image in the reported launch remains unverified. On
+  2026-10-06 the owner confirmed the rebuilt release fixes the supplied native
+  reproduction; this establishes the observed fix, not a complete explanation
+  of the backend's initial event ordering.
 
 ## Decisions
 
@@ -46,8 +48,8 @@ window still shows the horizontal resize image.
 - [x] Seed the Linux platform cursor before opening the application window.
 - [x] Update the changelog and document the startup invariant.
 - [x] Run the local gate and build the release binary afterward.
-- [ ] Verify the owner's exact stationary-pointer sequence natively.
-- [ ] Agree the reviewer and complete external review.
+- [x] Verify the owner's exact stationary-pointer sequence natively (owner confirmation).
+- [x] Agree the reviewer and complete external review.
 - [ ] Move the plan to `docs/plans/completed/` before final review.
 
 ## Validation
@@ -62,6 +64,20 @@ window still shows the horizontal resize image.
 - [ ] Maximized window: stationary startup and plot motion show Arrow and no
       resize strips appear. Restore and recheck edges.
 - [ ] Native Windows/macOS verification of unchanged startup and edge behavior.
+
+## External review
+
+Round 1: gpt-6-sol, medium, read-only. No substantive findings; the round is
+clean. The reviewer inspected the exact implementation diff and locked toolkit
+sources. The early Wayland call seeds the cache before pointer capabilities are
+available, and Enter applies Arrow with its valid serial. On X11 the early call
+returns because no window has pointer focus. The other platforms use the same
+constructor as before. Close paths and edge geometry are unchanged. No findings
+were accepted or declined, and no code changes were required.
+
+The review confirmed the plan distinguishes the owner's successful reproduction
+test from the still-pending wider native checks. It did not perform native
+rendering or rerun the already completed gate.
 
 ## Post-completion
 
