@@ -17,7 +17,7 @@ use flacenc::component::{BitRepr, StreamInfo};
 use flacenc::error::Verify;
 use flacenc::source::{Context, Fill, FrameBuf};
 
-use crate::decoder::{DecodedSource, REFERENCE_TAG};
+use crate::decoder::{DecodedSource, RATE_TAG, REFERENCE_TAG};
 use crate::riff::{self, ARGD_ID, ARGD_LEN, ARGD_VERSION, AUXI_CENTER, AUXI_LEN, AUXI_RATE};
 use crate::{OpenHints, RiffError};
 
@@ -122,36 +122,35 @@ pub(crate) fn save_with_limit(
     }
     .ok_or(WriteError::OutOfRange)?;
 
-    let plan = Plan::for_request(request)?;
+    let mut input = File::open(source).map_err(|error| WriteError::Read {
+        path: source.clone(),
+        source: error,
+    })?;
+    let plan = Plan::for_request(request, &mut input)?;
     let mut partial = Partial::create(target)?;
-    let container = match &plan {
-        Plan::Copy {
-            fmt,
-            data_offset,
-            block,
-        } => {
+    let container = match plan {
+        Plan::Copy(layout) => {
             let copy = ByteRange {
                 source,
-                data_offset: *data_offset,
-                block: *block,
+                input: &mut input,
+                layout,
                 span,
             };
             write_wave(
                 &mut partial,
-                fmt,
                 &request.meta,
-                &copy,
+                copy,
                 riff_limit,
                 progress,
                 cancel,
             )?
         }
         Plan::Flac { bits } => {
-            write_flac(&mut partial, *bits, &request.meta, span, progress, cancel)?;
+            write_flac(&mut partial, bits, &request.meta, span, progress, cancel)?;
             "flac"
         }
     };
-    partial.finish(target)?;
+    partial.finish(target, cancel)?;
     Ok(Saved {
         path: target.clone(),
         samples: span.count(),
@@ -161,38 +160,50 @@ pub(crate) fn save_with_limit(
 
 /// How the source's samples reach the new file.
 enum Plan {
-    /// Copy `block` bytes per sample from `data_offset`, under this `fmt ` body.
-    Copy {
-        fmt: Vec<u8>,
-        data_offset: u64,
-        block: u64,
-    },
+    Copy(CopyLayout),
     /// Decode and encode again at this bit depth.
-    Flac { bits: u32 },
+    Flac {
+        bits: u32,
+    },
 }
 
+/// Where the source's samples lie and the `fmt ` body that describes them.
+struct CopyLayout {
+    fmt: Vec<u8>,
+    data_offset: u64,
+    /// Bytes per sample, which is per I/Q pair for a complex capture.
+    block: u64,
+}
+
+/// Bytes read to identify a container and parse its header.
+const HEAD_BYTES: u64 = 64 << 10;
+
 impl Plan {
-    fn for_request(request: &SaveRequest) -> Result<Self, WriteError> {
+    fn for_request(request: &SaveRequest, input: &mut File) -> Result<Self, WriteError> {
         let meta = &request.meta;
         let path = &meta.source;
-        let rate = wave_rate(meta)?;
-        let block = meta.sample_type.bytes_per_sample() as u64;
+        let read_error = |source| WriteError::Read {
+            path: path.clone(),
+            source,
+        };
+        let file_len = input.metadata().map_err(read_error)?.len();
 
         if request.hints.raw.is_some() {
-            return Ok(Plan::Copy {
-                fmt: synthesized_fmt(meta, rate),
+            let layout = CopyLayout {
+                fmt: synthesized_fmt(meta)?,
                 data_offset: request.hints.byte_offset,
-                block,
-            });
+                block: meta.sample_type.bytes_per_sample() as u64,
+            };
+            let available = file_len.saturating_sub(layout.data_offset);
+            layout.check_length(meta, available)?;
+            return Ok(Plan::Copy(layout));
         }
 
-        let head = crate::probe_head(path).map_err(|error| match error {
-            crate::IoError::Open { source, .. } => WriteError::Read {
-                path: path.clone(),
-                source,
-            },
-            _ => WriteError::SourceChanged { path: path.clone() },
-        })?;
+        let mut head = Vec::new();
+        Read::by_ref(input)
+            .take(HEAD_BYTES)
+            .read_to_end(&mut head)
+            .map_err(read_error)?;
 
         if riff::is_wave(&head) {
             let wav = |source| WriteError::Wav {
@@ -200,33 +211,11 @@ impl Plan {
                 source,
             };
             let chunks = riff::scan(&head).map_err(wav)?;
-            let data_offset = chunks.data_offset as u64;
-            if request.hints.sample_type.is_some() {
-                return Ok(Plan::Copy {
-                    fmt: synthesized_fmt(meta, rate),
-                    data_offset,
-                    block,
-                });
-            }
-            let fmt = riff::parse_fmt(chunks.fmt).map_err(wav)?;
-            if !fmt.is_linear() {
-                return Err(WriteError::Unsupported {
-                    path: path.clone(),
-                    reason: format!(
-                        "wav format tag {} with {} bit samples is not a plain sample array",
-                        fmt.format_tag, fmt.bits
-                    ),
-                });
-            }
-            let mut body = chunks.fmt.to_vec();
-            let byte_rate = rate.saturating_mul(u32::from(fmt.block_align));
-            body[4..8].copy_from_slice(&rate.to_le_bytes());
-            body[8..12].copy_from_slice(&byte_rate.to_le_bytes());
-            return Ok(Plan::Copy {
-                fmt: body,
-                data_offset,
-                block: u64::from(fmt.block_align),
-            });
+            let layout = CopyLayout::for_wave(request, &head, &chunks)?;
+            let available = file_len.saturating_sub(layout.data_offset);
+            let declared = chunks.declared_len.map_or(available, |len| len as u64);
+            layout.check_length(meta, declared.min(available))?;
+            return Ok(Plan::Copy(layout));
         }
 
         if riff::is_flac(&head) {
@@ -239,6 +228,62 @@ impl Plan {
             path: path.clone(),
             reason: "unrecognised container".into(),
         })
+    }
+}
+
+impl CopyLayout {
+    /// The layout of a WAVE source, keeping its own `fmt ` unless a hint reinterprets its bytes.
+    fn for_wave(
+        request: &SaveRequest,
+        head: &[u8],
+        chunks: &riff::Chunks<'_>,
+    ) -> Result<Self, WriteError> {
+        let meta = &request.meta;
+        let path = &meta.source;
+        let data_offset = chunks.data_offset as u64;
+        let wav = |source| WriteError::Wav {
+            path: path.clone(),
+            source,
+        };
+        // Only the native reader honours a sample type hint, the decoder reads the stored layout.
+        let native = !matches!(riff::parse(head), Err(RiffError::Unsupported { .. }));
+        if native && request.hints.sample_type.is_some() {
+            return Ok(Self {
+                fmt: synthesized_fmt(meta)?,
+                data_offset,
+                block: meta.sample_type.bytes_per_sample() as u64,
+            });
+        }
+        let fmt = riff::parse_fmt(chunks.fmt).map_err(wav)?;
+        if !fmt.is_linear() {
+            return Err(WriteError::Unsupported {
+                path: path.clone(),
+                reason: format!(
+                    "wav format tag {} with {} bit samples is not a plain sample array",
+                    fmt.format_tag, fmt.bits
+                ),
+            });
+        }
+        let rate = wave_rate(meta)?;
+        let mut body = chunks.fmt.to_vec();
+        body[4..8].copy_from_slice(&rate.to_le_bytes());
+        body[8..12].copy_from_slice(&byte_rate(meta, rate, fmt.block_align)?.to_le_bytes());
+        Ok(Self {
+            fmt: body,
+            data_offset,
+            block: u64::from(fmt.block_align),
+        })
+    }
+
+    /// Refuse a source whose sample data no longer matches the capture that was opened.
+    fn check_length(&self, meta: &SignalMeta, data_len: u64) -> Result<(), WriteError> {
+        if data_len / self.block == meta.len_samples {
+            Ok(())
+        } else {
+            Err(WriteError::SourceChanged {
+                path: meta.source.clone(),
+            })
+        }
     }
 }
 
@@ -258,8 +303,21 @@ fn wave_rate(meta: &SignalMeta) -> Result<u32, WriteError> {
     }
 }
 
+/// `nAvgBytesPerSec`, refused when the header cannot hold it.
+fn byte_rate(meta: &SignalMeta, rate: u32, block_align: u16) -> Result<u32, WriteError> {
+    rate.checked_mul(u32::from(block_align))
+        .ok_or_else(|| WriteError::Unsupported {
+            path: meta.source.clone(),
+            reason: format!(
+                "a sample rate of {} Hz is too high for a wav header at this sample size",
+                meta.sample_rate
+            ),
+        })
+}
+
 /// A `fmt ` body for the capture's effective sample type.
-fn synthesized_fmt(meta: &SignalMeta, rate: u32) -> Vec<u8> {
+fn synthesized_fmt(meta: &SignalMeta) -> Result<Vec<u8>, WriteError> {
+    let rate = wave_rate(meta)?;
     let format = meta.sample_type.format;
     let channels = meta.channels() as u16;
     let bits = (format.bytes() * 8) as u16;
@@ -272,28 +330,27 @@ fn synthesized_fmt(meta: &SignalMeta, rate: u32) -> Vec<u8> {
     body.extend_from_slice(&tag.to_le_bytes());
     body.extend_from_slice(&channels.to_le_bytes());
     body.extend_from_slice(&rate.to_le_bytes());
-    body.extend_from_slice(&rate.saturating_mul(u32::from(block_align)).to_le_bytes());
+    body.extend_from_slice(&byte_rate(meta, rate, block_align)?.to_le_bytes());
     body.extend_from_slice(&block_align.to_le_bytes());
     body.extend_from_slice(&bits.to_le_bytes());
     if format == SampleFormat::F16x8 {
         body.extend_from_slice(&riff::F16X8_MAGIC.to_le_bytes());
     }
-    body
+    Ok(body)
 }
 
-/// A byte range of the source to copy.
+/// A span of the source to copy, read through the handle its header was read from.
 struct ByteRange<'a> {
     source: &'a Path,
-    data_offset: u64,
-    block: u64,
+    input: &'a mut File,
+    layout: CopyLayout,
     span: SampleSpan,
 }
 
 fn write_wave(
     partial: &mut Partial,
-    fmt: &[u8],
     meta: &SignalMeta,
-    copy: &ByteRange<'_>,
+    mut copy: ByteRange<'_>,
     riff_limit: u64,
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
@@ -301,9 +358,9 @@ fn write_wave(
     let data_len = copy
         .span
         .count()
-        .checked_mul(copy.block)
+        .checked_mul(copy.layout.block)
         .ok_or(WriteError::OutOfRange)?;
-    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = vec![(b"fmt ", fmt.to_vec())];
+    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = vec![(b"fmt ", copy.layout.fmt.clone())];
     if let Some(auxi) = auxi_body(meta) {
         chunks.push((b"auxi", auxi));
     }
@@ -347,7 +404,7 @@ fn write_wave(
     header.extend_from_slice(&data_field.to_le_bytes());
     partial.write(&header)?;
 
-    copy_samples(partial, copy, progress, cancel)?;
+    copy_samples(partial, &mut copy, progress, cancel)?;
     if data_len % 2 == 1 {
         partial.write(&[0])?;
     }
@@ -381,7 +438,7 @@ fn argd_body(meta: &SignalMeta) -> Vec<u8> {
 
 fn copy_samples(
     partial: &mut Partial,
-    copy: &ByteRange<'_>,
+    copy: &mut ByteRange<'_>,
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<(), WriteError> {
@@ -389,17 +446,19 @@ fn copy_samples(
         path: copy.source.to_owned(),
         source,
     };
-    let mut input = File::open(copy.source).map_err(read_error)?;
+    let block = copy.layout.block;
     let start = copy
         .span
         .start()
-        .checked_mul(copy.block)
-        .and_then(|bytes| bytes.checked_add(copy.data_offset))
+        .checked_mul(block)
+        .and_then(|bytes| bytes.checked_add(copy.layout.data_offset))
         .ok_or(WriteError::OutOfRange)?;
-    input.seek(SeekFrom::Start(start)).map_err(read_error)?;
+    copy.input
+        .seek(SeekFrom::Start(start))
+        .map_err(read_error)?;
 
-    let per_chunk = (COPY_BYTES as u64 / copy.block).max(1);
-    let mut buf = vec![0u8; (per_chunk * copy.block) as usize];
+    let per_chunk = (COPY_BYTES as u64 / block).max(1);
+    let mut buf = vec![0u8; (per_chunk * block) as usize];
     let total = copy.span.count();
     let mut done = 0u64;
     progress(0, total);
@@ -408,8 +467,8 @@ fn copy_samples(
             return Err(WriteError::Cancelled);
         }
         let samples = per_chunk.min(total - done);
-        let bytes = &mut buf[..(samples * copy.block) as usize];
-        input.read_exact(bytes).map_err(|source| {
+        let bytes = &mut buf[..(samples * block) as usize];
+        copy.input.read_exact(bytes).map_err(|source| {
             if source.kind() == std::io::ErrorKind::UnexpectedEof {
                 WriteError::SourceChanged {
                     path: copy.source.to_owned(),
@@ -446,10 +505,12 @@ fn plain_decoder(meta: &SignalMeta) -> Result<DecodedSource, WriteError> {
         divisor: 1.0,
         ..meta.clone()
     };
-    DecodedSource::reopen(&plain, 0.0).map_err(|source| WriteError::Source {
-        path: meta.source.clone(),
-        source,
-    })
+    DecodedSource::reopen(&plain, 0.0)
+        .map(DecodedSource::strict)
+        .map_err(|source| WriteError::Source {
+            path: meta.source.clone(),
+            source,
+        })
 }
 
 fn write_flac(
@@ -466,30 +527,20 @@ fn write_flac(
         source,
     };
     let channels = meta.channels();
-    let rate = meta.sample_rate.round();
-    if !(1.0..=f64::from((1u32 << 20) - 1)).contains(&rate) {
-        return Err(WriteError::Unsupported {
-            path: meta.source.clone(),
-            reason: format!(
-                "a sample rate of {} Hz does not fit a flac header",
-                meta.sample_rate
-            ),
-        });
-    }
+    let rate = flac_rate(meta, span)?;
 
     let config = flacenc::config::Encoder::default()
         .into_verified()
         .map_err(|(_, error)| flac(&error))?;
     let block = config.block_size;
-    let mut info =
-        StreamInfo::new(rate as usize, channels, bits as usize).map_err(|error| flac(&error))?;
+    let mut info = StreamInfo::new(rate, channels, bits as usize).map_err(|error| flac(&error))?;
 
     let mut header = Vec::new();
     header.extend_from_slice(b"fLaC");
     header.extend_from_slice(&[0, 0, 0, 34]);
     let info_offset = header.len() as u64;
     header.extend_from_slice(&[0u8; 34]);
-    let comment = vorbis_comment(meta.center_freq);
+    let comment = vorbis_comment(meta.center_freq, meta.sample_rate);
     header.push(0x80 | 4);
     header.extend_from_slice(&(comment.len() as u32).to_be_bytes()[1..]);
     header.extend_from_slice(&comment);
@@ -561,16 +612,42 @@ fn write_flac(
     partial.write_at(info_offset, sink.as_slice())
 }
 
-/// A VORBIS_COMMENT body carrying the reference frequency.
-fn vorbis_comment(freq: f64) -> Vec<u8> {
+/// The rate STREAMINFO states, refusing captures its fields cannot describe.
+fn flac_rate(meta: &SignalMeta, span: SampleSpan) -> Result<usize, WriteError> {
+    if span.count() >= 1 << 36 {
+        return Err(WriteError::Unsupported {
+            path: meta.source.clone(),
+            reason: format!("{} samples do not fit a flac header", span.count()),
+        });
+    }
+    let rate = meta.sample_rate.round();
+    if !(1.0..=f64::from((1u32 << 20) - 1)).contains(&rate) {
+        return Err(WriteError::Unsupported {
+            path: meta.source.clone(),
+            reason: format!(
+                "a sample rate of {} Hz does not fit a flac header",
+                meta.sample_rate
+            ),
+        });
+    }
+    Ok(rate as usize)
+}
+
+/// A VORBIS_COMMENT body carrying the reference frequency and the exact sample rate.
+fn vorbis_comment(freq: f64, rate: f64) -> Vec<u8> {
     let vendor = b"argand";
-    let entry = format!("{REFERENCE_TAG}={freq}");
+    let entries = [
+        format!("{REFERENCE_TAG}={freq}"),
+        format!("{RATE_TAG}={rate}"),
+    ];
     let mut body = Vec::new();
     body.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
     body.extend_from_slice(vendor);
-    body.extend_from_slice(&1u32.to_le_bytes());
-    body.extend_from_slice(&(entry.len() as u32).to_le_bytes());
-    body.extend_from_slice(entry.as_bytes());
+    body.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    for entry in &entries {
+        body.extend_from_slice(&(entry.len() as u32).to_le_bytes());
+        body.extend_from_slice(entry.as_bytes());
+    }
     body
 }
 
@@ -598,6 +675,9 @@ fn canonical(path: &Path) -> Option<PathBuf> {
     })
 }
 
+/// How many temporary names are tried before giving up.
+const TEMPORARY_ATTEMPTS: u32 = 100;
+
 /// A temporary file beside the target, removed unless it is renamed into place.
 struct Partial {
     path: PathBuf,
@@ -610,19 +690,30 @@ impl Partial {
         let name = target.file_name().ok_or_else(|| WriteError::BadTarget {
             path: target.to_owned(),
         })?;
-        let mut temporary = std::ffi::OsString::from(".");
-        temporary.push(name);
-        temporary.push(format!(".{}.part", std::process::id()));
-        let path = target.with_file_name(temporary);
-        let file = File::create(&path).map_err(|source| WriteError::Write {
-            path: path.clone(),
-            source,
-        })?;
-        Ok(Self {
-            path,
-            file: Some(file),
-            renamed: false,
-        })
+        let mut attempt = 0u32;
+        loop {
+            let mut temporary = std::ffi::OsString::from(".");
+            temporary.push(name);
+            temporary.push(format!(".{}-{attempt}.part", std::process::id()));
+            let path = target.with_file_name(temporary);
+            // A new file only, so an existing path, a link to the source among them, is never opened.
+            match File::options().write(true).create_new(true).open(&path) {
+                Ok(file) => {
+                    return Ok(Self {
+                        path,
+                        file: Some(file),
+                        renamed: false,
+                    });
+                }
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::AlreadyExists
+                        && attempt < TEMPORARY_ATTEMPTS =>
+                {
+                    attempt += 1;
+                }
+                Err(source) => return Err(WriteError::Write { path, source }),
+            }
+        }
     }
 
     fn write(&mut self, bytes: &[u8]) -> Result<(), WriteError> {
@@ -652,12 +743,17 @@ impl Partial {
     }
 
     /// Flush to disk, close and move the finished file over the target.
-    fn finish(mut self, target: &Path) -> Result<(), WriteError> {
+    ///
+    /// Cancelling is possible until the rename, which is the point of no return.
+    fn finish(mut self, target: &Path, cancel: &AtomicBool) -> Result<(), WriteError> {
         let synced = match self.file.take() {
             Some(file) => file.sync_all(),
             None => Err(std::io::ErrorKind::BrokenPipe.into()),
         };
         synced.map_err(|source| self.error(source))?;
+        if cancel.load(Ordering::Relaxed) {
+            return Err(WriteError::Cancelled);
+        }
         fs::rename(&self.path, target).map_err(|source| WriteError::Write {
             path: target.to_owned(),
             source,
@@ -671,8 +767,10 @@ impl Partial {
 impl Drop for Partial {
     fn drop(&mut self) {
         self.file = None;
-        if !self.renamed {
-            let _ = fs::remove_file(&self.path);
+        if !self.renamed
+            && let Err(error) = fs::remove_file(&self.path)
+        {
+            tracing::warn!(path = %self.path.display(), %error, "temporary file left behind");
         }
     }
 }
@@ -680,8 +778,14 @@ impl Drop for Partial {
 /// Make the rename itself durable where the platform allows it.
 fn sync_directory(target: &Path) {
     #[cfg(unix)]
-    if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
-        let _ = File::open(parent).and_then(|dir| dir.sync_all());
+    {
+        let parent = match target.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => Path::new("."),
+        };
+        if let Err(error) = File::open(parent).and_then(|dir| dir.sync_all()) {
+            tracing::warn!(path = %parent.display(), %error, "cannot sync the folder of a saved file");
+        }
     }
     #[cfg(not(unix))]
     let _ = target;

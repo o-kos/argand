@@ -124,7 +124,7 @@ fn open_impl(
                 // A valid wav in a layout the flat reader will not touch --
                 // 24-bit, say. The decoder may still manage it.
                 tracing::debug!("wav layout not natively supported, trying the decoder");
-                return open_decoded(path, "wav", hints, known);
+                return open_decoded(path, "wav", &wave_metadata(&head, hints), known);
             }
             Err(source) => {
                 return Err(IoError::Wav {
@@ -142,6 +142,23 @@ fn open_impl(
     Err(IoError::UnknownContainer {
         path: path.to_owned(),
     })
+}
+
+/// Hints completed with what a WAVE file's own chunks say, for the decoder that cannot read them.
+fn wave_metadata(head: &[u8], hints: &OpenHints) -> OpenHints {
+    let Ok(chunks) = riff::scan(head) else {
+        return hints.clone();
+    };
+    let declared = riff::parse_fmt(chunks.fmt).map(|fmt| f64::from(fmt.sample_rate));
+    OpenHints {
+        center_freq: hints.center_freq.or(chunks.metadata.reference_freq()),
+        sample_rate: hints.sample_rate.or_else(|| {
+            declared
+                .ok()
+                .map(|rate| chunks.metadata.sample_rate_for(rate))
+        }),
+        ..hints.clone()
+    }
 }
 
 /// Read enough of the file to identify it and parse a header.

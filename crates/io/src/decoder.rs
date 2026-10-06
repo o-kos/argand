@@ -34,6 +34,8 @@ pub struct DecodedSource {
     bits_per_sample: Option<u32>,
     divisor: f32,
     exhausted: bool,
+    /// Fail on a damaged packet instead of skipping it, as exact copies need.
+    strict: bool,
 }
 
 /// Level policy for decoder-backed opening; an absent budget preserves full scans.
@@ -144,8 +146,9 @@ impl DecodedSource {
             )
             .map_err(decode_err)?;
         let mut reader = probed.format;
-        let center_freq =
-            center_freq.or_else(|| tagged_reference(&mut probed.metadata, &mut *reader));
+        let tagged_freq = tagged(&mut probed.metadata, &mut *reader, REFERENCE_TAG);
+        let tagged_rate = tagged(&mut probed.metadata, &mut *reader, RATE_TAG);
+        let center_freq = center_freq.or(tagged_freq);
 
         let track = reader
             .tracks()
@@ -197,7 +200,12 @@ impl DecodedSource {
             track_id,
             time_base,
             meta: SignalMeta {
-                sample_rate: sample_rate_override.unwrap_or(sample_rate),
+                sample_rate: sample_rate_override.unwrap_or_else(|| {
+                    // The exact rate is trusted only while it still agrees with the stream's own.
+                    tagged_rate
+                        .filter(|exact| *exact > 0.0 && (exact - sample_rate).abs() < 1.0)
+                        .unwrap_or(sample_rate)
+                }),
                 center_freq: center_freq.unwrap_or(0.0),
                 sample_type: SampleType::new(domain, format),
                 len_samples: params
@@ -217,6 +225,7 @@ impl DecodedSource {
             bits_per_sample: params.bits_per_sample,
             divisor: 1.0,
             exhausted: false,
+            strict: false,
         };
 
         // STREAMINFO usually carries the length; when it does not, the only
@@ -290,7 +299,7 @@ impl DecodedSource {
             let decoded = match self.decoder.decode(&packet) {
                 Ok(d) => d,
                 // A damaged packet is worth skipping, not dying on.
-                Err(SymphoniaError::DecodeError(msg)) => {
+                Err(SymphoniaError::DecodeError(msg)) if !self.strict => {
                     tracing::warn!("skipping undecodable packet: {msg}");
                     continue;
                 }
@@ -347,6 +356,12 @@ impl DecodedSource {
         self.bits_per_sample
     }
 
+    /// Refuse damaged packets from now on.
+    pub(crate) fn strict(mut self) -> Self {
+        self.strict = true;
+        self
+    }
+
     /// Decoded values exactly as the codec delivers them, before any scaling.
     pub(crate) fn read_plain(&mut self, buf: &mut [f32]) -> Result<usize, SourceError> {
         self.read_unscaled(buf)
@@ -355,28 +370,31 @@ impl DecodedSource {
 
 /// Vorbis comment holding the physical frequency of baseband 0 Hz.
 pub(crate) const REFERENCE_TAG: &str = "ARGAND_REFERENCE_FREQUENCY";
+/// Vorbis comment holding the exact sample rate, which STREAMINFO rounds to hertz.
+pub(crate) const RATE_TAG: &str = "ARGAND_SAMPLE_RATE";
 
-/// The reference frequency a stream's own tags carry, wherever the container keeps them.
-fn tagged_reference(
+/// A number a stream's own tags carry under `key`, wherever the container keeps them.
+fn tagged(
     probed: &mut symphonia::core::probe::ProbedMetadata,
     reader: &mut dyn FormatReader,
+    key: &str,
 ) -> Option<f64> {
     reader
         .metadata()
         .current()
-        .and_then(|revision| reference_tag(revision.tags()))
+        .and_then(|revision| number_tag(revision.tags(), key))
         .or_else(|| {
             probed
                 .get()
-                .and_then(|log| log.current().and_then(|r| reference_tag(r.tags())))
+                .and_then(|log| log.current().and_then(|r| number_tag(r.tags(), key)))
         })
 }
 
-fn reference_tag(tags: &[symphonia::core::meta::Tag]) -> Option<f64> {
+fn number_tag(tags: &[symphonia::core::meta::Tag], key: &str) -> Option<f64> {
     tags.iter()
-        .find(|tag| tag.key.eq_ignore_ascii_case(REFERENCE_TAG))
+        .find(|tag| tag.key.eq_ignore_ascii_case(key))
         .and_then(|tag| tag.value.to_string().trim().parse::<f64>().ok())
-        .filter(|freq| freq.is_finite())
+        .filter(|value| value.is_finite())
 }
 
 fn original_units(params: &symphonia::core::codecs::CodecParameters) -> Option<(f64, f64)> {
@@ -434,6 +452,7 @@ impl SampleSource for DecodedSource {
         if self.meta.container == "flac" {
             let mut fresh = Self::reopen(&self.meta, 0.)?;
             fresh.scale = self.scale;
+            fresh.strict = self.strict;
             *self = fresh;
             if sample == 0 {
                 return Ok(());

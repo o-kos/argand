@@ -407,3 +407,142 @@ fn flac_streaminfo_carries_the_md5_of_what_was_written() {
     assert_ne!(written[26..42], [0u8; 16]);
 }
 
+
+#[test]
+fn an_existing_file_at_the_temporary_name_is_never_opened() {
+    let dir = TempDir::new("write-collision");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
+    let before = fs::read(&source).unwrap();
+    let squatter = dir.join(&format!(".b.wav.{}-0.part", std::process::id()));
+    fs::hard_link(&source, &squatter).unwrap();
+    run(&request(&source, OpenHints::default(), None, dir.join("b.wav"))).unwrap();
+    assert_eq!(fs::read(&source).unwrap(), before);
+    assert_eq!(fs::read(&squatter).unwrap(), before);
+    assert_eq!(data_bytes(&dir.join("b.wav")), data_bytes(&source));
+}
+
+#[test]
+fn cancelling_after_the_last_block_still_keeps_the_old_target() {
+    let dir = TempDir::new("write-late-cancel");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
+    let target = dir.join("b.wav");
+    fs::write(&target, b"keep me").unwrap();
+    let cancel = AtomicBool::new(false);
+    let request = request(&source, OpenHints::default(), None, target.clone());
+    let result = save(
+        &request,
+        &mut |done, total| {
+            if done == total {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        },
+        &cancel,
+    );
+    assert!(matches!(result, Err(WriteError::Cancelled)));
+    assert_eq!(fs::read(&target).unwrap(), b"keep me");
+    assert_eq!(names(&dir), ["a.wav", "b.wav"]);
+}
+
+#[test]
+fn a_source_replaced_since_it_was_opened_is_refused() {
+    let dir = TempDir::new("write-replaced");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
+    let request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), dir.join("b.wav"));
+    write_wav(&source, sample_type, 48_000, &signal(sample_type, 640), 1.0);
+    assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })));
+    assert_eq!(names(&dir), ["a.wav"]);
+}
+
+#[test]
+fn chunks_after_data_are_not_copied_as_samples() {
+    let dir = TempDir::new("write-trailing");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
+    let mut bytes = fs::read(&source).unwrap();
+    bytes.extend_from_slice(b"LIST\x04\x00\x00\x00junk");
+    let riff_size = (bytes.len() - 8) as u32;
+    bytes[4..8].copy_from_slice(&riff_size.to_le_bytes());
+    fs::write(&source, &bytes).unwrap();
+    let target = dir.join("b.wav");
+    run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
+    assert_eq!(data_bytes(&target).len(), 64 * 4);
+}
+
+#[test]
+fn a_type_hint_on_a_decoded_wave_keeps_its_stored_layout() {
+    let dir = TempDir::new("write-24-hint");
+    let source = dir.join("a.wav");
+    let data = write_wav24(&source, 2, 400);
+    let hints = OpenHints {
+        sample_type: Some("iq_i32".parse().unwrap()),
+        ..Default::default()
+    };
+    let target = dir.join("b.wav");
+    run(&request(&source, hints, SampleSpan::between(10, 30), target.clone())).unwrap();
+    let bytes = fs::read(&target).unwrap();
+    let chunks = riff::scan(&bytes).unwrap();
+    assert_eq!(riff::parse_fmt(chunks.fmt).unwrap().bits, 24);
+    assert_eq!(bytes[chunks.data_offset..chunks.data_offset + 120], data[60..180]);
+}
+
+#[test]
+fn a_decoded_wave_reads_its_frequency_back() {
+    let dir = TempDir::new("write-24-freq");
+    let source = dir.join("a.wav");
+    write_wav24(&source, 2, 400);
+    let hints = OpenHints {
+        center_freq: Some(144_800_000.5),
+        ..Default::default()
+    };
+    let target = dir.join("b.wav");
+    run(&request(&source, hints, None, target.clone())).unwrap();
+    let reopened = open(&target, &OpenHints::default()).unwrap();
+    assert_eq!(reopened.meta().center_freq, 144_800_000.5);
+}
+
+#[test]
+fn a_header_that_cannot_state_the_byte_rate_is_refused() {
+    let dir = TempDir::new("write-byte-rate");
+    let source = dir.join("a.raw");
+    fs::write(&source, vec![0u8; 800]).unwrap();
+    let hints = OpenHints {
+        raw: Some("iq_i32@600M".parse().unwrap()),
+        ..Default::default()
+    };
+    let result = run(&request(&source, hints, None, dir.join("b.wav")));
+    assert!(matches!(result, Err(WriteError::Unsupported { .. })), "{result:?}");
+    assert_eq!(names(&dir), ["a.raw"]);
+}
+
+#[test]
+fn flac_keeps_a_fractional_sample_rate() {
+    let dir = TempDir::new("write-flac-rate");
+    let source = dir.join("a.flac");
+    write_flac_fixture(&source, 2, 16, 2000);
+    let hints = OpenHints {
+        sample_rate: Some(44_100.25),
+        ..Default::default()
+    };
+    let target = dir.join("b.flac");
+    run(&request(&source, hints, None, target.clone())).unwrap();
+    assert_eq!(open(&target, &OpenHints::default()).unwrap().meta().sample_rate, 44_100.25);
+}
+
+#[test]
+fn a_damaged_flac_frame_fails_instead_of_being_skipped() {
+    let dir = TempDir::new("write-flac-damaged");
+    let source = dir.join("a.flac");
+    write_flac_fixture(&source, 2, 16, 5000);
+    let mut bytes = fs::read(&source).unwrap();
+    let middle = bytes.len() / 2;
+    for byte in &mut bytes[middle..middle + 64] {
+        *byte ^= 0x5A;
+    }
+    fs::write(&source, &bytes).unwrap();
+    let result = run(&request(&source, OpenHints::default(), None, dir.join("b.flac")));
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(names(&dir), ["a.flac"]);
+}

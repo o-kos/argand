@@ -31,15 +31,17 @@ Agreed with the owner:
 
 Derived here:
 
-- **Byte copy for every WAVE source.** `riff` gains a layout scan that reports `fmt ` bytes, block alignment and the data range even for layouts the native reader declines, so 24-bit WAVE is copied rather than decoded. The written `fmt ` is the source's own chunk, unless a hint overrides the sample type or rate, in which case it is synthesized from the effective `SampleType` and rate.
-- **Copy reads the file, not the mapping.** The writer opens its own `File` and copies `data_offset + start × block .. data_offset + end × block` with `read`/`write`, so it neither shares the document's cursor nor grows the mapping's resident set.
-- **FLAC path.** `argand_io::reopen` gives an independent cursor; decoded values go back to integers through `original_sample_units`, checked to land on integers, and are encoded in 4096-sample blocks at the source's bit depth. STREAMINFO is a fixed 34-byte block written first as a placeholder and rewritten at the end.
+- **Byte copy for every WAVE source.** `riff` gains a layout scan that reports `fmt ` bytes, block alignment and the data range even for layouts the native reader declines, so 24-bit WAVE is copied rather than decoded. The written `fmt ` is the source's own chunk with its rate fields set to the effective rate. Only a sample type hint on a layout the native reader handles synthesizes `fmt ` from the effective `SampleType`, because the decoder reads the stored layout whatever the hint says.
+- **Copy reads the file, not the mapping.** The writer opens its own `File`, reads the header and copies `data_offset + start × block .. data_offset + end × block` through that one handle, so it neither shares the document's cursor nor grows the mapping's resident set. The data length (the smaller of the declared and the present one) must still give the capture's sample count, otherwise the source changed since it was opened and the save is refused.
+- **FLAC path.** A strict decoder (no normalization or gain, a damaged packet is an error rather than skipped) gives values that go back to integers exactly, checked to land on them, and are encoded in 4096-sample blocks at the source's bit depth, up to 24 bits. STREAMINFO is a fixed 34-byte block written first as a placeholder and rewritten at the end; a span of 2^36 samples or more is refused. The Vorbis comment also carries the exact sample rate, which STREAMINFO rounds.
 - **Metadata goes before `data`**, because `riff::parse` reads only the head and stops at `data`.
 - **`OpenHints::center_freq` becomes `Option<f64>`**, so "not given" differs from 0 Hz. The CLI sets it only when `--center` is present; a session hint of 0 reads as absent, as it means today.
 - **Container name**: RIFF when it fits, RF64 otherwise; a BW64 source is written as RF64.
 - **Suggested name**: `<stem>_<start>-<end>s.<ext>` for a selection, seconds with millisecond precision, and `<stem>.<ext>` for Save as…; `.wav` for a headerless source, the source's own extension otherwise. The directory is the source's.
 - **Target checks**: the target's canonical path (or its parent's plus the name, when it does not exist yet) must differ from the open file's; otherwise the save is refused with a status-bar error.
-- **Shutdown**: dropping the save handle cancels it; the shell waits for the worker to remove its temporary file for at most one second.
+- **Shutdown**: dropping the save handle cancels it; the shell waits for the worker to remove its temporary file for at most one second. This bounds the wait, it does not guarantee the cleanup: a filesystem that hangs longer leaves the hidden temporary file.
+- **Temporary file**: created with `create_new` under a fresh name, so no existing path is ever opened for writing. Cancelling is possible until the rename.
+- **The file being written** cannot be opened until the save ends; the status bar says so.
 - **API shape**: `argand_io::write::save(request, progress, cancel) -> Result<Saved, WriteError>`, where the request names the source path, its `OpenHints`, its resolved `SignalMeta`, the optional `SampleSpan` and the target. `WriteError` is a `thiserror` enum. No GPUI type crosses into `argand-io`.
 
 ## Rejected alternatives

@@ -102,6 +102,14 @@ fn message(error: &WriteError) -> String {
     text
 }
 
+/// Whether two paths name the same file, comparing canonical forms where they exist.
+pub fn same_path(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
+
 /// The request for saving `span`, or the whole capture, to `target`.
 pub fn request(
     meta: &SignalMeta,

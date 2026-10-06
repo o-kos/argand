@@ -600,6 +600,9 @@ impl Shell {
     /// transform, and that is a pass over the file that must not happen on the
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
+        if self.refuse_save_target(&origin.path, cx) {
+            return;
+        }
         self.dismiss_application_menu(window, cx);
         self.close_analysis_hint(cx);
         // The old plot goes with its document, so focus must not stay on it.

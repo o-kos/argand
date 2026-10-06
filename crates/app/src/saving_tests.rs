@@ -60,3 +60,14 @@ fn a_job_reports_progress_and_the_saved_file() {
     assert_eq!((saved.path, saved.samples), (target, 10));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn the_same_file_is_recognised_through_a_different_spelling() {
+    let dir = std::env::temp_dir();
+    let name = format!("argand-same-{}.wav", std::process::id());
+    let file = dir.join(&name);
+    std::fs::write(&file, b"x").unwrap();
+    assert!(same_path(&file, &dir.join(".").join(&name)));
+    assert!(!same_path(&file, &dir.join("argand-other.wav")));
+    std::fs::remove_file(&file).unwrap();
+}

@@ -434,24 +434,30 @@ start, end and length in the time ruler's units (`time_ruler::Mode::selection`).
 ## Saving (#186)
 
 `argand_io::write::save` writes a capture, or a `SampleSpan` of it, to a new file in the
-source's format. WAVE and headerless sources are copied byte for byte with `File::read`,
-never through the mapping, under the source's own `fmt ` body (a headerless capture or an
-overridden sample type gets one synthesized from the effective `SampleType`); any linear
-PCM or float layout is copied this way, 24-bit included. FLAC is decoded with no
-normalization or gain, checked to land on integers and encoded again with `flacenc`
-(default features off) at the source bit depth, up to 24 bits; STREAMINFO is rewritten at
-the end. A WAVE output whose RIFF size would exceed `u32` is RF64. Stored values are
-written, never normalized ones. Output goes to `.<name>.<pid>.part` beside the target,
-is synced and renamed over it; any error or cancellation removes it. The source is never
-a valid target (same device and inode on Unix, canonical path elsewhere).
+source's format. WAVE and headerless sources are copied byte for byte through one `File`
+handle that also reads the header, never through the mapping, under the source's own
+`fmt ` body with the effective rate; a headerless capture, or a sample type hint on a
+layout the native reader handles, gets one synthesized from the effective `SampleType`.
+Any linear PCM or float layout is copied this way, 24-bit included. The data length (the
+smaller of declared and present) must give `SignalMeta::len_samples`, otherwise the
+source changed since it was opened and the save is refused. FLAC is decoded strictly (no
+normalization or gain, a damaged packet fails the save), checked to land on integers and
+encoded again with `flacenc` (default features off) at the source bit depth, up to 24 bits
+and under 2^36 samples; STREAMINFO is rewritten at the end. A WAVE output whose RIFF size
+would exceed `u32` is RF64. Stored values are written, never normalized ones. Output goes
+to `.<name>.<pid>-<n>.part` beside the target, created with `create_new` so no existing
+path is ever opened for writing, then synced, checked for cancellation and renamed over
+the target; any error or cancellation removes it. The source is never a valid target
+(same device and inode on Unix, canonical path elsewhere, so a Windows hard link is not
+detected).
 
 The reference frequency is the physical frequency of baseband 0 Hz for both signal kinds
 (#185). Writing puts an `auxi` chunk (164 bytes, `CenterFreq` at 32 and `ADFrequency` at
 36, written only for 1 Hz to `u32::MAX`) and an `argd` chunk (version 1, `f64`
 frequency, `f64` sample rate) before `data`, because `riff::parse` reads only the head;
-FLAC gets the Vorbis comment `ARGAND_REFERENCE_FREQUENCY`. Opening prefers `argd`, then
-`auxi`, then the comment, and `argd`'s exact rate only while it agrees with `fmt ` within
-1 Hz. `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins, and a
+FLAC gets the Vorbis comments `ARGAND_REFERENCE_FREQUENCY` and `ARGAND_SAMPLE_RATE`.
+Opening prefers `argd`, then `auxi`, then the comment, also for a WAVE layout the decoder
+reads, and an exact rate only while it agrees with the header's within 1 Hz. `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins, and a
 session hint of 0 means none.
 
 `saving.rs` runs one save on its own thread with 4 MiB buffers, progress at most every
@@ -463,7 +469,7 @@ The dialog is `App::prompt_for_new_path` in the source folder with
 `<stem>_<start>-<end>s.<ext>` (seconds to the millisecond) or `<stem>.<ext>`, `.wav` for
 a headerless source. The status bar shows progress with a cancelling ×, then the outcome
 until its × is pressed or another save starts; a cancellation shows nothing. A save
-outlives opening another file.
+outlives opening another file, but the file it is writing cannot be opened until it ends.
 
 ## Ruler marks and grid visibility (#71, #72)
 

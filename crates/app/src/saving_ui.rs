@@ -9,7 +9,10 @@ use gpui_kit::component::IconName;
 pub(super) struct Saving {
     job: saving::Job,
     name: String,
+    target: std::path::PathBuf,
     progress: Option<(u64, u64)>,
+    /// Set when the file being written was asked to open, which waits until it is complete.
+    open_refused: bool,
 }
 
 /// How the last save ended, shown until it is closed or another save starts.
@@ -76,6 +79,7 @@ impl Shell {
             return;
         }
         let name = file_name(&request.target);
+        let target = request.target.clone();
         let (job, updates) = saving::start(request);
         self.save_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
@@ -91,7 +95,9 @@ impl Shell {
         self.saving = Some(Saving {
             job,
             name,
+            target,
             progress: None,
+            open_refused: false,
         });
         cx.notify();
     }
@@ -113,6 +119,23 @@ impl Shell {
             }
         }
         cx.notify();
+    }
+
+    /// Whether `path` is the file a save in progress is writing, which must not open half written.
+    pub(super) fn refuse_save_target(
+        &mut self,
+        path: &std::path::Path,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(saving) = &mut self.saving else {
+            return false;
+        };
+        if !saving::same_path(path, &saving.target) {
+            return false;
+        }
+        saving.open_refused = true;
+        cx.notify();
+        true
     }
 
     fn cancel_save(&mut self, cx: &mut Context<Self>) {
@@ -141,7 +164,12 @@ impl Shell {
                     .map_or(0, |(done, total)| {
                         (done as f64 * 100.0 / total as f64) as u32
                     });
-                (format!("Saving {}… {percent}%", saving.name), false, true)
+                let text = if saving.open_refused {
+                    format!("Saving {}… {percent}%, open it once saved", saving.name)
+                } else {
+                    format!("Saving {}… {percent}%", saving.name)
+                };
+                (text, false, true)
             }
             (None, Some(Notice::Saved(name))) => (format!("Saved {name}"), false, false),
             (None, Some(Notice::Failed(error))) => (format!("Save failed: {error}"), true, false),
