@@ -262,6 +262,34 @@ mod tests {
     }
 
     #[test]
+    fn a_style_only_preview_is_rejected_by_its_view_revision_alone() {
+        let settings = Settings::from_config(&crate::config::Config::default());
+        let mut style = settings;
+        style.dynamic_range = argand_dsp::DynamicRange::Fixed(42.0);
+        let mut state = state();
+
+        state.analyst.request_view(request_a(), None);
+        assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
+
+        // A style-only request changes nothing the transform reads, so the
+        // generation stays and only the view revision advances. Cancelling
+        // advances it once more.
+        let style_request = argand_dsp::AnalysisRequest {
+            dynamic_range: argand_dsp::DynamicRange::Fixed(42.0),
+            ..request_a()
+        };
+        state.analyst.request_view(style_request, None);
+        state.analyst.request_view(request_a(), None);
+
+        // The preview's own delivery still matches the generation, so the
+        // view revision is the only thing that rejects it.
+        assert_eq!(state.accept(ready(1, 2), &style), None);
+        assert_eq!(state.displayed_settings(), Some(&settings));
+        assert_eq!(state.accept(ready(1, 3), &settings), Some(Effect::Analysis));
+        assert_eq!(state.displayed_settings(), Some(&settings));
+    }
+
+    #[test]
     fn a_second_file_starts_with_no_recorded_settings_while_the_first_keeps_its_own() {
         let settings = Settings::from_config(&crate::config::Config::default());
         let preview = requested_b(&settings);

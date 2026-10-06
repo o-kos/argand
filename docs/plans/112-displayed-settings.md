@@ -47,23 +47,18 @@ opening values, and a second file opened while a preview is pending.
   Two production paths may record: `accept` for a delivered picture, and
   `retake_equivalent` for the settings editor applying a preview it has
   already seen without re-requesting. Everything else reads. The tests live
-  in `open_file.rs`'s own `#[cfg(test)]` module, following `analysis.rs`'s
-  layout, not in a separate test file.
+  in `open_file.rs`'s own `#[cfg(test)]` module.
 - The gate runs twice on an accepted delivery - once in `shell.rs` ahead of the
   backdrop park, once inside `accept` - because the second check is what keeps
   the neutral method self-contained, and a second evaluation of a pure
   generation comparison costs nothing.
 - Hand-written deliveries need the private generation and view revision, so
-  `analysis.rs` grows a `#[cfg(test)] for_test` constructor next to `Delivery`;
-  production code cannot forge those fields, which is why it is test-only.
+  `analysis.rs` grows a `#[cfg(test)] for_test(update, generation,
+  view_revision)` constructor next to `Delivery`; production code cannot forge
+  those fields, which is why it is test-only.
 
-- Hand-written deliveries need the private generation and view revision, so
-  `analysis.rs` grows a `#[cfg(test)] for_test` constructor next to `Delivery`;
-  production code cannot forge those fields, which is why it is test-only.
-
-- The test harness has no `PlotView`: the focus target is the shell handle.
-  The four states are exercised through the neutral type directly, which is the
-  issue's own desired outcome.
+- The four states are exercised through the neutral type directly, which is
+  the issue's own desired outcome.
 
 ## Rejected alternatives
 
@@ -102,12 +97,14 @@ opening values, and a second file opened while a preview is pending.
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] The existing status-bar, settings-editor and analysis tests hold unchanged.
+- [x] The existing status-bar, settings-editor and analysis tests hold unchanged.
 
 ## Post-completion
 
 - Class A. Implementer: this session. Reviewer: GPT-6.1-Sol at medium reasoning
-  effort through the `codex` CLI, the owner's most recent choice, to be
-  confirmed when the review is requested.
+  effort through the `codex` CLI, the owner's choice. Round 1 found the
+  production refactor correct but the tests too weak, and its three findings
+  are addressed above; round 2 verified the fixes and asked for a style-only
+  preview sequence, which this branch adds.
 - No native verification is required: the change is test-only in its behaviour
   and the window code paths keep their order.
