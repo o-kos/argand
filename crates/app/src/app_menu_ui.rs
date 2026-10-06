@@ -1251,7 +1251,7 @@ mod tests {
             shell
                 .file
                 .as_ref()
-                .map(|file| file.document.origin().path.clone())
+                .map(|file| file.state.document.origin().path.clone())
         })
     }
 
@@ -1436,7 +1436,7 @@ mod tests {
             let Some(file) = shell.file.as_mut() else {
                 panic!("the capture never opened");
             };
-            file.document.apply(Update::Opened(
+            file.state.document.apply(Update::Opened(
                 SignalMeta {
                     sample_rate: 24_000.0,
                     center_freq: 0.0,
@@ -1448,11 +1448,11 @@ mod tests {
                 },
                 FileInfo::default(),
             ));
-            file.document.apply(Update::Ready {
+            file.state.document.apply(Update::Ready {
                 analysis: settings_ui::warned_analysis(),
                 elapsed: std::time::Duration::ZERO,
             });
-            file.displayed_settings = Some(shell.settings);
+            file.state.record_for_test(&shell.settings);
             cx.notify();
         });
         draw(cx);

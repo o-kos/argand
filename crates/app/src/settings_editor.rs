@@ -924,8 +924,8 @@ impl Render for Editor {
         let pending = self.owner.upgrade().is_some_and(|shell| {
             let shell = shell.read(cx);
             shell.file.as_ref().is_some_and(|f| {
-                f.displayed_settings != Some(shell.settings)
-                    && !matches!(f.document.status(), Status::Failed(_))
+                f.state.displayed_settings() != Some(&shell.settings)
+                    && !matches!(f.state.document.status(), Status::Failed(_))
             })
         });
         let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
@@ -1770,7 +1770,7 @@ mod hint_tests {
     fn warn(cx: &mut TestAppContext, w: &Window_) {
         w.shell.update(cx, |shell, cx| {
             if let Some(file) = shell.file.as_mut() {
-                file.document.show_a_warned_range();
+                file.state.document.show_a_warned_range();
             }
             cx.notify();
         });

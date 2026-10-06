@@ -23,6 +23,7 @@ mod frequency;
 mod minimap;
 mod navigation;
 mod numbers;
+mod open_file;
 mod orientation;
 mod panels;
 mod profiling;

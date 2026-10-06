@@ -51,7 +51,7 @@ mod plot_view;
 #[path = "settings_ui.rs"]
 mod settings_ui;
 
-use crate::analysis::{Analyst, Delivery};
+use crate::analysis::Delivery;
 use crate::axes;
 use crate::chrome;
 use crate::config::{Aggregation, Config, Theme};
@@ -267,13 +267,11 @@ fn to_bounds(geometry: Geometry) -> Bounds<Pixels> {
 /// keeping them in one struct is what makes closing a document a single drop
 /// rather than three that have to happen in the right order.
 struct OpenFile {
-    document: Document,
-    analyst: Analyst,
+    state: crate::open_file::OpenFileState,
     _updates: Task<()>,
     _minimap_updates: Option<Task<()>>,
     opened_at: Instant,
     first_picture: Arc<AtomicBool>,
-    displayed_settings: Option<Settings>,
     /// Created once the file has described itself, and dropped with it.
     plot: Option<PlotHandle>,
 }
@@ -476,7 +474,7 @@ impl Shell {
             || !self
                 .file
                 .as_ref()
-                .is_some_and(|file| matches!(file.document.status(), Status::Ready { .. }))
+                .is_some_and(|file| matches!(file.state.document.status(), Status::Ready { .. }))
         {
             return;
         }
@@ -628,13 +626,11 @@ impl Shell {
         // what stops its thread: a transform nobody will look at should not go
         // on holding a mapped file and a core.
         self.file = Some(OpenFile {
-            document: Document::opening(origin),
-            analyst,
+            state: crate::open_file::OpenFileState::new(Document::opening(origin), analyst),
             _updates: pump,
             _minimap_updates: None,
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
-            displayed_settings: None,
             plot: None,
         });
         cx.notify();
@@ -696,7 +692,7 @@ impl Shell {
         let Some(file) = self.file.as_mut() else {
             return;
         };
-        if !file.analyst.accepts(&delivery) {
+        if !file.state.analyst.accepts(&delivery) {
             return;
         }
         let Some(delivery) = self.refresh_backdrop_style(delivery, window, cx) else {
@@ -705,12 +701,11 @@ impl Shell {
         let Some(file) = self.file.as_mut() else {
             return;
         };
-        let effect = file.document.apply(delivery.update);
-        if matches!(file.document.status(), Status::Ready { .. }) {
+        let Some(effect) = file.state.accept(delivery, &self.settings) else {
+            return;
+        };
+        if matches!(file.state.document.status(), Status::Ready { .. }) {
             self.ready_status_dismissed = false;
-        }
-        if effect == Effect::Analysis {
-            file.displayed_settings = Some(self.settings);
         }
 
         match effect {
@@ -726,7 +721,7 @@ impl Shell {
                 if let Some(origin) = self
                     .file
                     .as_ref()
-                    .map(|file| file.document.origin().clone())
+                    .map(|file| file.state.document.origin().clone())
                 {
                     self.remember_file(&origin);
                 }
@@ -790,10 +785,10 @@ impl Shell {
 
     fn start_minimap(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(file) = &mut self.file else { return };
-        let Some(meta) = file.document.meta().cloned() else {
+        let Some(meta) = file.state.document.meta().cloned() else {
             return;
         };
-        let updates = crate::minimap::start(file.document.origin().clone(), meta);
+        let updates = crate::minimap::start(file.state.document.origin().clone(), meta);
         file._minimap_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 if shell
@@ -816,12 +811,12 @@ impl Shell {
         let Some(file) = &mut self.file else { return };
         match update {
             Ok(snapshot) => {
-                file.document.minimap_ready(&snapshot);
+                file.state.document.minimap_ready(&snapshot);
                 self.waveform = Some(Arc::new(waveform::Waveform::new(snapshot)));
             }
             Err(error) => {
                 tracing::warn!(%error, "minimap unavailable");
-                file.document.minimap_failed(format!("{error:#}"));
+                file.state.document.minimap_failed(format!("{error:#}"));
                 self.waveform = None;
             }
         }
@@ -856,7 +851,7 @@ impl Shell {
     /// rather than from a finished analysis so that the labels can be measured,
     /// and the plot sized, before the first transform runs.
     fn extents(&self) -> Option<axes::Extents> {
-        let meta = self.file.as_ref()?.document.meta()?;
+        let meta = self.file.as_ref()?.state.document.meta()?;
         Some(axes::Extents {
             orientation: self.session.orientation,
             time: crate::time_ruler::Ruler {
@@ -877,15 +872,15 @@ impl Shell {
         let Some(file) = self.file.as_ref() else {
             return;
         };
-        let Some(request) = self.request(&file.document) else {
+        let Some(request) = self.request(&file.state.document) else {
             return;
         };
         let frequency = self.extents().map(|extents| extents.hertz);
         let Some(file) = self.file.as_mut() else {
             return;
         };
-        file.document.requested_range(request.range);
-        if !file.analyst.request_view(request, frequency) {
+        file.state.document.requested_range(request.range);
+        if !file.state.analyst.request_view(request, frequency) {
             tracing::warn!("the analysis thread has stopped; nothing more will be drawn");
         }
     }
@@ -910,7 +905,7 @@ impl Shell {
         let fresh = self
             .file
             .as_ref()
-            .and_then(|file| file.document.analysis())
+            .and_then(|file| file.state.document.analysis())
             .and_then(|analysis| {
                 spectrogram::texture(&analysis.spectrogram, self.session.orientation)
             });
@@ -1075,7 +1070,7 @@ impl Shell {
     fn file_name(&self) -> String {
         self.file
             .as_ref()
-            .map(|file| file.document.origin().name())
+            .map(|file| file.state.document.origin().name())
             .unwrap_or_default()
     }
 
@@ -1402,8 +1397,8 @@ impl Shell {
         let Some(file) = self.file.as_ref() else {
             return Showing::Nothing;
         };
-        if let Status::Failed(reason) = file.document.status()
-            && file.document.analysis().is_none()
+        if let Status::Failed(reason) = file.state.document.status()
+            && file.state.document.analysis().is_none()
         {
             return Showing::Failed(reason.clone());
         }

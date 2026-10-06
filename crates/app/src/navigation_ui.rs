@@ -342,7 +342,7 @@ impl Shell {
     }
 
     fn sample_count(&self) -> Option<u64> {
-        Some(self.file.as_ref()?.document.meta()?.len_samples)
+        Some(self.file.as_ref()?.state.document.meta()?.len_samples)
     }
 
     /// Whether a view the plot asked for lies within the open capture.
@@ -399,7 +399,11 @@ impl Shell {
 
     fn pan_ticks(&mut self, divisions: i64, window: &Window, cx: &mut Context<Self>) {
         let Some(view) = self.view else { return };
-        let Some(meta) = self.file.as_ref().and_then(|file| file.document.meta()) else {
+        let Some(meta) = self
+            .file
+            .as_ref()
+            .and_then(|file| file.state.document.meta())
+        else {
             return;
         };
         let total = meta.len_samples;
@@ -518,7 +522,7 @@ impl Shell {
 
     /// The time selection as the status bar shows it, in the time ruler's units.
     pub(super) fn selection_readout(&self) -> Option<String> {
-        let meta = self.file.as_ref()?.document.meta()?;
+        let meta = self.file.as_ref()?.state.document.meta()?;
         let span = self.selection?.within(meta.len_samples)?;
         Some(self.session.time_ruler.selection(span, meta.sample_rate))
     }
@@ -531,7 +535,7 @@ impl Shell {
         }
         let mut extents = self.extents()?;
         if geometry.minimap.contains(&pointer) {
-            let meta = self.file.as_ref()?.document.meta()?;
+            let meta = self.file.as_ref()?.state.document.meta()?;
             extents.seconds = (0., meta.duration_seconds());
             extents.time.view = View {
                 start: 0,
@@ -553,6 +557,7 @@ impl Shell {
         let level = self
             .file
             .as_ref()?
+            .state
             .document
             .analysis()
             .and_then(|analysis| navigation::level_in_view(&analysis.db, extents.picture(), x, y))
@@ -572,7 +577,11 @@ impl Shell {
     }
 
     fn frequency_cells(&self) -> usize {
-        let Some(meta) = self.file.as_ref().and_then(|file| file.document.meta()) else {
+        let Some(meta) = self
+            .file
+            .as_ref()
+            .and_then(|file| file.state.document.meta())
+        else {
             return 1;
         };
         let bins = if meta.is_iq() {

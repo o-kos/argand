@@ -121,7 +121,7 @@ impl Shell {
         let samples = self
             .file
             .as_ref()
-            .and_then(|file| file.document.meta())
+            .and_then(|file| file.state.document.meta())
             .map(|meta| meta.len_samples);
         if let Err(error) = settings.validate(samples) {
             self.settings_error = Some(error);
@@ -134,12 +134,8 @@ impl Shell {
     fn apply_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
         self.settings_error = None;
         tracing::debug!(?settings, "analysis settings requested");
-        if let Some(file) = &mut self.file
-            && file
-                .displayed_settings
-                .is_some_and(|displayed| displayed.equivalent(settings))
-        {
-            file.displayed_settings = Some(settings);
+        if let Some(file) = &mut self.file {
+            file.state.retake_equivalent(&settings);
         }
         self.settings = settings;
         self.bound_view(cx);
@@ -230,8 +226,8 @@ impl Shell {
     fn range_presentation(&self) -> Option<RangePresentation> {
         let file = self.file.as_ref()?;
         Some(document_range_presentation(
-            &file.document,
-            file.displayed_settings,
+            &file.state.document,
+            file.state.displayed_settings().cloned(),
             self.settings,
         ))
     }
@@ -270,9 +266,10 @@ impl Shell {
         let file = self
             .file
             .as_ref()
-            .and_then(|file| file.document.file_summary());
+            .and_then(|file| file.state.document.file_summary());
         let status = self.file.as_ref().and_then(|file| {
-            file.document
+            file.state
+                .document
                 .status()
                 .presentation(self.ready_status_dismissed)
         });
@@ -437,7 +434,10 @@ impl Shell {
     }
 
     fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let displayed = self.file.as_ref().and_then(|file| file.displayed_settings);
+        let displayed = self
+            .file
+            .as_ref()
+            .and_then(|file| file.state.displayed_settings().cloned());
         let visible = displayed.unwrap_or(self.settings);
         let foregrounds =
             ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground);
@@ -593,6 +593,7 @@ pub(super) fn warned_analysis() -> Box<Analysis> {
 mod tests {
     use super::*;
     use crate::analysis::{FileInfo, Update};
+    use crate::document::Document;
     use argand_core::{Domain, SampleFormat, SampleType, SignalMeta};
     use std::path::PathBuf;
     use std::time::Duration;
