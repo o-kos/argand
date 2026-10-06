@@ -338,6 +338,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "argand-edit"
+version = "0.1.1"
+dependencies = [
+ "argand-core",
+]
+
+[[package]]
 name = "argand-io"
 version = "0.1.1"
 dependencies = [

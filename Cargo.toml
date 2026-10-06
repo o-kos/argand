@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/io", "crates/dsp", "crates/cli", "crates/app"]
+members = ["crates/core", "crates/io", "crates/dsp", "crates/edit", "crates/cli", "crates/app"]
 
 [workspace.package]
 version = "0.1.1"
@@ -36,6 +36,7 @@ allow_attributes_without_reason = "warn"
 argand-core = { path = "crates/core" }
 argand-io = { path = "crates/io" }
 argand-dsp = { path = "crates/dsp" }
+argand-edit = { path = "crates/edit" }
 
 ab_glyph = "0.2"
 anyhow = "1.0"
