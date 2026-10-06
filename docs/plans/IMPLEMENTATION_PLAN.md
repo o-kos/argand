@@ -106,7 +106,7 @@ The kind follows the meaning of the axis, not the side of the screen, so it is t
 Steps, one Issue each:
 
 1. The selection model and time selection (#178).
-2. A file writer in `argand-io` and "Save selection as".
+2. A file writer in `argand-io` and "Save selection as" (#186).
 3. The editing engine in `argand-edit`: a piece table over the memory-mapped original and inserted buffers, an undo and redo command stack and a clipboard; delete, copy and paste of a time range; saving the edited capture. Keep I and Q together. Invalidate waveform and spectrogram caches only for affected regions.
 4. Frequency band and rectangle selection, with frequency shift, low-pass filtering and decimation in `argand-dsp` for saving them.
 5. Suppressing a band, undoable through the editing engine.

@@ -351,6 +351,8 @@ impl Shell {
                         ),
                 )
             })
+            // Last, so it keeps its place whatever the readouts beside it do.
+            .children(self.save_item(cx))
     }
 
     fn range_control(

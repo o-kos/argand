@@ -43,6 +43,7 @@ async-channel = "2.5"
 bytemuck = "1.23"
 clap = { version = "4.5", features = ["derive"] }
 dirs = "6.0"
+flacenc = { version = "0.5", default-features = false }
 gpui-kit = "0.6"
 hsl = "0.1"
 image = { version = "0.25", default-features = false, features = ["png"] }

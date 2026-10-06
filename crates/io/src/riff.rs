@@ -46,6 +46,8 @@ pub struct WavLayout {
     pub declared_len: Option<usize>,
     /// Which of the three WAVE flavours this was, for the report.
     pub container: &'static str,
+    /// Physical frequency of baseband 0 Hz, from `argd` or `auxi`.
+    pub reference_freq: Option<f64>,
 }
 
 impl WavLayout {
@@ -114,15 +116,68 @@ pub fn is_flac(bytes: &[u8]) -> bool {
 
 /// Walk the chunk list and work out the sample layout.
 pub fn parse(bytes: &[u8]) -> Result<WavLayout, RiffError> {
+    let chunks = scan(bytes)?;
+    let fmt = parse_fmt(chunks.fmt)?;
+    let declared_rate = fmt.sample_rate as f64;
+    Ok(WavLayout {
+        sample_type: fmt.sample_type()?,
+        sample_rate: chunks.metadata.sample_rate_for(declared_rate),
+        data_offset: chunks.data_offset,
+        declared_len: chunks.declared_len,
+        container: chunks.container,
+        reference_freq: chunks.metadata.reference_freq(),
+    })
+}
+
+/// The chunks a WAVE file is read and copied by, whatever its sample layout.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Chunks<'a> {
+    pub container: &'static str,
+    /// Body of `fmt `, exactly as stored.
+    pub fmt: &'a [u8],
+    pub data_offset: usize,
+    pub declared_len: Option<usize>,
+    pub metadata: Metadata,
+}
+
+/// What the `argd` and `auxi` chunks say about the capture.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct Metadata {
+    /// Reference frequency and exact sample rate from `argd`.
+    pub argd: Option<(f64, f64)>,
+    /// Centre frequency from `auxi`, in whole hertz.
+    pub auxi: Option<u32>,
+}
+
+impl Metadata {
+    /// The physical frequency of baseband 0 Hz, preferring the exact value.
+    pub fn reference_freq(&self) -> Option<f64> {
+        self.argd
+            .map(|(freq, _)| freq)
+            .or_else(|| self.auxi.map(f64::from))
+    }
+
+    /// The exact rate from `argd` while it still agrees with the `fmt ` rate.
+    pub fn sample_rate_for(&self, declared: f64) -> f64 {
+        match self.argd {
+            Some((_, exact)) if (exact - declared).abs() < 1.0 => exact,
+            _ => declared,
+        }
+    }
+}
+
+/// Walk the chunk list up to `data` without interpreting `fmt `.
+pub(crate) fn scan(bytes: &[u8]) -> Result<Chunks<'_>, RiffError> {
     if !is_wave(bytes) {
         return Err(RiffError::NotWave);
     }
     let container = container_of(bytes).ok_or(RiffError::NotWave)?;
     let is_64bit = container != "wav";
 
-    let mut fmt: Option<FmtChunk> = None;
+    let mut fmt: Option<&[u8]> = None;
     let mut data: Option<(usize, Option<usize>)> = None;
     let mut ds64_data_len: Option<usize> = None;
+    let mut metadata = Metadata::default();
     let mut pos = 12;
 
     while pos + 8 <= bytes.len() {
@@ -138,12 +193,21 @@ pub fn parse(bytes: &[u8]) -> Result<WavLayout, RiffError> {
 
         match id {
             b"fmt " => {
-                let body_bytes = slice(bytes, body, size, "fmt chunk")?;
-                fmt = Some(parse_fmt(body_bytes)?);
+                fmt = Some(slice(bytes, body, size, "fmt chunk")?);
             }
             b"ds64" => {
                 let body_bytes = slice(bytes, body, size, "ds64 chunk")?;
                 ds64_data_len = Some(parse_ds64(body_bytes)?);
+            }
+            b"argd" => {
+                if let Ok(body_bytes) = slice(bytes, body, size, "argd chunk") {
+                    metadata.argd = parse_argd(body_bytes);
+                }
+            }
+            b"auxi" => {
+                if let Ok(body_bytes) = slice(bytes, body, size, "auxi chunk") {
+                    metadata.auxi = parse_auxi(body_bytes);
+                }
             }
             b"data" => {
                 // A finalised RIFF states the length here. RF64 parks the
@@ -172,13 +236,42 @@ pub fn parse(bytes: &[u8]) -> Result<WavLayout, RiffError> {
         return Err(RiffError::MissingDs64 { container });
     }
 
-    Ok(WavLayout {
-        sample_type: fmt.sample_type()?,
-        sample_rate: fmt.sample_rate as f64,
+    Ok(Chunks {
+        container,
+        fmt,
         data_offset,
         declared_len,
-        container,
+        metadata,
     })
+}
+
+/// Argand's own chunk: version, reference frequency and sample rate.
+pub(crate) const ARGD_ID: &[u8; 4] = b"argd";
+pub(crate) const ARGD_VERSION: u32 = 1;
+pub(crate) const ARGD_LEN: usize = 20;
+
+/// Size of the `auxi` body SDR#, HDSDR and SDRuno write.
+pub(crate) const AUXI_LEN: usize = 164;
+/// Offset of `CenterFreq`, after the start and stop `SYSTEMTIME`s.
+pub(crate) const AUXI_CENTER: usize = 32;
+/// Offset of `ADFrequency`, the sample rate.
+pub(crate) const AUXI_RATE: usize = 36;
+
+fn parse_argd(body: &[u8]) -> Option<(f64, f64)> {
+    if body.len() < ARGD_LEN {
+        return None;
+    }
+    let version = u32::from_le_bytes(body[0..4].try_into().ok()?);
+    let freq = f64::from_le_bytes(body[4..12].try_into().ok()?);
+    let rate = f64::from_le_bytes(body[12..20].try_into().ok()?);
+    (version == ARGD_VERSION && freq.is_finite() && rate.is_finite() && rate > 0.0)
+        .then_some((freq, rate))
+}
+
+fn parse_auxi(body: &[u8]) -> Option<u32> {
+    let field = body.get(AUXI_CENTER..AUXI_CENTER + 4)?;
+    let freq = u32::from_le_bytes(field.try_into().ok()?);
+    (freq > 0).then_some(freq)
 }
 
 fn slice<'a>(
@@ -212,18 +305,19 @@ fn parse_ds64(body: &[u8]) -> Result<usize, RiffError> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct FmtChunk {
-    format_tag: u16,
-    channels: u16,
-    sample_rate: u32,
-    bits: u16,
+pub(crate) struct FmtChunk {
+    pub format_tag: u16,
+    pub channels: u16,
+    pub sample_rate: u32,
+    pub block_align: u16,
+    pub bits: u16,
     /// First extension word, when `fmt ` is exactly 20 bytes.
     ext_word: Option<u32>,
     /// Sub-format tag from a WAVE_FORMAT_EXTENSIBLE GUID.
     sub_format: Option<u16>,
 }
 
-fn parse_fmt(body: &[u8]) -> Result<FmtChunk, RiffError> {
+pub(crate) fn parse_fmt(body: &[u8]) -> Result<FmtChunk, RiffError> {
     if body.len() < 16 {
         return Err(RiffError::Truncated {
             what: "fmt chunk",
@@ -237,6 +331,7 @@ fn parse_fmt(body: &[u8]) -> Result<FmtChunk, RiffError> {
         format_tag: u16_at(0),
         channels: u16_at(2),
         sample_rate: u32_at(4),
+        block_align: u16_at(12),
         bits: u16_at(14),
         ext_word: (body.len() == 20).then(|| u32_at(16)),
         // Extensible layout: cbSize, validBits, channelMask, then a 16-byte
@@ -246,7 +341,21 @@ fn parse_fmt(body: &[u8]) -> Result<FmtChunk, RiffError> {
 }
 
 impl FmtChunk {
-    fn sample_type(&self) -> Result<SampleType, RiffError> {
+    /// Whether every sample is a fixed number of bytes, so a byte range is a span of samples.
+    pub(crate) fn is_linear(&self) -> bool {
+        let tag = if self.format_tag == WAVE_FORMAT_EXTENSIBLE {
+            self.sub_format
+        } else {
+            Some(self.format_tag)
+        };
+        let width = usize::from(self.bits).div_ceil(8);
+        matches!(tag, Some(WAVE_FORMAT_PCM | WAVE_FORMAT_IEEE_FLOAT))
+            && matches!(self.channels, 1 | 2)
+            && width > 0
+            && usize::from(self.block_align) == usize::from(self.channels) * width
+    }
+
+    pub(crate) fn sample_type(&self) -> Result<SampleType, RiffError> {
         let domain = match self.channels {
             1 => Domain::Real,
             2 => Domain::Iq,

@@ -57,6 +57,14 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys(keys);
 }
 
+/// Which File commands can act now.
+#[derive(Clone, Copy)]
+struct FileCommands {
+    settings: bool,
+    save: bool,
+    save_selection: bool,
+}
+
 impl Shell {
     /// The branch that asks for a file, opens a recent capture, and does settings.
     ///
@@ -70,7 +78,11 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> (Entity<PopupMenu>, Vec<Origin>) {
         let recent = app_menu::file_items(self.recent_entries());
-        let document = self.file.is_some();
+        let enabled = FileCommands {
+            settings: self.file.is_some(),
+            save: self.can_save(false),
+            save_selection: self.can_save(true),
+        };
         let digits = recent
             .iter()
             .filter_map(|row| match row {
@@ -89,7 +101,7 @@ impl Shell {
                 .max_w(px(420.))
                 .scrollable(true);
             recent.into_iter().fold(menu, |menu, row| {
-                menu.item(Shell::file_row(row, document, focus.clone(), owner.clone()))
+                menu.item(Shell::file_row(row, enabled, focus.clone(), owner.clone()))
             })
         });
         (menu, digits)
@@ -97,16 +109,25 @@ impl Shell {
 
     fn file_row(
         row: Row<Origin>,
-        document: bool,
+        enabled: FileCommands,
         focus: FocusHandle,
         owner: WeakEntity<Self>,
     ) -> PopupMenuItem {
         match row {
             Row::Open => action_row("Open file...", Box::new(ChooseFile), false, focus),
-            // Analysis settings belong to a document, so there are none to edit without one.
-            Row::Settings => {
-                action_row("Settings", Box::new(EditAnalysis), false, focus).disabled(!document)
+            Row::SaveAs => {
+                action_row("Save as...", Box::new(SaveAs), false, focus).disabled(!enabled.save)
             }
+            Row::SaveSelectionAs => action_row(
+                "Save selection as...",
+                Box::new(SaveSelectionAs),
+                false,
+                focus,
+            )
+            .disabled(!enabled.save_selection),
+            // Analysis settings belong to a document, so there are none to edit without one.
+            Row::Settings => action_row("Settings", Box::new(EditAnalysis), false, focus)
+                .disabled(!enabled.settings),
             Row::Separator => PopupMenuItem::separator(),
             Row::Recent {
                 number,
@@ -1636,10 +1657,10 @@ mod tests {
         open_capture(cx, &shell);
         recent(cx, &shell, "/captures/beacon.iqw");
         press(cx, "f10");
-        // The File branch is on screen, and its third row is the first capture.
+        // The File branch is on screen, and its fifth row is the first capture.
         press(cx, "down right");
         assert!(file_focused(cx, &shell));
-        let capture = row(cx, 2);
+        let capture = row(cx, 4);
         cx.simulate_click(capture, gpui_kit::Modifiers::default());
         draw(cx);
         assert!(!menu_open(cx, &shell), "the menu closed");
@@ -1816,5 +1837,108 @@ mod tests {
         let trigger = Trigger(Button::new("application-menu-button"));
         assert!(!trigger.is_selected());
         assert!(!trigger.selected(true).is_selected());
+    }
+
+    /// Give the open capture the description its file would have reported.
+    fn describe(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
+        shell.update_in(cx, |shell, _, cx| {
+            let Some(file) = shell.file.as_mut() else {
+                panic!("the capture never opened");
+            };
+            file.state.document.apply(Update::Opened(
+                SignalMeta {
+                    sample_rate: 24_000.0,
+                    center_freq: 0.0,
+                    sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
+                    len_samples: 48_000,
+                    container: "raw",
+                    divisor: 32_768.0,
+                    source: PathBuf::from("/captures/session.iqw"),
+                },
+                FileInfo::default(),
+            ));
+            cx.notify();
+        });
+        draw(cx);
+    }
+
+    fn can_save(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> (bool, bool) {
+        shell.read_with(cx, |shell, _| (shell.can_save(false), shell.can_save(true)))
+    }
+
+    #[gpui_kit::test]
+    fn saving_needs_a_described_capture_and_saving_a_selection_needs_one(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        assert_eq!(can_save(cx, &shell), (false, false));
+        open_capture(cx, &shell);
+        assert_eq!(can_save(cx, &shell), (false, false), "not described yet");
+        describe(cx, &shell);
+        assert_eq!(can_save(cx, &shell), (true, false));
+        shell.update_in(cx, |shell, _, cx| {
+            shell.selection = argand_core::SampleSpan::between(100, 200);
+            cx.notify();
+        });
+        assert_eq!(can_save(cx, &shell), (true, true));
+        // The selection key does nothing without a dialog to answer, and opens no menu.
+        press(cx, "ctrl-alt-s");
+        assert!(!menu_open(cx, &shell));
+    }
+
+    #[gpui_kit::test]
+    fn a_failed_save_stays_in_the_status_bar_until_closed(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        shell.update_in(cx, |shell, _, cx| {
+            shell.save_notice = Some(saving_ui::Notice::Failed("disk full".into()));
+            cx.notify();
+        });
+        draw(cx);
+        assert!(cx.update(|window, _| window.try_find("save-close").is_some()));
+        click(cx, "save-close");
+        assert!(shell.read_with(cx, |shell, _| shell.save_notice.is_none()));
+        assert!(cx.update(|window, _| window.try_find("save-close").is_none()));
+    }
+
+    #[gpui_kit::test]
+    fn a_saved_notice_goes_with_the_next_press_or_move_and_a_failure_stays(
+        cx: &mut TestAppContext,
+    ) {
+        let (shell, cx) = open_window(cx);
+        open_capture(cx, &shell);
+        let notice = |cx: &mut gpui_kit::VisualTestContext| {
+            shell.read_with(cx, |shell, _| match &shell.save_notice {
+                Some(saving_ui::Notice::Saved(_)) => "saved",
+                Some(saving_ui::Notice::Failed(_)) => "failed",
+                None => "none",
+            })
+        };
+        shell.update_in(cx, |shell, _, cx| {
+            shell.save_notice = Some(saving_ui::Notice::Saved("b.wav".into()));
+            cx.notify();
+        });
+        draw(cx);
+        assert!(
+            cx.update(|window, _| window.try_find("save-close").is_none()),
+            "a saved notice has nothing to close"
+        );
+        click_outside(cx);
+        assert_eq!(notice(cx), "none");
+        shell.update_in(cx, |shell, _, cx| {
+            shell.save_notice = Some(saving_ui::Notice::Saved("b.wav".into()));
+            cx.notify();
+        });
+        draw(cx);
+        cx.simulate_mouse_move(outside(), None, gpui_kit::Modifiers::default());
+        draw(cx);
+        assert_eq!(notice(cx), "none", "a move takes it away too");
+        shell.update_in(cx, |shell, _, cx| {
+            shell.save_notice = Some(saving_ui::Notice::Failed("disk full".into()));
+            cx.notify();
+        });
+        draw(cx);
+        click_outside(cx);
+        cx.simulate_mouse_move(outside(), None, gpui_kit::Modifiers::default());
+        draw(cx);
+        assert_eq!(notice(cx), "failed");
     }
 }

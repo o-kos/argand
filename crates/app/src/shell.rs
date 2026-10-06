@@ -48,6 +48,8 @@ mod navigation_ui;
 mod plot_ui;
 #[path = "plot_view.rs"]
 mod plot_view;
+#[path = "saving_ui.rs"]
+mod saving_ui;
 #[path = "settings_ui.rs"]
 mod settings_ui;
 
@@ -72,6 +74,8 @@ actions!(
         FocusNext,
         FocusPrevious,
         ChooseFile,
+        SaveAs,
+        SaveSelectionAs,
         EditAnalysis,
         UseRecommendedRange
     ]
@@ -98,6 +102,24 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
                 "ctrl-o"
             },
             ChooseFile,
+            None,
+        ),
+        KeyBinding::new(
+            if cfg!(target_os = "macos") {
+                "cmd-shift-s"
+            } else {
+                "ctrl-shift-s"
+            },
+            SaveAs,
+            None,
+        ),
+        KeyBinding::new(
+            if cfg!(target_os = "macos") {
+                "cmd-alt-s"
+            } else {
+                "ctrl-alt-s"
+            },
+            SaveSelectionAs,
             None,
         ),
     ]);
@@ -272,6 +294,8 @@ struct OpenFile {
     _minimap_updates: Option<Task<()>>,
     opened_at: Instant,
     first_picture: Arc<AtomicBool>,
+    /// The file as it was when it described itself, which a save checks it still is.
+    stamp: Option<argand_io::write::SourceStamp>,
     /// Created once the file has described itself, and dropped with it.
     plot: Option<PlotHandle>,
 }
@@ -354,6 +378,10 @@ struct Shell {
     view: Option<crate::navigation::View>,
     /// The time selection, in samples of the open file.
     selection: Option<argand_core::SampleSpan>,
+    /// A save in progress, which outlives the file it was started from.
+    saving: Option<saving_ui::Saving>,
+    save_notice: Option<saving_ui::Notice>,
+    save_updates: Option<Task<()>>,
     frequency: crate::frequency::View,
     frequency_scheme: Option<argand_core::axis::TickScheme>,
     time_scheme: Option<argand_core::axis::TickScheme>,
@@ -443,6 +471,9 @@ impl Shell {
             plot: None,
             view: None,
             selection: None,
+            saving: None,
+            save_notice: None,
+            save_updates: None,
             frequency: crate::frequency::View::default(),
             frequency_scheme: None,
             time_scheme: None,
@@ -469,7 +500,16 @@ impl Shell {
         }
     }
 
+    /// A finished save is announced until the next input, a mouse move included.
+    fn dismiss_saved_notice(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.save_notice, Some(saving_ui::Notice::Saved(_))) {
+            self.save_notice = None;
+            cx.notify();
+        }
+    }
+
     fn dismiss_ready_status(&mut self, cx: &mut Context<Self>) {
+        self.dismiss_saved_notice(cx);
         if self.ready_status_dismissed
             || !self
                 .file
@@ -505,7 +545,7 @@ impl Shell {
                 let moved = shell.clone();
                 window.on_mouse_event(move |_: &gpui_kit::MouseMoveEvent, phase, _, cx| {
                     if phase == gpui_kit::DispatchPhase::Capture {
-                        let _ = moved.update(cx, |shell, cx| shell.set_pointer_in_window(true, cx));
+                        let _ = moved.update(cx, Self::pointer_moved);
                     }
                 });
                 let left = shell.clone();
@@ -528,6 +568,11 @@ impl Shell {
                 shell.dismiss_application_menu(window, cx);
             });
         }
+    }
+
+    fn pointer_moved(&mut self, cx: &mut Context<Self>) {
+        self.set_pointer_in_window(true, cx);
+        self.dismiss_saved_notice(cx);
     }
 
     fn set_pointer_in_window(&mut self, inside: bool, cx: &mut Context<Self>) {
@@ -571,6 +616,9 @@ impl Shell {
     /// transform, and that is a pass over the file that must not happen on the
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
+        if self.refuse_save_target(&origin.path, cx) {
+            return;
+        }
         self.dismiss_application_menu(window, cx);
         self.close_analysis_hint(cx);
         // The old plot goes with its document, so focus must not stay on it.
@@ -631,6 +679,7 @@ impl Shell {
             _minimap_updates: None,
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
+            stamp: None,
             plot: None,
         });
         cx.notify();
@@ -710,6 +759,10 @@ impl Shell {
 
         match effect {
             Effect::Opened => {
+                if let Some(file) = &mut self.file {
+                    file.stamp =
+                        argand_io::write::SourceStamp::of(&file.state.document.origin().path).ok();
+                }
                 self.reset_view();
                 self.attach_plot(window, cx);
                 self.start_minimap(window, cx);
@@ -972,6 +1025,26 @@ impl Shell {
                 let shell = shell.clone();
                 cx.defer(move |cx| {
                     let _ = shell.update_in(cx, Self::choose_file);
+                });
+            }
+        });
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &SaveAs, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ =
+                        shell.update_in(cx, |shell, window, cx| shell.save_as(false, window, cx));
+                });
+            }
+        });
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &SaveSelectionAs, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ =
+                        shell.update_in(cx, |shell, window, cx| shell.save_as(true, window, cx));
                 });
             }
         });

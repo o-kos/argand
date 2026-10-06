@@ -14,7 +14,6 @@ use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-use symphonia::core::units::TimeBase;
 
 use crate::normalize::{AUTO_HEADROOM, Normalize, gain_factor};
 
@@ -22,7 +21,6 @@ pub struct DecodedSource {
     reader: Box<dyn FormatReader>,
     decoder: Box<dyn Decoder>,
     track_id: u32,
-    time_base: TimeBase,
     meta: SignalMeta,
     /// Interleaved values already decoded but not yet handed to the caller.
     pending: Vec<f32>,
@@ -31,8 +29,13 @@ pub struct DecodedSource {
     skip: usize,
     scale: f32,
     original_units: Option<(f64, f64)>,
+    bits_per_sample: Option<u32>,
     divisor: f32,
     exhausted: bool,
+    /// Fail on a damaged packet instead of skipping it, as exact copies need.
+    strict: bool,
+    /// The timestamp the next packet must carry in strict mode, so a dropped frame is noticed.
+    next_ts: Option<u64>,
 }
 
 /// Level policy for decoder-backed opening; an absent budget preserves full scans.
@@ -46,7 +49,7 @@ impl DecodedSource {
     pub fn open(
         path: &Path,
         container: &'static str,
-        center_freq: f64,
+        center_freq: Option<f64>,
         sample_rate_override: Option<f64>,
         sample_type_override: Option<SampleType>,
         normalize: Normalize,
@@ -69,7 +72,7 @@ impl DecodedSource {
     pub fn with_levels(
         path: &Path,
         container: &'static str,
-        center_freq: f64,
+        center_freq: Option<f64>,
         sample_rate_override: Option<f64>,
         sample_type_override: Option<SampleType>,
         levels: DecodeLevels,
@@ -108,7 +111,7 @@ impl DecodedSource {
         let mut source = Self::open_plain(
             &meta.source,
             meta.container,
-            meta.center_freq,
+            Some(meta.center_freq),
             Some(meta.sample_rate),
             Some(meta.len_samples),
         )?;
@@ -122,7 +125,7 @@ impl DecodedSource {
     fn open_plain(
         path: &Path,
         container: &'static str,
-        center_freq: f64,
+        center_freq: Option<f64>,
         sample_rate_override: Option<f64>,
         known_len: Option<u64>,
     ) -> Result<Self, SourceError> {
@@ -134,7 +137,7 @@ impl DecodedSource {
             hint.with_extension(ext);
         }
 
-        let probed = symphonia::default::get_probe()
+        let mut probed = symphonia::default::get_probe()
             .format(
                 &hint,
                 mss,
@@ -142,7 +145,10 @@ impl DecodedSource {
                 &MetadataOptions::default(),
             )
             .map_err(decode_err)?;
-        let reader = probed.format;
+        let mut reader = probed.format;
+        let tagged_freq = tagged(&mut probed.metadata, &mut *reader, REFERENCE_TAG);
+        let tagged_rate = tagged(&mut probed.metadata, &mut *reader, RATE_TAG);
+        let center_freq = center_freq.or(tagged_freq);
 
         let track = reader
             .tracks()
@@ -170,9 +176,6 @@ impl DecodedSource {
             .sample_rate
             .ok_or_else(|| SourceError::Decode("sample rate missing".into()))?
             as f64;
-        let time_base = params
-            .time_base
-            .unwrap_or_else(|| TimeBase::new(1, sample_rate as u32));
 
         let decoder = symphonia::default::get_codecs()
             .make(&params, &DecoderOptions::default())
@@ -192,10 +195,14 @@ impl DecodedSource {
             reader,
             decoder,
             track_id,
-            time_base,
             meta: SignalMeta {
-                sample_rate: sample_rate_override.unwrap_or(sample_rate),
-                center_freq,
+                sample_rate: sample_rate_override.unwrap_or_else(|| {
+                    // The exact rate is trusted only while it still agrees with the stream's own.
+                    tagged_rate
+                        .filter(|exact| *exact > 0.0 && (exact - sample_rate).abs() < 1.0)
+                        .unwrap_or(sample_rate)
+                }),
+                center_freq: center_freq.unwrap_or(0.0),
                 sample_type: SampleType::new(domain, format),
                 len_samples: params
                     .n_frames
@@ -211,8 +218,11 @@ impl DecodedSource {
             skip: 0,
             scale: 1.0,
             original_units,
+            bits_per_sample: params.bits_per_sample,
             divisor: 1.0,
             exhausted: false,
+            strict: false,
+            next_ts: None,
         };
 
         // STREAMINFO usually carries the length; when it does not, the only
@@ -221,7 +231,7 @@ impl DecodedSource {
         if source.meta.len_samples == 0 && known_len.is_none() {
             tracing::debug!("stream reports no frame count, counting by decoding");
             let mut counter =
-                Self::open_plain(path, container, center_freq, sample_rate_override, Some(0))?;
+                Self::open_plain(path, container, Some(0.0), sample_rate_override, Some(0))?;
             source.meta.len_samples = counter.count_samples()?;
         }
 
@@ -282,16 +292,26 @@ impl DecodedSource {
             if packet.track_id() != self.track_id {
                 continue;
             }
+            if let Some(expected) = self.next_ts
+                && packet.ts() != expected
+            {
+                return Err(SourceError::Decode(format!(
+                    "a damaged frame is missing at sample {expected}"
+                )));
+            }
 
             let decoded = match self.decoder.decode(&packet) {
                 Ok(d) => d,
                 // A damaged packet is worth skipping, not dying on.
-                Err(SymphoniaError::DecodeError(msg)) => {
+                Err(SymphoniaError::DecodeError(msg)) if !self.strict => {
                     tracing::warn!("skipping undecodable packet: {msg}");
                     continue;
                 }
                 Err(e) => return Err(decode_err(e)),
             };
+            if self.strict {
+                self.next_ts = Some(packet.ts() + decoded.frames() as u64);
+            }
             if decoded.frames() == 0 {
                 continue;
             }
@@ -337,6 +357,62 @@ impl DecodedSource {
     pub fn divisor(&self) -> f32 {
         self.divisor
     }
+
+    /// Bit depth the stream declares, for re-encoding it unchanged.
+    pub(crate) fn bits_per_sample(&self) -> Option<u32> {
+        self.bits_per_sample
+    }
+
+    /// Refuse damaged packets from now on.
+    pub(crate) fn strict(mut self) -> Self {
+        self.strict = true;
+        self.next_ts = Some(0);
+        self
+    }
+
+    /// A strict decoder of `path` that resolves its own length rather than trusting a known one.
+    pub(crate) fn open_exact(path: &Path, container: &'static str) -> Result<Self, SourceError> {
+        let mut source = Self::open_plain(path, container, Some(0.0), None, Some(0))?.strict();
+        if source.meta.len_samples == 0 {
+            let mut counter = Self::open_plain(path, container, Some(0.0), None, Some(0))?.strict();
+            source.meta.len_samples = counter.count_samples()?;
+        }
+        Ok(source)
+    }
+
+    /// Decoded values exactly as the codec delivers them, before any scaling.
+    pub(crate) fn read_plain(&mut self, buf: &mut [f32]) -> Result<usize, SourceError> {
+        self.read_unscaled(buf)
+    }
+}
+
+/// Vorbis comment holding the physical frequency of baseband 0 Hz.
+pub(crate) const REFERENCE_TAG: &str = "ARGAND_REFERENCE_FREQUENCY";
+/// Vorbis comment holding the exact sample rate, which STREAMINFO rounds to hertz.
+pub(crate) const RATE_TAG: &str = "ARGAND_SAMPLE_RATE";
+
+/// A number a stream's own tags carry under `key`, wherever the container keeps them.
+fn tagged(
+    probed: &mut symphonia::core::probe::ProbedMetadata,
+    reader: &mut dyn FormatReader,
+    key: &str,
+) -> Option<f64> {
+    reader
+        .metadata()
+        .current()
+        .and_then(|revision| number_tag(revision.tags(), key))
+        .or_else(|| {
+            probed
+                .get()
+                .and_then(|log| log.current().and_then(|r| number_tag(r.tags(), key)))
+        })
+}
+
+fn number_tag(tags: &[symphonia::core::meta::Tag], key: &str) -> Option<f64> {
+    tags.iter()
+        .find(|tag| tag.key.eq_ignore_ascii_case(key))
+        .and_then(|tag| tag.value.to_string().trim().parse::<f64>().ok())
+        .filter(|value| value.is_finite())
 }
 
 fn original_units(params: &symphonia::core::codecs::CodecParameters) -> Option<(f64, f64)> {
@@ -391,25 +467,36 @@ impl SampleSource for DecodedSource {
 
         // Symphonia's FLAC seek can retain parsed packets at aligned frame offsets.
         // A fresh parser avoids stale data without recounting or renormalizing.
-        if self.meta.container == "flac" {
+        // Strict decoding checks packet timestamps instead, so it keeps the handle it opened.
+        if self.meta.container == "flac" && !self.strict {
             let mut fresh = Self::reopen(&self.meta, 0.)?;
             fresh.scale = self.scale;
+            fresh.strict = self.strict;
             *self = fresh;
             if sample == 0 {
                 return Ok(());
             }
         }
 
+        // FLAC and WAVE count timestamps in samples, so the sample is the timestamp.
         let result = self
             .reader
             .seek(
                 SeekMode::Accurate,
-                SeekTo::Time {
-                    time: self.time_base.calc_time(sample),
-                    track_id: Some(self.track_id),
+                SeekTo::TimeStamp {
+                    ts: sample,
+                    track_id: self.track_id,
                 },
             )
             .map_err(decode_err)?;
+        if self.strict {
+            if result.actual_ts > result.required_ts {
+                return Err(SourceError::Decode(format!(
+                    "the frame holding sample {sample} is damaged"
+                )));
+            }
+            self.next_ts = Some(result.actual_ts);
+        }
 
         // Seeks land on a packet boundary at or before the target, so the
         // remainder is dropped on the next read.

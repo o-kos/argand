@@ -28,6 +28,7 @@ mod orientation;
 mod panels;
 mod profiling;
 mod recent;
+mod saving;
 mod session;
 mod settings;
 mod shell;

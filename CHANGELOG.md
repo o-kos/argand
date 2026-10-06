@@ -11,6 +11,16 @@ promise applies to.
 
 ## [Unreleased]
 
+### Added
+
+- File → Save as… (Ctrl+Shift+S) saves the open capture as a new file, and File → Save selection as… (Ctrl+Alt+S) saves the selected time range. The output keeps the source's format: WAVE keeps its sample type and bit depth, a headerless capture becomes WAVE, FLAC is encoded again without loss, and data past 4 GB is written as RF64. Saving runs in the background with progress and a cancel button at the right end of the status bar, says when it is done in the corner of the spectrogram, and the target is replaced only by a complete file. The open file cannot be saved over.
+- A FLAC source at a sample rate above what the FLAC encoder can state (over 96 kHz) is saved as WAV of the same bit depth. A 24-bit selection larger than 4 GB cannot be saved yet, because Argand cannot open 24-bit RF64 (#192).
+- Saved files carry the reference frequency: an `auxi` chunk as SDR#, HDSDR and SDRuno write it, an exact Argand chunk, or a Vorbis comment in FLAC. Opening a file reads it back, including from `auxi` chunks other SDR software wrote.
+
+### Changed
+
+- `--center` now overrides a frequency stored in the file instead of always replacing it with 0 Hz when absent.
+
 ## [0.1.1] - 2026-10-05
 
 ### Added
