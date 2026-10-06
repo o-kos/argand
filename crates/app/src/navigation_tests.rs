@@ -153,3 +153,38 @@ fn sub_sample_divisions_accumulate_away_from_capture_edges() {
     for _ in 0..5 { pan.advance(-1, 100); }
     assert_eq!(pan.view.start, 97);
 }
+
+#[test]
+fn a_boundary_is_a_whole_sample_held_inside_the_view() {
+    let view = View { start: 1000, len: 400 };
+    assert_eq!(view.boundary(0.0), 1000);
+    assert_eq!(view.boundary(0.5), 1200);
+    assert_eq!(view.boundary(0.501), 1200);
+    assert_eq!(view.boundary(1.0), 1400);
+    assert_eq!(view.boundary(-3.0), 1000);
+    assert_eq!(view.boundary(7.0), 1400);
+    assert_eq!(view.boundary(f64::NAN), 1000);
+}
+
+#[test]
+fn a_selection_is_shown_by_the_part_of_it_in_view() {
+    let view = View { start: 1000, len: 1000 };
+    let span = |a, b| argand_core::SampleSpan::between(a, b).expect("a span");
+    assert_eq!(view.fractions_of(span(1250, 1500)), Some((0.25, 0.5)));
+    assert_eq!(view.fractions_of(span(0, 1500)), Some((0.0, 0.5)));
+    assert_eq!(view.fractions_of(span(1500, 9000)), Some((0.5, 1.0)));
+    assert_eq!(view.fractions_of(span(0, 1000)), None);
+    assert_eq!(view.fractions_of(span(2000, 2100)), None);
+}
+
+#[test]
+fn the_view_edges_are_exact_past_what_f64_holds() {
+    let past = View::full((1 << 53) + 1);
+    assert_eq!(past.boundary(1.0), (1 << 53) + 1);
+    let top = View {
+        start: 1024,
+        len: u64::MAX - 1024,
+    };
+    assert_eq!(top.boundary(1.0), u64::MAX);
+    assert_eq!(top.boundary(0.0), 1024);
+}

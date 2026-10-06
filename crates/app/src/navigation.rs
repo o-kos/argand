@@ -56,6 +56,31 @@ impl View {
         }
     }
 
+    /// The sample boundary at `fraction` of this view, held inside the view.
+    ///
+    /// The two edges are exact whatever the length, because a length past 2^53
+    /// does not survive the trip through `f64`.
+    pub fn boundary(self, fraction: f64) -> u64 {
+        if !fraction.is_finite() || fraction <= 0.0 {
+            return self.start;
+        }
+        if fraction >= 1.0 {
+            return self.start + self.len;
+        }
+        self.start + ((self.len as f64 * fraction).round() as u64).min(self.len)
+    }
+
+    /// The part of `span` this view shows, as fractions of the view, or nothing when none of it does.
+    pub fn fractions_of(self, span: argand_core::SampleSpan) -> Option<(f64, f64)> {
+        let end = self.start + self.len;
+        if self.len == 0 || span.end() <= self.start || span.start() >= end {
+            return None;
+        }
+        let at =
+            |sample: u64| (sample.clamp(self.start, end) - self.start) as f64 / self.len as f64;
+        Some((at(span.start()), at(span.end())))
+    }
+
     pub fn pan(self, fraction: f64, total: u64) -> Self {
         Self {
             start: shifted(self.start, self.len as f64 * fraction, total - self.len),

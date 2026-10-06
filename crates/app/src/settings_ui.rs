@@ -240,6 +240,23 @@ impl Shell {
             .then(|| (range_hint(state), presentation.next_action.is_some()))
     }
 
+    /// The status-bar item describing the time selection, while there is one.
+    fn selection_item(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
+        let selection = self.selection_readout()?;
+        Some(
+            div()
+                .id("selection-readout")
+                .px_2()
+                .border_r_1()
+                .border_color(cx.theme().border)
+                .min_w_0()
+                .overflow_hidden()
+                .text_ellipsis()
+                .whitespace_nowrap()
+                .child(format!("Selection {selection}")),
+        )
+    }
+
     pub(super) fn status_bar(
         &self,
         corners: Corners<Pixels>,
@@ -292,6 +309,7 @@ impl Shell {
             })
             .when(has_file, |bar| bar.child(self.analysis_control(cx)))
             .child(div().flex_1().min_w_0())
+            .children(self.selection_item(cx))
             .when_some(self.cursor_readout(cx), |bar, (text, level)| {
                 bar.child(
                     div()

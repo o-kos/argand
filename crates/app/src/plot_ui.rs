@@ -48,6 +48,10 @@ impl Shell {
             show_grid: self.session.show_grid,
             show_scale_ui: self.session.show_scale_ui,
             pointer_in_window: self.pointer_in_window,
+            selection: self
+                .selection
+                .zip(self.view)
+                .and_then(|(span, view)| view.fractions_of(span)),
         })
     }
 
@@ -97,14 +101,19 @@ impl Shell {
         // The minimap stands on the bottom of the spectrogram's own scale in either theme.
         let [r, g, b] = colormap.gradient()[0];
         let ink = colormap.waveform_ink(true);
+        let total = self
+            .file
+            .as_ref()
+            .and_then(|file| file.state.document.meta())
+            .map(|meta| meta.len_samples);
         waveform::Panel {
             waveform: self.waveform.clone(),
-            viewport: self.view.zip(
-                self.file
-                    .as_ref()
-                    .and_then(|file| file.state.document.meta())
-                    .map(|meta| meta.len_samples),
-            ),
+            viewport: self.view.zip(total),
+            selection: self
+                .selection
+                .zip(total)
+                .and_then(|(span, total)| crate::navigation::View::full(total).fractions_of(span)),
+            selection_fill: selection_fill(cx),
             separator: cx.theme().border,
             paper: gpui_kit::rgb((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)).into(),
             ink: waveform::Ink {
@@ -145,6 +154,7 @@ impl PlotView {
             frequency_scheme,
             show_grid,
             show_scale_ui: scale_ui_visible,
+            selection,
             ..
         } = snapshot;
         let orientation = extents.orientation;
@@ -209,10 +219,7 @@ impl PlotView {
                 if let Some(texture) = texture
                     && let Some(held) = held_view
                 {
-                    let plot = Bounds {
-                        origin: spectrum_origin + point(px(frame.plot.x), px(frame.plot.y)),
-                        size: size(px(frame.plot.width), px(frame.plot.height)),
-                    };
+                    let plot = plot_bounds(&frame, spectrum_origin);
                     if let Some(deep) = deep {
                         deep.paint(plot, extents.picture(), orientation, window);
                     } else {
@@ -224,6 +231,7 @@ impl PlotView {
                         tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
                     }
                 }
+                paint_selection(&frame, spectrum_origin, selection, window, cx);
                 axes::paint(&frame, spectrum_origin, &labels, colors, window, cx);
                 if let Some(guides) = &guides {
                     let panel = Bounds::new(
@@ -371,6 +379,35 @@ impl PlotView {
         });
         cx.notify();
     }
+}
+
+/// The picture's own rectangle inside the spectrum panel.
+fn plot_bounds(frame: &axes::Frame, spectrum_origin: gpui_kit::Point<Pixels>) -> Bounds<Pixels> {
+    Bounds {
+        origin: spectrum_origin + point(px(frame.plot.x), px(frame.plot.y)),
+        size: size(px(frame.plot.width), px(frame.plot.height)),
+    }
+}
+
+/// Tint the selected time, given as fractions of the view, across the whole picture under the grid.
+fn paint_selection(
+    frame: &axes::Frame,
+    spectrum_origin: gpui_kit::Point<Pixels>,
+    selection: Option<(f64, f64)>,
+    window: &mut Window,
+    cx: &gpui_kit::App,
+) {
+    let Some(fractions) = selection else {
+        return;
+    };
+    let plot = plot_bounds(frame, spectrum_origin);
+    let band = waveform::time_band(plot, frame.orientation, fractions, window.scale_factor());
+    window.paint_quad(gpui_kit::fill(band, selection_fill(cx)));
+}
+
+/// The tint laid over the selected time, light because the picture under it is dark in either theme.
+fn selection_fill(cx: &gpui_kit::App) -> gpui_kit::Hsla {
+    cx.theme().blue_light.opacity(0.3)
 }
 
 fn axis_colors(cx: &gpui_kit::App, show_grid: bool) -> axes::Colors {

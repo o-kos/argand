@@ -91,14 +91,27 @@ Goal: handle complex signals correctly.
 
 ## Phase 5 — Selection and editing
 
-Goal: provide basic editing comparable to ocenaudio.
+Goal: provide selection and basic editing comparable to ocenaudio, plus RF extraction.
 
-- Add a piece table in `argand-edit` over the memory-mapped original and inserted buffers.
-- Add an undo and redo command stack and a segment clipboard.
-- Support selection, including multiple selections, cut, copy, paste, delete, and trim or crop. Keep I and Q together for complex signals.
-- Invalidate waveform pyramid levels and spectrogram tiles only for affected regions.
+A selection is one toolkit-neutral model with an optional time span in whole samples and an optional frequency band in hertz, so there are three kinds:
 
-**Done when:** cuts and pastes in multi-hour files are immediate, undo and redo remain stable, and waveform and spectrogram views update correctly after edits.
+| Kind | Made by | Operations |
+|---|---|---|
+| Time range (whole band) | left drag on the spectrum | delete, copy, paste, save as a new file |
+| Frequency band (whole capture) | left drag on the frequency ruler | save as a new file, suppress the band |
+| Rectangle | Ctrl+left drag on the spectrum | save as a new file |
+
+The kind follows the meaning of the axis, not the side of the screen, so it is the same in both orientations. Panning the spectrum moves to the middle button and Space+drag. Suppressing a band keeps the capture's length and removes only those frequencies, which is why it is not called delete. A band or rectangle saved as a file is a new complex signal with a lower sample rate, centred on the band.
+
+Steps, one Issue each:
+
+1. The selection model and time selection (#178).
+2. A file writer in `argand-io` and "Save selection as".
+3. The editing engine in `argand-edit`: a piece table over the memory-mapped original and inserted buffers, an undo and redo command stack and a clipboard; delete, copy and paste of a time range; saving the edited capture. Keep I and Q together. Invalidate waveform and spectrogram caches only for affected regions.
+4. Frequency band and rectangle selection, with frequency shift, low-pass filtering and decimation in `argand-dsp` for saving them.
+5. Suppressing a band, undoable through the editing engine.
+
+**Done when:** cuts and pastes in multi-hour files are immediate, undo and redo remain stable, waveform and spectrogram views update correctly after edits, and a band or rectangle saves as a file that opens with the right sample rate and centre frequency.
 
 ## Phase 6 — Detailed spectrum window
 

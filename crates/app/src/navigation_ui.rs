@@ -30,7 +30,8 @@ actions!(
         PanUp,
         PanDown,
         PanFarUp,
-        PanFarDown
+        PanFarDown,
+        ClearSelection
     ]
 );
 
@@ -63,6 +64,7 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         KeyBinding::new("down", PanDown, Some("Plot && Horizontal")),
         KeyBinding::new("ctrl-up", PanFarUp, Some("Plot && Horizontal")),
         KeyBinding::new("ctrl-down", PanFarDown, Some("Plot && Horizontal")),
+        KeyBinding::new("escape", ClearSelection, Some("Plot")),
     ]);
 }
 
@@ -143,6 +145,30 @@ impl PlotGeometry {
         } else {
             gpui_kit::CursorStyle::Arrow
         }
+    }
+
+    /// The cursor a time selection or a held Space calls for, ahead of the ordinary one.
+    pub fn selection_cursor(
+        self,
+        pointer: Option<gpui_kit::Point<Pixels>>,
+        panning: bool,
+        selecting: bool,
+        space: bool,
+    ) -> Option<gpui_kit::CursorStyle> {
+        if panning {
+            return None;
+        }
+        if selecting {
+            return Some(gpui_kit::CursorStyle::Crosshair);
+        }
+        let position = pointer?;
+        (space && self.spectrum.contains(&position) && !self.controls_at(position))
+            .then_some(gpui_kit::CursorStyle::OpenHand)
+    }
+
+    /// Whether a left press here starts a time selection rather than a pan.
+    fn selects_at(self, position: gpui_kit::Point<Pixels>) -> bool {
+        self.spectrum.contains(&position) && !self.controls_at(position)
     }
 
     fn unit_at(self, position: gpui_kit::Point<Pixels>) -> bool {
@@ -253,6 +279,18 @@ impl PlotGeometry {
         )
     }
 }
+
+/// A time selection being dragged out from the boundary it was pressed at.
+#[derive(Clone, Copy)]
+pub(super) struct Selecting {
+    anchor: u64,
+    origin: gpui_kit::Point<Pixels>,
+    /// Set once the pointer has gone far enough for this to be a drag and not a click.
+    moved: bool,
+}
+
+/// How far a press may wander, in logical pixels, and still be a click.
+const CLICK_SLOP: f32 = 3.;
 
 #[derive(Clone, Copy)]
 pub(super) struct Pan {
@@ -421,6 +459,12 @@ impl Shell {
                 }
                 cx.notify();
             }
+            PlotIntent::Select(span) => {
+                if self.selection != span {
+                    self.selection = span;
+                    cx.notify();
+                }
+            }
             PlotIntent::Pointer => {
                 if !self.ready_status_dismissed && self.cursor_readout(cx).is_some() {
                     self.dismiss_ready_status(cx);
@@ -474,6 +518,13 @@ impl Shell {
                 cx.notify();
             }
         }
+    }
+
+    /// The time selection as the status bar shows it, in the time ruler's units.
+    pub(super) fn selection_readout(&self) -> Option<String> {
+        let meta = self.file.as_ref()?.document.meta()?;
+        let span = self.selection?.within(meta.len_samples)?;
+        Some(self.session.time_ruler.selection(span, meta.sample_rate))
     }
 
     pub(super) fn cursor_readout(&self, cx: &gpui_kit::App) -> Option<(String, Option<String>)> {
@@ -731,7 +782,12 @@ impl plot_view::PlotView {
         cx.stop_propagation();
     }
 
-    pub(super) fn begin_pan(
+    /// Start the gesture a press asks for, which is decided here once.
+    ///
+    /// A left press on the spectrum selects time, unless Space is held; with
+    /// Ctrl it is kept for the rectangle selection. Every other press that
+    /// lands on the plot pans, as the left button did before selections.
+    pub(super) fn press(
         &mut self,
         event: &gpui_kit::MouseDownEvent,
         window: &mut Window,
@@ -750,11 +806,27 @@ impl plot_view::PlotView {
             return;
         }
         window.focus(&self.focus, cx);
+        self.pan = None;
+        self.frequency_pan = None;
+        self.selecting = None;
+        let selects =
+            event.button == MouseButton::Left && !self.space && geometry.selects_at(event.position);
+        if selects {
+            if !event.modifiers.control {
+                let view = snapshot.extents.time.view;
+                self.selecting = Some(Selecting {
+                    anchor: view.boundary(geometry.fractions(event.position).0),
+                    origin: event.position,
+                    moved: false,
+                });
+            }
+            cx.notify();
+            return;
+        }
+        self.pan_button = event.button;
         let view = snapshot.extents.time.view;
         let total = snapshot.extents.time.total;
         let frequency_view = snapshot.frequency;
-        self.pan = None;
-        self.frequency_pan = None;
         let (time, frequency) = geometry.drag_axes(event.position);
         let frequency = frequency && frequency_view.span < 1.;
         let time = time && view.len < total;
@@ -844,13 +916,15 @@ impl plot_view::PlotView {
         cx: &mut Context<Self>,
     ) {
         let pointer = self.plot_pointer(event.position);
-        if self.pan.is_none() && self.frequency_pan.is_none() && self.pointer == pointer {
+        if !self.dragging() && self.pointer == pointer {
             return;
         }
         self.set_pointer(pointer, cx);
+        self.extend_selection(event, cx);
+        let held = event.pressed_button == Some(self.pan_button);
         let mut frequency = None;
         if let Some((origin, view)) = self.frequency_pan {
-            if event.dragging() {
+            if held {
                 if let Some(geometry) = self.geometry {
                     let fraction =
                         geometry.fractions(event.position).1 - geometry.fractions(origin).1;
@@ -864,7 +938,7 @@ impl plot_view::PlotView {
         if let Some(pan) = self.pan
             && let Some(snapshot) = &self.snapshot
         {
-            if event.dragging() {
+            if held {
                 let total = snapshot.extents.time.total;
                 let delta = pan.position - event.position;
                 let fraction =
@@ -885,13 +959,57 @@ impl plot_view::PlotView {
         cx.notify();
     }
 
+    /// Carry a time selection to the pointer, once it has gone beyond a click.
+    fn extend_selection(&mut self, event: &gpui_kit::MouseMoveEvent, cx: &mut Context<Self>) {
+        if self.selecting.is_none() {
+            return;
+        }
+        if !event.dragging() {
+            self.selecting = None;
+            return;
+        }
+        self.select_to(event.position, cx);
+    }
+
+    /// Report the selection from its anchor to `position`, unless the press is still a click.
+    fn select_to(&mut self, position: gpui_kit::Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(mut selecting) = self.selecting else {
+            return;
+        };
+        let (Some(geometry), Some(snapshot)) = (self.geometry, &self.snapshot) else {
+            return;
+        };
+        let delta = position - selecting.origin;
+        selecting.moved |= f32::from(delta.x).hypot(f32::from(delta.y)) >= CLICK_SLOP;
+        self.selecting = Some(selecting);
+        if selecting.moved {
+            let view = snapshot.extents.time.view;
+            let boundary = view.boundary(geometry.fractions(position).0);
+            cx.emit(plot_view::PlotIntent::Select(
+                argand_core::SampleSpan::between(selecting.anchor, boundary),
+            ));
+        }
+    }
+
     pub(super) fn finish_drags(
         &mut self,
-        _: &gpui_kit::MouseUpEvent,
+        event: &gpui_kit::MouseUpEvent,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.dragging() {
+        if event.button == MouseButton::Left && self.selecting.is_some() {
+            // The release can lie beyond the last move, so it settles the far end
+            self.select_to(event.position, cx);
+            if self
+                .selecting
+                .take()
+                .is_some_and(|selecting| !selecting.moved)
+            {
+                cx.emit(plot_view::PlotIntent::Select(None));
+            }
+            cx.notify();
+        }
+        if self.panning() && event.button == self.pan_button {
             self.pan = None;
             self.frequency_pan = None;
             cx.notify();
@@ -1094,6 +1212,32 @@ mod tests {
             navigation: Bounds::new(point(px(10.), px(10.)), size(px(100.), px(160.))),
             minimap: Bounds::new(point(px(10.), px(10.)), size(px(100.), px(30.))),
         }
+    }
+
+    #[test]
+    fn space_shows_an_open_hand_on_the_spectrum_and_selecting_keeps_the_crosshair() {
+        use gpui_kit::CursorStyle::{Crosshair, OpenHand};
+        let geometry = geometry();
+        let spectrum = Some(point(px(60.), px(100.)));
+        let ruler = Some(point(px(60.), px(160.)));
+        assert_eq!(
+            geometry.selection_cursor(spectrum, false, false, true),
+            Some(OpenHand)
+        );
+        assert_eq!(geometry.selection_cursor(ruler, false, false, true), None);
+        assert_eq!(
+            geometry.selection_cursor(spectrum, false, false, false),
+            None
+        );
+        assert_eq!(
+            geometry.selection_cursor(ruler, false, true, false),
+            Some(Crosshair)
+        );
+        assert_eq!(
+            geometry.selection_cursor(spectrum, true, false, true),
+            None,
+            "a pan in progress keeps its closed hand"
+        );
     }
 
     #[test]
