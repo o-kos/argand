@@ -522,7 +522,7 @@ impl Shell {
 
     /// The time selection as the status bar shows it, in the time ruler's units.
     pub(super) fn selection_readout(&self) -> Option<String> {
-        let meta = self.file.as_ref()?.document.meta()?;
+        let meta = self.file.as_ref()?.state.document.meta()?;
         let span = self.selection?.within(meta.len_samples)?;
         Some(self.session.time_ruler.selection(span, meta.sample_rate))
     }
