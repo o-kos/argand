@@ -44,6 +44,18 @@ Derived here:
 - **The file being written** cannot be opened until the save ends; the status bar says so.
 - **API shape**: `argand_io::write::save(request, progress, cancel) -> Result<Saved, WriteError>`, where the request names the source path, its `OpenHints`, its resolved `SignalMeta`, the optional `SampleSpan` and the target. `WriteError` is a `thiserror` enum. No GPUI type crosses into `argand-io`.
 
+- **Limits agreed after review**: a WAVE output that needs RF64 in a layout the native reader declines (24-bit) is refused until #192 reads it; a FLAC source at a rate the encoder cannot state is written as WAVE only at a whole-byte depth, and refused otherwise. A FLAC stream without a length in STREAMINFO is counted strictly, but a damaged last frame of such a stream leaves no gap to notice and is not detected.
+
+## Review
+
+Reviewer `gpt-6.1-sol` high, three rounds, each with substantive findings, so by the three-round rule this plan was revised rather than a fourth round started.
+
+- Round 1 (1 blocker, 10 major): the temporary file could open an existing path, cancellation was not checked before the rename, the source was reopened without a generation check, hints were applied to decoder-backed WAVE layouts, damaged FLAC packets were skipped, headers could overflow, and frequency metadata was lost for decoded WAVE. All accepted and fixed. Declined: Windows hard links (no stable file ID in std, the source content is unharmed), the bounded shutdown wait (agreed in this plan), `--center 0` in the session (moved to #185), and a comment nit on doc comments.
+- Round 2 (4 major, all FLAC): Symphonia drops frames with a bad CRC by itself, seeking by time landed a sample early, `flacenc` 0.5.1 cannot state rates above 96 kHz, and the source was read through several opens. All accepted; the WAVE fallback for unstateable rates is the owner's choice.
+- Round 3 (4 major): a damaged first frame let a seek land late, unknown-length FLAC was counted loosely, odd bit depths lost their units in the WAVE fallback, and 24-bit RF64 could be written but not read. The first two are fixed; the last two are refused, as the owner chose, with #192 for native 24-bit reading.
+
+What the plan missed: it assumed the decoder and encoder behaved as an exact codec pair without reading how Symphonia packetizes FLAC or what `flacenc` verifies, and it treated the temporary file and the source path as stable without saying so. Both belong in the plan before the next file-format change.
+
 ## Rejected alternatives
 
 - Always writing f32 WAVE: doubles i16 captures and loses exact equality with the source.
@@ -63,13 +75,13 @@ Derived here:
 - [x] App: save worker, status-bar progress with cancel, result and error, bounded wait on shutdown.
 - [x] Headless tests: command availability and the status-bar notice; refusal of the open file and cancellation are covered in `argand-io`, where they are decided.
 - [x] Update `AGENTS.md`, `IMPLEMENTATION_PLAN.md` and `CHANGELOG.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] The owner checks the release binary: saving a selection and the whole capture from WAVE, headerless and FLAC sources, reopening them with the frequency, cancelling a large save.

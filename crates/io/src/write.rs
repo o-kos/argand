@@ -249,10 +249,18 @@ impl Plan {
         }
 
         if riff::is_flac(&head) {
-            return Ok(Plan::Decode {
-                exact: Exact::open(meta)?,
-                header_rate: flac_header_rate(meta.sample_rate),
-            });
+            let exact = Exact::open(meta)?;
+            let header_rate = flac_header_rate(meta.sample_rate);
+            if header_rate.is_none() && exact.bits % 8 != 0 {
+                return Err(WriteError::Unsupported {
+                    path: path.clone(),
+                    reason: format!(
+                        "{} bit flac at {} Hz can be written neither as flac nor as wav of the same depth",
+                        exact.bits, meta.sample_rate
+                    ),
+                });
+            }
+            return Ok(Plan::Decode { exact, header_rate });
         }
 
         Err(WriteError::Unsupported {
@@ -434,6 +442,14 @@ fn write_wave_header(
     let data_bytes = 8 + padded(data_len);
     let plain_size = 4 + chunk_bytes + data_bytes;
     let rf64 = plain_size > riff_limit;
+    // Only the native reader understands RF64, so a layout it declines could never be opened again.
+    let native = riff::parse_fmt(fmt).is_ok_and(|fmt| fmt.sample_type().is_ok());
+    if rf64 && !native {
+        return Err(WriteError::Unsupported {
+            path: meta.source.clone(),
+            reason: "a wav this large in this sample format could not be opened again".into(),
+        });
+    }
 
     let mut header = Vec::new();
     if rf64 {
@@ -689,7 +705,7 @@ fn write_flac(
     partial.write_at(info_offset, sink.as_slice())
 }
 
-/// A FLAC source the encoder cannot state the rate of, written as WAVE of the same bit depth.
+/// A FLAC source the encoder cannot state the rate of, written as WAVE of the same whole-byte depth.
 fn write_decoded_wave(
     partial: &mut Partial,
     exact: &mut Exact,
@@ -699,8 +715,7 @@ fn write_decoded_wave(
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<&'static str, WriteError> {
-    let width = exact.bits.div_ceil(8);
-    let shift = width * 8 - exact.bits;
+    let width = exact.bits / 8;
     let channels = meta.channels() as u16;
     let block_align = channels * width as u16;
     let rate = wave_rate(meta)?;
@@ -721,12 +736,11 @@ fn write_decoded_wave(
     exact.each_block(meta, span, COPY_BLOCK, progress, cancel, &mut |ints| {
         bytes.clear();
         for &value in ints {
-            let stored = value << shift;
             // Eight-bit WAVE is offset binary, wider samples are signed.
             if width == 1 {
-                bytes.push((stored + 128) as u8);
+                bytes.push((value + 128) as u8);
             } else {
-                bytes.extend_from_slice(&stored.to_le_bytes()[..width as usize]);
+                bytes.extend_from_slice(&value.to_le_bytes()[..width as usize]);
             }
         }
         partial.write(&bytes)

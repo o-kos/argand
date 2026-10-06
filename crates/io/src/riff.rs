@@ -355,7 +355,7 @@ impl FmtChunk {
             && usize::from(self.block_align) == usize::from(self.channels) * width
     }
 
-    fn sample_type(&self) -> Result<SampleType, RiffError> {
+    pub(crate) fn sample_type(&self) -> Result<SampleType, RiffError> {
         let domain = match self.channels {
             1 => Domain::Real,
             2 => Domain::Iq,

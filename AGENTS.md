@@ -448,7 +448,11 @@ again with `flacenc` 0.5 (default features off) at the source bit depth, up to 2
 under 2^36 samples; STREAMINFO is rewritten at the end. That encoder states only rates up
 to 96 kHz that frame headers can carry, so the header gets such a rate within 1 Hz of the
 exact one; a FLAC source with none (192 kHz, an SDR rate) is written as WAVE of the same bit
-depth instead, as the owner chose, and `write::writes_as_wave` gives it a `.wav` name. A WAVE output whose RIFF size
+depth instead, as the owner chose, and `write::writes_as_wave` gives it a `.wav` name;
+an odd bit depth there is refused. A seek that lands after its sample fails, and a FLAC
+stream without a length is counted by the strict decoder. A WAVE output that needs RF64
+in a layout the native reader declines (24-bit) is refused, because Argand could not open
+it again, until #192 reads 24-bit natively. A WAVE output whose RIFF size
 would exceed `u32` is RF64. Stored values are written, never normalized ones. Output goes
 to `.<name>.<pid>-<n>.part` beside the target, created with `create_new` so no existing
 path is ever opened for writing, then synced, checked for cancellation and renamed over

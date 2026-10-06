@@ -372,7 +372,12 @@ impl DecodedSource {
 
     /// A strict decoder of `path` that resolves its own length rather than trusting a known one.
     pub(crate) fn open_exact(path: &Path, container: &'static str) -> Result<Self, SourceError> {
-        Self::open_plain(path, container, Some(0.0), None, None).map(Self::strict)
+        let mut source = Self::open_plain(path, container, Some(0.0), None, Some(0))?.strict();
+        if source.meta.len_samples == 0 {
+            let mut counter = Self::open_plain(path, container, Some(0.0), None, Some(0))?.strict();
+            source.meta.len_samples = counter.count_samples()?;
+        }
+        Ok(source)
     }
 
     /// Decoded values exactly as the codec delivers them, before any scaling.
@@ -485,6 +490,11 @@ impl SampleSource for DecodedSource {
             )
             .map_err(decode_err)?;
         if self.strict {
+            if result.actual_ts > result.required_ts {
+                return Err(SourceError::Decode(format!(
+                    "the frame holding sample {sample} is damaged"
+                )));
+            }
             self.next_ts = Some(result.actual_ts);
         }
 

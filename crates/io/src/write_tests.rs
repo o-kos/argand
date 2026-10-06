@@ -671,3 +671,57 @@ fn headerless_and_unstateable_flac_captures_are_named_as_wave() {
     };
     assert!(writes_as_wave(&meta, &raw));
 }
+
+#[test]
+fn a_damaged_first_frame_fails_instead_of_starting_later() {
+    let dir = TempDir::new("write-flac-first");
+    let source = dir.join("a.flac");
+    write_flac_fixture(&source, 2, 16, 5000);
+    let request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), dir.join("b.flac"));
+    let mut bytes = fs::read(&source).unwrap();
+    let frames = flac_frames(&bytes);
+    bytes[frames[0] + (frames[1] - frames[0]) / 2] ^= 0xFF;
+    fs::write(&source, &bytes).unwrap();
+    let result = run(&request);
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(names(&dir), ["a.flac"]);
+}
+
+#[test]
+fn an_unknown_length_flac_is_counted_strictly_and_saved_whole() {
+    let dir = TempDir::new("write-flac-unknown");
+    let source = dir.join("a.flac");
+    let mut data = include_bytes!("../tests/fixtures/levels.flac").to_vec();
+    data[21] &= 0xf0;
+    data[22..26].fill(0);
+    fs::write(&source, &data).unwrap();
+    let target = dir.join("b.flac");
+    let saved = run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
+    assert_eq!(saved.samples, 16384);
+    assert_eq!(open(&target, &OpenHints::default()).unwrap().meta().len_samples, 16384);
+}
+
+#[test]
+fn a_large_wave_the_native_reader_declines_is_refused() {
+    let dir = TempDir::new("write-24-rf64");
+    let source = dir.join("a.wav");
+    write_wav24(&source, 2, 400);
+    let request = request(&source, OpenHints::default(), None, dir.join("b.wav"));
+    let result = save_with_limit(&request, &mut |_, _| {}, &AtomicBool::new(false), 1000);
+    assert!(matches!(result, Err(WriteError::Unsupported { .. })), "{result:?}");
+    assert_eq!(names(&dir), ["a.wav"]);
+}
+
+#[test]
+fn flac_of_an_odd_depth_at_an_unstateable_rate_is_refused() {
+    let dir = TempDir::new("write-flac-12");
+    let source = dir.join("a.flac");
+    write_flac_fixture(&source, 1, 12, 2000);
+    let hints = OpenHints {
+        sample_rate: Some(192_000.0),
+        ..Default::default()
+    };
+    let result = run(&request(&source, hints, None, dir.join("b.wav")));
+    assert!(matches!(result, Err(WriteError::Unsupported { .. })), "{result:?}");
+    assert_eq!(names(&dir), ["a.flac"]);
+}
