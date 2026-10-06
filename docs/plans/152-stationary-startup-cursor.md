@@ -12,7 +12,9 @@ window still shows the horizontal resize image.
 ## Context
 
 - Class B. Implementer: Codex in this session, selected by the owner's request.
-- Proposed reviewer: gpt-6-sol, medium; owner confirmation pending.
+- Proposed reviewer: gpt-6-sol, medium. On 2026-10-06 the owner deferred
+  reviewer selection and external review until native confirmation of the fix,
+  explicitly allowing feedback on the candidate before review.
 - Worktree: `/tmp/argand-152-startup`; branch based on current `origin/main`.
 - The existing dirty #152 worktree is preserved. Its reverted close interception
   and geometry experiment are not part of this change.
@@ -41,8 +43,8 @@ window still shows the horizontal resize image.
 
 ## Implementation steps
 
-- [ ] Seed the Linux platform cursor before opening the application window.
-- [ ] Update the changelog and document the startup invariant.
+- [x] Seed the Linux platform cursor before opening the application window.
+- [x] Update the changelog and document the startup invariant.
 - [ ] Run the local gate and build the release binary afterward.
 - [ ] Verify the owner's exact stationary-pointer sequence natively.
 - [ ] Agree the reviewer and complete external review.
@@ -50,9 +52,9 @@ window still shows the horizontal resize image.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked` (732 tests; local captures linked from the primary checkout)
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] Normal window: stationary restart inside the plot shows Arrow; each edge
       still shows its corresponding resize cursor and resizes when dragged.
