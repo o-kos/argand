@@ -18,6 +18,9 @@ window still shows the horizontal resize image.
 - Worktree: `/tmp/argand-152-startup`; branch based on current `origin/main`.
 - The existing dirty #152 worktree is preserved. Its reverted close interception
   and geometry experiment are not part of this change.
+- Before Ready, main advanced through #187. Rebase preserved both changelog
+  entries; the six-line cursor change is identical to the reviewed and natively
+  confirmed implementation. The final gate and release build run on this base.
 - Locked GPUI Kit 0.6.6 exports `platform::current_platform` and
   `Application::with_platform`. They create the same backend as `application()`.
 - In GPUI Linux 0.3.6, Wayland's cursor cache initially contains `None`. Pointer
