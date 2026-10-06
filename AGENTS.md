@@ -47,6 +47,12 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 
 ## Rendering boundary
 
+On Linux, `shell::run` creates the GPUI Kit platform once, seeds its cursor with
+Arrow before opening any window, and passes that same platform to
+`Application::with_platform`. Wayland pointer Enter can then apply the cached
+cursor with its valid entry serial even without pointer motion (#152); normal
+frame hit-testing still selects resize cursors only over their edge regions.
+
 GPUI types must never leak into `argand-core`, `argand-dsp`, `argand-io`, or `argand-edit`. Those crates return textures, envelopes, primitive lists, and other toolkit-neutral data. Only `argand-app` converts them into GPUI images, quads, and paths.
 
 This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for a custom GPU canvas, the fallback is egui/eframe with wgpu without rewriting the core crates.

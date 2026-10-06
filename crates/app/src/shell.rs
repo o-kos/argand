@@ -134,10 +134,14 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
 
 /// Open the window and run until it closes.
 pub fn run(config: Config, saved: Session, writer: Option<Saver>, opening: Option<Origin>) {
+    let platform = gpui_kit::platform::current_platform(false);
+    // Wayland Enter reapplies the cached style even when the pointer stays still.
+    #[cfg(target_os = "linux")]
+    platform.set_cursor_style(gpui_kit::CursorStyle::Arrow);
     // The toolkit's own icons -- the window controls among them -- are loaded
     // by path through an asset source. Without one they resolve to nothing and
     // the buttons render as blank space that still responds to a click.
-    gpui_kit::application()
+    gpui_kit::Application::with_platform(platform)
         .with_assets(crate::assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);

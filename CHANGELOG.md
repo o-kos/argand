@@ -21,6 +21,10 @@ promise applies to.
 
 - `--center` now overrides a frequency stored in the file instead of always replacing it with 0 Hz when absent.
 
+### Fixed
+
+- Initialize the Linux pointer to an arrow before opening the window, so a stationary Wayland entry can replace a resize cursor left by the previous instance (#152).
+
 ## [0.1.1] - 2026-10-05
 
 ### Added
