@@ -37,6 +37,50 @@ pub struct SaveRequest {
     /// The samples to keep, or the whole capture when absent.
     pub span: Option<SampleSpan>,
     pub target: PathBuf,
+    /// The source file as it was when the capture was opened, which it must still be.
+    pub stamp: Option<SourceStamp>,
+}
+
+/// What tells one version of a file from another without reading it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceStamp {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+    identity: Option<(u64, u64)>,
+}
+
+impl SourceStamp {
+    /// The stamp of the file now at `path`.
+    pub fn of(path: &Path) -> std::io::Result<Self> {
+        fs::metadata(path).map(|metadata| Self::from_metadata(&metadata))
+    }
+
+    fn of_file(file: &File) -> std::io::Result<Self> {
+        file.metadata()
+            .map(|metadata| Self::from_metadata(&metadata))
+    }
+
+    fn from_metadata(metadata: &fs::Metadata) -> Self {
+        Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+            identity: identity(metadata),
+        }
+    }
+}
+
+/// Device and inode where the platform has them.
+fn identity(metadata: &fs::Metadata) -> Option<(u64, u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Some((metadata.dev(), metadata.ino()))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = metadata;
+        None
+    }
 }
 
 /// A file written to completion.
@@ -126,6 +170,15 @@ pub(crate) fn save_with_limit(
         path: source.clone(),
         source: error,
     })?;
+    let read_stamp = SourceStamp::of_file(&input).map_err(|error| WriteError::Read {
+        path: source.clone(),
+        source: error,
+    })?;
+    if request.stamp.is_some_and(|stamp| stamp != read_stamp) {
+        return Err(WriteError::SourceChanged {
+            path: source.clone(),
+        });
+    }
     let plan = Plan::for_request(request, &mut input)?;
     let mut partial = Partial::create(target)?;
     let container = match plan {
@@ -173,6 +226,14 @@ pub(crate) fn save_with_limit(
             cancel,
         )?,
     };
+    // The target may have become the file being read since the start, by a rename of the source.
+    if fs::metadata(target)
+        .is_ok_and(|now| identity(&now).is_some() && identity(&now) == read_stamp.identity)
+    {
+        return Err(WriteError::SameFile {
+            path: target.clone(),
+        });
+    }
     partial.finish(target, cancel)?;
     Ok(Saved {
         path: target.clone(),
@@ -823,15 +884,16 @@ struct Partial {
 
 impl Partial {
     fn create(target: &Path) -> Result<Self, WriteError> {
-        let name = target.file_name().ok_or_else(|| WriteError::BadTarget {
-            path: target.to_owned(),
-        })?;
+        if target.file_name().is_none() {
+            return Err(WriteError::BadTarget {
+                path: target.to_owned(),
+            });
+        }
         let mut attempt = 0u32;
         loop {
-            let mut temporary = std::ffi::OsString::from(".");
-            temporary.push(name);
-            temporary.push(format!(".{}-{attempt}.part", std::process::id()));
-            let path = target.with_file_name(temporary);
+            // Short whatever the target is called, so a name at the length limit still has room.
+            let path =
+                target.with_file_name(format!(".argand-{}-{attempt}.part", std::process::id()));
             // A new file only, so an existing path, a link to the source among them, is never opened.
             match File::options().write(true).create_new(true).open(&path) {
                 Ok(file) => {

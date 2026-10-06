@@ -55,6 +55,7 @@ impl Shell {
             return;
         };
         let hints = file.document.origin().hints.clone();
+        let stamp = file.stamp;
         let span = if selection_only { self.selection } else { None };
         let as_wave = argand_io::write::writes_as_wave(&meta, &hints);
         let name = saving::suggested_name(&meta, as_wave, span);
@@ -64,7 +65,7 @@ impl Shell {
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
             };
-            let request = saving::request(&meta, &hints, span, target);
+            let request = saving::request(&meta, &hints, span, target, stamp);
             let _ = shell.update_in(cx, |shell, window, cx| {
                 shell.start_save(request, window, cx)
             });

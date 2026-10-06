@@ -294,6 +294,8 @@ struct OpenFile {
     _minimap_updates: Option<Task<()>>,
     opened_at: Instant,
     first_picture: Arc<AtomicBool>,
+    /// The file as it was when it described itself, which a save checks it still is.
+    stamp: Option<argand_io::write::SourceStamp>,
     /// Created once the file has described itself, and dropped with it.
     plot: Option<PlotHandle>,
 }
@@ -663,6 +665,7 @@ impl Shell {
             _minimap_updates: None,
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
+            stamp: None,
             plot: None,
         });
         cx.notify();
@@ -742,6 +745,10 @@ impl Shell {
 
         match effect {
             Effect::Opened => {
+                if let Some(file) = &mut self.file {
+                    file.stamp =
+                        argand_io::write::SourceStamp::of(&file.document.origin().path).ok();
+                }
                 self.reset_view();
                 self.attach_plot(window, cx);
                 self.start_minimap(window, cx);

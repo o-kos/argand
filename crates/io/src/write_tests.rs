@@ -14,6 +14,7 @@ fn request(path: &Path, hints: OpenHints, span: Option<SampleSpan>, target: Path
         hints,
         span,
         target,
+        stamp: SourceStamp::of(path).ok(),
     }
 }
 
@@ -415,7 +416,7 @@ fn an_existing_file_at_the_temporary_name_is_never_opened() {
     let sample_type: SampleType = "iq_i16".parse().unwrap();
     let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
     let before = fs::read(&source).unwrap();
-    let squatter = dir.join(&format!(".b.wav.{}-0.part", std::process::id()));
+    let squatter = dir.join(&format!(".argand-{}-0.part", std::process::id()));
     fs::hard_link(&source, &squatter).unwrap();
     run(&request(&source, OpenHints::default(), None, dir.join("b.wav"))).unwrap();
     assert_eq!(fs::read(&source).unwrap(), before);
@@ -451,9 +452,11 @@ fn a_source_replaced_since_it_was_opened_is_refused() {
     let dir = TempDir::new("write-replaced");
     let sample_type: SampleType = "iq_i16".parse().unwrap();
     let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
-    let request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), dir.join("b.wav"));
+    let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), dir.join("b.wav"));
     write_wav(&source, sample_type, 48_000, &signal(sample_type, 640), 1.0);
     assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })));
+    request.stamp = None;
+    assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })), "the length alone");
     assert_eq!(names(&dir), ["a.wav"]);
 }
 
@@ -560,7 +563,8 @@ fn a_damaged_frame_inside_a_short_selection_fails() {
     let dir = TempDir::new("write-flac-gap");
     let source = dir.join("a.flac");
     write_flac_fixture(&source, 2, 16, 5000);
-    let request = request(&source, OpenHints::default(), SampleSpan::between(0, 1500), dir.join("b.flac"));
+    let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 1500), dir.join("b.flac"));
+    request.stamp = None;
     let mut bytes = fs::read(&source).unwrap();
     let frames = flac_frames(&bytes);
     let second = frames[1] + (frames[2] - frames[1]) / 2;
@@ -643,9 +647,11 @@ fn a_flac_source_replaced_since_it_was_opened_is_refused() {
     let dir = TempDir::new("write-flac-replaced");
     let source = dir.join("a.flac");
     write_flac_fixture(&source, 2, 16, 5000);
-    let request = request(&source, OpenHints::default(), SampleSpan::between(0, 100), dir.join("b.flac"));
+    let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 100), dir.join("b.flac"));
     write_flac_fixture(&source, 2, 16, 6000);
     assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })));
+    request.stamp = None;
+    assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })), "the length alone");
     assert_eq!(names(&dir), ["a.flac"]);
 }
 
@@ -677,7 +683,8 @@ fn a_damaged_first_frame_fails_instead_of_starting_later() {
     let dir = TempDir::new("write-flac-first");
     let source = dir.join("a.flac");
     write_flac_fixture(&source, 2, 16, 5000);
-    let request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), dir.join("b.flac"));
+    let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), dir.join("b.flac"));
+    request.stamp = None;
     let mut bytes = fs::read(&source).unwrap();
     let frames = flac_frames(&bytes);
     bytes[frames[0] + (frames[1] - frames[0]) / 2] ^= 0xFF;
@@ -724,4 +731,30 @@ fn flac_of_an_odd_depth_at_an_unstateable_rate_is_refused() {
     let result = run(&request(&source, hints, None, dir.join("b.wav")));
     assert!(matches!(result, Err(WriteError::Unsupported { .. })), "{result:?}");
     assert_eq!(names(&dir), ["a.flac"]);
+}
+
+#[test]
+fn a_rotated_source_is_neither_read_nor_saved_over() {
+    let dir = TempDir::new("write-rotated");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
+    let original = fs::read(&source).unwrap();
+    let archive = dir.join("archive.wav");
+    let request = request(&source, OpenHints::default(), None, archive.clone());
+    fs::rename(&source, &archive).unwrap();
+    write_wav(&source, sample_type, 48_000, &real_tone(128, 48_000.0, 100.0, 0.25), 1.0);
+    assert_eq!(fs::metadata(&source).unwrap().len(), original.len() as u64);
+    let result = run(&request);
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(fs::read(&archive).unwrap(), original);
+}
+
+#[test]
+fn a_target_name_at_the_length_limit_still_saves() {
+    let dir = TempDir::new("write-long");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
+    let target = dir.join(&format!("{}.wav", "x".repeat(251)));
+    run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
+    assert_eq!(data_bytes(&target), data_bytes(&source));
 }

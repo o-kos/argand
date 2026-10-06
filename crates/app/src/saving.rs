@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use argand_core::{SampleSpan, SignalMeta};
-use argand_io::write::{SaveRequest, Saved, WriteError, save};
+use argand_io::write::{SaveRequest, Saved, SourceStamp, WriteError, save};
 
 /// How often progress crosses to the window.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -116,12 +116,14 @@ pub fn request(
     hints: &argand_io::OpenHints,
     span: Option<SampleSpan>,
     target: PathBuf,
+    stamp: Option<SourceStamp>,
 ) -> SaveRequest {
     SaveRequest {
         meta: meta.clone(),
         hints: hints.clone(),
         span,
         target,
+        stamp,
     }
 }
 

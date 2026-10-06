@@ -453,10 +453,12 @@ an odd bit depth there is refused. A seek that lands after its sample fails, and
 stream without a length is counted by the strict decoder. A WAVE output that needs RF64
 in a layout the native reader declines (24-bit) is refused, because Argand could not open
 it again, until #192 reads 24-bit natively. A WAVE output whose RIFF size
-would exceed `u32` is RF64. Stored values are written, never normalized ones. Output goes
-to `.<name>.<pid>-<n>.part` beside the target, created with `create_new` so no existing
-path is ever opened for writing, then synced, checked for cancellation and renamed over
-the target; any error or cancellation removes it. The source is never a valid target
+would exceed `u32` is RF64. Stored values are written, never normalized ones. `SaveRequest::stamp`, a `SourceStamp` (length, modification time, device and
+inode on Unix) the shell takes when the file describes itself, must match the handle read,
+and the target must not be that file just before the rename. Output goes to
+`.argand-<pid>-<n>.part` beside the target, created with `create_new` so no existing path
+is ever opened for writing, then synced, checked for cancellation and renamed over the
+target; any error or cancellation removes it. The source is never a valid target
 (same device and inode on Unix, canonical path elsewhere, so a Windows hard link is not
 detected).
 

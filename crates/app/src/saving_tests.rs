@@ -47,7 +47,7 @@ fn a_job_reports_progress_and_the_saved_file() {
     };
     let opened = argand_io::open(&source, &hints).unwrap();
     let target = dir.join("b.wav");
-    let (_job, updates) = start(request(opened.meta(), &hints, SampleSpan::between(10, 20), target.clone()));
+    let (_job, updates) = start(request(opened.meta(), &hints, SampleSpan::between(10, 20), target.clone(), None));
     let mut finished = None;
     while let Ok(update) = updates.recv_blocking() {
         if let Update::Finished(outcome) = update {

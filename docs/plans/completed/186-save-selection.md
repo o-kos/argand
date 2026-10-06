@@ -54,6 +54,8 @@ Reviewer `gpt-6.1-sol` high, three rounds, each with substantive findings, so by
 - Round 2 (4 major, all FLAC): Symphonia drops frames with a bad CRC by itself, seeking by time landed a sample early, `flacenc` 0.5.1 cannot state rates above 96 kHz, and the source was read through several opens. All accepted; the WAVE fallback for unstateable rates is the owner's choice.
 - Round 3 (4 major): a damaged first frame let a seek land late, unknown-length FLAC was counted loosely, odd bit depths lost their units in the WAVE fallback, and 24-bit RF64 could be written but not read. The first two are fixed; the last two are refused, as the owner chose, with #192 for native 24-bit reading.
 
+- Round 4, on the revised plan at the owner's request (1 major, 1 minor): a source replaced by another recording of the same length, or rotated so that the target became the original file, passed the length check; the temporary name grew with the target's and could exceed the length limit. Both fixed: a `SourceStamp` (length, modification time, device and inode on Unix) taken when the file describes itself must match the handle read, the target must not be that file just before the rename, and the temporary name is `.argand-<pid>-<n>.part`.
+
 What the plan missed: it assumed the decoder and encoder behaved as an exact codec pair without reading how Symphonia packetizes FLAC or what `flacenc` verifies, and it treated the temporary file and the source path as stable without saying so. Both belong in the plan before the next file-format change.
 
 ## Rejected alternatives
