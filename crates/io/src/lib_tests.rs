@@ -118,7 +118,7 @@ fn overrides_beat_the_header() {
 
     let hints = OpenHints {
         sample_rate: Some(48_000.0),
-        center_freq: 12_579_000.0,
+        center_freq: Some(12_579_000.0),
         sample_type: Some(SampleType::new(Domain::Real, SampleFormat::I32)),
         ..Default::default()
     };
@@ -137,7 +137,7 @@ fn centre_frequency_shifts_the_reported_span() {
     let path = write_wav(&dir.join("c.wav"), st, 24_000, &[0.0; 8], 1.0);
 
     let hints = OpenHints {
-        center_freq: 12_579_000.0,
+        center_freq: Some(12_579_000.0),
         ..Default::default()
     };
     let (lo, hi) = open(&path, &hints).unwrap().meta().frequency_span();
@@ -342,10 +342,10 @@ fn decoder_level_scans_honour_a_budget_and_keep_unbudgeted_behaviour() {
     let mut values = vec![0.25; 4096];
     values[3000] = 0.9;
     let path = write_wav(&dir.join("levels.wav"), SampleType::new(Domain::Real, SampleFormat::I16), 24_000, &values, 1.0);
-    let bounded = DecodedSource::with_levels(&path, "wav", 0.0, None, None, decoder::DecodeLevels {
+    let bounded = DecodedSource::with_levels(&path, "wav", None, None, None, decoder::DecodeLevels {
         normalize: Normalize::Auto, gain_db: 0.0, scan_bytes: Some(64),
     }).unwrap();
-    let ordinary = DecodedSource::open(&path, "wav", 0.0, None, None, Normalize::Auto, 0.0).unwrap();
+    let ordinary = DecodedSource::open(&path, "wav", None, None, None, Normalize::Auto, 0.0).unwrap();
     assert!((bounded.meta().divisor - 0.25 * normalize::AUTO_HEADROOM).abs() < 1e-6);
     assert!((ordinary.meta().divisor - 0.9 * normalize::AUTO_HEADROOM).abs() < 0.0001);
 }
@@ -362,7 +362,7 @@ fn original_units_recover_integer_values_through_both_readers_and_gain() {
         for normalize in [Normalize::None, Normalize::Auto, Normalize::Factor(8.0)] {
             let hints = OpenHints { normalize: Some(normalize), gain_db: 6.0, ..OpenHints::default() };
             let mmap = open(&path, &hints).unwrap();
-            let decoded = Box::new(DecodedSource::open(&path, "wav", 0.0, None, None, normalize, 6.0).unwrap());
+            let decoded = Box::new(DecodedSource::open(&path, "wav", None, None, None, normalize, 6.0).unwrap());
             for mut source in [mmap, decoded as Box<dyn SampleSource>] {
                 assert_original_values(source.as_mut(), &expected);
             }

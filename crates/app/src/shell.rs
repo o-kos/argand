@@ -48,6 +48,8 @@ mod navigation_ui;
 mod plot_ui;
 #[path = "plot_view.rs"]
 mod plot_view;
+#[path = "saving_ui.rs"]
+mod saving_ui;
 #[path = "settings_ui.rs"]
 mod settings_ui;
 
@@ -72,6 +74,8 @@ actions!(
         FocusNext,
         FocusPrevious,
         ChooseFile,
+        SaveAs,
+        SaveSelectionAs,
         EditAnalysis,
         UseRecommendedRange
     ]
@@ -98,6 +102,24 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
                 "ctrl-o"
             },
             ChooseFile,
+            None,
+        ),
+        KeyBinding::new(
+            if cfg!(target_os = "macos") {
+                "cmd-shift-s"
+            } else {
+                "ctrl-shift-s"
+            },
+            SaveAs,
+            None,
+        ),
+        KeyBinding::new(
+            if cfg!(target_os = "macos") {
+                "cmd-alt-s"
+            } else {
+                "ctrl-alt-s"
+            },
+            SaveSelectionAs,
             None,
         ),
     ]);
@@ -354,6 +376,10 @@ struct Shell {
     view: Option<crate::navigation::View>,
     /// The time selection, in samples of the open file.
     selection: Option<argand_core::SampleSpan>,
+    /// A save in progress, which outlives the file it was started from.
+    saving: Option<saving_ui::Saving>,
+    save_notice: Option<saving_ui::Notice>,
+    save_updates: Option<Task<()>>,
     frequency: crate::frequency::View,
     frequency_scheme: Option<argand_core::axis::TickScheme>,
     time_scheme: Option<argand_core::axis::TickScheme>,
@@ -443,6 +469,9 @@ impl Shell {
             plot: None,
             view: None,
             selection: None,
+            saving: None,
+            save_notice: None,
+            save_updates: None,
             frequency: crate::frequency::View::default(),
             frequency_scheme: None,
             time_scheme: None,
@@ -972,6 +1001,26 @@ impl Shell {
                 let shell = shell.clone();
                 cx.defer(move |cx| {
                     let _ = shell.update_in(cx, Self::choose_file);
+                });
+            }
+        });
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &SaveAs, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ =
+                        shell.update_in(cx, |shell, window, cx| shell.save_as(false, window, cx));
+                });
+            }
+        });
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &SaveSelectionAs, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ =
+                        shell.update_in(cx, |shell, window, cx| shell.save_as(true, window, cx));
                 });
             }
         });

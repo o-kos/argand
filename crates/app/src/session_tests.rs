@@ -554,7 +554,7 @@ fn raw_hints() -> OpenHints {
         raw: Some("iq_i16@2M".parse().expect("a raw spec")),
         sample_type: None,
         sample_rate: None,
-        center_freq: 12_579_000.0,
+        center_freq: Some(12_579_000.0),
         byte_offset: 44,
         normalize: Some(argand_io::Normalize::Auto),
         gain_db: -6.0,
@@ -570,7 +570,7 @@ fn a_headerless_capture_comes_back_with_the_layout_it_was_opened_with() {
     let hints = stored.hints.to_open_hints();
     let raw = hints.raw.expect("the layout that made it readable");
     assert_eq!(raw.to_string(), "iq_i16@2000000");
-    assert_eq!(hints.center_freq, 12_579_000.0);
+    assert_eq!(hints.center_freq, Some(12_579_000.0));
     assert_eq!(hints.byte_offset, 44);
     assert_eq!(hints.normalize, Some(argand_io::Normalize::Auto));
     assert_eq!(hints.gain_db, -6.0);
@@ -656,7 +656,7 @@ fn a_hint_this_version_cannot_read_costs_the_flag_and_not_the_entry() {
 
     assert!(hints.raw.is_none());
     assert!(hints.sample_type.is_none());
-    assert_eq!(hints.center_freq, 12_579_000.0);
+    assert_eq!(hints.center_freq, Some(12_579_000.0));
 }
 
 #[test]
@@ -1343,4 +1343,15 @@ fn a_writer_closed_by_a_newer_version_has_nothing_due() {
     );
     assert_eq!(writer.due_at(), None);
     assert_eq!(std::fs::read_to_string(&path).expect("still there"), text);
+}
+
+#[test]
+fn a_stored_zero_frequency_leaves_the_file_to_decide() {
+    let stored = Hints::default();
+    assert_eq!(stored.to_open_hints().center_freq, None);
+    let explicit = OpenHints {
+        center_freq: Some(-1_000_000.0),
+        ..Default::default()
+    };
+    assert_eq!(Hints::from(&explicit).to_open_hints().center_freq, Some(-1_000_000.0));
 }

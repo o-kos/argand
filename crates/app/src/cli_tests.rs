@@ -38,7 +38,7 @@ fn a_headerless_capture_carries_its_layout_into_the_hints() {
         SampleType::new(Domain::Iq, SampleFormat::I16)
     );
     assert_eq!(raw.sample_rate, Some(2_400_000.0));
-    assert_eq!(origin.hints.center_freq, 12_579_000.0);
+    assert_eq!(origin.hints.center_freq, Some(12_579_000.0));
     assert_eq!(origin.hints.byte_offset, 44);
 }
 
@@ -47,7 +47,7 @@ fn a_negative_centre_frequency_is_a_value_rather_than_a_flag() {
     let args = parse(&["capture.wav", "--center", "-1M", "-g", "-6"]);
     let hints = args.origin().expect("a file was named").hints;
 
-    assert_eq!(hints.center_freq, -1_000_000.0);
+    assert_eq!(hints.center_freq, Some(-1_000_000.0));
     assert_eq!(hints.gain_db, -6.0);
 }
 

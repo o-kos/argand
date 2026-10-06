@@ -19,6 +19,7 @@ pub mod riff;
 pub mod spec;
 #[cfg(any(test, feature = "testutil"))]
 pub mod testutil;
+pub mod write;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -40,8 +41,8 @@ pub struct OpenHints {
     pub sample_type: Option<SampleType>,
     /// Override the declared sample rate.
     pub sample_rate: Option<f64>,
-    /// Centre of the frequency axis in Hz.
-    pub center_freq: f64,
+    /// Physical frequency of baseband 0 Hz, overriding what the file says.
+    pub center_freq: Option<f64>,
     /// Bytes to skip before the samples begin.
     pub byte_offset: u64,
     /// How to bring values onto the unit scale. `None` means "decide from the
@@ -92,6 +93,7 @@ pub fn open(path: &Path, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoE
 pub fn reopen(meta: &SignalMeta, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoError> {
     let hints = OpenHints {
         normalize: Some(Normalize::Factor(meta.divisor)),
+        center_freq: Some(meta.center_freq),
         ..hints.clone()
     };
     let source = open_impl(&meta.source, &hints, Some(meta))?;
@@ -143,7 +145,7 @@ fn open_impl(
 }
 
 /// Read enough of the file to identify it and parse a header.
-fn probe_head(path: &Path) -> Result<Vec<u8>, IoError> {
+pub(crate) fn probe_head(path: &Path) -> Result<Vec<u8>, IoError> {
     use std::io::Read;
 
     let mut file = File::open(path).map_err(|source| IoError::Open {
@@ -183,7 +185,7 @@ fn open_wave(
     let sample_type = hints.sample_type.unwrap_or(layout.sample_type);
     let meta = SignalMeta {
         sample_rate: hints.sample_rate.unwrap_or(layout.sample_rate),
-        center_freq: hints.center_freq,
+        center_freq: hints.center_freq.or(layout.reference_freq).unwrap_or(0.0),
         sample_type,
         len_samples: 0, // recomputed from the mapped length
         container: layout.container,
@@ -226,7 +228,7 @@ fn open_raw(
 
     let meta = SignalMeta {
         sample_rate,
-        center_freq: hints.center_freq,
+        center_freq: hints.center_freq.unwrap_or(0.0),
         sample_type,
         len_samples: 0,
         container: "raw",

@@ -11,6 +11,15 @@ promise applies to.
 
 ## [Unreleased]
 
+### Added
+
+- File → Save as… (Ctrl+Shift+S) saves the open capture as a new file, and File → Save selection as… (Ctrl+Alt+S) saves the selected time range. The output keeps the source's format: WAVE keeps its sample type and bit depth, a headerless capture becomes WAVE, FLAC is encoded again without loss, and data past 4 GB is written as RF64. Saving runs in the background with progress and a cancel button in the status bar, and the target is replaced only by a complete file. The open file cannot be saved over.
+- Saved files carry the reference frequency: an `auxi` chunk as SDR#, HDSDR and SDRuno write it, an exact Argand chunk, or a Vorbis comment in FLAC. Opening a file reads it back, including from `auxi` chunks other SDR software wrote.
+
+### Changed
+
+- `--center` now overrides a frequency stored in the file instead of always replacing it with 0 Hz when absent.
+
 ## [0.1.1] - 2026-10-05
 
 ### Added

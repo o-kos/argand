@@ -41,12 +41,12 @@ pub struct Args {
     #[arg(short = 'r', long, value_name = "HZ", value_parser = hz)]
     pub rate: Option<f64>,
 
-    /// Centre frequency for the frequency axis
+    /// Frequency of baseband 0 Hz, overriding one stored in the file
     ///
     /// Hyphens are allowed through because a negative offset with a unit
     /// suffix (`--center -1M`) is a value, not a flag.
-    #[arg(long, value_name = "HZ", value_parser = hz, default_value = "0", allow_hyphen_values = true)]
-    pub center: f64,
+    #[arg(long, value_name = "HZ", value_parser = hz, allow_hyphen_values = true)]
+    pub center: Option<f64>,
 
     /// Bytes to skip before the samples begin
     #[arg(long, value_name = "BYTES", default_value_t = 0)]

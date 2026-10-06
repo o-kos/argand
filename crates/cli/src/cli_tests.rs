@@ -73,7 +73,7 @@ fn defaults_match_the_documented_ones() {
     assert_eq!(args.reduce, Reduce::Max);
     assert_eq!(args.panels.to_string(), "waveform");
     assert_eq!(args.orientation, Orientation::Horizontal);
-    assert_eq!(args.center, 0.0);
+    assert_eq!(args.center, None);
     assert_eq!(args.gain, 0.0);
     assert_eq!(args.normalize, None);
     assert!(!args.json && !args.quiet);
@@ -96,7 +96,7 @@ fn frequency_and_time_literals_are_parsed_by_the_shared_grammar() {
     let args = parse(&[
         "x.wav", "--center", "12.579M", "-r", "24k", "--start", "1m30", "--duration", "250ms",
     ]);
-    assert_eq!(args.center, 12_579_000.0);
+    assert_eq!(args.center, Some(12_579_000.0));
     assert_eq!(args.rate, Some(24_000.0));
     assert_eq!(args.start, Some(90.0));
     assert_eq!(args.duration, Some(0.25));
@@ -123,7 +123,7 @@ fn level_controls_accept_their_documented_spellings() {
     );
     assert_eq!(parse(&["x.wav", "-g", "-6"]).gain, -6.0);
     // A negative value with a unit suffix must not look like a flag.
-    assert_eq!(parse(&["x.wav", "--center", "-1M"]).center, -1_000_000.0);
+    assert_eq!(parse(&["x.wav", "--center", "-1M"]).center, Some(-1_000_000.0));
     assert_eq!(parse(&["x.wav", "-g", "-6.5"]).gain, -6.5);
     assert_eq!(
         parse(&["x.wav", "-d", "auto"]).requested_dynamic_range(),

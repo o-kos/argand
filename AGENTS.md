@@ -39,7 +39,7 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 
 - **argand-core:** domain types such as `Signal`, real or complex sample metadata, `Selection`, and units. It also owns toolkit-independent render view models such as `WaveformEnvelope`, `DbGrid`, `SpectrogramImage`, and primitive lists, and the axis tick layout in `argand-core::axis`, which measures candidate labels through the `LabelMeasure` trait so that every front end places its marks by one policy. A view model's shape fields are the caller's to set, so its accessors check every coordinate against the declared shape and settle the product with `checked_mul`; one index past the end of a row is a valid offset into the next one, so an unchecked read answers with a neighbour's data that looks like a picture. The accessors differ in how strict they are, and the difference is deliberate. `SpectrogramImage::get` and `put` settle the whole buffer through `shape()` and answer nothing until it matches. `DbGrid::column`, `DbGrid::value` and `WaveformEnvelope::column` do not consult `shape()`; they check the one coordinate, settle that offset with `checked_mul` and take the cell from the slice, so a cell inside the declared shape stays readable where the buffer runs longer than that shape. It must not depend on GUI or heavy DSP code.
 - **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, resampling helpers, and frequency shifting. Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
-- **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source. This is the future connection point for custom formats through the worker.
+- **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see "Saving (#186)"). This is the future connection point for custom formats through the worker.
 - **argand-edit:** a planned editing engine using a piece table over the memory-mapped original and inserted buffers, a command stack for undo and redo, and a clipboard.
 - **argand-app:** the application binary, `argand`, using the GPUI Kit facade over GPUI and gpui-component. It opens a signal file, analyses it on a thread of its own, and draws the spectrogram with axes. Its modules divide by whether they name a toolkit: `config.rs`, `session.rs`, `document.rs` and `analysis.rs` do not and are tested without a window, while `shell.rs`, `chrome.rs`, `axes.rs` and `spectrogram.rs` do. It will further own cursors, selections, scrolling, transport, and the detailed spectrum window. This is the single shipped binary alongside `aspec`.
 - **argand-worker:** a planned processing worker binary that loads C ABI libraries and communicates through a stdio protocol. It is deferred.
@@ -430,6 +430,40 @@ The snapshot carries it as view fractions (`View::fractions_of`); the spectrum
 and the minimap tint it with `blue_light` at 0.3 under the grid
 (`waveform::time_band`, at least one device pixel wide), and the status bar shows
 start, end and length in the time ruler's units (`time_ruler::Mode::selection`).
+
+## Saving (#186)
+
+`argand_io::write::save` writes a capture, or a `SampleSpan` of it, to a new file in the
+source's format. WAVE and headerless sources are copied byte for byte with `File::read`,
+never through the mapping, under the source's own `fmt ` body (a headerless capture or an
+overridden sample type gets one synthesized from the effective `SampleType`); any linear
+PCM or float layout is copied this way, 24-bit included. FLAC is decoded with no
+normalization or gain, checked to land on integers and encoded again with `flacenc`
+(default features off) at the source bit depth, up to 24 bits; STREAMINFO is rewritten at
+the end. A WAVE output whose RIFF size would exceed `u32` is RF64. Stored values are
+written, never normalized ones. Output goes to `.<name>.<pid>.part` beside the target,
+is synced and renamed over it; any error or cancellation removes it. The source is never
+a valid target (same device and inode on Unix, canonical path elsewhere).
+
+The reference frequency is the physical frequency of baseband 0 Hz for both signal kinds
+(#185). Writing puts an `auxi` chunk (164 bytes, `CenterFreq` at 32 and `ADFrequency` at
+36, written only for 1 Hz to `u32::MAX`) and an `argd` chunk (version 1, `f64`
+frequency, `f64` sample rate) before `data`, because `riff::parse` reads only the head;
+FLAC gets the Vorbis comment `ARGAND_REFERENCE_FREQUENCY`. Opening prefers `argd`, then
+`auxi`, then the comment, and `argd`'s exact rate only while it agrees with `fmt ` within
+1 Hz. `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins, and a
+session hint of 0 means none.
+
+`saving.rs` runs one save on its own thread with 4 MiB buffers, progress at most every
+100 ms through a bounded channel and a cancel flag; dropping the `Job` cancels it and waits
+at most one second for the temporary file to go. `saving_ui.rs` owns File → Save as…
+(Ctrl+Shift+S, Cmd+Shift+S) and Save selection as… (Ctrl+Alt+S, Cmd+Option+S), disabled
+without a described capture, during a save, and for the second without a time selection.
+The dialog is `App::prompt_for_new_path` in the source folder with
+`<stem>_<start>-<end>s.<ext>` (seconds to the millisecond) or `<stem>.<ext>`, `.wav` for
+a headerless source. The status bar shows progress with a cancelling ×, then the outcome
+until its × is pressed or another save starts; a cancellation shows nothing. A save
+outlives opening another file.
 
 ## Ruler marks and grid visibility (#71, #72)
 

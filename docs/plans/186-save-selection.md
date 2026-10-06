@@ -51,16 +51,16 @@ Derived here:
 
 ## Implementation steps
 
-- [ ] Confirm the `auxi` layout against HDSDR/SDR# documentation and a sample file; record it in a test.
-- [ ] `riff`: scan any WAVE layout (raw `fmt `, block alignment, data range); read `argd` and `auxi`.
-- [ ] `OpenHints::center_freq` as `Option<f64>`; CLI, session and callers; reading the frequency from files on opening.
-- [ ] `argand_io::write`: WAVE/RF64 writer with `fmt `, `auxi`, `argd`, byte copy from WAVE and headerless sources, progress and cancellation, temporary file and rename.
-- [ ] FLAC writer with `flacenc` (minimal features), Vorbis comment, STREAMINFO rewrite; FLAC comment read on opening.
-- [ ] Tests: round trips for every sample type and container, I/Q pairs intact, spans at both edges, RF64 above the threshold (threshold injectable in tests), cancellation and failure leave no file and an existing target unchanged, frequency round trip and precedence.
-- [ ] App: `SaveAs` and `SaveSelectionAs` actions, bindings, File menu rows with enabled state, dialog, open-file refusal.
-- [ ] App: save worker, status-bar progress with cancel, result and error, bounded wait on shutdown.
-- [ ] Headless tests: menu enabled state, refusal of the open file, cancellation through the status bar.
-- [ ] Update `AGENTS.md`, `IMPLEMENTATION_PLAN.md` and `CHANGELOG.md`.
+- [x] Confirm the `auxi` layout (SDRangel's `wavfilerecord.h`, which reads and writes SDR# files); record it in a test.
+- [x] `riff`: scan any WAVE layout (raw `fmt `, block alignment, data range); read `argd` and `auxi`.
+- [x] `OpenHints::center_freq` as `Option<f64>`; CLI, session and callers; reading the frequency from files on opening.
+- [x] `argand_io::write`: WAVE/RF64 writer with `fmt `, `auxi`, `argd`, byte copy from WAVE and headerless sources, progress and cancellation, temporary file and rename.
+- [x] FLAC writer with `flacenc` (minimal features), Vorbis comment, STREAMINFO rewrite; FLAC comment read on opening.
+- [x] Tests: round trips for every sample type and container, I/Q pairs intact, spans at both edges, RF64 above the threshold (threshold injectable in tests), cancellation and failure leave no file and an existing target unchanged, frequency round trip and precedence.
+- [x] App: `SaveAs` and `SaveSelectionAs` actions, bindings, File menu rows with enabled state, dialog, open-file refusal.
+- [x] App: save worker, status-bar progress with cancel, result and error, bounded wait on shutdown.
+- [x] Headless tests: command availability and the status-bar notice; refusal of the open file and cancellation are covered in `argand-io`, where they are decided.
+- [x] Update `AGENTS.md`, `IMPLEMENTATION_PLAN.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

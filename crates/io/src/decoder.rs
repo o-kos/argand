@@ -31,6 +31,7 @@ pub struct DecodedSource {
     skip: usize,
     scale: f32,
     original_units: Option<(f64, f64)>,
+    bits_per_sample: Option<u32>,
     divisor: f32,
     exhausted: bool,
 }
@@ -46,7 +47,7 @@ impl DecodedSource {
     pub fn open(
         path: &Path,
         container: &'static str,
-        center_freq: f64,
+        center_freq: Option<f64>,
         sample_rate_override: Option<f64>,
         sample_type_override: Option<SampleType>,
         normalize: Normalize,
@@ -69,7 +70,7 @@ impl DecodedSource {
     pub fn with_levels(
         path: &Path,
         container: &'static str,
-        center_freq: f64,
+        center_freq: Option<f64>,
         sample_rate_override: Option<f64>,
         sample_type_override: Option<SampleType>,
         levels: DecodeLevels,
@@ -108,7 +109,7 @@ impl DecodedSource {
         let mut source = Self::open_plain(
             &meta.source,
             meta.container,
-            meta.center_freq,
+            Some(meta.center_freq),
             Some(meta.sample_rate),
             Some(meta.len_samples),
         )?;
@@ -122,7 +123,7 @@ impl DecodedSource {
     fn open_plain(
         path: &Path,
         container: &'static str,
-        center_freq: f64,
+        center_freq: Option<f64>,
         sample_rate_override: Option<f64>,
         known_len: Option<u64>,
     ) -> Result<Self, SourceError> {
@@ -134,7 +135,7 @@ impl DecodedSource {
             hint.with_extension(ext);
         }
 
-        let probed = symphonia::default::get_probe()
+        let mut probed = symphonia::default::get_probe()
             .format(
                 &hint,
                 mss,
@@ -142,7 +143,9 @@ impl DecodedSource {
                 &MetadataOptions::default(),
             )
             .map_err(decode_err)?;
-        let reader = probed.format;
+        let mut reader = probed.format;
+        let center_freq =
+            center_freq.or_else(|| tagged_reference(&mut probed.metadata, &mut *reader));
 
         let track = reader
             .tracks()
@@ -195,7 +198,7 @@ impl DecodedSource {
             time_base,
             meta: SignalMeta {
                 sample_rate: sample_rate_override.unwrap_or(sample_rate),
-                center_freq,
+                center_freq: center_freq.unwrap_or(0.0),
                 sample_type: SampleType::new(domain, format),
                 len_samples: params
                     .n_frames
@@ -211,6 +214,7 @@ impl DecodedSource {
             skip: 0,
             scale: 1.0,
             original_units,
+            bits_per_sample: params.bits_per_sample,
             divisor: 1.0,
             exhausted: false,
         };
@@ -221,7 +225,7 @@ impl DecodedSource {
         if source.meta.len_samples == 0 && known_len.is_none() {
             tracing::debug!("stream reports no frame count, counting by decoding");
             let mut counter =
-                Self::open_plain(path, container, center_freq, sample_rate_override, Some(0))?;
+                Self::open_plain(path, container, Some(0.0), sample_rate_override, Some(0))?;
             source.meta.len_samples = counter.count_samples()?;
         }
 
@@ -337,6 +341,42 @@ impl DecodedSource {
     pub fn divisor(&self) -> f32 {
         self.divisor
     }
+
+    /// Bit depth the stream declares, for re-encoding it unchanged.
+    pub(crate) fn bits_per_sample(&self) -> Option<u32> {
+        self.bits_per_sample
+    }
+
+    /// Decoded values exactly as the codec delivers them, before any scaling.
+    pub(crate) fn read_plain(&mut self, buf: &mut [f32]) -> Result<usize, SourceError> {
+        self.read_unscaled(buf)
+    }
+}
+
+/// Vorbis comment holding the physical frequency of baseband 0 Hz.
+pub(crate) const REFERENCE_TAG: &str = "ARGAND_REFERENCE_FREQUENCY";
+
+/// The reference frequency a stream's own tags carry, wherever the container keeps them.
+fn tagged_reference(
+    probed: &mut symphonia::core::probe::ProbedMetadata,
+    reader: &mut dyn FormatReader,
+) -> Option<f64> {
+    reader
+        .metadata()
+        .current()
+        .and_then(|revision| reference_tag(revision.tags()))
+        .or_else(|| {
+            probed
+                .get()
+                .and_then(|log| log.current().and_then(|r| reference_tag(r.tags())))
+        })
+}
+
+fn reference_tag(tags: &[symphonia::core::meta::Tag]) -> Option<f64> {
+    tags.iter()
+        .find(|tag| tag.key.eq_ignore_ascii_case(REFERENCE_TAG))
+        .and_then(|tag| tag.value.to_string().trim().parse::<f64>().ok())
+        .filter(|freq| freq.is_finite())
 }
 
 fn original_units(params: &symphonia::core::codecs::CodecParameters) -> Option<(f64, f64)> {
