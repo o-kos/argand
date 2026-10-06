@@ -86,4 +86,4 @@ What the plan missed: it assumed the decoder and encoder behaved as an exact cod
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] The owner checks the release binary: saving a selection and the whole capture from WAVE, headerless and FLAC sources, reopening them with the frequency, cancelling a large save.
+- [x] The owner checks the release binary: saving a selection and the whole capture from WAVE, headerless and FLAC sources, reopening them with the frequency, cancelling a large save. Accepted after moving the finished-save notice onto the spectrogram's corner, where a mouse move also dismisses it; choosing the output format goes to #189 and Save with Ctrl+S to #193.
