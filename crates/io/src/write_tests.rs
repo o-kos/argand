@@ -24,9 +24,10 @@ fn run(request: &SaveRequest) -> Result<Saved, WriteError> {
 /// The stored bytes of a WAVE file's samples.
 fn data_bytes(path: &Path) -> Vec<u8> {
     let bytes = fs::read(path).expect("read output");
-    let layout = riff::parse(&bytes).expect("parse output");
-    let len = layout.data_len(bytes.len());
-    bytes[layout.data_offset..layout.data_offset + len].to_vec()
+    let chunks = riff::scan(&bytes).expect("scan output");
+    let available = bytes.len() - chunks.data_offset;
+    let len = chunks.declared_len.map_or(available, |len| len.min(available));
+    bytes[chunks.data_offset..chunks.data_offset + len].to_vec()
 }
 
 fn read_all(path: &Path, hints: &OpenHints) -> Vec<f32> {
@@ -545,4 +546,128 @@ fn a_damaged_flac_frame_fails_instead_of_being_skipped() {
     let result = run(&request(&source, OpenHints::default(), None, dir.join("b.flac")));
     assert!(result.is_err(), "{result:?}");
     assert_eq!(names(&dir), ["a.flac"]);
+}
+
+/// Byte offsets of the frames in a FLAC file, found by their sync code.
+fn flac_frames(bytes: &[u8]) -> Vec<usize> {
+    (42..bytes.len() - 1)
+        .filter(|&i| bytes[i] == 0xFF && bytes[i + 1] == 0xF8)
+        .collect()
+}
+
+#[test]
+fn a_damaged_frame_inside_a_short_selection_fails() {
+    let dir = TempDir::new("write-flac-gap");
+    let source = dir.join("a.flac");
+    write_flac_fixture(&source, 2, 16, 5000);
+    let request = request(&source, OpenHints::default(), SampleSpan::between(0, 1500), dir.join("b.flac"));
+    let mut bytes = fs::read(&source).unwrap();
+    let frames = flac_frames(&bytes);
+    let second = frames[1] + (frames[2] - frames[1]) / 2;
+    bytes[second] ^= 0xFF;
+    fs::write(&source, &bytes).unwrap();
+    let result = run(&request);
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(names(&dir), ["a.flac"]);
+}
+
+#[test]
+fn a_flac_selection_starts_on_its_own_sample() {
+    let dir = TempDir::new("write-flac-start");
+    let source = dir.join("a.flac");
+    let samples = write_flac_fixture(&source, 2, 16, 3000);
+    for (start, end) in [(15, 25), (1023, 1030), (1024, 2049)] {
+        let target = dir.join(&format!("b{start}.flac"));
+        run(&request(&source, OpenHints::default(), SampleSpan::between(start, end), target.clone())).unwrap();
+        assert_eq!(
+            flac_ints(&target, 16),
+            samples[start as usize * 2..end as usize * 2],
+            "[{start}, {end})"
+        );
+    }
+}
+
+#[test]
+fn flac_at_a_rate_the_encoder_cannot_state_is_saved_as_wave() {
+    let dir = TempDir::new("write-flac-wave");
+    for bits in [16usize, 24, 8] {
+        let source = dir.join(&format!("a{bits}.flac"));
+        let samples = write_flac_fixture(&source, 2, bits, 3000);
+        let hints = OpenHints {
+            sample_rate: Some(192_000.0),
+            center_freq: Some(7_074_000.0),
+            ..Default::default()
+        };
+        let opened = request(&source, hints.clone(), SampleSpan::between(100, 2100), dir.join(&format!("b{bits}.wav")));
+        assert!(writes_as_wave(&opened.meta, &hints));
+        let saved = run(&opened).unwrap();
+        assert_eq!(saved.container, "wav");
+        let reopened = open(&saved.path, &OpenHints::default()).unwrap();
+        assert_eq!(reopened.meta().sample_rate, 192_000.0);
+        assert_eq!(reopened.meta().center_freq, 7_074_000.0);
+        let stored = data_bytes(&saved.path);
+        let width = bits.div_ceil(8);
+        let decoded: Vec<i32> = stored
+            .chunks_exact(width)
+            .map(|c| match width {
+                1 => i32::from(c[0]) - 128,
+                2 => i32::from(i16::from_le_bytes([c[0], c[1]])),
+                _ => i32::from_le_bytes([0, c[0], c[1], c[2]]) >> 8,
+            })
+            .collect();
+        assert_eq!(decoded, samples[200..4200], "{bits} bit");
+    }
+}
+
+#[test]
+fn a_fractional_rate_states_a_nearby_header_rate_and_keeps_the_exact_one() {
+    assert_eq!(flac_header_rate(88_200.75), Some(88_200));
+    assert_eq!(flac_header_rate(44_100.25), Some(44_100));
+    assert_eq!(flac_header_rate(70_001.0), None);
+    assert_eq!(flac_header_rate(2_400_000.0), None);
+    let dir = TempDir::new("write-flac-882");
+    let source = dir.join("a.flac");
+    write_flac_fixture(&source, 1, 16, 2000);
+    let hints = OpenHints {
+        sample_rate: Some(88_200.75),
+        ..Default::default()
+    };
+    let target = dir.join("b.flac");
+    let saved = run(&request(&source, hints, None, target.clone())).unwrap();
+    assert_eq!(saved.container, "flac");
+    assert_eq!(open(&target, &OpenHints::default()).unwrap().meta().sample_rate, 88_200.75);
+}
+
+#[test]
+fn a_flac_source_replaced_since_it_was_opened_is_refused() {
+    let dir = TempDir::new("write-flac-replaced");
+    let source = dir.join("a.flac");
+    write_flac_fixture(&source, 2, 16, 5000);
+    let request = request(&source, OpenHints::default(), SampleSpan::between(0, 100), dir.join("b.flac"));
+    write_flac_fixture(&source, 2, 16, 6000);
+    assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })));
+    assert_eq!(names(&dir), ["a.flac"]);
+}
+
+#[test]
+fn headerless_and_unstateable_flac_captures_are_named_as_wave() {
+    let mut meta = SignalMeta {
+        sample_rate: 48_000.0,
+        center_freq: 0.0,
+        sample_type: "iq_i16".parse().unwrap(),
+        len_samples: 10,
+        container: "flac",
+        divisor: 1.0,
+        source: PathBuf::from("a.flac"),
+    };
+    assert!(!writes_as_wave(&meta, &OpenHints::default()));
+    meta.sample_rate = 2_400_000.0;
+    assert!(writes_as_wave(&meta, &OpenHints::default()));
+    meta.container = "wav";
+    assert!(!writes_as_wave(&meta, &OpenHints::default()));
+    let raw = OpenHints {
+        raw: Some("iq_i16@1M".parse().unwrap()),
+        ..Default::default()
+    };
+    assert!(writes_as_wave(&meta, &raw));
 }

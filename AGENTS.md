@@ -440,10 +440,15 @@ handle that also reads the header, never through the mapping, under the source's
 layout the native reader handles, gets one synthesized from the effective `SampleType`.
 Any linear PCM or float layout is copied this way, 24-bit included. The data length (the
 smaller of declared and present) must give `SignalMeta::len_samples`, otherwise the
-source changed since it was opened and the save is refused. FLAC is decoded strictly (no
-normalization or gain, a damaged packet fails the save), checked to land on integers and
-encoded again with `flacenc` (default features off) at the source bit depth, up to 24 bits
-and under 2^36 samples; STREAMINFO is rewritten at the end. A WAVE output whose RIFF size
+source changed since it was opened and the save is refused. FLAC is decoded by one strict
+decoder that resolves its own length (compared with the opened capture), seeks by exact
+timestamp and fails on a damaged packet or a gap in packet timestamps, since Symphonia
+drops frames with a bad CRC by itself. Values are checked to land on integers and encoded
+again with `flacenc` 0.5 (default features off) at the source bit depth, up to 24 bits and
+under 2^36 samples; STREAMINFO is rewritten at the end. That encoder states only rates up
+to 96 kHz that frame headers can carry, so the header gets such a rate within 1 Hz of the
+exact one; a FLAC source with none (192 kHz, an SDR rate) is written as WAVE of the same bit
+depth instead, as the owner chose, and `write::writes_as_wave` gives it a `.wav` name. A WAVE output whose RIFF size
 would exceed `u32` is RF64. Stored values are written, never normalized ones. Output goes
 to `.<name>.<pid>-<n>.part` beside the target, created with `create_new` so no existing
 path is ever opened for writing, then synced, checked for cancellation and renamed over
@@ -468,7 +473,8 @@ without a described capture, during a save, and for the second without a time se
 The dialog is `App::prompt_for_new_path` in the source folder with
 `<stem>_<start>-<end>s.<ext>` (seconds to the millisecond) or `<stem>.<ext>`, `.wav` for
 a headerless source. The status bar shows progress with a cancelling ×, then the outcome
-until its × is pressed or another save starts; a cancellation shows nothing. A save
+until its × is pressed or another save starts, saying when a FLAC source was saved as WAV;
+a cancellation shows nothing. A save
 outlives opening another file, but the file it is writing cannot be opened until it ends.
 
 ## Ruler marks and grid visibility (#71, #72)

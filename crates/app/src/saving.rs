@@ -135,14 +135,14 @@ pub fn directory(source: &Path) -> PathBuf {
 
 /// The name the dialog proposes, with the selection's bounds in seconds.
 ///
-/// A headerless capture is saved as WAVE, so it gets that extension.
-pub fn suggested_name(meta: &SignalMeta, headerless: bool, span: Option<SampleSpan>) -> String {
+/// A capture saved as WAVE whatever its own container gets that extension.
+pub fn suggested_name(meta: &SignalMeta, as_wave: bool, span: Option<SampleSpan>) -> String {
     let source = &meta.source;
     let stem = source
         .file_stem()
         .map_or_else(|| "capture".into(), |stem| stem.to_string_lossy());
     let extension = match source.extension() {
-        Some(extension) if !headerless => extension.to_string_lossy().into_owned(),
+        Some(extension) if !as_wave => extension.to_string_lossy().into_owned(),
         _ => "wav".into(),
     };
     match span {

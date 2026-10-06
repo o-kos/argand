@@ -145,10 +145,33 @@ pub(crate) fn save_with_limit(
                 cancel,
             )?
         }
-        Plan::Flac { bits } => {
-            write_flac(&mut partial, bits, &request.meta, span, progress, cancel)?;
+        Plan::Decode {
+            mut exact,
+            header_rate: Some(rate),
+        } => {
+            write_flac(
+                &mut partial,
+                &mut exact,
+                rate,
+                &request.meta,
+                span,
+                progress,
+                cancel,
+            )?;
             "flac"
         }
+        Plan::Decode {
+            mut exact,
+            header_rate: None,
+        } => write_decoded_wave(
+            &mut partial,
+            &mut exact,
+            &request.meta,
+            span,
+            riff_limit,
+            progress,
+            cancel,
+        )?,
     };
     partial.finish(target, cancel)?;
     Ok(Saved {
@@ -161,10 +184,17 @@ pub(crate) fn save_with_limit(
 /// How the source's samples reach the new file.
 enum Plan {
     Copy(CopyLayout),
-    /// Decode and encode again at this bit depth.
-    Flac {
-        bits: u32,
+    /// Decode exact integers, then encode FLAC stating `header_rate`, or WAVE when none fits.
+    Decode {
+        exact: Exact,
+        header_rate: Option<usize>,
     },
+}
+
+/// A strict decoder whose values go back to integers of `bits`.
+struct Exact {
+    decoder: DecodedSource,
+    bits: u32,
 }
 
 /// Where the source's samples lie and the `fmt ` body that describes them.
@@ -219,8 +249,9 @@ impl Plan {
         }
 
         if riff::is_flac(&head) {
-            return Ok(Plan::Flac {
-                bits: flac_bits(meta)?,
+            return Ok(Plan::Decode {
+                exact: Exact::open(meta)?,
+                header_rate: flac_header_rate(meta.sample_rate),
             });
         }
 
@@ -339,6 +370,12 @@ fn synthesized_fmt(meta: &SignalMeta) -> Result<Vec<u8>, WriteError> {
     Ok(body)
 }
 
+/// Whether a capture is written as WAVE whatever its own container, which decides the file's extension.
+pub fn writes_as_wave(meta: &SignalMeta, hints: &OpenHints) -> bool {
+    hints.raw.is_some()
+        || (meta.container == "flac" && flac_header_rate(meta.sample_rate).is_none())
+}
+
 /// A span of the source to copy, read through the handle its header was read from.
 struct ByteRange<'a> {
     source: &'a Path,
@@ -360,7 +397,31 @@ fn write_wave(
         .count()
         .checked_mul(copy.layout.block)
         .ok_or(WriteError::OutOfRange)?;
-    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = vec![(b"fmt ", copy.layout.fmt.clone())];
+    let container = write_wave_header(
+        partial,
+        meta,
+        &copy.layout.fmt,
+        data_len,
+        copy.span.count(),
+        riff_limit,
+    )?;
+    copy_samples(partial, &mut copy, progress, cancel)?;
+    if data_len % 2 == 1 {
+        partial.write(&[0])?;
+    }
+    Ok(container)
+}
+
+/// Write the chunks before the samples, choosing RF64 when RIFF cannot state the size.
+fn write_wave_header(
+    partial: &mut Partial,
+    meta: &SignalMeta,
+    fmt: &[u8],
+    data_len: u64,
+    samples: u64,
+    riff_limit: u64,
+) -> Result<&'static str, WriteError> {
+    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = vec![(b"fmt ", fmt.to_vec())];
     if let Some(auxi) = auxi_body(meta) {
         chunks.push((b"auxi", auxi));
     }
@@ -384,7 +445,7 @@ fn write_wave(
         header.extend_from_slice(&28u32.to_le_bytes());
         header.extend_from_slice(&riff_size.to_le_bytes());
         header.extend_from_slice(&data_len.to_le_bytes());
-        header.extend_from_slice(&copy.span.count().to_le_bytes());
+        header.extend_from_slice(&samples.to_le_bytes());
         header.extend_from_slice(&0u32.to_le_bytes());
     } else {
         header.extend_from_slice(b"RIFF");
@@ -403,11 +464,6 @@ fn write_wave(
     let data_field = if rf64 { u32::MAX } else { data_len as u32 };
     header.extend_from_slice(&data_field.to_le_bytes());
     partial.write(&header)?;
-
-    copy_samples(partial, &mut copy, progress, cancel)?;
-    if data_len % 2 == 1 {
-        partial.write(&[0])?;
-    }
     Ok(if rf64 { "rf64" } else { "wav" })
 }
 
@@ -484,56 +540,115 @@ fn copy_samples(
     Ok(())
 }
 
-/// The bit depth a FLAC source is encoded at again.
-fn flac_bits(meta: &SignalMeta) -> Result<u32, WriteError> {
-    let decoder = plain_decoder(meta)?;
-    match decoder.bits_per_sample() {
-        Some(bits @ 4..=24) => Ok(bits),
-        other => Err(WriteError::Unsupported {
-            path: meta.source.clone(),
-            reason: match other {
-                Some(bits) => format!("{bits} bit flac cannot be re-encoded exactly"),
-                None => "the flac stream does not state its bit depth".into(),
-            },
-        }),
+impl Exact {
+    /// Open the source again, refusing it if it is no longer the capture that was opened.
+    fn open(meta: &SignalMeta) -> Result<Self, WriteError> {
+        let path = &meta.source;
+        let decoder = DecodedSource::open_exact(path, meta.container).map_err(|source| {
+            WriteError::Source {
+                path: path.clone(),
+                source,
+            }
+        })?;
+        let found = decoder.meta();
+        if found.len_samples != meta.len_samples || found.channels() != meta.channels() {
+            return Err(WriteError::SourceChanged { path: path.clone() });
+        }
+        match decoder.bits_per_sample() {
+            Some(bits @ 4..=24) => Ok(Self { decoder, bits }),
+            Some(bits) => Err(WriteError::Unsupported {
+                path: path.clone(),
+                reason: format!("{bits} bit flac cannot be re-encoded exactly"),
+            }),
+            None => Err(WriteError::Unsupported {
+                path: path.clone(),
+                reason: "the flac stream does not state its bit depth".into(),
+            }),
+        }
     }
-}
 
-/// A decoder that hands back codec values without normalization or gain.
-fn plain_decoder(meta: &SignalMeta) -> Result<DecodedSource, WriteError> {
-    let plain = SignalMeta {
-        divisor: 1.0,
-        ..meta.clone()
-    };
-    DecodedSource::reopen(&plain, 0.0)
-        .map(DecodedSource::strict)
-        .map_err(|source| WriteError::Source {
+    /// Hand `span` to `sink` as interleaved integers, `block` samples at a time.
+    fn each_block(
+        &mut self,
+        meta: &SignalMeta,
+        span: SampleSpan,
+        block: usize,
+        progress: &mut dyn FnMut(u64, u64),
+        cancel: &AtomicBool,
+        sink: &mut dyn FnMut(&[i32]) -> Result<(), WriteError>,
+    ) -> Result<(), WriteError> {
+        let source_error = |source| WriteError::Source {
             path: meta.source.clone(),
             source,
-        })
+        };
+        let channels = meta.channels();
+        self.decoder.seek(span.start()).map_err(source_error)?;
+        let scale = f64::from(1u32 << (self.bits - 1));
+        let mut values = vec![0.0f32; block * channels];
+        let mut ints = vec![0i32; block * channels];
+        let total = span.count();
+        let mut done = 0u64;
+        progress(0, total);
+        while done < total {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(WriteError::Cancelled);
+            }
+            let want = (block as u64).min(total - done) as usize * channels;
+            let mut got = 0;
+            while got < want {
+                let n = self
+                    .decoder
+                    .read_plain(&mut values[got..want])
+                    .map_err(source_error)?;
+                if n == 0 {
+                    return Err(WriteError::SourceChanged {
+                        path: meta.source.clone(),
+                    });
+                }
+                got += n;
+            }
+            for (int, value) in ints.iter_mut().zip(&values[..want]) {
+                let exact = f64::from(*value) * scale;
+                let rounded = exact.round();
+                if (exact - rounded).abs() > 1e-3 {
+                    return Err(WriteError::Flac(format!(
+                        "decoded value {value} is not a {} bit integer",
+                        self.bits
+                    )));
+                }
+                *int = rounded as i32;
+            }
+            sink(&ints[..want])?;
+            done += (want / channels) as u64;
+            progress(done, total);
+        }
+        Ok(())
+    }
 }
 
 fn write_flac(
     partial: &mut Partial,
-    bits: u32,
+    exact: &mut Exact,
+    rate: usize,
     meta: &SignalMeta,
     span: SampleSpan,
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<(), WriteError> {
     let flac = |error: &dyn std::fmt::Display| WriteError::Flac(error.to_string());
-    let source_error = |source| WriteError::Source {
-        path: meta.source.clone(),
-        source,
-    };
+    if span.count() >= 1 << 36 {
+        return Err(WriteError::Unsupported {
+            path: meta.source.clone(),
+            reason: format!("{} samples do not fit a flac header", span.count()),
+        });
+    }
     let channels = meta.channels();
-    let rate = flac_rate(meta, span)?;
-
+    let bits = exact.bits as usize;
     let config = flacenc::config::Encoder::default()
         .into_verified()
         .map_err(|(_, error)| flac(&error))?;
     let block = config.block_size;
-    let mut info = StreamInfo::new(rate, channels, bits as usize).map_err(|error| flac(&error))?;
+    let mut info = StreamInfo::new(rate, channels, bits).map_err(|error| flac(&error))?;
 
     let mut header = Vec::new();
     header.extend_from_slice(b"fLaC");
@@ -546,49 +661,13 @@ fn write_flac(
     header.extend_from_slice(&comment);
     partial.write(&header)?;
 
-    let mut decoder = plain_decoder(meta)?;
-    decoder.seek(span.start()).map_err(source_error)?;
     let mut fill = (
         FrameBuf::with_size(channels, block).map_err(|error| flac(&error))?,
-        Context::new(bits as usize, channels),
+        Context::new(bits, channels),
     );
-    let scale = f64::from(1u32 << (bits - 1));
-    let mut values = vec![0.0f32; block * channels];
-    let mut ints = vec![0i32; block * channels];
     let mut sink = ByteSink::new();
-    let total = span.count();
-    let mut done = 0u64;
-    progress(0, total);
-    while done < total {
-        if cancel.load(Ordering::Relaxed) {
-            return Err(WriteError::Cancelled);
-        }
-        let samples = (block as u64).min(total - done) as usize;
-        let want = samples * channels;
-        let mut got = 0;
-        while got < want {
-            let n = decoder
-                .read_plain(&mut values[got..want])
-                .map_err(source_error)?;
-            if n == 0 {
-                return Err(WriteError::SourceChanged {
-                    path: meta.source.clone(),
-                });
-            }
-            got += n;
-        }
-        for (int, value) in ints.iter_mut().zip(&values[..want]) {
-            let exact = f64::from(*value) * scale;
-            let rounded = exact.round();
-            if (exact - rounded).abs() > 1e-3 {
-                return Err(WriteError::Flac(format!(
-                    "decoded value {value} is not a {bits} bit integer"
-                )));
-            }
-            *int = rounded as i32;
-        }
-        fill.fill_interleaved(&ints[..want])
-            .map_err(|error| flac(&error))?;
+    exact.each_block(meta, span, block, progress, cancel, &mut |ints| {
+        fill.fill_interleaved(ints).map_err(|error| flac(&error))?;
         let number = fill
             .1
             .current_frame_number()
@@ -598,13 +677,11 @@ fn write_flac(
         info.update_frame_info(&frame);
         sink.clear();
         frame.write(&mut sink).map_err(|error| flac(&error))?;
-        partial.write(sink.as_slice())?;
-        done += samples as u64;
-        progress(done, total);
-    }
+        partial.write(sink.as_slice())
+    })?;
 
     info.set_md5_digest(&fill.1.md5_digest());
-    info.set_total_samples(total as usize);
+    info.set_total_samples(span.count() as usize);
     info.set_block_sizes(block, block)
         .map_err(|error| flac(&error))?;
     sink.clear();
@@ -612,25 +689,70 @@ fn write_flac(
     partial.write_at(info_offset, sink.as_slice())
 }
 
-/// The rate STREAMINFO states, refusing captures its fields cannot describe.
-fn flac_rate(meta: &SignalMeta, span: SampleSpan) -> Result<usize, WriteError> {
-    if span.count() >= 1 << 36 {
-        return Err(WriteError::Unsupported {
-            path: meta.source.clone(),
-            reason: format!("{} samples do not fit a flac header", span.count()),
-        });
+/// A FLAC source the encoder cannot state the rate of, written as WAVE of the same bit depth.
+fn write_decoded_wave(
+    partial: &mut Partial,
+    exact: &mut Exact,
+    meta: &SignalMeta,
+    span: SampleSpan,
+    riff_limit: u64,
+    progress: &mut dyn FnMut(u64, u64),
+    cancel: &AtomicBool,
+) -> Result<&'static str, WriteError> {
+    let width = exact.bits.div_ceil(8);
+    let shift = width * 8 - exact.bits;
+    let channels = meta.channels() as u16;
+    let block_align = channels * width as u16;
+    let rate = wave_rate(meta)?;
+    let mut fmt = Vec::with_capacity(16);
+    fmt.extend_from_slice(&1u16.to_le_bytes());
+    fmt.extend_from_slice(&channels.to_le_bytes());
+    fmt.extend_from_slice(&rate.to_le_bytes());
+    fmt.extend_from_slice(&byte_rate(meta, rate, block_align)?.to_le_bytes());
+    fmt.extend_from_slice(&block_align.to_le_bytes());
+    fmt.extend_from_slice(&((width * 8) as u16).to_le_bytes());
+
+    let data_len = span
+        .count()
+        .checked_mul(u64::from(block_align))
+        .ok_or(WriteError::OutOfRange)?;
+    let container = write_wave_header(partial, meta, &fmt, data_len, span.count(), riff_limit)?;
+    let mut bytes = Vec::new();
+    exact.each_block(meta, span, COPY_BLOCK, progress, cancel, &mut |ints| {
+        bytes.clear();
+        for &value in ints {
+            let stored = value << shift;
+            // Eight-bit WAVE is offset binary, wider samples are signed.
+            if width == 1 {
+                bytes.push((stored + 128) as u8);
+            } else {
+                bytes.extend_from_slice(&stored.to_le_bytes()[..width as usize]);
+            }
+        }
+        partial.write(&bytes)
+    })?;
+    if data_len % 2 == 1 {
+        partial.write(&[0])?;
     }
-    let rate = meta.sample_rate.round();
-    if !(1.0..=f64::from((1u32 << 20) - 1)).contains(&rate) {
-        return Err(WriteError::Unsupported {
-            path: meta.source.clone(),
-            reason: format!(
-                "a sample rate of {} Hz does not fit a flac header",
-                meta.sample_rate
-            ),
-        });
-    }
-    Ok(rate as usize)
+    Ok(container)
+}
+
+/// Samples decoded per block when a FLAC source is written as WAVE.
+const COPY_BLOCK: usize = 65536;
+
+/// The rate STREAMINFO and every frame header can state, within a hertz of the exact one.
+///
+/// The exact rate travels in the Vorbis comment, so the header only has to be close.
+fn flac_header_rate(rate: f64) -> Option<usize> {
+    [rate.round(), rate.floor(), rate.ceil()]
+        .into_iter()
+        .find(|candidate| (candidate - rate).abs() < 1.0 && flac_states(*candidate))
+        .map(|candidate| candidate as usize)
+}
+
+/// Whether the encoder in use accepts `rate` and its frame headers can carry it.
+fn flac_states(rate: f64) -> bool {
+    (1.0..=96_000.0).contains(&rate) && (rate <= 65_535.0 || rate % 10.0 == 0.0)
 }
 
 /// A VORBIS_COMMENT body carrying the reference frequency and the exact sample rate.

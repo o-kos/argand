@@ -13,6 +13,8 @@ pub(super) struct Saving {
     progress: Option<(u64, u64)>,
     /// Set when the file being written was asked to open, which waits until it is complete.
     open_refused: bool,
+    /// Why a FLAC source is written as WAVE, said once it is saved.
+    as_wave: Option<String>,
 }
 
 /// How the last save ended, shown until it is closed or another save starts.
@@ -54,7 +56,8 @@ impl Shell {
         };
         let hints = file.document.origin().hints.clone();
         let span = if selection_only { self.selection } else { None };
-        let name = saving::suggested_name(&meta, hints.raw.is_some(), span);
+        let as_wave = argand_io::write::writes_as_wave(&meta, &hints);
+        let name = saving::suggested_name(&meta, as_wave, span);
         let chosen = cx.prompt_for_new_path(&saving::directory(&meta.source), Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
             // A cancelled dialog, a platform without one, and a failed dialog all mean no target.
@@ -80,6 +83,14 @@ impl Shell {
         }
         let name = file_name(&request.target);
         let target = request.target.clone();
+        let as_wave = (request.meta.container == "flac"
+            && argand_io::write::writes_as_wave(&request.meta, &request.hints))
+        .then(|| {
+            format!(
+                "as WAV, the FLAC encoder cannot write {} Hz",
+                crate::numbers::number(request.meta.sample_rate)
+            )
+        });
         let (job, updates) = saving::start(request);
         self.save_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
@@ -98,6 +109,7 @@ impl Shell {
             target,
             progress: None,
             open_refused: false,
+            as_wave,
         });
         cx.notify();
     }
@@ -110,9 +122,12 @@ impl Shell {
                 }
             }
             Update::Finished(outcome) => {
-                self.saving = None;
+                let as_wave = self.saving.take().and_then(|saving| saving.as_wave);
                 self.save_notice = match outcome {
-                    Outcome::Saved(saved) => Some(Notice::Saved(file_name(&saved.path))),
+                    Outcome::Saved(saved) => Some(Notice::Saved(match as_wave {
+                        Some(reason) => format!("{} {reason}", file_name(&saved.path)),
+                        None => file_name(&saved.path),
+                    })),
                     Outcome::Cancelled => None,
                     Outcome::Failed(error) => Some(Notice::Failed(error)),
                 };
