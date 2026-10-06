@@ -45,7 +45,7 @@ window still shows the horizontal resize image.
 
 - [x] Seed the Linux platform cursor before opening the application window.
 - [x] Update the changelog and document the startup invariant.
-- [ ] Run the local gate and build the release binary afterward.
+- [x] Run the local gate and build the release binary afterward.
 - [ ] Verify the owner's exact stationary-pointer sequence natively.
 - [ ] Agree the reviewer and complete external review.
 - [ ] Move the plan to `docs/plans/completed/` before final review.
@@ -55,7 +55,8 @@ window still shows the horizontal resize image.
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked` (732 tests; local captures linked from the primary checkout)
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo build --release --locked`, after the checks above pass
+      (target directory `/tmp/argand-152-startup-target`)
 - [ ] Normal window: stationary restart inside the plot shows Arrow; each edge
       still shows its corresponding resize cursor and resizes when dragged.
 - [ ] Maximized window: stationary startup and plot motion show Arrow and no
