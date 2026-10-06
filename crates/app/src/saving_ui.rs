@@ -83,19 +83,20 @@ impl Shell {
             return;
         }
         tracing::info!(
-            source = %request.meta.source.display(),
+            source = %request.sources[0].meta.source.display(),
             target = %request.target.display(),
-            span = ?request.span.map(|span| (span.start(), span.end())),
+            segments = ?request.segments,
             "saving"
         );
         let name = file_name(&request.target);
         let target = request.target.clone();
-        let as_wave = (request.meta.container == "flac"
-            && argand_io::write::writes_as_wave(&request.meta, &request.hints))
+        let output = &request.sources[0];
+        let as_wave = (output.meta.container == "flac"
+            && argand_io::write::writes_as_wave(&output.meta, &output.hints))
         .then(|| {
             format!(
                 "as WAV, the FLAC encoder cannot write {} Hz",
-                crate::numbers::number(request.meta.sample_rate)
+                crate::numbers::number(output.meta.sample_rate)
             )
         });
         let (job, updates) = saving::start(request);

@@ -341,6 +341,20 @@ pub(crate) fn parse_fmt(body: &[u8]) -> Result<FmtChunk, RiffError> {
 }
 
 impl FmtChunk {
+    /// The format tag after looking inside `WAVE_FORMAT_EXTENSIBLE`.
+    pub(crate) fn effective_tag(&self) -> u16 {
+        if self.format_tag == WAVE_FORMAT_EXTENSIBLE {
+            self.sub_format.unwrap_or(self.format_tag)
+        } else {
+            self.format_tag
+        }
+    }
+
+    /// Whether this is the 16x8 layout of unscaled 32-bit floats.
+    pub(crate) fn is_f16x8(&self) -> bool {
+        self.ext_word == Some(F16X8_MAGIC)
+    }
+
     /// Whether every sample is a fixed number of bytes, so a byte range is a span of samples.
     pub(crate) fn is_linear(&self) -> bool {
         let tag = if self.format_tag == WAVE_FORMAT_EXTENSIBLE {
