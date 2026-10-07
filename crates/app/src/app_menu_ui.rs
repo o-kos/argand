@@ -1875,8 +1875,11 @@ mod tests {
         assert!(!trigger.selected(true).is_selected());
     }
 
-    /// Give the open capture the description its file would have reported.
+    /// Give the open capture the description its file would have reported, from a real file.
     fn describe(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
+        let fixture =
+            std::env::temp_dir().join(format!("argand-describe-{}.iqw", std::process::id()));
+        std::fs::write(&fixture, [0u8; 16]).unwrap();
         shell.update_in(cx, |shell, _, cx| {
             let Some(file) = shell.file.as_mut() else {
                 panic!("the capture never opened");
@@ -1889,10 +1892,11 @@ mod tests {
                     len_samples: 48_000,
                     container: "raw",
                     divisor: 32_768.0,
-                    source: PathBuf::from("/captures/session.iqw"),
+                    source: fixture.clone(),
                 },
                 FileInfo::default(),
             ));
+            shell.start_editing(cx);
             cx.notify();
         });
         draw(cx);

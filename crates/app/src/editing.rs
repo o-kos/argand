@@ -35,8 +35,13 @@ impl Source {
         }
     }
 
+    /// Whether `other` reads the same samples, which takes the same file opened the same way.
     fn same_file(&self, other: &Self) -> bool {
-        self.meta.source == other.meta.source && self.stamp == other.stamp
+        self.meta.source == other.meta.source
+            && self.stamp == other.stamp
+            && self.hints == other.hints
+            && self.meta.sample_type == other.meta.sample_type
+            && self.meta.sample_rate == other.meta.sample_rate
     }
 
     fn file(&self) -> SourceFile {
@@ -53,6 +58,23 @@ impl Source {
 pub struct Clipboard {
     sources: Vec<Source>,
     clip: Clip,
+}
+
+impl Clipboard {
+    /// Take what a background check learned about a file the clipboard was copied from before it finished.
+    pub fn describe(
+        &mut self,
+        opened: &Source,
+        stamp: Option<SourceStamp>,
+        storage: Option<Storage>,
+    ) {
+        for source in &mut self.sources {
+            if source.stamp.is_none() && source.same_file(opened) {
+                source.stamp = stamp;
+                source.storage = storage;
+            }
+        }
+    }
 }
 
 /// Where a paste goes.
@@ -98,6 +120,8 @@ pub struct Editing {
     sources: Vec<Source>,
     history: History<Option<SampleSpan>>,
     envelopes: Vec<Option<Arc<Snapshot>>>,
+    /// Sources whose envelope is being built, so a second edit does not start another scan.
+    building: Vec<bool>,
 }
 
 impl Editing {
@@ -108,6 +132,7 @@ impl Editing {
             sources: vec![Source::new(meta, hints)],
             history: History::new(capture, None),
             envelopes: vec![None],
+            building: vec![true],
         }
     }
 
@@ -198,6 +223,8 @@ impl Editing {
         let pasted = SampleSpan::between(at, at + clip.len()).ok_or(PasteError::Empty)?;
         self.envelopes
             .resize(self.sources.len() + added.len(), None);
+        self.building
+            .resize(self.sources.len() + added.len(), false);
         self.sources.extend(added);
         self.history.apply(capture, Some(pasted));
         Ok(pasted)
@@ -243,6 +270,18 @@ impl Editing {
         self.history.mark_saved();
     }
 
+    pub fn mark_saved_version(&mut self, version: u64) {
+        self.history.mark_saved_version(version);
+    }
+
+    /// Whether every file the current version reads has been checked, which a save needs.
+    pub fn is_described(&self) -> bool {
+        self.capture()
+            .sources()
+            .iter()
+            .all(|id| self.sources[id.0 as usize].stamp.is_some())
+    }
+
     /// What the analysis worker reads the current version from.
     pub fn edit_state(&self) -> EditState {
         EditState {
@@ -259,17 +298,18 @@ impl Editing {
         }
     }
 
-    /// The sources a minimap envelope still has to be built for, beyond the file itself.
-    pub fn missing_envelopes(&self) -> Vec<(SourceId, Source)> {
+    /// The sources a minimap envelope has to be built for now, each handed out once.
+    pub fn missing_envelopes(&mut self) -> Vec<(SourceId, Source)> {
         let used = self.capture().sources();
-        self.sources
-            .iter()
-            .enumerate()
-            .skip(1)
-            .filter(|(index, _)| self.envelopes[*index].is_none())
-            .filter(|(index, _)| used.contains(&SourceId(*index as u32)))
-            .map(|(index, source)| (SourceId(index as u32), source.clone()))
-            .collect()
+        let mut missing = Vec::new();
+        for id in used {
+            let index = id.0 as usize;
+            if !self.building[index] {
+                self.building[index] = true;
+                missing.push((id, self.sources[index].clone()));
+            }
+        }
+        missing
     }
 
     pub fn set_envelope(&mut self, id: SourceId, snapshot: Arc<Snapshot>) {
@@ -295,22 +335,28 @@ impl Editing {
         *self.capture() == Capture::whole(SourceId(0), self.file().meta.len_samples)
     }
 
-    /// Save `span` of the current version, or all of it, to `target`.
+    /// Save `span` of the current version, or all of it, to `target`, or nothing when it is empty.
     ///
-    /// Only the files the samples come from are named, so one no longer used cannot stop the save.
+    /// Only the files the samples come from are read, so one no longer used cannot stop the save,
+    /// while the opened file stays protected even when none of it is left.
     pub fn save_request(
         &self,
         span: Option<SampleSpan>,
         target: std::path::PathBuf,
-    ) -> SaveRequest {
+    ) -> Option<SaveRequest> {
         let pieces = match span {
             Some(span) => self.capture().segments(span),
             None => self.capture().pieces().to_vec(),
         };
+        if pieces.is_empty() {
+            return None;
+        }
         let mut used: Vec<SourceId> = pieces.iter().map(|piece| piece.source).collect();
         used.sort_unstable();
         used.dedup();
-        SaveRequest {
+        let file = self.file();
+        Some(SaveRequest {
+            meta: file.meta.clone(),
             sources: used
                 .iter()
                 .map(|id| self.sources[id.0 as usize].file())
@@ -324,7 +370,8 @@ impl Editing {
                 })
                 .collect(),
             target,
-        }
+            protected: vec![file.meta.source.clone()],
+        })
     }
 }
 

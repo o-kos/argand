@@ -156,7 +156,8 @@ pub fn compose(
     envelope.max.fill(f32::NEG_INFINITY);
     let mut complete = true;
     for column in 0..columns {
-        let edge = |c: usize| (u128::from(total) * c as u128 / columns as u128) as u64;
+        // The first sample of a column, rounded up as `EnvelopeBuilder` assigns them.
+        let edge = |c: usize| (u128::from(total) * c as u128).div_ceil(columns as u128) as u64;
         let Some(span) = argand_core::SampleSpan::between(edge(column), edge(column + 1)) else {
             continue;
         };

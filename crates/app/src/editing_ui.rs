@@ -109,13 +109,27 @@ impl Shell {
         });
         let task = cx.spawn(async move |shell, cx| {
             let (stamp, storage) = described.await;
-            let _ = shell.update(cx, |shell, _| {
-                if let Some(editing) = shell.editing_mut() {
-                    editing.describe_file(stamp, storage);
-                }
-            });
+            let _ = shell.update(cx, |shell, cx| shell.file_described(stamp, storage, cx));
         });
         file._edit_tasks.push(task);
+    }
+
+    /// Record the file's stamp and storage, in its edits and in a clipboard copied before they were known.
+    fn file_described(
+        &mut self,
+        stamp: Option<argand_io::write::SourceStamp>,
+        storage: Option<argand_io::write::Storage>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(editing) = self.editing_mut() else {
+            return;
+        };
+        let opened = editing.file().clone();
+        editing.describe_file(stamp, storage);
+        if let Some(clipboard) = &mut self.clipboard {
+            clipboard.describe(&opened, stamp, storage);
+        }
+        cx.notify();
     }
 
     /// Bring back the view and selection of a capture saved and opened again.
@@ -204,14 +218,19 @@ impl Shell {
     /// Show the current version: its length, picture, minimap, selection and titles.
     pub(super) fn edited(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(file) = &mut self.file else { return };
-        let Some(editing) = &file.editing else { return };
+        let Some(editing) = &mut file.editing else {
+            return;
+        };
         let len = editing.len();
         let selection = editing.selection();
-        file.state.document.set_len(len);
-        file.state.analyst.set_edit(editing.edit_state());
         let missing = editing.missing_envelopes();
+        let state = editing.edit_state();
+        file.state.document.set_len(len);
+        // The old picture puts other samples where it shows them, so nothing is shown until the new one.
+        file.state.document.forget_picture();
+        file.state.analyst.set_edit(state);
         self.selection = selection.and_then(|span| span.within(len));
-        self.release_backdrop(window, cx);
+        self.release_picture(window, cx);
         self.time_scheme = None;
         self.tick_pan = None;
         self.bound_view(cx);
@@ -300,10 +319,7 @@ impl Shell {
         cx.spawn_in(window, async move |shell, cx| {
             let Ok(answer) = answer.await else { return };
             let _ = shell.update_in(cx, |shell, window, cx| match answer {
-                0 => {
-                    shell.after_save = Some(pending);
-                    shell.save_as(false, window, cx);
-                }
+                0 => shell.save_as_then(false, Some(pending), window, cx),
                 1 => shell.carry_out(pending, window, cx),
                 _ => {}
             });
@@ -335,6 +351,11 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> gpui_kit::Stateful<gpui_kit::Div> {
         content
+            .on_action(cx.listener(|shell, _: &chrome::CloseWindow, window, cx| {
+                if shell.settle_unsaved(Pending::Close, window, cx) {
+                    window.remove_window();
+                }
+            }))
             .on_action(cx.listener(|shell, _: &Undo, window, cx| shell.undo(window, cx)))
             .on_action(cx.listener(|shell, _: &Redo, window, cx| shell.redo(window, cx)))
             .on_action(cx.listener(|shell, _: &CutSelection, window, cx| {
@@ -481,5 +502,57 @@ mod tests {
         cx.simulate_prompt_answer("Discard");
         cx.run_until_parked();
         assert_eq!(opened(cx), Some(PathBuf::from("/captures/b.iqw")));
+    }
+
+    #[gpui_kit::test]
+    fn the_close_button_asks_about_unsaved_edits(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        described(cx, &shell, "/captures/a.iqw");
+        select(cx, &shell, 0, 100);
+        shell.update_in(cx, |shell, window, cx| shell.delete_selection(window, cx));
+        cx.update(|window, cx| window.dispatch_action(Box::new(chrome::CloseWindow), cx));
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt(), "the window asks before closing");
+        cx.simulate_prompt_answer("Cancel");
+    }
+
+    #[gpui_kit::test]
+    fn a_save_finished_after_more_edits_keeps_the_document_and_its_unsaved_state(
+        cx: &mut TestAppContext,
+    ) {
+        let (shell, cx) = open_window(cx);
+        described(cx, &shell, "/captures/a.iqw");
+        select(cx, &shell, 0, 100);
+        shell.update_in(cx, |shell, window, cx| shell.delete_selection(window, cx));
+        let (document, version) = shell.read_with(cx, |shell, _| {
+            let file = shell.file.as_ref().map_or(0, |file| file.id);
+            (file, shell.editing().map_or(0, Editing::version))
+        });
+        select(cx, &shell, 0, 100);
+        shell.update_in(cx, |shell, window, cx| shell.delete_selection(window, cx));
+        shell.update_in(cx, |shell, window, cx| {
+            shell.saved(
+                PathBuf::from("/captures/saved.iqw"),
+                saving_ui::SaveOf::whole_for_test(document, version),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let (path, dirty) = shell.read_with(cx, |shell, _| {
+            (
+                shell
+                    .file
+                    .as_ref()
+                    .map(|file| file.state.document.origin().path.clone()),
+                shell.editing().is_some_and(Editing::is_dirty),
+            )
+        });
+        assert_eq!(
+            path,
+            Some(PathBuf::from("/captures/a.iqw")),
+            "the window stays on its capture"
+        );
+        assert!(dirty, "the later edit is still unsaved");
     }
 }

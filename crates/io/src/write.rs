@@ -53,9 +53,13 @@ pub struct Segment {
 /// format and the reference frequency.
 #[derive(Debug, Clone)]
 pub struct SaveRequest {
+    /// What the saved file states about itself, its sample rate and reference frequency.
+    pub meta: SignalMeta,
     pub sources: Vec<SourceFile>,
     pub segments: Vec<Segment>,
     pub target: PathBuf,
+    /// Files that must not be written over beyond the sources, such as the open file.
+    pub protected: Vec<PathBuf>,
 }
 
 impl SaveRequest {
@@ -74,10 +78,28 @@ impl SaveRequest {
             },
         };
         Self {
+            meta: source.meta.clone(),
             sources: vec![source],
             segments: vec![segment],
             target,
+            protected: Vec::new(),
         }
+    }
+
+    /// Join segments of several files, describing the result as the first one, or nothing without a file.
+    pub fn joined(
+        sources: Vec<SourceFile>,
+        segments: Vec<Segment>,
+        target: PathBuf,
+    ) -> Option<Self> {
+        let meta = sources.first()?.meta.clone();
+        Some(Self {
+            meta,
+            sources,
+            segments,
+            target,
+            protected: Vec::new(),
+        })
     }
 
     fn total(&self) -> u64 {
@@ -225,7 +247,7 @@ pub(crate) fn save_with_limit(
         .collect::<Result<Vec<_>, _>>()?;
     let first = common_storage(request, &opened)?;
 
-    let meta = &request.sources[0].meta;
+    let meta = &request.meta;
     let total = request.total();
     let mut partial = Partial::create(target)?;
     let container = match first {
@@ -301,14 +323,14 @@ pub(crate) fn save_with_limit(
 
 /// Refuse a request that would write over one of its sources or read past one.
 fn check_request(request: &SaveRequest) -> Result<(), WriteError> {
-    if let Some(source) = request
+    if let Some(path) = request
         .sources
         .iter()
-        .find(|source| same_file(&source.meta.source, &request.target))
+        .map(|source| &source.meta.source)
+        .chain(&request.protected)
+        .find(|path| same_file(path, &request.target))
     {
-        return Err(WriteError::SameFile {
-            path: source.meta.source.clone(),
-        });
+        return Err(WriteError::SameFile { path: path.clone() });
     }
     let fits = |segment: &Segment| {
         request.sources.get(segment.source).is_some_and(|source| {
@@ -328,7 +350,7 @@ fn check_request(request: &SaveRequest) -> Result<(), WriteError> {
 /// The storage every source shares, refusing one stored differently or at another rate.
 fn common_storage(request: &SaveRequest, opened: &[Opened]) -> Result<Storage, WriteError> {
     let first = opened[0].reader.storage();
-    let rate = request.sources[0].meta.sample_rate;
+    let rate = request.meta.sample_rate;
     match request
         .sources
         .iter()
@@ -597,7 +619,7 @@ fn write_wave(
     let total = request.total();
     let block = copies[0].1.block;
     let data_len = total.checked_mul(block).ok_or(WriteError::OutOfRange)?;
-    let meta = &request.sources[0].meta;
+    let meta = &request.meta;
     let container =
         write_wave_header(partial, meta, &copies[0].1.fmt, data_len, total, riff_limit)?;
     let mut done = 0;
@@ -890,7 +912,7 @@ fn write_flac(
     cancel: &AtomicBool,
 ) -> Result<(), WriteError> {
     let flac = |error: &dyn std::fmt::Display| WriteError::Flac(error.to_string());
-    let meta = &decoding.request.sources[0].meta;
+    let meta = &decoding.request.meta;
     if total >= 1 << 36 {
         return Err(WriteError::Unsupported {
             path: meta.source.clone(),
@@ -953,7 +975,7 @@ fn write_decoded_wave(
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<&'static str, WriteError> {
-    let meta = &decoding.request.sources[0].meta;
+    let meta = &decoding.request.meta;
     let width = decoding.bits / 8;
     let channels = meta.channels() as u16;
     let block_align = channels * width as u16;

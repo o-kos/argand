@@ -779,11 +779,11 @@ fn segments_of_one_and_two_wave_files_are_joined_in_order() {
         raw: Some("iq_i16@48k".parse().unwrap()),
         ..Default::default()
     };
-    let request = SaveRequest {
-        sources: vec![source_file(&a, OpenHints::default()), source_file(&b, raw)],
-        segments: vec![segment(0, 60, 40), segment(1, 10, 5), segment(0, 0, 3)],
-        target: dir.join("c.wav"),
-    };
+    let request = SaveRequest::joined(
+        vec![source_file(&a, OpenHints::default()), source_file(&b, raw)],
+        vec![segment(0, 60, 40), segment(1, 10, 5), segment(0, 0, 3)],
+        dir.join("c.wav"),
+    ).unwrap();
     let saved = run(&request).unwrap();
     assert_eq!(saved.samples, 48);
     let first = data_bytes(&a);
@@ -803,11 +803,11 @@ fn sources_stored_differently_or_at_another_rate_are_refused() {
     let b = write_wav(&dir.join("b.wav"), f32, 48_000, &signal(f32, 10), 1.0);
     let c = write_wav(&dir.join("c.wav"), i16, 96_000, &signal(i16, 10), 1.0);
     for other in [&b, &c] {
-        let request = SaveRequest {
-            sources: vec![source_file(&a, OpenHints::default()), source_file(other, OpenHints::default())],
-            segments: vec![segment(0, 0, 5), segment(1, 0, 5)],
-            target: dir.join("out.wav"),
-        };
+        let request = SaveRequest::joined(
+            vec![source_file(&a, OpenHints::default()), source_file(other, OpenHints::default())],
+            vec![segment(0, 0, 5), segment(1, 0, 5)],
+            dir.join("out.wav"),
+        ).unwrap();
         assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
     }
     assert!(!dir.join("out.wav").exists());
@@ -847,11 +847,11 @@ fn flac_segments_from_two_files_cross_block_boundaries_exactly() {
     let b = dir.join("b.flac");
     let first = write_flac_fixture(&a, 2, 16, 9000);
     let second = write_flac_fixture(&b, 2, 16, 3000);
-    let request = SaveRequest {
-        sources: vec![source_file(&a, OpenHints::default()), source_file(&b, OpenHints::default())],
-        segments: vec![segment(0, 4000, 4500), segment(1, 1, 2999), segment(0, 17, 100)],
-        target: dir.join("c.flac"),
-    };
+    let request = SaveRequest::joined(
+        vec![source_file(&a, OpenHints::default()), source_file(&b, OpenHints::default())],
+        vec![segment(0, 4000, 4500), segment(1, 1, 2999), segment(0, 17, 100)],
+        dir.join("c.flac"),
+    ).unwrap();
     let saved = run(&request).unwrap();
     assert_eq!(saved.container, "flac");
     let mut expected = first[8000..17000].to_vec();
@@ -862,11 +862,11 @@ fn flac_segments_from_two_files_cross_block_boundaries_exactly() {
         sample_rate: Some(192_000.0),
         ..Default::default()
     };
-    let wave = SaveRequest {
-        sources: vec![source_file(&a, hints.clone()), source_file(&b, hints)],
-        segments: vec![segment(1, 5, 10), segment(0, 0, 10)],
-        target: dir.join("d.wav"),
-    };
+    let wave = SaveRequest::joined(
+        vec![source_file(&a, hints.clone()), source_file(&b, hints)],
+        vec![segment(1, 5, 10), segment(0, 0, 10)],
+        dir.join("d.wav"),
+    ).unwrap();
     let saved = run(&wave).unwrap();
     let stored: Vec<i32> = data_bytes(&saved.path)
         .chunks_exact(2)
@@ -884,11 +884,30 @@ fn no_source_of_a_request_can_be_its_target() {
     let a = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
     let b = write_wav(&dir.join("b.wav"), i16, 48_000, &signal(i16, 10), 1.0);
     let before = fs::read(&b).unwrap();
-    let request = SaveRequest {
-        sources: vec![source_file(&a, OpenHints::default()), source_file(&b, OpenHints::default())],
-        segments: vec![segment(0, 0, 5), segment(1, 0, 5)],
-        target: b.clone(),
-    };
+    let request = SaveRequest::joined(
+        vec![source_file(&a, OpenHints::default()), source_file(&b, OpenHints::default())],
+        vec![segment(0, 0, 5), segment(1, 0, 5)],
+        b.clone(),
+    ).unwrap();
     assert!(matches!(run(&request), Err(WriteError::SameFile { .. })));
     assert_eq!(fs::read(&b).unwrap(), before);
+}
+
+#[test]
+fn a_protected_file_is_never_a_target_and_the_output_states_the_request_meta() {
+    let dir = TempDir::new("write-protected");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let a = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let b = write_wav(&dir.join("b.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let mut request = SaveRequest::span(source_file(&b, OpenHints::default()), None, a.clone());
+    request.protected = vec![a.clone()];
+    let before = fs::read(&a).unwrap();
+    assert!(matches!(run(&request), Err(WriteError::SameFile { .. })));
+    assert_eq!(fs::read(&a).unwrap(), before);
+    request.protected.clear();
+    request.target = dir.join("c.wav");
+    request.meta.center_freq = 145_000_000.0;
+    run(&request).unwrap();
+    let reopened = open(&dir.join("c.wav"), &OpenHints::default()).unwrap();
+    assert_eq!(reopened.meta().center_freq, 145_000_000.0);
 }

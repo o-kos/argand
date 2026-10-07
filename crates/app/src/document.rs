@@ -194,6 +194,11 @@ impl Document {
         self.meta.as_ref()
     }
 
+    /// Drop the picture of a version that is no longer the one shown.
+    pub fn forget_picture(&mut self) {
+        self.analysis = None;
+    }
+
     /// Follow an edit that made the capture this long.
     pub fn set_len(&mut self, len: u64) {
         if let Some(meta) = &mut self.meta {

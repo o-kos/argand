@@ -296,6 +296,8 @@ fn to_bounds(geometry: Geometry) -> Bounds<Pixels> {
 /// keeping them in one struct is what makes closing a document a single drop
 /// rather than three that have to happen in the right order.
 struct OpenFile {
+    /// Which document this is among those the window has opened.
+    id: u64,
     state: crate::open_file::OpenFileState,
     _updates: Task<()>,
     _minimap_updates: Option<Task<()>>,
@@ -395,8 +397,8 @@ struct Shell {
     clipboard: Option<crate::editing::Clipboard>,
     /// A saved capture the window opens next, keeping where it looked.
     reopening: Option<editing_ui::Reopening>,
-    /// What waits for a save the unsaved-edits question asked for.
-    after_save: Option<editing_ui::Pending>,
+    /// Counts opened documents, so a finished save knows whether its document is still the one shown.
+    opened_documents: u64,
     frequency: crate::frequency::View,
     frequency_scheme: Option<argand_core::axis::TickScheme>,
     time_scheme: Option<argand_core::axis::TickScheme>,
@@ -500,7 +502,7 @@ impl Shell {
             save_updates: None,
             clipboard: None,
             reopening: None,
-            after_save: None,
+            opened_documents: 0,
             frequency: crate::frequency::View::default(),
             frequency_scheme: None,
             time_scheme: None,
@@ -707,7 +709,9 @@ impl Shell {
         // Replacing the previous file drops both ends of its queue, which is
         // what stops its thread: a transform nobody will look at should not go
         // on holding a mapped file and a core.
+        self.opened_documents += 1;
         self.file = Some(OpenFile {
+            id: self.opened_documents,
             state: crate::open_file::OpenFileState::new(Document::opening(origin), analyst),
             _updates: pump,
             _minimap_updates: None,
@@ -1013,6 +1017,11 @@ impl Shell {
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
     fn release(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         self.waveform = None;
+        self.release_picture(window, cx);
+    }
+
+    /// Let go of the spectrogram pictures on the GPU, keeping the minimap.
+    fn release_picture(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         self.release_backdrop(window, cx);
         self.release_deep_preview(window, cx);
         let stale = self.texture.take();

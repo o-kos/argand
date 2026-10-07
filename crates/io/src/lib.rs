@@ -33,7 +33,7 @@ pub use riff::{RiffError, WavLayout};
 pub use spec::{ParseHzError, ParseRawSpecError, ParseTimeError, RawSpec, parse_hz, parse_time};
 
 /// Everything the caller can say about a file that the file cannot say itself.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct OpenHints {
     /// Read the file as a headerless sample array with this layout.
     pub raw: Option<RawSpec>,

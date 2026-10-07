@@ -461,8 +461,10 @@ in a layout the native reader declines (24-bit) is refused, because Argand could
 it again, until #192 reads 24-bit natively. A WAVE output whose RIFF size
 would exceed `u32` is RF64. Stored values are written, never normalized ones. A `SaveRequest` names
 `SourceFile`s and `Segment`s of them, written in order; every source must share one
-`Storage` (`write::storage`: linear `fmt ` layout, or FLAC depth) and the sample rate, and
-the first sets the output format. Each `SourceFile::stamp`, a `SourceStamp` (length,
+`Storage` (`write::storage`: linear `fmt ` layout, or FLAC depth) and the request's sample
+rate, and the first sets the output format, while `SaveRequest::meta` sets the rate and
+reference frequency the file states and `SaveRequest::protected` names files that must not
+be written over though nothing is read from them (the open file). Each `SourceFile::stamp`, a `SourceStamp` (length,
 modification time, device and inode on Unix) taken off the window's thread after the file
 describes itself, must match the handle read, and the target must be none of the files
 read, also just before the rename. Output goes to
@@ -504,7 +506,7 @@ outlives opening another file, but the file it is writing cannot be opened until
 `Storage` a background task reads after opening), a `History` whose state is the selection
 each version left, and one minimap envelope per source. The `Clipboard` lives on the shell,
 outlives the document, and holds a `Clip` with the files it reads, never samples. Pasting
-reuses a source with the same path and stamp and otherwise adds one, refusing a file whose
+reuses a source with the same path, stamp, hints, sample type and rate and otherwise adds one, refusing a file whose
 `Storage` or sample rate differs, or whose storage is not known yet; a source changed on
 disk since is refused when saved, by the writer's stamp check. After delete and cut nothing
 is selected; after paste the pasted samples are; undo and redo restore each version's
@@ -520,14 +522,17 @@ Ctrl+V (replace the selection, disabled without one) and Delete. `Shell::edited`
 every version: the document's length, `Analyst::set_edit` (a new edit version is a new
 analysis generation, and the worker reads every capture through an `EditedSource` that opens
 pasted files with `argand_io::reopen`), the selection, the view through `bound_view`, the
-backdrop dropped, the minimap composed (`minimap::compose`, mapping each cell through the
+picture and backdrop dropped until the new version's picture lands (`Document::forget_picture`,
+because the old picture shows other samples at its coordinates), the minimap composed (`minimap::compose`, mapping each cell through the
 capture onto the source envelopes' cells, so no edit rescans; a pasted file gets its own
 envelope built once), and both titles, which carry `•` while edits are unsaved. Opening
 another file or closing the window with unsaved edits asks natively (`Window::prompt`, the
 close refused in `on_window_should_close` and carried out after the answer): Save as…,
-Discard, Cancel; a save asked for that way does what waited once it is written. Save as of
-the whole edited capture opens the saved file, keeping the view and selection
-(`Reopening`). Saving over the open file is #193.
+Discard, Cancel; the Linux close button goes through the same question (`chrome::CloseWindow`).
+A save remembers its document and version (`SaveOf`): when it finishes, a whole save marks
+that version saved, and only if the document is still that version does it open the saved
+file of an edited capture (`Reopening`, keeping view and selection) or do what the question
+left waiting. A save needs a non-empty capture whose files all have their stamp. Saving over the open file is #193.
 
 ## Ruler marks and grid visibility (#71, #72)
 

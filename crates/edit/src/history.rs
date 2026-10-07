@@ -97,6 +97,13 @@ impl<S> History<S> {
     pub fn mark_saved(&mut self) {
         self.saved = Some(self.current);
     }
+
+    /// Record that the version numbered `version` was saved, if it is still in the history.
+    pub fn mark_saved_version(&mut self, version: u64) {
+        if let Some(index) = self.versions.iter().position(|kept| kept.serial == version) {
+            self.saved = Some(index);
+        }
+    }
 }
 
 #[cfg(test)]

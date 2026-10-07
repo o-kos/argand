@@ -15,11 +15,38 @@ pub(super) struct Saving {
     open_refused: bool,
     /// Why a FLAC source is written as WAVE, said once it is saved.
     as_wave: Option<String>,
-    /// The view and selection to keep when the saved file replaces the edited capture.
+    of: SaveOf,
+}
+
+/// What a finished save means for the document it was started from.
+pub(super) struct SaveOf {
+    /// The document, told apart from any opened since.
+    document: u64,
+    /// The edit version written.
+    version: u64,
+    /// Whether the whole capture was written, which makes that version saved.
+    whole: bool,
+    /// The view and selection kept when the saved file replaces an edited capture.
     reopen: Option<(
         Option<crate::navigation::View>,
         Option<argand_core::SampleSpan>,
     )>,
+    /// What waited for this save, an open or a close.
+    then: Option<editing_ui::Pending>,
+}
+
+#[cfg(test)]
+impl SaveOf {
+    /// A whole save of `version` of `document` that reopens the saved file.
+    pub(super) fn whole_for_test(document: u64, version: u64) -> Self {
+        Self {
+            document,
+            version,
+            whole: true,
+            reopen: Some((None, None)),
+            then: None,
+        }
+    }
 }
 
 /// How the last save ended, or why an edit was refused, shown until it is closed.
@@ -34,9 +61,8 @@ impl Shell {
     pub(super) fn can_save(&self, selection_only: bool) -> bool {
         self.saving.is_none()
             && self
-                .file
-                .as_ref()
-                .is_some_and(|file| file.state.document.meta().is_some())
+                .editing()
+                .is_some_and(|editing| !editing.capture().is_empty() && editing.is_described())
             && (!selection_only || self.selection.is_some())
     }
 
@@ -47,7 +73,25 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.save_as_then(selection_only, None, window, cx);
+    }
+
+    /// Save as, then do `then` once the whole capture is written and nothing changed meanwhile.
+    pub(super) fn save_as_then(
+        &mut self,
+        selection_only: bool,
+        then: Option<editing_ui::Pending>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !self.can_save(selection_only) {
+            if then.is_some() {
+                self.save_notice = Some(Notice::Failed(
+                    "Cannot save now",
+                    "another save is running or the capture is still being checked".into(),
+                ));
+                cx.notify();
+            }
             return;
         }
         self.dismiss_application_menu(window, cx);
@@ -56,7 +100,8 @@ impl Shell {
         self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);
         cx.notify();
-        let Some(editing) = self.editing() else {
+        let Some(file) = &self.file else { return };
+        let Some(editing) = file.editing.as_ref() else {
             return;
         };
         let span = if selection_only { self.selection } else { None };
@@ -64,10 +109,19 @@ impl Shell {
         let as_wave = argand_io::write::writes_as_wave(&output.meta, &output.hints);
         let name = saving::suggested_name(&output.meta, as_wave, span);
         let directory = saving::directory(&output.meta.source);
-        let mut request = editing.save_request(span, std::path::PathBuf::new());
-        // Saving the whole edited capture turns the window to the saved file.
-        let reopen =
-            (!selection_only && !editing.is_untouched()).then_some((self.view, self.selection));
+        let Some(mut request) = editing.save_request(span, std::path::PathBuf::new()) else {
+            return;
+        };
+        let whole = !selection_only;
+        let edited = editing.is_dirty() || !editing.is_untouched();
+        let of = SaveOf {
+            document: file.id,
+            version: editing.version(),
+            whole,
+            // Saving the whole edited capture turns the window to the saved file.
+            reopen: (whole && edited).then_some((self.view, self.selection)),
+            then: then.filter(|_| whole),
+        };
         let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
             // A cancelled dialog, a platform without one, and a failed dialog all mean no target.
@@ -76,7 +130,7 @@ impl Shell {
             };
             request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
-                shell.start_save(request, reopen, window, cx)
+                shell.start_save(request, of, window, cx)
             });
         })
         .detach();
@@ -85,10 +139,7 @@ impl Shell {
     fn start_save(
         &mut self,
         request: argand_io::write::SaveRequest,
-        reopen: Option<(
-            Option<crate::navigation::View>,
-            Option<argand_core::SampleSpan>,
-        )>,
+        of: SaveOf,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -96,7 +147,7 @@ impl Shell {
             return;
         }
         tracing::info!(
-            source = %request.sources[0].meta.source.display(),
+            source = %request.meta.source.display(),
             target = %request.target.display(),
             segments = ?request.segments,
             "saving"
@@ -133,7 +184,7 @@ impl Shell {
             progress: None,
             open_refused: false,
             as_wave,
-            reopen,
+            of,
         });
         cx.notify();
     }
@@ -146,17 +197,16 @@ impl Shell {
                 }
             }
             Update::Finished(outcome) => {
-                let finished = self.saving.take();
-                let as_wave = finished.as_ref().and_then(|saving| saving.as_wave.clone());
-                let reopen = finished.and_then(|saving| saving.reopen);
-                let pending = self.after_save.take();
+                let Some(finished) = self.saving.take() else {
+                    return;
+                };
                 match outcome {
                     Outcome::Saved(saved) => {
-                        self.save_notice = Some(Notice::Saved(match as_wave {
+                        self.save_notice = Some(Notice::Saved(match &finished.as_wave {
                             Some(reason) => format!("{} {reason}", file_name(&saved.path)),
                             None => file_name(&saved.path),
                         }));
-                        self.saved(saved.path, reopen, pending, window, cx);
+                        self.saved(saved.path, finished.of, window, cx);
                     }
                     Outcome::Cancelled => self.save_notice = None,
                     Outcome::Failed(error) => {
@@ -168,23 +218,33 @@ impl Shell {
         cx.notify();
     }
 
-    /// After a save, open the saved file for an edited capture saved whole, or do what waited for it.
-    fn saved(
+    /// Mark the version written as saved, then reopen or do what waited, unless the document moved on.
+    pub(super) fn saved(
         &mut self,
         path: std::path::PathBuf,
-        reopen: Option<(
-            Option<crate::navigation::View>,
-            Option<argand_core::SampleSpan>,
-        )>,
-        pending: Option<editing_ui::Pending>,
+        of: SaveOf,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(pending) = pending {
-            self.carry_out(pending, window, cx);
+        let Some(file) = self.file.as_mut().filter(|file| file.id == of.document) else {
+            return;
+        };
+        let Some(editing) = file.editing.as_mut() else {
+            return;
+        };
+        if of.whole {
+            editing.mark_saved_version(of.version);
+        }
+        let unchanged = editing.version() == of.version;
+        self.refresh_titles(window);
+        if !unchanged {
             return;
         }
-        let Some((view, selection)) = reopen else {
+        if let Some(then) = of.then {
+            self.carry_out(then, window, cx);
+            return;
+        }
+        let Some((view, selection)) = of.reopen else {
             return;
         };
         self.reopening = Some(editing_ui::Reopening {

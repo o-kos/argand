@@ -99,13 +99,16 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
                     match index {
                         0 => window.minimize_window(),
                         1 => window.zoom_window(),
-                        _ => window.remove_window(),
+                        // The window decides whether it may close, which unsaved edits can refuse.
+                        _ => window.dispatch_action(Box::new(CloseWindow), cx),
                     }
                 })
                 .child(Icon::new(icon).small())
         }),
     )
 }
+
+gpui_kit::actions!(chrome, [CloseWindow]);
 
 pub struct Frame {
     padding: Edges<Pixels>,

@@ -109,13 +109,15 @@ fn a_save_names_only_the_files_its_samples_come_from() {
     let mut document = editing("/a.wav", 100, 1000.0);
     let other = editing("/b.wav", 50, 1000.0);
     document.paste(&other.copy(span(0, 20)), Placement::At(100)).unwrap();
-    let whole = document.save_request(None, PathBuf::from("/out.wav"));
+    let whole = document.save_request(None, PathBuf::from("/out.wav")).unwrap();
     assert_eq!(whole.sources.len(), 2);
     assert_eq!(whole.segments.len(), 2);
     assert_eq!((whole.segments[1].source, whole.segments[1].start, whole.segments[1].len), (1, 0, 20));
-    let tail = document.save_request(Some(span(105, 110)), PathBuf::from("/out.wav"));
+    let tail = document.save_request(Some(span(105, 110)), PathBuf::from("/out.wav")).unwrap();
     assert_eq!(tail.sources.len(), 1);
     assert_eq!(tail.sources[0].meta.source, PathBuf::from("/b.wav"));
+    assert_eq!(tail.protected, [PathBuf::from("/a.wav")], "the open file stays protected");
+    assert_eq!(tail.meta.source, PathBuf::from("/a.wav"), "and describes the result");
     assert_eq!((tail.segments[0].source, tail.segments[0].start, tail.segments[0].len), (0, 5, 5));
 }
 
@@ -135,4 +137,38 @@ fn the_minimap_waits_for_the_file_envelope() {
     );
     document.delete(span(0, 5));
     assert_eq!(document.minimap().map(|snapshot| snapshot.samples), Some(5));
+}
+
+#[test]
+fn an_empty_capture_has_nothing_to_save() {
+    let mut document = editing("/a.wav", 10, 1000.0);
+    document.delete(span(0, 10));
+    assert!(document.save_request(None, PathBuf::from("/out.wav")).is_none());
+}
+
+#[test]
+fn the_same_file_opened_another_way_is_another_source() {
+    let mut document = editing("/a.raw", 100, 1000.0);
+    let mut shifted = Editing::new(
+        meta("/a.raw", 100, 1000.0),
+        OpenHints {
+            byte_offset: 4,
+            ..Default::default()
+        },
+    );
+    shifted.describe_file(None, Some(LINEAR));
+    document.paste(&shifted.copy(span(0, 10)), Placement::At(0)).unwrap();
+    assert_eq!(document.capture().sources(), [SourceId(0), SourceId(1)]);
+}
+
+#[test]
+fn an_envelope_is_asked_for_once_and_a_save_waits_for_every_stamp() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let other = editing("/b.wav", 50, 1000.0);
+    assert!(!document.is_described());
+    document.paste(&other.copy(span(0, 20)), Placement::At(0)).unwrap();
+    assert_eq!(document.missing_envelopes().len(), 1);
+    document.undo();
+    document.redo();
+    assert!(document.missing_envelopes().is_empty(), "the scan already started");
 }
