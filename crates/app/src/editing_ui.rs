@@ -39,8 +39,16 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
     ];
     if cfg!(target_os = "windows") {
         keys.push(KeyBinding::new("ctrl-y", Redo, Some("Plot")));
+        keys.push(KeyBinding::new("ctrl-y", Redo, Some("Shell")));
     }
     cx.bind_keys(keys);
+}
+
+/// The file a capture was opened from, as the edits and the clipboard know it.
+fn editing_source(file: &argand_io::write::SourceFile) -> crate::editing::Source {
+    let mut source = crate::editing::Source::new(file.meta.clone(), file.hints.clone());
+    source.stamp = file.stamp;
+    source
 }
 
 /// A save whose target the window opens once it is written, keeping where it looked.
@@ -108,11 +116,14 @@ impl Shell {
         editing.describe_file(stamp, None);
         file.editing = Some(editing);
         let document = file.id;
+        let opened = editing_source(&source);
         // Reading the header may touch a network mount, so it happens away from the window.
         let storage = cx.background_spawn(async move { argand_io::write::storage(&source).ok() });
         cx.spawn(async move |shell, cx| {
             let storage = storage.await;
-            let _ = shell.update(cx, |shell, cx| shell.file_stored(document, storage, cx));
+            let _ = shell.update(cx, |shell, cx| {
+                shell.file_stored(document, &opened, storage, cx);
+            });
         })
         .detach();
     }
@@ -121,20 +132,21 @@ impl Shell {
     fn file_stored(
         &mut self,
         document: u64,
+        opened: &crate::editing::Source,
         storage: Option<argand_io::write::Storage>,
         cx: &mut Context<Self>,
     ) {
-        let Some(file) = self.file.as_mut().filter(|file| file.id == document) else {
-            return;
-        };
-        let Some(editing) = file.editing.as_mut() else {
-            return;
-        };
-        let stamp = editing.file().stamp;
-        editing.describe_file(stamp, storage);
-        let opened = editing.file().clone();
+        // A clipboard copied from the file outlives its document, so it learns either way.
         if let Some(clipboard) = &mut self.clipboard {
-            clipboard.describe(&opened, storage);
+            clipboard.describe(opened, storage);
+        }
+        if let Some(editing) = self
+            .file
+            .as_mut()
+            .filter(|file| file.id == document)
+            .and_then(|file| file.editing.as_mut())
+        {
+            editing.describe_file(opened.stamp, storage);
         }
         cx.notify();
     }

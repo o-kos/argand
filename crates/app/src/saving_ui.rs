@@ -26,11 +26,8 @@ pub(super) struct SaveOf {
     version: u64,
     /// Whether the whole capture was written, which makes that version saved.
     whole: bool,
-    /// The view and selection kept when the saved file replaces an edited capture.
-    reopen: Option<(
-        Option<crate::navigation::View>,
-        Option<argand_core::SampleSpan>,
-    )>,
+    /// Whether the saved file replaces the edited capture once it is written.
+    reopen: bool,
     /// What waited for this save, an open or a close.
     then: Option<editing_ui::Pending>,
 }
@@ -43,7 +40,7 @@ impl SaveOf {
             document,
             version,
             whole: true,
-            reopen: Some((None, None)),
+            reopen: true,
             then: None,
         }
     }
@@ -119,7 +116,7 @@ impl Shell {
             version: editing.version(),
             whole,
             // Saving the whole edited capture turns the window to the saved file.
-            reopen: (whole && edited).then_some((self.view, self.selection)),
+            reopen: whole && edited,
             then: then.filter(|_| whole),
         };
         let chosen = cx.prompt_for_new_path(&directory, Some(&name));
@@ -244,13 +241,14 @@ impl Shell {
             self.carry_out(then, window, cx);
             return;
         }
-        let Some((view, selection)) = of.reopen else {
+        if !of.reopen {
             return;
-        };
+        }
+        // Where the window looks now, which navigation during the save may have moved.
         self.reopening = Some(editing_ui::Reopening {
             path: path.clone(),
-            view,
-            selection,
+            view: self.view,
+            selection: self.selection,
         });
         self.carry_out(editing_ui::Pending::Open(Origin::new(path)), window, cx);
     }

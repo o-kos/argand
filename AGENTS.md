@@ -447,7 +447,7 @@ layout the native reader handles, gets one synthesized from the effective `Sampl
 Any linear PCM or float layout is copied this way, 24-bit included. The data length (the
 smaller of declared and present) must give `SignalMeta::len_samples`, otherwise the
 source changed since it was opened and the save is refused. FLAC is decoded by one strict
-decoder that resolves its own length (compared with the opened capture), seeks by exact
+decoder over the handle whose stamp was checked, that resolves its own length (compared with the opened capture), seeks by exact
 timestamp and fails on a damaged packet or a gap in packet timestamps, since Symphonia
 drops frames with a bad CRC by itself. Values are checked to land on integers and encoded
 again with `flacenc` 0.5 (default features off) at the source bit depth, up to 24 bits and
@@ -505,8 +505,8 @@ outlives opening another file, but the file it is writing cannot be opened until
 
 `editing.rs` (toolkit-neutral) keeps one document's `Editing`: a source table indexed by
 `SourceId` (0 is the opened file, each with its `SignalMeta`, hints, the stamp the analysis
-thread takes around opening the file (`FileInfo::stamp`, kept only when it did not change
-while opening), and the `Storage` a background task reads afterwards, applied only to the
+thread gets from `argand_io::open_stamped`, taken from the very handles that read the header
+and the samples and kept only when they agree (`FileInfo::stamp`), and the `Storage` a background task reads afterwards, applied only to the
 document that asked by its id and to clipboard copies with the same stamp), a `History` whose state is the selection
 each version left, and one minimap envelope per source. The `Clipboard` lives on the shell,
 outlives the document, and holds a `Clip` with the files it reads, never samples. Pasting

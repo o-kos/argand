@@ -83,8 +83,21 @@ pub enum IoError {
     },
 }
 
+/// A source with the stamp of the file it reads, taken from the handle it reads through.
+type Stamped = (Box<dyn SampleSource>, Option<write::SourceStamp>);
+
 /// Open a signal file, applying `hints` on top of whatever the file declares.
 pub fn open(path: &Path, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoError> {
+    open_impl(path, hints, None).map(|(source, _)| source)
+}
+
+/// Open a signal file, with the stamp of what was read.
+///
+/// The stamp is absent unless the header and the samples were read from the same file.
+pub fn open_stamped(
+    path: &Path,
+    hints: &OpenHints,
+) -> Result<(Box<dyn SampleSource>, Option<write::SourceStamp>), IoError> {
     open_impl(path, hints, None)
 }
 
@@ -96,7 +109,7 @@ pub fn reopen(meta: &SignalMeta, hints: &OpenHints) -> Result<Box<dyn SampleSour
         center_freq: Some(meta.center_freq),
         ..hints.clone()
     };
-    let source = open_impl(&meta.source, &hints, Some(meta))?;
+    let (source, _) = open_impl(&meta.source, &hints, Some(meta))?;
     if source.meta().len_samples != meta.len_samples {
         return Err(IoError::Source {
             path: meta.source.clone(),
@@ -110,21 +123,30 @@ fn open_impl(
     path: &Path,
     hints: &OpenHints,
     known: Option<&SignalMeta>,
-) -> Result<Box<dyn SampleSource>, IoError> {
-    let head = probe_head(path)?;
+) -> Result<Stamped, IoError> {
+    let (head, head_stamp) = probe_head(path)?;
+    let (source, stamp) = open_kind(path, hints, known, &head)?;
+    Ok((source, stamp.filter(|stamp| Some(*stamp) == head_stamp)))
+}
 
+fn open_kind(
+    path: &Path,
+    hints: &OpenHints,
+    known: Option<&SignalMeta>,
+    head: &[u8],
+) -> Result<Stamped, IoError> {
     if let Some(spec) = hints.raw {
         return open_raw(path, spec, hints);
     }
 
-    if riff::is_wave(&head) {
-        match riff::parse(&head) {
+    if riff::is_wave(head) {
+        match riff::parse(head) {
             Ok(layout) => return open_wave(path, layout, hints),
             Err(RiffError::Unsupported { .. }) => {
                 // A valid wav in a layout the flat reader will not touch --
                 // 24-bit, say. The decoder may still manage it.
                 tracing::debug!("wav layout not natively supported, trying the decoder");
-                return open_decoded(path, "wav", &wave_metadata(&head, hints), known);
+                return open_decoded(path, "wav", &wave_metadata(head, hints), known);
             }
             Err(source) => {
                 return Err(IoError::Wav {
@@ -135,7 +157,7 @@ fn open_impl(
         }
     }
 
-    if riff::is_flac(&head) {
+    if riff::is_flac(head) {
         return open_decoded(path, "flac", hints, known);
     }
 
@@ -161,14 +183,15 @@ fn wave_metadata(head: &[u8], hints: &OpenHints) -> OpenHints {
     }
 }
 
-/// Read enough of the file to identify it and parse a header.
-pub(crate) fn probe_head(path: &Path) -> Result<Vec<u8>, IoError> {
+/// Read enough of the file to identify it and parse a header, with the stamp of what was read.
+fn probe_head(path: &Path) -> Result<(Vec<u8>, Option<write::SourceStamp>), IoError> {
     use std::io::Read;
 
     let mut file = File::open(path).map_err(|source| IoError::Open {
         path: path.to_owned(),
         source,
     })?;
+    let stamp = write::SourceStamp::of_file(&file).ok();
     // Generous enough for a RIFF chunk list with metadata in front of `data`.
     let mut head = vec![0u8; 64 << 10];
     let mut filled = 0;
@@ -191,14 +214,10 @@ pub(crate) fn probe_head(path: &Path) -> Result<Vec<u8>, IoError> {
             path: path.to_owned(),
         });
     }
-    Ok(head)
+    Ok((head, stamp))
 }
 
-fn open_wave(
-    path: &Path,
-    layout: WavLayout,
-    hints: &OpenHints,
-) -> Result<Box<dyn SampleSource>, IoError> {
+fn open_wave(path: &Path, layout: WavLayout, hints: &OpenHints) -> Result<Stamped, IoError> {
     let sample_type = hints.sample_type.unwrap_or(layout.sample_type);
     let meta = SignalMeta {
         sample_rate: hints.sample_rate.unwrap_or(layout.sample_rate),
@@ -222,18 +241,17 @@ fn open_wave(
         hints.gain_db,
         hints.level_scan_bytes,
     )
-    .map(|s| Box::new(s) as Box<dyn SampleSource>)
+    .map(|s| {
+        let stamp = s.stamp();
+        (Box::new(s) as Box<dyn SampleSource>, stamp)
+    })
     .map_err(|source| IoError::Source {
         path: path.to_owned(),
         source,
     })
 }
 
-fn open_raw(
-    path: &Path,
-    spec: RawSpec,
-    hints: &OpenHints,
-) -> Result<Box<dyn SampleSource>, IoError> {
+fn open_raw(path: &Path, spec: RawSpec, hints: &OpenHints) -> Result<Stamped, IoError> {
     let sample_type = hints.sample_type.unwrap_or(spec.sample_type);
     let sample_rate =
         hints
@@ -265,7 +283,10 @@ fn open_raw(
         hints.gain_db,
         hints.level_scan_bytes,
     )
-    .map(|s| Box::new(s) as Box<dyn SampleSource>)
+    .map(|s| {
+        let stamp = s.stamp();
+        (Box::new(s) as Box<dyn SampleSource>, stamp)
+    })
     .map_err(|source| IoError::Source {
         path: path.to_owned(),
         source,
@@ -277,7 +298,7 @@ fn open_decoded(
     container: &'static str,
     hints: &OpenHints,
     known: Option<&SignalMeta>,
-) -> Result<Box<dyn SampleSource>, IoError> {
+) -> Result<Stamped, IoError> {
     let wrap = |source| IoError::Source {
         path: path.to_owned(),
         source,
@@ -285,7 +306,10 @@ fn open_decoded(
 
     if let Some(meta) = known {
         return DecodedSource::reopen(meta, hints.gain_db)
-            .map(|source| Box::new(source) as Box<dyn SampleSource>)
+            .map(|source| {
+                let stamp = source.stamp();
+                (Box::new(source) as Box<dyn SampleSource>, stamp)
+            })
             .map_err(wrap);
     }
 
@@ -308,7 +332,10 @@ fn open_decoded(
             gain_db: hints.gain_db,
             scan_bytes: hints.level_scan_bytes,
         })
-        .map(|source| Box::new(source) as Box<dyn SampleSource>)
+        .map(|source| {
+            let stamp = source.stamp();
+            (Box::new(source) as Box<dyn SampleSource>, stamp)
+        })
         .map_err(wrap)
 }
 

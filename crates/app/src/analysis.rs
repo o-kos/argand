@@ -286,9 +286,8 @@ fn serve(
     mailbox: &Mailbox,
 ) {
     let opening_started = Instant::now();
-    let before = argand_io::write::SourceStamp::of(path).ok();
-    let source = match argand_io::open(path, hints) {
-        Ok(source) => source,
+    let (source, stamp) = match argand_io::open_stamped(path, hints) {
+        Ok(opened) => opened,
         Err(error) => {
             let _ = updates.try_send(Delivery {
                 prepared_at: Instant::now(),
@@ -310,10 +309,7 @@ fn serve(
                 FileInfo {
                     bytes: std::fs::metadata(path).ok().map(|meta| meta.len()),
                     sample_units: source.original_sample_units(),
-                    // Only a file that stayed the same while it was opened is the one that was read.
-                    stamp: before.filter(|stamp| {
-                        argand_io::write::SourceStamp::of(path).ok() == Some(*stamp)
-                    }),
+                    stamp,
                 },
             ),
         })

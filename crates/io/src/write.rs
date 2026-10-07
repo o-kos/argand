@@ -149,7 +149,7 @@ impl SourceStamp {
         fs::metadata(path).map(|metadata| Self::from_metadata(&metadata))
     }
 
-    fn of_file(file: &File) -> std::io::Result<Self> {
+    pub(crate) fn of_file(file: &File) -> std::io::Result<Self> {
         file.metadata()
             .map(|metadata| Self::from_metadata(&metadata))
     }
@@ -279,7 +279,7 @@ pub(crate) fn save_with_limit(
             let mut exacts: Vec<&mut Exact> = opened
                 .iter_mut()
                 .filter_map(|open| match &mut open.reader {
-                    Reader::Decode(exact) => Some(exact),
+                    Reader::Decode(exact) => Some(exact.as_mut()),
                     Reader::Copy { .. } => None,
                 })
                 .collect();
@@ -401,7 +401,7 @@ enum Reader {
     /// Byte copy through the handle the header was read from.
     Copy { input: File, layout: CopyLayout },
     /// Exact integers from a strict decoder.
-    Decode(Exact),
+    Decode(Box<Exact>),
 }
 
 /// A strict decoder whose values go back to integers of `bits`.
@@ -437,7 +437,10 @@ impl Opened {
         let reader = Reader::open(source, &mut input)?;
         let reader = match reader {
             Some(layout) => Reader::Copy { input, layout },
-            None => Reader::Decode(Exact::open(meta)?),
+            None => {
+                input.seek(SeekFrom::Start(0)).map_err(read_error)?;
+                Reader::Decode(Box::new(Exact::open(meta, input)?))
+            }
         };
         Ok(Self {
             reader,
@@ -807,9 +810,10 @@ fn copy_samples(
 
 impl Exact {
     /// Open the source again, refusing it if it is no longer the capture that was opened.
-    fn open(meta: &SignalMeta) -> Result<Self, WriteError> {
+    /// Decode the already checked `input`, refusing it if it is no longer the capture that was opened.
+    fn open(meta: &SignalMeta, input: File) -> Result<Self, WriteError> {
         let path = &meta.source;
-        let decoder = DecodedSource::open_exact(path, meta.container).map_err(|source| {
+        let decoder = DecodedSource::open_exact(input, path, meta.container).map_err(|source| {
             WriteError::Source {
                 path: path.clone(),
                 source,

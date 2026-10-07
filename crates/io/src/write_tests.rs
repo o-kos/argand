@@ -932,3 +932,21 @@ fn a_protected_file_renamed_since_is_still_recognised() {
     assert!(matches!(run(&request), Err(WriteError::SameFile { .. })));
     assert_eq!(fs::read(&archive).unwrap(), before);
 }
+
+#[test]
+fn opening_stamps_what_it_read_for_every_reader() {
+    let dir = TempDir::new("write-open-stamped");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let wav = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let raw = write_raw(&dir.join("b.raw"), i16.format, &signal(i16, 10), 1.0);
+    let flac = dir.join("c.flac");
+    write_flac_fixture(&flac, 2, 16, 3000);
+    let raw_hints = OpenHints {
+        raw: Some("iq_i16@48k".parse().unwrap()),
+        ..Default::default()
+    };
+    for (path, hints) in [(&wav, OpenHints::default()), (&raw, raw_hints), (&flac, OpenHints::default())] {
+        let (_, stamp) = crate::open_stamped(path, &hints).unwrap();
+        assert_eq!(stamp, SourceStamp::of(path).ok(), "{}", path.display());
+    }
+}

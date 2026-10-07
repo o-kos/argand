@@ -36,6 +36,8 @@ pub struct DecodedSource {
     strict: bool,
     /// The timestamp the next packet must carry in strict mode, so a dropped frame is noticed.
     next_ts: Option<u64>,
+    /// The decoded file as it was opened.
+    stamp: Option<crate::write::SourceStamp>,
 }
 
 /// Level policy for decoder-backed opening; an absent budget preserves full scans.
@@ -130,6 +132,26 @@ impl DecodedSource {
         known_len: Option<u64>,
     ) -> Result<Self, SourceError> {
         let file = File::open(path)?;
+        Self::open_file(
+            file,
+            path,
+            container,
+            center_freq,
+            sample_rate_override,
+            known_len,
+        )
+    }
+
+    /// Decode an already opened `file`, which is what the stamp is taken from.
+    fn open_file(
+        file: File,
+        path: &Path,
+        container: &'static str,
+        center_freq: Option<f64>,
+        sample_rate_override: Option<f64>,
+        known_len: Option<u64>,
+    ) -> Result<Self, SourceError> {
+        let stamp = crate::write::SourceStamp::of_file(&file).ok();
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
         let mut hint = Hint::new();
@@ -223,6 +245,7 @@ impl DecodedSource {
             exhausted: false,
             strict: false,
             next_ts: None,
+            stamp,
         };
 
         // STREAMINFO usually carries the length; when it does not, the only
@@ -370,11 +393,26 @@ impl DecodedSource {
         self
     }
 
-    /// A strict decoder of `path` that resolves its own length rather than trusting a known one.
-    pub(crate) fn open_exact(path: &Path, container: &'static str) -> Result<Self, SourceError> {
-        let mut source = Self::open_plain(path, container, Some(0.0), None, Some(0))?.strict();
+    /// The decoded file as it was when it was opened, read from the decoder's own handle.
+    pub fn stamp(&self) -> Option<crate::write::SourceStamp> {
+        self.stamp
+    }
+
+    /// A strict decoder of the already checked `file` that resolves its own length rather than trusting a known one.
+    pub(crate) fn open_exact(
+        file: File,
+        path: &Path,
+        container: &'static str,
+    ) -> Result<Self, SourceError> {
+        let mut source = Self::open_file(file, path, container, Some(0.0), None, Some(0))?.strict();
         if source.meta.len_samples == 0 {
             let mut counter = Self::open_plain(path, container, Some(0.0), None, Some(0))?.strict();
+            // The count comes from a second handle, which must be the same file as the first.
+            if counter.stamp != source.stamp || source.stamp.is_none() {
+                return Err(SourceError::Decode(
+                    "the file changed while it was counted".into(),
+                ));
+            }
             source.meta.len_samples = counter.count_samples()?;
         }
         Ok(source)
