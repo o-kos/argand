@@ -34,6 +34,8 @@ pub(super) struct PlotSnapshot {
     pub selection: Option<(f64, f64)>,
     /// A finished save, said over the picture until the next input.
     pub notice: Option<gpui_kit::SharedString>,
+    /// Which edit commands the spectrum's context menu can offer.
+    pub edit: super::editing_ui::EditCommands,
 }
 
 /// What the plot asks of the shell.
@@ -390,6 +392,8 @@ impl Render for PlotView {
             .min_h_0()
             .relative()
             .child(self.surface(&snapshot, cx))
+            .children(self.spectrum_context_menu(&snapshot, cx))
+            .children(self.paste_marker(&snapshot, cx))
             .children(self.time_context_menu(&snapshot, cx))
             .children(
                 self.panel_bounds
@@ -547,6 +551,7 @@ mod tests {
             pointer_in_window: true,
             selection: None,
             notice: None,
+            edit: Default::default(),
         }
     }
 

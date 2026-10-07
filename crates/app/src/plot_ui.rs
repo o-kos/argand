@@ -56,6 +56,7 @@ impl Shell {
                 Some(saving_ui::Notice::Saved(name)) => Some(format!("Saved {name}").into()),
                 _ => None,
             },
+            edit: self.edit_commands_available(),
         })
     }
 
@@ -346,6 +347,40 @@ impl PlotView {
                 )
                 .into_any_element(),
         )
+    }
+
+    /// The line marking where Paste here inserts, while the spectrum's menu is open.
+    pub(super) fn paste_marker(
+        &self,
+        snapshot: &PlotSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
+        self.open_menu.as_ref()?;
+        let at = self.paste_point?;
+        let spectrum = self.geometry?.spectrum;
+        let origin = self.panel_bounds?.origin;
+        let view = snapshot.extents.time.view;
+        let fraction =
+            (at.saturating_sub(view.start) as f64 / view.len.max(1) as f64).clamp(0.0, 1.0) as f32;
+        let ink = cx.theme().foreground;
+        let paper = cx.theme().background;
+        let line = div().absolute().bg(ink).border_color(paper);
+        let marker = if snapshot.extents.orientation.vertical() {
+            let y = spectrum.top() + spectrum.size.height * fraction - origin.y;
+            line.left(spectrum.left() - origin.x)
+                .top(y - px(1.))
+                .w(spectrum.size.width)
+                .h(px(3.))
+                .border_y_1()
+        } else {
+            let x = spectrum.left() + spectrum.size.width * fraction - origin.x;
+            line.left(x - px(1.))
+                .top(spectrum.top() - origin.y)
+                .w(px(3.))
+                .h(spectrum.size.height)
+                .border_x_1()
+        };
+        Some(marker.into_any_element())
     }
 
     pub(super) fn ruler_zoom_buttons(
