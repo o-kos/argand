@@ -176,7 +176,7 @@ impl Shell {
             Ok(_) => self.edited(window, cx),
             Err(error) => {
                 self.save_notice =
-                    Some(saving_ui::Notice::Failed(format!("Cannot paste: {error}")));
+                    Some(saving_ui::Notice::Failed("Cannot paste", error.to_string()));
                 cx.notify();
             }
         }

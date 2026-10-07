@@ -22,10 +22,11 @@ pub(super) struct Saving {
     )>,
 }
 
-/// How the last save ended, shown until it is closed or another save starts.
+/// How the last save ended, or why an edit was refused, shown until it is closed.
 pub(super) enum Notice {
     Saved(String),
-    Failed(String),
+    /// What failed, as a short title, and why.
+    Failed(&'static str, String),
 }
 
 impl Shell {
@@ -158,7 +159,9 @@ impl Shell {
                         self.saved(saved.path, reopen, pending, window, cx);
                     }
                     Outcome::Cancelled => self.save_notice = None,
-                    Outcome::Failed(error) => self.save_notice = Some(Notice::Failed(error)),
+                    Outcome::Failed(error) => {
+                        self.save_notice = Some(Notice::Failed("Save failed", error));
+                    }
                 }
             }
         }
@@ -219,8 +222,8 @@ impl Shell {
     /// The status-bar item for a save in progress or the last one's outcome.
     pub(super) fn save_item(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let failure = match &self.save_notice {
-            Some(Notice::Failed(error)) if self.saving.is_none() => Some(MetadataHint {
-                title: "Save failed",
+            Some(Notice::Failed(title, error)) if self.saving.is_none() => Some(MetadataHint {
+                title,
                 value: error.clone(),
                 explanation: String::new(),
                 rows: Vec::new(),
@@ -242,7 +245,7 @@ impl Shell {
                 };
                 (text, false, true)
             }
-            (None, Some(Notice::Failed(error))) => (format!("Save failed: {error}"), true, true),
+            (None, Some(Notice::Failed(title, error))) => (format!("{title}: {error}"), true, true),
             (None, Some(Notice::Saved(_)) | None) => return None,
         };
         let close = Button::new("save-close")

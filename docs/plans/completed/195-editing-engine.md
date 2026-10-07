@@ -23,7 +23,7 @@ Agreed with the owner:
 
 1. **Scope**: the engine, delete (#195), copy, cut and paste (#196), Save as of the edited capture. Ctrl+S is #193.
 2. **No cursor.** There is no playback here, so no insertion cursor. A right click on the spectrogram opens a context menu: Cut, Copy, Paste here (inserting at the clicked sample, marked by a line while the menu is open), Replace selection, Delete. Ctrl+V replaces the selection and is disabled without one.
-3. **Clipboard**: Argand's own, never the system's. It holds a reference (file, hints, stamp, ranges), not samples, so copying an hour is immediate, and it outlives opening another file. Pasting into another capture needs the same sample rate and sample type (I/Q or real included); otherwise it is refused with the reason, conversion being #189. A source that changed on disk since it was copied is refused.
+3. **Clipboard**: Argand's own, never the system's. It holds a reference (file, hints, stamp, ranges), not samples, so copying an hour is immediate, and it outlives opening another file. Pasting into another capture needs the same sample rate and sample type (I/Q or real included); otherwise it is refused with the reason, conversion being #189. A source that changed on disk since it was copied is refused when the capture is saved, by the writer's stamp check; pasting does not read metadata on the window's thread.
 4. **Keys and menu**: an Edit menu between File and View. Undo Ctrl+Z, Redo Ctrl+Shift+Z (Ctrl+Y as well on Windows), Cut Ctrl+X, Copy Ctrl+C, Paste Ctrl+V, Delete the Delete key; Cmd on macOS.
 5. **Unsaved edits**: a `•` before the name in both titles. Opening another file or closing the window first asks natively: Save as…, Discard, Cancel.
 6. **Save as of the whole edited capture** turns the window to the saved file: no edits, an empty undo history, its name in the titles; the view and the selection stay. Save selection as leaves the document as it was.
@@ -47,22 +47,22 @@ Derived here:
 
 ## Implementation steps
 
-- [ ] `argand-edit`: `Capture`, `Piece`, `Clip`, `History`, with property tests (random edit sequences against a plain vector model).
-- [ ] `EditedSource` over a capture and opened sources, tested against the same model through `SampleSource`.
-- [ ] `argand-io::write`: segments of several sources, `Storage` and compatibility, FLAC and WAVE outputs over several segments, tests.
-- [ ] Analysis worker and minimap: capture versions, per-source envelopes and composition, the backdrop on an edit.
-- [ ] Shell: source table, history, delete, cut, copy, paste, undo, redo, selection after each, unsaved state and titles.
-- [ ] Edit menu and the spectrogram context menu with the paste line; key bindings.
-- [ ] Questions before opening another file and closing the window; Save as of an edited capture turning the window to the saved file.
-- [ ] Headless tests for commands, availability, history and unsaved state; native checks for the context menu (#144).
-- [ ] Update `AGENTS.md`, `IMPLEMENTATION_PLAN.md` and `CHANGELOG.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] `argand-edit`: `Capture`, `Piece`, `Clip`, `History`, with property tests (random edit sequences against a plain vector model).
+- [x] `EditedSource` over a capture and opened sources, tested against the same model through `SampleSource`.
+- [x] `argand-io::write`: segments of several sources, `Storage` and compatibility, FLAC and WAVE outputs over several segments, tests.
+- [x] Analysis worker and minimap: capture versions, per-source envelopes and composition, the backdrop on an edit.
+- [x] Shell: source table, history, delete, cut, copy, paste, undo, redo, selection after each, unsaved state and titles.
+- [x] Edit menu and the spectrogram context menu with the paste line; key bindings.
+- [x] Questions before opening another file and closing the window; Save as of an edited capture turning the window to the saved file.
+- [x] Headless tests for commands, availability, history and unsaved state; the context menu cannot open headless (#144), so it is a native check.
+- [x] Update `AGENTS.md`, `IMPLEMENTATION_PLAN.md` and `CHANGELOG.md`.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] The owner checks the release binary: delete, cut, copy and paste on a multi-hour capture, across two files, undo and redo, the questions on unsaved edits, Save as of an edited capture.

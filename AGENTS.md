@@ -40,7 +40,7 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 - **argand-core:** domain types such as `Signal`, real or complex sample metadata, `Selection`, and units. It also owns toolkit-independent render view models such as `WaveformEnvelope`, `DbGrid`, `SpectrogramImage`, and primitive lists, and the axis tick layout in `argand-core::axis`, which measures candidate labels through the `LabelMeasure` trait so that every front end places its marks by one policy. A view model's shape fields are the caller's to set, so its accessors check every coordinate against the declared shape and settle the product with `checked_mul`; one index past the end of a row is a valid offset into the next one, so an unchecked read answers with a neighbour's data that looks like a picture. The accessors differ in how strict they are, and the difference is deliberate. `SpectrogramImage::get` and `put` settle the whole buffer through `shape()` and answer nothing until it matches. `DbGrid::column`, `DbGrid::value` and `WaveformEnvelope::column` do not consult `shape()`; they check the one coordinate, settle that offset with `checked_mul` and take the cell from the slice, so a cell inside the declared shape stays readable where the buffer runs longer than that shape. It must not depend on GUI or heavy DSP code.
 - **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, resampling helpers, and frequency shifting. Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
 - **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see "Saving (#186)"). This is the future connection point for custom formats through the worker.
-- **argand-edit:** a planned editing engine using a piece table over the memory-mapped original and inserted buffers, a command stack for undo and redo, and a clipboard.
+- **argand-edit:** the editing engine: an immutable piece table (`Capture`) over the files a capture reads, `Clip`s of it, a `History` of versions for undo and redo, and `EditedSource`, a `SampleSource` reading a capture through one opened source per `SourceId` (see "Editing (#195, #196)"). It depends on `argand-core` only.
 - **argand-app:** the application binary, `argand`, using the GPUI Kit facade over GPUI and gpui-component. It opens a signal file, analyses it on a thread of its own, and draws the spectrogram with axes. Its modules divide by whether they name a toolkit: `config.rs`, `session.rs`, `document.rs` and `analysis.rs` do not and are tested without a window, while `shell.rs`, `chrome.rs`, `axes.rs` and `spectrogram.rs` do. It will further own cursors, selections, scrolling, transport, and the detailed spectrum window. This is the single shipped binary alongside `aspec`.
 - **argand-worker:** a planned processing worker binary that loads C ABI libraries and communicates through a stdio protocol. It is deferred.
 - **argand-abi:** planned C ABI contract and protocol types. It is deferred.
@@ -459,9 +459,13 @@ an odd bit depth there is refused. A seek that lands after its sample fails, and
 stream without a length is counted by the strict decoder. A WAVE output that needs RF64
 in a layout the native reader declines (24-bit) is refused, because Argand could not open
 it again, until #192 reads 24-bit natively. A WAVE output whose RIFF size
-would exceed `u32` is RF64. Stored values are written, never normalized ones. `SaveRequest::stamp`, a `SourceStamp` (length, modification time, device and
-inode on Unix) the shell takes when the file describes itself, must match the handle read,
-and the target must not be that file just before the rename. Output goes to
+would exceed `u32` is RF64. Stored values are written, never normalized ones. A `SaveRequest` names
+`SourceFile`s and `Segment`s of them, written in order; every source must share one
+`Storage` (`write::storage`: linear `fmt ` layout, or FLAC depth) and the sample rate, and
+the first sets the output format. Each `SourceFile::stamp`, a `SourceStamp` (length,
+modification time, device and inode on Unix) taken off the window's thread after the file
+describes itself, must match the handle read, and the target must be none of the files
+read, also just before the rename. Output goes to
 `.argand-<pid>-<n>.part` beside the target, created with `create_new` so no existing path
 is ever opened for writing, then synced, checked for cancellation and renamed over the
 target; any error or cancellation removes it. The source is never a valid target
@@ -492,6 +496,38 @@ them in both orientations, taking no input), saying when a FLAC source was saved
 until the next mouse press, key, wheel or mouse move. A cancellation shows nothing. Each save
 start is logged at info with its source, target and span. A save
 outlives opening another file, but the file it is writing cannot be opened until it ends.
+
+## Editing (#195, #196)
+
+`editing.rs` (toolkit-neutral) keeps one document's `Editing`: a source table indexed by
+`SourceId` (0 is the opened file, each with its `SignalMeta`, hints, and the stamp and
+`Storage` a background task reads after opening), a `History` whose state is the selection
+each version left, and one minimap envelope per source. The `Clipboard` lives on the shell,
+outlives the document, and holds a `Clip` with the files it reads, never samples. Pasting
+reuses a source with the same path and stamp and otherwise adds one, refusing a file whose
+`Storage` or sample rate differs, or whose storage is not known yet; a source changed on
+disk since is refused when saved, by the writer's stamp check. After delete and cut nothing
+is selected; after paste the pasted samples are; undo and redo restore each version's
+selection.
+
+`editing_ui.rs` owns the commands. There is no insertion cursor: a right click on the
+spectrogram (`PlotView::spectrum_context_menu`) offers Cut, Copy, Paste here, Replace
+selection and Delete, Paste here going before the clicked sample (`PlotView::paste_point`,
+kept past the menu's dismissal because its action arrives after it) and marked by a line
+while the menu is open. The Edit menu sits between File and View. Keys, in the `Plot`
+context and Cmd on macOS: Ctrl+Z, Ctrl+Shift+Z (and Ctrl+Y on Windows), Ctrl+X, Ctrl+C,
+Ctrl+V (replace the selection, disabled without one) and Delete. `Shell::edited` follows
+every version: the document's length, `Analyst::set_edit` (a new edit version is a new
+analysis generation, and the worker reads every capture through an `EditedSource` that opens
+pasted files with `argand_io::reopen`), the selection, the view through `bound_view`, the
+backdrop dropped, the minimap composed (`minimap::compose`, mapping each cell through the
+capture onto the source envelopes' cells, so no edit rescans; a pasted file gets its own
+envelope built once), and both titles, which carry `•` while edits are unsaved. Opening
+another file or closing the window with unsaved edits asks natively (`Window::prompt`, the
+close refused in `on_window_should_close` and carried out after the answer): Save as…,
+Discard, Cancel; a save asked for that way does what waited once it is written. Save as of
+the whole edited capture opens the saved file, keeping the view and selection
+(`Reopening`). Saving over the open file is #193.
 
 ## Ruler marks and grid visibility (#71, #72)
 

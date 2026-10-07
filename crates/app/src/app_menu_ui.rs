@@ -1925,7 +1925,7 @@ mod tests {
         let (shell, cx) = open_window(cx);
         open_capture(cx, &shell);
         shell.update_in(cx, |shell, _, cx| {
-            shell.save_notice = Some(saving_ui::Notice::Failed("disk full".into()));
+            shell.save_notice = Some(saving_ui::Notice::Failed("Save failed", "disk full".into()));
             cx.notify();
         });
         draw(cx);
@@ -1944,7 +1944,7 @@ mod tests {
         let notice = |cx: &mut gpui_kit::VisualTestContext| {
             shell.read_with(cx, |shell, _| match &shell.save_notice {
                 Some(saving_ui::Notice::Saved(_)) => "saved",
-                Some(saving_ui::Notice::Failed(_)) => "failed",
+                Some(saving_ui::Notice::Failed(..)) => "failed",
                 None => "none",
             })
         };
@@ -1968,7 +1968,7 @@ mod tests {
         draw(cx);
         assert_eq!(notice(cx), "none", "a move takes it away too");
         shell.update_in(cx, |shell, _, cx| {
-            shell.save_notice = Some(saving_ui::Notice::Failed("disk full".into()));
+            shell.save_notice = Some(saving_ui::Notice::Failed("Save failed", "disk full".into()));
             cx.notify();
         });
         draw(cx);
