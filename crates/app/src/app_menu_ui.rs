@@ -1894,7 +1894,10 @@ mod tests {
                     divisor: 32_768.0,
                     source: fixture.clone(),
                 },
-                FileInfo::default(),
+                FileInfo {
+                    stamp: argand_io::write::SourceStamp::of(&fixture).ok(),
+                    ..FileInfo::default()
+                },
             ));
             shell.start_editing(cx);
             cx.notify();

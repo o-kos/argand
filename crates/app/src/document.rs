@@ -194,6 +194,11 @@ impl Document {
         self.meta.as_ref()
     }
 
+    /// The file's stamp as the analysis thread took it when it opened the file.
+    pub fn stamp(&self) -> Option<argand_io::write::SourceStamp> {
+        self.file_info.stamp
+    }
+
     /// Drop the picture of a version that is no longer the one shown.
     pub fn forget_picture(&mut self) {
         self.analysis = None;

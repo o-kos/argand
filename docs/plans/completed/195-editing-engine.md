@@ -38,6 +38,16 @@ Derived here:
 - **Selection after an edit**: none after delete and cut; the inserted range after paste; undo and redo restore the selection the version had.
 - **Levels**: each source keeps its own normalization when displayed; saved files keep stored values, as in #186.
 
+## Review
+
+Reviewer `gpt-6.1-sol` high, three rounds.
+
+- Round 1 (3 blockers, 8 majors, 5 minors, a nit): the Linux close button bypassed the unsaved question, a save finishing after later edits marked them saved and reopened over them, a waiting action leaked into unrelated saves, an empty capture panicked on save, a file opened another way was taken for the same source, the open file could be overwritten when none of it remained, the output took the first source's metadata, a stale picture let edits land on other samples, saves ran before stamps were known, plus envelope scans, cell rounding and the reopen condition. All fixed. Declined: the comment nit on doc comments.
+- Round 2 (1 blocker, 3 majors, 1 minor): the protected file was missed after a rename, an early clipboard never learned its storage, Undo had no binding without a plot, inherited `replacement` suppressed previews after an edit. All fixed; my earlier refusal to reset `replacement` was wrong.
+- Round 3 (2 blockers, 1 major, 1 minor): the stamp was taken by path after opening, so a file replaced meanwhile could be trusted, and a late check could not tell two openings of one path apart; Ctrl+Y missing in the Shell context. Fixed: the analysis thread takes the stamp around opening and the storage check answers by document id. Not fixed: on Windows a renamed protected file is not recognised, because std has no stable file ID; that needs the owner's decision.
+
+What the plan missed: it treated a file's identity as a path plus a later check, and edits as a picture change like navigation. Both are now decisions above; the next plan touching files must say where a file's identity is taken and how long it holds.
+
 ## Rejected alternatives
 
 - An insertion cursor: implies playback, which Argand does not have.

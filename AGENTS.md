@@ -503,8 +503,10 @@ outlives opening another file, but the file it is writing cannot be opened until
 ## Editing (#195, #196)
 
 `editing.rs` (toolkit-neutral) keeps one document's `Editing`: a source table indexed by
-`SourceId` (0 is the opened file, each with its `SignalMeta`, hints, and the stamp and
-`Storage` a background task reads after opening), a `History` whose state is the selection
+`SourceId` (0 is the opened file, each with its `SignalMeta`, hints, the stamp the analysis
+thread takes around opening the file (`FileInfo::stamp`, kept only when it did not change
+while opening), and the `Storage` a background task reads afterwards, applied only to the
+document that asked by its id and to clipboard copies with the same stamp), a `History` whose state is the selection
 each version left, and one minimap envelope per source. The `Clipboard` lives on the shell,
 outlives the document, and holds a `Clip` with the files it reads, never samples. Pasting
 reuses a source with the same path, stamp, hints, sample type and rate and otherwise adds one, refusing a file whose
@@ -520,7 +522,7 @@ kept past the menu's dismissal because its action arrives after it) and marked b
 while the menu is open. The Edit menu sits between File and View. Keys, in the `Plot`
 context and Cmd on macOS: Ctrl+Z, Ctrl+Shift+Z (and Ctrl+Y on Windows), Ctrl+X, Ctrl+C,
 Ctrl+V (replace the selection, disabled without one) and Delete; Undo and Redo are bound in
-the `Shell` context as well, for a capture edited down to no plot. `Shell::edited` follows
+the `Shell` context as well (Ctrl+Y on Windows too), for a capture edited down to no plot. `Shell::edited` follows
 every version: the document's length, `Analyst::set_edit` (a new edit version is a new
 analysis generation that previews as a first analysis does, and the worker reads every capture through an `EditedSource` that opens
 pasted files with `argand_io::reopen`), the selection, the view through `bound_view`, the

@@ -61,16 +61,12 @@ pub struct Clipboard {
 }
 
 impl Clipboard {
-    /// Take what a background check learned about a file the clipboard was copied from before it finished.
-    pub fn describe(
-        &mut self,
-        opened: &Source,
-        stamp: Option<SourceStamp>,
-        storage: Option<Storage>,
-    ) {
+    /// Take how a file stores its samples, for copies made before that was known.
+    ///
+    /// The stamp taken at opening tells this file apart from another opened at the same path.
+    pub fn describe(&mut self, opened: &Source, storage: Option<Storage>) {
         for source in &mut self.sources {
-            if source.stamp.is_none() && source.same_file(opened) {
-                source.stamp = stamp;
+            if source.storage.is_none() && opened.stamp.is_some() && source.same_file(opened) {
                 source.storage = storage;
             }
         }
@@ -163,11 +159,6 @@ impl Editing {
     /// The file the capture was opened from.
     pub fn file(&self) -> &Source {
         &self.sources[0]
-    }
-
-    /// Whether `source` is this capture's own file as it was opened, before its check finished.
-    pub fn is_file(&self, source: &Source) -> bool {
-        self.file().stamp.is_none() && self.file().same_file(source)
     }
 
     /// Record what was learned about the opened file off the window's thread.

@@ -98,44 +98,43 @@ impl Shell {
             return;
         };
         let hints = file.state.document.origin().hints.clone();
+        let stamp = file.state.document.stamp();
         let source = argand_io::write::SourceFile {
             meta: meta.clone(),
             hints: hints.clone(),
-            stamp: None,
+            stamp,
         };
-        let opened = crate::editing::Source::new(meta.clone(), hints.clone());
-        file.editing = Some(Editing::new(meta, hints));
-        // Metadata may live on a network mount, so it is read away from the window.
-        let described = cx.background_spawn(async move {
-            let stamp = argand_io::write::SourceStamp::of(&source.meta.source).ok();
-            let storage = argand_io::write::storage(&source).ok();
-            (stamp, storage)
-        });
-        // Not tied to the document, because a clipboard copied from it may outlive it.
+        let mut editing = Editing::new(meta, hints);
+        editing.describe_file(stamp, None);
+        file.editing = Some(editing);
+        let document = file.id;
+        // Reading the header may touch a network mount, so it happens away from the window.
+        let storage = cx.background_spawn(async move { argand_io::write::storage(&source).ok() });
         cx.spawn(async move |shell, cx| {
-            let (stamp, storage) = described.await;
-            let _ = shell.update(cx, |shell, cx| {
-                shell.file_described(&opened, stamp, storage, cx)
-            });
+            let storage = storage.await;
+            let _ = shell.update(cx, |shell, cx| shell.file_stored(document, storage, cx));
         })
         .detach();
     }
 
-    /// Record the file's stamp and storage, in its edits and in a clipboard copied before they were known.
-    fn file_described(
+    /// Record how the file of `document` stores its samples, in its edits and in a clipboard copied from it.
+    fn file_stored(
         &mut self,
-        opened: &crate::editing::Source,
-        stamp: Option<argand_io::write::SourceStamp>,
+        document: u64,
         storage: Option<argand_io::write::Storage>,
         cx: &mut Context<Self>,
     ) {
-        if let Some(editing) = self.editing_mut()
-            && editing.is_file(opened)
-        {
-            editing.describe_file(stamp, storage);
-        }
+        let Some(file) = self.file.as_mut().filter(|file| file.id == document) else {
+            return;
+        };
+        let Some(editing) = file.editing.as_mut() else {
+            return;
+        };
+        let stamp = editing.file().stamp;
+        editing.describe_file(stamp, storage);
+        let opened = editing.file().clone();
         if let Some(clipboard) = &mut self.clipboard {
-            clipboard.describe(opened, stamp, storage);
+            clipboard.describe(&opened, storage);
         }
         cx.notify();
     }

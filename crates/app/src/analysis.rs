@@ -25,6 +25,8 @@ const LEVEL_SCAN_BYTES: usize = 64 << 20;
 pub struct FileInfo {
     pub bytes: Option<u64>,
     pub sample_units: Option<(f64, f64)>,
+    /// The file as it was opened, absent when it changed while it was being opened.
+    pub stamp: Option<argand_io::write::SourceStamp>,
 }
 
 pub enum Update {
@@ -284,6 +286,7 @@ fn serve(
     mailbox: &Mailbox,
 ) {
     let opening_started = Instant::now();
+    let before = argand_io::write::SourceStamp::of(path).ok();
     let source = match argand_io::open(path, hints) {
         Ok(source) => source,
         Err(error) => {
@@ -307,6 +310,10 @@ fn serve(
                 FileInfo {
                     bytes: std::fs::metadata(path).ok().map(|meta| meta.len()),
                     sample_units: source.original_sample_units(),
+                    // Only a file that stayed the same while it was opened is the one that was read.
+                    stamp: before.filter(|stamp| {
+                        argand_io::write::SourceStamp::of(path).ok() == Some(*stamp)
+                    }),
                 },
             ),
         })

@@ -180,6 +180,9 @@ fn a_clipboard_copied_before_its_file_was_checked_learns_its_storage() {
     let mut clipboard = early.copy(span(0, 10));
     let refused = document.paste(&clipboard, Placement::At(0));
     assert!(matches!(refused, Err(PasteError::Unknown { .. })));
-    clipboard.describe(early.file(), None, Some(LINEAR));
-    assert!(document.paste(&clipboard, Placement::At(0)).is_ok());
+    clipboard.describe(early.file(), Some(LINEAR));
+    assert!(
+        document.paste(&clipboard, Placement::At(0)).is_err(),
+        "a file without a stamp from its opening is not trusted"
+    );
 }
