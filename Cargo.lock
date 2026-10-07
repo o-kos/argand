@@ -280,6 +280,7 @@ dependencies = [
  "anyhow",
  "argand-core",
  "argand-dsp",
+ "argand-edit",
  "argand-io",
  "async-channel",
  "clap",

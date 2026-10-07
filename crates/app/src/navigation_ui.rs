@@ -341,7 +341,7 @@ impl Shell {
         self.plot.map_or(1, |plot| plot.width)
     }
 
-    fn sample_count(&self) -> Option<u64> {
+    pub(super) fn sample_count(&self) -> Option<u64> {
         Some(self.file.as_ref()?.state.document.meta()?.len_samples)
     }
 

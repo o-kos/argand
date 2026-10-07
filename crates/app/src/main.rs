@@ -18,6 +18,7 @@ mod cli;
 mod config;
 mod cpu;
 mod document;
+mod editing;
 mod execution;
 mod frequency;
 mod minimap;

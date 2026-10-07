@@ -99,6 +99,11 @@ impl EnvelopeBuilder {
         }
     }
 
+    /// Samples of the signal the envelope spans.
+    pub fn total_samples(&self) -> u64 {
+        self.total_samples
+    }
+
     pub fn finish(mut self, t0: f64, t1: f64) -> WaveformEnvelope {
         self.fill_gaps();
         WaveformEnvelope {

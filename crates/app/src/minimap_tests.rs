@@ -155,3 +155,48 @@ fn viewport_uses_exact_sample_bounds_and_shared_device_pixel_edges() {
         assert_eq!(viewport(View { start: 0, len: 1 }, u64::MAX, columns), (0., 1. / columns as f64));
     }
 }
+
+/// A real source envelope whose cell `n` spans `n - 0.5 .. n + 0.5`.
+fn ramp_snapshot(cells: usize, samples: u64) -> Arc<Snapshot> {
+    let mut envelope = WaveformEnvelope::new(cells, 1);
+    for cell in 0..cells {
+        envelope.min[cell] = cell as f32 - 0.5;
+        envelope.max[cell] = cell as f32 + 0.5;
+    }
+    Arc::new(finished(envelope, true, samples))
+}
+
+#[test]
+fn composing_the_untouched_capture_gives_the_source_envelope_back() {
+    let source = ramp_snapshot(100, 100);
+    let capture = argand_edit::Capture::whole(argand_edit::SourceId(0), 100);
+    let composed = compose(&capture, &[Some(source.clone())], 1, 10.0);
+    assert!(composed.complete);
+    assert_eq!(composed.envelope.min, source.envelope.min);
+    assert_eq!(composed.envelope.max, source.envelope.max);
+    assert_eq!(composed.envelope.t1, 10.0);
+}
+
+#[test]
+fn a_deleted_stretch_leaves_the_minimap_at_once() {
+    let source = ramp_snapshot(100, 100);
+    let whole = argand_edit::Capture::whole(argand_edit::SourceId(0), 100);
+    let capture = whole.delete(argand_core::SampleSpan::between(20, 80).unwrap());
+    let composed = compose(&capture, &[Some(source)], 1, 10.0);
+    assert_eq!(composed.samples, 40);
+    assert_eq!(composed.envelope.columns, 40);
+    assert_eq!(composed.envelope.max[19], 19.5);
+    assert_eq!(composed.envelope.min[20], 79.5);
+}
+
+#[test]
+fn a_source_without_an_envelope_yet_is_drawn_empty_and_incomplete() {
+    let source = ramp_snapshot(10, 10);
+    let pasted = argand_edit::Capture::whole(argand_edit::SourceId(1), 5)
+        .copy(argand_core::SampleSpan::between(0, 5).unwrap());
+    let capture = argand_edit::Capture::whole(argand_edit::SourceId(0), 10).insert(10, &pasted);
+    let composed = compose(&capture, &[Some(source), None], 1, 1.0);
+    assert!(!composed.complete);
+    assert_eq!(composed.envelope.max[12], 0.0);
+    assert_eq!(composed.envelope.max[9], 9.5);
+}

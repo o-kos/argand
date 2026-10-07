@@ -194,6 +194,13 @@ impl Document {
         self.meta.as_ref()
     }
 
+    /// Follow an edit that made the capture this long.
+    pub fn set_len(&mut self, len: u64) {
+        if let Some(meta) = &mut self.meta {
+            meta.len_samples = len;
+        }
+    }
+
     pub fn analysis(&self) -> Option<&Analysis> {
         self.analysis
             .as_ref()

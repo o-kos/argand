@@ -381,7 +381,7 @@ fn completed_minimap_extrema_survive_navigation_and_no_waveform_spectral_results
     let mut envelope = argand_core::WaveformEnvelope::new(2, 2);
     envelope.min = vec![-0.8, -0.5, -0.3, -0.4];
     envelope.max = vec![0.7, 0.6, 0.2, 0.9];
-    let mut snapshot = crate::minimap::Snapshot { envelope, full_scale: 0.9, complete: false };
+    let mut snapshot = crate::minimap::Snapshot { envelope, full_scale: 0.9, complete: false, samples: 2 };
     document.minimap_ready(&snapshot);
     assert!(document.sample_extrema.is_none());
     snapshot.complete = true;

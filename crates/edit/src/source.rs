@@ -75,6 +75,10 @@ impl EditedSource {
         self.positioned = None;
     }
 
+    pub fn has_source(&self, id: SourceId) -> bool {
+        self.sources.get(id.0 as usize).is_some_and(Option::is_some)
+    }
+
     fn source(&mut self, id: SourceId) -> Result<&mut Box<dyn SampleSource>, SourceError> {
         self.sources
             .get_mut(id.0 as usize)

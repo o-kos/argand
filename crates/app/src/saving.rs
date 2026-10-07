@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use argand_core::{SampleSpan, SignalMeta};
-use argand_io::write::{SaveRequest, Saved, SourceFile, SourceStamp, WriteError, save};
+use argand_io::write::{SaveRequest, Saved, WriteError, save};
 
 /// How often progress crosses to the window.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -108,22 +108,6 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
     }
-}
-
-/// The request for saving `span`, or the whole capture, to `target`.
-pub fn request(
-    meta: &SignalMeta,
-    hints: &argand_io::OpenHints,
-    span: Option<SampleSpan>,
-    target: PathBuf,
-    stamp: Option<SourceStamp>,
-) -> SaveRequest {
-    let source = SourceFile {
-        meta: meta.clone(),
-        hints: hints.clone(),
-        stamp,
-    };
-    SaveRequest::span(source, span, target)
 }
 
 /// The folder the dialog opens in, which is the source's own.

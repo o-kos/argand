@@ -15,6 +15,11 @@ pub(super) struct Saving {
     open_refused: bool,
     /// Why a FLAC source is written as WAVE, said once it is saved.
     as_wave: Option<String>,
+    /// The view and selection to keep when the saved file replaces the edited capture.
+    reopen: Option<(
+        Option<crate::navigation::View>,
+        Option<argand_core::SampleSpan>,
+    )>,
 }
 
 /// How the last save ended, shown until it is closed or another save starts.
@@ -50,24 +55,27 @@ impl Shell {
         self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);
         cx.notify();
-        let Some(file) = &self.file else { return };
-        let Some(meta) = file.state.document.meta().cloned() else {
+        let Some(editing) = self.editing() else {
             return;
         };
-        let hints = file.state.document.origin().hints.clone();
-        let stamp = file.stamp;
         let span = if selection_only { self.selection } else { None };
-        let as_wave = argand_io::write::writes_as_wave(&meta, &hints);
-        let name = saving::suggested_name(&meta, as_wave, span);
-        let chosen = cx.prompt_for_new_path(&saving::directory(&meta.source), Some(&name));
+        let output = editing.file();
+        let as_wave = argand_io::write::writes_as_wave(&output.meta, &output.hints);
+        let name = saving::suggested_name(&output.meta, as_wave, span);
+        let directory = saving::directory(&output.meta.source);
+        let mut request = editing.save_request(span, std::path::PathBuf::new());
+        // Saving the whole edited capture turns the window to the saved file.
+        let reopen =
+            (!selection_only && !editing.is_untouched()).then_some((self.view, self.selection));
+        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
             // A cancelled dialog, a platform without one, and a failed dialog all mean no target.
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
             };
-            let request = saving::request(&meta, &hints, span, target, stamp);
+            request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
-                shell.start_save(request, window, cx)
+                shell.start_save(request, reopen, window, cx)
             });
         })
         .detach();
@@ -76,6 +84,10 @@ impl Shell {
     fn start_save(
         &mut self,
         request: argand_io::write::SaveRequest,
+        reopen: Option<(
+            Option<crate::navigation::View>,
+            Option<argand_core::SampleSpan>,
+        )>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -103,7 +115,9 @@ impl Shell {
         self.save_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 if shell
-                    .update_in(cx, |shell, _, cx| shell.receive_save(update, cx))
+                    .update_in(cx, |shell, window, cx| {
+                        shell.receive_save(update, window, cx)
+                    })
                     .is_err()
                 {
                     break;
@@ -118,11 +132,12 @@ impl Shell {
             progress: None,
             open_refused: false,
             as_wave,
+            reopen,
         });
         cx.notify();
     }
 
-    fn receive_save(&mut self, update: Update, cx: &mut Context<Self>) {
+    fn receive_save(&mut self, update: Update, window: &mut Window, cx: &mut Context<Self>) {
         match update {
             Update::Progress { done, total } => {
                 if let Some(saving) = &mut self.saving {
@@ -130,18 +145,51 @@ impl Shell {
                 }
             }
             Update::Finished(outcome) => {
-                let as_wave = self.saving.take().and_then(|saving| saving.as_wave);
-                self.save_notice = match outcome {
-                    Outcome::Saved(saved) => Some(Notice::Saved(match as_wave {
-                        Some(reason) => format!("{} {reason}", file_name(&saved.path)),
-                        None => file_name(&saved.path),
-                    })),
-                    Outcome::Cancelled => None,
-                    Outcome::Failed(error) => Some(Notice::Failed(error)),
-                };
+                let finished = self.saving.take();
+                let as_wave = finished.as_ref().and_then(|saving| saving.as_wave.clone());
+                let reopen = finished.and_then(|saving| saving.reopen);
+                let pending = self.after_save.take();
+                match outcome {
+                    Outcome::Saved(saved) => {
+                        self.save_notice = Some(Notice::Saved(match as_wave {
+                            Some(reason) => format!("{} {reason}", file_name(&saved.path)),
+                            None => file_name(&saved.path),
+                        }));
+                        self.saved(saved.path, reopen, pending, window, cx);
+                    }
+                    Outcome::Cancelled => self.save_notice = None,
+                    Outcome::Failed(error) => self.save_notice = Some(Notice::Failed(error)),
+                }
             }
         }
         cx.notify();
+    }
+
+    /// After a save, open the saved file for an edited capture saved whole, or do what waited for it.
+    fn saved(
+        &mut self,
+        path: std::path::PathBuf,
+        reopen: Option<(
+            Option<crate::navigation::View>,
+            Option<argand_core::SampleSpan>,
+        )>,
+        pending: Option<editing_ui::Pending>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(pending) = pending {
+            self.carry_out(pending, window, cx);
+            return;
+        }
+        let Some((view, selection)) = reopen else {
+            return;
+        };
+        self.reopening = Some(editing_ui::Reopening {
+            path: path.clone(),
+            view,
+            selection,
+        });
+        self.carry_out(editing_ui::Pending::Open(Origin::new(path)), window, cx);
     }
 
     /// Whether `path` is the file a save in progress is writing, which must not open half written.
