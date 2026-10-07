@@ -915,6 +915,8 @@ fn a_protected_file_is_never_a_target_and_the_output_states_the_request_meta() {
     assert_eq!(reopened.meta().center_freq, 145_000_000.0);
 }
 
+// Windows has no file identity without the file ID of #199.
+#[cfg(unix)]
 #[test]
 fn a_protected_file_renamed_since_is_still_recognised() {
     let dir = TempDir::new("write-protected-renamed");

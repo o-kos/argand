@@ -465,7 +465,8 @@ would exceed `u32` is RF64. Stored values are written, never normalized ones. A 
 rate, and the first sets the output format, while `SaveRequest::meta` sets the rate and
 reference frequency the file states and `SaveRequest::protected` names files that must not
 be written over though nothing is read from them (the open file), recognised by path and by
-their stamp's identity, so a renamed one is still refused. Each `SourceFile::stamp`, a `SourceStamp` (length,
+their stamp's identity, so a renamed one is still refused (on Unix only until #199 gives
+Windows a file ID). Each `SourceFile::stamp`, a `SourceStamp` (length,
 modification time, device and inode on Unix) taken off the window's thread after the file
 describes itself, must match the handle read, and the target must be none of the files
 read, also just before the rename. Output goes to
