@@ -464,7 +464,8 @@ would exceed `u32` is RF64. Stored values are written, never normalized ones. A 
 `Storage` (`write::storage`: linear `fmt ` layout, or FLAC depth) and the request's sample
 rate, and the first sets the output format, while `SaveRequest::meta` sets the rate and
 reference frequency the file states and `SaveRequest::protected` names files that must not
-be written over though nothing is read from them (the open file). Each `SourceFile::stamp`, a `SourceStamp` (length,
+be written over though nothing is read from them (the open file), recognised by path and by
+their stamp's identity, so a renamed one is still refused. Each `SourceFile::stamp`, a `SourceStamp` (length,
 modification time, device and inode on Unix) taken off the window's thread after the file
 describes itself, must match the handle read, and the target must be none of the files
 read, also just before the rename. Output goes to
@@ -518,9 +519,10 @@ selection and Delete, Paste here going before the clicked sample (`PlotView::pas
 kept past the menu's dismissal because its action arrives after it) and marked by a line
 while the menu is open. The Edit menu sits between File and View. Keys, in the `Plot`
 context and Cmd on macOS: Ctrl+Z, Ctrl+Shift+Z (and Ctrl+Y on Windows), Ctrl+X, Ctrl+C,
-Ctrl+V (replace the selection, disabled without one) and Delete. `Shell::edited` follows
+Ctrl+V (replace the selection, disabled without one) and Delete; Undo and Redo are bound in
+the `Shell` context as well, for a capture edited down to no plot. `Shell::edited` follows
 every version: the document's length, `Analyst::set_edit` (a new edit version is a new
-analysis generation, and the worker reads every capture through an `EditedSource` that opens
+analysis generation that previews as a first analysis does, and the worker reads every capture through an `EditedSource` that opens
 pasted files with `argand_io::reopen`), the selection, the view through `bound_view`, the
 picture and backdrop dropped until the new version's picture lands (`Document::forget_picture`,
 because the old picture shows other samples at its coordinates), the minimap composed (`minimap::compose`, mapping each cell through the

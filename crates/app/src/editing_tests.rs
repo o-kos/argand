@@ -116,7 +116,7 @@ fn a_save_names_only_the_files_its_samples_come_from() {
     let tail = document.save_request(Some(span(105, 110)), PathBuf::from("/out.wav")).unwrap();
     assert_eq!(tail.sources.len(), 1);
     assert_eq!(tail.sources[0].meta.source, PathBuf::from("/b.wav"));
-    assert_eq!(tail.protected, [PathBuf::from("/a.wav")], "the open file stays protected");
+    assert_eq!(tail.protected[0].path, PathBuf::from("/a.wav"), "the open file stays protected");
     assert_eq!(tail.meta.source, PathBuf::from("/a.wav"), "and describes the result");
     assert_eq!((tail.segments[0].source, tail.segments[0].start, tail.segments[0].len), (0, 5, 5));
 }
@@ -171,4 +171,15 @@ fn an_envelope_is_asked_for_once_and_a_save_waits_for_every_stamp() {
     document.undo();
     document.redo();
     assert!(document.missing_envelopes().is_empty(), "the scan already started");
+}
+
+#[test]
+fn a_clipboard_copied_before_its_file_was_checked_learns_its_storage() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let early = Editing::new(meta("/b.wav", 50, 1000.0), OpenHints::default());
+    let mut clipboard = early.copy(span(0, 10));
+    let refused = document.paste(&clipboard, Placement::At(0));
+    assert!(matches!(refused, Err(PasteError::Unknown { .. })));
+    clipboard.describe(early.file(), None, Some(LINEAR));
+    assert!(document.paste(&clipboard, Placement::At(0)).is_ok());
 }

@@ -165,6 +165,11 @@ impl Editing {
         &self.sources[0]
     }
 
+    /// Whether `source` is this capture's own file as it was opened, before its check finished.
+    pub fn is_file(&self, source: &Source) -> bool {
+        self.file().stamp.is_none() && self.file().same_file(source)
+    }
+
     /// Record what was learned about the opened file off the window's thread.
     pub fn describe_file(&mut self, stamp: Option<SourceStamp>, storage: Option<Storage>) {
         self.sources[0].stamp = stamp;
@@ -370,7 +375,10 @@ impl Editing {
                 })
                 .collect(),
             target,
-            protected: vec![file.meta.source.clone()],
+            protected: vec![argand_io::write::Protected {
+                path: file.meta.source.clone(),
+                stamp: file.stamp,
+            }],
         })
     }
 }

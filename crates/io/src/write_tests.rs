@@ -900,7 +900,10 @@ fn a_protected_file_is_never_a_target_and_the_output_states_the_request_meta() {
     let a = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
     let b = write_wav(&dir.join("b.wav"), i16, 48_000, &signal(i16, 10), 1.0);
     let mut request = SaveRequest::span(source_file(&b, OpenHints::default()), None, a.clone());
-    request.protected = vec![a.clone()];
+    request.protected = vec![Protected {
+        path: a.clone(),
+        stamp: None,
+    }];
     let before = fs::read(&a).unwrap();
     assert!(matches!(run(&request), Err(WriteError::SameFile { .. })));
     assert_eq!(fs::read(&a).unwrap(), before);
@@ -910,4 +913,20 @@ fn a_protected_file_is_never_a_target_and_the_output_states_the_request_meta() {
     run(&request).unwrap();
     let reopened = open(&dir.join("c.wav"), &OpenHints::default()).unwrap();
     assert_eq!(reopened.meta().center_freq, 145_000_000.0);
+}
+
+#[test]
+fn a_protected_file_renamed_since_is_still_recognised() {
+    let dir = TempDir::new("write-protected-renamed");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let a = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let b = write_wav(&dir.join("b.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let stamp = SourceStamp::of(&a).ok();
+    let archive = dir.join("archive.wav");
+    fs::rename(&a, &archive).unwrap();
+    let before = fs::read(&archive).unwrap();
+    let mut request = SaveRequest::span(source_file(&b, OpenHints::default()), None, archive.clone());
+    request.protected = vec![Protected { path: a, stamp }];
+    assert!(matches!(run(&request), Err(WriteError::SameFile { .. })));
+    assert_eq!(fs::read(&archive).unwrap(), before);
 }

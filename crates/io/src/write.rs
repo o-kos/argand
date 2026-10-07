@@ -49,8 +49,8 @@ pub struct Segment {
 /// What to save and where.
 ///
 /// The segments are written in order. Every source must store its samples the
-/// same way ([`storage`]) at the same rate, and the first sets the output
-/// format and the reference frequency.
+/// same way ([`storage`]) at the rate `meta` states, and the first sets the
+/// output format, while `meta` sets the rate and reference frequency written.
 #[derive(Debug, Clone)]
 pub struct SaveRequest {
     /// What the saved file states about itself, its sample rate and reference frequency.
@@ -59,7 +59,7 @@ pub struct SaveRequest {
     pub segments: Vec<Segment>,
     pub target: PathBuf,
     /// Files that must not be written over beyond the sources, such as the open file.
-    pub protected: Vec<PathBuf>,
+    pub protected: Vec<Protected>,
 }
 
 impl SaveRequest {
@@ -105,6 +105,14 @@ impl SaveRequest {
     fn total(&self) -> u64 {
         self.segments.iter().map(|segment| segment.len).sum()
     }
+}
+
+/// A file a save must not write over, known by its path and, when taken, its stamp.
+#[derive(Debug, Clone)]
+pub struct Protected {
+    pub path: PathBuf,
+    /// Recognises the file under another name, after a rename.
+    pub stamp: Option<SourceStamp>,
 }
 
 /// How a source stores its samples, which decides whether two can share one file.
@@ -305,10 +313,12 @@ pub(crate) fn save_with_limit(
             }
         }
     };
-    // A target may have become a file being read since the start, by a rename of a source.
-    if fs::metadata(target).is_ok_and(|now| {
-        identity(&now).is_some() && opened.iter().any(|open| open.identity == identity(&now))
-    }) {
+    // A target may have become a file being read or protected since the start, by a rename.
+    if protected_target(request).is_some()
+        || fs::metadata(target).is_ok_and(|now| {
+            identity(&now).is_some() && opened.iter().any(|open| open.identity == identity(&now))
+        })
+    {
         return Err(WriteError::SameFile {
             path: target.clone(),
         });
@@ -321,16 +331,31 @@ pub(crate) fn save_with_limit(
     })
 }
 
+/// The protected file the target now is, recognised by its stamp's identity.
+fn protected_target(request: &SaveRequest) -> Option<&Protected> {
+    let now = identity(&fs::metadata(&request.target).ok()?)?;
+    request.protected.iter().find(|protected| {
+        protected
+            .stamp
+            .is_some_and(|stamp| stamp.identity == Some(now))
+    })
+}
+
 /// Refuse a request that would write over one of its sources or read past one.
 fn check_request(request: &SaveRequest) -> Result<(), WriteError> {
     if let Some(path) = request
         .sources
         .iter()
         .map(|source| &source.meta.source)
-        .chain(&request.protected)
+        .chain(request.protected.iter().map(|protected| &protected.path))
         .find(|path| same_file(path, &request.target))
     {
         return Err(WriteError::SameFile { path: path.clone() });
+    }
+    if let Some(protected) = protected_target(request) {
+        return Err(WriteError::SameFile {
+            path: protected.path.clone(),
+        });
     }
     let fits = |segment: &Segment| {
         request.sources.get(segment.source).is_some_and(|source| {

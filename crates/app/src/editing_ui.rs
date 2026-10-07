@@ -29,6 +29,9 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
     let mut keys = vec![
         KeyBinding::new(&command("z"), Undo, Some("Plot")),
         KeyBinding::new(&command("shift-z"), Redo, Some("Plot")),
+        // A capture edited down to nothing shows no plot, and its edits must still be undone.
+        KeyBinding::new(&command("z"), Undo, Some("Shell")),
+        KeyBinding::new(&command("shift-z"), Redo, Some("Shell")),
         KeyBinding::new(&command("x"), CutSelection, Some("Plot")),
         KeyBinding::new(&command("c"), CopySelection, Some("Plot")),
         KeyBinding::new(&command("v"), PasteClipboard, Some("Plot")),
@@ -100,6 +103,7 @@ impl Shell {
             hints: hints.clone(),
             stamp: None,
         };
+        let opened = crate::editing::Source::new(meta.clone(), hints.clone());
         file.editing = Some(Editing::new(meta, hints));
         // Metadata may live on a network mount, so it is read away from the window.
         let described = cx.background_spawn(async move {
@@ -107,27 +111,31 @@ impl Shell {
             let storage = argand_io::write::storage(&source).ok();
             (stamp, storage)
         });
-        let task = cx.spawn(async move |shell, cx| {
+        // Not tied to the document, because a clipboard copied from it may outlive it.
+        cx.spawn(async move |shell, cx| {
             let (stamp, storage) = described.await;
-            let _ = shell.update(cx, |shell, cx| shell.file_described(stamp, storage, cx));
-        });
-        file._edit_tasks.push(task);
+            let _ = shell.update(cx, |shell, cx| {
+                shell.file_described(&opened, stamp, storage, cx)
+            });
+        })
+        .detach();
     }
 
     /// Record the file's stamp and storage, in its edits and in a clipboard copied before they were known.
     fn file_described(
         &mut self,
+        opened: &crate::editing::Source,
         stamp: Option<argand_io::write::SourceStamp>,
         storage: Option<argand_io::write::Storage>,
         cx: &mut Context<Self>,
     ) {
-        let Some(editing) = self.editing_mut() else {
-            return;
-        };
-        let opened = editing.file().clone();
-        editing.describe_file(stamp, storage);
+        if let Some(editing) = self.editing_mut()
+            && editing.is_file(opened)
+        {
+            editing.describe_file(stamp, storage);
+        }
         if let Some(clipboard) = &mut self.clipboard {
-            clipboard.describe(&opened, stamp, storage);
+            clipboard.describe(opened, stamp, storage);
         }
         cx.notify();
     }
@@ -554,5 +562,24 @@ mod tests {
             "the window stays on its capture"
         );
         assert!(dirty, "the later edit is still unsaved");
+    }
+
+    #[gpui_kit::test]
+    fn undo_reaches_a_capture_edited_down_to_nothing(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        described(cx, &shell, "/captures/a.iqw");
+        select(cx, &shell, 0, 48_000);
+        shell.update_in(cx, |shell, window, cx| {
+            shell.delete_selection(window, cx);
+            window.focus(&shell.focus, cx);
+        });
+        assert_eq!(length(cx, &shell), Some(0));
+        cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+            "cmd-z"
+        } else {
+            "ctrl-z"
+        });
+        cx.run_until_parked();
+        assert_eq!(length(cx, &shell), Some(48_000));
     }
 }
