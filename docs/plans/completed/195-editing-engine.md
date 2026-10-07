@@ -48,6 +48,8 @@ Reviewer `gpt-6.1-sol` high, three rounds.
 
 - Round 4, at the owner's request (2 blockers, 1 major, 2 minors): a stamp taken by path around opening could still miss an A, B, A switch of the path, the FLAC writer decoded through a second, unchecked open, an early clipboard still lost its storage when another file was opened, the claimed Ctrl+Y binding in the Shell context had not been applied, and Save as reopened with the view and selection of its start. All fixed: readers stamp their own handles and `open_stamped` keeps a stamp only when the header and the samples came from the same file, the writer decodes FLAC through the checked handle, the clipboard learns independently of the document, and reopening takes the current view and selection.
 
+- A short round on the fourth round's commit confirmed its fixes and found that the display paths open a source again by path without checking its stamp (FLAC seeks, unknown-length counting, automatic normalization, `reopen` for the minimap and pasted sources), so a file replaced on disk can be drawn while the window describes the old one. These re-opens predate this work and saving is not affected, so they went to #200.
+
 What the plan missed: it treated a file's identity as a path plus a later check, and edits as a picture change like navigation. Both are now decisions above; the next plan touching files must say where a file's identity is taken and how long it holds.
 
 ## Rejected alternatives
