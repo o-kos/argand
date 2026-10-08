@@ -79,4 +79,4 @@ What the plan missed: it treated a file's identity as a path plus a later check,
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] The owner checks the release binary: delete, cut, copy and paste on a multi-hour capture, across two files, undo and redo, the questions on unsaved edits, Save as of an edited capture.
+- [x] The owner checks the release binary: delete, cut, copy and paste on a multi-hour capture, across two files, undo and redo, the questions on unsaved edits, Save as of an edited capture. Accepted for merge with checking continued in use; problems found later become their own Issues. Saving over the open file stays #193.
