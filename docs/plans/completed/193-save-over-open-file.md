@@ -27,8 +27,8 @@ Derived here:
 
 - **Command**: File → Save, Ctrl+S (Cmd+S on macOS), enabled only with unsaved edits, a non-empty capture whose files are checked, and no save running. The unsaved-edits question offers Save, Discard and Cancel; Save is Save as when Save is disabled.
 - **Writer**: `write::stage` writes the temporary file and returns a `Staged` that is committed later or dropped (removing it). `SaveRequest::replacing` names the file being replaced with its stamp; it may then be the target, and `Staged::commit` checks, just before the rename, that the file at the target still has that stamp. Every other target rule stays. A headerless output (`Output::Headerless { preamble }`) writes the preamble bytes and the samples with no header.
-- **Releasing the file**: the analysis worker, the minimap task and the envelope tasks each hold a lease until their thread ends; `release::Lease` and `Released` (a channel whose senders are the leases) let the window wait until all have ended. Saving closes the document once the temporary file is complete (the status bar says the file is being replaced), waits for the leases, commits on a background thread, and opens the file again with the view and selection kept (`Reopening`).
-- **When the commit fails** (another program holds the file, it changed on disk): the original is untouched, the written edits are kept beside it as `<stem>.unsaved-<n>.<ext>` so no work is lost, the notice says where, and the window opens the original again with its edit history restored when the file is still the one the edits refer to (changed after review).
+- **Releasing the file**: the analysis worker, the minimap task and the envelope tasks each hold a lease until their thread ends; `release::Lease` and `Released` (a channel whose senders are the leases) let the window wait until all have ended. Once the temporary file is complete (the status bar says the file is being replaced) new, unstarted readers take the old ones' place, the window waits for the old leases, commits on a background thread, and starts the new readers under the picture already shown. The document, its picture, minimap, view and selection stay; nothing on screen changes (changed after the owner saw the first build flicker as the file closed and opened again).
+- **When the commit fails** (another program holds the file, it changed on disk): the original is untouched, the written edits are kept beside it as `<stem>.unsaved-<n>.<ext>` so no work is lost, the notice says where, and the document keeps its edits while new readers open the original under the picture; a file whose stamp changed is opened afresh (changed after review).
 - **While the file is replaced** nothing opens and the window does not close, so no other document or reader can appear between letting the file go and replacing it (added after review).
 - **History** starts empty on the saved file, as after Save as.
 
@@ -46,15 +46,15 @@ Reviewer `gpt-6.1-sol` high.
 
 - Writing in place: a failure would leave the original half written.
 - Replacing the file while it is mapped: works on Unix, fails on Windows, and leaves readers on bytes that no longer exist.
-- Keeping the document open and swapping its source underneath: every cache and worker would have to be told; reopening reuses the path that already works.
+- Closing the document and opening the saved file again: the first build did this and the window flickered through an empty plot, a preview and a minimap scan for samples it already showed.
 
 ## Implementation steps
 
 - [x] `argand-io::write`: `stage`, `Staged::commit`, `SaveRequest::replacing`, headerless output with preamble; tests including a target changed before commit and a failed commit.
 - [x] `release::Lease` and `Released`; leases in the analysis worker, the minimap and the envelope tasks; tests that a released wait ends only after each thread does.
 - [x] `Editing`: the clipboard moved onto the saved file's positions, or cleared; tests.
-- [x] Shell: Save command, availability and reason, the save sequence (stage, close, wait, commit, reopen), failure recovery with the history restored, the question's Save button.
-- [x] Headless tests for availability, the sequence on success and on failure.
+- [x] Shell: Save command, availability and reason, the save sequence (stage, swap readers, wait, commit, rebind under the shown picture), failure recovery keeping the edits, the question's Save button.
+- [x] Headless tests for availability, the sequence on success and on failure, with the plot and picture kept.
 - [x] Update `AGENTS.md` and `CHANGELOG.md`.
 - [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.

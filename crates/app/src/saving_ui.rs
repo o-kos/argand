@@ -26,8 +26,8 @@ pub(super) struct SaveOf {
     pub(super) version: u64,
     /// Whether the whole capture was written, which makes that version saved.
     pub(super) whole: bool,
-    /// Whether the saved file replaces the edited capture once it is written.
-    pub(super) reopen: bool,
+    /// Whether the saved file is read in place of the edited capture once it is written.
+    pub(super) rebind: bool,
     /// What waited for this save, an open or a close.
     pub(super) then: Option<editing_ui::Pending>,
     /// Whether this save replaces the open file, which needs it let go of first.
@@ -36,13 +36,13 @@ pub(super) struct SaveOf {
 
 #[cfg(test)]
 impl SaveOf {
-    /// A whole save of `version` of `document` that reopens the saved file.
+    /// A whole save of `version` of `document` that goes on from the saved file.
     pub(super) fn whole_for_test(document: u64, version: u64) -> Self {
         Self {
             document,
             version,
             whole: true,
-            reopen: true,
+            rebind: true,
             then: None,
             over: false,
         }
@@ -119,7 +119,7 @@ impl Shell {
             version: editing.version(),
             whole,
             // Saving the whole edited capture turns the window to the saved file.
-            reopen: whole && edited,
+            rebind: whole && edited,
             then: then.filter(|_| whole),
             over: false,
         };
@@ -220,7 +220,7 @@ impl Shell {
         cx.notify();
     }
 
-    /// Mark the version written as saved, then reopen or do what waited, unless the document moved on.
+    /// Mark the version written as saved, then go on from the saved file or do what waited, unless the document moved on.
     pub(super) fn saved(
         &mut self,
         path: std::path::PathBuf,
@@ -246,16 +246,10 @@ impl Shell {
             self.carry_out(then, window, cx);
             return;
         }
-        if !of.reopen {
+        if !of.rebind {
             return;
         }
-        // Where the window looks now, which navigation during the save may have moved.
-        self.reopening = Some(editing_ui::Reopening {
-            path: path.clone(),
-            view: self.view,
-            selection: self.selection,
-        });
-        self.carry_out(editing_ui::Pending::Open(Origin::new(path)), window, cx);
+        self.rebind_saved_as(path, window, cx);
     }
 
     /// Whether `path` is the file a save in progress is writing, which must not open half written.

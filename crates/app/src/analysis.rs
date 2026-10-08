@@ -92,6 +92,8 @@ struct Mailbox {
     generation: AtomicU64,
     view_revision: AtomicU64,
     edit: Mutex<Option<Arc<EditState>>>,
+    /// Set for a worker started under a picture already shown, whose first answer must not preview.
+    keep_picture: std::sync::atomic::AtomicBool,
 }
 
 impl Mailbox {
@@ -208,10 +210,13 @@ impl Analyst {
         }
         // Only a file's first analysis has no picture to keep, so every later one is delivered whole.
         // A new edit version has no picture to keep, so it previews as a first analysis does.
-        let replacement = latest.is_some_and(|previous| {
-            previous.edit == edit
-                && (previous.replacement || !same_analysis(previous.analysis, analysis))
-        });
+        let replacement = match *latest {
+            Some(previous) => {
+                previous.edit == edit
+                    && (previous.replacement || !same_analysis(previous.analysis, analysis))
+            }
+            None => self.mailbox.keep_picture.load(Ordering::Acquire),
+        };
         let generation = match *latest {
             Some(previous)
                 if previous.edit == edit && same_analysis(previous.analysis, analysis) =>
@@ -234,6 +239,11 @@ impl Analyst {
             Ok(()) | Err(async_channel::TrySendError::Full(())) => true,
             Err(async_channel::TrySendError::Closed(())) => false,
         }
+    }
+
+    /// Deliver even the first picture whole, the window already showing one of the same samples.
+    pub fn keep_picture(&self) {
+        self.mailbox.keep_picture.store(true, Ordering::Release);
     }
 
     /// Make `state` what every later request is analysed from.

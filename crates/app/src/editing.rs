@@ -409,6 +409,21 @@ impl Editing {
         }
     }
 
+    /// Whether every file the current version reads stores its samples as `meta` says, so a picture of it is one of `meta`.
+    pub fn scaled_as(&self, meta: &SignalMeta) -> bool {
+        self.capture().sources().iter().all(|id| {
+            let source = &self.sources[id.0 as usize].meta;
+            source.sample_type == meta.sample_type && source.divisor == meta.divisor
+        })
+    }
+
+    /// Whether the opened file's own envelope was scanned to the end.
+    pub fn file_envelope_complete(&self) -> bool {
+        self.envelopes[0]
+            .as_ref()
+            .is_some_and(|envelope| envelope.complete)
+    }
+
     /// The minimap of the current version, put together from the source envelopes.
     pub fn minimap(&self) -> Option<Snapshot> {
         self.envelopes[0].as_ref()?;

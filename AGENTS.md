@@ -535,9 +535,9 @@ another file or closing the window with unsaved edits asks natively (`Window::pr
 close refused in `on_window_should_close` and carried out after the answer): Save as…,
 Discard, Cancel (Save writes over the file, #193); the Linux close button goes through the same question (`chrome::CloseWindow`).
 A save remembers its document and version (`SaveOf`): when it finishes, a whole save marks
-that version saved, and only if the document is still that version does it open the saved
-file of an edited capture (`Reopening`, keeping view and selection) or do what the question
-left waiting. A save needs a non-empty capture whose files all have their stamp. Saving over the open file is #193.
+that version saved, and only if the document is still that version does it read the edited
+capture from the saved file from then on (`Shell::rebind_saved_as`, see #193 below) or do
+what the question left waiting. A save needs a non-empty capture whose files all have their stamp. Saving over the open file is #193.
 
 ## Saving over the open file (#193)
 
@@ -547,18 +547,27 @@ File → Save (Ctrl+S, Cmd+S) writes the edited capture over its own file (`repl
 the target be the replaced file, whose stamp `commit` checks just before the rename, and a
 headerless capture is written headerless after its preamble (`Output::Headerless`). Every
 thread reading the open file (the analysis worker, the minimap and the envelopes of pasted
-files) holds a `release::Lease`; once the file is staged the window closes the document,
-waits on `Released` for all of them to end, because Windows refuses to replace a mapped file,
-commits on a background thread and opens the file again with the view and selection kept.
+files) holds a `release::Lease`; once the file is staged the window puts unstarted readers of
+the same path in their place (`Shell::swap_readers`), waits on `Released` for the old ones to
+end, because Windows refuses to replace a mapped file, and commits on a background thread.
+The document, plot, picture, minimap, view and selection are never let go of, so nothing on
+screen changes. The new readers open the file under the shown picture (`OpenFile::rebinding`):
+`Effect::Opened` then keeps the shown status and requested range (`Document::shown`), starts a
+fresh history on the saved file and gives it the composed minimap as its envelope, and asks
+for no picture when the one shown was finished. Only samples stored on another scale (another
+sample type or normalization divisor, `Editing::scaled_as`) are drawn again, as a final-only
+replacement, with a minimap scan that shows no previews. Save as of the whole capture goes on
+from the saved file the same way, without the wait. Edits are refused while the file is let go
+of (`Shell::editing_mut`).
 The clipboard is moved onto the saved file's positions only when the commit succeeded, or
 cleared with the notice when some copied samples are gone. If the commit fails the original is
 untouched, the written edits are kept beside it as `<stem>.unsaved-<n>.<ext>`
 (`Refused::keep_beside`, taking the name by a hard link that never replaces another file, and
-leaving the temporary file in place when no name can be taken), and it opens again with its edits (`Shell::restoring`, taken back
-only while the file keeps its stamp). While the file is let go of and replaced
+leaving the temporary file in place when no name can be taken), and the document keeps its edits on it, the readers opening it again under the picture; a file
+whose stamp changed is opened afresh, since the edits no longer say where its samples are. While the file is let go of and replaced
 (`Shell::replacement_active`) nothing opens and the window does not close; the status bar
 says so and offers no cancel. `stage` fixes whether it replaces the target before writing, `Saved::stamp`
-is taken from the written file's own handle and gives the clipboard its stamp, and restored
+is taken from the written file's own handle and gives the clipboard its stamp, and kept
 edits ask again for pasted envelopes that never finished (`Editing::restart_envelopes`). Save needs unsaved edits, a non-empty checked capture and no save running,
 and is refused for FLAC above the encoder's rates; the unsaved-edits question's Save uses it,
 falling back to Save as.

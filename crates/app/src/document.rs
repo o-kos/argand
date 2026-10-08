@@ -70,6 +70,20 @@ impl Origin {
 /// puts the document back into [`Status::Analyzing`] while the previous
 /// picture is still up, because a window that blanks itself on every settings change is
 /// harder to use than one that shows a slightly stale spectrogram.
+/// The status and requested range of a document, carried across a new reader of the same samples.
+#[derive(Debug, Clone)]
+pub struct Shown {
+    status: Status,
+    requested_range: Option<argand_core::SampleRange>,
+}
+
+impl Shown {
+    /// Whether the picture shown was finished, so nothing more needs to be asked for.
+    pub const fn is_ready(&self) -> bool {
+        matches!(self.status, Status::Ready { .. })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Status {
     /// Reading the header, and the level scan a normalized capture needs.
@@ -186,6 +200,11 @@ impl Document {
         }
     }
 
+    /// Name the file the same samples are now read from, a saved copy of them.
+    pub fn set_origin(&mut self, origin: Origin) {
+        self.origin = origin;
+    }
+
     pub const fn origin(&self) -> &Origin {
         &self.origin
     }
@@ -202,6 +221,20 @@ impl Document {
     /// Drop the picture of a version that is no longer the one shown.
     pub fn forget_picture(&mut self) {
         self.analysis = None;
+    }
+
+    /// What the window shows of the work on the file, to keep while the same samples are read from a new one.
+    pub fn shown(&self) -> Shown {
+        Shown {
+            status: self.status.clone(),
+            requested_range: self.requested_range,
+        }
+    }
+
+    /// Show again what was shown before the same samples were read from a new file.
+    pub fn keep_shown(&mut self, shown: Shown) {
+        self.status = shown.status;
+        self.requested_range = shown.requested_range;
     }
 
     /// Follow an edit that made the capture this long.

@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::editing::{Editing, Placement};
-use argand_core::SampleSpan;
 use argand_edit::SourceId;
 
 actions!(
@@ -51,13 +50,6 @@ fn editing_source(file: &argand_io::write::SourceFile) -> crate::editing::Source
     source
 }
 
-/// A save whose target the window opens once it is written, keeping where it looked.
-pub(super) struct Reopening {
-    pub path: std::path::PathBuf,
-    pub view: Option<crate::navigation::View>,
-    pub selection: Option<SampleSpan>,
-}
-
 /// What waits for an answer about unsaved edits.
 #[derive(Clone)]
 pub(super) enum Pending {
@@ -80,7 +72,11 @@ impl Shell {
         self.file.as_ref()?.editing.as_ref()
     }
 
-    fn editing_mut(&mut self) -> Option<&mut Editing> {
+    /// The edits to change, none while the file under them is being replaced.
+    pub(super) fn editing_mut(&mut self) -> Option<&mut Editing> {
+        if self.replacement_active {
+            return None;
+        }
         self.file.as_mut()?.editing.as_mut()
     }
 
@@ -99,15 +95,11 @@ impl Shell {
         }
     }
 
-    /// Start keeping edits for the file that has just described itself, answering whether earlier ones came back.
-    ///
-    /// Edits kept aside while their file failed to be replaced come back when it is still that file.
-    pub(super) fn start_editing(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(file) = &mut self.file else {
-            return false;
-        };
+    /// Start keeping edits for the file that has just described itself.
+    pub(super) fn start_editing(&mut self, cx: &mut Context<Self>) {
+        let Some(file) = &mut self.file else { return };
         let Some(meta) = file.state.document.meta().cloned() else {
-            return false;
+            return;
         };
         let hints = file.state.document.origin().hints.clone();
         let stamp = file.state.document.stamp();
@@ -118,14 +110,6 @@ impl Shell {
         };
         if let Some(clipboard) = &mut self.clipboard {
             clipboard.adopt(&editing_source(&source));
-        }
-        let restored = self.restoring.take().filter(|kept| {
-            kept.file().meta.source == meta.source && stamp.is_some() && kept.file().stamp == stamp
-        });
-        if let Some(mut kept) = restored {
-            kept.restart_envelopes();
-            file.editing = Some(kept);
-            return true;
         }
         let mut editing = Editing::new(meta, hints);
         editing.describe_file(stamp, None);
@@ -141,7 +125,6 @@ impl Shell {
             });
         })
         .detach();
-        false
     }
 
     /// Record how the file of `document` stores its samples, in its edits and in a clipboard copied from it.
@@ -165,20 +148,6 @@ impl Shell {
             editing.describe_file(opened.stamp, storage);
         }
         cx.notify();
-    }
-
-    /// Bring back the view and selection of a capture saved and opened again.
-    pub(super) fn restore_reopened(&mut self) {
-        let Some(reopening) = self.reopening.take() else {
-            return;
-        };
-        let Some(total) = self.sample_count() else {
-            return;
-        };
-        if let Some(view) = reopening.view.filter(|view| view.start + view.len <= total) {
-            self.view = Some(view);
-        }
-        self.selection = reopening.selection.and_then(|span| span.within(total));
     }
 
     /// The minimap of what is shown, composed when the capture was edited.
@@ -279,7 +248,7 @@ impl Shell {
     }
 
     /// Build the minimap envelope of a file pasted into the capture.
-    fn build_envelope(
+    pub(super) fn build_envelope(
         &mut self,
         id: SourceId,
         source: crate::editing::Source,
@@ -423,6 +392,7 @@ impl Shell {
 mod tests {
     use super::*;
     use crate::analysis::{FileInfo, Update};
+    use argand_core::SampleSpan;
     use argand_core::{Domain, SampleFormat, SampleType, SignalMeta};
     use gpui_kit::TestAppContext;
     use std::path::PathBuf;
