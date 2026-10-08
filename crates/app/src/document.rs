@@ -194,6 +194,23 @@ impl Document {
         self.meta.as_ref()
     }
 
+    /// The file's stamp as the analysis thread took it when it opened the file.
+    pub fn stamp(&self) -> Option<argand_io::write::SourceStamp> {
+        self.file_info.stamp
+    }
+
+    /// Drop the picture of a version that is no longer the one shown.
+    pub fn forget_picture(&mut self) {
+        self.analysis = None;
+    }
+
+    /// Follow an edit that made the capture this long.
+    pub fn set_len(&mut self, len: u64) {
+        if let Some(meta) = &mut self.meta {
+            meta.len_samples = len;
+        }
+    }
+
     pub fn analysis(&self) -> Option<&Analysis> {
         self.analysis
             .as_ref()

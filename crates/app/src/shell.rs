@@ -40,6 +40,8 @@ mod shortcuts;
 #[path = "backdrop.rs"]
 mod backdrop;
 
+#[path = "editing_ui.rs"]
+mod editing_ui;
 #[path = "hints.rs"]
 mod hints;
 #[path = "navigation_ui.rs"]
@@ -89,6 +91,7 @@ struct OpenRecent {
 
 /// The window's own keys, which a headless test registers as the window does.
 pub(super) fn window_keys(cx: &mut gpui_kit::App) {
+    editing_ui::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([
@@ -293,13 +296,17 @@ fn to_bounds(geometry: Geometry) -> Bounds<Pixels> {
 /// keeping them in one struct is what makes closing a document a single drop
 /// rather than three that have to happen in the right order.
 struct OpenFile {
+    /// Which document this is among those the window has opened.
+    id: u64,
     state: crate::open_file::OpenFileState,
     _updates: Task<()>,
     _minimap_updates: Option<Task<()>>,
     opened_at: Instant,
     first_picture: Arc<AtomicBool>,
-    /// The file as it was when it described itself, which a save checks it still is.
-    stamp: Option<argand_io::write::SourceStamp>,
+    /// The edits, created once the file has described itself.
+    editing: Option<crate::editing::Editing>,
+    /// Envelopes being built for files pasted in, and the file's own description.
+    _edit_tasks: Vec<Task<()>>,
     /// Created once the file has described itself, and dropped with it.
     plot: Option<PlotHandle>,
 }
@@ -386,6 +393,12 @@ struct Shell {
     saving: Option<saving_ui::Saving>,
     save_notice: Option<saving_ui::Notice>,
     save_updates: Option<Task<()>>,
+    /// What was copied, which outlives the capture it came from.
+    clipboard: Option<crate::editing::Clipboard>,
+    /// A saved capture the window opens next, keeping where it looked.
+    reopening: Option<editing_ui::Reopening>,
+    /// Counts opened documents, so a finished save knows whether its document is still the one shown.
+    opened_documents: u64,
     frequency: crate::frequency::View,
     frequency_scheme: Option<argand_core::axis::TickScheme>,
     time_scheme: Option<argand_core::axis::TickScheme>,
@@ -459,6 +472,15 @@ impl Shell {
             )
         });
         let pinned = cx.subscribe(&analysis_hint, Self::analysis_hint_changed);
+        let closing = cx.entity().downgrade();
+        // A close with unsaved edits is refused here and carried out once the question is answered.
+        window.on_window_should_close(cx, move |window, cx| {
+            closing
+                .update(cx, |shell, cx| {
+                    shell.settle_unsaved(editing_ui::Pending::Close, window, cx)
+                })
+                .unwrap_or(true)
+        });
         Self {
             settings,
             analysis_hint,
@@ -478,6 +500,9 @@ impl Shell {
             saving: None,
             save_notice: None,
             save_updates: None,
+            clipboard: None,
+            reopening: None,
+            opened_documents: 0,
             frequency: crate::frequency::View::default(),
             frequency_scheme: None,
             time_scheme: None,
@@ -623,6 +648,9 @@ impl Shell {
         if self.refuse_save_target(&origin.path, cx) {
             return;
         }
+        if !self.settle_unsaved(editing_ui::Pending::Open(origin.clone()), window, cx) {
+            return;
+        }
         self.dismiss_application_menu(window, cx);
         self.close_analysis_hint(cx);
         // The old plot goes with its document, so focus must not stay on it.
@@ -630,6 +658,10 @@ impl Shell {
         self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
         window.set_window_title(&format!("{} – {TITLE}", origin.name()));
+        self.reopening = self
+            .reopening
+            .take()
+            .filter(|reopen| reopen.path == origin.path);
         self.settings_error = None;
 
         // Nothing of the previous file is left standing. Its picture would
@@ -677,13 +709,16 @@ impl Shell {
         // Replacing the previous file drops both ends of its queue, which is
         // what stops its thread: a transform nobody will look at should not go
         // on holding a mapped file and a core.
+        self.opened_documents += 1;
         self.file = Some(OpenFile {
+            id: self.opened_documents,
             state: crate::open_file::OpenFileState::new(Document::opening(origin), analyst),
             _updates: pump,
             _minimap_updates: None,
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
-            stamp: None,
+            editing: None,
+            _edit_tasks: Vec::new(),
             plot: None,
         });
         cx.notify();
@@ -763,11 +798,9 @@ impl Shell {
 
         match effect {
             Effect::Opened => {
-                if let Some(file) = &mut self.file {
-                    file.stamp =
-                        argand_io::write::SourceStamp::of(&file.state.document.origin().path).ok();
-                }
+                self.start_editing(cx);
                 self.reset_view();
+                self.restore_reopened();
                 self.attach_plot(window, cx);
                 self.start_minimap(window, cx);
                 // Remembered now rather than when it was asked for. A file
@@ -869,7 +902,16 @@ impl Shell {
         match update {
             Ok(snapshot) => {
                 file.state.document.minimap_ready(&snapshot);
+                if let Some(editing) = &mut file.editing {
+                    editing.set_envelope(argand_edit::SourceId(0), snapshot.clone());
+                }
                 self.waveform = Some(Arc::new(waveform::Waveform::new(snapshot)));
+                if self
+                    .editing()
+                    .is_some_and(|editing| !editing.is_untouched())
+                {
+                    self.refresh_waveform();
+                }
             }
             Err(error) => {
                 tracing::warn!(%error, "minimap unavailable");
@@ -975,6 +1017,11 @@ impl Shell {
     /// Let go of whatever picture is on the GPU, leaving nothing to draw.
     fn release(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         self.waveform = None;
+        self.release_picture(window, cx);
+    }
+
+    /// Let go of the spectrogram pictures on the GPU, keeping the minimap.
+    fn release_picture(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         self.release_backdrop(window, cx);
         self.release_deep_preview(window, cx);
         let stale = self.texture.take();
@@ -1145,10 +1192,19 @@ impl Shell {
     }
 
     fn file_name(&self) -> String {
-        self.file
+        let Some(file) = self.file.as_ref() else {
+            return String::new();
+        };
+        let name = file.state.document.origin().name();
+        if file
+            .editing
             .as_ref()
-            .map(|file| file.state.document.origin().name())
-            .unwrap_or_default()
+            .is_some_and(crate::editing::Editing::is_dirty)
+        {
+            format!("• {name}")
+        } else {
+            name
+        }
     }
 
     fn title_bar(
@@ -1564,6 +1620,7 @@ impl Render for Shell {
                 .child(self.content(window, cx))
                 .child(self.status_bar(corners, cx));
         let content = self.view_commands(content, cx);
+        let content = self.edit_commands(content, cx);
         let menu_backdrop = self
             .application_menu
             .is_some()

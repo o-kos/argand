@@ -19,6 +19,8 @@ pub struct Snapshot {
     pub envelope: WaveformEnvelope,
     pub full_scale: f32,
     pub complete: bool,
+    /// Samples of the capture the envelope spans.
+    pub samples: u64,
 }
 
 pub fn start(
@@ -115,7 +117,12 @@ fn fold(
 }
 
 fn snapshot(builder: EnvelopeBuilder, duration: f64, complete: bool) -> Snapshot {
+    let samples = builder.total_samples();
     let envelope = builder.finish(0., duration);
+    finished(envelope, complete, samples)
+}
+
+fn finished(envelope: WaveformEnvelope, complete: bool, samples: u64) -> Snapshot {
     let full_scale = envelope
         .min
         .iter()
@@ -127,6 +134,81 @@ fn snapshot(builder: EnvelopeBuilder, duration: f64, complete: bool) -> Snapshot
         envelope,
         full_scale,
         complete,
+        samples,
+    }
+}
+
+/// The envelope of an edited capture, put together from its sources' envelopes without reading a sample.
+///
+/// Each cell takes the extremes of every source cell its samples fall in, so
+/// it is exact at the sources' resolution and errs outward at a piece edge.
+/// A source whose envelope is not there yet leaves its stretch empty.
+pub fn compose(
+    capture: &argand_edit::Capture,
+    sources: &[Option<Arc<Snapshot>>],
+    channels: usize,
+    sample_rate: f64,
+) -> Snapshot {
+    let total = capture.len();
+    let columns = total.min(COLUMNS as u64) as usize;
+    let mut envelope = WaveformEnvelope::new(columns, channels);
+    envelope.min.fill(f32::INFINITY);
+    envelope.max.fill(f32::NEG_INFINITY);
+    let mut complete = true;
+    for column in 0..columns {
+        // The first sample of a column, rounded up as `EnvelopeBuilder` assigns them.
+        let edge = |c: usize| (u128::from(total) * c as u128).div_ceil(columns as u128) as u64;
+        let Some(span) = argand_core::SampleSpan::between(edge(column), edge(column + 1)) else {
+            continue;
+        };
+        for piece in capture.segments(span) {
+            let Some(source) = sources
+                .get(piece.source.0 as usize)
+                .and_then(Option::as_ref)
+            else {
+                complete = false;
+                continue;
+            };
+            complete &= source.complete;
+            widen_from(&mut envelope, column, source, piece.start, piece.len);
+        }
+    }
+    for value in envelope.min.iter_mut().chain(envelope.max.iter_mut()) {
+        if !value.is_finite() {
+            *value = 0.0;
+        }
+    }
+    envelope.t1 = if sample_rate > 0.0 {
+        total as f64 / sample_rate
+    } else {
+        0.0
+    };
+    finished(envelope, complete, total)
+}
+
+/// Widen `column` of `envelope` by the source cells holding samples `start .. start + len`.
+fn widen_from(
+    envelope: &mut WaveformEnvelope,
+    column: usize,
+    source: &Snapshot,
+    start: u64,
+    len: u64,
+) {
+    let cells = source.envelope.columns;
+    if cells == 0 || source.samples == 0 || len == 0 {
+        return;
+    }
+    let cell = |sample: u64| {
+        ((u128::from(sample) * cells as u128 / u128::from(source.samples)) as usize).min(cells - 1)
+    };
+    let channels = envelope.channels;
+    for from in cell(start)..=cell(start + len - 1) {
+        for channel in 0..channels {
+            let to = column * channels + channel;
+            let at = from * channels + channel;
+            envelope.min[to] = envelope.min[to].min(source.envelope.min[at]);
+            envelope.max[to] = envelope.max[to].max(source.envelope.max[at]);
+        }
     }
 }
 

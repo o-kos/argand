@@ -34,6 +34,8 @@ pub(super) struct PlotSnapshot {
     pub selection: Option<(f64, f64)>,
     /// A finished save, said over the picture until the next input.
     pub notice: Option<gpui_kit::SharedString>,
+    /// Which edit commands the spectrum's context menu can offer.
+    pub edit: super::editing_ui::EditCommands,
 }
 
 /// What the plot asks of the shell.
@@ -98,6 +100,8 @@ pub(super) struct PlotView {
     pub(super) gutter_floor: f32,
     pub(super) badge_metrics: axes::BadgeMetrics,
     pub(super) open_menu: Option<WeakEntity<PopupMenu>>,
+    /// The sample a paste from the spectrum's context menu goes before.
+    pub(super) paste_point: Option<u64>,
     pub(super) menu_dismiss: Option<Subscription>,
     /// Kept because dropping it stops the symbol shortcuts.
     _symbols: Subscription,
@@ -127,6 +131,7 @@ impl PlotView {
             gutter_floor: 0.,
             badge_metrics: axes::BadgeMetrics::default(),
             open_menu: None,
+            paste_point: None,
             menu_dismiss: None,
             _symbols: symbols,
             _blur: blur,
@@ -387,6 +392,8 @@ impl Render for PlotView {
             .min_h_0()
             .relative()
             .child(self.surface(&snapshot, cx))
+            .children(self.spectrum_context_menu(&snapshot, cx))
+            .children(self.paste_marker(&snapshot, cx))
             .children(self.time_context_menu(&snapshot, cx))
             .children(
                 self.panel_bounds
@@ -544,6 +551,7 @@ mod tests {
             pointer_in_window: true,
             selection: None,
             notice: None,
+            edit: Default::default(),
         }
     }
 

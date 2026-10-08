@@ -26,6 +26,8 @@ pub struct MmapSource {
     /// Byte offset up to which pages have already been released.
     released: usize,
     access: AccessPattern,
+    /// The mapped file as it was opened.
+    stamp: Option<crate::write::SourceStamp>,
 }
 
 /// How far behind the read head pages are released, and how often.
@@ -62,6 +64,7 @@ impl MmapSource {
         scan_bytes: Option<usize>,
     ) -> Result<Self, SourceError> {
         let file = File::open(path)?;
+        let stamp = crate::write::SourceStamp::of_file(&file).ok();
         // Safety: the file is opened read-only and the mapping is never
         // handed out as a mutable slice. A concurrent truncation is the one
         // hazard, and it is the same one every mmap-based reader accepts.
@@ -95,7 +98,13 @@ impl MmapSource {
             pos: 0,
             released: data_offset,
             access: AccessPattern::Sequential,
+            stamp,
         })
+    }
+
+    /// The mapped file as it was when it was opened, read from the mapping's own handle.
+    pub fn stamp(&self) -> Option<crate::write::SourceStamp> {
+        self.stamp
     }
 
     /// Divisor applied to raw values, in the file's own units.

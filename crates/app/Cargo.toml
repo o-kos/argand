@@ -16,6 +16,7 @@ workspace = true
 [dependencies]
 argand-core.workspace = true
 argand-dsp.workspace = true
+argand-edit.workspace = true
 argand-io.workspace = true
 anyhow.workspace = true
 async-channel.workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "argand-edit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Piece-table editing of signal captures for argand"
+
+[lints]
+workspace = true
+
+[dependencies]
+argand-core.workspace = true

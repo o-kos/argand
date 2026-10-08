@@ -280,6 +280,7 @@ dependencies = [
  "anyhow",
  "argand-core",
  "argand-dsp",
+ "argand-edit",
  "argand-io",
  "async-channel",
  "clap",
@@ -335,6 +336,13 @@ dependencies = [
  "rustfft",
  "thiserror 2.0.20",
  "tracing",
+]
+
+[[package]]
+name = "argand-edit"
+version = "0.1.1"
+dependencies = [
+ "argand-core",
 ]
 
 [[package]]

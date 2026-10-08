@@ -147,6 +147,37 @@ impl Shell {
         }
     }
 
+    /// The branch that edits the capture, every row disabled while it cannot act.
+    fn edit_menu(
+        &self,
+        focus: FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<PopupMenu> {
+        let can = self.edit_commands_available();
+        PopupMenu::build(window, cx, move |menu, _, _| {
+            let row = |label: &str, action: Box<dyn Action>, enabled: bool| {
+                action_row(label, action, false, focus.clone()).disabled(!enabled)
+            };
+            menu.action_context(focus.clone())
+                .item(row("Undo", Box::new(editing_ui::Undo), can.undo))
+                .item(row("Redo", Box::new(editing_ui::Redo), can.redo))
+                .item(PopupMenuItem::separator())
+                .item(row("Cut", Box::new(editing_ui::CutSelection), can.cut))
+                .item(row("Copy", Box::new(editing_ui::CopySelection), can.cut))
+                .item(row(
+                    "Paste",
+                    Box::new(editing_ui::PasteClipboard),
+                    can.replace,
+                ))
+                .item(row(
+                    "Delete",
+                    Box::new(editing_ui::DeleteSelection),
+                    can.cut,
+                ))
+        })
+    }
+
     /// The branch that carries the session's own choices.
     ///
     /// Shown with and without a document, which only the fitting rows need.
@@ -278,11 +309,13 @@ impl Shell {
         self.recent_files.refresh(&self.session.recent);
         let focus = self.focus_target(cx);
         let (file, digits) = self.file_menu(focus.clone(), window, cx);
+        let edit = self.edit_menu(focus.clone(), window, cx);
         let view = self.view_menu(focus.clone(), window, cx);
         let branch = file.clone();
         let menu = PopupMenu::build(window, cx, move |menu, _, _| {
             menu.action_context(focus)
                 .item(PopupMenuItem::submenu("File", branch))
+                .item(PopupMenuItem::submenu("Edit", edit))
                 .item(PopupMenuItem::submenu("View", view))
         });
         self.application_menu_dismissed =
@@ -1255,6 +1288,7 @@ mod tests {
     fn row(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Point<gpui_kit::Pixels> {
         cx.update(|window, _| {
             window
+                .within("submenu")
                 .find(gpui_kit::ElementId::Integer(index))
                 .bounds()
                 .center()
@@ -1562,7 +1596,7 @@ mod tests {
         let before = grid(cx, &shell);
         press(cx, "f10");
         // Down to the View branch, right into it, then confirm its first row.
-        press(cx, "down down right enter");
+        press(cx, "down down down right enter");
         assert!(!menu_open(cx, &shell), "the menu closed");
         assert_ne!(grid(cx, &shell), before, "one confirmation is one toggle");
     }
@@ -1576,9 +1610,9 @@ mod tests {
             let session = shell.read_with(cx, |shell, _| shell.session.theme);
             (mode, session)
         };
-        // View is the second branch, and its last row is the Theme branch.
+        // View is the third branch, and its last row is the Theme branch.
         press(cx, "f10");
-        press(cx, "down down right up right down enter");
+        press(cx, "down down down right up right down enter");
         assert!(!menu_open(cx, &shell), "the menu closed");
         let light_bar = gpui_kit::rgb(0xf3f3f3).into();
         let dark_bar = gpui_kit::rgb(0x171717).into();
@@ -1587,7 +1621,7 @@ mod tests {
             ((ThemeMode::Light, light_bar), Some(Theme::Light))
         );
         press(cx, "f10");
-        press(cx, "down down right up right down down enter");
+        press(cx, "down down down right up right down down enter");
         assert_eq!(chosen(cx), ((ThemeMode::Dark, dark_bar), Some(Theme::Dark)));
         assert_eq!(
             shell.read_with(cx, |shell, _| shell.settings.colormap),
@@ -1702,8 +1736,8 @@ mod tests {
         open_capture(cx, &shell);
         let before = grid(cx, &shell);
         press(cx, "f10");
-        // Down twice reaches the View branch, and Enter on a branch runs nothing.
-        press(cx, "down down enter");
+        // Down three times reaches the View branch, and Enter on a branch runs nothing.
+        press(cx, "down down down enter");
         assert!(menu_open(cx, &shell), "the menu stays open");
         assert!(
             menu_focused(cx, &shell),
@@ -1754,6 +1788,7 @@ mod tests {
     fn row_width(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Pixels {
         cx.update(|window, _| {
             window
+                .within("submenu")
                 .find(gpui_kit::ElementId::Integer(index))
                 .bounds()
                 .size
@@ -1765,6 +1800,7 @@ mod tests {
     fn row_height(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Pixels {
         cx.update(|window, _| {
             window
+                .within("submenu")
                 .find(gpui_kit::ElementId::Integer(index))
                 .bounds()
                 .size
@@ -1785,7 +1821,7 @@ mod tests {
         open_capture(cx, &shell);
         let before = grid(cx, &shell);
         press(cx, "f10");
-        press(cx, "down down right");
+        press(cx, "down down down right");
         assert!(menu_open(cx, &shell), "the View branch is on screen");
         // Without a plot the row's own binding is out of reach, so it has no keycap.
         let bare = row_width(cx, ORIENTATION_ROW);
@@ -1798,7 +1834,7 @@ mod tests {
             )]);
         });
         press(cx, "f10");
-        press(cx, "down down right");
+        press(cx, "down down down right");
         let capped = row_width(cx, ORIENTATION_ROW);
         assert!(
             capped > bare,
@@ -1839,8 +1875,11 @@ mod tests {
         assert!(!trigger.selected(true).is_selected());
     }
 
-    /// Give the open capture the description its file would have reported.
+    /// Give the open capture the description its file would have reported, from a real file.
     fn describe(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
+        let fixture =
+            std::env::temp_dir().join(format!("argand-describe-{}.iqw", std::process::id()));
+        std::fs::write(&fixture, [0u8; 16]).unwrap();
         shell.update_in(cx, |shell, _, cx| {
             let Some(file) = shell.file.as_mut() else {
                 panic!("the capture never opened");
@@ -1853,10 +1892,14 @@ mod tests {
                     len_samples: 48_000,
                     container: "raw",
                     divisor: 32_768.0,
-                    source: PathBuf::from("/captures/session.iqw"),
+                    source: fixture.clone(),
                 },
-                FileInfo::default(),
+                FileInfo {
+                    stamp: argand_io::write::SourceStamp::of(&fixture).ok(),
+                    ..FileInfo::default()
+                },
             ));
+            shell.start_editing(cx);
             cx.notify();
         });
         draw(cx);
@@ -1889,7 +1932,7 @@ mod tests {
         let (shell, cx) = open_window(cx);
         open_capture(cx, &shell);
         shell.update_in(cx, |shell, _, cx| {
-            shell.save_notice = Some(saving_ui::Notice::Failed("disk full".into()));
+            shell.save_notice = Some(saving_ui::Notice::Failed("Save failed", "disk full".into()));
             cx.notify();
         });
         draw(cx);
@@ -1908,7 +1951,7 @@ mod tests {
         let notice = |cx: &mut gpui_kit::VisualTestContext| {
             shell.read_with(cx, |shell, _| match &shell.save_notice {
                 Some(saving_ui::Notice::Saved(_)) => "saved",
-                Some(saving_ui::Notice::Failed(_)) => "failed",
+                Some(saving_ui::Notice::Failed(..)) => "failed",
                 None => "none",
             })
         };
@@ -1932,7 +1975,7 @@ mod tests {
         draw(cx);
         assert_eq!(notice(cx), "none", "a move takes it away too");
         shell.update_in(cx, |shell, _, cx| {
-            shell.save_notice = Some(saving_ui::Notice::Failed("disk full".into()));
+            shell.save_notice = Some(saving_ui::Notice::Failed("Save failed", "disk full".into()));
             cx.notify();
         });
         draw(cx);

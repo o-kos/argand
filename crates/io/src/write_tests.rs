@@ -7,15 +7,17 @@ use argand_core::{Domain, SampleType};
 use crate::testutil::{TempDir, all_sample_types, encode, iq_tone, real_tone, write_raw, write_wav};
 use crate::{RawSpec, open};
 
-fn request(path: &Path, hints: OpenHints, span: Option<SampleSpan>, target: PathBuf) -> SaveRequest {
+fn source_file(path: &Path, hints: OpenHints) -> SourceFile {
     let meta = open(path, &hints).expect("open source").meta().clone();
-    SaveRequest {
+    SourceFile {
         meta,
         hints,
-        span,
-        target,
         stamp: SourceStamp::of(path).ok(),
     }
+}
+
+fn request(path: &Path, hints: OpenHints, span: Option<SampleSpan>, target: PathBuf) -> SaveRequest {
+    SaveRequest::span(source_file(path, hints), span, target)
 }
 
 fn run(request: &SaveRequest) -> Result<Saved, WriteError> {
@@ -322,9 +324,13 @@ fn a_source_shorter_than_its_metadata_fails_without_a_file() {
     let sample_type: SampleType = "iq_i16".parse().unwrap();
     let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
     let mut request = request(&source, OpenHints::default(), None, dir.join("b.wav"));
-    request.meta.len_samples = 100;
+    request.sources[0].meta.len_samples = 100;
     assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })));
-    request.span = SampleSpan::between(90, 101);
+    request.segments = vec![Segment {
+        source: 0,
+        start: 90,
+        len: 11,
+    }];
     assert!(matches!(run(&request), Err(WriteError::OutOfRange)));
     assert_eq!(names(&dir), ["a.wav"]);
 }
@@ -455,7 +461,7 @@ fn a_source_replaced_since_it_was_opened_is_refused() {
     let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), dir.join("b.wav"));
     write_wav(&source, sample_type, 48_000, &signal(sample_type, 640), 1.0);
     assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })));
-    request.stamp = None;
+    request.sources[0].stamp = None;
     assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })), "the length alone");
     assert_eq!(names(&dir), ["a.wav"]);
 }
@@ -564,7 +570,7 @@ fn a_damaged_frame_inside_a_short_selection_fails() {
     let source = dir.join("a.flac");
     write_flac_fixture(&source, 2, 16, 5000);
     let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 1500), dir.join("b.flac"));
-    request.stamp = None;
+    request.sources[0].stamp = None;
     let mut bytes = fs::read(&source).unwrap();
     let frames = flac_frames(&bytes);
     let second = frames[1] + (frames[2] - frames[1]) / 2;
@@ -603,7 +609,7 @@ fn flac_at_a_rate_the_encoder_cannot_state_is_saved_as_wave() {
             ..Default::default()
         };
         let opened = request(&source, hints.clone(), SampleSpan::between(100, 2100), dir.join(&format!("b{bits}.wav")));
-        assert!(writes_as_wave(&opened.meta, &hints));
+        assert!(writes_as_wave(&opened.sources[0].meta, &hints));
         let saved = run(&opened).unwrap();
         assert_eq!(saved.container, "wav");
         let reopened = open(&saved.path, &OpenHints::default()).unwrap();
@@ -650,7 +656,7 @@ fn a_flac_source_replaced_since_it_was_opened_is_refused() {
     let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 100), dir.join("b.flac"));
     write_flac_fixture(&source, 2, 16, 6000);
     assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })));
-    request.stamp = None;
+    request.sources[0].stamp = None;
     assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })), "the length alone");
     assert_eq!(names(&dir), ["a.flac"]);
 }
@@ -684,7 +690,7 @@ fn a_damaged_first_frame_fails_instead_of_starting_later() {
     let source = dir.join("a.flac");
     write_flac_fixture(&source, 2, 16, 5000);
     let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), dir.join("b.flac"));
-    request.stamp = None;
+    request.sources[0].stamp = None;
     let mut bytes = fs::read(&source).unwrap();
     let frames = flac_frames(&bytes);
     bytes[frames[0] + (frames[1] - frames[0]) / 2] ^= 0xFF;
@@ -757,4 +763,190 @@ fn a_target_name_at_the_length_limit_still_saves() {
     let target = dir.join(&format!("{}.wav", "x".repeat(251)));
     run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
     assert_eq!(data_bytes(&target), data_bytes(&source));
+}
+
+fn segment(source: usize, start: u64, len: u64) -> Segment {
+    Segment { source, start, len }
+}
+
+#[test]
+fn segments_of_one_and_two_wave_files_are_joined_in_order() {
+    let dir = TempDir::new("write-segments");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let a = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 100), 1.0);
+    let b = write_raw(&dir.join("b.raw"), sample_type.format, &signal(sample_type, 50), 0.5);
+    let raw = OpenHints {
+        raw: Some("iq_i16@48k".parse().unwrap()),
+        ..Default::default()
+    };
+    let request = SaveRequest::joined(
+        vec![source_file(&a, OpenHints::default()), source_file(&b, raw)],
+        vec![segment(0, 60, 40), segment(1, 10, 5), segment(0, 0, 3)],
+        dir.join("c.wav"),
+    ).unwrap();
+    let saved = run(&request).unwrap();
+    assert_eq!(saved.samples, 48);
+    let first = data_bytes(&a);
+    let second = fs::read(&b).unwrap();
+    let mut expected = first[60 * 4..100 * 4].to_vec();
+    expected.extend_from_slice(&second[10 * 4..15 * 4]);
+    expected.extend_from_slice(&first[..3 * 4]);
+    assert_eq!(data_bytes(&saved.path), expected);
+}
+
+#[test]
+fn sources_stored_differently_or_at_another_rate_are_refused() {
+    let dir = TempDir::new("write-mismatch");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let f32: SampleType = "iq_f32".parse().unwrap();
+    let a = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let b = write_wav(&dir.join("b.wav"), f32, 48_000, &signal(f32, 10), 1.0);
+    let c = write_wav(&dir.join("c.wav"), i16, 96_000, &signal(i16, 10), 1.0);
+    for other in [&b, &c] {
+        let request = SaveRequest::joined(
+            vec![source_file(&a, OpenHints::default()), source_file(other, OpenHints::default())],
+            vec![segment(0, 0, 5), segment(1, 0, 5)],
+            dir.join("out.wav"),
+        ).unwrap();
+        assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
+    }
+    assert!(!dir.join("out.wav").exists());
+}
+
+#[test]
+fn storage_tells_a_raw_file_from_a_wider_wave_of_the_same_type() {
+    let dir = TempDir::new("write-storage");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let wav = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let raw = write_raw(&dir.join("b.raw"), i16.format, &signal(i16, 10), 1.0);
+    let hints = OpenHints {
+        raw: Some("iq_i16@48k".parse().unwrap()),
+        ..Default::default()
+    };
+    assert_eq!(
+        storage(&source_file(&wav, OpenHints::default())).unwrap(),
+        storage(&source_file(&raw, hints)).unwrap()
+    );
+    let wide = dir.join("c.wav");
+    write_wav24(&wide, 2, 10);
+    let raw32 = write_raw(&dir.join("d.raw"), SampleFormat::I32, &signal(i16, 10), 1.0);
+    let hints32 = OpenHints {
+        raw: Some("iq_i32@96k".parse().unwrap()),
+        ..Default::default()
+    };
+    assert_ne!(
+        storage(&source_file(&wide, OpenHints::default())).unwrap(),
+        storage(&source_file(&raw32, hints32)).unwrap()
+    );
+}
+
+#[test]
+fn flac_segments_from_two_files_cross_block_boundaries_exactly() {
+    let dir = TempDir::new("write-flac-segments");
+    let a = dir.join("a.flac");
+    let b = dir.join("b.flac");
+    let first = write_flac_fixture(&a, 2, 16, 9000);
+    let second = write_flac_fixture(&b, 2, 16, 3000);
+    let request = SaveRequest::joined(
+        vec![source_file(&a, OpenHints::default()), source_file(&b, OpenHints::default())],
+        vec![segment(0, 4000, 4500), segment(1, 1, 2999), segment(0, 17, 100)],
+        dir.join("c.flac"),
+    ).unwrap();
+    let saved = run(&request).unwrap();
+    assert_eq!(saved.container, "flac");
+    let mut expected = first[8000..17000].to_vec();
+    expected.extend_from_slice(&second[2..6000]);
+    expected.extend_from_slice(&first[34..234]);
+    assert_eq!(flac_ints(&saved.path, 16), expected);
+    let hints = OpenHints {
+        sample_rate: Some(192_000.0),
+        ..Default::default()
+    };
+    let wave = SaveRequest::joined(
+        vec![source_file(&a, hints.clone()), source_file(&b, hints)],
+        vec![segment(1, 5, 10), segment(0, 0, 10)],
+        dir.join("d.wav"),
+    ).unwrap();
+    let saved = run(&wave).unwrap();
+    let stored: Vec<i32> = data_bytes(&saved.path)
+        .chunks_exact(2)
+        .map(|c| i32::from(i16::from_le_bytes([c[0], c[1]])))
+        .collect();
+    let mut expected = second[10..30].to_vec();
+    expected.extend_from_slice(&first[..20]);
+    assert_eq!(stored, expected);
+}
+
+#[test]
+fn no_source_of_a_request_can_be_its_target() {
+    let dir = TempDir::new("write-second-source");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let a = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let b = write_wav(&dir.join("b.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let before = fs::read(&b).unwrap();
+    let request = SaveRequest::joined(
+        vec![source_file(&a, OpenHints::default()), source_file(&b, OpenHints::default())],
+        vec![segment(0, 0, 5), segment(1, 0, 5)],
+        b.clone(),
+    ).unwrap();
+    assert!(matches!(run(&request), Err(WriteError::SameFile { .. })));
+    assert_eq!(fs::read(&b).unwrap(), before);
+}
+
+#[test]
+fn a_protected_file_is_never_a_target_and_the_output_states_the_request_meta() {
+    let dir = TempDir::new("write-protected");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let a = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let b = write_wav(&dir.join("b.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let mut request = SaveRequest::span(source_file(&b, OpenHints::default()), None, a.clone());
+    request.protected = vec![Protected {
+        path: a.clone(),
+        stamp: None,
+    }];
+    let before = fs::read(&a).unwrap();
+    assert!(matches!(run(&request), Err(WriteError::SameFile { .. })));
+    assert_eq!(fs::read(&a).unwrap(), before);
+    request.protected.clear();
+    request.target = dir.join("c.wav");
+    request.meta.center_freq = 145_000_000.0;
+    run(&request).unwrap();
+    let reopened = open(&dir.join("c.wav"), &OpenHints::default()).unwrap();
+    assert_eq!(reopened.meta().center_freq, 145_000_000.0);
+}
+
+// Windows has no file identity without the file ID of #199.
+#[cfg(unix)]
+#[test]
+fn a_protected_file_renamed_since_is_still_recognised() {
+    let dir = TempDir::new("write-protected-renamed");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let a = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let b = write_wav(&dir.join("b.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let stamp = SourceStamp::of(&a).ok();
+    let archive = dir.join("archive.wav");
+    fs::rename(&a, &archive).unwrap();
+    let before = fs::read(&archive).unwrap();
+    let mut request = SaveRequest::span(source_file(&b, OpenHints::default()), None, archive.clone());
+    request.protected = vec![Protected { path: a, stamp }];
+    assert!(matches!(run(&request), Err(WriteError::SameFile { .. })));
+    assert_eq!(fs::read(&archive).unwrap(), before);
+}
+
+#[test]
+fn opening_stamps_what_it_read_for_every_reader() {
+    let dir = TempDir::new("write-open-stamped");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let wav = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let raw = write_raw(&dir.join("b.raw"), i16.format, &signal(i16, 10), 1.0);
+    let flac = dir.join("c.flac");
+    write_flac_fixture(&flac, 2, 16, 3000);
+    let raw_hints = OpenHints {
+        raw: Some("iq_i16@48k".parse().unwrap()),
+        ..Default::default()
+    };
+    for (path, hints) in [(&wav, OpenHints::default()), (&raw, raw_hints), (&flac, OpenHints::default())] {
+        let (_, stamp) = crate::open_stamped(path, &hints).unwrap();
+        assert_eq!(stamp, SourceStamp::of(path).ok(), "{}", path.display());
+    }
 }

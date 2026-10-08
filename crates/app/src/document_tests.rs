@@ -381,7 +381,7 @@ fn completed_minimap_extrema_survive_navigation_and_no_waveform_spectral_results
     let mut envelope = argand_core::WaveformEnvelope::new(2, 2);
     envelope.min = vec![-0.8, -0.5, -0.3, -0.4];
     envelope.max = vec![0.7, 0.6, 0.2, 0.9];
-    let mut snapshot = crate::minimap::Snapshot { envelope, full_scale: 0.9, complete: false };
+    let mut snapshot = crate::minimap::Snapshot { envelope, full_scale: 0.9, complete: false, samples: 2 };
     document.minimap_ready(&snapshot);
     assert!(document.sample_extrema.is_none());
     snapshot.complete = true;
@@ -400,7 +400,7 @@ fn completed_minimap_extrema_survive_navigation_and_no_waveform_spectral_results
 fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
     let mut document = opening();
     document.origin.hints.gain_db = 20.0;
-    document.apply(Update::Opened(meta(), FileInfo { bytes: Some(192044), sample_units: Some((3276.8, 0.0)) }));
+    document.apply(Update::Opened(meta(), FileInfo { bytes: Some(192044), sample_units: Some((3276.8, 0.0)), stamp: None }));
     let field = document.file_summary().unwrap();
     assert_eq!(field.value, "wav · iq i16 · 24 kHz · 2s");
     assert!(field.hint.value.contains("I/Q pairs: 48,000"));

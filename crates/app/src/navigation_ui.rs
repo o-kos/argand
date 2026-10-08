@@ -341,7 +341,7 @@ impl Shell {
         self.plot.map_or(1, |plot| plot.width)
     }
 
-    fn sample_count(&self) -> Option<u64> {
+    pub(super) fn sample_count(&self) -> Option<u64> {
         Some(self.file.as_ref()?.state.document.meta()?.len_samples)
     }
 
@@ -1023,6 +1023,8 @@ impl plot_view::PlotView {
         cx: &mut Context<Self>,
     ) {
         self.end_gestures(cx);
+        // The paste point outlives the menu, whose action arrives after its dismissal.
+        self.paste_point = None;
         self.open_menu = Some(menu.downgrade());
         self.menu_dismiss = Some(cx.subscribe_in(menu, window, Self::time_menu_dismissed));
     }
@@ -1043,6 +1045,54 @@ impl plot_view::PlotView {
             self.set_pointer(self.plot_pointer(window.mouse_position()), cx);
             cx.notify();
         }
+    }
+
+    /// The edit commands under a right click on the spectrum, Paste here going before the clicked sample.
+    pub(super) fn spectrum_context_menu(
+        &self,
+        snapshot: &plot_view::PlotSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
+        use gpui_kit::component::menu::ContextMenuExt;
+        let geometry = self.geometry?;
+        let panel = self.panel_bounds?;
+        let focus = self.focus.clone();
+        let owner = cx.entity().downgrade();
+        let can = snapshot.edit;
+        let view = snapshot.extents.time.view;
+        Some(
+            div()
+                .id("spectrum-context")
+                .absolute()
+                .left(geometry.spectrum.left() - panel.left())
+                .top(geometry.spectrum.top() - panel.top())
+                .w(geometry.spectrum.size.width)
+                .h(geometry.spectrum.size.height)
+                .context_menu(move |menu, window, cx| {
+                    let popup = cx.entity();
+                    let at = window.mouse_position();
+                    let _ = owner.update(cx, |plot, cx| {
+                        plot.track_spectrum_menu(&popup, at, view, window, cx);
+                    });
+                    edit_items(menu.action_context(focus.clone()), can)
+                })
+                .into_any_element(),
+        )
+    }
+
+    fn track_spectrum_menu(
+        &mut self,
+        menu: &gpui_kit::Entity<PopupMenu>,
+        at: gpui_kit::Point<Pixels>,
+        view: View,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.track_time_menu(menu, window, cx);
+        self.paste_point = self
+            .geometry
+            .map(|geometry| view.boundary(geometry.fractions(at).0));
+        cx.notify();
     }
 
     pub(super) fn time_context_menu(
@@ -1085,6 +1135,41 @@ fn rect_contains(rect: axes::Rect, position: gpui_kit::Point<Pixels>) -> bool {
         gpui_kit::size(px(rect.width), px(rect.height)),
     )
     .contains(&position)
+}
+
+fn edit_items(
+    menu: gpui_kit::component::menu::PopupMenu,
+    can: super::editing_ui::EditCommands,
+) -> gpui_kit::component::menu::PopupMenu {
+    use super::editing_ui::{
+        CopySelection, CutSelection, DeleteSelection, PasteClipboard, PasteHere,
+    };
+    menu.item(
+        PopupMenuItem::new("Cut")
+            .disabled(!can.cut)
+            .action(Box::new(CutSelection)),
+    )
+    .item(
+        PopupMenuItem::new("Copy")
+            .disabled(!can.cut)
+            .action(Box::new(CopySelection)),
+    )
+    .item(
+        PopupMenuItem::new("Paste here")
+            .disabled(!can.paste)
+            .action(Box::new(PasteHere)),
+    )
+    .item(
+        PopupMenuItem::new("Replace selection")
+            .disabled(!can.replace)
+            .action(Box::new(PasteClipboard)),
+    )
+    .item(PopupMenuItem::separator())
+    .item(
+        PopupMenuItem::new("Delete")
+            .disabled(!can.cut)
+            .action(Box::new(DeleteSelection)),
+    )
 }
 
 fn time_scale_items(

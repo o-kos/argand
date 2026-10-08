@@ -25,6 +25,8 @@ const LEVEL_SCAN_BYTES: usize = 64 << 20;
 pub struct FileInfo {
     pub bytes: Option<u64>,
     pub sample_units: Option<(f64, f64)>,
+    /// The file as it was opened, absent when it changed while it was being opened.
+    pub stamp: Option<argand_io::write::SourceStamp>,
 }
 
 pub enum Update {
@@ -71,6 +73,8 @@ pub struct Delivery {
 struct Requested {
     generation: u64,
     view_revision: u64,
+    /// The version of the edits this picture is of.
+    edit: u64,
     analysis: AnalysisRequest,
     /// Replaces a picture already shown, so no preview or partial picture is published.
     replacement: bool,
@@ -87,6 +91,7 @@ struct Mailbox {
     latest: Mutex<Option<Requested>>,
     generation: AtomicU64,
     view_revision: AtomicU64,
+    edit: Mutex<Option<Arc<EditState>>>,
 }
 
 impl Mailbox {
@@ -96,6 +101,21 @@ impl Mailbox {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
+
+    fn edit(&self) -> Option<Arc<EditState>> {
+        self.edit
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+/// An edited capture and how to open each source it reads beyond the file itself.
+pub struct EditState {
+    pub version: u64,
+    pub capture: argand_edit::Capture,
+    /// Indexed by source id, the file itself being source 0 and left `None`.
+    pub sources: Vec<Option<(SignalMeta, OpenHints)>>,
 }
 
 fn same_analysis(a: AnalysisRequest, b: AnalysisRequest) -> bool {
@@ -173,23 +193,33 @@ impl Analyst {
             .latest
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let edit = self.mailbox.edit().map_or(0, |state| state.version);
         if latest.is_some_and(|previous| {
-            previous.analysis == analysis && previous.frequency == frequency
+            previous.analysis == analysis
+                && previous.frequency == frequency
+                && previous.edit == edit
         }) {
             return !self.requests.is_closed();
         }
         // Only a file's first analysis has no picture to keep, so every later one is delivered whole.
+        // A new edit version has no picture to keep, so it previews as a first analysis does.
         let replacement = latest.is_some_and(|previous| {
-            previous.replacement || !same_analysis(previous.analysis, analysis)
+            previous.edit == edit
+                && (previous.replacement || !same_analysis(previous.analysis, analysis))
         });
         let generation = match *latest {
-            Some(previous) if same_analysis(previous.analysis, analysis) => previous.generation,
+            Some(previous)
+                if previous.edit == edit && same_analysis(previous.analysis, analysis) =>
+            {
+                previous.generation
+            }
             _ => self.mailbox.generation.fetch_add(1, Ordering::AcqRel) + 1,
         };
         let view_revision = self.mailbox.view_revision.fetch_add(1, Ordering::AcqRel) + 1;
         *latest = Some(Requested {
             generation,
             view_revision,
+            edit,
             analysis,
             replacement,
             frequency,
@@ -199,6 +229,15 @@ impl Analyst {
             Ok(()) | Err(async_channel::TrySendError::Full(())) => true,
             Err(async_channel::TrySendError::Closed(())) => false,
         }
+    }
+
+    /// Make `state` what every later request is analysed from.
+    pub fn set_edit(&self, state: EditState) {
+        *self
+            .mailbox
+            .edit
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(state));
     }
 
     pub fn accepts(&self, delivery: &Delivery) -> bool {
@@ -247,8 +286,8 @@ fn serve(
     mailbox: &Mailbox,
 ) {
     let opening_started = Instant::now();
-    let mut source = match argand_io::open(path, hints) {
-        Ok(source) => source,
+    let (source, stamp) = match argand_io::open_stamped(path, hints) {
+        Ok(opened) => opened,
         Err(error) => {
             let _ = updates.try_send(Delivery {
                 prepared_at: Instant::now(),
@@ -270,6 +309,7 @@ fn serve(
                 FileInfo {
                     bytes: std::fs::metadata(path).ok().map(|meta| meta.len()),
                     sample_units: source.original_sample_units(),
+                    stamp,
                 },
             ),
         })
@@ -282,17 +322,34 @@ fn serve(
         updates,
         mailbox,
     };
+    let meta = source.meta().clone();
+    let whole = argand_edit::Capture::whole(argand_edit::SourceId(0), meta.len_samples);
+    let mut source = match argand_edit::EditedSource::new(whole, vec![Some(source)], meta) {
+        Ok(source) => source,
+        Err(error) => {
+            replies.send(0, Update::Failed(error.into()));
+            return;
+        }
+    };
+    let mut edit = 0;
     let mut cached: Option<Cached> = None;
     while requests.recv_blocking().is_ok() {
         let Some(request) = mailbox.latest() else {
             continue;
         };
+        if request.edit != edit {
+            if let Err(error) = follow_edit(&mut source, mailbox, request.edit) {
+                replies.send(request.generation, Update::Failed(error));
+                continue;
+            }
+            edit = request.edit;
+        }
         if !cached
             .as_ref()
             .is_some_and(|cache| cache.generation == request.generation)
         {
             cached = None;
-            match compute(source.as_mut(), request, settings, &replies) {
+            match compute(&mut source, request, settings, &replies) {
                 Ok(cache) => cached = Some(cache),
                 Err(DspError::Cancelled) => continue,
                 Err(error) => {
@@ -305,6 +362,28 @@ fn serve(
             cache.deliver(&replies);
         }
     }
+}
+
+/// Bring `source` to the edits the mailbox holds, opening the sources they newly read.
+fn follow_edit(
+    source: &mut argand_edit::EditedSource,
+    mailbox: &Mailbox,
+    version: u64,
+) -> anyhow::Result<()> {
+    let Some(state) = mailbox.edit().filter(|state| state.version == version) else {
+        anyhow::bail!("the edits this picture was asked for are gone");
+    };
+    for id in state.capture.sources() {
+        if source.has_source(id) {
+            continue;
+        }
+        let Some(Some((meta, hints))) = state.sources.get(id.0 as usize) else {
+            anyhow::bail!("source {} of the edited capture cannot be opened", id.0);
+        };
+        source.insert_source(id, argand_io::reopen(meta, hints)?);
+    }
+    source.set_capture(state.capture.clone())?;
+    Ok(())
 }
 
 struct Replies<'a> {

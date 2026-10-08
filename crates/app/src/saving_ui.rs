@@ -15,12 +15,42 @@ pub(super) struct Saving {
     open_refused: bool,
     /// Why a FLAC source is written as WAVE, said once it is saved.
     as_wave: Option<String>,
+    of: SaveOf,
 }
 
-/// How the last save ended, shown until it is closed or another save starts.
+/// What a finished save means for the document it was started from.
+pub(super) struct SaveOf {
+    /// The document, told apart from any opened since.
+    document: u64,
+    /// The edit version written.
+    version: u64,
+    /// Whether the whole capture was written, which makes that version saved.
+    whole: bool,
+    /// Whether the saved file replaces the edited capture once it is written.
+    reopen: bool,
+    /// What waited for this save, an open or a close.
+    then: Option<editing_ui::Pending>,
+}
+
+#[cfg(test)]
+impl SaveOf {
+    /// A whole save of `version` of `document` that reopens the saved file.
+    pub(super) fn whole_for_test(document: u64, version: u64) -> Self {
+        Self {
+            document,
+            version,
+            whole: true,
+            reopen: true,
+            then: None,
+        }
+    }
+}
+
+/// How the last save ended, or why an edit was refused, shown until it is closed.
 pub(super) enum Notice {
     Saved(String),
-    Failed(String),
+    /// What failed, as a short title, and why.
+    Failed(&'static str, String),
 }
 
 impl Shell {
@@ -28,9 +58,8 @@ impl Shell {
     pub(super) fn can_save(&self, selection_only: bool) -> bool {
         self.saving.is_none()
             && self
-                .file
-                .as_ref()
-                .is_some_and(|file| file.state.document.meta().is_some())
+                .editing()
+                .is_some_and(|editing| !editing.capture().is_empty() && editing.is_described())
             && (!selection_only || self.selection.is_some())
     }
 
@@ -41,7 +70,25 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.save_as_then(selection_only, None, window, cx);
+    }
+
+    /// Save as, then do `then` once the whole capture is written and nothing changed meanwhile.
+    pub(super) fn save_as_then(
+        &mut self,
+        selection_only: bool,
+        then: Option<editing_ui::Pending>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !self.can_save(selection_only) {
+            if then.is_some() {
+                self.save_notice = Some(Notice::Failed(
+                    "Cannot save now",
+                    "another save is running or the capture is still being checked".into(),
+                ));
+                cx.notify();
+            }
             return;
         }
         self.dismiss_application_menu(window, cx);
@@ -51,23 +98,36 @@ impl Shell {
         window.focus(&self.focus_target(cx), cx);
         cx.notify();
         let Some(file) = &self.file else { return };
-        let Some(meta) = file.state.document.meta().cloned() else {
+        let Some(editing) = file.editing.as_ref() else {
             return;
         };
-        let hints = file.state.document.origin().hints.clone();
-        let stamp = file.stamp;
         let span = if selection_only { self.selection } else { None };
-        let as_wave = argand_io::write::writes_as_wave(&meta, &hints);
-        let name = saving::suggested_name(&meta, as_wave, span);
-        let chosen = cx.prompt_for_new_path(&saving::directory(&meta.source), Some(&name));
+        let output = editing.file();
+        let as_wave = argand_io::write::writes_as_wave(&output.meta, &output.hints);
+        let name = saving::suggested_name(&output.meta, as_wave, span);
+        let directory = saving::directory(&output.meta.source);
+        let Some(mut request) = editing.save_request(span, std::path::PathBuf::new()) else {
+            return;
+        };
+        let whole = !selection_only;
+        let edited = editing.is_dirty() || !editing.is_untouched();
+        let of = SaveOf {
+            document: file.id,
+            version: editing.version(),
+            whole,
+            // Saving the whole edited capture turns the window to the saved file.
+            reopen: whole && edited,
+            then: then.filter(|_| whole),
+        };
+        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
             // A cancelled dialog, a platform without one, and a failed dialog all mean no target.
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
             };
-            let request = saving::request(&meta, &hints, span, target, stamp);
+            request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
-                shell.start_save(request, window, cx)
+                shell.start_save(request, of, window, cx)
             });
         })
         .detach();
@@ -76,6 +136,7 @@ impl Shell {
     fn start_save(
         &mut self,
         request: argand_io::write::SaveRequest,
+        of: SaveOf,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -85,24 +146,27 @@ impl Shell {
         tracing::info!(
             source = %request.meta.source.display(),
             target = %request.target.display(),
-            span = ?request.span.map(|span| (span.start(), span.end())),
+            segments = ?request.segments,
             "saving"
         );
         let name = file_name(&request.target);
         let target = request.target.clone();
-        let as_wave = (request.meta.container == "flac"
-            && argand_io::write::writes_as_wave(&request.meta, &request.hints))
+        let output = &request.sources[0];
+        let as_wave = (output.meta.container == "flac"
+            && argand_io::write::writes_as_wave(&output.meta, &output.hints))
         .then(|| {
             format!(
                 "as WAV, the FLAC encoder cannot write {} Hz",
-                crate::numbers::number(request.meta.sample_rate)
+                crate::numbers::number(output.meta.sample_rate)
             )
         });
         let (job, updates) = saving::start(request);
         self.save_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 if shell
-                    .update_in(cx, |shell, _, cx| shell.receive_save(update, cx))
+                    .update_in(cx, |shell, window, cx| {
+                        shell.receive_save(update, window, cx)
+                    })
                     .is_err()
                 {
                     break;
@@ -117,11 +181,12 @@ impl Shell {
             progress: None,
             open_refused: false,
             as_wave,
+            of,
         });
         cx.notify();
     }
 
-    fn receive_save(&mut self, update: Update, cx: &mut Context<Self>) {
+    fn receive_save(&mut self, update: Update, window: &mut Window, cx: &mut Context<Self>) {
         match update {
             Update::Progress { done, total } => {
                 if let Some(saving) = &mut self.saving {
@@ -129,18 +194,63 @@ impl Shell {
                 }
             }
             Update::Finished(outcome) => {
-                let as_wave = self.saving.take().and_then(|saving| saving.as_wave);
-                self.save_notice = match outcome {
-                    Outcome::Saved(saved) => Some(Notice::Saved(match as_wave {
-                        Some(reason) => format!("{} {reason}", file_name(&saved.path)),
-                        None => file_name(&saved.path),
-                    })),
-                    Outcome::Cancelled => None,
-                    Outcome::Failed(error) => Some(Notice::Failed(error)),
+                let Some(finished) = self.saving.take() else {
+                    return;
                 };
+                match outcome {
+                    Outcome::Saved(saved) => {
+                        self.save_notice = Some(Notice::Saved(match &finished.as_wave {
+                            Some(reason) => format!("{} {reason}", file_name(&saved.path)),
+                            None => file_name(&saved.path),
+                        }));
+                        self.saved(saved.path, finished.of, window, cx);
+                    }
+                    Outcome::Cancelled => self.save_notice = None,
+                    Outcome::Failed(error) => {
+                        self.save_notice = Some(Notice::Failed("Save failed", error));
+                    }
+                }
             }
         }
         cx.notify();
+    }
+
+    /// Mark the version written as saved, then reopen or do what waited, unless the document moved on.
+    pub(super) fn saved(
+        &mut self,
+        path: std::path::PathBuf,
+        of: SaveOf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(file) = self.file.as_mut().filter(|file| file.id == of.document) else {
+            return;
+        };
+        let Some(editing) = file.editing.as_mut() else {
+            return;
+        };
+        if of.whole {
+            editing.mark_saved_version(of.version);
+        }
+        let unchanged = editing.version() == of.version;
+        self.refresh_titles(window);
+        if !unchanged {
+            return;
+        }
+        if let Some(then) = of.then {
+            self.carry_out(then, window, cx);
+            return;
+        }
+        if !of.reopen {
+            return;
+        }
+        // Where the window looks now, which navigation during the save may have moved.
+        self.reopening = Some(editing_ui::Reopening {
+            path: path.clone(),
+            view: self.view,
+            selection: self.selection,
+        });
+        self.carry_out(editing_ui::Pending::Open(Origin::new(path)), window, cx);
     }
 
     /// Whether `path` is the file a save in progress is writing, which must not open half written.
@@ -170,8 +280,8 @@ impl Shell {
     /// The status-bar item for a save in progress or the last one's outcome.
     pub(super) fn save_item(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let failure = match &self.save_notice {
-            Some(Notice::Failed(error)) if self.saving.is_none() => Some(MetadataHint {
-                title: "Save failed",
+            Some(Notice::Failed(title, error)) if self.saving.is_none() => Some(MetadataHint {
+                title,
                 value: error.clone(),
                 explanation: String::new(),
                 rows: Vec::new(),
@@ -193,7 +303,7 @@ impl Shell {
                 };
                 (text, false, true)
             }
-            (None, Some(Notice::Failed(error))) => (format!("Save failed: {error}"), true, true),
+            (None, Some(Notice::Failed(title, error))) => (format!("{title}: {error}"), true, true),
             (None, Some(Notice::Saved(_)) | None) => return None,
         };
         let close = Button::new("save-close")
