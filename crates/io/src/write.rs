@@ -406,8 +406,11 @@ impl Refused {
         for n in 1..=TEMPORARY_ATTEMPTS {
             let free = target.with_file_name(format!("{stem}.unsaved-{n}{extension}"));
             match fs::hard_link(&partial.path, &free) {
-                // The temporary name goes, the kept one stays.
-                Ok(()) => return free,
+                // The kept name is made durable before the temporary one goes.
+                Ok(()) => {
+                    sync_directory(&free);
+                    return free;
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(_) => break,
             }
@@ -423,13 +426,13 @@ fn stage_with_limit(
     riff_limit: u64,
 ) -> Result<Staged, WriteError> {
     let target = &request.target;
-    check_request(request)?;
-    // Whether the target is the replaced file is decided once, before anything is written.
+    // Whether the target is the replaced file is decided once, before anything is checked or written.
     let replaces = request
         .replacing
         .as_ref()
         .filter(|replacing| same_file(&replacing.path, target))
         .map(|replacing| replacing.stamp);
+    check_request(request, replaces.is_some())?;
     let mut opened = request
         .sources
         .iter()
@@ -534,11 +537,7 @@ fn protected_target(request: &SaveRequest) -> Option<&Protected> {
 }
 
 /// Refuse a request that would write over one of its sources or read past one.
-fn check_request(request: &SaveRequest) -> Result<(), WriteError> {
-    let replaces_target = request
-        .replacing
-        .as_ref()
-        .is_some_and(|replacing| same_file(&replacing.path, &request.target));
+fn check_request(request: &SaveRequest, replaces_target: bool) -> Result<(), WriteError> {
     if replaces_target {
         return check_segments(request);
     }
@@ -1471,6 +1470,7 @@ impl Partial {
     /// Leave the written file where it is, answering its path.
     fn keep(mut self) -> PathBuf {
         self.renamed = true;
+        sync_directory(&self.path);
         self.path.clone()
     }
 

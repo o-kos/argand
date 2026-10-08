@@ -40,6 +40,8 @@ Reviewer `gpt-6.1-sol` high.
 
 - Round 2 (4 P1, 1 P2): a failed keep removed the written file, two processes could take one kept name, the replacement mode was still recomputed after writing, the clipboard stamp was taken by path after the rename, and unfinished envelopes of pasted files were not restarted after a restore. All fixed. The comment nit was withdrawn.
 
+- Round 3 (1 P1, 1 P2): the replacement mode was still decided twice, by the request check and after it, and a kept file's name was not made durable in its folder. Both fixed: the mode is decided once and handed to the check, and the folder is synced for a kept name and for a temporary file left in place.
+
 ## Rejected alternatives
 
 - Writing in place: a failure would leave the original half written.
