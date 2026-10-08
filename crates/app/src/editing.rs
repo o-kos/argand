@@ -191,6 +191,8 @@ pub struct Editing {
     envelopes: Vec<Option<Arc<Snapshot>>>,
     /// Sources whose envelope is being built, so a second edit does not start another scan.
     building: Vec<bool>,
+    /// The version whose samples the picture on screen shows.
+    pictured: Capture,
 }
 
 impl Editing {
@@ -199,9 +201,10 @@ impl Editing {
         let capture = Capture::whole(SourceId(0), meta.len_samples);
         Self {
             sources: vec![Source::new(meta, hints)],
-            history: History::new(capture, None),
+            history: History::new(capture.clone(), None),
             envelopes: vec![None],
             building: vec![true],
+            pictured: capture,
         }
     }
 
@@ -422,6 +425,13 @@ impl Editing {
         self.envelopes[0]
             .as_ref()
             .is_some_and(|envelope| envelope.complete)
+    }
+
+    /// Where the version shown before held each sample of the current one, which the picture now shows.
+    pub fn repicture(&mut self) -> impl Fn(u64) -> Option<u64> + use<> {
+        let now = self.capture().clone();
+        let before = std::mem::replace(&mut self.pictured, now.clone());
+        move |at| now.position_in(at, &before)
     }
 
     /// The minimap of the current version, put together from the source envelopes.

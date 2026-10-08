@@ -3,6 +3,8 @@
 use super::*;
 use crate::editing::{Editing, Placement};
 use argand_edit::SourceId;
+use gpui_kit::SharedString;
+use gpui_kit::component::{WindowExt as _, h_flex};
 
 actions!(
     edit,
@@ -66,6 +68,9 @@ pub(super) struct EditCommands {
     pub paste: bool,
     pub replace: bool,
 }
+
+/// What the unsaved-edits question asks.
+const UNSAVED_QUESTION: &str = "Save the edits?";
 
 impl Shell {
     pub(super) fn editing(&self) -> Option<&Editing> {
@@ -229,12 +234,14 @@ impl Shell {
         let selection = editing.selection();
         let missing = editing.missing_envelopes();
         let state = editing.edit_state();
+        let before = editing.repicture();
         file.state.document.set_len(len);
-        // The old picture puts other samples where it shows them, so nothing is shown until the new one.
-        file.state.document.forget_picture();
+        file.state.document.follow_edit(before);
         file.state.analyst.set_edit(state);
         self.selection = selection.and_then(|span| span.within(len));
-        self.release_picture(window, cx);
+        // The wider picture is not moved with the edit, so it goes until the new one is drawn.
+        self.release_backdrop(window, cx);
+        self.upload_pending = true;
         self.time_scheme = None;
         self.tick_pan = None;
         self.bound_view(cx);
@@ -319,15 +326,11 @@ impl Shell {
             .as_ref()
             .map(|file| file.state.document.origin().name())
             .unwrap_or_default();
-        let answer = window.prompt(
-            gpui_kit::PromptLevel::Warning,
-            &format!("Save the edits to {name}?"),
-            Some("They are lost otherwise."),
-            &["Save", "Discard", "Cancel"],
-            cx,
-        );
+        let answer = Self::ask_unsaved(&name, window, cx);
         cx.spawn_in(window, async move |shell, cx| {
-            let Ok(answer) = answer.await else { return };
+            let Ok(answer) = answer.recv().await else {
+                return;
+            };
             let _ = shell.update_in(cx, |shell, window, cx| match answer {
                 // Save writes over the file where it can, and asks where otherwise.
                 0 if shell.can_save_over().is_ok() => {
@@ -340,6 +343,83 @@ impl Shell {
         })
         .detach();
         false
+    }
+
+    /// Ask whether to save the edits, answering 0 to save, 1 to discard and 2 to cancel.
+    ///
+    /// The system's own dialog asks where there is one, and the toolkit's dialog elsewhere.
+    fn ask_unsaved(
+        name: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> async_channel::Receiver<usize> {
+        let (answer, answered) = async_channel::bounded(1);
+        let detail = format!("The edits to {name} are lost otherwise.");
+        let native = cfg!(any(target_os = "macos", target_os = "windows"));
+        // A window without the toolkit's root, as in a headless test, has no dialog layer.
+        if native
+            || window
+                .root::<gpui_kit::component::Root>()
+                .flatten()
+                .is_none()
+        {
+            let prompt = window.prompt(
+                gpui_kit::PromptLevel::Warning,
+                UNSAVED_QUESTION,
+                Some(&detail),
+                &["Save", "Discard", "Cancel"],
+                cx,
+            );
+            cx.spawn(async move |_, _| {
+                if let Ok(index) = prompt.await {
+                    let _ = answer.send(index).await;
+                }
+            })
+            .detach();
+            return answered;
+        }
+        let detail = SharedString::from(detail);
+        window.open_dialog(cx, move |dialog, _, _| {
+            let reply = |index: usize| {
+                let answer = answer.clone();
+                move |_: &gpui_kit::ClickEvent, window: &mut Window, cx: &mut gpui_kit::App| {
+                    let _ = answer.try_send(index);
+                    window.close_dialog(cx);
+                }
+            };
+            let keyed = |index: usize| {
+                let answer = answer.clone();
+                move |_: &gpui_kit::ClickEvent, _: &mut Window, _: &mut gpui_kit::App| {
+                    answer.try_send(index).is_ok()
+                }
+            };
+            dialog
+                .title(UNSAVED_QUESTION)
+                .w(px(400.))
+                .close_button(false)
+                .overlay_closable(false)
+                .child(detail.clone())
+                .footer(
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .child(Button::new("discard").label("Discard").on_click(reply(1)))
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(Button::new("cancel").label("Cancel").on_click(reply(2)))
+                                .child(
+                                    Button::new("save")
+                                        .primary()
+                                        .label("Save")
+                                        .on_click(reply(0)),
+                                ),
+                        ),
+                )
+                .on_ok(keyed(0))
+                .on_cancel(keyed(2))
+        });
+        answered
     }
 
     /// Do what was waiting, the unsaved edits having been answered for.
@@ -517,6 +597,44 @@ mod tests {
         cx.simulate_prompt_answer("Discard");
         cx.run_until_parked();
         assert_eq!(opened(cx), Some(PathBuf::from("/captures/b.iqw")));
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[gpui_kit::test]
+    fn without_a_system_dialog_the_toolkit_dialog_asks(cx: &mut TestAppContext) {
+        open_window(cx);
+        let mut shell = None;
+        let handle = cx.add_window(|window, cx| {
+            let view =
+                cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
+            shell = Some(view.clone());
+            gpui_kit::component::Root::new(view, window, cx).bordered(false)
+        });
+        let shell = shell.unwrap();
+        let cx = &mut gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        described(cx, &shell, "/captures/a.iqw");
+        select(cx, &shell, 0, 100);
+        shell.update_in(cx, |shell, window, cx| shell.delete_selection(window, cx));
+        shell.update_in(cx, |shell, window, cx| {
+            shell.open(Origin::new(PathBuf::from("/captures/b.iqw")), window, cx);
+        });
+        cx.run_until_parked();
+        assert!(!cx.has_pending_prompt());
+        assert!(cx.update(|window, cx| window.has_active_dialog(cx)));
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        assert!(!cx.update(|window, cx| window.has_active_dialog(cx)));
+        let opened = shell.read_with(cx, |shell, _| {
+            shell
+                .file
+                .as_ref()
+                .map(|file| file.state.document.origin().path.clone())
+        });
+        assert_eq!(
+            opened,
+            Some(PathBuf::from("/captures/a.iqw")),
+            "Escape cancels"
+        );
     }
 
     #[gpui_kit::test]

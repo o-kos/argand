@@ -1712,6 +1712,7 @@ impl Render for Shell {
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
             .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
+            .children(Root::render_dialog_layer(window, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))
     }

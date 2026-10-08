@@ -261,7 +261,7 @@ range moved or a transform setting changed (#108), and uses
 `ProgressiveOptions::final_only` (`Requested::replacement` in `analysis.rs`): sequential
 sample reading, no sparse previews or intermediate pictures, and cancellation between
 bounded batches. Only the first analysis of an opened file previews and refines, because
-it has no picture to keep. A settings change used to restart the preview sequence, which
+it has no picture to keep; an edit keeps its picture moved with the samples (#193). A settings change used to restart the preview sequence, which
 replaced a complete picture with a coarse one and changed its brightness several times
 in the peak-relative range mode. `analysis_progress.rs` forwards source hints and sends bounded, nonblocking
 progress-only notifications from sequential reads every 50 ms. At most 128 frames fitting one configured memory/work-bounded batch use a
@@ -525,15 +525,20 @@ context and Cmd on macOS: Ctrl+Z, Ctrl+Shift+Z (and Ctrl+Y on Windows), Ctrl+X, 
 Ctrl+V (replace the selection, disabled without one) and Delete; Undo and Redo are bound in
 the `Shell` context as well (Ctrl+Y on Windows too), for a capture edited down to no plot. `Shell::edited` follows
 every version: the document's length, `Analyst::set_edit` (a new edit version is a new
-analysis generation that previews as a first analysis does, and the worker reads every capture through an `EditedSource` that opens
+analysis generation delivered whole, as a final-only replacement, and the worker reads every capture through an `EditedSource` that opens
 pasted files with `argand_io::reopen`), the selection, the view through `bound_view`, the
-picture and backdrop dropped until the new version's picture lands (`Document::forget_picture`,
-because the old picture shows other samples at its coordinates), the minimap composed (`minimap::compose`, mapping each cell through the
+picture moved with its samples at once (`Editing::repicture` maps each sample of the new
+version to where the version pictured held it, `Capture::position_in`, and
+`Document::follow_edit` moves the grid and image columns accordingly, leaving columns of
+samples never pictured empty, `NaN` in the grid, so they report no level), the backdrop
+dropped until the new picture lands, the minimap composed (`minimap::compose`, mapping each cell through the
 capture onto the source envelopes' cells, so no edit rescans; a pasted file gets its own
 envelope built once), and both titles, which carry `•` while edits are unsaved. Opening
-another file or closing the window with unsaved edits asks natively (`Window::prompt`, the
-close refused in `on_window_should_close` and carried out after the answer): Save as…,
-Discard, Cancel (Save writes over the file, #193); the Linux close button goes through the same question (`chrome::CloseWindow`).
+another file or closing the window with unsaved edits asks (`Shell::ask_unsaved`, the
+close refused in `on_window_should_close` and carried out after the answer): the system's
+own dialog through `Window::prompt` on macOS and Windows, and gpui-component's `Dialog`
+through `Root` elsewhere, because GPUI's fallback prompt is unstyled; Enter saves and Escape
+cancels. Save, Discard, Cancel (Save writes over the file, #193); the Linux close button goes through the same question (`chrome::CloseWindow`).
 A save remembers its document and version (`SaveOf`): when it finishes, a whole save marks
 that version saved, and only if the document is still that version does it read the edited
 capture from the saved file from then on (`Shell::rebind_saved_as`, see #193 below) or do

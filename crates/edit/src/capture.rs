@@ -139,6 +139,18 @@ impl Capture {
         if index == 0 { 0 } else { self.ends[index - 1] }
     }
 
+    /// Where `other` holds the sample this capture holds at `at`, if it holds it at all.
+    pub fn position_in(&self, at: u64, other: &Self) -> Option<u64> {
+        let (index, offset) = self.locate(at);
+        let piece = self.pieces.get(index)?;
+        let sample = piece.start + offset;
+        other
+            .pieces
+            .iter()
+            .position(|run| run.source == piece.source && (run.start..run.end()).contains(&sample))
+            .map(|found| other.piece_start(found) + sample - other.pieces[found].start)
+    }
+
     /// The source runs that `span` of the capture reads, in order.
     pub fn segments(&self, span: SampleSpan) -> Vec<Piece> {
         let Some(span) = span.within(self.len()) else {

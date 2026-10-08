@@ -135,3 +135,14 @@ fn random_edits_match_a_plain_vector() {
         }
     }
 }
+
+#[test]
+fn a_sample_is_found_where_the_other_version_held_it() {
+    let before = Capture::whole(A, 100);
+    let after = before.delete(span(10, 20));
+    assert_eq!(after.position_in(5, &before), Some(5));
+    assert_eq!(after.position_in(10, &before), Some(20));
+    let pasted = after.insert(0, &Clip::new(vec![Piece { source: B, start: 0, len: 5 }]));
+    assert_eq!(pasted.position_in(2, &before), None, "the other file was never in it");
+    assert_eq!(pasted.position_in(5, &after), Some(0));
+}

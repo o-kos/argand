@@ -209,11 +209,12 @@ impl Analyst {
             return !self.requests.is_closed();
         }
         // Only a file's first analysis has no picture to keep, so every later one is delivered whole.
-        // A new edit version has no picture to keep, so it previews as a first analysis does.
+        // A new edit version keeps the previous picture, its columns moved where the edit put them.
         let replacement = match *latest {
             Some(previous) => {
-                previous.edit == edit
-                    && (previous.replacement || !same_analysis(previous.analysis, analysis))
+                previous.edit != edit
+                    || previous.replacement
+                    || !same_analysis(previous.analysis, analysis)
             }
             None => self.mailbox.keep_picture.load(Ordering::Acquire),
         };

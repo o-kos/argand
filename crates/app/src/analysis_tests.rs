@@ -521,6 +521,35 @@ fn a_transform_change_on_an_analysed_file_publishes_only_its_final_picture() {
 }
 
 #[test]
+fn an_edit_on_an_analysed_file_publishes_only_its_final_picture() {
+    let dir = TempDir::new("edit-replacement");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
+    analyst.request(request());
+    assert!(matches!(next_result(&updates), Some(Update::Ready { .. })));
+    let whole = argand_edit::Capture::whole(argand_edit::SourceId(0), SAMPLES as u64);
+    let deleted = argand_core::SampleSpan::between(0, 1_000).unwrap();
+    analyst.set_edit(EditState {
+        version: 1,
+        capture: whole.delete(deleted),
+        sources: vec![None],
+    });
+    analyst.request(AnalysisRequest {
+        range: SampleRange::new(0, SAMPLES as u64 - 1_000),
+        ..request()
+    });
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        match delivery.update {
+            Update::Progress { .. } => {},
+            Update::Ready { .. } => break,
+            _ => panic!("the moved picture stays until the edited one is whole"),
+        }
+    }
+}
+
+#[test]
 fn zoom_publishes_only_a_compact_final_picture_and_keeps_display_cache_semantics() {
     let dir = TempDir::new("compact-zoom");
     let (analyst, updates) = open(capture(&dir), OpenHints::default());

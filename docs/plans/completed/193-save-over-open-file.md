@@ -31,6 +31,8 @@ Derived here:
 - **When the commit fails** (another program holds the file, it changed on disk): the original is untouched, the written edits are kept beside it as `<stem>.unsaved-<n>.<ext>` so no work is lost, the notice says where, and the document keeps its edits while new readers open the original under the picture; a file whose stamp changed is opened afresh (changed after review).
 - **While the file is replaced** nothing opens and the window does not close, so no other document or reader can appear between letting the file go and replacing it (added after review).
 - **History** starts empty on the saved file, as after Save as.
+- **An edit keeps its picture** (added after the owner saw a delete flash a coarse preview): the columns move with their samples at once and the edited picture replaces them whole, with no preview.
+- **The unsaved-edits question** is gpui-component's `Dialog` where the system has no dialog of its own (Linux), since GPUI's fallback prompt is unstyled; macOS and Windows keep the native one (added after the owner's review).
 
 ## Review
 
