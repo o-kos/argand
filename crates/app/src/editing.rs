@@ -370,6 +370,8 @@ impl Editing {
                 path: file.meta.source.clone(),
                 stamp: file.stamp,
             }],
+            replacing: None,
+            output: argand_io::write::Output::Native,
         })
     }
 }

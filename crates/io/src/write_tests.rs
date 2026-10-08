@@ -950,3 +950,88 @@ fn opening_stamps_what_it_read_for_every_reader() {
         assert_eq!(stamp, SourceStamp::of(path).ok(), "{}", path.display());
     }
 }
+
+fn replacing(path: &Path) -> Option<Replacing> {
+    Some(Replacing {
+        path: path.to_owned(),
+        stamp: SourceStamp::of(path).unwrap(),
+    })
+}
+
+#[test]
+fn a_save_may_replace_the_file_it_reads_once_staged() {
+    let dir = TempDir::new("write-replace");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 100), 1.0);
+    let original = data_bytes(&source);
+    let mut request = request(&source, OpenHints::default(), SampleSpan::between(10, 30), source.clone());
+    assert!(matches!(run(&request), Err(WriteError::SameFile { .. })), "not without replacing");
+    request.replacing = replacing(&source);
+    let staged = stage(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    assert_eq!(data_bytes(&source), original, "nothing replaced before the commit");
+    let saved = staged.commit().unwrap();
+    assert_eq!(saved.samples, 20);
+    assert_eq!(data_bytes(&source), original[10 * 4..30 * 4]);
+    assert_eq!(names(&dir), ["a.wav"]);
+}
+
+#[test]
+fn a_replaced_file_changed_before_the_commit_is_kept() {
+    let dir = TempDir::new("write-replace-changed");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 100), 1.0);
+    let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), source.clone());
+    request.replacing = replacing(&source);
+    let staged = stage(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    write_wav(&source, i16, 48_000, &signal(i16, 200), 1.0);
+    let changed = fs::read(&source).unwrap();
+    assert!(matches!(staged.commit(), Err(WriteError::SourceChanged { .. })));
+    assert_eq!(fs::read(&source).unwrap(), changed);
+    assert_eq!(names(&dir), ["a.wav"]);
+}
+
+#[test]
+fn a_dropped_stage_leaves_no_file() {
+    let dir = TempDir::new("write-stage-drop");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 100), 1.0);
+    let request = request(&source, OpenHints::default(), None, dir.join("b.wav"));
+    let staged = stage(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    assert_eq!(names(&dir).len(), 2, "the temporary file exists while staged");
+    drop(staged);
+    assert_eq!(names(&dir), ["a.wav"]);
+}
+
+#[test]
+fn a_headerless_capture_saved_over_itself_keeps_its_preamble() {
+    let dir = TempDir::new("write-headerless");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = dir.join("a.bin");
+    let mut bytes = b"PREAMBLE".to_vec();
+    bytes.extend(encode(i16.format, &signal(i16, 50)));
+    fs::write(&source, &bytes).unwrap();
+    let hints = OpenHints {
+        raw: Some("iq_i16@48k".parse().unwrap()),
+        byte_offset: 8,
+        ..Default::default()
+    };
+    let mut request = request(&source, hints, SampleSpan::between(5, 15), source.clone());
+    request.replacing = replacing(&source);
+    request.output = Output::Headerless { preamble: 8 };
+    let saved = run(&request).unwrap();
+    assert_eq!(saved.container, "raw");
+    let mut expected = b"PREAMBLE".to_vec();
+    expected.extend_from_slice(&bytes[8 + 5 * 4..8 + 15 * 4]);
+    assert_eq!(fs::read(&source).unwrap(), expected);
+}
+
+#[test]
+fn flac_cannot_be_written_without_a_container() {
+    let dir = TempDir::new("write-headerless-flac");
+    let source = dir.join("a.flac");
+    write_flac_fixture(&source, 2, 16, 3000);
+    let mut request = request(&source, OpenHints::default(), None, dir.join("b.raw"));
+    request.output = Output::Headerless { preamble: 0 };
+    assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
+    assert_eq!(names(&dir), ["a.flac"]);
+}
