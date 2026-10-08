@@ -70,6 +70,20 @@ impl Origin {
 /// puts the document back into [`Status::Analyzing`] while the previous
 /// picture is still up, because a window that blanks itself on every settings change is
 /// harder to use than one that shows a slightly stale spectrogram.
+/// The status and requested range of a document, carried across a new reader of the same samples.
+#[derive(Debug, Clone)]
+pub struct Shown {
+    status: Status,
+    requested_range: Option<argand_core::SampleRange>,
+}
+
+impl Shown {
+    /// Whether the picture shown was finished, so nothing more needs to be asked for.
+    pub const fn is_ready(&self) -> bool {
+        matches!(self.status, Status::Ready { .. })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Status {
     /// Reading the header, and the level scan a normalized capture needs.
@@ -143,6 +157,31 @@ pub enum Effect {
     Analysis,
 }
 
+/// The column of a picture spanning `t0` to `t1` that showed each column's samples before an edit.
+fn source_columns(
+    t0: f64,
+    t1: f64,
+    width: usize,
+    rate: f64,
+    before: impl Fn(u64) -> Option<u64>,
+) -> Vec<Option<usize>> {
+    let span = t1 - t0;
+    (0..width)
+        .map(|column| {
+            let time = t0 + (column as f64 + 0.5) / width as f64 * span;
+            let sample = (time * rate).floor();
+            if !(sample >= 0.0 && span > 0.0) {
+                return None;
+            }
+            let old = before(sample as u64)?;
+            let position = ((old as f64 + 0.5) / rate - t0) / span * width as f64;
+            (0.0..width as f64)
+                .contains(&position)
+                .then_some(position as usize)
+        })
+        .collect()
+}
+
 struct AnalysisSnapshot {
     result: Box<Analysis>,
     range: DisplayedRange,
@@ -186,6 +225,11 @@ impl Document {
         }
     }
 
+    /// Name the file the same samples are now read from, a saved copy of them.
+    pub fn set_origin(&mut self, origin: Origin) {
+        self.origin = origin;
+    }
+
     pub const fn origin(&self) -> &Origin {
         &self.origin
     }
@@ -199,9 +243,62 @@ impl Document {
         self.file_info.stamp
     }
 
-    /// Drop the picture of a version that is no longer the one shown.
-    pub fn forget_picture(&mut self) {
-        self.analysis = None;
+    /// Move the picture's columns to where an edit put their samples, emptying the columns of samples it never showed.
+    ///
+    /// `before` answers where the version pictured held a sample of the current one.
+    pub fn follow_edit(&mut self, before: impl Fn(u64) -> Option<u64>) {
+        let Some(rate) = self.meta.as_ref().map(|meta| meta.sample_rate) else {
+            return;
+        };
+        let Some(snapshot) = &mut self.analysis else {
+            return;
+        };
+        let analysis = &mut snapshot.result;
+        let db = &mut analysis.db;
+        let columns = source_columns(db.t0, db.t1, db.width, rate, &before);
+        let height = db.height;
+        let mut values = vec![f32::NAN; db.values.len()];
+        for (to, from) in columns.iter().enumerate() {
+            let (Some(from), Some(target)) = (from, values.get_mut(to * height..(to + 1) * height))
+            else {
+                continue;
+            };
+            if let Some(source) = db.values.get(from * height..(from + 1) * height) {
+                target.copy_from_slice(source);
+            }
+        }
+        db.values = values;
+        let image = &mut analysis.spectrogram;
+        let columns = source_columns(image.t0, image.t1, image.width, rate, &before);
+        let mut rgba = vec![0; image.rgba.len()];
+        for row in 0..image.height {
+            for (to, from) in columns.iter().enumerate() {
+                let Some(from) = from else { continue };
+                let at = |column: usize| (row * image.width + column) * 4;
+                if let (Some(target), Some(source)) = (
+                    rgba.get_mut(at(to)..at(to) + 4),
+                    image.rgba.get(at(*from)..at(*from) + 4),
+                ) {
+                    target.copy_from_slice(source);
+                }
+            }
+        }
+        image.rgba = rgba;
+        analysis.waveform = None;
+    }
+
+    /// What the window shows of the work on the file, to keep while the same samples are read from a new one.
+    pub fn shown(&self) -> Shown {
+        Shown {
+            status: self.status.clone(),
+            requested_range: self.requested_range,
+        }
+    }
+
+    /// Show again what was shown before the same samples were read from a new file.
+    pub fn keep_shown(&mut self, shown: Shown) {
+        self.status = shown.status;
+        self.requested_range = shown.requested_range;
     }
 
     /// Follow an edit that made the capture this long.

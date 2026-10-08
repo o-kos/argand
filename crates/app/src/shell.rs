@@ -50,6 +50,8 @@ mod navigation_ui;
 mod plot_ui;
 #[path = "plot_view.rs"]
 mod plot_view;
+#[path = "replace_ui.rs"]
+mod replace_ui;
 #[path = "saving_ui.rs"]
 mod saving_ui;
 #[path = "settings_ui.rs"]
@@ -76,6 +78,7 @@ actions!(
         FocusNext,
         FocusPrevious,
         ChooseFile,
+        Save,
         SaveAs,
         SaveSelectionAs,
         EditAnalysis,
@@ -105,6 +108,15 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
                 "ctrl-o"
             },
             ChooseFile,
+            None,
+        ),
+        KeyBinding::new(
+            if cfg!(target_os = "macos") {
+                "cmd-s"
+            } else {
+                "ctrl-s"
+            },
+            Save,
             None,
         ),
         KeyBinding::new(
@@ -305,6 +317,11 @@ struct OpenFile {
     first_picture: Arc<AtomicBool>,
     /// The edits, created once the file has described itself.
     editing: Option<crate::editing::Editing>,
+    /// Set while new readers open the file under a picture already shown.
+    rebinding: Option<replace_ui::Rebinding>,
+    /// Handed to every thread that reads the file, so closing it can wait for them all.
+    lease: crate::release::Lease,
+    released: crate::release::Released,
     /// Envelopes being built for files pasted in, and the file's own description.
     _edit_tasks: Vec<Task<()>>,
     /// Created once the file has described itself, and dropped with it.
@@ -395,8 +412,9 @@ struct Shell {
     save_updates: Option<Task<()>>,
     /// What was copied, which outlives the capture it came from.
     clipboard: Option<crate::editing::Clipboard>,
-    /// A saved capture the window opens next, keeping where it looked.
-    reopening: Option<editing_ui::Reopening>,
+
+    /// Set while the open file is let go of and replaced, when nothing may open or close.
+    replacement_active: bool,
     /// Counts opened documents, so a finished save knows whether its document is still the one shown.
     opened_documents: u64,
     frequency: crate::frequency::View,
@@ -501,7 +519,8 @@ impl Shell {
             save_notice: None,
             save_updates: None,
             clipboard: None,
-            reopening: None,
+
+            replacement_active: false,
             opened_documents: 0,
             frequency: crate::frequency::View::default(),
             frequency_scheme: None,
@@ -645,7 +664,7 @@ impl Shell {
     /// transform, and that is a pass over the file that must not happen on the
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
-        if self.refuse_save_target(&origin.path, cx) {
+        if self.refuse_save_target(&origin.path, cx) || self.refuse_while_replacing(cx) {
             return;
         }
         if !self.settle_unsaved(editing_ui::Pending::Open(origin.clone()), window, cx) {
@@ -658,10 +677,7 @@ impl Shell {
         self.settings.dynamic_range = self.config.dynamic_range;
         tracing::info!(path = %origin.path.display(), "opening");
         window.set_window_title(&format!("{} – {TITLE}", origin.name()));
-        self.reopening = self
-            .reopening
-            .take()
-            .filter(|reopen| reopen.path == origin.path);
+
         self.settings_error = None;
 
         // Nothing of the previous file is left standing. Its picture would
@@ -676,34 +692,15 @@ impl Shell {
         self.time_scheme = None;
         self.tick_pan = None;
 
-        let (analyst, updates, start) = crate::analysis::prepare(
-            origin.path.clone(),
-            origin.hints.clone(),
-            self.config.analysis,
-        );
+        let replace_ui::Readers {
+            analyst,
+            pump,
+            start,
+            lease,
+            released,
+        } = self.readers(&origin, window, cx);
         window.on_next_frame(move |window, _| {
             window.on_next_frame(move |_, _| start.start());
-        });
-
-        // Dropping this task drops the receiver, which is half of what tells
-        // the thread that nobody is waiting for it any more.
-        //
-        // It is spawned against the window rather than the application because
-        // letting go of a texture needs one: gpui takes the window being
-        // updated out of its own list, so an image released without naming it
-        // stays in that window's atlas.
-        let pump = cx.spawn_in(window, async move |shell, cx| {
-            while let Ok(update) = updates.recv().await {
-                tracing::trace!(target: "argand::ui_latency",
-                    age_us = update.prepared_at.elapsed().as_micros(), "analysis delivery received");
-                if shell
-                    .update_in(cx, |shell, window, cx| shell.receive(update, window, cx))
-                    .is_err()
-                {
-                    // The window has gone; so has anything to tell.
-                    break;
-                }
-            }
         });
 
         // Replacing the previous file drops both ends of its queue, which is
@@ -718,6 +715,9 @@ impl Shell {
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
             editing: None,
+            rebinding: None,
+            lease,
+            released,
             _edit_tasks: Vec::new(),
             plot: None,
         });
@@ -760,7 +760,7 @@ impl Shell {
     }
 
     /// Put the opened file first in history, hide it from Recent, and save the session.
-    fn remember_file(&mut self, origin: &Origin) {
+    pub(super) fn remember_file(&mut self, origin: &Origin) {
         self.session.remember(&origin.path, &origin.hints);
         self.recent_files.set_current(&origin.path);
         self.recent_files.refresh(&self.session.recent);
@@ -797,12 +797,21 @@ impl Shell {
         }
 
         match effect {
+            Effect::Opened
+                if self
+                    .file
+                    .as_ref()
+                    .is_some_and(|file| file.rebinding.is_some()) =>
+            {
+                if let Some(rebinding) = self.file.as_mut().and_then(|file| file.rebinding.take()) {
+                    self.rebound(rebinding, window, cx);
+                }
+            }
             Effect::Opened => {
                 self.start_editing(cx);
                 self.reset_view();
-                self.restore_reopened();
                 self.attach_plot(window, cx);
-                self.start_minimap(window, cx);
+                self.start_minimap(false, window, cx);
                 // Remembered now rather than when it was asked for. A file
                 // that will not open must not overwrite the hints of the entry
                 // that did: a raw capture first opened with `--raw iq_i16@2M`
@@ -873,14 +882,77 @@ impl Shell {
         }
     }
 
-    fn start_minimap(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// The readers of the file at `origin`, not started until their `Start` says so.
+    fn readers(
+        &self,
+        origin: &Origin,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> replace_ui::Readers {
+        let (lease, released) = crate::release::lease();
+        let (analyst, updates, start) = crate::analysis::prepare(
+            origin.path.clone(),
+            origin.hints.clone(),
+            self.config.analysis,
+            lease.clone(),
+        );
+        // Dropping this task drops the receiver, which is half of what tells
+        // the thread that nobody is waiting for it any more.
+        //
+        // It is spawned against the window rather than the application because
+        // letting go of a texture needs one: gpui takes the window being
+        // updated out of its own list, so an image released without naming it
+        // stays in that window's atlas.
+        let pump = cx.spawn_in(window, async move |shell, cx| {
+            while let Ok(update) = updates.recv().await {
+                tracing::trace!(target: "argand::ui_latency",
+                    age_us = update.prepared_at.elapsed().as_micros(), "analysis delivery received");
+                if shell
+                    .update_in(cx, |shell, window, cx| shell.receive(update, window, cx))
+                    .is_err()
+                {
+                    // The window has gone; so has anything to tell.
+                    break;
+                }
+            }
+        });
+
+        replace_ui::Readers {
+            analyst,
+            pump,
+            start,
+            lease,
+            released,
+        }
+    }
+
+    /// Scan the file for its minimap, showing the scan's previews unless `quiet`.
+    pub(super) fn start_minimap(
+        &mut self,
+        quiet: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(file) = &mut self.file else { return };
-        let Some(meta) = file.state.document.meta().cloned() else {
+        // The file's own description, which edits leave unchanged.
+        let file_meta = file
+            .editing
+            .as_ref()
+            .map(|editing| editing.file().meta.clone());
+        let Some(meta) = file_meta.or_else(|| file.state.document.meta().cloned()) else {
             return;
         };
-        let updates = crate::minimap::start(file.state.document.origin().clone(), meta);
+        let updates = crate::minimap::start(
+            file.state.document.origin().clone(),
+            meta,
+            file.lease.clone(),
+        );
         file._minimap_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
+                // A minimap already shown stays until the one replacing it is complete.
+                if quiet && update.as_ref().is_ok_and(|snapshot| !snapshot.complete) {
+                    continue;
+                }
                 if shell
                     .update_in(cx, |shell, _, cx| {
                         shell.receive_minimap(update, cx);
@@ -967,7 +1039,7 @@ impl Shell {
     ///
     /// Silent when the file has not opened yet or the panel has not been laid
     /// out: both arrive on their own, and each one calls back here.
-    fn ask_for_a_picture(&mut self) {
+    pub(super) fn ask_for_a_picture(&mut self) {
         let Some(file) = self.file.as_ref() else {
             return;
         };
@@ -1076,6 +1148,15 @@ impl Shell {
                 let shell = shell.clone();
                 cx.defer(move |cx| {
                     let _ = shell.update_in(cx, Self::choose_file);
+                });
+            }
+        });
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &Save, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ = shell.update_in(cx, |shell, window, cx| shell.save_over(window, cx));
                 });
             }
         });
@@ -1631,6 +1712,7 @@ impl Render for Shell {
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
             .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
+            .children(Root::render_dialog_layer(window, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))
     }

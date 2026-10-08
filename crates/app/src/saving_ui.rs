@@ -8,40 +8,43 @@ use gpui_kit::component::IconName;
 /// A save in progress.
 pub(super) struct Saving {
     job: saving::Job,
-    name: String,
+    pub(super) name: String,
     target: std::path::PathBuf,
-    progress: Option<(u64, u64)>,
+    pub(super) progress: Option<(u64, u64)>,
     /// Set when the file being written was asked to open, which waits until it is complete.
     open_refused: bool,
     /// Why a FLAC source is written as WAVE, said once it is saved.
     as_wave: Option<String>,
-    of: SaveOf,
+    pub(super) of: SaveOf,
 }
 
 /// What a finished save means for the document it was started from.
 pub(super) struct SaveOf {
     /// The document, told apart from any opened since.
-    document: u64,
+    pub(super) document: u64,
     /// The edit version written.
-    version: u64,
+    pub(super) version: u64,
     /// Whether the whole capture was written, which makes that version saved.
-    whole: bool,
-    /// Whether the saved file replaces the edited capture once it is written.
-    reopen: bool,
+    pub(super) whole: bool,
+    /// Whether the saved file is read in place of the edited capture once it is written.
+    pub(super) rebind: bool,
     /// What waited for this save, an open or a close.
-    then: Option<editing_ui::Pending>,
+    pub(super) then: Option<editing_ui::Pending>,
+    /// Whether this save replaces the open file, which needs it let go of first.
+    pub(super) over: bool,
 }
 
 #[cfg(test)]
 impl SaveOf {
-    /// A whole save of `version` of `document` that reopens the saved file.
+    /// A whole save of `version` of `document` that goes on from the saved file.
     pub(super) fn whole_for_test(document: u64, version: u64) -> Self {
         Self {
             document,
             version,
             whole: true,
-            reopen: true,
+            rebind: true,
             then: None,
+            over: false,
         }
     }
 }
@@ -116,8 +119,9 @@ impl Shell {
             version: editing.version(),
             whole,
             // Saving the whole edited capture turns the window to the saved file.
-            reopen: whole && edited,
+            rebind: whole && edited,
             then: then.filter(|_| whole),
+            over: false,
         };
         let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
@@ -133,7 +137,7 @@ impl Shell {
         .detach();
     }
 
-    fn start_save(
+    pub(super) fn start_save(
         &mut self,
         request: argand_io::write::SaveRequest,
         of: SaveOf,
@@ -160,7 +164,7 @@ impl Shell {
                 crate::numbers::number(output.meta.sample_rate)
             )
         });
-        let (job, updates) = saving::start(request);
+        let (job, updates) = saving::start(request, of.over);
         self.save_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 if shell
@@ -205,6 +209,7 @@ impl Shell {
                         }));
                         self.saved(saved.path, finished.of, window, cx);
                     }
+                    Outcome::Staged(staged) => self.staged(*staged, finished, window, cx),
                     Outcome::Cancelled => self.save_notice = None,
                     Outcome::Failed(error) => {
                         self.save_notice = Some(Notice::Failed("Save failed", error));
@@ -215,7 +220,7 @@ impl Shell {
         cx.notify();
     }
 
-    /// Mark the version written as saved, then reopen or do what waited, unless the document moved on.
+    /// Mark the version written as saved, then go on from the saved file or do what waited, unless the document moved on.
     pub(super) fn saved(
         &mut self,
         path: std::path::PathBuf,
@@ -241,16 +246,10 @@ impl Shell {
             self.carry_out(then, window, cx);
             return;
         }
-        if !of.reopen {
+        if !of.rebind {
             return;
         }
-        // Where the window looks now, which navigation during the save may have moved.
-        self.reopening = Some(editing_ui::Reopening {
-            path: path.clone(),
-            view: self.view,
-            selection: self.selection,
-        });
-        self.carry_out(editing_ui::Pending::Open(Origin::new(path)), window, cx);
+        self.rebind_saved_as(path, window, cx);
     }
 
     /// Whether `path` is the file a save in progress is writing, which must not open half written.
@@ -296,12 +295,15 @@ impl Shell {
                     .map_or(0, |(done, total)| {
                         (done as f64 * 100.0 / total as f64) as u32
                     });
-                let text = if saving.open_refused {
+                let text = if self.replacement_active {
+                    format!("Replacing {}…", saving.name)
+                } else if saving.open_refused {
                     format!("Saving {}… {percent}%, open it once saved", saving.name)
                 } else {
                     format!("Saving {}… {percent}%", saving.name)
                 };
-                (text, false, true)
+                // Once the file is being replaced there is nothing left to cancel.
+                (text, false, !self.replacement_active)
             }
             (None, Some(Notice::Failed(title, error))) => (format!("{title}: {error}"), true, true),
             (None, Some(Notice::Saved(_)) | None) => return None,

@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use argand_core::{SampleSpan, SignalMeta};
-use argand_edit::{Capture, Clip, History, SourceId};
+use argand_edit::{Capture, Clip, History, Piece, SourceId};
 use argand_io::OpenHints;
 use argand_io::write::{SaveRequest, Segment, SourceFile, SourceStamp, Storage};
 
@@ -61,6 +61,61 @@ pub struct Clipboard {
 }
 
 impl Clipboard {
+    /// The same samples read from `written`, the file `saved` was just written over `replaced` as.
+    ///
+    /// Nothing when some copied samples of `replaced` are not in what was saved.
+    pub fn moved_onto(&self, replaced: &Source, saved: &Capture, written: &Source) -> Option<Self> {
+        let moved: Vec<bool> = self
+            .sources
+            .iter()
+            .map(|source| source.same_file(replaced))
+            .collect();
+        let mut pieces = Vec::with_capacity(self.clip.pieces().len());
+        for piece in self.clip.pieces() {
+            if !moved[piece.source.0 as usize] {
+                pieces.push(*piece);
+                continue;
+            }
+            for (start, len) in positions_in(saved, piece.start, piece.len)? {
+                pieces.push(Piece {
+                    source: piece.source,
+                    start,
+                    len,
+                });
+            }
+        }
+        let sources = self
+            .sources
+            .iter()
+            .zip(&moved)
+            .map(|(source, moved)| {
+                if *moved {
+                    written.clone()
+                } else {
+                    source.clone()
+                }
+            })
+            .collect();
+        Some(Self {
+            sources,
+            clip: Clip::new(pieces),
+        })
+    }
+
+    /// Give `opened` its stamp in copies that refer to it without one, as after it was saved over.
+    pub fn adopt(&mut self, opened: &Source) {
+        for source in &mut self.sources {
+            if source.stamp.is_none()
+                && source.same_file(&Source {
+                    stamp: None,
+                    ..opened.clone()
+                })
+            {
+                source.stamp = opened.stamp;
+            }
+        }
+    }
+
     /// Take how a file stores its samples, for copies made before that was known.
     ///
     /// The stamp taken at opening tells this file apart from another opened at the same path.
@@ -71,6 +126,24 @@ impl Clipboard {
             }
         }
     }
+}
+
+/// Where samples `start .. start + len` of the file a capture was opened from sit in that capture.
+///
+/// Nothing when some of them are not in it, the first place each appears being taken.
+fn positions_in(saved: &Capture, start: u64, len: u64) -> Option<Vec<(u64, u64)>> {
+    let end = start + len;
+    let mut at = start;
+    let mut out = Vec::new();
+    while at < end {
+        let (index, piece) = saved.pieces().iter().enumerate().find(|(_, piece)| {
+            piece.source == SourceId(0) && piece.start <= at && at < piece.start + piece.len
+        })?;
+        let take = end.min(piece.start + piece.len) - at;
+        out.push((saved.piece_start(index) + (at - piece.start), take));
+        at += take;
+    }
+    Some(out)
 }
 
 /// Where a paste goes.
@@ -118,6 +191,8 @@ pub struct Editing {
     envelopes: Vec<Option<Arc<Snapshot>>>,
     /// Sources whose envelope is being built, so a second edit does not start another scan.
     building: Vec<bool>,
+    /// The version whose samples the picture on screen shows.
+    pictured: Capture,
 }
 
 impl Editing {
@@ -126,9 +201,10 @@ impl Editing {
         let capture = Capture::whole(SourceId(0), meta.len_samples);
         Self {
             sources: vec![Source::new(meta, hints)],
-            history: History::new(capture, None),
+            history: History::new(capture.clone(), None),
             envelopes: vec![None],
             building: vec![true],
+            pictured: capture,
         }
     }
 
@@ -266,6 +342,19 @@ impl Editing {
         self.history.mark_saved();
     }
 
+    /// The file as it will be once the current version is written over it, its stamp still unknown.
+    pub fn written_source(&self) -> Source {
+        let file = self.file();
+        let mut meta = file.meta.clone();
+        meta.len_samples = self.len();
+        Source {
+            meta,
+            hints: file.hints.clone(),
+            stamp: None,
+            storage: file.storage,
+        }
+    }
+
     pub fn mark_saved_version(&mut self, version: u64) {
         self.history.mark_saved_version(version);
     }
@@ -294,6 +383,15 @@ impl Editing {
         }
     }
 
+    /// Let envelopes that never finished be asked for again, their builders having gone with a closed document.
+    pub fn restart_envelopes(&mut self) {
+        for (building, envelope) in self.building.iter_mut().zip(&self.envelopes).skip(1) {
+            if envelope.as_ref().is_none_or(|envelope| !envelope.complete) {
+                *building = false;
+            }
+        }
+    }
+
     /// The sources a minimap envelope has to be built for now, each handed out once.
     pub fn missing_envelopes(&mut self) -> Vec<(SourceId, Source)> {
         let used = self.capture().sources();
@@ -312,6 +410,28 @@ impl Editing {
         if let Some(slot) = self.envelopes.get_mut(id.0 as usize) {
             *slot = Some(snapshot);
         }
+    }
+
+    /// Whether every file the current version reads stores its samples as `meta` says, so a picture of it is one of `meta`.
+    pub fn scaled_as(&self, meta: &SignalMeta) -> bool {
+        self.capture().sources().iter().all(|id| {
+            let source = &self.sources[id.0 as usize].meta;
+            source.sample_type == meta.sample_type && source.divisor == meta.divisor
+        })
+    }
+
+    /// Whether the opened file's own envelope was scanned to the end.
+    pub fn file_envelope_complete(&self) -> bool {
+        self.envelopes[0]
+            .as_ref()
+            .is_some_and(|envelope| envelope.complete)
+    }
+
+    /// Where the version shown before held each sample of the current one, which the picture now shows.
+    pub fn repicture(&mut self) -> impl Fn(u64) -> Option<u64> + use<> {
+        let now = self.capture().clone();
+        let before = std::mem::replace(&mut self.pictured, now.clone());
+        move |at| now.position_in(at, &before)
     }
 
     /// The minimap of the current version, put together from the source envelopes.
@@ -370,6 +490,8 @@ impl Editing {
                 path: file.meta.source.clone(),
                 stamp: file.stamp,
             }],
+            replacing: None,
+            output: argand_io::write::Output::Native,
         })
     }
 }

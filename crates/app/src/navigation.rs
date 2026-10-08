@@ -252,7 +252,9 @@ pub fn level_at(grid: &DbGrid, shown: (f64, f64), across: f64, from_top: f64) ->
     };
     let x = index(column, grid.width);
     let row = index(from_top * grid.height as f64, grid.height);
+    // An empty cell is a column an edit left without a picture.
     grid.value(x, grid.height - 1 - row)
+        .filter(|value| !value.is_nan())
 }
 
 /// Normalized parts of the view for which the foreground has no data.

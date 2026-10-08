@@ -261,7 +261,7 @@ range moved or a transform setting changed (#108), and uses
 `ProgressiveOptions::final_only` (`Requested::replacement` in `analysis.rs`): sequential
 sample reading, no sparse previews or intermediate pictures, and cancellation between
 bounded batches. Only the first analysis of an opened file previews and refines, because
-it has no picture to keep. A settings change used to restart the preview sequence, which
+it has no picture to keep; an edit keeps its picture moved with the samples (#193). A settings change used to restart the preview sequence, which
 replaced a complete picture with a coarse one and changed its brightness several times
 in the peak-relative range mode. `analysis_progress.rs` forwards source hints and sends bounded, nonblocking
 progress-only notifications from sequential reads every 50 ms. At most 128 frames fitting one configured memory/work-bounded batch use a
@@ -525,19 +525,57 @@ context and Cmd on macOS: Ctrl+Z, Ctrl+Shift+Z (and Ctrl+Y on Windows), Ctrl+X, 
 Ctrl+V (replace the selection, disabled without one) and Delete; Undo and Redo are bound in
 the `Shell` context as well (Ctrl+Y on Windows too), for a capture edited down to no plot. `Shell::edited` follows
 every version: the document's length, `Analyst::set_edit` (a new edit version is a new
-analysis generation that previews as a first analysis does, and the worker reads every capture through an `EditedSource` that opens
+analysis generation delivered whole, as a final-only replacement, and the worker reads every capture through an `EditedSource` that opens
 pasted files with `argand_io::reopen`), the selection, the view through `bound_view`, the
-picture and backdrop dropped until the new version's picture lands (`Document::forget_picture`,
-because the old picture shows other samples at its coordinates), the minimap composed (`minimap::compose`, mapping each cell through the
+picture moved with its samples at once (`Editing::repicture` maps each sample of the new
+version to where the version pictured held it, `Capture::position_in`, and
+`Document::follow_edit` moves the grid and image columns accordingly, leaving columns of
+samples never pictured empty, `NaN` in the grid, so they report no level), the backdrop
+dropped until the new picture lands, the minimap composed (`minimap::compose`, mapping each cell through the
 capture onto the source envelopes' cells, so no edit rescans; a pasted file gets its own
 envelope built once), and both titles, which carry `•` while edits are unsaved. Opening
-another file or closing the window with unsaved edits asks natively (`Window::prompt`, the
-close refused in `on_window_should_close` and carried out after the answer): Save as…,
-Discard, Cancel; the Linux close button goes through the same question (`chrome::CloseWindow`).
+another file or closing the window with unsaved edits asks (`Shell::ask_unsaved`, the
+close refused in `on_window_should_close` and carried out after the answer): the system's
+own dialog through `Window::prompt` on macOS and Windows, and gpui-component's `Dialog`
+through `Root` elsewhere, because GPUI's fallback prompt is unstyled; Enter saves and Escape
+cancels. Save, Discard, Cancel (Save writes over the file, #193); the Linux close button goes through the same question (`chrome::CloseWindow`).
 A save remembers its document and version (`SaveOf`): when it finishes, a whole save marks
-that version saved, and only if the document is still that version does it open the saved
-file of an edited capture (`Reopening`, keeping view and selection) or do what the question
-left waiting. A save needs a non-empty capture whose files all have their stamp. Saving over the open file is #193.
+that version saved, and only if the document is still that version does it read the edited
+capture from the saved file from then on (`Shell::rebind_saved_as`, see #193 below) or do
+what the question left waiting. A save needs a non-empty capture whose files all have their stamp. Saving over the open file is #193.
+
+## Saving over the open file (#193)
+
+File → Save (Ctrl+S, Cmd+S) writes the edited capture over its own file (`replace_ui.rs`).
+`write::stage` writes the temporary file while the original is still read and returns a
+`Staged` that `commit` moves into place or, dropped, removes; `SaveRequest::replacing` lets
+the target be the replaced file, whose stamp `commit` checks just before the rename, and a
+headerless capture is written headerless after its preamble (`Output::Headerless`). Every
+thread reading the open file (the analysis worker, the minimap and the envelopes of pasted
+files) holds a `release::Lease`; once the file is staged the window puts unstarted readers of
+the same path in their place (`Shell::swap_readers`), waits on `Released` for the old ones to
+end, because Windows refuses to replace a mapped file, and commits on a background thread.
+The document, plot, picture, minimap, view and selection are never let go of, so nothing on
+screen changes. The new readers open the file under the shown picture (`OpenFile::rebinding`):
+`Effect::Opened` then keeps the shown status and requested range (`Document::shown`), starts a
+fresh history on the saved file and gives it the composed minimap as its envelope, and asks
+for no picture when the one shown was finished. Only samples stored on another scale (another
+sample type or normalization divisor, `Editing::scaled_as`) are drawn again, as a final-only
+replacement, with a minimap scan that shows no previews. Save as of the whole capture goes on
+from the saved file the same way, without the wait. Edits are refused while the file is let go
+of (`Shell::editing_mut`).
+The clipboard is moved onto the saved file's positions only when the commit succeeded, or
+cleared with the notice when some copied samples are gone. If the commit fails the original is
+untouched, the written edits are kept beside it as `<stem>.unsaved-<n>.<ext>`
+(`Refused::keep_beside`, taking the name by a hard link that never replaces another file, and
+leaving the temporary file in place when no name can be taken), and the document keeps its edits on it, the readers opening it again under the picture; a file
+whose stamp changed is opened afresh, since the edits no longer say where its samples are. While the file is let go of and replaced
+(`Shell::replacement_active`) nothing opens and the window does not close; the status bar
+says so and offers no cancel. `stage` fixes whether it replaces the target before writing, `Saved::stamp`
+is taken from the written file's own handle and gives the clipboard its stamp, and kept
+edits ask again for pasted envelopes that never finished (`Editing::restart_envelopes`). Save needs unsaved edits, a non-empty checked capture and no save running,
+and is refused for FLAC above the encoder's rates; the unsaved-edits question's Save uses it,
+falling back to Save as.
 
 ## Ruler marks and grid visibility (#71, #72)
 

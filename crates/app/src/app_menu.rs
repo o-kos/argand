@@ -5,6 +5,8 @@
 pub enum Row<T> {
     /// Asks the desktop for a file.
     Open,
+    /// Writes the edits over the open file.
+    Save,
     /// Saves the whole capture as a new file.
     SaveAs,
     /// Saves the time selection as a new file.
@@ -28,7 +30,13 @@ const DIGITS: usize = 9;
 /// The recent rows keep the order they arrive in. An empty list leaves one
 /// separator, between the two commands and nothing else.
 pub fn file_items<T>(recent: Vec<(String, T)>) -> Vec<Row<T>> {
-    let mut rows = vec![Row::Open, Row::SaveAs, Row::SaveSelectionAs, Row::Separator];
+    let mut rows = vec![
+        Row::Open,
+        Row::Save,
+        Row::SaveAs,
+        Row::SaveSelectionAs,
+        Row::Separator,
+    ];
     if !recent.is_empty() {
         rows.extend(
             recent
@@ -55,6 +63,7 @@ mod tests {
         rows.iter()
             .map(|row| match row {
                 Row::Open => "open".to_owned(),
+                Row::Save => "save over".to_owned(),
                 Row::SaveAs => "save".to_owned(),
                 Row::SaveSelectionAs => "save selection".to_owned(),
                 Row::Settings => "settings".to_owned(),
@@ -74,7 +83,14 @@ mod tests {
     fn an_empty_recent_list_leaves_one_separator() {
         assert_eq!(
             shape(&file_items::<u8>(vec![])),
-            ["open", "save", "save selection", "separator", "settings"]
+            [
+                "open",
+                "save over",
+                "save",
+                "save selection",
+                "separator",
+                "settings"
+            ]
         );
     }
 
@@ -84,6 +100,7 @@ mod tests {
             shape(&file_items(recent(2))),
             [
                 "open",
+                "save over",
                 "save",
                 "save selection",
                 "separator",
@@ -125,7 +142,7 @@ mod tests {
     fn a_recent_row_carries_the_capture_it_names() {
         let rows = file_items(vec![("capture0".to_owned(), 7u8)]);
         assert_eq!(
-            rows[4],
+            rows[5],
             Row::Recent {
                 number: Some(1),
                 label: "capture0".to_owned(),

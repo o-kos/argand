@@ -92,6 +92,8 @@ struct Mailbox {
     generation: AtomicU64,
     view_revision: AtomicU64,
     edit: Mutex<Option<Arc<EditState>>>,
+    /// Set for a worker started under a picture already shown, whose first answer must not preview.
+    keep_picture: std::sync::atomic::AtomicBool,
 }
 
 impl Mailbox {
@@ -135,6 +137,7 @@ pub fn prepare(
     path: PathBuf,
     mut hints: OpenHints,
     settings: crate::execution::Settings,
+    lease: crate::release::Lease,
 ) -> (Analyst, async_channel::Receiver<Delivery>, Start) {
     hints.level_scan_bytes = Some(LEVEL_SCAN_BYTES);
     let (start, started) = async_channel::bounded(1);
@@ -147,6 +150,8 @@ pub fn prepare(
             let outgoing = outgoing.clone();
             let mailbox = mailbox.clone();
             move || {
+                // Held until the thread ends, which is when the file is let go.
+                let _lease = lease;
                 worker(
                     &path, &hints, settings, &incoming, &outgoing, &mailbox, &started,
                 )
@@ -176,7 +181,9 @@ impl Start {
 
 #[cfg(test)]
 fn open(path: PathBuf, hints: OpenHints) -> (Analyst, async_channel::Receiver<Delivery>) {
-    let (analyst, updates, start) = prepare(path, hints, crate::execution::Settings::default());
+    let (lease, _) = crate::release::lease();
+    let (analyst, updates, start) =
+        prepare(path, hints, crate::execution::Settings::default(), lease);
     start.start();
     (analyst, updates)
 }
@@ -202,11 +209,15 @@ impl Analyst {
             return !self.requests.is_closed();
         }
         // Only a file's first analysis has no picture to keep, so every later one is delivered whole.
-        // A new edit version has no picture to keep, so it previews as a first analysis does.
-        let replacement = latest.is_some_and(|previous| {
-            previous.edit == edit
-                && (previous.replacement || !same_analysis(previous.analysis, analysis))
-        });
+        // A new edit version keeps the previous picture, its columns moved where the edit put them.
+        let replacement = match *latest {
+            Some(previous) => {
+                previous.edit != edit
+                    || previous.replacement
+                    || !same_analysis(previous.analysis, analysis)
+            }
+            None => self.mailbox.keep_picture.load(Ordering::Acquire),
+        };
         let generation = match *latest {
             Some(previous)
                 if previous.edit == edit && same_analysis(previous.analysis, analysis) =>
@@ -229,6 +240,11 @@ impl Analyst {
             Ok(()) | Err(async_channel::TrySendError::Full(())) => true,
             Err(async_channel::TrySendError::Closed(())) => false,
         }
+    }
+
+    /// Deliver even the first picture whole, the window already showing one of the same samples.
+    pub fn keep_picture(&self) {
+        self.mailbox.keep_picture.store(true, Ordering::Release);
     }
 
     /// Make `state` what every later request is analysed from.

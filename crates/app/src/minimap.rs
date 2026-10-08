@@ -26,12 +26,15 @@ pub struct Snapshot {
 pub fn start(
     origin: Origin,
     meta: argand_core::SignalMeta,
+    lease: crate::release::Lease,
 ) -> async_channel::Receiver<Result<Arc<Snapshot>>> {
     let (sender, receiver) = async_channel::bounded(2);
     let outgoing = sender.clone();
     let spawned = std::thread::Builder::new()
         .name("argand-minimap".into())
         .spawn(move || {
+            // Held until the thread ends, which is when the file is let go.
+            let _lease = lease;
             if sender.is_closed() {
                 return;
             }

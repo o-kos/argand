@@ -200,7 +200,7 @@ fn a_window_that_has_gone_stops_the_thread_rather_than_leaving_it_waiting() {
 #[test]
 fn deferred_open_does_not_touch_the_file_until_the_first_frame_releases_it() {
     let dir = TempDir::new("deferred-open");
-    let (_analyst, updates, start) = prepare(dir.join("missing.wav"), OpenHints::default(), crate::execution::Settings::default());
+    let (_analyst, updates, start) = prepare(dir.join("missing.wav"), OpenHints::default(), crate::execution::Settings::default(), crate::release::lease().0);
     assert!(updates.try_recv().is_err());
     start.start();
     assert!(matches!(next(&updates), Some(Update::Failed(_))));
@@ -518,6 +518,35 @@ fn a_transform_change_on_an_analysed_file_publishes_only_its_final_picture() {
     let generation = analyst.mailbox.latest().unwrap().generation;
     analyst.request(AnalysisRequest { width: 120, ..stepped });
     assert_eq!(analyst.mailbox.latest().unwrap().generation, generation);
+}
+
+#[test]
+fn an_edit_on_an_analysed_file_publishes_only_its_final_picture() {
+    let dir = TempDir::new("edit-replacement");
+    let (analyst, updates) = open(capture(&dir), OpenHints::default());
+    assert!(matches!(next(&updates), Some(Update::Opened(_, _))));
+    analyst.request(request());
+    assert!(matches!(next_result(&updates), Some(Update::Ready { .. })));
+    let whole = argand_edit::Capture::whole(argand_edit::SourceId(0), SAMPLES as u64);
+    let deleted = argand_core::SampleSpan::between(0, 1_000).unwrap();
+    analyst.set_edit(EditState {
+        version: 1,
+        capture: whole.delete(deleted),
+        sources: vec![None],
+    });
+    analyst.request(AnalysisRequest {
+        range: SampleRange::new(0, SAMPLES as u64 - 1_000),
+        ..request()
+    });
+    loop {
+        let delivery = updates.recv_blocking().unwrap();
+        if !analyst.accepts(&delivery) { continue; }
+        match delivery.update {
+            Update::Progress { .. } => {},
+            Update::Ready { .. } => break,
+            _ => panic!("the moved picture stays until the edited one is whole"),
+        }
+    }
 }
 
 #[test]

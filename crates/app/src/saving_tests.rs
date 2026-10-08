@@ -55,7 +55,7 @@ fn a_job_reports_progress_and_the_saved_file() {
         },
         SampleSpan::between(10, 20),
         target.clone(),
-    ));
+    ), false);
     let mut finished = None;
     while let Ok(update) = updates.recv_blocking() {
         if let Update::Finished(outcome) = update {

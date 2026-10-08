@@ -458,3 +458,31 @@ impl Document {
         });
     }
 }
+
+#[test]
+fn an_edit_moves_the_picture_columns_with_their_samples() {
+    let mut document = opening();
+    document.apply(Update::Opened(meta(), FileInfo::default()));
+    let mut picture = analysis(4);
+    picture.spectrogram.t1 = 1.0;
+    for column in 0..4 {
+        for bin in 0..4 {
+            picture.db.values[column * 4 + bin] = column as f32;
+        }
+        for row in 0..4 {
+            picture.spectrogram.rgba[(row * 4 + column) * 4] = column as u8 + 1;
+        }
+    }
+    document.apply(Update::Ready {
+        analysis: picture,
+        elapsed: Duration::ZERO,
+    });
+    // One column is 6000 samples at 24 kHz, and the first column's samples were deleted.
+    document.follow_edit(|at| Some(at + 6_000));
+    let shown = document.analysis().unwrap();
+    let column = |x: usize| shown.db.values[x * 4];
+    assert_eq!([column(0), column(1), column(2)], [1.0, 2.0, 3.0]);
+    assert!(column(3).is_nan(), "the samples now there were never pictured");
+    let red: Vec<u8> = (0..4).map(|x| shown.spectrogram.rgba[x * 4]).collect();
+    assert_eq!(red, [2, 3, 4, 0]);
+}
