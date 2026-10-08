@@ -290,6 +290,7 @@ pub fn stage(
 }
 
 /// A written temporary file waiting to replace its target, removed if dropped.
+#[derive(Debug)]
 pub struct Staged {
     partial: Partial,
     target: PathBuf,
@@ -1307,6 +1308,7 @@ fn canonical(path: &Path) -> Option<PathBuf> {
 const TEMPORARY_ATTEMPTS: u32 = 100;
 
 /// A temporary file beside the target, removed unless it is renamed into place.
+#[derive(Debug)]
 struct Partial {
     path: PathBuf,
     file: Option<File>,

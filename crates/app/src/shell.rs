@@ -50,6 +50,8 @@ mod navigation_ui;
 mod plot_ui;
 #[path = "plot_view.rs"]
 mod plot_view;
+#[path = "replace_ui.rs"]
+mod replace_ui;
 #[path = "saving_ui.rs"]
 mod saving_ui;
 #[path = "settings_ui.rs"]
@@ -76,6 +78,7 @@ actions!(
         FocusNext,
         FocusPrevious,
         ChooseFile,
+        Save,
         SaveAs,
         SaveSelectionAs,
         EditAnalysis,
@@ -105,6 +108,15 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
                 "ctrl-o"
             },
             ChooseFile,
+            None,
+        ),
+        KeyBinding::new(
+            if cfg!(target_os = "macos") {
+                "cmd-s"
+            } else {
+                "ctrl-s"
+            },
+            Save,
             None,
         ),
         KeyBinding::new(
@@ -305,6 +317,9 @@ struct OpenFile {
     first_picture: Arc<AtomicBool>,
     /// The edits, created once the file has described itself.
     editing: Option<crate::editing::Editing>,
+    /// Handed to every thread that reads the file, so closing it can wait for them all.
+    lease: crate::release::Lease,
+    released: crate::release::Released,
     /// Envelopes being built for files pasted in, and the file's own description.
     _edit_tasks: Vec<Task<()>>,
     /// Created once the file has described itself, and dropped with it.
@@ -397,6 +412,8 @@ struct Shell {
     clipboard: Option<crate::editing::Clipboard>,
     /// A saved capture the window opens next, keeping where it looked.
     reopening: Option<editing_ui::Reopening>,
+    /// Edits kept aside while their file was being replaced, restored if it was not.
+    restoring: Option<crate::editing::Editing>,
     /// Counts opened documents, so a finished save knows whether its document is still the one shown.
     opened_documents: u64,
     frequency: crate::frequency::View,
@@ -502,6 +519,7 @@ impl Shell {
             save_updates: None,
             clipboard: None,
             reopening: None,
+            restoring: None,
             opened_documents: 0,
             frequency: crate::frequency::View::default(),
             frequency_scheme: None,
@@ -676,10 +694,12 @@ impl Shell {
         self.time_scheme = None;
         self.tick_pan = None;
 
+        let (lease, released) = crate::release::lease();
         let (analyst, updates, start) = crate::analysis::prepare(
             origin.path.clone(),
             origin.hints.clone(),
             self.config.analysis,
+            lease.clone(),
         );
         window.on_next_frame(move |window, _| {
             window.on_next_frame(move |_, _| start.start());
@@ -718,6 +738,8 @@ impl Shell {
             opened_at: Instant::now(),
             first_picture: Arc::new(AtomicBool::new(false)),
             editing: None,
+            lease,
+            released,
             _edit_tasks: Vec::new(),
             plot: None,
         });
@@ -798,9 +820,12 @@ impl Shell {
 
         match effect {
             Effect::Opened => {
-                self.start_editing(cx);
+                let restored = self.start_editing(cx);
                 self.reset_view();
                 self.restore_reopened();
+                if restored {
+                    self.edited(window, cx);
+                }
                 self.attach_plot(window, cx);
                 self.start_minimap(window, cx);
                 // Remembered now rather than when it was asked for. A file
@@ -878,7 +903,11 @@ impl Shell {
         let Some(meta) = file.state.document.meta().cloned() else {
             return;
         };
-        let updates = crate::minimap::start(file.state.document.origin().clone(), meta);
+        let updates = crate::minimap::start(
+            file.state.document.origin().clone(),
+            meta,
+            file.lease.clone(),
+        );
         file._minimap_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 if shell
@@ -1076,6 +1105,15 @@ impl Shell {
                 let shell = shell.clone();
                 cx.defer(move |cx| {
                     let _ = shell.update_in(cx, Self::choose_file);
+                });
+            }
+        });
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &Save, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ = shell.update_in(cx, |shell, window, cx| shell.save_over(window, cx));
                 });
             }
         });

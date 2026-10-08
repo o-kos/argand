@@ -200,7 +200,7 @@ fn a_window_that_has_gone_stops_the_thread_rather_than_leaving_it_waiting() {
 #[test]
 fn deferred_open_does_not_touch_the_file_until_the_first_frame_releases_it() {
     let dir = TempDir::new("deferred-open");
-    let (_analyst, updates, start) = prepare(dir.join("missing.wav"), OpenHints::default(), crate::execution::Settings::default());
+    let (_analyst, updates, start) = prepare(dir.join("missing.wav"), OpenHints::default(), crate::execution::Settings::default(), crate::release::lease().0);
     assert!(updates.try_recv().is_err());
     start.start();
     assert!(matches!(next(&updates), Some(Update::Failed(_))));

@@ -61,6 +61,7 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
 #[derive(Clone, Copy)]
 struct FileCommands {
     settings: bool,
+    save_over: bool,
     save: bool,
     save_selection: bool,
 }
@@ -80,6 +81,7 @@ impl Shell {
         let recent = app_menu::file_items(self.recent_entries());
         let enabled = FileCommands {
             settings: self.file.is_some(),
+            save_over: self.can_save_over().is_ok(),
             save: self.can_save(false),
             save_selection: self.can_save(true),
         };
@@ -115,6 +117,9 @@ impl Shell {
     ) -> PopupMenuItem {
         match row {
             Row::Open => action_row("Open file...", Box::new(ChooseFile), false, focus),
+            Row::Save => {
+                action_row("Save", Box::new(Save), false, focus).disabled(!enabled.save_over)
+            }
             Row::SaveAs => {
                 action_row("Save as...", Box::new(SaveAs), false, focus).disabled(!enabled.save)
             }
@@ -1691,10 +1696,10 @@ mod tests {
         open_capture(cx, &shell);
         recent(cx, &shell, "/captures/beacon.iqw");
         press(cx, "f10");
-        // The File branch is on screen, and its fifth row is the first capture.
+        // The File branch is on screen, and its sixth row is the first capture.
         press(cx, "down right");
         assert!(file_focused(cx, &shell));
-        let capture = row(cx, 4);
+        let capture = row(cx, 5);
         cx.simulate_click(capture, gpui_kit::Modifiers::default());
         draw(cx);
         assert!(!menu_open(cx, &shell), "the menu closed");
@@ -1813,7 +1818,7 @@ mod tests {
     const ORIENTATION_ROW: u64 = 2;
 
     /// The File submenu's separator, which spans the whole menu.
-    const FILE_SEPARATOR: u64 = 3;
+    const FILE_SEPARATOR: u64 = 4;
 
     #[gpui_kit::test]
     fn an_action_row_draws_the_shared_keycap_when_its_binding_resolves(cx: &mut TestAppContext) {

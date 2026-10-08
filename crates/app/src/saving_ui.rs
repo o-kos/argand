@@ -8,28 +8,30 @@ use gpui_kit::component::IconName;
 /// A save in progress.
 pub(super) struct Saving {
     job: saving::Job,
-    name: String,
+    pub(super) name: String,
     target: std::path::PathBuf,
-    progress: Option<(u64, u64)>,
+    pub(super) progress: Option<(u64, u64)>,
     /// Set when the file being written was asked to open, which waits until it is complete.
     open_refused: bool,
     /// Why a FLAC source is written as WAVE, said once it is saved.
     as_wave: Option<String>,
-    of: SaveOf,
+    pub(super) of: SaveOf,
 }
 
 /// What a finished save means for the document it was started from.
 pub(super) struct SaveOf {
     /// The document, told apart from any opened since.
-    document: u64,
+    pub(super) document: u64,
     /// The edit version written.
-    version: u64,
+    pub(super) version: u64,
     /// Whether the whole capture was written, which makes that version saved.
-    whole: bool,
+    pub(super) whole: bool,
     /// Whether the saved file replaces the edited capture once it is written.
-    reopen: bool,
+    pub(super) reopen: bool,
     /// What waited for this save, an open or a close.
-    then: Option<editing_ui::Pending>,
+    pub(super) then: Option<editing_ui::Pending>,
+    /// Whether this save replaces the open file, which needs it let go of first.
+    pub(super) over: bool,
 }
 
 #[cfg(test)]
@@ -42,6 +44,7 @@ impl SaveOf {
             whole: true,
             reopen: true,
             then: None,
+            over: false,
         }
     }
 }
@@ -118,6 +121,7 @@ impl Shell {
             // Saving the whole edited capture turns the window to the saved file.
             reopen: whole && edited,
             then: then.filter(|_| whole),
+            over: false,
         };
         let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
@@ -133,7 +137,7 @@ impl Shell {
         .detach();
     }
 
-    fn start_save(
+    pub(super) fn start_save(
         &mut self,
         request: argand_io::write::SaveRequest,
         of: SaveOf,
@@ -160,7 +164,7 @@ impl Shell {
                 crate::numbers::number(output.meta.sample_rate)
             )
         });
-        let (job, updates) = saving::start(request);
+        let (job, updates) = saving::start(request, of.over);
         self.save_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 if shell
@@ -205,6 +209,7 @@ impl Shell {
                         }));
                         self.saved(saved.path, finished.of, window, cx);
                     }
+                    Outcome::Staged(staged) => self.staged(*staged, finished, window, cx),
                     Outcome::Cancelled => self.save_notice = None,
                     Outcome::Failed(error) => {
                         self.save_notice = Some(Notice::Failed("Save failed", error));

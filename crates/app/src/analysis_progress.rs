@@ -88,7 +88,12 @@ mod tests {
             1.0,
         );
         let mut input = argand_io::open(&path, &OpenHints::default()).unwrap();
-        let (analyst, updates, _start) = prepare(path, OpenHints::default(), Default::default());
+        let (analyst, updates, _start) = prepare(
+            path,
+            OpenHints::default(),
+            Default::default(),
+            crate::release::lease().0,
+        );
         let analysis = crate::settings::Settings::from_config(&crate::config::Config::default())
             .analysis_request(input.meta(), 10, 10);
         analyst.request(analysis);

@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use argand_core::{SampleSpan, SignalMeta};
-use argand_io::write::{SaveRequest, Saved, WriteError, save};
+use argand_io::write::{SaveRequest, Saved, Staged, WriteError, save, stage};
 
 /// How often progress crosses to the window.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -28,6 +28,8 @@ pub enum Update {
 #[derive(Debug)]
 pub enum Outcome {
     Saved(Saved),
+    /// Written to a temporary file that still has to replace its target.
+    Staged(Box<Staged>),
     Cancelled,
     Failed(String),
 }
@@ -52,7 +54,9 @@ impl Drop for Job {
 }
 
 /// Start writing `request` and return the job with its stream of updates.
-pub fn start(request: SaveRequest) -> (Job, async_channel::Receiver<Update>) {
+///
+/// With `staged` the temporary file is handed back rather than moved into place.
+pub fn start(request: SaveRequest, staged: bool) -> (Job, async_channel::Receiver<Update>) {
     let cancel = Arc::new(AtomicBool::new(false));
     let (finished_tx, finished) = mpsc::channel();
     let (sender, receiver) = async_channel::bounded(2);
@@ -71,8 +75,14 @@ pub fn start(request: SaveRequest) -> (Job, async_channel::Receiver<Update>) {
                     let _ = sender.try_send(Update::Progress { done, total });
                 }
             };
-            let outcome = match save(&request, &mut progress, &cancel) {
-                Ok(saved) => Outcome::Saved(saved),
+            let written = if staged {
+                stage(&request, &mut progress, &cancel)
+                    .map(|staged| Outcome::Staged(Box::new(staged)))
+            } else {
+                save(&request, &mut progress, &cancel).map(Outcome::Saved)
+            };
+            let outcome = match written {
+                Ok(outcome) => outcome,
                 Err(WriteError::Cancelled) => Outcome::Cancelled,
                 Err(error) => {
                     let text = message(&error);
@@ -80,7 +90,7 @@ pub fn start(request: SaveRequest) -> (Job, async_channel::Receiver<Update>) {
                     Outcome::Failed(text)
                 }
             };
-            // The temporary file is gone once save returns, which is all shutdown waits for.
+            // The temporary file is gone, or handed over, once the write returns.
             let _ = finished_tx.send(());
             let _ = sender.send_blocking(Update::Finished(outcome));
         });
@@ -91,7 +101,7 @@ pub fn start(request: SaveRequest) -> (Job, async_channel::Receiver<Update>) {
 }
 
 /// The error with its causes, as one line for the status bar.
-fn message(error: &WriteError) -> String {
+pub fn message(error: &WriteError) -> String {
     let mut text = error.to_string();
     let mut cause = std::error::Error::source(error);
     while let Some(next) = cause {

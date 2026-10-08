@@ -135,6 +135,7 @@ pub fn prepare(
     path: PathBuf,
     mut hints: OpenHints,
     settings: crate::execution::Settings,
+    lease: crate::release::Lease,
 ) -> (Analyst, async_channel::Receiver<Delivery>, Start) {
     hints.level_scan_bytes = Some(LEVEL_SCAN_BYTES);
     let (start, started) = async_channel::bounded(1);
@@ -147,6 +148,8 @@ pub fn prepare(
             let outgoing = outgoing.clone();
             let mailbox = mailbox.clone();
             move || {
+                // Held until the thread ends, which is when the file is let go.
+                let _lease = lease;
                 worker(
                     &path, &hints, settings, &incoming, &outgoing, &mailbox, &started,
                 )
@@ -176,7 +179,9 @@ impl Start {
 
 #[cfg(test)]
 fn open(path: PathBuf, hints: OpenHints) -> (Analyst, async_channel::Receiver<Delivery>) {
-    let (analyst, updates, start) = prepare(path, hints, crate::execution::Settings::default());
+    let (lease, _) = crate::release::lease();
+    let (analyst, updates, start) =
+        prepare(path, hints, crate::execution::Settings::default(), lease);
     start.start();
     (analyst, updates)
 }

@@ -144,6 +144,7 @@ mod tests {
             PathBuf::from("missing.iqw"),
             Default::default(),
             crate::execution::Settings::default(),
+            crate::release::lease().0,
         );
         let document =
             Document::opening(crate::document::Origin::new(PathBuf::from("missing.iqw")));

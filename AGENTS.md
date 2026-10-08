@@ -533,11 +533,29 @@ capture onto the source envelopes' cells, so no edit rescans; a pasted file gets
 envelope built once), and both titles, which carry `•` while edits are unsaved. Opening
 another file or closing the window with unsaved edits asks natively (`Window::prompt`, the
 close refused in `on_window_should_close` and carried out after the answer): Save as…,
-Discard, Cancel; the Linux close button goes through the same question (`chrome::CloseWindow`).
+Discard, Cancel (Save writes over the file, #193); the Linux close button goes through the same question (`chrome::CloseWindow`).
 A save remembers its document and version (`SaveOf`): when it finishes, a whole save marks
 that version saved, and only if the document is still that version does it open the saved
 file of an edited capture (`Reopening`, keeping view and selection) or do what the question
 left waiting. A save needs a non-empty capture whose files all have their stamp. Saving over the open file is #193.
+
+## Saving over the open file (#193)
+
+File → Save (Ctrl+S, Cmd+S) writes the edited capture over its own file (`replace_ui.rs`).
+`write::stage` writes the temporary file while the original is still read and returns a
+`Staged` that `commit` moves into place or, dropped, removes; `SaveRequest::replacing` lets
+the target be the replaced file, whose stamp `commit` checks just before the rename, and a
+headerless capture is written headerless after its preamble (`Output::Headerless`). Every
+thread reading the open file (the analysis worker, the minimap and the envelopes of pasted
+files) holds a `release::Lease`; once the file is staged the window closes the document,
+waits on `Released` for all of them to end, because Windows refuses to replace a mapped file,
+commits on a background thread and opens the file again with the view and selection kept.
+The clipboard is moved onto the saved file's positions only when the commit succeeded, or
+cleared with the notice when some copied samples are gone. If the commit fails the original is
+untouched and opens again with its edits (`Shell::restoring`, taken back only while the file
+keeps its stamp). Save needs unsaved edits, a non-empty checked capture and no save running,
+and is refused for FLAC above the encoder's rates; the unsaved-edits question's Save uses it,
+falling back to Save as.
 
 ## Ruler marks and grid visibility (#71, #72)
 

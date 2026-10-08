@@ -99,11 +99,15 @@ impl Shell {
         }
     }
 
-    /// Start keeping edits for the file that has just described itself.
-    pub(super) fn start_editing(&mut self, cx: &mut Context<Self>) {
-        let Some(file) = &mut self.file else { return };
+    /// Start keeping edits for the file that has just described itself, answering whether earlier ones came back.
+    ///
+    /// Edits kept aside while their file failed to be replaced come back when it is still that file.
+    pub(super) fn start_editing(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(file) = &mut self.file else {
+            return false;
+        };
         let Some(meta) = file.state.document.meta().cloned() else {
-            return;
+            return false;
         };
         let hints = file.state.document.origin().hints.clone();
         let stamp = file.state.document.stamp();
@@ -112,6 +116,16 @@ impl Shell {
             hints: hints.clone(),
             stamp,
         };
+        if let Some(clipboard) = &mut self.clipboard {
+            clipboard.adopt(&editing_source(&source));
+        }
+        let restored = self.restoring.take().filter(|kept| {
+            kept.file().meta.source == meta.source && stamp.is_some() && kept.file().stamp == stamp
+        });
+        if let Some(kept) = restored {
+            file.editing = Some(kept);
+            return true;
+        }
         let mut editing = Editing::new(meta, hints);
         editing.describe_file(stamp, None);
         file.editing = Some(editing);
@@ -126,6 +140,7 @@ impl Shell {
             });
         })
         .detach();
+        false
     }
 
     /// Record how the file of `document` stores its samples, in its edits and in a clipboard copied from it.
@@ -274,7 +289,10 @@ impl Shell {
             path: source.meta.source.clone(),
             hints: source.hints.clone(),
         };
-        let updates = crate::minimap::start(origin, source.meta);
+        let Some(lease) = self.file.as_ref().map(|file| file.lease.clone()) else {
+            return;
+        };
+        let updates = crate::minimap::start(origin, source.meta, lease);
         let task = cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 let Ok(snapshot) = update else { break };
@@ -332,12 +350,16 @@ impl Shell {
             gpui_kit::PromptLevel::Warning,
             &format!("Save the edits to {name}?"),
             Some("They are lost otherwise."),
-            &["Save as…", "Discard", "Cancel"],
+            &["Save", "Discard", "Cancel"],
             cx,
         );
         cx.spawn_in(window, async move |shell, cx| {
             let Ok(answer) = answer.await else { return };
             let _ = shell.update_in(cx, |shell, window, cx| match answer {
+                // Save writes over the file where it can, and asks where otherwise.
+                0 if shell.can_save_over().is_ok() => {
+                    shell.save_over_then(Some(pending), window, cx)
+                }
                 0 => shell.save_as_then(false, Some(pending), window, cx),
                 1 => shell.carry_out(pending, window, cx),
                 _ => {}

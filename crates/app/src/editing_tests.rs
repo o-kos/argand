@@ -186,3 +186,42 @@ fn a_clipboard_copied_before_its_file_was_checked_learns_its_storage() {
         "a file without a stamp from its opening is not trusted"
     );
 }
+
+#[test]
+fn a_clipboard_follows_its_samples_into_the_file_saved_over_them() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let clipboard = document.copy(span(60, 70));
+    let gone = document.copy(span(10, 20));
+    document.delete(span(0, 30));
+    let written = document.written_source();
+    let moved = clipboard
+        .moved_onto(document.file(), document.capture(), &written)
+        .expect("the copied samples were kept");
+    assert_eq!(
+        moved.clip.pieces(),
+        [argand_edit::Piece {
+            source: SourceId(0),
+            start: 30,
+            len: 10,
+        }]
+    );
+    assert_eq!(moved.sources[0].meta.len_samples, 70);
+    let mut adopted = moved.clone();
+    adopted.adopt(&Source {
+        stamp: None,
+        ..written
+    });
+    assert!(
+        gone.moved_onto(document.file(), document.capture(), &document.written_source())
+            .is_none(),
+        "a copy of deleted samples cannot follow"
+    );
+}
+
+#[test]
+fn moved_positions_are_where_the_samples_sit_after_the_edits() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.delete(span(0, 30));
+    assert_eq!(positions_in(document.capture(), 60, 10), Some(vec![(30, 10)]));
+    assert_eq!(positions_in(document.capture(), 25, 10), None);
+}

@@ -20,7 +20,7 @@ File → Save (Ctrl+S) writes the edited capture over the file it was opened fro
 Agreed with the owner:
 
 1. **Format** stays the file's own: WAVE as Save as writes it, FLAC re-encoded, a headerless capture stays headerless, with the bytes before its samples (the `--offset` preamble) copied unchanged.
-2. **FLAC the encoder cannot state** (above 96 kHz): Save is disabled, and its row says why and points to Save as.
+2. **FLAC the encoder cannot state** (above 96 kHz): Save is disabled; Ctrl+S says why in the status bar and points to Save as, since a stock menu row carries no hint.
 3. **Clipboard**: before the file is replaced, copied ranges of it are moved to where those samples sit in the saved file; if any of them is not there any more, the clipboard is cleared with a notice.
 
 Derived here:
@@ -39,19 +39,19 @@ Derived here:
 
 ## Implementation steps
 
-- [ ] `argand-io::write`: `stage`, `Staged::commit`, `SaveRequest::replacing`, headerless output with preamble; tests including a target changed before commit and a failed commit.
-- [ ] `release::Lease` and `Released`; leases in the analysis worker, the minimap and the envelope tasks; tests that a released wait ends only after each thread does.
-- [ ] `Editing`: the clipboard moved onto the saved file's positions, or cleared; tests.
-- [ ] Shell: Save command, availability and reason, the save sequence (stage, close, wait, commit, reopen), failure recovery with the history restored, the question's Save button.
-- [ ] Headless tests for availability, the sequence on success and on failure.
-- [ ] Update `AGENTS.md` and `CHANGELOG.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] `argand-io::write`: `stage`, `Staged::commit`, `SaveRequest::replacing`, headerless output with preamble; tests including a target changed before commit and a failed commit.
+- [x] `release::Lease` and `Released`; leases in the analysis worker, the minimap and the envelope tasks; tests that a released wait ends only after each thread does.
+- [x] `Editing`: the clipboard moved onto the saved file's positions, or cleared; tests.
+- [x] Shell: Save command, availability and reason, the save sequence (stage, close, wait, commit, reopen), failure recovery with the history restored, the question's Save button.
+- [x] Headless tests for availability, the sequence on success and on failure.
+- [x] Update `AGENTS.md` and `CHANGELOG.md`.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] The owner checks the release binary: Ctrl+S on WAVE, headerless and FLAC captures, the clipboard after a save, a save refused while another program holds the file.
