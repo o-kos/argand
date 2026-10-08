@@ -301,12 +301,15 @@ impl Shell {
                     .map_or(0, |(done, total)| {
                         (done as f64 * 100.0 / total as f64) as u32
                     });
-                let text = if saving.open_refused {
+                let text = if self.replacement_active {
+                    format!("Replacing {}…", saving.name)
+                } else if saving.open_refused {
                     format!("Saving {}… {percent}%, open it once saved", saving.name)
                 } else {
                     format!("Saving {}… {percent}%", saving.name)
                 };
-                (text, false, true)
+                // Once the file is being replaced there is nothing left to cancel.
+                (text, false, !self.replacement_active)
             }
             (None, Some(Notice::Failed(title, error))) => (format!("{title}: {error}"), true, true),
             (None, Some(Notice::Saved(_)) | None) => return None,

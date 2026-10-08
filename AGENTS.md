@@ -552,8 +552,12 @@ waits on `Released` for all of them to end, because Windows refuses to replace a
 commits on a background thread and opens the file again with the view and selection kept.
 The clipboard is moved onto the saved file's positions only when the commit succeeded, or
 cleared with the notice when some copied samples are gone. If the commit fails the original is
-untouched and opens again with its edits (`Shell::restoring`, taken back only while the file
-keeps its stamp). Save needs unsaved edits, a non-empty checked capture and no save running,
+untouched, the written edits are kept beside it as `<stem>.unsaved-<n>.<ext>`
+(`Refused::keep_beside`), and it opens again with its edits (`Shell::restoring`, taken back
+only while the file keeps its stamp). While the file is let go of and replaced
+(`Shell::replacement_active`) nothing opens and the window does not close; the status bar
+says so and offers no cancel. `stage` fixes whether it replaces the target, and `Saved::stamp`
+gives the clipboard the written file's stamp. Save needs unsaved edits, a non-empty checked capture and no save running,
 and is refused for FLAC above the encoder's rates; the unsaved-edits question's Save uses it,
 falling back to Save as.
 

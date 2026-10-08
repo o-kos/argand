@@ -67,6 +67,18 @@ impl Shell {
         }
     }
 
+    /// Refuse what would open or close a file while the open one is being replaced.
+    pub(super) fn refuse_while_replacing(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.replacement_active {
+            self.save_notice = Some(saving_ui::Notice::Failed(
+                "Please wait",
+                "the file is being saved".into(),
+            ));
+            cx.notify();
+        }
+        self.replacement_active
+    }
+
     pub(super) fn save_over(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.save_over_then(None, window, cx);
     }
@@ -152,6 +164,7 @@ impl Shell {
         self.release(window, cx);
         drop(file);
         saving.progress = None;
+        self.replacement_active = true;
         let replacement = Replacement {
             origin,
             editing,
@@ -162,7 +175,18 @@ impl Shell {
         cx.notify();
         cx.spawn_in(window, async move |shell, cx| {
             released.wait().await;
-            let committed = cx.background_spawn(async move { staged.commit() }).await;
+            let committed = cx
+                .background_spawn(async move {
+                    staged.commit().map_err(|refused| {
+                        let error = saving::message(&refused.error);
+                        // The written edits are kept beside the file rather than lost with the refusal.
+                        (
+                            error,
+                            refused.keep_beside().map_err(|kept| saving::message(&kept)),
+                        )
+                    })
+                })
+                .await;
             let _ = shell.update_in(cx, |shell, window, cx| {
                 shell.replaced(committed, replacement, window, cx);
             });
@@ -171,12 +195,13 @@ impl Shell {
     }
 
     /// Move the clipboard onto the replaced file, answering whether it survived.
-    fn move_clipboard(&mut self, editing: &Editing) -> bool {
+    fn move_clipboard(&mut self, editing: &Editing, saved: &argand_io::write::Saved) -> bool {
         let Some(clipboard) = &self.clipboard else {
             return true;
         };
-        let moved =
-            clipboard.moved_onto(editing.file(), editing.capture(), &editing.written_source());
+        let mut written = editing.written_source();
+        written.stamp = saved.stamp;
+        let moved = clipboard.moved_onto(editing.file(), editing.capture(), &written);
         let kept = moved.is_some();
         self.clipboard = moved;
         kept
@@ -185,7 +210,7 @@ impl Shell {
     /// Open the replaced file, or the original with its edits when the replacement failed.
     fn replaced(
         &mut self,
-        committed: Result<argand_io::write::Saved, argand_io::write::WriteError>,
+        committed: Result<argand_io::write::Saved, (String, Result<std::path::PathBuf, String>)>,
         replacement: Replacement,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -197,9 +222,10 @@ impl Shell {
             then,
         } = replacement;
         self.saving = None;
+        self.replacement_active = false;
         match committed {
             Ok(saved) => {
-                let kept_clipboard = self.move_clipboard(&editing);
+                let kept_clipboard = self.move_clipboard(&editing, &saved);
                 let name = origin.name();
                 self.save_notice = Some(if kept_clipboard {
                     saving_ui::Notice::Saved(name)
@@ -215,11 +241,20 @@ impl Shell {
                     }
                 }
             }
-            Err(error) => {
-                self.save_notice = Some(saving_ui::Notice::Failed(
-                    "Save failed",
-                    saving::message(&error),
-                ));
+            Err((error, kept)) => {
+                let detail = match kept {
+                    Ok(path) => format!(
+                        "{error}, the edits were written to {}",
+                        path.file_name().map_or_else(
+                            || path.display().to_string(),
+                            |name| name.to_string_lossy().into_owned()
+                        )
+                    ),
+                    Err(lost) => {
+                        format!("{error}, and the written edits could not be kept: {lost}")
+                    }
+                };
+                self.save_notice = Some(saving_ui::Notice::Failed("Save failed", detail));
                 self.reopening = Some(reopening);
                 self.restoring = Some(editing);
                 self.open(origin, window, cx);
@@ -384,5 +419,29 @@ mod tests {
             Some(24_000)
         );
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[gpui_kit::test]
+    fn nothing_opens_or_closes_while_the_file_is_replaced(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        shell.update_in(cx, |shell, window, cx| {
+            shell.replacement_active = true;
+            shell.open(
+                Origin::new(PathBuf::from("/captures/other.iqw")),
+                window,
+                cx,
+            );
+        });
+        assert!(
+            shell.read_with(cx, |shell, _| shell.file.is_none()),
+            "the open was refused"
+        );
+        cx.update(|window, cx| window.dispatch_action(Box::new(chrome::CloseWindow), cx));
+        cx.run_until_parked();
+        assert!(!cx.has_pending_prompt());
+        assert!(shell.read_with(cx, |shell, _| matches!(
+            shell.save_notice,
+            Some(saving_ui::Notice::Failed("Please wait", _))
+        )));
     }
 }

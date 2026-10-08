@@ -414,6 +414,8 @@ struct Shell {
     reopening: Option<editing_ui::Reopening>,
     /// Edits kept aside while their file was being replaced, restored if it was not.
     restoring: Option<crate::editing::Editing>,
+    /// Set while the open file is let go of and replaced, when nothing may open or close.
+    replacement_active: bool,
     /// Counts opened documents, so a finished save knows whether its document is still the one shown.
     opened_documents: u64,
     frequency: crate::frequency::View,
@@ -520,6 +522,7 @@ impl Shell {
             clipboard: None,
             reopening: None,
             restoring: None,
+            replacement_active: false,
             opened_documents: 0,
             frequency: crate::frequency::View::default(),
             frequency_scheme: None,
@@ -663,7 +666,7 @@ impl Shell {
     /// transform, and that is a pass over the file that must not happen on the
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
-        if self.refuse_save_target(&origin.path, cx) {
+        if self.refuse_save_target(&origin.path, cx) || self.refuse_while_replacing(cx) {
             return;
         }
         if !self.settle_unsaved(editing_ui::Pending::Open(origin.clone()), window, cx) {
@@ -822,10 +825,11 @@ impl Shell {
             Effect::Opened => {
                 let restored = self.start_editing(cx);
                 self.reset_view();
-                self.restore_reopened();
                 if restored {
                     self.edited(window, cx);
                 }
+                // After the restored history, whose selection the window's own replaces.
+                self.restore_reopened();
                 self.attach_plot(window, cx);
                 self.start_minimap(window, cx);
                 // Remembered now rather than when it was asked for. A file
@@ -900,7 +904,12 @@ impl Shell {
 
     fn start_minimap(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(file) = &mut self.file else { return };
-        let Some(meta) = file.state.document.meta().cloned() else {
+        // The file's own description, which restored edits leave unchanged.
+        let file_meta = file
+            .editing
+            .as_ref()
+            .map(|editing| editing.file().meta.clone());
+        let Some(meta) = file_meta.or_else(|| file.state.document.meta().cloned()) else {
             return;
         };
         let updates = crate::minimap::start(

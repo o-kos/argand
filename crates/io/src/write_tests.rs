@@ -985,9 +985,13 @@ fn a_replaced_file_changed_before_the_commit_is_kept() {
     let staged = stage(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
     write_wav(&source, i16, 48_000, &signal(i16, 200), 1.0);
     let changed = fs::read(&source).unwrap();
-    assert!(matches!(staged.commit(), Err(WriteError::SourceChanged { .. })));
+    let refused = staged.commit().unwrap_err();
+    assert!(matches!(refused.error, WriteError::SourceChanged { .. }));
     assert_eq!(fs::read(&source).unwrap(), changed);
-    assert_eq!(names(&dir), ["a.wav"]);
+    let kept = refused.keep_beside().unwrap();
+    assert_eq!(kept, dir.join("a.unsaved-1.wav"));
+    assert_eq!(data_bytes(&kept).len(), 10 * 4, "the written samples are kept beside it");
+    assert_eq!(names(&dir), ["a.unsaved-1.wav", "a.wav"]);
 }
 
 #[test]

@@ -338,6 +338,9 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.refuse_while_replacing(cx) {
+            return false;
+        }
         if !self.editing().is_some_and(Editing::is_dirty) {
             return true;
         }

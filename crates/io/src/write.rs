@@ -208,6 +208,8 @@ pub struct Saved {
     pub samples: u64,
     /// Container written, "wav", "rf64" or "flac".
     pub container: &'static str,
+    /// The written file as it was right after it was moved into place.
+    pub stamp: Option<SourceStamp>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -274,7 +276,7 @@ pub(crate) fn save_with_limit(
     if cancel.load(Ordering::Relaxed) {
         return Err(WriteError::Cancelled);
     }
-    staged.commit()
+    staged.commit().map_err(|refused| refused.error)
 }
 
 /// Write `request` to a temporary file beside its target, to be committed later or dropped.
@@ -294,7 +296,8 @@ pub fn stage(
 pub struct Staged {
     partial: Partial,
     target: PathBuf,
-    replacing: Option<Replacing>,
+    /// The stamp the target must still have, when this save replaces the file it read.
+    replaces: Option<SourceStamp>,
     protected: Vec<Protected>,
     /// Identities of the files read, none of which the target may have become.
     read: Vec<Option<(u64, u64)>>,
@@ -304,43 +307,105 @@ pub struct Staged {
 
 impl Staged {
     /// Move the temporary file over the target, checking first that it is still allowed to.
-    pub fn commit(self) -> Result<Saved, WriteError> {
-        let target = &self.target;
-        match self
-            .replacing
-            .as_ref()
-            .filter(|replacing| same_file(&replacing.path, target))
-        {
-            Some(replacing) => {
-                // The replaced file must be the one that was opened, nothing written since.
-                if SourceStamp::of(target).ok() != Some(replacing.stamp) {
-                    return Err(WriteError::SourceChanged {
-                        path: target.clone(),
-                    });
-                }
-            }
-            None => {
-                // A target may have become a file being read or protected since the start, by a rename.
-                let now = fs::metadata(target)
-                    .ok()
-                    .and_then(|metadata| identity(&metadata));
-                let protected = now.is_some()
-                    && self.protected.iter().any(|protected| {
-                        protected.stamp.is_some_and(|stamp| stamp.identity == now)
-                    });
-                if protected || (now.is_some() && self.read.contains(&now)) {
-                    return Err(WriteError::SameFile {
-                        path: target.clone(),
-                    });
-                }
-            }
+    ///
+    /// A refusal hands the written file back, so it can still be kept somewhere else.
+    pub fn commit(self) -> Result<Saved, Box<Refused>> {
+        if let Err(error) = self.may_replace() {
+            return Err(Box::new(Refused {
+                error,
+                staged: self,
+            }));
         }
-        self.partial.rename(target)?;
-        Ok(Saved {
-            path: self.target,
-            samples: self.samples,
-            container: self.container,
-        })
+        let Self {
+            partial,
+            target,
+            replaces,
+            protected,
+            read,
+            samples,
+            container,
+        } = self;
+        match partial.rename(&target) {
+            Ok(()) => Ok(Saved {
+                stamp: SourceStamp::of(&target).ok(),
+                path: target,
+                samples,
+                container,
+            }),
+            Err((error, partial)) => Err(Box::new(Refused {
+                error,
+                staged: Self {
+                    partial,
+                    target,
+                    replaces,
+                    protected,
+                    read,
+                    samples,
+                    container,
+                },
+            })),
+        }
+    }
+
+    fn may_replace(&self) -> Result<(), WriteError> {
+        let target = &self.target;
+        if let Some(stamp) = self.replaces {
+            // The replaced file must be the one that was opened, nothing written since.
+            return if SourceStamp::of(target).ok() == Some(stamp) {
+                Ok(())
+            } else {
+                Err(WriteError::SourceChanged {
+                    path: target.clone(),
+                })
+            };
+        }
+        // A target may have become a file being read or protected since the start, by a rename.
+        let now = fs::metadata(target)
+            .ok()
+            .and_then(|metadata| identity(&metadata));
+        let protected = now.is_some()
+            && self
+                .protected
+                .iter()
+                .any(|protected| protected.stamp.is_some_and(|stamp| stamp.identity == now));
+        if protected || (now.is_some() && self.read.contains(&now)) {
+            return Err(WriteError::SameFile {
+                path: target.clone(),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// A commit that did not happen, with the written file it still holds.
+#[derive(Debug)]
+pub struct Refused {
+    pub error: WriteError,
+    staged: Staged,
+}
+
+impl Refused {
+    /// Keep the written file beside the target under a name nothing has, answering where it went.
+    pub fn keep_beside(self) -> Result<PathBuf, WriteError> {
+        let target = &self.staged.target;
+        let stem = target
+            .file_stem()
+            .map_or_else(|| "capture".into(), |stem| stem.to_string_lossy());
+        let extension = target
+            .extension()
+            .map(|extension| format!(".{}", extension.to_string_lossy()))
+            .unwrap_or_default();
+        let free = (1..=TEMPORARY_ATTEMPTS)
+            .map(|n| target.with_file_name(format!("{stem}.unsaved-{n}{extension}")))
+            .find(|path| !path.exists())
+            .ok_or_else(|| WriteError::BadTarget {
+                path: target.clone(),
+            })?;
+        self.staged
+            .partial
+            .rename(&free)
+            .map_err(|(error, _)| error)?;
+        Ok(free)
     }
 }
 
@@ -364,12 +429,7 @@ fn stage_with_limit(
     let mut partial = Partial::create(target)?;
     let container = match (first, request.output) {
         (Storage::Linear { .. }, Output::Headerless { preamble }) => {
-            let mut copies = Vec::new();
-            for open in &mut opened {
-                if let Reader::Copy { input, layout } = &mut open.reader {
-                    copies.push((input, &*layout));
-                }
-            }
+            let mut copies = copies(&mut opened);
             write_headerless(
                 &mut partial,
                 request,
@@ -387,12 +447,7 @@ fn stage_with_limit(
             });
         }
         (Storage::Linear { .. }, Output::Native) => {
-            let mut copies = Vec::new();
-            for open in &mut opened {
-                if let Reader::Copy { input, layout } = &mut open.reader {
-                    copies.push((input, &*layout));
-                }
-            }
+            let mut copies = copies(&mut opened);
             write_wave(
                 &mut partial,
                 request,
@@ -441,10 +496,17 @@ fn stage_with_limit(
         }
     };
     partial.sync()?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err(WriteError::Cancelled);
+    }
     Ok(Staged {
         partial,
         target: target.clone(),
-        replacing: request.replacing.clone(),
+        replaces: request
+            .replacing
+            .as_ref()
+            .filter(|replacing| same_file(&replacing.path, target))
+            .map(|replacing| replacing.stamp),
         protected: request.protected.clone(),
         read: opened.iter().map(|open| open.identity).collect(),
         samples: total,
@@ -521,6 +583,17 @@ fn common_storage(request: &SaveRequest, opened: &[Opened]) -> Result<Storage, W
         }),
         None => Ok(first),
     }
+}
+
+/// The handles and layouts of sources copied byte for byte.
+fn copies(opened: &mut [Opened]) -> Vec<(&mut File, &CopyLayout)> {
+    opened
+        .iter_mut()
+        .filter_map(|open| match &mut open.reader {
+            Reader::Copy { input, layout } => Some((input, &*layout)),
+            Reader::Decode(_) => None,
+        })
+        .collect()
 }
 
 /// A source opened for saving, checked to be the file that was opened as the capture.
@@ -1383,11 +1456,14 @@ impl Partial {
     }
 
     /// Move the finished file over the target, the point of no return.
-    fn rename(mut self, target: &Path) -> Result<(), WriteError> {
-        fs::rename(&self.path, target).map_err(|source| WriteError::Write {
-            path: target.to_owned(),
-            source,
-        })?;
+    fn rename(mut self, target: &Path) -> Result<(), (WriteError, Self)> {
+        if let Err(source) = fs::rename(&self.path, target) {
+            let error = WriteError::Write {
+                path: target.to_owned(),
+                source,
+            };
+            return Err((error, self));
+        }
         self.renamed = true;
         sync_directory(target);
         Ok(())
