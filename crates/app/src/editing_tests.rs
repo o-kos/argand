@@ -225,3 +225,14 @@ fn moved_positions_are_where_the_samples_sit_after_the_edits() {
     assert_eq!(positions_in(document.capture(), 60, 10), Some(vec![(30, 10)]));
     assert_eq!(positions_in(document.capture(), 25, 10), None);
 }
+
+#[test]
+fn an_envelope_left_unfinished_is_asked_for_again_after_a_restore() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let other = editing("/b.wav", 50, 1000.0);
+    document.paste(&other.copy(span(0, 20)), Placement::At(0)).unwrap();
+    assert_eq!(document.missing_envelopes().len(), 1);
+    assert!(document.missing_envelopes().is_empty());
+    document.restart_envelopes();
+    assert_eq!(document.missing_envelopes().len(), 1, "its builder went with the closed document");
+}

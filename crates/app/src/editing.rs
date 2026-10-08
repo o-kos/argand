@@ -380,6 +380,15 @@ impl Editing {
         }
     }
 
+    /// Let envelopes that never finished be asked for again, their builders having gone with a closed document.
+    pub fn restart_envelopes(&mut self) {
+        for (building, envelope) in self.building.iter_mut().zip(&self.envelopes).skip(1) {
+            if envelope.as_ref().is_none_or(|envelope| !envelope.complete) {
+                *building = false;
+            }
+        }
+    }
+
     /// The sources a minimap envelope has to be built for now, each handed out once.
     pub fn missing_envelopes(&mut self) -> Vec<(SourceId, Source)> {
         let used = self.capture().sources();

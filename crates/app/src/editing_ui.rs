@@ -122,7 +122,8 @@ impl Shell {
         let restored = self.restoring.take().filter(|kept| {
             kept.file().meta.source == meta.source && stamp.is_some() && kept.file().stamp == stamp
         });
-        if let Some(kept) = restored {
+        if let Some(mut kept) = restored {
+            kept.restart_envelopes();
             file.editing = Some(kept);
             return true;
         }

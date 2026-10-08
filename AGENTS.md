@@ -553,11 +553,13 @@ commits on a background thread and opens the file again with the view and select
 The clipboard is moved onto the saved file's positions only when the commit succeeded, or
 cleared with the notice when some copied samples are gone. If the commit fails the original is
 untouched, the written edits are kept beside it as `<stem>.unsaved-<n>.<ext>`
-(`Refused::keep_beside`), and it opens again with its edits (`Shell::restoring`, taken back
+(`Refused::keep_beside`, taking the name by a hard link that never replaces another file, and
+leaving the temporary file in place when no name can be taken), and it opens again with its edits (`Shell::restoring`, taken back
 only while the file keeps its stamp). While the file is let go of and replaced
 (`Shell::replacement_active`) nothing opens and the window does not close; the status bar
-says so and offers no cancel. `stage` fixes whether it replaces the target, and `Saved::stamp`
-gives the clipboard the written file's stamp. Save needs unsaved edits, a non-empty checked capture and no save running,
+says so and offers no cancel. `stage` fixes whether it replaces the target before writing, `Saved::stamp`
+is taken from the written file's own handle and gives the clipboard its stamp, and restored
+edits ask again for pasted envelopes that never finished (`Editing::restart_envelopes`). Save needs unsaved edits, a non-empty checked capture and no save running,
 and is refused for FLAC above the encoder's rates; the unsaved-edits question's Save uses it,
 falling back to Save as.
 

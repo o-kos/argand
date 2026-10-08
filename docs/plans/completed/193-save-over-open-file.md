@@ -38,6 +38,8 @@ Reviewer `gpt-6.1-sol` high.
 
 - Round 1 (7 majors, 2 minors, a nit): edits were lost when the file changed after staging, the window could close or another file open while the file was let go of (with a clipboard paste adding a reader the wait did not cover, and a waiting action applied to the wrong document), the replacement mode was recomputed at commit so a hard-linked target could be overwritten unchecked, the moved clipboard had no stamp, cancelling during the wait was ignored, the restored minimap used the edited length, and the restored selection was overridden. All fixed. Declined: the comment nit on a module doc comment.
 
+- Round 2 (4 P1, 1 P2): a failed keep removed the written file, two processes could take one kept name, the replacement mode was still recomputed after writing, the clipboard stamp was taken by path after the rename, and unfinished envelopes of pasted files were not restarted after a restore. All fixed. The comment nit was withdrawn.
+
 ## Rejected alternatives
 
 - Writing in place: a failure would leave the original half written.

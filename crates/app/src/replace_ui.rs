@@ -180,10 +180,7 @@ impl Shell {
                     staged.commit().map_err(|refused| {
                         let error = saving::message(&refused.error);
                         // The written edits are kept beside the file rather than lost with the refusal.
-                        (
-                            error,
-                            refused.keep_beside().map_err(|kept| saving::message(&kept)),
-                        )
+                        (error, refused.keep_beside())
                     })
                 })
                 .await;
@@ -210,7 +207,7 @@ impl Shell {
     /// Open the replaced file, or the original with its edits when the replacement failed.
     fn replaced(
         &mut self,
-        committed: Result<argand_io::write::Saved, (String, Result<std::path::PathBuf, String>)>,
+        committed: Result<argand_io::write::Saved, (String, std::path::PathBuf)>,
         replacement: Replacement,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -242,18 +239,11 @@ impl Shell {
                 }
             }
             Err((error, kept)) => {
-                let detail = match kept {
-                    Ok(path) => format!(
-                        "{error}, the edits were written to {}",
-                        path.file_name().map_or_else(
-                            || path.display().to_string(),
-                            |name| name.to_string_lossy().into_owned()
-                        )
-                    ),
-                    Err(lost) => {
-                        format!("{error}, and the written edits could not be kept: {lost}")
-                    }
-                };
+                let name = kept.file_name().map_or_else(
+                    || kept.display().to_string(),
+                    |name| name.to_string_lossy().into_owned(),
+                );
+                let detail = format!("{error}, the edits were written to {name}");
                 self.save_notice = Some(saving_ui::Notice::Failed("Save failed", detail));
                 self.reopening = Some(reopening);
                 self.restoring = Some(editing);

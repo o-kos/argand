@@ -316,6 +316,7 @@ impl Staged {
                 staged: self,
             }));
         }
+        let staged_stamp = self.partial.stamp;
         let Self {
             partial,
             target,
@@ -327,23 +328,26 @@ impl Staged {
         } = self;
         match partial.rename(&target) {
             Ok(()) => Ok(Saved {
-                stamp: SourceStamp::of(&target).ok(),
+                stamp: staged_stamp,
                 path: target,
                 samples,
                 container,
             }),
-            Err((error, partial)) => Err(Box::new(Refused {
-                error,
-                staged: Self {
-                    partial,
-                    target,
-                    replaces,
-                    protected,
-                    read,
-                    samples,
-                    container,
-                },
-            })),
+            Err(failed) => {
+                let (error, partial) = *failed;
+                Err(Box::new(Refused {
+                    error,
+                    staged: Self {
+                        partial,
+                        target,
+                        replaces,
+                        protected,
+                        read,
+                        samples,
+                        container,
+                    },
+                }))
+            }
         }
     }
 
@@ -386,7 +390,10 @@ pub struct Refused {
 
 impl Refused {
     /// Keep the written file beside the target under a name nothing has, answering where it went.
-    pub fn keep_beside(self) -> Result<PathBuf, WriteError> {
+    ///
+    /// The name is taken by a hard link, which fails rather than replace another file. Where no
+    /// name can be taken the temporary file itself stays, so the written edits are never removed.
+    pub fn keep_beside(self) -> PathBuf {
         let target = &self.staged.target;
         let stem = target
             .file_stem()
@@ -395,17 +402,17 @@ impl Refused {
             .extension()
             .map(|extension| format!(".{}", extension.to_string_lossy()))
             .unwrap_or_default();
-        let free = (1..=TEMPORARY_ATTEMPTS)
-            .map(|n| target.with_file_name(format!("{stem}.unsaved-{n}{extension}")))
-            .find(|path| !path.exists())
-            .ok_or_else(|| WriteError::BadTarget {
-                path: target.clone(),
-            })?;
-        self.staged
-            .partial
-            .rename(&free)
-            .map_err(|(error, _)| error)?;
-        Ok(free)
+        let partial = self.staged.partial;
+        for n in 1..=TEMPORARY_ATTEMPTS {
+            let free = target.with_file_name(format!("{stem}.unsaved-{n}{extension}"));
+            match fs::hard_link(&partial.path, &free) {
+                // The temporary name goes, the kept one stays.
+                Ok(()) => return free,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(_) => break,
+            }
+        }
+        partial.keep()
     }
 }
 
@@ -417,6 +424,12 @@ fn stage_with_limit(
 ) -> Result<Staged, WriteError> {
     let target = &request.target;
     check_request(request)?;
+    // Whether the target is the replaced file is decided once, before anything is written.
+    let replaces = request
+        .replacing
+        .as_ref()
+        .filter(|replacing| same_file(&replacing.path, target))
+        .map(|replacing| replacing.stamp);
     let mut opened = request
         .sources
         .iter()
@@ -502,11 +515,7 @@ fn stage_with_limit(
     Ok(Staged {
         partial,
         target: target.clone(),
-        replaces: request
-            .replacing
-            .as_ref()
-            .filter(|replacing| same_file(&replacing.path, target))
-            .map(|replacing| replacing.stamp),
+        replaces,
         protected: request.protected.clone(),
         read: opened.iter().map(|open| open.identity).collect(),
         samples: total,
@@ -1386,6 +1395,8 @@ struct Partial {
     path: PathBuf,
     file: Option<File>,
     renamed: bool,
+    /// The written file as it was closed, taken from its own handle.
+    stamp: Option<SourceStamp>,
 }
 
 impl Partial {
@@ -1407,6 +1418,7 @@ impl Partial {
                         path,
                         file: Some(file),
                         renamed: false,
+                        stamp: None,
                     });
                 }
                 Err(error)
@@ -1449,20 +1461,27 @@ impl Partial {
     /// Flush the written file to disk and close it.
     fn sync(&mut self) -> Result<(), WriteError> {
         let synced = match self.file.take() {
-            Some(file) => file.sync_all(),
+            Some(file) => file.sync_all().map(|()| SourceStamp::of_file(&file).ok()),
             None => Err(std::io::ErrorKind::BrokenPipe.into()),
         };
-        synced.map_err(|source| self.error(source))
+        self.stamp = synced.map_err(|source| self.error(source))?;
+        Ok(())
+    }
+
+    /// Leave the written file where it is, answering its path.
+    fn keep(mut self) -> PathBuf {
+        self.renamed = true;
+        self.path.clone()
     }
 
     /// Move the finished file over the target, the point of no return.
-    fn rename(mut self, target: &Path) -> Result<(), (WriteError, Self)> {
+    fn rename(mut self, target: &Path) -> Result<(), Box<(WriteError, Self)>> {
         if let Err(source) = fs::rename(&self.path, target) {
             let error = WriteError::Write {
                 path: target.to_owned(),
                 source,
             };
-            return Err((error, self));
+            return Err(Box::new((error, self)));
         }
         self.renamed = true;
         sync_directory(target);

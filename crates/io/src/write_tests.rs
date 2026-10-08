@@ -988,7 +988,7 @@ fn a_replaced_file_changed_before_the_commit_is_kept() {
     let refused = staged.commit().unwrap_err();
     assert!(matches!(refused.error, WriteError::SourceChanged { .. }));
     assert_eq!(fs::read(&source).unwrap(), changed);
-    let kept = refused.keep_beside().unwrap();
+    let kept = refused.keep_beside();
     assert_eq!(kept, dir.join("a.unsaved-1.wav"));
     assert_eq!(data_bytes(&kept).len(), 10 * 4, "the written samples are kept beside it");
     assert_eq!(names(&dir), ["a.unsaved-1.wav", "a.wav"]);
@@ -1038,4 +1038,31 @@ fn flac_cannot_be_written_without_a_container() {
     request.output = Output::Headerless { preamble: 0 };
     assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
     assert_eq!(names(&dir), ["a.flac"]);
+}
+
+#[test]
+fn kept_edits_never_take_a_name_another_file_has() {
+    let dir = TempDir::new("write-keep-free");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 100), 1.0);
+    fs::write(dir.join("a.unsaved-1.wav"), b"someone else's").unwrap();
+    let mut request = request(&source, OpenHints::default(), SampleSpan::between(0, 10), source.clone());
+    request.replacing = replacing(&source);
+    let staged = stage(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    write_wav(&source, i16, 48_000, &signal(i16, 200), 1.0);
+    let kept = staged.commit().unwrap_err().keep_beside();
+    assert_eq!(kept, dir.join("a.unsaved-2.wav"));
+    assert_eq!(fs::read(dir.join("a.unsaved-1.wav")).unwrap(), b"someone else's");
+    assert_eq!(data_bytes(&kept).len(), 10 * 4);
+    assert_eq!(names(&dir), ["a.unsaved-1.wav", "a.unsaved-2.wav", "a.wav"]);
+}
+
+#[test]
+fn the_saved_stamp_is_the_written_file_as_it_was_closed() {
+    let dir = TempDir::new("write-saved-stamp");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 100), 1.0);
+    let target = dir.join("b.wav");
+    let saved = run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
+    assert_eq!(saved.stamp, SourceStamp::of(&target).ok());
 }
