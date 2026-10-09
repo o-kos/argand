@@ -283,10 +283,18 @@ impl PlotGeometry {
 /// A time selection being dragged out from the boundary it was pressed at.
 #[derive(Clone, Copy)]
 pub(super) struct Selecting {
-    anchor: u64,
+    /// The sample the drag started at, unless it selects a band alone.
+    anchor: Option<u64>,
+    /// The frequency in hertz the drag started at, when it selects a band or a rectangle.
+    anchor_hz: Option<f64>,
     origin: gpui_kit::Point<Pixels>,
     /// Set once the pointer has gone far enough for this to be a drag and not a click.
     moved: bool,
+}
+
+/// The physical frequency at `fraction` down from the top of the visible band `hertz`.
+fn hertz(hertz: (f64, f64), fraction: f64) -> f64 {
+    hertz.1 - fraction * (hertz.1 - hertz.0)
 }
 
 /// How far a press may wander, in logical pixels, and still be a click.
@@ -459,12 +467,7 @@ impl Shell {
                 }
                 cx.notify();
             }
-            PlotIntent::Select(span) => {
-                if self.selection != span {
-                    self.selection = span;
-                    cx.notify();
-                }
-            }
+            PlotIntent::Select(selection) => self.select(selection.unwrap_or_default(), cx),
             PlotIntent::Pointer => {
                 if !self.ready_status_dismissed && self.cursor_readout(cx).is_some() {
                     self.dismiss_ready_status(cx);
@@ -520,11 +523,34 @@ impl Shell {
         }
     }
 
-    /// The time selection as the status bar shows it, in the time ruler's units.
+    /// The selection as the status bar shows it, in the rulers' units.
     pub(super) fn selection_readout(&self) -> Option<String> {
         let meta = self.file.as_ref()?.state.document.meta()?;
-        let span = self.selection?.within(meta.len_samples)?;
-        Some(self.session.time_ruler.selection(span, meta.sample_rate))
+        let time = self
+            .selection
+            .and_then(|span| span.within(meta.len_samples))
+            .map(|span| self.session.time_ruler.selection(span, meta.sample_rate));
+        let band = self.band.and_then(|band| self.band_readout(band));
+        match (time, band) {
+            (Some(time), Some(band)) => Some(format!("{time}, {band}")),
+            (time, band) => time.or(band),
+        }
+    }
+
+    /// A band's edges and width in the frequency ruler's unit, to the precision of one row.
+    fn band_readout(&self, band: argand_core::FrequencyBand) -> Option<String> {
+        let (low, high) = self.extents()?.hertz;
+        let (unit, divisor) = axes::frequency_unit((low, high));
+        let rows = self.plot.map_or(1, |plot| plot.height.max(1));
+        let precision = crate::navigation::time_precision((high - low) / rows as f64 / divisor);
+        let number =
+            |hertz: f64| crate::numbers::text(&format!("{:.*}", precision, hertz / divisor));
+        Some(format!(
+            "{} – {} {unit} ({} {unit})",
+            number(band.low()),
+            number(band.high()),
+            number(band.high() - band.low())
+        ))
     }
 
     pub(super) fn cursor_readout(&self, cx: &gpui_kit::App) -> Option<(String, Option<String>)> {
@@ -741,6 +767,47 @@ impl Shell {
     }
 }
 
+impl Shell {
+    /// Take a selection a gesture made, its band clamped to the capture's.
+    pub(super) fn select(&mut self, selection: argand_core::Selection, cx: &mut Context<Self>) {
+        let band = selection.band.map(|band| {
+            let (low, high) = self.capture_band().unwrap_or((band.low(), band.high()));
+            let (low, high) = (band.low().max(low), band.high().min(high));
+            // Clamped edges that cross mean no overlap, which `between` would read as reversed.
+            (low < high)
+                .then(|| argand_core::FrequencyBand::between(low, high))
+                .flatten()
+        });
+        // A band wholly beyond the capture selects nothing, not the band's time span alone.
+        let (time, band) = match band {
+            Some(None) => (None, None),
+            band => (selection.time, band.flatten()),
+        };
+        if (self.selection, self.band) != (time, band) {
+            self.selection = time;
+            self.band = band;
+            cx.notify();
+        }
+    }
+
+    /// The capture's band in physical hertz: around its reference when complex, above it when real.
+    pub(super) fn capture_band(&self) -> Option<(f64, f64)> {
+        let meta = self.file.as_ref()?.state.document.meta()?;
+        let nyquist = meta.sample_rate / 2.0;
+        let reference = meta.center_freq;
+        Some(if meta.is_iq() {
+            (reference - nyquist, reference + nyquist)
+        } else {
+            (reference, reference + nyquist)
+        })
+    }
+
+    /// The time span alone, which edit commands act on; none while a band is selected.
+    pub(super) fn time_selection(&self) -> Option<argand_core::SampleSpan> {
+        self.selection.filter(|_| self.band.is_none())
+    }
+}
+
 impl plot_view::PlotView {
     pub(super) fn wheel(
         &mut self,
@@ -784,9 +851,9 @@ impl plot_view::PlotView {
 
     /// Start the gesture a press asks for, which is decided here once.
     ///
-    /// A left press on the spectrum selects time, unless Space is held; with
-    /// Ctrl it is kept for the rectangle selection. Every other press that
-    /// lands on the plot pans, as the left button did before selections.
+    /// Unless Space is held, a left press selects: time on the spectrum, a
+    /// rectangle with Ctrl there, and a band on the frequency ruler. Every
+    /// other press that lands on the plot pans.
     pub(super) fn press(
         &mut self,
         event: &gpui_kit::MouseDownEvent,
@@ -809,17 +876,18 @@ impl plot_view::PlotView {
         self.pan = None;
         self.frequency_pan = None;
         self.selecting = None;
-        let selects =
-            event.button == MouseButton::Left && !self.space && geometry.selects_at(event.position);
-        if selects {
-            if !event.modifiers.control {
-                let view = snapshot.extents.time.view;
-                self.selecting = Some(Selecting {
-                    anchor: view.boundary(geometry.fractions(event.position).0),
-                    origin: event.position,
-                    moved: false,
-                });
-            }
+        let on_spectrum = geometry.selects_at(event.position);
+        let on_ruler = geometry.frequency_ruler.contains(&event.position);
+        if event.button == MouseButton::Left && !self.space && (on_spectrum || on_ruler) {
+            let (time, frequency) = geometry.fractions(event.position);
+            let view = snapshot.extents.time.view;
+            self.selecting = Some(Selecting {
+                anchor: on_spectrum.then(|| view.boundary(time)),
+                anchor_hz: (on_ruler || event.modifiers.control)
+                    .then(|| hertz(snapshot.extents.hertz, frequency)),
+                origin: event.position,
+                moved: false,
+            });
             cx.notify();
             return;
         }
@@ -983,11 +1051,26 @@ impl plot_view::PlotView {
         selecting.moved |= f32::from(delta.x).hypot(f32::from(delta.y)) >= CLICK_SLOP;
         self.selecting = Some(selecting);
         if selecting.moved {
+            let (time, frequency) = geometry.fractions(position);
             let view = snapshot.extents.time.view;
-            let boundary = view.boundary(geometry.fractions(position).0);
-            cx.emit(plot_view::PlotIntent::Select(
-                argand_core::SampleSpan::between(selecting.anchor, boundary),
-            ));
+            let span = selecting
+                .anchor
+                .map(|anchor| argand_core::SampleSpan::between(anchor, view.boundary(time)));
+            let band = selecting.anchor_hz.map(|anchor| {
+                argand_core::FrequencyBand::between(
+                    anchor,
+                    hertz(snapshot.extents.hertz, frequency),
+                )
+            });
+            // Each axis the gesture selects must have some extent, or nothing is selected.
+            let selection = match (span, band) {
+                (Some(None), _) | (_, Some(None)) => None,
+                (time, band) => Some(argand_core::Selection {
+                    time: time.flatten(),
+                    band: band.flatten(),
+                }),
+            };
+            cx.emit(plot_view::PlotIntent::Select(selection));
         }
     }
 

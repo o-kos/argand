@@ -113,6 +113,13 @@ impl Waveform {
 ///
 /// It is never thinner than one device pixel, so a selection far shorter than
 /// a pixel still shows where it is.
+/// Where fractions `from` to `to` of `length` lie, at least one device pixel and inside it.
+fn along(length: f32, (from, to): (f64, f64), scale: f32) -> (f32, f32) {
+    let span = ((to - from) as f32 * length).max(1. / scale).min(length);
+    let start = (from as f32 * length).min(length - span).max(0.);
+    (start, span)
+}
+
 pub fn time_band(
     bounds: Bounds<Pixels>,
     orientation: crate::orientation::Mode,
@@ -120,8 +127,7 @@ pub fn time_band(
     scale: f32,
 ) -> Bounds<Pixels> {
     let length = f32::from(orientation.axes(bounds.size.width, bounds.size.height).0);
-    let span = ((to - from) as f32 * length).max(1. / scale).min(length);
-    let start = (from as f32 * length).min(length - span).max(0.);
+    let (start, span) = along(length, (from, to), scale);
     if orientation.vertical() {
         Bounds::new(
             bounds.origin + point(px(0.), px(start)),
@@ -131,6 +137,38 @@ pub fn time_band(
         Bounds::new(
             bounds.origin + point(px(start), px(0.)),
             size(px(span), bounds.size.height),
+        )
+    }
+}
+
+/// A selection as fractions of the visible picture: time from its start, frequency from its top.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Selected {
+    pub time: (f64, f64),
+    pub frequency: (f64, f64),
+}
+
+/// The part of `bounds` a selection covers, at least one device pixel along each axis.
+pub fn selected_rect(
+    bounds: Bounds<Pixels>,
+    orientation: crate::orientation::Mode,
+    selected: Selected,
+    scale: f32,
+) -> Bounds<Pixels> {
+    let time = time_band(bounds, orientation, selected.time, scale);
+    let (from, to) = selected.frequency;
+    if orientation.vertical() {
+        // Frequency runs to the right, so its top is the right edge.
+        let (start, span) = along(f32::from(bounds.size.width), (1. - to, 1. - from), scale);
+        Bounds::new(
+            point(bounds.origin.x + px(start), time.origin.y),
+            size(px(span), time.size.height),
+        )
+    } else {
+        let (start, span) = along(f32::from(bounds.size.height), (from, to), scale);
+        Bounds::new(
+            point(time.origin.x, bounds.origin.y + px(start)),
+            size(time.size.width, px(span)),
         )
     }
 }
@@ -188,6 +226,26 @@ impl Panel {
 mod tests {
     use super::*;
     use crate::orientation::Mode;
+
+    #[test]
+    fn a_rectangle_covers_its_time_and_its_band_in_both_orientations() {
+        let bounds = Bounds::new(point(px(10.), px(20.)), size(px(800.), px(400.)));
+        let selected = Selected {
+            time: (0.25, 0.5),
+            frequency: (0.1, 0.6),
+        };
+        let horizontal = selected_rect(bounds, Mode::Horizontal, selected, 1.);
+        assert_eq!(
+            horizontal,
+            Bounds::new(point(px(210.), px(60.)), size(px(200.), px(200.)))
+        );
+        // Time runs down and frequency to the right, its top at the right edge.
+        let vertical = selected_rect(bounds, Mode::Vertical, selected, 1.);
+        assert_eq!(
+            vertical,
+            Bounds::new(point(px(330.), px(120.)), size(px(400.), px(100.)))
+        );
+    }
 
     #[test]
     fn a_thin_band_at_the_far_edge_stays_inside_its_bounds() {

@@ -294,14 +294,7 @@ impl Readout {
         let time_label = extents
             .time
             .readout(time, time_span, time_pixels, time_fraction);
-        let unit =
-            axis::caption(AxisKind::Frequency, extents.hertz.0, extents.hertz.1).unwrap_or("Hz");
-        let divisor = match unit {
-            "GHz" => 1e9,
-            "MHz" => 1e6,
-            "kHz" => 1e3,
-            _ => 1.,
-        };
+        let (unit, divisor) = frequency_unit(extents.hertz);
         let precision =
             crate::navigation::time_precision(frequency_span / frequency_pixels / divisor);
         Self {
@@ -313,6 +306,18 @@ impl Readout {
             )),
         }
     }
+}
+
+/// The frequency ruler's unit for the visible band, with the hertz in one of it.
+pub fn frequency_unit((low, high): (f64, f64)) -> (&'static str, f64) {
+    let unit = axis::caption(AxisKind::Frequency, low, high).unwrap_or("Hz");
+    let divisor = match unit {
+        "GHz" => 1e9,
+        "MHz" => 1e6,
+        "kHz" => 1e3,
+        _ => 1.,
+    };
+    (unit, divisor)
 }
 
 #[cfg(test)]
