@@ -79,3 +79,20 @@ fn the_same_file_is_recognised_through_a_different_spelling() {
     assert!(!same_path(&file, &dir.join("argand-other.wav")));
     std::fs::remove_file(&file).unwrap();
 }
+
+#[test]
+fn a_band_is_named_by_its_edges_and_a_rectangle_by_its_span_too() {
+    let meta = meta("/captures/hfdl.flac", 2e6);
+    let band = argand_core::FrequencyBand::between(12_578_500.0, 12_581_250.0).unwrap();
+    assert_eq!(
+        suggested_band_name(&meta, None, band),
+        "hfdl_12.579-12.581MHz.wav"
+    );
+    let span = SampleSpan::between(2_000_000, 3_000_000);
+    assert_eq!(
+        suggested_band_name(&meta, span, band),
+        "hfdl_1.000-1.500s_12.579-12.581MHz.wav"
+    );
+    let audio = argand_core::FrequencyBand::between(300.0, 2_700.0).unwrap();
+    assert_eq!(suggested_band_name(&meta, None, audio), "hfdl_0.300-2.700kHz.wav");
+}

@@ -455,6 +455,28 @@ impl Editing {
     ///
     /// Only the files the samples come from are read, so one no longer used cannot stop the save,
     /// while the opened file stays protected even when none of it is left.
+    /// The open file, which no save may write over.
+    pub fn protected(&self) -> Vec<argand_io::write::Protected> {
+        let file = self.file();
+        vec![argand_io::write::Protected {
+            path: file.meta.source.clone(),
+            stamp: file.stamp,
+        }]
+    }
+
+    /// The files the current version reads, by source id, with none for the others.
+    pub fn source_files(&self) -> Vec<Option<SourceFile>> {
+        let used = self.capture().sources();
+        self.sources
+            .iter()
+            .enumerate()
+            .map(|(index, source)| {
+                used.contains(&SourceId(index as u32))
+                    .then(|| source.file())
+            })
+            .collect()
+    }
+
     pub fn save_request(
         &self,
         span: Option<SampleSpan>,
@@ -486,10 +508,7 @@ impl Editing {
                 })
                 .collect(),
             target,
-            protected: vec![argand_io::write::Protected {
-                path: file.meta.source.clone(),
-                stamp: file.stamp,
-            }],
+            protected: self.protected(),
             replacing: None,
             output: argand_io::write::Output::Native,
         })

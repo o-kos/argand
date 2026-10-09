@@ -608,6 +608,45 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn a_selected_band_saves_as_a_complex_capture_at_a_lower_rate(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        let dir = std::env::temp_dir().join(format!("argand-save-band-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path: PathBuf = dir.join("capture.wav");
+        write_wave(&path, 48_000);
+        shell.update_in(cx, |shell, window, cx| {
+            shell.open(Origin::new(path.clone()), window, cx);
+        });
+        wait_until(cx, &shell, "the file to describe itself", |shell| {
+            shell.editing().is_some_and(Editing::is_described)
+        });
+        shell.update_in(cx, |shell, window, cx| {
+            shell.select(
+                argand_core::Selection {
+                    time: None,
+                    band: argand_core::FrequencyBand::between(1_000., 3_000.),
+                },
+                cx,
+            );
+            assert!(shell.can_save(true));
+            shell.save_as(true, window, cx);
+        });
+        let target = dir.join("band.wav");
+        let chosen = target.clone();
+        cx.simulate_new_path_selection(move |_| Some(chosen));
+        wait_until(cx, &shell, "the band to be saved", |shell| {
+            shell.saving.is_none() && matches!(shell.save_notice, Some(saving_ui::Notice::Saved(_)))
+        });
+        let saved = argand_io::open(&target, &argand_io::OpenHints::default()).unwrap();
+        let meta = saved.meta();
+        assert_eq!(meta.sample_rate, 24_000. / 9.);
+        assert_eq!(meta.center_freq, 2_000.);
+        assert_eq!(meta.len_samples, 48_000u64.div_ceil(9));
+        assert!(meta.is_iq());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[gpui_kit::test]
     fn nothing_opens_or_closes_while_the_file_is_replaced(cx: &mut TestAppContext) {
         let (shell, cx) = open_window(cx);
         shell.update_in(cx, |shell, window, cx| {

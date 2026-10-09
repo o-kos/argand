@@ -69,7 +69,7 @@ Derived here:
 - [x] `argand-io::write::FloatIq`: streaming float I/Q WAVE with RF64, `argd` and `auxi`, the target rules and the temporary file; tests that the file opens with the exact rate and reference frequency, and RF64 with a small limit.
 - [x] `Selection` in the shell; band and rectangle gestures in `PlotView::press`; the frequency ruler's pan moved to the middle button and Space+drag; tests for every gesture and both orientations.
 - [x] Band and rectangle tint; status-bar band readout; edit commands limited to time selections.
-- [ ] Save selection as… for a band or rectangle: the extraction job with progress and cancel, the name, and a headless test that saves a band and reopens it.
-- [ ] Update `AGENTS.md`, `CHANGELOG.md` and `IMPLEMENTATION_PLAN.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Save selection as… for a band or rectangle: the extraction job with progress and cancel, the name, and a headless test that saves a band and reopens it.
+- [x] Update `AGENTS.md`, `CHANGELOG.md` and `IMPLEMENTATION_PLAN.md`.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.

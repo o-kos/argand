@@ -38,8 +38,8 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 ## Cargo workspace architecture
 
 - **argand-core:** domain types such as `Signal`, real or complex sample metadata, `Selection`, and units. It also owns toolkit-independent render view models such as `WaveformEnvelope`, `DbGrid`, `SpectrogramImage`, and primitive lists, and the axis tick layout in `argand-core::axis`, which measures candidate labels through the `LabelMeasure` trait so that every front end places its marks by one policy. A view model's shape fields are the caller's to set, so its accessors check every coordinate against the declared shape and settle the product with `checked_mul`; one index past the end of a row is a valid offset into the next one, so an unchecked read answers with a neighbour's data that looks like a picture. The accessors differ in how strict they are, and the difference is deliberate. `SpectrogramImage::get` and `put` settle the whole buffer through `shape()` and answer nothing until it matches. `DbGrid::column`, `DbGrid::value` and `WaveformEnvelope::column` do not consult `shape()`; they check the one coordinate, settle that offset with `checked_mul` and take the cell from the slice, so a cell inside the declared shape stays readable where the buffer runs longer than that shape. It must not depend on GUI or heavy DSP code.
-- **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, resampling helpers, and frequency shifting. Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
-- **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see "Saving (#186)"). This is the future connection point for custom formats through the worker.
+- **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, and band extraction (`extract`: frequency shift, low-pass filtering and integer decimation, see "Band and rectangle selection (#202)"). Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
+- **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see "Saving (#186)"), and `write::FloatIq`, which writes computed I/Q `f32` samples. This is the future connection point for custom formats through the worker.
 - **argand-edit:** the editing engine: an immutable piece table (`Capture`) over the files a capture reads, `Clip`s of it, a `History` of versions for undo and redo, and `EditedSource`, a `SampleSource` reading a capture through one opened source per `SourceId` (see "Editing (#195, #196)"). It depends on `argand-core` only.
 - **argand-app:** the application binary, `argand`, using the GPUI Kit facade over GPUI and gpui-component. It opens a signal file, analyses it on a thread of its own, and draws the spectrogram with axes. Its modules divide by whether they name a toolkit: `config.rs`, `session.rs`, `document.rs` and `analysis.rs` do not and are tested without a window, while `shell.rs`, `chrome.rs`, `axes.rs` and `spectrogram.rs` do. It will further own cursors, selections, scrolling, transport, and the detailed spectrum window. This is the single shipped binary alongside `aspec`.
 - **argand-worker:** a planned processing worker binary that loads C ABI libraries and communicates through a stdio protocol. It is deferred.
@@ -417,12 +417,12 @@ state is persisted, and the full-capture minimap is independent of both viewport
 
 `argand_core::selection` holds `Selection { time, band }`: an optional
 `SampleSpan` in whole samples (a complex sample counts once, so I and Q stay
-together) and an optional `FrequencyBand` in hertz, which no gesture creates yet.
+together) and an optional `FrequencyBand` in physical hertz (#202).
 The kinds and their later operations are phase 5 of `IMPLEMENTATION_PLAN.md`.
-`PlotView::press` decides a gesture once per press: a left press on the spectrum
-selects time unless Space is held, Ctrl+left on the spectrum is reserved for the
-rectangle and does nothing, and every other press on the plot (middle button,
-Space+left, left on the rulers or minimap) pans as before. A pan remembers its
+`PlotView::press` decides a gesture once per press: unless Space is held, a left
+press selects time on the spectrum, a rectangle with Ctrl there and a band on the
+frequency ruler, and every other press on the plot (middle button, Space+left,
+left on the time ruler or minimap) pans as before. A pan remembers its
 button (`pan_button`), because GPUI's `MouseMoveEvent::dragging` means the left
 button only. A selection's boundaries come from `View::boundary` on the time
 fraction, so it follows the time axis in both orientations and stops at the
@@ -436,6 +436,33 @@ The snapshot carries it as view fractions (`View::fractions_of`); the spectrum
 and the minimap tint it with `blue_light` at 0.3 under the grid
 (`waveform::time_band`, at least one device pixel wide), and the status bar shows
 start, end and length in the time ruler's units (`time_ruler::Mode::selection`).
+
+## Band and rectangle selection (#202)
+
+A band is selected over the whole capture by a left drag on the frequency ruler, and a
+rectangle by a Ctrl+left drag on the spectrum; `Selecting` keeps a time anchor, a
+frequency anchor or both, and an axis the gesture selects without extent selects nothing.
+The shell keeps the band beside its time span (`Shell::band` next to `Shell::selection`),
+clamped to the capture's band (`Shell::capture_band`: the reference ± Fs/2 for complex, the
+reference to Fs/2 above it for real); every gesture replaces both, a file opening and an
+edit clear the band. Edit commands act on `Shell::time_selection` only, which is none while
+a band is selected. The spectrum tints the band across the visible time, or the rectangle,
+through `waveform::selected_rect`; the minimap tints only a time span. The status bar adds
+the band's edges and width in the frequency ruler's unit (`axes::frequency_unit`).
+
+Save selection as… with a band computes the file (`extraction.rs`, run on the save thread
+by `saving::start_extraction`): each file the current version reads is opened with
+`open_stamped` and must keep its stamp, also after reading, and the span plus the filter's
+margin is read through an `EditedSource`. `argand_dsp::extract::ExtractPlan` takes
+D = ⌊Fs / (1.25·B)⌋, a Kaiser windowed-sinc low-pass of 80 dB whose stopband starts at
+Fs/D − B/2 (B/4 past the band at D = 1), and refuses a band narrower than Fs/65536;
+`Extractor` mixes the band centre to 0 Hz with an `f64` oscillator, keeps every D-th
+output of a polyphase decimator over a doubled history, and compensates the filter delay,
+so output n is input n·D of the span and there are ⌈len/D⌉ outputs; real input has the
+analytic signal's gain. The capture's own samples beyond the span feed the filter, zeros
+elsewhere. `write::FloatIq` writes I/Q `f32` WAVE on the unit scale (RF64 past 4 GB) at
+rate Fs/D, exact in `argd`, with the band centre as reference frequency, under the target
+rules of `save`. The name is `<stem>[_<start>-<end>s]_<low>-<high><unit>.wav`.
 
 ## Saving (#186)
 

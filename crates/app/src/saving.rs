@@ -57,6 +57,30 @@ impl Drop for Job {
 ///
 /// With `staged` the temporary file is handed back rather than moved into place.
 pub fn start(request: SaveRequest, staged: bool) -> (Job, async_channel::Receiver<Update>) {
+    spawn(move |progress, cancel| {
+        if staged {
+            stage(&request, progress, cancel).map(|staged| Outcome::Staged(Box::new(staged)))
+        } else {
+            save(&request, progress, cancel).map(Outcome::Saved)
+        }
+    })
+}
+
+/// Start computing and writing a band of a capture, with the same updates as a save.
+pub fn start_extraction(
+    request: crate::extraction::ExtractRequest,
+) -> (Job, async_channel::Receiver<Update>) {
+    spawn(move |progress, cancel| {
+        crate::extraction::run(&request, progress, cancel).map(Outcome::Saved)
+    })
+}
+
+/// Run `work` on the save thread, carrying its progress and outcome back.
+fn spawn(
+    work: impl FnOnce(&mut dyn FnMut(u64, u64), &AtomicBool) -> Result<Outcome, WriteError>
+    + Send
+    + 'static,
+) -> (Job, async_channel::Receiver<Update>) {
     let cancel = Arc::new(AtomicBool::new(false));
     let (finished_tx, finished) = mpsc::channel();
     let (sender, receiver) = async_channel::bounded(2);
@@ -75,13 +99,7 @@ pub fn start(request: SaveRequest, staged: bool) -> (Job, async_channel::Receive
                     let _ = sender.try_send(Update::Progress { done, total });
                 }
             };
-            let written = if staged {
-                stage(&request, &mut progress, &cancel)
-                    .map(|staged| Outcome::Staged(Box::new(staged)))
-            } else {
-                save(&request, &mut progress, &cancel).map(Outcome::Saved)
-            };
-            let outcome = match written {
+            let outcome = match work(&mut progress, &cancel) {
                 Ok(outcome) => outcome,
                 Err(WriteError::Cancelled) => Outcome::Cancelled,
                 Err(error) => {
@@ -150,6 +168,38 @@ pub fn suggested_name(meta: &SignalMeta, as_wave: bool, span: Option<SampleSpan>
             )
         }
         None => format!("{stem}.{extension}"),
+    }
+}
+
+/// The name the dialog proposes for a band, with the span's bounds in seconds when it has one.
+pub fn suggested_band_name(
+    meta: &SignalMeta,
+    span: Option<SampleSpan>,
+    band: argand_core::FrequencyBand,
+) -> String {
+    let stem = meta
+        .source
+        .file_stem()
+        .map_or_else(|| "capture".into(), |stem| stem.to_string_lossy());
+    let (unit, divisor) = [("GHz", 1e9), ("MHz", 1e6), ("kHz", 1e3)]
+        .into_iter()
+        .find(|(_, divisor)| band.high().abs().max(band.low().abs()) >= *divisor)
+        .unwrap_or(("Hz", 1.));
+    let frequencies = format!(
+        "{:.3}-{:.3}{unit}",
+        band.low() / divisor,
+        band.high() / divisor
+    );
+    match span {
+        Some(span) => {
+            let seconds = |sample: u64| sample as f64 / meta.sample_rate;
+            format!(
+                "{stem}_{:.3}-{:.3}s_{frequencies}.wav",
+                seconds(span.start()),
+                seconds(span.end())
+            )
+        }
+        None => format!("{stem}_{frequencies}.wav"),
     }
 }
 
