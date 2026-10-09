@@ -107,6 +107,21 @@ Reviewer `gpt-6.1-sol` high.
 
   All fixed: the cutoff on a touching edge, `reopen_stamped` with the resolved divisor, the unit chosen by width, and the plan's wording. The FFT convolution's bookkeeping was found correct. This was the last round.
 
+## Owner acceptance checks
+
+To be checked by hand on a release build of this branch (`cargo build --release --locked`):
+
+- [ ] A left drag on the frequency ruler selects a band over the whole capture. It is tinted across the spectrum in both orientations, and the status bar shows its edges and width in the ruler's unit.
+- [ ] A Ctrl+left drag on the spectrum selects a rectangle, tinted only within its span. The status bar shows the time span and the band.
+- [ ] A plain left drag on the spectrum still selects time, and a click clears any selection.
+- [ ] The frequency ruler still pans with the middle button, Space+left drag and the wheel. A left drag on the time ruler and the minimap still pans.
+- [ ] With a band or rectangle selected, Cut, Copy, Delete and Replace selection are unavailable in the Edit menu, the context menu and on their keys.
+- [ ] File → Save selection as… with a band proposes `<stem>_<low>-<high><unit>.wav`, and with a rectangle `<stem>_<start>-<end>s_<low>-<high><unit>.wav`.
+- [ ] The saved file opens in Argand as a complex capture with the band centre as its reference frequency and a sample rate of Fs/D. The signal in the band is where it was, and nothing outside the band is visible.
+- [ ] A band on a real capture starting at 0 Hz saves without a mirrored copy of the band.
+- [ ] Saving a large band shows progress, and × cancels it, leaving no file behind.
+- [ ] Opening another file or an edit clears the band, and Undo and Redo bring back only time selections.
+
 ## Rejected alternatives
 
 - **Fractional resampling to exactly the band width.** It is more code and more CPU. For D ≥ 2 the integer rate lies between 1.25·B and 1.25·B·(D+1)/D, at most half again over 1.25·B and less as D grows. D = 1 takes bands wider than 0.4·Fs and keeps the full rate, up to 2.5 times the band (corrected after review).
