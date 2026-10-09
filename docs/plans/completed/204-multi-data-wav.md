@@ -2,7 +2,7 @@
 
 Resolves #204.
 
-Class A (data safety in the save path, `argand-io` public API). Implementer: Claude in the session. Reviewer: to be agreed with the owner.
+Class A (data safety in the save path, `argand-io` public API). Implementer: Claude in the session. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
 
 ## Overview
 
