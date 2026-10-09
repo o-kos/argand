@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- WAV files whose samples span several `data` chunks, as KiwiSDR recorders write them, open whole instead of as their first 512 samples. Saving such a capture writes an ordinary WAV with one `data` chunk (#204).
+
 - File → Save (Ctrl+S) writes the edits over the open file. The capture is written to a temporary file first, the original is replaced only when that is complete and the file has not changed on disk since it was opened, and the window opens it again where it looked. A headerless capture stays headerless. The question about unsaved edits now offers Save.
 
 - Edit a capture: Delete removes the selected time range, Cut, Copy and Paste move ranges within a capture or between captures with the same sample rate and storage, and Undo and Redo walk the history. Edits are immediate on multi-hour files, because nothing is copied: the capture becomes a list of pieces of the files it reads. They are in a new Edit menu, on the usual keys, and in a context menu on the spectrogram whose Paste here inserts at the clicked position. Unsaved edits mark the title with `•` and are asked about before another file opens or the window closes; Save as writes the edited capture and goes on from the saved file, keeping the picture on screen. An edit moves the picture with its samples at once and replaces it when the edited one is ready, without a coarse preview; the question about unsaved edits is the toolkit's dialog where the system has none.

@@ -12,6 +12,12 @@
 //!   an I/Q capture at 2.4 MS/s of int16 crosses it in seven and a half
 //!   minutes. A reader that ignores `ds64` does not fail on such a file, it
 //!   silently stops partway through.
+//! * KiwiSDR recorders split the samples over many `data` chunks, each after
+//!   a `kiwi` chunk with the GNSS time of its block. A reader that stops at
+//!   the first `data` chunk sees half a second of a recording that lasts
+//!   minutes; [`WavLayout::runs`] collects them all.
+
+use std::io::{BufReader, Read, Seek, SeekFrom};
 
 use argand_core::{Domain, SampleFormat, SampleType};
 
@@ -48,10 +54,24 @@ pub struct WavLayout {
     pub container: &'static str,
     /// Physical frequency of baseband 0 Hz, from `argd` or `auxi`.
     pub reference_freq: Option<f64>,
+    /// End of the RIFF body as its header states it, where later `data` chunks are looked for.
+    pub riff_end: Option<u64>,
 }
 
 impl WavLayout {
-    /// Bytes of sample data actually present in a file of `file_len` bytes.
+    /// Every run of sample bytes in the file, read from `input` past the first `data` chunk.
+    pub fn runs<R: Read + Seek>(&self, input: R, file_len: u64) -> std::io::Result<Vec<DataRun>> {
+        runs(
+            self.container,
+            self.data_offset,
+            self.declared_len,
+            self.riff_end,
+            input,
+            file_len,
+        )
+    }
+
+    /// Bytes of sample data of the first `data` chunk actually present in a file of `file_len` bytes.
     ///
     /// Takes the smaller of the declared and available lengths, so a stale or
     /// missing header cannot send the reader past the end, and drops any
@@ -126,7 +146,73 @@ pub fn parse(bytes: &[u8]) -> Result<WavLayout, RiffError> {
         declared_len: chunks.declared_len,
         container: chunks.container,
         reference_freq: chunks.metadata.reference_freq(),
+        riff_end: chunks.riff_end,
     })
+}
+
+/// One stretch of sample bytes, the body of a `data` chunk or what the file holds of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DataRun {
+    pub offset: u64,
+    pub len: u64,
+}
+
+/// The first `data` chunk and, in a plain RIFF, every later one, clipped to the file.
+fn runs<R: Read + Seek>(
+    container: &str,
+    data_offset: usize,
+    declared_len: Option<usize>,
+    riff_end: Option<u64>,
+    input: R,
+    file_len: u64,
+) -> std::io::Result<Vec<DataRun>> {
+    let offset = data_offset as u64;
+    let available = file_len.saturating_sub(offset);
+    let first = DataRun {
+        offset,
+        len: declared_len.map_or(available, |len| (len as u64).min(available)),
+    };
+    let end = riff_end.unwrap_or(file_len).min(file_len);
+    let Some(declared) = declared_len.filter(|_| container == "wav") else {
+        return Ok(vec![first]);
+    };
+    let declared = declared as u64;
+    let next = offset + declared + (declared & 1);
+    if next >= end {
+        return Ok(vec![first]);
+    }
+    let mut out = vec![first];
+    out.extend(later_data(input, next, end)?);
+    Ok(out)
+}
+
+/// The `data` chunks from `pos` to `end`, stopping at a chunk that runs past `end`.
+fn later_data<R: Read + Seek>(input: R, mut pos: u64, end: u64) -> std::io::Result<Vec<DataRun>> {
+    let mut input = BufReader::with_capacity(64 << 10, input);
+    input.seek(SeekFrom::Start(pos))?;
+    let mut runs = Vec::new();
+    let mut header = [0u8; 8];
+    while pos + 8 <= end {
+        input.read_exact(&mut header)?;
+        let size = u64::from(u32::from_le_bytes([
+            header[4], header[5], header[6], header[7],
+        ]));
+        let body = pos + 8;
+        let fits = size <= end - body;
+        if &header[0..4] == b"data" {
+            let len = size.min(end - body);
+            if len > 0 {
+                runs.push(DataRun { offset: body, len });
+            }
+        }
+        if !fits {
+            break;
+        }
+        let step = size + (size & 1);
+        input.seek_relative(step as i64)?;
+        pos = body + step;
+    }
+    Ok(runs)
 }
 
 /// The chunks a WAVE file is read and copied by, whatever its sample layout.
@@ -137,7 +223,22 @@ pub(crate) struct Chunks<'a> {
     pub fmt: &'a [u8],
     pub data_offset: usize,
     pub declared_len: Option<usize>,
+    pub riff_end: Option<u64>,
     pub metadata: Metadata,
+}
+
+impl Chunks<'_> {
+    /// Every run of sample bytes in the file, read from `input` past the first `data` chunk.
+    pub fn runs<R: Read + Seek>(&self, input: R, file_len: u64) -> std::io::Result<Vec<DataRun>> {
+        runs(
+            self.container,
+            self.data_offset,
+            self.declared_len,
+            self.riff_end,
+            input,
+            file_len,
+        )
+    }
 }
 
 /// What the `argd` and `auxi` chunks say about the capture.
@@ -236,11 +337,16 @@ pub(crate) fn scan(bytes: &[u8]) -> Result<Chunks<'_>, RiffError> {
         return Err(RiffError::MissingDs64 { container });
     }
 
+    let riff_size = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    let riff_end = (!is_64bit && riff_size != 0 && riff_size != SIZE_UNKNOWN)
+        .then(|| u64::from(riff_size) + 8);
+
     Ok(Chunks {
         container,
         fmt,
         data_offset,
         declared_len,
+        riff_end,
         metadata,
     })
 }

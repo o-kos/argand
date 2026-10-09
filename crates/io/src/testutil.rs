@@ -127,6 +127,43 @@ pub fn write_wav(
     path.to_owned()
 }
 
+/// Write an int16 I/Q WAVE file the way a KiwiSDR recorder does, a `kiwi` chunk before every `data` chunk of `block` samples.
+pub fn write_kiwi_wav(path: &Path, sample_rate: u32, values: &[f32], block: usize) -> PathBuf {
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&1u16.to_le_bytes());
+    fmt.extend_from_slice(&2u16.to_le_bytes());
+    fmt.extend_from_slice(&sample_rate.to_le_bytes());
+    fmt.extend_from_slice(&(sample_rate * 4).to_le_bytes());
+    fmt.extend_from_slice(&4u16.to_le_bytes());
+    fmt.extend_from_slice(&16u16.to_le_bytes());
+
+    let mut file = Vec::new();
+    file.extend_from_slice(b"RIFF");
+    file.extend_from_slice(&0u32.to_le_bytes());
+    file.extend_from_slice(b"WAVE");
+    file.extend_from_slice(b"fmt ");
+    file.extend_from_slice(&(fmt.len() as u32).to_le_bytes());
+    file.extend_from_slice(&fmt);
+    for (index, chunk) in values.chunks(block * 2).enumerate() {
+        file.extend_from_slice(b"kiwi");
+        file.extend_from_slice(&10u32.to_le_bytes());
+        file.extend_from_slice(&[0, 0]);
+        file.extend_from_slice(&(index as u32).to_le_bytes());
+        file.extend_from_slice(&0u32.to_le_bytes());
+        let data = encode(SampleFormat::I16, chunk);
+        file.extend_from_slice(b"data");
+        file.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        file.extend_from_slice(&data);
+    }
+    let riff_size = (file.len() - 8) as u32;
+    file[4..8].copy_from_slice(&riff_size.to_le_bytes());
+
+    std::fs::File::create(path)
+        .and_then(|mut f| f.write_all(&file))
+        .expect("write kiwi fixture");
+    path.to_owned()
+}
+
 /// Write a headerless file holding the same values.
 pub fn write_raw(path: &Path, format: SampleFormat, values: &[f32], scale: f32) -> PathBuf {
     let scaled: Vec<f32> = values.iter().map(|v| v * scale).collect();

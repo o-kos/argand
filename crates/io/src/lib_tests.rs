@@ -479,3 +479,52 @@ fn flac_seeks_discard_old_packets_and_preserve_levels() {
         assert_eq!(source.original_sample_units(), units);
     }
 }
+
+#[test]
+fn a_kiwi_recording_reads_every_data_chunk() {
+    let dir = TempDir::new("kiwi-open");
+    let values = iq_tone(1300, 12_000.0, 1_000.0, 0.5);
+    let path = crate::testutil::write_kiwi_wav(&dir.join("iq.wav"), 12_000, &values, 512);
+    let mut source = open(&path, &OpenHints::default()).unwrap();
+    assert_eq!(source.meta().len_samples, 1300);
+    let all = drain(source.as_mut());
+    for (got, want) in all.iter().zip(&values) {
+        assert!((got - want).abs() < 1e-4);
+    }
+    assert_eq!(all.len(), values.len());
+    for sample in [511u64, 512, 1023, 1299, 0] {
+        source.seek(sample).unwrap();
+        assert_eq!(drain(source.as_mut()), all[sample as usize * 2..], "sample {sample}");
+    }
+    let mut odd = [0.0f32; 7];
+    source.seek(510).unwrap();
+    assert_eq!(source.read(&mut odd).unwrap(), 6);
+    assert_eq!(odd[..6], all[1020..1026]);
+}
+
+#[test]
+fn a_kiwi_recording_cut_short_keeps_its_whole_samples() {
+    let dir = TempDir::new("kiwi-cut");
+    let values = iq_tone(1024, 12_000.0, 1_000.0, 0.5);
+    let path = crate::testutil::write_kiwi_wav(&dir.join("iq.wav"), 12_000, &values, 512);
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes.truncate(bytes.len() - 1001);
+    std::fs::write(&path, &bytes).unwrap();
+    let source = open(&path, &OpenHints::default()).unwrap();
+    assert_eq!(source.meta().len_samples, 512 + (2048 - 1001) / 4);
+}
+
+#[test]
+fn auto_levels_measure_every_data_chunk() {
+    let dir = TempDir::new("kiwi-levels");
+    let mut values = vec![0.1f32; 2048];
+    values[1500] = 0.8;
+    let path = crate::testutil::write_kiwi_wav(&dir.join("iq.wav"), 12_000, &values, 256);
+    let hints = OpenHints {
+        normalize: Some(Normalize::Auto),
+        ..Default::default()
+    };
+    let source = open(&path, &hints).unwrap();
+    let peak = 0.8 * 32768.0 * normalize::AUTO_HEADROOM;
+    assert!((source.meta().divisor - peak).abs() < 1.0, "{}", source.meta().divisor);
+}

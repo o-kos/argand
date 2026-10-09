@@ -98,13 +98,50 @@ pub fn resolve_divisor_with_budget(
             let peak = match scan_bytes {
                 Some(budget) => bounded_peak(format, data, budget),
                 None => measure_peak(format, data),
-            } * AUTO_HEADROOM;
-            if peak > 1e-9 {
-                peak
-            } else {
-                format.full_scale()
-            }
+            };
+            auto_divisor(format, peak)
         }
+    }
+}
+
+/// Resolve levels over samples split into several runs, scanning each run its share of the budget.
+pub fn resolve_divisor_over(
+    mode: Normalize,
+    format: SampleFormat,
+    runs: &[&[u8]],
+    scan_bytes: Option<usize>,
+) -> f32 {
+    match runs {
+        [] => resolve_divisor_with_budget(mode, format, &[], scan_bytes),
+        [data] => resolve_divisor_with_budget(mode, format, data, scan_bytes),
+        _ if mode != Normalize::Auto => resolve_divisor_with_budget(mode, format, &[], scan_bytes),
+        _ => {
+            let total: usize = runs.iter().map(|run| run.len()).sum();
+            let budget = scan_bytes.unwrap_or(if total <= FULL_SCAN_LIMIT {
+                total
+            } else {
+                64 * SCAN_CHUNK_BYTES
+            });
+            let peak = runs
+                .par_iter()
+                .map(|run| {
+                    let share =
+                        (run.len() as u128 * budget as u128 / total.max(1) as u128) as usize;
+                    bounded_peak(format, run, share)
+                })
+                .reduce(|| 0.0f32, f32::max);
+            auto_divisor(format, peak)
+        }
+    }
+}
+
+/// The measured peak with headroom, or full scale for a silent capture.
+fn auto_divisor(format: SampleFormat, peak: f32) -> f32 {
+    let peak = peak * AUTO_HEADROOM;
+    if peak > 1e-9 {
+        peak
+    } else {
+        format.full_scale()
     }
 }
 

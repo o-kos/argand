@@ -1066,3 +1066,23 @@ fn the_saved_stamp_is_the_written_file_as_it_was_closed() {
     let saved = run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
     assert_eq!(saved.stamp, SourceStamp::of(&target).ok());
 }
+
+#[test]
+fn a_kiwi_recording_is_saved_as_one_data_chunk() {
+    let dir = TempDir::new("write-kiwi");
+    let values = iq_tone(1300, 12_000.0, 1_000.0, 0.5);
+    let source = crate::testutil::write_kiwi_wav(&dir.join("iq.wav"), 12_000, &values, 512);
+    let stored = encode(SampleFormat::I16, &values);
+    let target = dir.join("cut.wav");
+    let span = SampleSpan::between(300, 1100);
+    let saved = run(&request(&source, OpenHints::default(), span, target.clone())).unwrap();
+    assert_eq!(saved.samples, 800);
+    assert_eq!(data_bytes(&target), stored[300 * 4..1100 * 4]);
+    let bytes = fs::read(&target).unwrap();
+    assert!(!bytes.windows(4).any(|id| id == b"kiwi"));
+    assert_eq!(read_all(&target, &OpenHints::default()), read_all(&source, &OpenHints::default())[600..2200]);
+
+    let whole = dir.join("whole.wav");
+    run(&request(&source, OpenHints::default(), None, whole.clone())).unwrap();
+    assert_eq!(data_bytes(&whole), stored);
+}
