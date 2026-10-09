@@ -458,16 +458,20 @@ D = ⌊Fs / (1.25·B)⌋ and a Kaiser windowed-sinc low-pass of 80 dB. Its trans
 narrowest of three limits:
 - Fs/D − B, or B/4 at D = 1, so whatever aliases misses the band;
 - a quarter of Fs − B, so the stopband stays below the Nyquist rate;
-- for a real capture, twice the band's distance to 0 Hz or Fs/2, but no less than Fs/2048
-  (inside that guard the mirror cannot be told apart).
+- for a real capture, twice the band's distance to 0 Hz or Fs/2, so its mirror is stopped.
 
-A complex band within Fs/1024 of the whole capture is kept unfiltered, and a band narrower
-than Fs/65536 is refused. The window only checks the band (`ExtractPlan::check`), and the
-save thread builds the filter.
-`Extractor` mixes the band centre to 0 Hz with an `f64` oscillator, keeps every D-th
-output of a polyphase decimator over a doubled history, and compensates the filter delay,
-so output n is input n·D of the span and there are ⌈len/D⌉ outputs; real input has the
-analytic signal's gain. The capture's own samples beyond the span feed the filter, zeros
+None is narrower than Fs/131072, which bounds the filter to about 660 k taps. A complex band
+within Fs/32768 of the whole capture is kept unfiltered, and a band narrower than Fs/32768 is
+refused. A real band starting at 0 Hz or ending at Fs/2 has its edge in the transition, DC
+included. The window only checks the band (`ExtractPlan::check`), and the save thread builds
+the filter.
+
+`Extractor` mixes the band centre to 0 Hz with an `f64` oscillator. It filters by
+overlap-save FFT convolution, with an FFT of 4× the filter length rounded up to a power of
+two, clamped to 1024..2^22, so the cost per input sample grows with the logarithm of the
+filter length. It keeps every D-th output and compensates the filter delay, so output n is
+input n·D of the span and there are ⌈len/D⌉ outputs. Real input has the analytic signal's
+gain. The capture's own samples beyond the span feed the filter, zeros
 elsewhere. `write::FloatIq` writes I/Q `f32` WAVE on the unit scale (RF64 past 4 GB) at
 rate Fs/D, exact in `argd`, with the band centre as reference frequency, under the target
 rules of `save`, and a cancel during its final sync leaves the target alone. The name is `<stem>[_<start>-<end>s]_<low>-<high><unit>.wav`.

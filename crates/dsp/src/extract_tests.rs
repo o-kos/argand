@@ -183,3 +183,25 @@ fn a_span_whose_input_cannot_be_counted_is_refused() {
     let plan = ExtractPlan::new(RATE, -10_000.0, 10_000.0, false).unwrap();
     assert!(matches!(Extractor::new(plan, u64::MAX), Err(ExtractError::TooLong(_))));
 }
+
+#[test]
+fn a_real_band_just_above_0_hz_stops_the_mirror_of_its_lowest_tone() {
+    let plan = ExtractPlan::new(RATE, 1.0, 2_001.0, true).unwrap();
+    // A 2 Hz tone's mirror lies 4 Hz below it, which the transition follows.
+    let input = span(96_000, 1, tone(2.0, 0.5));
+    let out = extract(&plan, &input, 1, 4096);
+    for &sample in middle(&out) {
+        assert!((magnitude(sample) - 0.5).abs() < 0.005, "the mirror beats with the tone {sample:?}");
+    }
+}
+
+#[test]
+fn a_complex_band_a_few_hertz_short_of_the_whole_capture_is_filtered() {
+    let plan = ExtractPlan::new(RATE, -23_990.0, 23_990.0, false).unwrap();
+    assert!(plan.taps().len() > 1);
+    let input = span(96_000, 2, tone(23_997.0, 0.5));
+    let out = extract(&plan, &input, 2, 4096);
+    let peak = middle(&out).iter().map(|&s| magnitude(s)).fold(0.0, f32::max);
+    assert!(peak < 0.5 * 1.8e-4, "leaks {peak}");
+}
+

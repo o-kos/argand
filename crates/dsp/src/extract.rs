@@ -1,32 +1,39 @@
 //! Extracting a frequency band as a complex baseband signal at a lower rate.
 //!
 //! The band centre is moved to 0 Hz by a numerically controlled oscillator,
-//! a windowed-sinc low-pass keeps the band, and a polyphase decimator by an
-//! integer `D` computes only the outputs it keeps. The filter's delay is
-//! compensated, so output `n` is the band at input sample `n·D` of the span.
+//! a windowed-sinc low-pass keeps the band, and every `D`-th output is kept.
+//! The filter is applied by overlap-save FFT convolution, so its cost per
+//! sample grows with the logarithm of its length and its transition can be as
+//! narrow as the band needs. The filter's delay is compensated, so output `n`
+//! is the band at input sample `n·D` of the span.
 //!
-//! Everything here is a pure stream over blocks the caller reads: no I/O, no
-//! threads, and the state is bounded by the filter length.
+//! Everything here is a pure stream over blocks the caller reads, with no I/O
+//! and no threads, and the state is bounded by the filter length.
 
+use std::sync::Arc;
+
+use rustfft::num_complex::Complex32;
+use rustfft::{Fft, FftPlanner};
 use thiserror::Error;
 
 /// Stopband attenuation of the low-pass filter, in decibels.
 const STOPBAND_DB: f64 = 80.0;
 
-/// The narrowest band, as a fraction of the sample rate, which bounds the filter length.
-pub const NARROWEST_BAND: f64 = 1.0 / 65_536.0;
+/// The narrowest band, as a fraction of the sample rate.
+pub const NARROWEST_BAND: f64 = 1.0 / 32_768.0;
+
+/// The narrowest transition, as a fraction of the sample rate, which bounds the filter to about 660 k taps.
+///
+/// It is also the resolution of every other limit. A real capture's mirror closer
+/// than this to its band stays, and a complex band this close to the whole capture
+/// is the whole capture.
+const NARROWEST_TRANSITION: f64 = NARROWEST_BAND / 4.0;
+
+/// The largest FFT the convolution uses.
+const LARGEST_FFT: usize = 1 << 22;
 
 /// The part of the decimated rate left to the filter's transition.
 const TRANSITION: f64 = 1.25;
-
-/// The narrowest guard against a real capture's mirror, as a fraction of the sample rate.
-///
-/// A band closer than this to 0 Hz or the Nyquist rate keeps the part of its mirror
-/// that falls within the guard, since a real signal cannot be told from its mirror there.
-const MIRROR_GUARD: f64 = 1.0 / 2048.0;
-
-/// A complex band this close to the whole capture, as a fraction of the sample rate, is kept unfiltered.
-const WHOLE_BAND: f64 = 1.0 / 1024.0;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum ExtractError {
@@ -40,7 +47,7 @@ pub enum ExtractError {
     TooLong(u64),
 }
 
-/// How a band is extracted: the shift, the filter and the decimation.
+/// How a band is extracted, with the shift, the filter and the decimation.
 #[derive(Debug, Clone)]
 pub struct ExtractPlan {
     rate: f64,
@@ -128,16 +135,18 @@ impl ExtractPlan {
     }
 }
 
-/// The width of the filter's transition, or none for a complex band that is nearly the whole capture.
+/// The width of the filter's transition, or none for a complex band that is the whole capture.
 ///
 /// It is the narrowest of three limits. What aliases when decimating must land
 /// beyond the stopband. The stopband must stay below the Nyquist rate, and it
 /// takes half of what lies outside the band so the rest is stopped. A real
-/// capture's mirror must lie beyond it too, down to a guard near 0 Hz and Fs/2.
+/// capture's mirror, as far from the band as twice its distance to 0 Hz or to
+/// Fs/2, must lie beyond it too. None is narrower than the narrowest transition.
 fn transition(rate: f64, low: f64, high: f64, decimation: u64, real: bool) -> Option<f64> {
     let width = high - low;
-    let outside = rate - width;
-    if !real && outside < rate * WHOLE_BAND {
+    let narrowest = rate * NARROWEST_TRANSITION;
+    let wrapping = (rate - width) / 4.0;
+    if !real && wrapping < narrowest {
         return None;
     }
     let aliasing = if decimation == 1 {
@@ -145,14 +154,12 @@ fn transition(rate: f64, low: f64, high: f64, decimation: u64, real: bool) -> Op
     } else {
         rate / decimation as f64 - width
     };
-    let wrapping = outside / 4.0;
     let mirror = if real {
-        let gap = 2.0 * low.min(rate / 2.0 - high);
-        gap.max(rate * MIRROR_GUARD)
+        2.0 * low.min(rate / 2.0 - high)
     } else {
         f64::INFINITY
     };
-    Some(aliasing.min(wrapping).min(mirror))
+    Some(aliasing.min(wrapping).min(mirror).max(narrowest))
 }
 
 /// A Kaiser-windowed sinc passing `pass` hertz and stopping from `stop`, with DC gain `gain`.
@@ -207,17 +214,25 @@ fn bessel_i0(x: f64) -> f64 {
 /// The extraction of one span, fed its input in order.
 ///
 /// Input starts `margin` samples before the span and ends `margin` samples
-/// after it; the caller feeds zeros where the capture has no samples there.
+/// after it, and the caller feeds zeros where the capture has no samples there.
 pub struct Extractor {
     plan: ExtractPlan,
     /// Phase of the oscillator in cycles, at the next input sample.
     phase: f64,
     /// Cycles the oscillator turns per input sample.
     step: f64,
-    /// Each mixed sample twice, `len` apart, so the newest `len` are one contiguous slice.
-    history: Vec<[f32; 2]>,
-    /// Where the next mixed sample goes in `history`.
-    head: usize,
+    forward: Arc<dyn Fft<f32>>,
+    inverse: Arc<dyn Fft<f32>>,
+    /// The filter's spectrum at the FFT size, scaled for the inverse transform.
+    spectrum: Vec<Complex32>,
+    /// Mixed samples, the last `taps - 1` of the previous block first.
+    block: Vec<Complex32>,
+    /// How much of `block` holds samples.
+    fill: usize,
+    work: Vec<Complex32>,
+    scratch: Vec<Complex32>,
+    /// Input index, counted from the margin before the span, of `block[0]`.
+    start: i64,
     /// Input samples taken, the margin before the span included.
     taken: u64,
     /// Outputs given so far.
@@ -232,17 +247,43 @@ impl Extractor {
         let step = -plan.centre / plan.rate;
         let margin = plan.margin();
         let taps = plan.taps.len();
-        let total = plan.output_len(len);
         // The last output is due once the span and both margins are in.
-        if len.checked_add(2 * margin + 1).is_none() {
+        let counted = len
+            .checked_add(2 * margin + 1)
+            .filter(|&input| i64::try_from(input).is_ok());
+        if counted.is_none() {
             return Err(ExtractError::TooLong(len));
         }
+        let size = (4 * taps)
+            .next_power_of_two()
+            .clamp(1024, LARGEST_FFT.max(2 * taps));
+        let mut planner = FftPlanner::new();
+        let forward = planner.plan_fft_forward(size);
+        let inverse = planner.plan_fft_inverse(size);
+        let scale = 1.0 / size as f32;
+        let mut spectrum = vec![Complex32::default(); size];
+        for (bin, &tap) in spectrum.iter_mut().zip(&plan.taps) {
+            *bin = Complex32::new(tap * scale, 0.0);
+        }
+        let length = forward
+            .get_inplace_scratch_len()
+            .max(inverse.get_inplace_scratch_len());
+        let mut scratch = vec![Complex32::default(); length];
+        forward.process_with_scratch(&mut spectrum, &mut scratch);
+        let total = plan.output_len(len);
         Ok(Self {
             // The oscillator is at zero phase at the span's first sample.
             phase: (-(margin as f64) * step).rem_euclid(1.0),
             step,
-            history: vec![[0.0; 2]; 2 * taps],
-            head: 0,
+            forward,
+            inverse,
+            spectrum,
+            // The block starts with the zeros before the first input.
+            block: vec![Complex32::default(); size],
+            fill: taps - 1,
+            work: vec![Complex32::default(); size],
+            scratch,
+            start: 1 - taps as i64,
             taken: 0,
             given: 0,
             total,
@@ -289,30 +330,44 @@ impl Extractor {
         }
         let (sin, cos) = (std::f64::consts::TAU * self.phase).sin_cos();
         self.phase = (self.phase + self.step).rem_euclid(1.0);
-        let (i, q, cos, sin) = (f64::from(i), f64::from(q), cos, sin);
-        let mixed = [(i * cos - q * sin) as f32, (i * sin + q * cos) as f32];
-        let len = self.plan.taps.len();
-        self.history[self.head] = mixed;
-        self.history[self.head + len] = mixed;
-        self.head = (self.head + 1) % len;
+        let (i, q) = (f64::from(i), f64::from(q));
+        self.block[self.fill] =
+            Complex32::new((i * cos - q * sin) as f32, (i * sin + q * cos) as f32);
+        self.fill += 1;
         self.taken += 1;
-        if self.taken == self.due(self.given) {
-            out.push(self.filtered());
-            self.given += 1;
+        let last = self.taken == self.due(self.total - 1);
+        if self.fill == self.block.len() || last {
+            self.convolve(out);
         }
     }
 
-    /// The filter over the newest `len` mixed samples, oldest first.
-    fn filtered(&self) -> [f32; 2] {
-        let len = self.plan.taps.len();
-        let window = &self.history[self.head..self.head + len];
-        // A long filter sums in f64, so rounding stays below its stopband.
-        let (mut i, mut q) = (0.0f64, 0.0f64);
-        for (tap, sample) in self.plan.taps.iter().zip(window) {
-            i += f64::from(tap * sample[0]);
-            q += f64::from(tap * sample[1]);
+    /// Filter the block and give the outputs due within it, keeping its tail for the next.
+    fn convolve(&mut self, out: &mut Vec<[f32; 2]>) {
+        let taps = self.plan.taps.len();
+        self.work.copy_from_slice(&self.block);
+        // Samples past the fill are stale, and zeros there change no output before it.
+        self.work[self.fill..].fill(Complex32::default());
+        self.forward
+            .process_with_scratch(&mut self.work, &mut self.scratch);
+        for (bin, filter) in self.work.iter_mut().zip(&self.spectrum) {
+            *bin *= filter;
         }
-        [i as f32, q as f32]
+        self.inverse
+            .process_with_scratch(&mut self.work, &mut self.scratch);
+        // Output n is the filtered input at index n·D + 2·margin, past the zeros before the span.
+        while !self.is_done() {
+            let at = self.due(self.given) as i64 - 1 - self.start;
+            if at >= self.fill as i64 {
+                break;
+            }
+            let value = self.work[at as usize];
+            out.push([value.re, value.im]);
+            self.given += 1;
+        }
+        let kept = taps - 1;
+        self.block.copy_within(self.fill - kept..self.fill, 0);
+        self.start += (self.fill - kept) as i64;
+        self.fill = kept;
     }
 }
 

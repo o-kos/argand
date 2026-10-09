@@ -185,8 +185,11 @@ pub fn suggested_band_name(
         .into_iter()
         .find(|(_, divisor)| band.high().abs().max(band.low().abs()) >= *divisor)
         .unwrap_or(("Hz", 1.));
+    // Enough decimals that a narrow band's edges still differ, three at least.
+    let width = (band.high() - band.low()) / divisor;
+    let decimals = (-width.log10()).ceil().clamp(3.0, 9.0) as usize;
     let frequencies = format!(
-        "{:.3}-{:.3}{unit}",
+        "{:.decimals$}-{:.decimals$}{unit}",
         band.low() / divisor,
         band.high() / divisor
     );

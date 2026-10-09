@@ -790,7 +790,7 @@ impl Shell {
         }
     }
 
-    /// The capture's band in physical hertz: around its reference when complex, above it when real.
+    /// The capture's band in physical hertz, around its reference when complex and above it when real.
     pub(super) fn capture_band(&self) -> Option<(f64, f64)> {
         let meta = self.file.as_ref()?.state.document.meta()?;
         let nyquist = meta.sample_rate / 2.0;
@@ -802,7 +802,7 @@ impl Shell {
         })
     }
 
-    /// The time span alone, which edit commands act on; none while a band is selected.
+    /// The time span alone, which edit commands act on, and none while a band is selected.
     pub(super) fn time_selection(&self) -> Option<argand_core::SampleSpan> {
         self.selection.filter(|_| self.band.is_none())
     }
@@ -851,7 +851,7 @@ impl plot_view::PlotView {
 
     /// Start the gesture a press asks for, which is decided here once.
     ///
-    /// Unless Space is held, a left press selects: time on the spectrum, a
+    /// Unless Space is held, a left press selects time on the spectrum, a
     /// rectangle with Ctrl there, and a band on the frequency ruler. Every
     /// other press that lands on the plot pans.
     pub(super) fn press(

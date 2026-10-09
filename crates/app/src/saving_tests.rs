@@ -95,4 +95,9 @@ fn a_band_is_named_by_its_edges_and_a_rectangle_by_its_span_too() {
     );
     let audio = argand_core::FrequencyBand::between(300.0, 2_700.0).unwrap();
     assert_eq!(suggested_band_name(&meta, None, audio), "hfdl_0.300-2.700kHz.wav");
+    let narrow = argand_core::FrequencyBand::between(10_000_000.0, 10_000_100.0).unwrap();
+    assert_eq!(
+        suggested_band_name(&meta, None, narrow),
+        "hfdl_10.0000-10.0001MHz.wav"
+    );
 }

@@ -141,7 +141,7 @@ pub fn time_band(
     }
 }
 
-/// A selection as fractions of the visible picture: time from its start, frequency from its top.
+/// A selection as fractions of the visible picture, time from its start and frequency from its top.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Selected {
     pub time: (f64, f64),

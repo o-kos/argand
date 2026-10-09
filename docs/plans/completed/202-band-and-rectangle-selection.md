@@ -43,14 +43,16 @@ Derived here:
   - **Filter.** Windowed-sinc low-pass with a Kaiser window, 80 dB stopband. The passband edge is B/2, and the tap count follows Kaiser's formula. The transition is the narrowest of three limits (changed after review):
     - **aliasing:** Fs' − B, so whatever aliases when decimating lands outside the band (B/4 at D = 1);
     - **wrapping:** a quarter of Fs − B, so the stopband stays below the Nyquist rate and half of what lies outside the band is stopped;
-    - **mirror of a real capture:** twice the band's distance to 0 Hz or to Fs/2, but no less than Fs/2048.
-  - **Mirror guard.** Within Fs/2048 of 0 Hz or Fs/2 a real capture's mirror cannot be told from the signal, so a band that close keeps that part of its mirror. Its DC is its own mirror and keeps the analytic gain of 2.
-  - **Whole band.** A complex band within Fs/1024 of the whole capture is kept unfiltered.
-  - **Narrowest band.** A band narrower than Fs/65536 is refused as too narrow to save. That bounds the filter to about 1.3 M taps.
-  - **Decimator.** Polyphase: it computes only every D-th output, over a ring of past mixed samples.
+    - **mirror of a real capture:** twice the band's distance to 0 Hz or to Fs/2.
+
+    None is narrower than Fs/131072 (changed after the second review), which bounds the filter to about 660 k taps.
+  - **Edges of a real capture.** A band starting at 0 Hz or ending at Fs/2 meets its own mirror there. Its edge falls in the transition, its DC included, and a mirror within Fs/131072 of the band stays.
+  - **Whole band.** A complex band within Fs/32768 of the whole capture is kept unfiltered.
+  - **Narrowest band.** A band narrower than Fs/32768 is refused as too narrow to save.
+  - **Convolution.** Overlap-save FFT convolution (changed after the second review). The FFT is four times the filter length rounded up to a power of two, between 1024 and 2^22, so the cost per input sample grows with the logarithm of the filter length. Every D-th output is kept.
   - **Delay.** The filter's (N−1)/2 input samples of delay are compensated. Output n is the filtered signal at input sample n·D of the span, and the output holds ⌈len/D⌉ samples.
   - **Edges.** The capture's own samples beyond the span feed the filter where they exist; zeros elsewhere.
-  - **Streaming.** It works on bounded blocks (at most 1 Mi samples) and is pure, with no I/O. Cancellation and progress belong to the caller.
+  - **Streaming.** It works on blocks of at most 256 Ki samples and is pure, with no I/O. Cancellation and progress belong to the caller, between blocks.
 - **Writer** (`argand_io::write::FloatIq`):
   - It writes complex `f32` frames to the same `.argand-<pid>-<n>.part` temporary file and renames it over the target, under the same target rules as `save`. The target is none of the sources, protected or the open file.
   - The header carries the `fmt ` rate rounded, plus `argd` with the exact rate and the reference frequency, and `auxi` where its fields fit. It becomes RF64 when the data passes 4 GB.
@@ -83,10 +85,22 @@ Reviewer `gpt-6.1-sol` high.
 
   Declined: the nit on colons in doc comments. The comment rule covers `//` comments, not docstrings, and no `//` comment in the diff has a colon or semicolon.
 
+- **Round 2** (3 major, 2 minor, 1 nit).
+  - **DSP:**
+    - the Fs/2048 guard still kept a mirror close to the band;
+    - the Fs/1024 whole-band bypass still passed an out-of-band tone;
+    - a narrow transition made one block cost billions of multiply-adds between cancel checks.
+  - **Other:**
+    - a narrow band's name rounded both edges alike;
+    - the plan's corrected example was wrong again;
+    - the nit on doc comments came back.
+
+  The owner chose FFT convolution, and every limit now follows the actual gap down to Fs/131072. Read blocks are 256 Ki samples, a name has enough decimals to keep the edges apart, the plan's figures are corrected, and the doc comments no longer use colons or semicolons.
+
 ## Rejected alternatives
 
-- **Fractional resampling to exactly the band width.** It is more code and more CPU. The integer rate is at least 1.25·B and below 1.25·B·(D+1)/D, so the saving is small once D is large. It can reach about 60 % at D = 1, for bands just under 0.8·Fs, which are rare to save (corrected after review).
-- **Multistage decimation.** A single polyphase stage already costs about the same number of multiply-adds per input sample for any band, because the tap count grows as D does. Multistage would only save memory for very narrow bands, which the Fs/65536 bound already caps.
+- **Fractional resampling to exactly the band width.** It is more code and more CPU. For D ≥ 2 the integer rate lies between 1.25·B and 1.25·B·(D+1)/D, at most half again over 1.25·B and less as D grows. D = 1 takes bands wider than 0.4·Fs and keeps the full rate, up to 2.5 times the band (corrected after review).
+- **A polyphase FIR without FFT.** This was the first build. Its cost grows with the filter length, so a transition as narrow as a real capture's mirror or a nearly whole band needs made it too slow. The guards it needed instead let a mirror or an out-of-band tone through (second review).
 - **Writing in the source's sample type.** Filtered values are fractional, so quantising them back adds noise and risks clipping.
 
 ## Implementation steps

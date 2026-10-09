@@ -5,7 +5,7 @@ use super::*;
 /// What a computed capture is and where it goes.
 #[derive(Debug, Clone)]
 pub struct FloatIqRequest {
-    /// The rate and reference frequency the file states; its sample type is written as I/Q `f32`.
+    /// The rate and reference frequency the file states, whatever sample type it names.
     pub meta: SignalMeta,
     /// Samples the file will hold, which the header states before any is written.
     pub samples: u64,

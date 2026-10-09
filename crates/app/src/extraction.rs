@@ -1,6 +1,6 @@
 //! Saving a frequency band of a capture, or a rectangle of it, as a new complex capture.
 //!
-//! The band is computed rather than copied: the edited capture is read through
+//! The band is computed rather than copied. The edited capture is read through
 //! an `EditedSource`, `argand_dsp::extract` moves the band to baseband and
 //! decimates it, and `argand_io::write::FloatIq` writes it as I/Q `f32`.
 
@@ -13,7 +13,7 @@ use argand_edit::{Capture, EditedSource};
 use argand_io::write::{FloatIq, FloatIqRequest, Protected, Saved, SourceFile, WriteError};
 
 /// Input samples read at a time, which bounds what one block holds.
-const BLOCK_SAMPLES: usize = 1 << 20;
+const BLOCK_SAMPLES: usize = 1 << 18;
 
 /// A band of a capture, over a time span of it, to save as a file.
 #[derive(Debug, Clone)]
@@ -22,7 +22,7 @@ pub struct ExtractRequest {
     pub capture: Capture,
     /// The files it reads, by source id, with none for those it does not read.
     pub sources: Vec<Option<SourceFile>>,
-    /// The capture as the window describes it: its rate, reference frequency and kind.
+    /// The capture as the window describes it, with its rate, reference frequency and kind.
     pub meta: SignalMeta,
     pub span: SampleSpan,
     /// The band in physical hertz.
