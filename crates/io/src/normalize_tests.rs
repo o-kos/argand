@@ -144,3 +144,16 @@ fn a_file_that_fits_the_scan_budget_keeps_its_tail_peak() {
     let data = floats(&values);
     assert_eq!(resolve_divisor_with_budget(Normalize::Auto, SampleFormat::F32, &data, Some(data.len())), 17.0 * AUTO_HEADROOM);
 }
+
+#[test]
+fn a_budget_smaller_than_the_runs_still_measures_values() {
+    let first = floats(&[0.5]);
+    let second = floats(&[0.9]);
+    let divisor = resolve_divisor_over(
+        Normalize::Auto,
+        SampleFormat::F32,
+        &[&first, &second],
+        Some(4),
+    );
+    assert_eq!(divisor, 0.9 * AUTO_HEADROOM);
+}

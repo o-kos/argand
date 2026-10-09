@@ -240,11 +240,10 @@ fn open_wave(path: &Path, layout: WavLayout, hints: &OpenHints) -> Result<Stampe
         .normalize
         .unwrap_or_else(|| Normalize::default_for(sample_type.format));
 
-    MmapSource::with_scan_budget(
+    MmapSource::from_wave(
         path,
         meta,
-        layout.data_offset,
-        layout.declared_len.unwrap_or(usize::MAX),
+        &layout,
         normalize,
         hints.gain_db,
         hints.level_scan_bytes,

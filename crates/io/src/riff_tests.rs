@@ -313,3 +313,81 @@ fn container_probes_do_not_overlap() {
     assert!(!is_wave(b"RIF"));
     assert!(!is_flac(b"fLa"));
 }
+
+/// A RIFF body of `fmt ` and the given chunks, with a correct RIFF size.
+fn chunked(chunks: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
+    let mut out = b"RIFF\0\0\0\0WAVE".to_vec();
+    let fmt = fmt_body(WAVE_FORMAT_PCM, 2, 12_000, 16, None);
+    for (id, body) in std::iter::once(&(b"fmt ", fmt)).chain(chunks) {
+        out.extend_from_slice(*id);
+        out.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        out.extend_from_slice(body);
+        if body.len() % 2 == 1 {
+            out.push(0);
+        }
+    }
+    let riff_size = (out.len() - 8) as u32;
+    out[4..8].copy_from_slice(&riff_size.to_le_bytes());
+    out
+}
+
+fn runs_of(file: &[u8]) -> Vec<DataRun> {
+    parse(file)
+        .unwrap()
+        .runs(std::io::Cursor::new(file), file.len() as u64)
+        .unwrap()
+}
+
+#[test]
+fn every_data_chunk_of_a_kiwi_recording_is_a_run() {
+    let file = chunked(&[
+        (b"kiwi", vec![1; 10]),
+        (b"data", vec![2; 16]),
+        (b"kiwi", vec![3; 10]),
+        (b"data", vec![4; 16]),
+        (b"LIST", vec![5; 7]),
+        (b"data", vec![6; 8]),
+    ]);
+    let runs = runs_of(&file);
+    assert_eq!(runs.len(), 3);
+    for (run, value) in runs.iter().zip([2u8, 4, 6]) {
+        let bytes = &file[run.offset as usize..(run.offset + run.len) as usize];
+        assert!(bytes.iter().all(|&b| b == value), "{run:?}");
+    }
+    assert_eq!(runs.iter().map(|run| run.len).sum::<u64>(), 40);
+}
+
+#[test]
+fn a_last_data_chunk_cut_short_ends_with_the_file() {
+    let mut file = chunked(&[(b"data", vec![1; 16]), (b"data", vec![2; 16])]);
+    file.truncate(file.len() - 6);
+    let runs = runs_of(&file);
+    assert_eq!(runs.iter().map(|run| run.len).collect::<Vec<_>>(), [16, 10]);
+}
+
+#[test]
+fn chunks_past_the_riff_size_are_not_samples() {
+    let mut file = chunked(&[(b"data", vec![1; 16])]);
+    file.extend_from_slice(b"data\x08\0\0\0");
+    file.extend_from_slice(&[9; 8]);
+    let runs = runs_of(&file);
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].len, 16);
+}
+
+#[test]
+fn a_single_data_chunk_is_one_run() {
+    let file = wave(
+        &fmt_body(WAVE_FORMAT_PCM, 2, 24_000, 16, None),
+        &[0u8; 40],
+        &[(b"LIST", vec![b'x'; 7])],
+    );
+    let layout = parse(&file).unwrap();
+    assert_eq!(
+        runs_of(&file),
+        [DataRun {
+            offset: layout.data_offset as u64,
+            len: 40
+        }]
+    );
+}
