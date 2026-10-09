@@ -128,3 +128,19 @@ fn a_band_at_the_capture_edge_survives_the_reference_being_taken_away() {
     assert!(request.check().is_ok());
     assert!(request.plan().is_ok());
 }
+
+#[test]
+fn a_band_is_read_at_the_levels_the_window_shows() {
+    let dir = TempDir::new("extract-levels");
+    let mut source = capture(&dir, 6_500.0);
+    // A normalization the window resolved differs from what a fresh scan would.
+    source.meta.divisor = 2.0;
+    let target = dir.join("band.wav");
+    let whole = SampleSpan::between(0, 48_000).unwrap();
+    let band = FrequencyBand::between(10_005_000.0, 10_007_000.0).unwrap();
+    run(&request(source, whole, band, target.clone()), &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    let (_, values) = read_all(&target);
+    let magnitudes: Vec<f32> = values.chunks(2).map(|iq| iq[0].hypot(iq[1])).collect();
+    let middle = &magnitudes[magnitudes.len() / 4..magnitudes.len() * 3 / 4];
+    assert!(middle.iter().all(|m| (m - 0.25).abs() < 0.01), "{:?}", &middle[..4]);
+}

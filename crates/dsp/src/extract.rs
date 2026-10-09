@@ -86,11 +86,18 @@ impl ExtractPlan {
         Self::check(rate, low, high, real)?;
         let width = high - low;
         let decimation = ((rate / (TRANSITION * width)).floor() as u64).max(1);
-        let pass = width / 2.0;
         // An analytic signal has the real tone's amplitude, twice its positive half.
         let gain = if real { 2.0 } else { 1.0 };
+        // A real band touching 0 Hz or Fs/2 has its own mirror there, which the half gain at the cutoff takes once.
+        let touching = real && low.min(rate / 2.0 - high) * 2.0 < rate * NARROWEST_TRANSITION;
         let taps = match transition(rate, low, high, decimation, real) {
-            Some(transition) => low_pass(rate, pass, pass + transition, gain),
+            Some(transition) if touching => low_pass(
+                rate,
+                (width - transition) / 2.0,
+                (width + transition) / 2.0,
+                gain,
+            ),
+            Some(transition) => low_pass(rate, width / 2.0, width / 2.0 + transition, gain),
             None => vec![gain as f32],
         };
         Ok(Self {

@@ -205,3 +205,26 @@ fn a_complex_band_a_few_hertz_short_of_the_whole_capture_is_filtered() {
     assert!(peak < 0.5 * 1.8e-4, "leaks {peak}");
 }
 
+
+/// The filter's gain at `frequency` hertz from the band centre.
+fn response(plan: &ExtractPlan, frequency: f64) -> f64 {
+    let (mut re, mut im) = (0.0f64, 0.0f64);
+    for (k, &tap) in plan.taps().iter().enumerate() {
+        let phase = std::f64::consts::TAU * frequency * k as f64 / RATE;
+        re += f64::from(tap) * phase.cos();
+        im -= f64::from(tap) * phase.sin();
+    }
+    re.hypot(im)
+}
+
+#[test]
+fn a_real_capture_s_dc_and_nyquist_rate_keep_their_amplitude() {
+    // Its own mirror, DC lies on the band's edge, where the doubled half gain is one.
+    let plan = ExtractPlan::new(RATE, 0.0, 2_000.0, true).unwrap();
+    assert!((response(&plan, 1_000.0) - 1.0).abs() < 0.01);
+    let plan = ExtractPlan::new(RATE, 22_000.0, 24_000.0, true).unwrap();
+    assert!((response(&plan, 1_000.0) - 1.0).abs() < 0.01);
+    // A band clear of both keeps the analytic gain to its edges.
+    let plan = ExtractPlan::new(RATE, 5_000.0, 7_000.0, true).unwrap();
+    assert!((response(&plan, 1_000.0) - 2.0).abs() < 0.01);
+}

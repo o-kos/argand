@@ -39,14 +39,14 @@ Derived here:
   - The status bar shows the band's low and high edges and its width, in the frequency ruler's unit; with a time span it adds start, end and length as now.
 - **Extraction** (`argand_dsp::extract`):
   - **Mixer.** An NCO with an `f64` phase accumulator, wrapped every block, moves the band centre to 0 Hz. Real input enters as I with Q = 0.
-  - **Rate.** D = ⌊Fs / (1.25·B)⌋, at least 1, so the new rate Fs' = Fs/D leaves at least a quarter of the band as transition.
+  - **Rate.** D = ⌊Fs / (1.25·B)⌋, at least 1, so the new rate Fs' = Fs/D leaves room for a transition. The transition itself is set by the limits below, and for D = 1 with B > 0.8·Fs it can be narrower than B/4 (corrected after the third review).
   - **Filter.** Windowed-sinc low-pass with a Kaiser window, 80 dB stopband. The passband edge is B/2, and the tap count follows Kaiser's formula. The transition is the narrowest of three limits (changed after review):
-    - **aliasing:** Fs' − B, so whatever aliases when decimating lands outside the band (B/4 at D = 1);
+    - **aliasing:** Fs' − B, or B/4 at D = 1, so nothing aliases into the band. Aliases may still land in the decimated output outside the band, between B/2 and Fs'/2;
     - **wrapping:** a quarter of Fs − B, so the stopband stays below the Nyquist rate and half of what lies outside the band is stopped;
     - **mirror of a real capture:** twice the band's distance to 0 Hz or to Fs/2.
 
     None is narrower than Fs/131072 (changed after the second review), which bounds the filter to about 660 k taps.
-  - **Edges of a real capture.** A band starting at 0 Hz or ending at Fs/2 meets its own mirror there. Its edge falls in the transition, its DC included, and a mirror within Fs/131072 of the band stays.
+  - **Edges of a real capture.** A band starting at 0 Hz or ending at Fs/2 meets its own mirror there, so the filter's cutoff sits on that edge. Its half gain, doubled, keeps DC or the Nyquist component at its amplitude. A mirror within the narrowest transition of the band stays (changed after the third review).
   - **Whole band.** A complex band within Fs/32768 of the whole capture is kept unfiltered.
   - **Narrowest band.** A band narrower than Fs/32768 is refused as too narrow to save.
   - **Convolution.** Overlap-save FFT convolution (changed after the second review). The FFT is four times the filter length rounded up to a power of two, between 1024 and 2^22, so the cost per input sample grows with the logarithm of the filter length. Every D-th output is kept.
@@ -59,10 +59,10 @@ Derived here:
   - Values stay on the unit scale: full scale is 1.0, as the reader normalizes.
 - **Check on the window's thread.** The window checks only the band's edges and width before the dialog (`ExtractPlan::check`). The filter is built on the save thread (changed after review).
 - **Save thread** (`saving.rs`):
-  - It opens each source of the current version with `open_stamped` and refuses one whose stamp changed.
+  - It reopens each source of the current version with the normalization the window resolved (`argand_io::reopen_stamped`), so the saved band has the levels shown (changed after the third review). It refuses a source whose stamp changed.
   - It reads the span plus the filter's margins through an `EditedSource`, extracts and writes.
   - Progress and cancel work as for a copied save.
-- **Name.** `<stem>_<low>-<high>kHz.wav` for a band, and `<stem>_<start>-<end>s_<low>-<high>kHz.wav` for a rectangle. Frequencies use three decimals in the unit that keeps them readable (Hz, kHz or MHz).
+- **Name.** `<stem>_<low>-<high><unit>.wav` for a band, and `<stem>_<start>-<end>s_<low>-<high><unit>.wav` for a rectangle. The unit is the largest that keeps the edges apart in six decimals, with three decimals at least.
 - **Reference frequency** of the output: the band centre in physical hertz.
 
 ## Review
@@ -96,6 +96,16 @@ Reviewer `gpt-6.1-sol` high.
     - the nit on doc comments came back.
 
   The owner chose FFT convolution, and every limit now follows the actual gap down to Fs/131072. Read blocks are 256 Ki samples, a name has enough decimals to keep the edges apart, the plan's figures are corrected, and the doc comments no longer use colons or semicolons.
+
+- **Round 3** (2 major, 2 minor).
+  - **Major:**
+    - DC and the Nyquist component of a real band touching them came out doubled;
+    - the save resolved a capture's automatic normalization again, unbounded, so its levels could differ from the window's.
+  - **Minor:**
+    - a band under a hertz wide at 1 GHz still named both edges alike;
+    - the plan promised a B/4 transition and a stopband below Fs'/2 that the code does not keep.
+
+  All fixed: the cutoff on a touching edge, `reopen_stamped` with the resolved divisor, the unit chosen by width, and the plan's wording. The FFT convolution's bookkeeping was found correct. This was the last round.
 
 ## Rejected alternatives
 

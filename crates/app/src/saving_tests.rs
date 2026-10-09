@@ -100,4 +100,9 @@ fn a_band_is_named_by_its_edges_and_a_rectangle_by_its_span_too() {
         suggested_band_name(&meta, None, narrow),
         "hfdl_10.0000-10.0001MHz.wav"
     );
+    let hair = argand_core::FrequencyBand::between(999_999_999.6, 1_000_000_000.4).unwrap();
+    assert_eq!(
+        suggested_band_name(&meta, None, hair),
+        "hfdl_999999.9996-1000000.0004kHz.wav"
+    );
 }
