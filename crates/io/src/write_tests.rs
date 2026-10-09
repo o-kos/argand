@@ -1086,3 +1086,34 @@ fn a_kiwi_recording_is_saved_as_one_data_chunk() {
     run(&request(&source, OpenHints::default(), None, whole.clone())).unwrap();
     assert_eq!(data_bytes(&whole), stored);
 }
+
+#[test]
+fn a_long_kiwi_recording_is_copied_in_large_reads() {
+    let dir = TempDir::new("write-kiwi-long");
+    let values: Vec<f32> = (0..3_000_000).map(|n| (n % 2001) as f32 / 2001.0 - 0.5).collect();
+    let source = crate::testutil::write_kiwi_wav(&dir.join("iq.wav"), 12_000, &values, 512);
+    let stored = encode(SampleFormat::I16, &values);
+    let target = dir.join("cut.wav");
+    let span = SampleSpan::between(100, 1_400_000);
+    let saved = run(&request(&source, OpenHints::default(), span, target.clone())).unwrap();
+    assert_eq!(saved.samples, 1_399_900);
+    assert_eq!(data_bytes(&target), stored[100 * 4..1_400_000 * 4]);
+}
+
+#[test]
+fn a_declined_layout_with_several_data_chunks_saves_what_it_opens() {
+    let dir = TempDir::new("write-24-chunks");
+    let source = dir.join("a.wav");
+    let data = write_wav24(&source, 2, 400);
+    let mut bytes = fs::read(&source).unwrap();
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&(60u32).to_le_bytes());
+    bytes.extend_from_slice(&[1; 60]);
+    let riff_size = (bytes.len() - 8) as u32;
+    bytes[4..8].copy_from_slice(&riff_size.to_le_bytes());
+    fs::write(&source, &bytes).unwrap();
+    let target = dir.join("b.wav");
+    let saved = run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
+    assert_eq!(saved.samples, open(&source, &OpenHints::default()).unwrap().meta().len_samples);
+    assert_eq!(data_bytes(&target), data);
+}

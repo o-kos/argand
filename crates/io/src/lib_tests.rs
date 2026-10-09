@@ -528,3 +528,15 @@ fn auto_levels_measure_every_data_chunk() {
     let peak = 0.8 * 32768.0 * normalize::AUTO_HEADROOM;
     assert!((source.meta().divisor - peak).abs() < 1.0, "{}", source.meta().divisor);
 }
+
+#[test]
+fn a_long_kiwi_recording_reads_again_after_pages_are_released() {
+    let dir = TempDir::new("kiwi-release");
+    let values: Vec<f32> = (0..3_000_000).map(|n| (n % 2001) as f32 / 2001.0 - 0.5).collect();
+    let path = crate::testutil::write_kiwi_wav(&dir.join("iq.wav"), 12_000, &values, 512);
+    let mut source = open(&path, &OpenHints::default()).unwrap();
+    let first = drain(source.as_mut());
+    assert_eq!(first.len(), values.len());
+    source.seek(1_000).unwrap();
+    assert_eq!(drain(source.as_mut()), first[2_000..]);
+}

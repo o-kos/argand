@@ -781,6 +781,12 @@ impl CopyLayout {
                 meta.sample_type.bytes_per_sample() as u64,
             ));
         }
+        // The decoder reads only the first `data` chunk of a layout the native reader declines.
+        let runs = if native {
+            runs
+        } else {
+            runs.into_iter().take(1).collect()
+        };
         let fmt = riff::parse_fmt(chunks.fmt).map_err(wav)?;
         if !fmt.is_linear() {
             return Err(WriteError::Unsupported {
@@ -1107,25 +1113,39 @@ fn copy_samples(
     let block = layout.block;
     let per_chunk = (COPY_BYTES as u64 / block).max(1);
     let mut buf = vec![0u8; (per_chunk.min(segment.len) * block) as usize];
+    let mut out = Vec::with_capacity(buf.len());
+    let mut pieces = Vec::new();
     let mut done = 0u64;
-    let mut next = None;
     while done < segment.len {
         if cancel.load(Ordering::Relaxed) {
             return Err(WriteError::Cancelled);
         }
-        let (start, left) =
-            layout
-                .locate(segment.start + done)
-                .ok_or_else(|| WriteError::SourceChanged {
+        pieces.clear();
+        let mut taken = 0;
+        while done + taken < segment.len {
+            let (offset, left) = layout.locate(segment.start + done + taken).ok_or_else(|| {
+                WriteError::SourceChanged {
                     path: path.to_owned(),
-                })?;
-        if next != Some(start) {
-            input.seek(SeekFrom::Start(start)).map_err(read_error)?;
+                }
+            })?;
+            let samples = left.min(segment.len - done - taken);
+            let Some(&(start, _)) = pieces.first() else {
+                let samples = samples.min(per_chunk);
+                pieces.push((offset, samples));
+                taken += samples;
+                continue;
+            };
+            if offset < start || offset + samples * block - start > buf.len() as u64 {
+                break;
+            }
+            pieces.push((offset, samples));
+            taken += samples;
         }
-        let samples = per_chunk.min(segment.len - done).min(left);
-        next = Some(start + samples * block);
-        let bytes = &mut buf[..(samples * block) as usize];
-        input.read_exact(bytes).map_err(|error| {
+        let (start, _) = pieces[0];
+        let (last, samples) = pieces[pieces.len() - 1];
+        let span = &mut buf[..(last + samples * block - start) as usize];
+        input.seek(SeekFrom::Start(start)).map_err(read_error)?;
+        input.read_exact(span).map_err(|error| {
             if error.kind() == std::io::ErrorKind::UnexpectedEof {
                 WriteError::SourceChanged {
                     path: path.to_owned(),
@@ -1134,8 +1154,13 @@ fn copy_samples(
                 read_error(error)
             }
         })?;
-        partial.write(bytes)?;
-        done += samples;
+        out.clear();
+        for &(offset, samples) in &pieces {
+            let at = (offset - start) as usize;
+            out.extend_from_slice(&span[at..at + (samples * block) as usize]);
+        }
+        partial.write(&out)?;
+        done += taken;
         copied(done);
     }
     Ok(())

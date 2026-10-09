@@ -116,19 +116,28 @@ pub fn resolve_divisor_over(
         [data] => resolve_divisor_with_budget(mode, format, data, scan_bytes),
         _ if mode != Normalize::Auto => resolve_divisor_with_budget(mode, format, &[], scan_bytes),
         _ => {
-            let total: usize = runs.iter().map(|run| run.len()).sum();
-            let budget = scan_bytes.unwrap_or(if total <= FULL_SCAN_LIMIT {
-                total
+            let width = format.bytes();
+            let total: usize = runs.iter().map(|run| run.len() / width).sum();
+            let budget = scan_bytes.unwrap_or(if total * width <= FULL_SCAN_LIMIT {
+                total * width
             } else {
                 64 * SCAN_CHUNK_BYTES
-            });
-            let peak = runs
-                .par_iter()
+            }) / width;
+            // Cumulative shares spend the whole budget in values, whatever the run sizes.
+            let mut before = 0u128;
+            let shares: Vec<(&[u8], usize)> = runs
+                .iter()
                 .map(|run| {
-                    let share =
-                        (run.len() as u128 * budget as u128 / total.max(1) as u128) as usize;
-                    bounded_peak(format, run, share)
+                    let through = before + (run.len() / width) as u128;
+                    let share = through * budget as u128 / total.max(1) as u128
+                        - before * budget as u128 / total.max(1) as u128;
+                    before = through;
+                    (*run, share as usize * width)
                 })
+                .collect();
+            let peak = shares
+                .par_iter()
+                .map(|&(run, share)| bounded_peak(format, run, share))
                 .reduce(|| 0.0f32, f32::max);
             auto_divisor(format, peak)
         }
