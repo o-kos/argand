@@ -24,7 +24,8 @@ KiwiSDR recordings put a `kiwi` chunk with GNSS time before every `data` chunk o
 - [x] Tests: walk, truncated last chunk, chunks past the RIFF end, reading and seeking across chunks, auto levels, save.
 - [x] AGENTS.md note on the WAVE reader.
 - [x] Review round 1 (`gpt-6.1-sol` high): accepted the 24-bit length mismatch, the level-scan budget rounding to zero values and the per-run system calls on save. The missing re-check of source stamps after copying exists on `main` and went to #206.
-- [ ] Complete validation and review.
+- [x] Review round 2: clean, and the reviewer agreed that #206 belongs outside this change.
+- [x] Complete validation and review.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
