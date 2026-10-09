@@ -65,8 +65,8 @@ Derived here:
 
 ## Implementation steps
 
-- [ ] `argand-dsp::extract`: plan (D, taps, delay), NCO, polyphase decimator, streaming state; tests that a tone inside the band comes out at its offset frequency with unit gain, that a tone outside is at least 75 dB down, the output length and alignment, real input, and block-size independence.
-- [ ] `argand-io::write::FloatIq`: streaming float I/Q WAVE with RF64, `argd` and `auxi`, the target rules and the temporary file; tests that the file opens with the exact rate and reference frequency, and RF64 with a small limit.
+- [x] `argand-dsp::extract`: plan (D, taps, delay), NCO, polyphase decimator, streaming state; tests that a tone inside the band comes out at its offset frequency with unit gain, that a tone outside is at least 75 dB down, the output length and alignment, real input, and block-size independence.
+- [x] `argand-io::write::FloatIq`: streaming float I/Q WAVE with RF64, `argd` and `auxi`, the target rules and the temporary file; tests that the file opens with the exact rate and reference frequency, and RF64 with a small limit.
 - [ ] `Selection` in the shell; band and rectangle gestures in `PlotView::press`; the frequency ruler's pan moved to the middle button and Space+drag; tests for every gesture and both orientations.
 - [ ] Band and rectangle tint; status-bar band readout; edit commands limited to time selections.
 - [ ] Save selection as… for a band or rectangle: the extraction job with progress and cancel, the name, and a headless test that saves a band and reopens it.
