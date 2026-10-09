@@ -454,15 +454,23 @@ Save selection as… with a band computes the file (`extraction.rs`, run on the 
 by `saving::start_extraction`): each file the current version reads is opened with
 `open_stamped` and must keep its stamp, also after reading, and the span plus the filter's
 margin is read through an `EditedSource`. `argand_dsp::extract::ExtractPlan` takes
-D = ⌊Fs / (1.25·B)⌋, a Kaiser windowed-sinc low-pass of 80 dB whose stopband starts at
-Fs/D − B/2 (B/4 past the band at D = 1), and refuses a band narrower than Fs/65536;
+D = ⌊Fs / (1.25·B)⌋ and a Kaiser windowed-sinc low-pass of 80 dB. Its transition is the
+narrowest of three limits:
+- Fs/D − B, or B/4 at D = 1, so whatever aliases misses the band;
+- a quarter of Fs − B, so the stopband stays below the Nyquist rate;
+- for a real capture, twice the band's distance to 0 Hz or Fs/2, but no less than Fs/2048
+  (inside that guard the mirror cannot be told apart).
+
+A complex band within Fs/1024 of the whole capture is kept unfiltered, and a band narrower
+than Fs/65536 is refused. The window only checks the band (`ExtractPlan::check`), and the
+save thread builds the filter.
 `Extractor` mixes the band centre to 0 Hz with an `f64` oscillator, keeps every D-th
 output of a polyphase decimator over a doubled history, and compensates the filter delay,
 so output n is input n·D of the span and there are ⌈len/D⌉ outputs; real input has the
 analytic signal's gain. The capture's own samples beyond the span feed the filter, zeros
 elsewhere. `write::FloatIq` writes I/Q `f32` WAVE on the unit scale (RF64 past 4 GB) at
 rate Fs/D, exact in `argd`, with the band centre as reference frequency, under the target
-rules of `save`. The name is `<stem>[_<start>-<end>s]_<low>-<high><unit>.wav`.
+rules of `save`, and a cancel during its final sync leaves the target alone. The name is `<stem>[_<start>-<end>s]_<low>-<high><unit>.wav`.
 
 ## Saving (#186)
 

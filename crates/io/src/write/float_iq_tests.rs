@@ -51,7 +51,7 @@ fn a_computed_capture_opens_with_its_exact_rate_and_reference_frequency() {
     for chunk in written.chunks(333) {
         file.write(chunk).unwrap();
     }
-    let saved = file.finish().unwrap();
+    let saved = file.finish(&AtomicBool::new(false)).unwrap();
     assert_eq!((saved.samples, saved.container), (1000, "wav"));
     let (meta, values) = read_back(&target);
     assert_eq!(meta.sample_rate, 48_000.0 / 19.0);
@@ -68,7 +68,7 @@ fn a_computed_capture_past_the_riff_limit_is_rf64() {
     let target = dir.join("band.wav");
     let mut file = FloatIq::create_with_limit(request(100, target.clone()), 512).unwrap();
     file.write(&frames(100)).unwrap();
-    assert_eq!(file.finish().unwrap().container, "rf64");
+    assert_eq!(file.finish(&AtomicBool::new(false)).unwrap().container, "rf64");
     assert_eq!(read_back(&target).0.len_samples, 100);
 }
 
@@ -78,7 +78,7 @@ fn a_short_or_long_capture_is_not_moved_into_place() {
     let target = dir.join("band.wav");
     let mut file = FloatIq::create(request(10, target.clone())).unwrap();
     file.write(&frames(9)).unwrap();
-    assert!(matches!(file.finish(), Err(WriteError::OutOfRange)));
+    assert!(matches!(file.finish(&AtomicBool::new(false)), Err(WriteError::OutOfRange)));
     let mut file = FloatIq::create(request(10, target.clone())).unwrap();
     assert!(matches!(file.write(&frames(11)), Err(WriteError::OutOfRange)));
     drop(file);
@@ -108,4 +108,16 @@ fn a_source_is_not_a_target() {
         FloatIq::create(request),
         Err(WriteError::SameFile { .. })
     ));
+}
+
+#[test]
+fn a_capture_cancelled_while_it_is_finished_leaves_the_target_alone() {
+    let dir = TempDir::new("float-iq-cancel");
+    let target = dir.join("band.wav");
+    std::fs::write(&target, b"kept").unwrap();
+    let mut file = FloatIq::create(request(10, target.clone())).unwrap();
+    file.write(&frames(10)).unwrap();
+    assert!(matches!(file.finish(&AtomicBool::new(true)), Err(WriteError::Cancelled)));
+    assert_eq!(std::fs::read(&target).unwrap(), b"kept");
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1, "no temporary file is left");
 }

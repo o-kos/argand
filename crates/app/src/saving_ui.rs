@@ -203,7 +203,7 @@ impl Shell {
             protected: editing.protected(),
         };
         // A band that cannot be saved says why before any dialog asks where.
-        if let Err(error) = request.plan() {
+        if let Err(error) = request.check() {
             self.save_notice = Some(Notice::Failed(
                 "Cannot save the band",
                 saving::message(&error),

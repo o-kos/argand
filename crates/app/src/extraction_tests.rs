@@ -108,3 +108,23 @@ fn a_cancelled_extraction_leaves_nothing() {
     assert!(matches!(result, Err(WriteError::Cancelled)));
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1, "only the capture is left");
 }
+
+#[test]
+fn a_band_at_the_capture_edge_survives_the_reference_being_taken_away() {
+    let dir = TempDir::new("extract-edge");
+    let source = capture(&dir, 6_500.0);
+    let mut request = request(
+        source,
+        SampleSpan::between(0, 48_000).unwrap(),
+        FrequencyBand::between(0.0, 1.0).unwrap(),
+        dir.join("band.wav"),
+    );
+    request.meta.sample_rate = 24_000.0 / 9.0;
+    request.meta.center_freq = 12_580_000.0;
+    let nyquist = request.meta.sample_rate / 2.0;
+    let reference = request.meta.center_freq;
+    request.band = FrequencyBand::between(reference + nyquist - 1_000.0, reference + nyquist).unwrap();
+    assert!(request.band.high() - reference > nyquist, "the rounding this guards against");
+    assert!(request.check().is_ok());
+    assert!(request.plan().is_ok());
+}

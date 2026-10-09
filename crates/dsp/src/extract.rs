@@ -19,6 +19,15 @@ pub const NARROWEST_BAND: f64 = 1.0 / 65_536.0;
 /// The part of the decimated rate left to the filter's transition.
 const TRANSITION: f64 = 1.25;
 
+/// The narrowest guard against a real capture's mirror, as a fraction of the sample rate.
+///
+/// A band closer than this to 0 Hz or the Nyquist rate keeps the part of its mirror
+/// that falls within the guard, since a real signal cannot be told from its mirror there.
+const MIRROR_GUARD: f64 = 1.0 / 2048.0;
+
+/// A complex band this close to the whole capture, as a fraction of the sample rate, is kept unfiltered.
+const WHOLE_BAND: f64 = 1.0 / 1024.0;
+
 #[derive(Debug, Error, PartialEq)]
 pub enum ExtractError {
     #[error("the sample rate {0} Hz is not a positive finite number")]
@@ -27,6 +36,8 @@ pub enum ExtractError {
     OutsideCapture { low: f64, high: f64 },
     #[error("the band is {width} Hz wide, narrower than the {narrowest} Hz that can be saved")]
     TooNarrow { width: f64, narrowest: f64 },
+    #[error("a span of {0} samples is too long to extract")]
+    TooLong(u64),
 }
 
 /// How a band is extracted: the shift, the filter and the decimation.
@@ -41,11 +52,11 @@ pub struct ExtractPlan {
 }
 
 impl ExtractPlan {
-    /// Plan the extraction of `low..high` hertz from a capture at `rate`.
+    /// Check that `low..high` hertz can be extracted from a capture at `rate`, without building the filter.
     ///
     /// The edges are relative to the capture's baseband 0 Hz. A complex capture
     /// spans `-rate/2..rate/2` and a real one `0..rate/2`.
-    pub fn new(rate: f64, low: f64, high: f64, real: bool) -> Result<Self, ExtractError> {
+    pub fn check(rate: f64, low: f64, high: f64, real: bool) -> Result<(), ExtractError> {
         if !(rate.is_finite() && rate > 0.0) {
             return Err(ExtractError::BadRate(rate));
         }
@@ -60,19 +71,21 @@ impl ExtractPlan {
         if width < narrowest {
             return Err(ExtractError::TooNarrow { width, narrowest });
         }
+        Ok(())
+    }
+
+    /// Plan the extraction of `low..high` hertz from a capture at `rate`, as [`Self::check`] allows.
+    pub fn new(rate: f64, low: f64, high: f64, real: bool) -> Result<Self, ExtractError> {
+        Self::check(rate, low, high, real)?;
+        let width = high - low;
         let decimation = ((rate / (TRANSITION * width)).floor() as u64).max(1);
-        let output_rate = rate / decimation as f64;
-        // Whatever aliases into the decimated band lands beyond the stopband edge.
         let pass = width / 2.0;
-        let transition = if decimation == 1 {
-            width * (TRANSITION - 1.0)
-        } else {
-            output_rate - width
-        };
-        let stop = pass + transition;
         // An analytic signal has the real tone's amplitude, twice its positive half.
         let gain = if real { 2.0 } else { 1.0 };
-        let taps = low_pass(rate, pass, stop, gain);
+        let taps = match transition(rate, low, high, decimation, real) {
+            Some(transition) => low_pass(rate, pass, pass + transition, gain),
+            None => vec![gain as f32],
+        };
         Ok(Self {
             rate,
             centre: (low + high) / 2.0,
@@ -113,6 +126,33 @@ impl ExtractPlan {
     pub fn taps(&self) -> &[f32] {
         &self.taps
     }
+}
+
+/// The width of the filter's transition, or none for a complex band that is nearly the whole capture.
+///
+/// It is the narrowest of three limits. What aliases when decimating must land
+/// beyond the stopband. The stopband must stay below the Nyquist rate, and it
+/// takes half of what lies outside the band so the rest is stopped. A real
+/// capture's mirror must lie beyond it too, down to a guard near 0 Hz and Fs/2.
+fn transition(rate: f64, low: f64, high: f64, decimation: u64, real: bool) -> Option<f64> {
+    let width = high - low;
+    let outside = rate - width;
+    if !real && outside < rate * WHOLE_BAND {
+        return None;
+    }
+    let aliasing = if decimation == 1 {
+        width * (TRANSITION - 1.0)
+    } else {
+        rate / decimation as f64 - width
+    };
+    let wrapping = outside / 4.0;
+    let mirror = if real {
+        let gap = 2.0 * low.min(rate / 2.0 - high);
+        gap.max(rate * MIRROR_GUARD)
+    } else {
+        f64::INFINITY
+    };
+    Some(aliasing.min(wrapping).min(mirror))
 }
 
 /// A Kaiser-windowed sinc passing `pass` hertz and stopping from `stop`, with DC gain `gain`.
@@ -187,13 +227,17 @@ pub struct Extractor {
 }
 
 impl Extractor {
-    /// Start extracting a span of `len` input samples.
-    pub fn new(plan: ExtractPlan, len: u64) -> Self {
+    /// Start extracting a span of `len` input samples, refused when its input cannot be counted.
+    pub fn new(plan: ExtractPlan, len: u64) -> Result<Self, ExtractError> {
         let step = -plan.centre / plan.rate;
         let margin = plan.margin();
         let taps = plan.taps.len();
         let total = plan.output_len(len);
-        Self {
+        // The last output is due once the span and both margins are in.
+        if len.checked_add(2 * margin + 1).is_none() {
+            return Err(ExtractError::TooLong(len));
+        }
+        Ok(Self {
             // The oscillator is at zero phase at the span's first sample.
             phase: (-(margin as f64) * step).rem_euclid(1.0),
             step,
@@ -203,7 +247,7 @@ impl Extractor {
             given: 0,
             total,
             plan,
-        }
+        })
     }
 
     /// Whether every output of the span has been given.

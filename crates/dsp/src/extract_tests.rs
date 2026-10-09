@@ -12,7 +12,7 @@ fn span(len: usize, channels: usize, sample: impl Fn(usize) -> [f32; 2]) -> Vec<
 /// Extract a span with zeros beyond it, feeding blocks of `block` samples.
 fn extract(plan: &ExtractPlan, input: &[f32], channels: usize, block: usize) -> Vec<[f32; 2]> {
     let len = (input.len() / channels) as u64;
-    let mut extractor = Extractor::new(plan.clone(), len);
+    let mut extractor = Extractor::new(plan.clone(), len).unwrap();
     let mut out = Vec::new();
     extractor.push_zeros(plan.margin(), &mut out);
     for chunk in input.chunks(block * channels) {
@@ -145,4 +145,41 @@ fn a_wide_band_kept_at_the_full_rate_is_still_filtered() {
     let out = extract(&plan, &input, 2, 4096);
     let peak = middle(&out).iter().map(|&s| magnitude(s)).fold(0.0, f32::max);
     assert!(peak < 0.5 * 1.8e-4, "leaks {peak}");
+}
+
+#[test]
+fn a_real_band_from_0_hz_stops_its_mirror() {
+    let plan = ExtractPlan::new(RATE, 0.0, 2_000.0, true).unwrap();
+    // The mirror of a 100 Hz tone lands 200 Hz below it, beyond the guard.
+    let input = span(48_000, 1, tone(100.0, 0.5));
+    let out = extract(&plan, &input, 1, 4096);
+    for &sample in middle(&out) {
+        assert!((magnitude(sample) - 0.5).abs() < 0.005, "the mirror beats with the tone {sample:?}");
+    }
+}
+
+#[test]
+fn a_real_band_up_to_the_nyquist_rate_stops_its_mirror() {
+    let plan = ExtractPlan::new(RATE, 21_000.0, 24_000.0, true).unwrap();
+    let input = span(48_000, 1, tone(23_800.0, 0.5));
+    let out = extract(&plan, &input, 1, 4096);
+    for &sample in middle(&out) {
+        assert!((magnitude(sample) - 0.5).abs() < 0.005, "{sample:?}");
+    }
+}
+
+#[test]
+fn a_wide_complex_band_short_of_the_whole_capture_is_filtered() {
+    let plan = ExtractPlan::new(RATE, -21_600.0, 21_600.0, false).unwrap();
+    assert_eq!(plan.decimation(), 1);
+    let input = span(24_000, 2, tone(23_000.0, 0.5));
+    let out = extract(&plan, &input, 2, 4096);
+    let peak = middle(&out).iter().map(|&s| magnitude(s)).fold(0.0, f32::max);
+    assert!(peak < 0.5 * 1.8e-4, "leaks {peak}");
+}
+
+#[test]
+fn a_span_whose_input_cannot_be_counted_is_refused() {
+    let plan = ExtractPlan::new(RATE, -10_000.0, 10_000.0, false).unwrap();
+    assert!(matches!(Extractor::new(plan, u64::MAX), Err(ExtractError::TooLong(_))));
 }

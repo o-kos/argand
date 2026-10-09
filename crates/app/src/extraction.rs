@@ -32,19 +32,39 @@ pub struct ExtractRequest {
 }
 
 impl ExtractRequest {
-    /// The plan the band is extracted by, refused with the reason it cannot be saved.
-    pub fn plan(&self) -> Result<ExtractPlan, WriteError> {
+    /// The band's edges relative to the capture's baseband 0 Hz, held to the capture's band.
+    ///
+    /// The band was clamped in physical hertz, and taking the reference away again
+    /// can carry an edge a rounding error past the capture's.
+    fn edges(&self) -> (f64, f64) {
+        let nyquist = self.meta.sample_rate / 2.0;
+        let floor = if self.meta.is_iq() { -nyquist } else { 0.0 };
         let reference = self.meta.center_freq;
-        ExtractPlan::new(
-            self.meta.sample_rate,
-            self.band.low() - reference,
-            self.band.high() - reference,
-            !self.meta.is_iq(),
+        (
+            (self.band.low() - reference).max(floor),
+            (self.band.high() - reference).min(nyquist),
         )
-        .map_err(|error| WriteError::Unsupported {
+    }
+
+    fn refused(&self, error: &argand_dsp::ExtractError) -> WriteError {
+        WriteError::Unsupported {
             path: self.target.clone(),
             reason: error.to_string(),
-        })
+        }
+    }
+
+    /// Whether the band can be saved, quickly enough for the window's thread.
+    pub fn check(&self) -> Result<(), WriteError> {
+        let (low, high) = self.edges();
+        ExtractPlan::check(self.meta.sample_rate, low, high, !self.meta.is_iq())
+            .map_err(|error| self.refused(&error))
+    }
+
+    /// The plan the band is extracted by, its filter built.
+    pub fn plan(&self) -> Result<ExtractPlan, WriteError> {
+        let (low, high) = self.edges();
+        ExtractPlan::new(self.meta.sample_rate, low, high, !self.meta.is_iq())
+            .map_err(|error| self.refused(&error))
     }
 }
 
@@ -71,7 +91,8 @@ pub fn run(
         sources: request.sources.iter().flatten().cloned().collect(),
         protected: request.protected.clone(),
     })?;
-    let mut extractor = Extractor::new(plan, span.count());
+    let mut extractor =
+        Extractor::new(plan, span.count()).map_err(|error| request.refused(&error))?;
     let mut out = Vec::new();
     extractor.push_zeros(margin - (span.start() - from), &mut out);
     let channels = request.meta.channels();
@@ -112,7 +133,7 @@ pub fn run(
             return Err(WriteError::SourceChanged { path: path.clone() });
         }
     }
-    file.finish()
+    file.finish(cancel)
 }
 
 /// The capture read through its files, each checked to be the file it was when opened.

@@ -82,12 +82,16 @@ impl FloatIq {
         Ok(())
     }
 
-    /// Move the complete file over its target, checking it is still allowed to.
-    pub fn finish(mut self) -> Result<Saved, WriteError> {
+    /// Move the complete file over its target, checking it is still allowed to and not cancelled.
+    pub fn finish(mut self, cancel: &AtomicBool) -> Result<Saved, WriteError> {
         if self.written != self.samples {
             return Err(WriteError::OutOfRange);
         }
         self.partial.sync()?;
+        // Syncing can take long, and a save cancelled meanwhile must leave the target alone.
+        if cancel.load(Ordering::Relaxed) {
+            return Err(WriteError::Cancelled);
+        }
         let staged = Staged {
             partial: self.partial,
             target: self.target,
