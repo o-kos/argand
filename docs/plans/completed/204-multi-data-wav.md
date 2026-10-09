@@ -21,15 +21,15 @@ KiwiSDR recordings put a `kiwi` chunk with GNSS time before every `data` chunk o
 - [x] Read runs in `MmapSource`; level scan over runs.
 - [x] Copy runs when saving.
 - [x] Tests: walk, truncated last chunk, chunks past the RIFF end, reading and seeking across chunks, auto levels, save.
-- [ ] AGENTS.md note on the WAVE reader.
+- [x] AGENTS.md note on the WAVE reader.
 - [ ] Complete validation and review.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
+- [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test -p argand-io --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`
 - [x] The eight corpus recordings open at full length in `aspec` (22052: 2m26.146 at the stated 11 999 Hz).
