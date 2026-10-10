@@ -228,3 +228,129 @@ fn a_real_capture_s_dc_and_nyquist_rate_keep_their_amplitude() {
     let plan = ExtractPlan::new(RATE, 5_000.0, 7_000.0, true).unwrap();
     assert!((response(&plan, 1_000.0) - 2.0).abs() < 0.01);
 }
+
+#[test]
+fn export_interpolation_preserves_a_tone_near_the_native_nyquist_boundary() {
+    let plan = ExtractPlan::for_export(RATE, -23_990.0, 23_990.0, false).unwrap();
+    assert_eq!(plan.output_rate(), 2.0 * RATE);
+    let input = span(96_000, 2, tone(23_980.0, 0.5));
+    let out = extract(&plan, &input, 2, 137);
+    for &sample in middle(&out) {
+        assert!((magnitude(sample) - 0.5).abs() < 0.005, "{sample:?}");
+    }
+}
+
+
+#[test]
+fn half_band_interpolation_keeps_native_samples_and_input_chunking_exact() {
+    let mut plan = ExtractPlan::new(RATE, -RATE / 2.0, RATE / 2.0, false).unwrap();
+    plan.interpolation = 2;
+    plan.whole_export = true;
+    plan.taps = half_sample_delay(1.0 / 1024.0);
+    let input = span(100_000, 2, tone(23_900.0, 0.5));
+    let out = extract(&plan, &input, 2, 4096);
+    for (n, sample) in input.chunks_exact(2).enumerate() {
+        assert_eq!(out[2 * n].map(f32::to_bits), [sample[0].to_bits(), sample[1].to_bits()]);
+    }
+    for block in [1, 7, 17, 333] {
+        assert_eq!(extract(&plan, &input, 2, block), out);
+    }
+    let expected_turn = std::f64::consts::TAU * 23_900.0 / plan.output_rate();
+    for pair in middle(&out).windows(2) {
+        let [a, b] = [pair[0], pair[1]];
+        let turn = f64::from(b[1] * a[0] - b[0] * a[1]).atan2(f64::from(b[0] * a[0] + b[1] * a[1]));
+        assert!((magnitude(a) - 0.5).abs() < 0.001, "{a:?}");
+        assert!((turn - expected_turn).abs() < 0.001, "{turn}");
+    }
+}
+
+#[test]
+fn a_whole_rf_band_keeps_both_native_edges_beyond_the_declared_guard() {
+    let rate = 10_000_000.0;
+    let frequency = rate * (0.5 - NARROWEST_TRANSITION);
+    let plan = ExtractPlan::for_export(rate, -rate / 2.0, rate / 2.0, false).unwrap();
+    let input = span(4_000_000, 2, |n| {
+        let phase = std::f64::consts::TAU * frequency * n as f64 / rate;
+        [0.6 * phase.cos() as f32, 0.2 * phase.sin() as f32]
+    });
+    let out = extract(&plan, &input, 2, 137);
+    for (n, &[i, q]) in out.iter().enumerate().skip(out.len() / 4).take(out.len() / 2) {
+        let phase = std::f64::consts::TAU * frequency * n as f64 / plan.output_rate();
+        assert!((f64::from(i) - 0.6 * phase.cos()).abs() < 0.001, "{n}: {i}");
+        assert!((f64::from(q) - 0.2 * phase.sin()).abs() < 0.001, "{n}: {q}");
+    }
+}
+
+#[test]
+fn the_half_sample_kernel_has_the_declared_native_nyquist_transition() {
+    let taps = half_sample_delay(NARROWEST_TRANSITION);
+    let delay = (taps.len() as f64 - 1.0) / 2.0;
+    for sign in [-1.0, 1.0] {
+        let frequency = sign * (0.5 - NARROWEST_TRANSITION / 2.0);
+        let (mut re, mut im) = (0.0, 0.0);
+        for (n, &tap) in taps.iter().enumerate() {
+            let phase = std::f64::consts::TAU * frequency * (n as f64 - delay);
+            re += f64::from(tap) * phase.cos();
+            im -= f64::from(tap) * phase.sin();
+        }
+        assert!((re - 1.0).abs() < 2e-4, "{re}");
+        assert!(im.abs() < 2e-4, "{im}");
+    }
+    let edge: f64 = taps.iter().enumerate().map(|(n, &tap)| {
+        f64::from(tap) * if n.is_multiple_of(2) { 1.0 } else { -1.0 }
+    }).sum();
+    assert!(edge.abs() < 1e-6);
+}
+
+#[test]
+fn non_identity_exports_stop_energy_at_the_intermediate_fft_boundary() {
+    for (low, high, real) in [
+        (-23_999.0, 23_999.0, false),
+        (-1_000.0, 20_000.0, false),
+        (0.0, 24_000.0, true),
+        (22_000.0, 24_000.0, true),
+    ] {
+        let plan = ExtractPlan::for_export(RATE, low, high, real).unwrap();
+        assert!(!plan.whole_export);
+        assert!(response(&plan, RATE / 2.0) < 1e-4);
+    }
+}
+
+#[test]
+fn a_tone_inside_the_native_guard_keeps_its_energy_in_tone_and_image() {
+    let rate = 10_000_000.0;
+    let frequency = rate / 2.0 - 20.0;
+    let plan = ExtractPlan::for_export(rate, -rate / 2.0, rate / 2.0, false).unwrap();
+    let input = span(4_000_000, 2, |n| {
+        let phase = std::f64::consts::TAU * frequency * n as f64 / rate;
+        [0.5 * phase.cos() as f32, 0.5 * phase.sin() as f32]
+    });
+    let out = extract(&plan, &input, 2, 4096);
+    let mut wanted = rustfft::num_complex::Complex64::default();
+    let mut image = rustfft::num_complex::Complex64::default();
+    let count = out.len() / 2;
+    for (n, &[i, q]) in out.iter().enumerate().skip(out.len() / 4).take(count) {
+        assert!(i.hypot(q) <= 0.501);
+        let value = rustfft::num_complex::Complex64::new(f64::from(i), f64::from(q)) / count as f64;
+        let phase = std::f64::consts::TAU * frequency * n as f64 / plan.output_rate();
+        let mirror = std::f64::consts::TAU * (frequency - rate) * n as f64 / plan.output_rate();
+        wanted += value * rustfft::num_complex::Complex64::new(phase.cos(), -phase.sin());
+        image += value * rustfft::num_complex::Complex64::new(mirror.cos(), -mirror.sin());
+    }
+    assert!(wanted.norm() > 0.25 && wanted.norm() < 0.5);
+    assert!(image.norm() > 0.01);
+    assert!((wanted.norm() + image.norm() - 0.5).abs() < 0.001, "{wanted:?}, {image:?}");
+}
+
+#[test]
+fn whole_band_mixing_happens_after_interpolation() {
+    let mut plan = ExtractPlan::for_export(RATE, -RATE / 2.0, RATE / 2.0 - RATE / 65536.0, false).unwrap();
+    plan.taps = half_sample_delay(1.0 / 1024.0);
+    let input = span(100_000, 2, tone(23_000.0, 0.5));
+    let out = extract(&plan, &input, 2, 4096);
+    for (n, &[i, q]) in out.iter().enumerate().skip(out.len() / 4).take(out.len() / 2) {
+        let phase = std::f64::consts::TAU * (23_000.0 - plan.centre()) * n as f64 / plan.output_rate();
+        assert!((f64::from(i) - 0.5 * phase.cos()).abs() < 0.001);
+        assert!((f64::from(q) - 0.5 * phase.sin()).abs() < 0.001);
+    }
+}

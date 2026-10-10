@@ -21,9 +21,9 @@ use crate::decoder::{DecodedSource, RATE_TAG, REFERENCE_TAG};
 use crate::riff::{self, ARGD_ID, ARGD_LEN, ARGD_VERSION, AUXI_CENTER, AUXI_LEN, AUXI_RATE};
 use crate::{OpenHints, RiffError};
 
-mod float_iq;
+mod float_wave;
 
-pub use float_iq::{FloatIq, FloatIqRequest};
+pub use float_wave::{FloatWave, FloatWaveRequest};
 
 /// Bytes moved per read and write, rounded down to whole samples.
 const COPY_BYTES: usize = 4 << 20;

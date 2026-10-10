@@ -7,6 +7,7 @@
 //! [`SampleSource`]: argand_core::SampleSource
 
 pub mod extract;
+pub mod resample;
 pub mod stft;
 pub mod waveform;
 pub mod window;

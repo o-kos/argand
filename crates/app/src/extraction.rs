@@ -2,7 +2,7 @@
 //!
 //! The band is computed rather than copied. The edited capture is read through
 //! an `EditedSource`, `argand_dsp::extract` moves the band to baseband and
-//! decimates it, and `argand_io::write::FloatIq` writes it as I/Q `f32`.
+//! decimates it, and `argand_io::write::FloatWave` writes the preserved domain as `f32`.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use argand_core::{FrequencyBand, SampleSource, SampleSpan, SignalMeta};
 use argand_dsp::{ExtractPlan, Extractor};
 use argand_edit::{Capture, EditedSource};
-use argand_io::write::{FloatIq, FloatIqRequest, Protected, Saved, SourceFile, WriteError};
+use argand_io::write::{FloatWave, FloatWaveRequest, Protected, Saved, SourceFile, WriteError};
 
 /// Input samples read at a time, which bounds what one block holds.
 const BLOCK_SAMPLES: usize = 1 << 18;
@@ -63,7 +63,7 @@ impl ExtractRequest {
     /// The plan the band is extracted by, its filter built.
     pub fn plan(&self) -> Result<ExtractPlan, WriteError> {
         let (low, high) = self.edges();
-        ExtractPlan::new(self.meta.sample_rate, low, high, !self.meta.is_iq())
+        ExtractPlan::for_export(self.meta.sample_rate, low, high, !self.meta.is_iq())
             .map_err(|error| self.refused(&error))
     }
 }
@@ -74,27 +74,33 @@ pub fn run(
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<Saved, WriteError> {
+    let len = request.capture.len();
+    if request.span.end() > len {
+        return Err(WriteError::OutOfRange);
+    }
     let plan = request.plan()?;
     let mut source = open(request)?;
+    let resampling = output_plan(request, &plan)?;
+    let padding = resampling.margin().saturating_mul(plan.decimation());
+    let leading = padding.saturating_sub(request.span.start());
+    let trailing = padding.saturating_sub(len - request.span.end());
+    let span = SampleSpan::between(
+        request.span.start().saturating_sub(padding),
+        request.span.end().saturating_add(padding).min(len),
+    )
+    .ok_or(WriteError::OutOfRange)?;
     let margin = plan.margin();
-    let span = request.span;
-    let len = request.capture.len();
     let from = span.start().saturating_sub(margin);
     let to = span.end().saturating_add(margin).min(len);
-    let mut output_meta = request.meta.clone();
-    output_meta.sample_rate = plan.output_rate();
-    output_meta.center_freq = request.meta.center_freq + plan.centre();
-    let mut file = FloatIq::create(FloatIqRequest {
-        meta: output_meta,
-        samples: plan.output_len(span.count()),
-        target: request.target.clone(),
-        sources: request.sources.iter().flatten().cloned().collect(),
-        protected: request.protected.clone(),
-    })?;
-    let mut extractor =
-        Extractor::new(plan, span.count()).map_err(|error| request.refused(&error))?;
+    let extended = span
+        .count()
+        .checked_add(leading)
+        .and_then(|count| count.checked_add(trailing))
+        .ok_or(WriteError::OutOfRange)?;
+    let mut output = Output::new(request, &plan, resampling, span, leading)?;
+    let mut extractor = Extractor::new(plan, extended).map_err(|error| request.refused(&error))?;
     let mut out = Vec::new();
-    extractor.push_zeros(margin - (span.start() - from), &mut out);
+    extractor.push_zeros(margin + leading - (span.start() - from), &mut out);
     let channels = request.meta.channels();
     let path = &request.meta.source;
     let read_error = |error| WriteError::Source {
@@ -102,7 +108,10 @@ pub fn run(
         source: error,
     };
     source.seek(from).map_err(read_error)?;
-    let mut buffer = vec![0.0f32; BLOCK_SAMPLES * channels];
+    let batch = ((BLOCK_SAMPLES as f64 * request.meta.sample_rate / output_rate(request)).floor()
+        as usize)
+        .clamp(1, BLOCK_SAMPLES);
+    let mut buffer = vec![0.0f32; batch * channels];
     let total = to - from;
     let mut done = 0;
     progress(0, total);
@@ -110,19 +119,19 @@ pub fn run(
         if cancel.load(Ordering::Relaxed) {
             return Err(WriteError::Cancelled);
         }
-        let want = ((total - done) as usize).min(BLOCK_SAMPLES) * channels;
+        let want = ((total - done) as usize).min(batch) * channels;
         let read = source.read(&mut buffer[..want]).map_err(read_error)?;
         if read == 0 {
             return Err(WriteError::SourceChanged { path: path.clone() });
         }
         extractor.push(&buffer[..read], channels, &mut out);
-        file.write(&out)?;
+        output.write(&out, cancel)?;
         out.clear();
         done += (read / channels) as u64;
         progress(done, total);
     }
     extractor.push_zeros(extractor.wanted(), &mut out);
-    file.write(&out)?;
+    output.write(&out, cancel)?;
     if cancel.load(Ordering::Relaxed) {
         return Err(WriteError::Cancelled);
     }
@@ -133,7 +142,123 @@ pub fn run(
             return Err(WriteError::SourceChanged { path: path.clone() });
         }
     }
-    file.finish(cancel)
+    output.finish(cancel)
+}
+
+fn output_rate(request: &ExtractRequest) -> f64 {
+    let width = request.band.high() - request.band.low();
+    let factor = if request.meta.is_iq() { 1.25 } else { 2.5 };
+    (factor * width / 1000.0).ceil() * 1000.0
+}
+
+fn output_plan(
+    request: &ExtractRequest,
+    plan: &ExtractPlan,
+) -> Result<argand_dsp::resample::Plan, WriteError> {
+    let (low, high) = request.edges();
+    argand_dsp::resample::Plan::new(plan.output_rate(), output_rate(request), high - low)
+        .map_err(|error| request.refused(&error))
+}
+
+struct Output {
+    file: FloatWave,
+    stream: argand_dsp::resample::Stream,
+    converted: Vec<[f32; 2]>,
+    phase: f64,
+    step: f64,
+    real: bool,
+}
+
+impl Output {
+    fn new(
+        request: &ExtractRequest,
+        plan: &ExtractPlan,
+        resampling: argand_dsp::resample::Plan,
+        span: SampleSpan,
+        leading: u64,
+    ) -> Result<Self, WriteError> {
+        let rate = output_rate(request);
+        let samples = (request.span.count() as f64 * rate / request.meta.sample_rate).ceil();
+        if !samples.is_finite() || samples >= (1u64 << 52) as f64 {
+            return Err(WriteError::OutOfRange);
+        }
+        let samples = samples as u64;
+        let offset = request.span.start() - span.start() + leading;
+        let stream = argand_dsp::resample::Stream::new(
+            resampling,
+            argand_dsp::resample::Span {
+                offset: plan.coordinate(offset),
+                samples,
+            },
+        )
+        .map_err(|error| request.refused(&error))?;
+        let mut meta = request.meta.clone();
+        meta.sample_rate = rate;
+        meta.center_freq = 0.0;
+        let file = FloatWave::create(FloatWaveRequest {
+            meta,
+            samples,
+            target: request.target.clone(),
+            sources: request.sources.iter().flatten().cloned().collect(),
+            protected: request.protected.clone(),
+        })?;
+        let (low, high) = request.edges();
+        let real = !request.meta.is_iq();
+        let step = if real {
+            (high - low) / (2.0 * rate)
+        } else {
+            0.0
+        };
+        let phase = (plan.centre() / request.meta.sample_rate * offset as f64).rem_euclid(1.0);
+        Ok(Self {
+            file,
+            stream,
+            converted: Vec::new(),
+            phase,
+            step,
+            real,
+        })
+    }
+
+    fn write(&mut self, samples: &[[f32; 2]], cancel: &AtomicBool) -> Result<(), WriteError> {
+        let mut consumed = 0;
+        while consumed < samples.len() {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(WriteError::Cancelled);
+            }
+            consumed += self.stream.push(&samples[consumed..], &mut self.converted);
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<(), WriteError> {
+        for sample in &mut self.converted {
+            let (sin, cos) = (std::f64::consts::TAU * self.phase).sin_cos();
+            self.phase = (self.phase + self.step).rem_euclid(1.0);
+            let [i, q] = sample.map(f64::from);
+            sample[0] = (i * cos - q * sin) as f32;
+            sample[1] = if self.real {
+                0.0
+            } else {
+                (i * sin + q * cos) as f32
+            };
+        }
+        self.file.write(&self.converted)?;
+        self.converted.clear();
+        Ok(())
+    }
+
+    fn finish(mut self, cancel: &AtomicBool) -> Result<Saved, WriteError> {
+        while !self.stream.is_done() {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(WriteError::Cancelled);
+            }
+            self.stream.finish(&mut self.converted);
+            self.flush()?;
+        }
+        self.file.finish(cancel)
+    }
 }
 
 /// The capture read through its files, each checked to be the file it was when opened.

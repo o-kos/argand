@@ -1,10 +1,10 @@
-//! A complex `f32` capture written as it is computed, as a band extraction produces it.
+//! A real or complex `f32` capture written as it is computed, as a band extraction produces it.
 
 use super::*;
 
 /// What a computed capture is and where it goes.
 #[derive(Debug, Clone)]
-pub struct FloatIqRequest {
+pub struct FloatWaveRequest {
     /// The rate and reference frequency the file states, whatever sample type it names.
     pub meta: SignalMeta,
     /// Samples the file will hold, which the header states before any is written.
@@ -16,29 +16,30 @@ pub struct FloatIqRequest {
     pub protected: Vec<Protected>,
 }
 
-/// An I/Q `f32` WAVE file being written, moved over its target only by [`FloatIq::finish`].
+/// A real or I/Q `f32` WAVE file being written, moved over its target only by [`FloatWave::finish`].
 #[derive(Debug)]
-pub struct FloatIq {
+pub struct FloatWave {
     partial: Partial,
     target: PathBuf,
     protected: Vec<Protected>,
     read: Vec<Option<(u64, u64)>>,
     samples: u64,
+    channels: usize,
     written: u64,
     container: &'static str,
 }
 
-impl FloatIq {
+impl FloatWave {
     /// Start the file beside its target with its header, refusing a target that is a source or protected.
-    pub fn create(request: FloatIqRequest) -> Result<Self, WriteError> {
+    pub fn create(request: FloatWaveRequest) -> Result<Self, WriteError> {
         Self::create_with_limit(request, RIFF_LIMIT)
     }
 
     pub(crate) fn create_with_limit(
-        request: FloatIqRequest,
+        request: FloatWaveRequest,
         riff_limit: u64,
     ) -> Result<Self, WriteError> {
-        let FloatIqRequest {
+        let FloatWaveRequest {
             mut meta,
             samples,
             target,
@@ -47,9 +48,17 @@ impl FloatIq {
         } = request;
         let read_paths = sources.iter().map(|source| source.meta.source.clone());
         check_target(read_paths, &protected, &target)?;
-        meta.sample_type = argand_core::SampleType::new(argand_core::Domain::Iq, SampleFormat::F32);
+        let domain = if meta.is_iq() {
+            argand_core::Domain::Iq
+        } else {
+            argand_core::Domain::Real
+        };
+        meta.sample_type = argand_core::SampleType::new(domain, SampleFormat::F32);
+        let channels = meta.channels();
         let fmt = synthesized_fmt(&meta)?;
-        let data_len = samples.checked_mul(8).ok_or(WriteError::OutOfRange)?;
+        let data_len = samples
+            .checked_mul(channels as u64 * 4)
+            .ok_or(WriteError::OutOfRange)?;
         let mut partial = Partial::create(&target)?;
         let container =
             write_wave_header(&mut partial, &meta, &fmt, data_len, samples, riff_limit)?;
@@ -62,6 +71,7 @@ impl FloatIq {
                 .map(|source| source.stamp.and_then(|stamp| stamp.identity))
                 .collect(),
             samples,
+            channels,
             written: 0,
             container,
         })
@@ -73,8 +83,8 @@ impl FloatIq {
         if self.written + count > self.samples {
             return Err(WriteError::OutOfRange);
         }
-        let mut bytes = Vec::with_capacity(samples.len() * 8);
-        for value in samples.iter().flatten() {
+        let mut bytes = Vec::with_capacity(samples.len() * self.channels * 4);
+        for value in samples.iter().flat_map(|sample| &sample[..self.channels]) {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
         self.partial.write(&bytes)?;
@@ -107,5 +117,5 @@ impl FloatIq {
 
 #[cfg(test)]
 mod tests {
-    include!("float_iq_tests.rs");
+    include!("float_wave_tests.rs");
 }

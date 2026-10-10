@@ -38,8 +38,8 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 ## Cargo workspace architecture
 
 - **argand-core:** domain types such as `Signal`, real or complex sample metadata, `Selection`, and units. It also owns toolkit-independent render view models such as `WaveformEnvelope`, `DbGrid`, `SpectrogramImage`, and primitive lists, and the axis tick layout in `argand-core::axis`, which measures candidate labels through the `LabelMeasure` trait so that every front end places its marks by one policy. A view model's shape fields are the caller's to set, so its accessors check every coordinate against the declared shape and settle the product with `checked_mul`; one index past the end of a row is a valid offset into the next one, so an unchecked read answers with a neighbour's data that looks like a picture. The accessors differ in how strict they are, and the difference is deliberate. `SpectrogramImage::get` and `put` settle the whole buffer through `shape()` and answer nothing until it matches. `DbGrid::column`, `DbGrid::value` and `WaveformEnvelope::column` do not consult `shape()`; they check the one coordinate, settle that offset with `checked_mul` and take the cell from the slice, so a cell inside the declared shape stays readable where the buffer runs longer than that shape. It must not depend on GUI or heavy DSP code.
-- **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, and band extraction (`extract`: frequency shift, low-pass filtering and integer decimation, see "Band and rectangle selection (#202)"). Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
-- **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see "Saving (#186)"). A plain RIFF WAVE may split its samples over several `data` chunks, as KiwiSDR recorders do with a `kiwi` GNSS chunk before each (#204): `riff::WavLayout::runs` walks the chunks after the first `data` up to the stated RIFF end and returns each body as a `DataRun`, `MmapSource` reads the runs as one array and the writer copies them into one `data` chunk. `write::FloatIq` writes computed I/Q `f32` samples. RF64/BW64 and a file with nothing after its first `data` chunk are one run, without a walk. This is the future connection point for custom formats through the worker.
+- **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, and band extraction (`extract`: frequency shift, low-pass filtering integer decimation and fractional-rate reconstruction, see "Band and rectangle selection (#202)"). Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
+- **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see "Saving (#186)"). A plain RIFF WAVE may split its samples over several `data` chunks, as KiwiSDR recorders do with a `kiwi` GNSS chunk before each (#204): `riff::WavLayout::runs` walks the chunks after the first `data` up to the stated RIFF end and returns each body as a `DataRun`, `MmapSource` reads the runs as one array and the writer copies them into one `data` chunk. `write::FloatWave` writes computed real or I/Q `f32` samples. RF64/BW64 and a file with nothing after its first `data` chunk are one run, without a walk. This is the future connection point for custom formats through the worker.
 - **argand-edit:** the editing engine: an immutable piece table (`Capture`) over the files a capture reads, `Clip`s of it, a `History` of versions for undo and redo, and `EditedSource`, a `SampleSource` reading a capture through one opened source per `SourceId` (see "Editing (#195, #196)"). It depends on `argand-core` only.
 - **argand-app:** the application binary, `argand`, using the GPUI Kit facade over GPUI and gpui-component. It opens a signal file, analyses it on a thread of its own, and draws the spectrogram with axes. Its modules divide by whether they name a toolkit: `config.rs`, `session.rs`, `document.rs` and `analysis.rs` do not and are tested without a window, while `shell.rs`, `chrome.rs`, `axes.rs` and `spectrogram.rs` do. It will further own cursors, selections, scrolling, transport, and the detailed spectrum window. This is the single shipped binary alongside `aspec`.
 - **argand-worker:** a planned processing worker binary that loads C ABI libraries and communicates through a stdio protocol. It is deferred.
@@ -472,9 +472,23 @@ two, clamped to 1024..2^22, so the cost per input sample grows with the logarith
 filter length. It keeps every D-th output and compensates the filter delay, so output n is
 input n·D of the span and there are ⌈len/D⌉ outputs. Real input has the analytic signal's
 gain. The capture's own samples beyond the span feed the filter, zeros
-elsewhere. `write::FloatIq` writes I/Q `f32` WAVE on the unit scale (RF64 past 4 GB) at
-rate Fs/D, exact in `argd`, with the band centre as reference frequency, under the target
-rules of `save`, and a cancel during its final sync leaves the target alone. The name is `<stem>[_<start>-<end>s]_<low>-<high><unit>.wav`, in the largest unit that keeps the edges apart in six decimals.
+elsewhere. For export, `ExtractPlan::for_export` produces an intermediate rate 2·Fs/D. Non-identity
+filters double the inverse FFT size before integer decimation; the base FFT is at most
+2^22 and the inverse can reach 2^23. Whole complex bands instead use a native-rate
+half-sample-delay Kaiser convolution for odd outputs and copy native samples exactly for
+even outputs, then mix at 2·Fs. Their FFT stays at most 2^22. The 80 dB interpolation
+transition at native ±Fs/2 is Fs/131072 wide: the passband ends Fs/262144 before each
+native edge. Inside that guard, a tone shares its amplitude with an image beyond the
+opposite native edge; an exact native-Nyquist component splits equally between ±Fs/2.
+Whole bands are not refused. `argand_dsp::resample` reconstructs the intermediate stream
+with a bounded Kaiser sinc phase bank at `ceil(1.25·B/1000)·1000` Hz for I/Q or
+`ceil(2.5·B/1000)·1000` Hz for real, including upsampling. It emits at most 4096 samples
+per call for cancellation and retains only the filter neighbourhood. Both filter margins
+are read from the capture. The output preserves the source domain: I/Q stays centred at
+0 Hz, while real output mixes the analytic band up by B/2 and takes its real component,
+placing the selected lower edge at 0 Hz. Reference metadata is zero. `write::FloatWave`
+writes real or I/Q `f32` WAVE on the unit scale (RF64 past 4 GB), under the target rules
+of `save`, and a cancel during its final sync leaves the target alone. The name is `<stem>[_<start>-<end>s]_<low>-<high><unit>.wav`, in the largest unit that keeps the edges apart in six decimals.
 
 ## Saving (#186)
 

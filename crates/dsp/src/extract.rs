@@ -53,7 +53,9 @@ pub struct ExtractPlan {
     rate: f64,
     centre: f64,
     decimation: u64,
-    /// Symmetric low-pass taps of odd length, summing to the gain.
+    interpolation: usize,
+    whole_export: bool,
+    /// Low-pass taps, or the even-length odd interpolation phase for whole-band export.
     taps: Vec<f32>,
     real: bool,
 }
@@ -104,9 +106,28 @@ impl ExtractPlan {
             rate,
             centre: (low + high) / 2.0,
             decimation,
+            interpolation: 1,
+            whole_export: false,
             taps,
             real,
         })
+    }
+
+    /// Plan an export with twice the intermediate rate, keeping interpolation images away from the band.
+    pub fn for_export(rate: f64, low: f64, high: f64, real: bool) -> Result<Self, ExtractError> {
+        let mut plan = Self::new(rate, low, high, real)?;
+        plan.interpolation = 2;
+        if plan.taps.len() == 1 {
+            plan.whole_export = true;
+            plan.decimation = 1;
+            plan.taps = half_sample_delay(NARROWEST_TRANSITION);
+        }
+        Ok(plan)
+    }
+
+    /// The intermediate coordinate of an input sample offset.
+    pub fn coordinate(&self, input: u64) -> f64 {
+        input as f64 * self.interpolation as f64 / self.decimation as f64
     }
 
     pub const fn decimation(&self) -> u64 {
@@ -115,7 +136,7 @@ impl ExtractPlan {
 
     /// The rate of the extracted signal.
     pub fn output_rate(&self) -> f64 {
-        self.rate / self.decimation as f64
+        self.rate * self.interpolation as f64 / self.decimation as f64
     }
 
     /// The band centre relative to the capture's baseband 0 Hz, which becomes the output's 0 Hz.
@@ -134,7 +155,10 @@ impl ExtractPlan {
 
     /// Output samples a span of `len` input samples gives.
     pub fn output_len(&self, len: u64) -> u64 {
-        len.div_ceil(self.decimation)
+        u64::try_from(
+            (u128::from(len) * self.interpolation as u128).div_ceil(u128::from(self.decimation)),
+        )
+        .unwrap_or(u64::MAX)
     }
 
     pub fn taps(&self) -> &[f32] {
@@ -194,7 +218,25 @@ fn low_pass(rate: f64, pass: f64, stop: f64, gain: f64) -> Vec<f32> {
     raw.iter().map(|tap| (tap * gain / sum) as f32).collect()
 }
 
-fn sinc(x: f64) -> f64 {
+/// Odd phase of a 2x half-band interpolator; the even phase copies native samples.
+fn half_sample_delay(transition: f64) -> Vec<f32> {
+    let estimate =
+        ((STOPBAND_DB - 7.95) / (2.285 * std::f64::consts::TAU * transition)).ceil() as usize;
+    let half = estimate.div_ceil(2);
+    let beta = 0.1102 * (STOPBAND_DB - 8.7);
+    let norm = bessel_i0(beta);
+    let raw: Vec<f64> = (0..2 * half)
+        .map(|k| {
+            let offset = k as f64 - half as f64 + 0.5;
+            let ratio = offset / (half as f64 - 0.5);
+            sinc(offset) * bessel_i0(beta * (1.0 - ratio * ratio).max(0.0).sqrt()) / norm
+        })
+        .collect();
+    let sum: f64 = raw.iter().sum();
+    raw.into_iter().map(|tap| (tap / sum) as f32).collect()
+}
+
+pub(crate) fn sinc(x: f64) -> f64 {
     if x == 0.0 {
         1.0
     } else {
@@ -204,7 +246,7 @@ fn sinc(x: f64) -> f64 {
 }
 
 /// The modified Bessel function of the first kind and order zero, by its series.
-fn bessel_i0(x: f64) -> f64 {
+pub(crate) fn bessel_i0(x: f64) -> f64 {
     let quarter = x * x / 4.0;
     let mut term = 1.0;
     let mut sum = 1.0;
@@ -237,6 +279,7 @@ pub struct Extractor {
     /// How much of `block` holds samples.
     fill: usize,
     work: Vec<Complex32>,
+    interpolated: Vec<Complex32>,
     scratch: Vec<Complex32>,
     /// Input index, counted from the margin before the span, of `block[0]`.
     start: i64,
@@ -257,6 +300,7 @@ impl Extractor {
         // The last output is due once the span and both margins are in.
         let counted = len
             .checked_add(2 * margin + 1)
+            .and_then(|input| input.checked_mul(plan.interpolation as u64))
             .filter(|&input| i64::try_from(input).is_ok());
         if counted.is_none() {
             return Err(ExtractError::TooLong(len));
@@ -266,7 +310,12 @@ impl Extractor {
             .clamp(1024, LARGEST_FFT.max(2 * taps));
         let mut planner = FftPlanner::new();
         let forward = planner.plan_fft_forward(size);
-        let inverse = planner.plan_fft_inverse(size);
+        let interpolated_size = if plan.whole_export || plan.interpolation == 1 {
+            0
+        } else {
+            size * plan.interpolation
+        };
+        let inverse = planner.plan_fft_inverse(interpolated_size.max(size));
         let scale = 1.0 / size as f32;
         let mut spectrum = vec![Complex32::default(); size];
         for (bin, &tap) in spectrum.iter_mut().zip(&plan.taps) {
@@ -280,7 +329,11 @@ impl Extractor {
         let total = plan.output_len(len);
         Ok(Self {
             // The oscillator is at zero phase at the span's first sample.
-            phase: (-(margin as f64) * step).rem_euclid(1.0),
+            phase: if plan.whole_export {
+                0.0
+            } else {
+                (-(margin as f64) * step).rem_euclid(1.0)
+            },
             step,
             forward,
             inverse,
@@ -289,6 +342,7 @@ impl Extractor {
             block: vec![Complex32::default(); size],
             fill: taps - 1,
             work: vec![Complex32::default(); size],
+            interpolated: vec![Complex32::default(); interpolated_size],
             scratch,
             start: 1 - taps as i64,
             taken: 0,
@@ -313,7 +367,7 @@ impl Extractor {
 
     /// Input samples taken when output `n` can be computed.
     fn due(&self, n: u64) -> u64 {
-        n * self.plan.decimation + 2 * self.plan.margin() + 1
+        n * self.plan.decimation / self.plan.interpolation as u64 + 2 * self.plan.margin() + 1
     }
 
     /// Feed interleaved samples, `channels` values each, giving outputs into `out`.
@@ -335,11 +389,14 @@ impl Extractor {
         if self.is_done() {
             return;
         }
-        let (sin, cos) = (std::f64::consts::TAU * self.phase).sin_cos();
-        self.phase = (self.phase + self.step).rem_euclid(1.0);
-        let (i, q) = (f64::from(i), f64::from(q));
-        self.block[self.fill] =
-            Complex32::new((i * cos - q * sin) as f32, (i * sin + q * cos) as f32);
+        self.block[self.fill] = if self.plan.whole_export {
+            Complex32::new(i, q)
+        } else {
+            let (sin, cos) = (std::f64::consts::TAU * self.phase).sin_cos();
+            self.phase = (self.phase + self.step).rem_euclid(1.0);
+            let (i, q) = (f64::from(i), f64::from(q));
+            Complex32::new((i * cos - q * sin) as f32, (i * sin + q * cos) as f32)
+        };
         self.fill += 1;
         self.taken += 1;
         let last = self.taken == self.due(self.total - 1);
@@ -359,15 +416,25 @@ impl Extractor {
         for (bin, filter) in self.work.iter_mut().zip(&self.spectrum) {
             *bin *= filter;
         }
-        self.inverse
-            .process_with_scratch(&mut self.work, &mut self.scratch);
+        if self.interpolated.is_empty() {
+            self.inverse
+                .process_with_scratch(&mut self.work, &mut self.scratch);
+        } else {
+            let half = self.work.len() / 2;
+            self.interpolated.fill(Complex32::default());
+            self.interpolated[..half].copy_from_slice(&self.work[..half]);
+            let tail = self.interpolated.len() - half;
+            self.interpolated[tail..].copy_from_slice(&self.work[half..]);
+            self.inverse
+                .process_with_scratch(&mut self.interpolated, &mut self.scratch);
+        }
         // Output n is the filtered input at index n·D + 2·margin, past the zeros before the span.
         while !self.is_done() {
             let at = self.due(self.given) as i64 - 1 - self.start;
             if at >= self.fill as i64 {
                 break;
             }
-            let value = self.work[at as usize];
+            let value = self.output(at as usize);
             out.push([value.re, value.im]);
             self.given += 1;
         }
@@ -375,6 +442,32 @@ impl Extractor {
         self.block.copy_within(self.fill - kept..self.fill, 0);
         self.start += (self.fill - kept) as i64;
         self.fill = kept;
+    }
+
+    fn output(&mut self, at: usize) -> Complex32 {
+        if !self.plan.whole_export {
+            if self.interpolated.is_empty() {
+                return self.work[at];
+            }
+            let interpolation = self.plan.interpolation as i64;
+            let coordinate = self.given as i64 * self.plan.decimation as i64
+                + interpolation * (2 * self.plan.margin() as i64 - self.start);
+            return self.interpolated[coordinate as usize];
+        }
+        let value = if self.given.is_multiple_of(2) {
+            self.block[at - self.plan.margin() as usize]
+        } else {
+            self.work[at]
+        };
+        if self.plan.centre == 0.0 {
+            return value;
+        }
+        let (sin, cos) = (std::f64::consts::TAU * self.phase).sin_cos();
+        self.phase = (self.phase + self.step / 2.0).rem_euclid(1.0);
+        Complex32::new(
+            (f64::from(value.re) * cos - f64::from(value.im) * sin) as f32,
+            (f64::from(value.re) * sin + f64::from(value.im) * cos) as f32,
+        )
     }
 }
 

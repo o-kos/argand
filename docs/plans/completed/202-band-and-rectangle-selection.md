@@ -6,25 +6,31 @@ Class A (DSP correctness, a public `argand-dsp` API, a new writer path). Impleme
 
 ## Owner-requested revision (2026-10-10)
 
-Class A. Implementer for this revision: Codex in the session, requested by the owner. Reviewer: proposed `gpt-6.1-sol` high, awaiting owner confirmation before review. The previous three review rounds describe the original implementation; the changed acceptance contract is planned separately below.
+Class A. Implementer for this revision: Codex in the session, requested by the owner. Reviewer for this revision: `gpt-5.6-sol` high, agreed with the owner; it differs from the session implementer `gpt-6.1-sol`. The previous three review rounds describe the original implementation; the changed acceptance contract is planned separately below.
 
 - Preserve the input domain when saving a band or rectangle: complex stays I/Q; real stays mono real.
 - Complex output puts the selected centre at baseband zero; real output translates the selected lower edge to zero. Output reference metadata is zero, so reopening shows those coordinates.
 - With width B, choose `ceil(1.25 * B / 1000) * 1000` Hz for I/Q and `ceil(2.5 * B / 1000) * 1000` Hz for real, including upsampling if needed. Resample values, never only the header.
-- Retain the current FFT extraction as a bounded intermediate analytic baseband. A streaming windowed-sinc resampler reconstructs it at the requested rate; real output then mixes the analytic band up by B/2 and writes its real component. Read neighbouring capture samples for both filters so a rectangle boundary does not introduce zero padding inside the capture.
+- Retain FFT extraction as a bounded intermediate analytic baseband, using a double-size inverse FFT for non-identity filters. Whole complex bands use a half-band 2x interpolator before mixing: native samples are the exact even phase, and the odd phase is a native-rate overlap-save Kaiser half-sample-delay convolution. Its 80 dB transition has the already accepted width Fs/131072 around native Nyquist; it stays within the 2^22 FFT bound. The flat passband ends Fs/262144 before each native edge; inside the guard tone and opposite-edge image share the amplitude, and exact native Nyquist becomes two half-amplitude components. Whole bands remain supported. A streaming windowed-sinc resampler reconstructs it at the requested rate; real output then mixes the analytic band up by B/2 and writes its real component. Read neighbouring capture samples for both filters so a rectangle boundary does not introduce zero padding inside the capture.
 - Keep cancellation, progress, source stamps and atomic target replacement.
 
 Revision tasks:
 
-- [ ] Add bounded streaming fractional-rate reconstruction with tone, alias, duration, alignment and block-boundary tests
-- [ ] Add a computed float WAVE writer preserving real/IQ domain with round-trip and cancellation coverage
-- [ ] Integrate zero-referenced, rounded-rate extraction and test both domains, rectangles and non-kilohertz source rates
-- [ ] Synchronize current architecture, changelog and owner checks
-- [ ] Run formatting, Clippy, full tests, independent review and rebuild release
+- [x] Add bounded streaming fractional-rate reconstruction with tone, alias, duration, alignment and block-boundary tests
+- [x] Add a computed float WAVE writer preserving real/IQ domain with round-trip and cancellation coverage
+- [x] Integrate zero-referenced, rounded-rate extraction and test both domains, rectangles and non-kilohertz source rates
+- [x] Synchronize current architecture, changelog and owner checks
+- [x] Run formatting, Clippy, full tests, independent review and rebuild release
+
+Revision review:
+
+- Round 1 (`gpt-5.6-sol` high): accepted P1 whole-band IQ interpolation at native Nyquist. Increased the identity-filter overlap to 262144 samples, at the extraction's declared minimum transition resolution; added a long cross-block DSP regression and a full-band rectangle save/reopen regression at 23980 Hz with a 48000 Hz input and 60000 Hz output. No findings declined.
+- Round 2: accepted P1 that a larger identity overlap still corrupts full-band tones at RF sample rates. Claude arbitration confirmed a missing native-Nyquist interpolation transition, not a size-only defect; the previous constant-overlap remedy was removed. The guard uses the owner's existing Fs/131072 resolution and does not block the requested revision. Whole complex exports now use a native-rate odd-phase half-band convolution plus exact even sample copies before mixing. The reviewer reproduction sits inside the declared guard and is tested as tone-plus-image energy conservation. Tests outside the guard use relative clearances at 10 MHz across FFT boundaries. No findings declined.
+- Round 3: clean; no substantive DSP, resampling, storage, cancellation, writer, save-lifetime or acceptance-contract findings. No findings declined. Formatting, Clippy and all 905 tests passed; the release workspace was rebuilt after those checks.
 
 ## Overview
 
-The selection model already holds a time span and a band (#178), but only a time span can be made. This step adds the band and the rectangle, shows them, and saves them as a complex baseband capture centred on the band, at a lower sample rate.
+The selection model already holds a time span and a band (#178), but only a time span can be made. This step adds the band and the rectangle, shows them, and saves a zero-referenced capture preserving its real or complex domain at a rounded sample rate.
 
 ## Context
 
@@ -72,8 +78,8 @@ Derived here:
   - **Edges.** The capture's own samples beyond the span feed the filter where they exist; zeros elsewhere.
   - **Streaming.** It works on blocks of at most 256 Ki samples and is pure, with no I/O. Cancellation and progress belong to the caller, between blocks.
 - **Writer** (`argand_io::write::FloatWave`):
-  - It writes complex `f32` frames to the same `.argand-<pid>-<n>.part` temporary file and renames it over the target, under the same target rules as `save`. The target is none of the sources, protected or the open file.
-  - The header carries the `fmt ` rate rounded, plus `argd` with the exact rate and the reference frequency, and `auxi` where its fields fit. It becomes RF64 when the data passes 4 GB.
+  - It writes real or complex `f32` frames to the same `.argand-<pid>-<n>.part` temporary file and renames it over the target, under the same target rules as `save`. The target is none of the sources, protected or the open file.
+  - The header carries the integer-kilohertz rate in `fmt ` and `argd`, and a zero reference frequency. It becomes RF64 when the data passes 4 GB.
   - Values stay on the unit scale: full scale is 1.0, as the reader normalizes.
 - **Check on the window's thread.** The window checks only the band's edges and width before the dialog (`ExtractPlan::check`). The filter is built on the save thread (changed after review).
 - **Save thread** (`saving.rs`):

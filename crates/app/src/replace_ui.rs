@@ -639,9 +639,9 @@ mod tests {
         });
         let saved = argand_io::open(&target, &argand_io::OpenHints::default()).unwrap();
         let meta = saved.meta();
-        assert_eq!(meta.sample_rate, 24_000. / 9.);
-        assert_eq!(meta.center_freq, 2_000.);
-        assert_eq!(meta.len_samples, 48_000u64.div_ceil(9));
+        assert_eq!(meta.sample_rate, 3_000.);
+        assert_eq!(meta.center_freq, 0.);
+        assert_eq!(meta.len_samples, 6_000);
         assert!(meta.is_iq());
         std::fs::remove_dir_all(&dir).unwrap();
     }
