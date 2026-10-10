@@ -6,10 +6,13 @@
 //!
 //! [`SampleSource`]: argand_core::SampleSource
 
+pub mod extract;
+pub mod resample;
 pub mod stft;
 pub mod waveform;
 pub mod window;
 
+pub use extract::{ExtractError, ExtractPlan, Extractor};
 pub use stft::{
     Analysis, AnalysisRequest, Coverage, DB_FLOOR, DEFAULT_DYNAMIC_RANGE_DB, DspError,
     DynamicRange, DynamicRangeResult, Flow, MAX_RECOMMENDED_RANGE_DB, MIN_RECOMMENDED_RANGE_DB,

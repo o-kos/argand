@@ -21,7 +21,7 @@ use gpui_kit::{
 #[path = "cursor_guides.rs"]
 mod cursor_guides;
 pub(crate) use cursor_guides::Readout;
-pub use cursor_guides::{BadgeMetrics, CursorGuides};
+pub use cursor_guides::{BadgeMetrics, CursorGuides, frequency_unit};
 
 /// Room between a label and whatever it labels.
 const LABEL_PAD: f32 = 9.0;

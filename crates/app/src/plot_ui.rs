@@ -48,10 +48,7 @@ impl Shell {
             show_grid: self.session.show_grid,
             show_scale_ui: self.session.show_scale_ui,
             pointer_in_window: self.pointer_in_window,
-            selection: self
-                .selection
-                .zip(self.view)
-                .and_then(|(span, view)| view.fractions_of(span)),
+            selection: self.selected(),
             notice: match &self.save_notice {
                 Some(saving_ui::Notice::Saved(name)) => Some(format!("Saved {name}").into()),
                 _ => None,
@@ -469,20 +466,42 @@ fn plot_bounds(frame: &axes::Frame, spectrum_origin: gpui_kit::Point<Pixels>) ->
     }
 }
 
-/// Tint the selected time, given as fractions of the view, across the whole picture under the grid.
+impl Shell {
+    /// The selection as fractions of the visible picture, none where none of it shows.
+    fn selected(&self) -> Option<waveform::Selected> {
+        let view = self.view?;
+        let time = match self.selection {
+            Some(span) => view.fractions_of(span)?,
+            None if self.band.is_some() => (0., 1.),
+            None => return None,
+        };
+        let frequency = match self.band {
+            Some(band) => {
+                let (low, high) = self.extents()?.hertz;
+                let from_top = |hertz: f64| ((high - hertz) / (high - low)).clamp(0., 1.);
+                let fractions = (from_top(band.high()), from_top(band.low()));
+                (fractions.0 < fractions.1).then_some(fractions)?
+            }
+            None => (0., 1.),
+        };
+        Some(waveform::Selected { time, frequency })
+    }
+}
+
+/// Tint the selection, given as fractions of the visible picture, under the grid.
 fn paint_selection(
     frame: &axes::Frame,
     spectrum_origin: gpui_kit::Point<Pixels>,
-    selection: Option<(f64, f64)>,
+    selection: Option<waveform::Selected>,
     window: &mut Window,
     cx: &gpui_kit::App,
 ) {
-    let Some(fractions) = selection else {
+    let Some(selected) = selection else {
         return;
     };
     let plot = plot_bounds(frame, spectrum_origin);
-    let band = waveform::time_band(plot, frame.orientation, fractions, window.scale_factor());
-    window.paint_quad(gpui_kit::fill(band, selection_fill(cx)));
+    let rect = waveform::selected_rect(plot, frame.orientation, selected, window.scale_factor());
+    window.paint_quad(gpui_kit::fill(rect, selection_fill(cx)));
 }
 
 /// The tint laid over the selected time, light because the picture under it is dark in either theme.

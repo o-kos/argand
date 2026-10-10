@@ -104,19 +104,27 @@ pub fn open_stamped(
 /// Open an independent cursor using already resolved length and normalization.
 /// This avoids a second count/level scan when constructing a document overview.
 pub fn reopen(meta: &SignalMeta, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoError> {
+    reopen_stamped(meta, hints).map(|(source, _)| source)
+}
+
+/// Reopen as [`reopen`] does, with the stamp of what was read.
+pub fn reopen_stamped(
+    meta: &SignalMeta,
+    hints: &OpenHints,
+) -> Result<(Box<dyn SampleSource>, Option<write::SourceStamp>), IoError> {
     let hints = OpenHints {
         normalize: Some(Normalize::Factor(meta.divisor)),
         center_freq: Some(meta.center_freq),
         ..hints.clone()
     };
-    let (source, _) = open_impl(&meta.source, &hints, Some(meta))?;
+    let (source, stamp) = open_impl(&meta.source, &hints, Some(meta))?;
     if source.meta().len_samples != meta.len_samples {
         return Err(IoError::Source {
             path: meta.source.clone(),
             source: SourceError::Decode("capture length changed while reopening".into()),
         });
     }
-    Ok(source)
+    Ok((source, stamp))
 }
 
 fn open_impl(

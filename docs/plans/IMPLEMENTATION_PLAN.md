@@ -16,7 +16,7 @@ The following work is complete:
 - **Phase 3:** configurable STFT size, window, and overlap; frames folded into image columns as they are computed so memory follows output size rather than input duration; six color schemes; and callback-based progress reporting.
 - **Phase 4:** a two-sided spectrum from `-Fs/2` to `+Fs/2` with `fftshift` for complex signals, a one-sided spectrum for real signals, physical frequency axes through `center_frequency`, and consistent 0 dBFS readings for full-scale tones in both domains.
 
-Phase 0 is now complete: `crates/app` holds the `argand` binary, a GPUI window with configuration and session state behind it, restoring what the toolkit reports. The application now also opens a signal file — by argument, by menu, by drag and drop, or from a remembered list — analyses it on a thread of its own, and draws the spectrogram with time and frequency axes placed by the tick policy `aspec` shares. A sparse preview now precedes sequential refinement of both panels, with cancellation on replacement requests. The GUI now supports synchronized time zoom and pan (#30). It still needs the min/max pyramid from Phase 2, the rest of Phase 5 after its editing engine (#195, #196), and the detailed spectrum window from Phase 6.
+Phase 0 is now complete: `crates/app` holds the `argand` binary, a GPUI window with configuration and session state behind it, restoring what the toolkit reports. The application now also opens a signal file — by argument, by menu, by drag and drop, or from a remembered list — analyses it on a thread of its own, and draws the spectrogram with time and frequency axes placed by the tick policy `aspec` shares. A sparse preview now precedes sequential refinement of both panels, with cancellation on replacement requests. The GUI now supports synchronized time zoom and pan (#30). It still needs the min/max pyramid from Phase 2, the rest of Phase 5 after its editing engine (#195, #196) and saving over the open file (#193), and the detailed spectrum window from Phase 6.
 
 Dependencies are pinned in `Cargo.lock`. The repository does not track `vendor/`. For local offline builds, fetch dependencies in advance with `cargo fetch --locked`, then build with `cargo build --frozen`.
 
@@ -108,7 +108,7 @@ Steps, one Issue each:
 1. The selection model and time selection (#178).
 2. A file writer in `argand-io` and "Save selection as" (#186).
 3. The editing engine in `argand-edit`: a piece table over the memory-mapped original and inserted buffers, an undo and redo command stack and a clipboard; delete, copy and paste of a time range; saving the edited capture. Keep I and Q together. Invalidate waveform and spectrogram caches only for affected regions (#195, #196; saving over the open file is #193).
-4. Frequency band and rectangle selection, with frequency shift, low-pass filtering and decimation in `argand-dsp` for saving them.
+4. Frequency band and rectangle selection, with frequency shift, low-pass filtering and decimation in `argand-dsp` for saving them (#202).
 5. Suppressing a band, undoable through the editing engine.
 
 **Done when:** cuts and pastes in multi-hour files are immediate, undo and redo remain stable, waveform and spectrogram views update correctly after edits, and a band or rectangle saves as a file that opens with the right sample rate and centre frequency.

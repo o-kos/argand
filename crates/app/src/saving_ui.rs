@@ -63,7 +63,7 @@ impl Shell {
             && self
                 .editing()
                 .is_some_and(|editing| !editing.capture().is_empty() && editing.is_described())
-            && (!selection_only || self.selection.is_some())
+            && (!selection_only || self.selection.is_some() || self.band.is_some())
     }
 
     /// Ask the desktop where to save, then start writing there.
@@ -104,6 +104,10 @@ impl Shell {
         let Some(editing) = file.editing.as_ref() else {
             return;
         };
+        if let Some(band) = self.band.filter(|_| selection_only) {
+            self.save_band_as(band, window, cx);
+            return;
+        }
         let span = if selection_only { self.selection } else { None };
         let output = editing.file();
         let as_wave = argand_io::write::writes_as_wave(&output.meta, &output.hints);
@@ -165,6 +169,92 @@ impl Shell {
             )
         });
         let (job, updates) = saving::start(request, of.over);
+        self.watch_save(job, updates, (name, target, as_wave), of, window, cx);
+    }
+
+    /// Ask where to save the selected band, over the selected span or the whole capture, then compute it there.
+    fn save_band_as(
+        &mut self,
+        band: argand_core::FrequencyBand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(file) = &self.file else { return };
+        let Some(editing) = file.editing.as_ref() else {
+            return;
+        };
+        let mut meta = editing.file().meta.clone();
+        meta.len_samples = editing.len();
+        let Some(span) = self
+            .selection
+            .or_else(|| argand_core::SampleSpan::between(0, editing.len()))
+        else {
+            return;
+        };
+        let name = saving::suggested_band_name(&meta, self.selection, band);
+        let directory = saving::directory(&meta.source);
+        let mut request = crate::extraction::ExtractRequest {
+            capture: editing.capture().clone(),
+            sources: editing.source_files(),
+            meta,
+            span,
+            band,
+            target: std::path::PathBuf::new(),
+            protected: editing.protected(),
+        };
+        // A band that cannot be saved says why before any dialog asks where.
+        if let Err(error) = request.check() {
+            self.save_notice = Some(Notice::Failed(
+                "Cannot save the band",
+                saving::message(&error),
+            ));
+            cx.notify();
+            return;
+        }
+        let of = SaveOf {
+            document: file.id,
+            version: editing.version(),
+            whole: false,
+            rebind: false,
+            then: None,
+            over: false,
+        };
+        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
+        cx.spawn_in(window, async move |shell, cx| {
+            let Ok(Ok(Some(target))) = chosen.await else {
+                return;
+            };
+            request.target = target;
+            let _ = shell.update_in(cx, |shell, window, cx| {
+                if shell.saving.is_some() {
+                    return;
+                }
+                tracing::info!(
+                    source = %request.meta.source.display(),
+                    target = %request.target.display(),
+                    span = ?request.span,
+                    band = ?request.band,
+                    "saving a band"
+                );
+                let name = file_name(&request.target);
+                let target = request.target.clone();
+                let (job, updates) = saving::start_extraction(request);
+                shell.watch_save(job, updates, (name, target, None), of, window, cx);
+            });
+        })
+        .detach();
+    }
+
+    /// Follow a save job until it finishes, showing it in the status bar.
+    fn watch_save(
+        &mut self,
+        job: saving::Job,
+        updates: async_channel::Receiver<Update>,
+        (name, target, as_wave): (String, std::path::PathBuf, Option<String>),
+        of: SaveOf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.save_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 if shell

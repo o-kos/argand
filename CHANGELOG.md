@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- Select a frequency band by dragging along the frequency ruler, or a rectangle of time and frequency with Ctrl+drag on the spectrogram, and save it with Save selection as… as a float WAVE preserving real or I/Q samples. The saved I/Q band is centred at 0 Hz; a real band starts at 0 Hz. Samples are resampled to a rate rounded up to a multiple of 1000 Hz, with 25% bandwidth headroom. The frequency ruler now pans with the middle button or Space+drag. Full-band I/Q resampling has a narrow transition at the original Nyquist edges (Fs/131072 wide); tones within it share their amplitude with an image, while the original samples are retained in the intermediate signal.
+
 - WAV files whose samples span several `data` chunks, as KiwiSDR recorders write them, open whole instead of as their first 512 samples. Saving such a capture writes an ordinary WAV with one `data` chunk (#204).
 
 - File → Save (Ctrl+S) writes the edits over the open file. The capture is written to a temporary file first, the original is replaced only when that is complete and the file has not changed on disk since it was opened, and the window opens it again where it looked. A headerless capture stays headerless. The question about unsaved edits now offers Save.
