@@ -4,6 +4,24 @@ Resolves #202. Step 4 of phase 5 in `IMPLEMENTATION_PLAN.md`.
 
 Class A (DSP correctness, a public `argand-dsp` API, a new writer path). Implementer: Claude in the session. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
 
+## Owner-requested revision (2026-10-10)
+
+Class A. Implementer for this revision: Codex in the session, requested by the owner. Reviewer: proposed `gpt-6.1-sol` high, awaiting owner confirmation before review. The previous three review rounds describe the original implementation; the changed acceptance contract is planned separately below.
+
+- Preserve the input domain when saving a band or rectangle: complex stays I/Q; real stays mono real.
+- Complex output puts the selected centre at baseband zero; real output translates the selected lower edge to zero. Output reference metadata is zero, so reopening shows those coordinates.
+- With width B, choose `ceil(1.25 * B / 1000) * 1000` Hz for I/Q and `ceil(2.5 * B / 1000) * 1000` Hz for real, including upsampling if needed. Resample values, never only the header.
+- Retain the current FFT extraction as a bounded intermediate analytic baseband. A streaming windowed-sinc resampler reconstructs it at the requested rate; real output then mixes the analytic band up by B/2 and writes its real component. Read neighbouring capture samples for both filters so a rectangle boundary does not introduce zero padding inside the capture.
+- Keep cancellation, progress, source stamps and atomic target replacement.
+
+Revision tasks:
+
+- [ ] Add bounded streaming fractional-rate reconstruction with tone, alias, duration, alignment and block-boundary tests
+- [ ] Add a computed float WAVE writer preserving real/IQ domain with round-trip and cancellation coverage
+- [ ] Integrate zero-referenced, rounded-rate extraction and test both domains, rectangles and non-kilohertz source rates
+- [ ] Synchronize current architecture, changelog and owner checks
+- [ ] Run formatting, Clippy, full tests, independent review and rebuild release
+
 ## Overview
 
 The selection model already holds a time span and a band (#178), but only a time span can be made. This step adds the band and the rectangle, shows them, and saves them as a complex baseband capture centred on the band, at a lower sample rate.
@@ -24,8 +42,8 @@ The selection model already holds a time span and a band (#178), but only a time
 Agreed with the owner:
 
 1. **Gestures.** A left drag on the frequency ruler selects a band. The ruler then pans with the middle button, Space+drag and the wheel, as the spectrum does. A Ctrl+left drag on the spectrum selects a rectangle.
-2. **Sample rate** of a saved band: Fs/D, with D the largest integer that keeps the band and its transition below the new Nyquist rate. There is no fractional resampling.
-3. **Format**: I/Q float32 WAVE, RF64 past 4 GB.
+2. **Sample rate** of a saved band: an integer multiple of 1000 Hz with 25% Nyquist headroom, using fractional-rate reconstruction after intermediate integer decimation.
+3. **Format**: float32 WAVE preserving the input domain (real or I/Q), RF64 past 4 GB.
 
 Derived here:
 
@@ -53,7 +71,7 @@ Derived here:
   - **Delay.** The filter's (N−1)/2 input samples of delay are compensated. Output n is the filtered signal at input sample n·D of the span, and the output holds ⌈len/D⌉ samples.
   - **Edges.** The capture's own samples beyond the span feed the filter where they exist; zeros elsewhere.
   - **Streaming.** It works on blocks of at most 256 Ki samples and is pure, with no I/O. Cancellation and progress belong to the caller, between blocks.
-- **Writer** (`argand_io::write::FloatIq`):
+- **Writer** (`argand_io::write::FloatWave`):
   - It writes complex `f32` frames to the same `.argand-<pid>-<n>.part` temporary file and renames it over the target, under the same target rules as `save`. The target is none of the sources, protected or the open file.
   - The header carries the `fmt ` rate rounded, plus `argd` with the exact rate and the reference frequency, and `auxi` where its fields fit. It becomes RF64 when the data passes 4 GB.
   - Values stay on the unit scale: full scale is 1.0, as the reader normalizes.
@@ -63,7 +81,7 @@ Derived here:
   - It reads the span plus the filter's margins through an `EditedSource`, extracts and writes.
   - Progress and cancel work as for a copied save.
 - **Name.** `<stem>_<low>-<high><unit>.wav` for a band, and `<stem>_<start>-<end>s_<low>-<high><unit>.wav` for a rectangle. The unit is the largest that keeps the edges apart in six decimals, with three decimals at least.
-- **Reference frequency** of the output: the band centre in physical hertz.
+- **Reference frequency** of the output: zero. Complex output centres the band at zero; real output translates its lower edge to zero.
 
 ## Review
 
@@ -81,7 +99,7 @@ Reviewer `gpt-6.1-sol` high.
     - the vertical rectangle and Space+drag on the frequency ruler were not tested;
     - the plan's 25 % claim was wrong.
 
-  All fixed: the mirror and wrapping limits, the whole-band threshold, `Extractor::new` returning an error, `FloatIq::finish` taking the cancel flag, `ExtractPlan::check` for the window, edges clamped after the reference is removed, and tests for each.
+  All fixed: the mirror and wrapping limits, the whole-band threshold, `Extractor::new` returning an error, `FloatWave::finish` taking the cancel flag, `ExtractPlan::check` for the window, edges clamped after the reference is removed, and tests for each.
 
   Declined: the nit on colons in doc comments. The comment rule covers `//` comments, not docstrings, and no `//` comment in the diff has a colon or semicolon.
 
@@ -117,14 +135,14 @@ To be checked by hand on a release build of this branch (`cargo build --release 
 - [ ] The frequency ruler still pans with the middle button, Space+left drag and the wheel. A left drag on the time ruler and the minimap still pans.
 - [ ] With a band or rectangle selected, Cut, Copy, Delete and Replace selection are unavailable in the Edit menu, the context menu and on their keys.
 - [ ] File → Save selection as… with a band proposes `<stem>_<low>-<high><unit>.wav`, and with a rectangle `<stem>_<start>-<end>s_<low>-<high><unit>.wav`.
-- [ ] The saved file opens in Argand as a complex capture with the band centre as its reference frequency and a sample rate of Fs/D. The signal in the band is where it was, and nothing outside the band is visible.
-- [ ] A band on a real capture starting at 0 Hz saves without a mirrored copy of the band.
+- [ ] The saved file reopens with the source domain and zero reference: complex selection centre at 0 Hz, real selection lower edge at 0 Hz. Its rate is an integer multiple of 1000 Hz, at least 1.25·B for I/Q or 2.5·B for real. Duration and signal amplitudes are preserved; out-of-band tones are suppressed.
+- [ ] A band on a real capture stays real; a band starting at 0 Hz retains DC and has no mirrored copy on its one-sided spectrum.
 - [ ] Saving a large band shows progress, and × cancels it, leaving no file behind.
 - [ ] Opening another file or an edit clears the band, and Undo and Redo bring back only time selections.
 
 ## Rejected alternatives
 
-- **Fractional resampling to exactly the band width.** It is more code and more CPU. For D ≥ 2 the integer rate lies between 1.25·B and 1.25·B·(D+1)/D, at most half again over 1.25·B and less as D grows. D = 1 takes bands wider than 0.4·Fs and keeps the full rate, up to 2.5 times the band (corrected after review).
+- **Original implementation: fractional resampling to exactly the band width.** It is more code and more CPU. For D ≥ 2 the integer rate lies between 1.25·B and 1.25·B·(D+1)/D, at most half again over 1.25·B and less as D grows. D = 1 takes bands wider than 0.4·Fs and keeps the full rate, up to 2.5 times the band (corrected after review).
 - **A polyphase FIR without FFT.** This was the first build. Its cost grows with the filter length, so a transition as narrow as a real capture's mirror or a nearly whole band needs made it too slow. The guards it needed instead let a mirror or an out-of-band tone through (second review).
 - **Writing in the source's sample type.** Filtered values are fractional, so quantising them back adds noise and risks clipping.
 
