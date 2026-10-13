@@ -521,7 +521,8 @@ be written over though nothing is read from them (the open file), recognised by 
 their stamp's identity, so a renamed one is still refused (on Unix only until #199 gives
 Windows a file ID). Each `SourceFile::stamp`, a `SourceStamp` (length,
 modification time, device and inode on Unix) taken off the window's thread after the file
-describes itself, must match the handle read, and the target must be none of the files
+describes itself, must match the handle read, both when it is opened and again from
+that handle after the last sample is read (#206), and the target must be none of the files
 read, also just before the rename. Output goes to
 `.argand-<pid>-<n>.part` beside the target, created with `create_new` so no existing path
 is ever opened for writing, then synced, checked for cancellation and renamed over the

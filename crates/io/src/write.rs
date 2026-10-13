@@ -519,12 +519,16 @@ fn stage_with_limit(
     if cancel.load(Ordering::Relaxed) {
         return Err(WriteError::Cancelled);
     }
+    // Samples not yet read when the copy began may have been written over since.
+    for open in &opened {
+        open.unchanged()?;
+    }
     Ok(Staged {
         partial,
         target: target.clone(),
         replaces,
         protected: request.protected.clone(),
-        read: opened.iter().map(|open| open.identity).collect(),
+        read: opened.iter().map(|open| open.stamp.identity).collect(),
         samples: total,
         container,
     })
@@ -622,7 +626,10 @@ fn copies(opened: &mut [Opened]) -> Vec<(&mut File, &CopyLayout)> {
 /// A source opened for saving, checked to be the file that was opened as the capture.
 struct Opened {
     reader: Reader,
-    identity: Option<(u64, u64)>,
+    /// The handle the samples are read through, kept apart from the reader to stamp it again.
+    handle: File,
+    stamp: SourceStamp,
+    path: PathBuf,
 }
 
 /// How one source's samples reach the new file.
@@ -666,6 +673,7 @@ impl Opened {
         if source.stamp.is_some_and(|expected| expected != stamp) {
             return Err(WriteError::SourceChanged { path: path.clone() });
         }
+        let handle = input.try_clone().map_err(read_error)?;
         let reader = Reader::open(source, &mut input)?;
         let reader = match reader {
             Some(layout) => Reader::Copy { input, layout },
@@ -676,7 +684,19 @@ impl Opened {
         };
         Ok(Self {
             reader,
-            identity: stamp.identity,
+            handle,
+            stamp,
+            path: path.clone(),
+        })
+    }
+
+    /// Refuse a source whose file is no longer what it was when it was opened.
+    fn unchanged(&self) -> Result<(), WriteError> {
+        if SourceStamp::of_file(&self.handle).ok() == Some(self.stamp) {
+            return Ok(());
+        }
+        Err(WriteError::SourceChanged {
+            path: self.path.clone(),
         })
     }
 }
