@@ -133,18 +133,18 @@ Reviewer `gpt-6.1-sol` high.
 
 ## Owner acceptance checks
 
-To be checked by hand on a release build of this branch (`cargo build --release --locked`):
+The owner accepted PR #203 as complete on 2026-10-13. Individual manual check results were not separately reported. The acceptance criteria are:
 
-- [ ] A left drag on the frequency ruler selects a band over the whole capture. It is tinted across the spectrum in both orientations, and the status bar shows its edges and width in the ruler's unit.
-- [ ] A Ctrl+left drag on the spectrum selects a rectangle, tinted only within its span. The status bar shows the time span and the band.
-- [ ] A plain left drag on the spectrum still selects time, and a click clears any selection.
-- [ ] The frequency ruler still pans with the middle button, Space+left drag and the wheel. A left drag on the time ruler and the minimap still pans.
-- [ ] With a band or rectangle selected, Cut, Copy, Delete and Replace selection are unavailable in the Edit menu, the context menu and on their keys.
-- [ ] File → Save selection as… with a band proposes `<stem>_<low>-<high><unit>.wav`, and with a rectangle `<stem>_<start>-<end>s_<low>-<high><unit>.wav`.
-- [ ] The saved file reopens with the source domain and zero reference: complex selection centre at 0 Hz, real selection lower edge at 0 Hz. Its rate is an integer multiple of 1000 Hz, at least 1.25·B for I/Q or 2.5·B for real. Duration and signal amplitudes are preserved; out-of-band tones are suppressed.
-- [ ] A band on a real capture stays real; a band starting at 0 Hz retains DC and has no mirrored copy on its one-sided spectrum.
-- [ ] Saving a large band shows progress, and × cancels it, leaving no file behind.
-- [ ] Opening another file or an edit clears the band, and Undo and Redo bring back only time selections.
+- A left drag on the frequency ruler selects a band over the whole capture. It is tinted across the spectrum in both orientations, and the status bar shows its edges and width in the ruler's unit.
+- A Ctrl+left drag on the spectrum selects a rectangle, tinted only within its span. The status bar shows the time span and the band.
+- A plain left drag on the spectrum still selects time, and a click clears any selection.
+- The frequency ruler still pans with the middle button, Space+left drag and the wheel. A left drag on the time ruler and the minimap still pans.
+- With a band or rectangle selected, Cut, Copy, Delete and Replace selection are unavailable in the Edit menu, the context menu and on their keys.
+- File → Save selection as… with a band proposes `<stem>_<low>-<high><unit>.wav`, and with a rectangle `<stem>_<start>-<end>s_<low>-<high><unit>.wav`.
+- The saved file reopens with the source domain and zero reference: complex selection centre at 0 Hz, real selection lower edge at 0 Hz. Its rate is an integer multiple of 1000 Hz, at least 1.25·B for I/Q or 2.5·B for real. Duration and signal amplitudes are preserved; out-of-band tones are suppressed.
+- A band on a real capture stays real; a band starting at 0 Hz retains DC and has no mirrored copy on its one-sided spectrum.
+- Saving a large band shows progress, and × cancels it, leaving no file behind.
+- Opening another file or an edit clears the band, and Undo and Redo bring back only time selections.
 
 ## Rejected alternatives
 
