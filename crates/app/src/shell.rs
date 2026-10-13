@@ -1002,11 +1002,13 @@ impl Shell {
                     self.refresh_waveform();
                 }
             }
+            // A scan of a file the capture no longer reads says nothing about the minimap shown.
+            Err(error) if !read => {
+                tracing::debug!(%error, "minimap of a file no longer read failed");
+            }
             Err(error) => {
                 tracing::warn!(%error, "minimap unavailable");
-                if read {
-                    file.state.document.note_failure(&error);
-                }
+                file.state.document.note_failure(&error);
                 // A changed file keeps the minimap of the file as it was opened.
                 if !file.state.document.is_changed() {
                     file.state.document.minimap_failed(format!("{error:#}"));
