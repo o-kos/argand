@@ -47,6 +47,17 @@ pub(super) struct Rebinding {
     shown: crate::document::Shown,
 }
 
+impl Rebinding {
+    /// A rebinding of the same file under the same edits, as a failed replacement leaves.
+    #[cfg(test)]
+    pub(super) fn kept(shown: crate::document::Shown) -> Self {
+        Self {
+            to: Rebind::Keep,
+            shown,
+        }
+    }
+}
+
 /// The file new readers open under the shown picture.
 enum Rebind {
     /// A new file of the samples these edits showed.
@@ -220,6 +231,8 @@ impl Shell {
         file.lease = readers.lease;
         file._minimap_updates = None;
         file._edit_tasks.clear();
+        // A check started on the old readers would compare the saved file with the old stamp.
+        file.disk_check = None;
         Some((readers.start, old))
     }
 

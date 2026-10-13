@@ -272,20 +272,13 @@ impl Shell {
         let Some(lease) = self.file.as_ref().map(|file| file.lease.clone()) else {
             return;
         };
+        let stamp = source.stamp;
         let updates = crate::minimap::start(source.source_file(), lease);
         let task = cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
-                let snapshot = match update {
-                    Ok(snapshot) => snapshot,
-                    Err(error) => {
-                        tracing::warn!(%error, "pasted file's envelope unavailable");
-                        let _ = shell.update(cx, |shell, cx| shell.envelope_failed(&error, cx));
-                        break;
-                    }
-                };
-                let applied =
-                    shell.update_in(cx, |shell, _, cx| shell.envelope_ready(id, snapshot, cx));
-                if applied.is_err() {
+                let more =
+                    shell.update(cx, |shell, cx| shell.envelope_update(id, stamp, update, cx));
+                if !more.is_ok_and(|more| more) {
                     break;
                 }
             }
@@ -295,8 +288,44 @@ impl Shell {
         }
     }
 
-    fn envelope_failed(&mut self, error: &anyhow::Error, cx: &mut Context<Self>) {
-        if let Some(file) = &mut self.file {
+    /// Take one update of a pasted file's envelope, answering whether more can follow.
+    fn envelope_update(
+        &mut self,
+        id: SourceId,
+        stamp: Option<argand_io::write::SourceStamp>,
+        update: anyhow::Result<Arc<crate::minimap::Snapshot>>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        match update {
+            Ok(snapshot) => {
+                self.envelope_ready(id, snapshot, cx);
+                true
+            }
+            Err(error) => {
+                tracing::warn!(%error, "pasted file's envelope unavailable");
+                self.envelope_failed(id, stamp, &error, cx);
+                false
+            }
+        }
+    }
+
+    /// Note a pasted file's failed envelope, while the capture still reads that file.
+    pub(super) fn envelope_failed(
+        &mut self,
+        id: SourceId,
+        stamp: Option<argand_io::write::SourceStamp>,
+        error: &anyhow::Error,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(file) = &mut self.file else { return };
+        let read = file.editing.as_ref().is_some_and(|editing| {
+            editing
+                .source_files()
+                .get(id.0 as usize)
+                .and_then(Option::as_ref)
+                .is_some_and(|source| source.stamp == stamp)
+        });
+        if read {
             file.state.document.note_failure(error);
             cx.notify();
         }

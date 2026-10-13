@@ -54,6 +54,7 @@ Out of scope: an overwrite in place of a memory-mapped file while it is read, wi
 - [x] Status bar notice with Reopen; Reopen with Discard/Cancel when edits are unsaved.
 - [x] Tests: `disk_change` recognises `Changed` through an error chain and finds a rewritten or removed file. Headless GPUI tests: a stale check (another document, other stamps) is ignored; the activation check notices a rewrite, refuses edits, and Reopen asks first, Cancel keeps the document and Discard opens the file again; a minimap refused by a replaced file marks the capture.
 - [x] AGENTS.md and CHANGELOG.md.
+- [x] Review round 1 (`gpt-6.1-sol` high): accepted all six findings. `reopen` checks the stamp by path before parsing, so a removed, emptied or unparsable replacement is `Changed`. No disk check starts or applies while a saved file is rebound, and `swap_readers` drops a pending one, so the application's own Save is never reported. Analysis deliveries and minimap results are rejected once the capture changed, so a pass already running cannot replace the held picture, and a refused minimap keeps the one shown. A pasted file's late envelope failure counts only while the current version still reads that file under that stamp. The `SharedFile` documentation no longer claims `seek_read` leaves the handle's position alone. Each fix has a test; the rebinding one fails without its guard.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 

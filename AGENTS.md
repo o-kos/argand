@@ -636,20 +636,25 @@ falling back to Save as.
 No read path opens a capture's file again by path without proving it is the file opened.
 `DecodedSource` keeps the opened handle in an `Arc<File>` and every fresh parser (a FLAC seek,
 the length count, the automatic level scan) reads it through `shared_file::SharedFile`, a
-cursor of positioned reads (`read_at`, `seek_read` on Windows) that never moves the handle's
-own position, after stamping the handle again (`DecodedSource::fresh`). `argand_io::reopen`
-takes the stamp the file was first opened with and fails unless the new handles have it.
+cursor of positioned reads (`read_at`, `seek_read` on Windows) that keeps its own offset and
+never relies on the handle's position (which `seek_read` moves), after stamping the handle again (`DecodedSource::fresh`). `argand_io::reopen`
+takes the stamp the file was first opened with and fails unless the path has it before parsing
+(so a removed, emptied or unreadable replacement is a change too) and the new handles have it.
 Both failures are `argand_core::SourceError::Changed`, which `IoError::is_changed` and
 `disk_change::changed_file` recognise through an `anyhow` chain. The minimap, the analysis
 worker's pasted sources (`EditState::sources` carries each `SourceFile`), pasted envelopes and
 extraction all reopen with a stamp.
 
 `Document::changed` names the first file found changed: from a failed analysis, minimap or
-envelope (`Document::note_failure`), or from the activation check (`disk_change_ui.rs`), which
+envelope (`Document::note_failure`; a pasted file's envelope only while the current version
+still reads it under that stamp), or from the activation check (`disk_change_ui.rs`), which
 stamps the files the current version reads by path on a thread of its own, at most one at a
-time per document, and applies the result only to the same document and the same stamps, never
-while `replacement_active`. While it is set, `ask_for_a_picture` asks for nothing, so the held
-picture stays, edits are refused (`editing_mut`, `edit_commands_available`), and the status bar
+time per document, and applies the result only to the same document and the same stamps. No
+check starts or applies while `replacement_active` or while a saved file is being rebound
+(`OpenFile::rebinding`, when the document still holds the old stamp), and `swap_readers` drops
+a pending one. While it is set, `ask_for_a_picture` asks for nothing,
+`OpenFileState::accept` rejects every analysis delivery and the minimap takes no snapshot or
+failure, so the held picture and minimap stay, edits are refused (`editing_mut`, `edit_commands_available`), and the status bar
 shows `<name> changed on disk` with a Reopen button in place of the analysis status. Reopen
 opens the origin again; the unsaved-edits question then offers only Discard and Cancel
 (`ask_unsaved` without `savable`), because the writer refuses a changed source. An overwrite

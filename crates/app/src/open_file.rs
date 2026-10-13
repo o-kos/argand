@@ -56,7 +56,8 @@ impl OpenFileState {
     /// last good settings in place and a cancelled editor preview keeps them
     /// until the restored settings produce their own picture.
     pub(crate) fn accept(&mut self, delivery: Delivery, settings: &Settings) -> Option<Effect> {
-        if !self.analyst.accepts(&delivery) {
+        // Once a file changed on disk the picture shown stays, whatever a pass already running reads.
+        if !self.analyst.accepts(&delivery) || self.document.changed().is_some() {
             return None;
         }
         let effect = self.document.apply(delivery.update);
@@ -310,5 +311,18 @@ mod tests {
         assert_eq!(first.accept(ready(2, 2), &preview), Some(Effect::Analysis));
         assert_eq!(first.displayed_settings(), Some(&preview));
         assert_eq!(second.displayed_settings(), None);
+    }
+
+    #[test]
+    fn a_pass_running_when_the_file_changed_does_not_replace_the_picture() {
+        let settings = Settings::from_config(&crate::config::Config::default());
+        let mut state = state();
+        state.analyst.request_view(request_a(), None);
+        assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
+        state.analyst.request_view(request_b(), None);
+        state
+            .document
+            .mark_changed(PathBuf::from("/captures/a.iqw"));
+        assert_eq!(state.accept(ready(2, 2), &settings), None);
     }
 }

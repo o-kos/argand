@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use symphonia::core::io::MediaSource;
 
-/// A cursor over a shared handle that reads at its own position and never moves the handle's.
+/// A cursor over a shared handle that reads at a position of its own, never the handle's.
 pub(crate) struct SharedFile {
     file: Arc<File>,
     pos: u64,

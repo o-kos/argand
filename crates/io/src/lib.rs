@@ -116,7 +116,8 @@ pub fn reopen(
         path: meta.source.clone(),
         source: SourceError::Changed,
     };
-    if stamp.is_none() {
+    // Before parsing, so a removed, emptied or unreadable replacement is a change too.
+    if stamp.is_none() || write::SourceStamp::of(&meta.source).ok() != stamp {
         return Err(changed());
     }
     let hints = OpenHints {

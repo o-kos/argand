@@ -39,7 +39,11 @@ impl Shell {
         let Some(file) = self.file.as_mut() else {
             return;
         };
-        if file.state.document.changed().is_some() || file.disk_check.is_some() {
+        // While new readers open a saved file, the document's stamp is still the old file's.
+        if file.state.document.changed().is_some()
+            || file.disk_check.is_some()
+            || file.rebinding.is_some()
+        {
             return;
         }
         let document = file.id;
@@ -79,7 +83,8 @@ impl Shell {
         };
         file.disk_check = None;
         // A save that rebound the file, or an edit that read another, makes the check stale.
-        if self.replacement_active || current.as_ref() != Some(watched) {
+        if self.replacement_active || file.rebinding.is_some() || current.as_ref() != Some(watched)
+        {
             return;
         }
         if let Some(path) = changed {
@@ -293,6 +298,10 @@ mod tests {
             "the minimap to be refused",
             Shell::capture_changed,
         );
+        assert!(
+            shell.read_with(cx, |shell, _| shell.waveform.is_some()),
+            "the minimap shown stays"
+        );
         let changed = shell.read_with(cx, |shell, _| {
             shell.file.as_ref().and_then(|file| {
                 file.state
@@ -302,5 +311,59 @@ mod tests {
             })
         });
         assert_eq!(changed, Some(path));
+    }
+
+    #[gpui_kit::test]
+    fn a_late_envelope_failure_counts_only_for_a_file_still_read(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        opened_and_edited(cx, &shell, "changed-envelope");
+        let error = anyhow::Error::from(argand_core::SourceError::Changed);
+        let stamp = shell.read_with(cx, |shell, _| shell.editing().and_then(|e| e.file().stamp));
+        shell.update(cx, |shell, cx| {
+            // A pasted file undone since, and the open file under another stamp.
+            shell.envelope_failed(argand_edit::SourceId(1), stamp, &error, cx);
+            shell.envelope_failed(argand_edit::SourceId(0), None, &error, cx);
+        });
+        assert!(!shell.read_with(cx, |shell, _| shell.capture_changed()));
+        shell.update(cx, |shell, cx| {
+            shell.envelope_failed(argand_edit::SourceId(0), stamp, &error, cx);
+        });
+        assert!(shell.read_with(cx, |shell, _| shell.capture_changed()));
+    }
+
+    #[gpui_kit::test]
+    fn nothing_is_checked_while_a_saved_file_is_rebound(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        let path = opened_and_edited(cx, &shell, "changed-rebound");
+        let (document, watched) = shell.read_with(cx, |shell, _| {
+            (shell.file.as_ref().map(|file| file.id), shell.watched())
+        });
+        let (Some(document), Some(watched)) = (document, watched) else {
+            panic!("the capture is not watched");
+        };
+        // The file was just saved over, and the document still holds the old stamp.
+        write_wave(&path, 48_000);
+        shell.update(cx, |shell, _| {
+            let file = shell.file.as_mut().unwrap();
+            let shown = file.state.document.shown();
+            file.rebinding = Some(replace_ui::Rebinding::kept(shown));
+        });
+        shell.update_in(cx, |shell, window, cx| shell.check_disk(window, cx));
+        assert!(
+            shell.read_with(cx, |shell, _| shell
+                .file
+                .as_ref()
+                .unwrap()
+                .disk_check
+                .is_none()),
+            "no check starts"
+        );
+        shell.update(cx, |shell, cx| {
+            shell.disk_checked(document, &watched, Some(path.clone()), cx);
+        });
+        assert!(
+            !shell.read_with(cx, |shell, _| shell.capture_changed()),
+            "a check started before is not applied"
+        );
     }
 }

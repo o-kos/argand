@@ -980,6 +980,9 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let Some(file) = &mut self.file else { return };
+        if file.state.document.changed().is_some() {
+            return;
+        }
         match update {
             Ok(snapshot) => {
                 file.state.document.minimap_ready(&snapshot);
@@ -997,8 +1000,11 @@ impl Shell {
             Err(error) => {
                 tracing::warn!(%error, "minimap unavailable");
                 file.state.document.note_failure(&error);
-                file.state.document.minimap_failed(format!("{error:#}"));
-                self.waveform = None;
+                // A changed file keeps the minimap of the file as it was opened.
+                if file.state.document.changed().is_none() {
+                    file.state.document.minimap_failed(format!("{error:#}"));
+                    self.waveform = None;
+                }
             }
         }
         cx.notify();

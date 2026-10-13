@@ -481,6 +481,10 @@ fn a_same_length_replacement_is_not_reopened() {
     let other = write_wav(&dir.join("b.wav"), st, 48000, &[0.5, 0.5, 0.5, 0.5], 1.0);
     std::fs::rename(&other, &path).unwrap();
     assert!(reopen(&meta, &OpenHints::default(), stamp).is_err_and(|error| error.is_changed()));
+    std::fs::write(&path, b"").unwrap();
+    assert!(reopen(&meta, &OpenHints::default(), stamp).is_err_and(|error| error.is_changed()), "emptied");
+    std::fs::remove_file(&path).unwrap();
+    assert!(reopen(&meta, &OpenHints::default(), stamp).is_err_and(|error| error.is_changed()), "removed");
 }
 
 /// The FLAC fixture written into `dir`, with its bytes.
