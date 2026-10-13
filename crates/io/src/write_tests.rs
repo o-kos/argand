@@ -466,6 +466,75 @@ fn a_source_replaced_since_it_was_opened_is_refused() {
     assert_eq!(names(&dir), ["a.wav"]);
 }
 
+/// Give `path` a modification time after `earlier`, which a write within one tick of the file clock may not.
+fn modified_after(path: &Path, earlier: std::time::SystemTime) {
+    let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.set_modified(earlier + std::time::Duration::from_secs(2)).unwrap();
+}
+
+/// Overwrite the last sample of a WAVE file in place, keeping its length.
+fn overwrite_last_sample(path: &Path) {
+    let before = fs::metadata(path).unwrap().modified().unwrap();
+    let bytes = fs::read(path).unwrap();
+    let chunks = riff::scan(&bytes).unwrap();
+    let end = chunks.data_offset + chunks.declared_len.unwrap().min(bytes.len() - chunks.data_offset);
+    let mut file = fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.seek(SeekFrom::Start(end as u64 - 4)).unwrap();
+    file.write_all(&[0x5a; 4]).unwrap();
+    drop(file);
+    modified_after(path, before);
+}
+
+#[test]
+fn a_source_changed_while_it_is_copied_is_refused() {
+    let dir = TempDir::new("write-changed-during");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
+    let mut request = request(&source, OpenHints::default(), None, dir.join("b.wav"));
+    request.segments = vec![segment(0, 0, 32), segment(0, 32, 32)];
+    let mut changed = false;
+    let result = save(
+        &request,
+        &mut |done, _| {
+            if done == 32 && !changed {
+                overwrite_last_sample(&source);
+                changed = true;
+            }
+        },
+        &AtomicBool::new(false),
+    );
+    assert!(changed);
+    assert!(matches!(result, Err(WriteError::SourceChanged { .. })), "{result:?}");
+    assert_eq!(names(&dir), ["a.wav"]);
+}
+
+#[test]
+fn a_second_source_changed_while_it_is_copied_is_refused() {
+    let dir = TempDir::new("write-second-changed-during");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let a = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let b = write_wav(&dir.join("b.wav"), i16, 48_000, &signal(i16, 10), 1.0);
+    let request = SaveRequest::joined(
+        vec![source_file(&a, OpenHints::default()), source_file(&b, OpenHints::default())],
+        vec![segment(0, 0, 10), segment(1, 0, 5), segment(1, 5, 5)],
+        dir.join("c.wav"),
+    ).unwrap();
+    let mut changed = false;
+    let result = save(
+        &request,
+        &mut |done, _| {
+            if done == 15 && !changed {
+                overwrite_last_sample(&b);
+                changed = true;
+            }
+        },
+        &AtomicBool::new(false),
+    );
+    assert!(changed);
+    assert!(matches!(result, Err(WriteError::SourceChanged { .. })), "{result:?}");
+    assert_eq!(names(&dir), ["a.wav", "b.wav"]);
+}
+
 #[test]
 fn chunks_after_data_are_not_copied_as_samples() {
     let dir = TempDir::new("write-trailing");
@@ -749,6 +818,7 @@ fn a_rotated_source_is_neither_read_nor_saved_over() {
     let request = request(&source, OpenHints::default(), None, archive.clone());
     fs::rename(&source, &archive).unwrap();
     write_wav(&source, sample_type, 48_000, &real_tone(128, 48_000.0, 100.0, 0.25), 1.0);
+    modified_after(&source, fs::metadata(&archive).unwrap().modified().unwrap());
     assert_eq!(fs::metadata(&source).unwrap().len(), original.len() as u64);
     let result = run(&request);
     assert!(result.is_err(), "{result:?}");

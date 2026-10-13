@@ -31,6 +31,7 @@ promise applies to.
 
 ### Fixed
 
+- A save fails, leaving no file behind, when one of the files it reads is written over by another program while the save copies it, instead of writing a mix of old and new samples (#206).
 - Initialize the Linux pointer to an arrow before opening the window, so a stationary Wayland entry can replace a resize cursor left by the previous instance (#152).
 
 ## [0.1.1] - 2026-10-05
