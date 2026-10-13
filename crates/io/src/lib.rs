@@ -16,6 +16,7 @@ pub mod decoder;
 pub mod mmapped;
 pub mod normalize;
 pub mod riff;
+mod shared_file;
 pub mod spec;
 #[cfg(any(test, feature = "testutil"))]
 pub mod testutil;
@@ -103,28 +104,44 @@ pub fn open_stamped(
 
 /// Open an independent cursor using already resolved length and normalization.
 /// This avoids a second count/level scan when constructing a document overview.
-pub fn reopen(meta: &SignalMeta, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoError> {
-    reopen_stamped(meta, hints).map(|(source, _)| source)
-}
-
-/// Reopen as [`reopen`] does, with the stamp of what was read.
-pub fn reopen_stamped(
+///
+/// `stamp` is the file's stamp when it was first opened; a file that no longer has it, or
+/// whose stamp cannot be told, is [`SourceError::Changed`].
+pub fn reopen(
     meta: &SignalMeta,
     hints: &OpenHints,
-) -> Result<(Box<dyn SampleSource>, Option<write::SourceStamp>), IoError> {
+    stamp: Option<write::SourceStamp>,
+) -> Result<Box<dyn SampleSource>, IoError> {
+    let changed = || IoError::Source {
+        path: meta.source.clone(),
+        source: SourceError::Changed,
+    };
+    if stamp.is_none() {
+        return Err(changed());
+    }
     let hints = OpenHints {
         normalize: Some(Normalize::Factor(meta.divisor)),
         center_freq: Some(meta.center_freq),
         ..hints.clone()
     };
-    let (source, stamp) = open_impl(&meta.source, &hints, Some(meta))?;
-    if source.meta().len_samples != meta.len_samples {
-        return Err(IoError::Source {
-            path: meta.source.clone(),
-            source: SourceError::Decode("capture length changed while reopening".into()),
-        });
+    let (source, now) = open_impl(&meta.source, &hints, Some(meta))?;
+    if now != stamp || source.meta().len_samples != meta.len_samples {
+        return Err(changed());
     }
-    Ok((source, stamp))
+    Ok(source)
+}
+
+impl IoError {
+    /// Whether the file is no longer the one that was opened.
+    pub fn is_changed(&self) -> bool {
+        matches!(
+            self,
+            Self::Source {
+                source: SourceError::Changed,
+                ..
+            }
+        )
+    }
 }
 
 fn open_impl(

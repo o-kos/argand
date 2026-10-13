@@ -44,7 +44,7 @@ impl Source {
             && self.meta.sample_rate == other.meta.sample_rate
     }
 
-    fn file(&self) -> SourceFile {
+    pub fn source_file(&self) -> SourceFile {
         SourceFile {
             meta: self.meta.clone(),
             hints: self.hints.clone(),
@@ -376,9 +376,7 @@ impl Editing {
                 .sources
                 .iter()
                 .enumerate()
-                .map(|(index, source)| {
-                    (index > 0).then(|| (source.meta.clone(), source.hints.clone()))
-                })
+                .map(|(index, source)| (index > 0).then(|| source.source_file()))
                 .collect(),
         }
     }
@@ -472,7 +470,7 @@ impl Editing {
             .enumerate()
             .map(|(index, source)| {
                 used.contains(&SourceId(index as u32))
-                    .then(|| source.file())
+                    .then(|| source.source_file())
             })
             .collect()
     }
@@ -497,7 +495,7 @@ impl Editing {
             meta: file.meta.clone(),
             sources: used
                 .iter()
-                .map(|id| self.sources[id.0 as usize].file())
+                .map(|id| self.sources[id.0 as usize].source_file())
                 .collect(),
             segments: pieces
                 .into_iter()

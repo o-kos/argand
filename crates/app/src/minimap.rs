@@ -7,7 +7,6 @@ use anyhow::{Result, ensure};
 use argand_core::{AccessPattern, SampleSource, WaveformEnvelope};
 use argand_dsp::EnvelopeBuilder;
 
-use crate::document::Origin;
 use crate::navigation::View;
 
 const COLUMNS: usize = 65536;
@@ -24,8 +23,7 @@ pub struct Snapshot {
 }
 
 pub fn start(
-    origin: Origin,
-    meta: argand_core::SignalMeta,
+    file: argand_io::write::SourceFile,
     lease: crate::release::Lease,
 ) -> async_channel::Receiver<Result<Arc<Snapshot>>> {
     let (sender, receiver) = async_channel::bounded(2);
@@ -39,7 +37,7 @@ pub fn start(
                 return;
             }
             let started = Instant::now();
-            let result = argand_io::reopen(&meta, &origin.hints)
+            let result = argand_io::reopen(&file.meta, &file.hints, file.stamp)
                 .map_err(anyhow::Error::from)
                 .and_then(|mut source| {
                     build(source.as_mut(), &|| !sender.is_closed(), &mut |snapshot| {

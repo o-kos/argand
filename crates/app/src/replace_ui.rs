@@ -409,13 +409,15 @@ impl Shell {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use gpui_kit::TestAppContext;
     use gpui_kit::test::TestWindowExt;
     use std::path::{Path, PathBuf};
 
-    fn open_window(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
+    pub(in crate::shell) fn open_window(
+        cx: &mut TestAppContext,
+    ) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
         cx.executor().allow_parking();
         cx.update(|cx| {
             gpui_kit::init(cx);
@@ -434,7 +436,7 @@ mod tests {
     }
 
     /// A 16-bit I/Q WAVE file whose sample `n` holds `n` in both channels.
-    fn write_wave(path: &Path, samples: u32) {
+    pub(in crate::shell) fn write_wave(path: &Path, samples: u32) {
         let data_len = samples * 4;
         let mut bytes = Vec::new();
         bytes.extend_from_slice(b"RIFF");
@@ -458,7 +460,7 @@ mod tests {
     }
 
     /// Draw and let the real threads work until `done` holds, or fail after a while.
-    fn wait_until(
+    pub(in crate::shell) fn wait_until(
         cx: &mut gpui_kit::VisualTestContext,
         shell: &Entity<Shell>,
         what: &str,

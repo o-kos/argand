@@ -333,24 +333,28 @@ impl Shell {
                     )
                 })
             })
-            .when_some(status, |bar, (status, hint)| {
-                bar.child(
-                    div()
-                        .id("analysis-status")
-                        .min_w_0()
-                        .max_w(px(140.))
-                        .when_some(hint, |status, hint| {
-                            status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
-                        })
-                        .child(
-                            div()
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .child(status),
-                        ),
-                )
-            })
+            .when_some(
+                status.filter(|_| !self.capture_changed()),
+                |bar, (status, hint)| {
+                    bar.child(
+                        div()
+                            .id("analysis-status")
+                            .min_w_0()
+                            .max_w(px(140.))
+                            .when_some(hint, |status, hint| {
+                                status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
+                            })
+                            .child(
+                                div()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
+                                    .child(status),
+                            ),
+                    )
+                },
+            )
+            .children(self.changed_item(cx))
             // Last, so it keeps its place whatever the readouts beside it do.
             .children(self.save_item(cx))
     }

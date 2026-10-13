@@ -73,7 +73,7 @@ fn a_paste_from_another_file_adds_it_once_when_it_matches() {
     assert_eq!(document.len(), 140);
     let state = document.edit_state();
     assert!(state.sources[0].is_none());
-    assert_eq!(state.sources[1].as_ref().map(|(meta, _)| meta.source.clone()), Some(PathBuf::from("/b.wav")));
+    assert_eq!(state.sources[1].as_ref().map(|file| file.meta.source.clone()), Some(PathBuf::from("/b.wav")));
     assert_eq!(document.missing_envelopes().len(), 1);
 }
 

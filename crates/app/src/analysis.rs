@@ -117,7 +117,7 @@ pub struct EditState {
     pub version: u64,
     pub capture: argand_edit::Capture,
     /// Indexed by source id, the file itself being source 0 and left `None`.
-    pub sources: Vec<Option<(SignalMeta, OpenHints)>>,
+    pub sources: Vec<Option<argand_io::write::SourceFile>>,
 }
 
 fn same_analysis(a: AnalysisRequest, b: AnalysisRequest) -> bool {
@@ -393,10 +393,10 @@ fn follow_edit(
         if source.has_source(id) {
             continue;
         }
-        let Some(Some((meta, hints))) = state.sources.get(id.0 as usize) else {
+        let Some(Some(file)) = state.sources.get(id.0 as usize) else {
             anyhow::bail!("source {} of the edited capture cannot be opened", id.0);
         };
-        source.insert_source(id, argand_io::reopen(meta, hints)?);
+        source.insert_source(id, argand_io::reopen(&file.meta, &file.hints, file.stamp)?);
     }
     source.set_capture(state.capture.clone())?;
     Ok(())

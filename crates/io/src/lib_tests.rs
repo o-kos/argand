@@ -409,17 +409,18 @@ fn reopening_reuses_normalization_and_preserves_independent_cursors() {
     for st in all_sample_types() {
         let path = write_wav(&dir.join(&format!("{st}.wav")), st, 48000, &values, 1.0);
         let hints = OpenHints { normalize: Some(Normalize::Auto), gain_db: 6., ..Default::default() };
-        let mut original = open(&path, &hints).unwrap();
+        let (mut original, stamp) = open_stamped(&path, &hints).unwrap();
         let expected = drain(original.as_mut());
         original.seek(1).unwrap();
-        let mut reopened = reopen(original.meta(), &OpenHints { level_scan_bytes: Some(0), ..hints }).unwrap();
+        let mut reopened = reopen(original.meta(), &OpenHints { level_scan_bytes: Some(0), ..hints }, stamp).unwrap();
         assert_eq!(reopened.meta().divisor, original.meta().divisor);
         assert_eq!(reopened.original_sample_units(), original.original_sample_units());
         assert_eq!(drain(reopened.as_mut()), expected);
         assert_eq!(drain(original.as_mut()), expected[st.channels()..]);
         let mut changed = reopened.meta().clone();
         changed.len_samples += 1;
-        assert!(reopen(&changed, &OpenHints::default()).is_err());
+        assert!(reopen(&changed, &OpenHints::default(), stamp).is_err_and(|error| error.is_changed()));
+        assert!(reopen(reopened.meta(), &OpenHints::default(), None).is_err_and(|error| error.is_changed()));
     }
 }
 
@@ -427,19 +428,23 @@ fn reopening_reuses_normalization_and_preserves_independent_cursors() {
 fn unknown_length_flac_reopens_without_counting_or_normalizing_again() {
     let dir = TempDir::new("reopen-flac");
     let path = dir.join("levels.flac");
-    let mut data = include_bytes!("../tests/fixtures/levels.flac").to_vec();
+    let data = include_bytes!("../tests/fixtures/levels.flac").to_vec();
     std::fs::write(&path, &data).unwrap();
     let hints = OpenHints { normalize: Some(Normalize::Auto), gain_db: 6., ..Default::default() };
     let mut original = open(&path, &hints).unwrap();
-    assert_eq!(original.meta().len_samples, 16384);
     let expected = drain(original.as_mut());
+    drop(original);
+    let mut stripped = data.clone();
+    stripped[21] &= 0xf0;
+    stripped[22..26].fill(0);
+    std::fs::write(&path, &stripped).unwrap();
+    let (mut original, stamp) = open_stamped(&path, &hints).unwrap();
+    assert_eq!(original.meta().len_samples, 16384);
+    assert_eq!(drain(original.as_mut()), expected);
     let meta = original.meta().clone();
     let units = original.original_sample_units();
     drop(original);
-    data[21] &= 0xf0;
-    data[22..26].fill(0);
-    std::fs::write(&path, &data).unwrap();
-    let mut reopened = reopen(&meta, &OpenHints { level_scan_bytes: Some(0), ..hints.clone() }).unwrap();
+    let mut reopened = reopen(&meta, &OpenHints { level_scan_bytes: Some(0), ..hints.clone() }, stamp).unwrap();
     assert_eq!(reopened.meta().len_samples, 16384);
     assert_eq!(reopened.meta().divisor, meta.divisor);
     assert_eq!(reopened.original_sample_units(), units);
@@ -460,8 +465,78 @@ fn unknown_length_flac_reopens_without_counting_or_normalizing_again() {
     assert_eq!(drain(default.as_mut()).len(), 16384);
     // Unknown-length streams use the supplied count without a decoding pass.
     let known = SignalMeta { len_samples: 32768, ..meta };
-    let reopened = reopen(&known, &hints).unwrap();
+    let reopened = reopen(&known, &hints, stamp).unwrap();
     assert_eq!(reopened.meta().len_samples, 32768);
+}
+
+#[test]
+fn a_same_length_replacement_is_not_reopened() {
+    let dir = TempDir::new("reopen-replaced");
+    let values = [0.125, -0.25, 0.5, -0.75];
+    let st = SampleType::new(Domain::Iq, SampleFormat::I16);
+    let path = write_wav(&dir.join("a.wav"), st, 48000, &values, 1.0);
+    let (original, stamp) = open_stamped(&path, &OpenHints::default()).unwrap();
+    let meta = original.meta().clone();
+    drop(original);
+    let other = write_wav(&dir.join("b.wav"), st, 48000, &[0.5, 0.5, 0.5, 0.5], 1.0);
+    std::fs::rename(&other, &path).unwrap();
+    assert!(reopen(&meta, &OpenHints::default(), stamp).is_err_and(|error| error.is_changed()));
+}
+
+/// The FLAC fixture written into `dir`, with its bytes.
+fn flac_fixture(dir: &TempDir) -> (std::path::PathBuf, Vec<u8>) {
+    let path = dir.join("levels.flac");
+    let data = include_bytes!("../tests/fixtures/levels.flac").to_vec();
+    std::fs::write(&path, &data).unwrap();
+    (path, data)
+}
+
+/// Where the first audio frame starts, after the metadata blocks.
+fn flac_audio_offset(data: &[u8]) -> usize {
+    let mut at = 4;
+    loop {
+        let header = &data[at..at + 4];
+        at += 4 + (usize::from(header[1]) << 16 | usize::from(header[2]) << 8 | usize::from(header[3]));
+        if header[0] & 0x80 != 0 {
+            return at;
+        }
+    }
+}
+
+#[test]
+fn a_flac_seek_reads_the_opened_file_after_its_name_is_replaced() {
+    let dir = TempDir::new("flac-renamed");
+    let (path, data) = flac_fixture(&dir);
+    let mut original = open(&path, &OpenHints::default()).unwrap();
+    let expected = drain(original.as_mut());
+    // Another file of the same length, its audio damaged, takes the name.
+    let mut other = data.clone();
+    let first_frame = flac_audio_offset(&data);
+    other[first_frame + 16..].iter_mut().for_each(|byte| *byte = !*byte);
+    let replacement = dir.join("other.flac");
+    std::fs::write(&replacement, &other).unwrap();
+    std::fs::rename(&replacement, &path).unwrap();
+    for sample in [5, 0, 31] {
+        original.seek(sample).unwrap();
+        let mut value = [0.];
+        assert_eq!(original.read(&mut value).unwrap(), 1);
+        assert_eq!(value[0], expected[sample as usize]);
+    }
+}
+
+#[test]
+fn a_flac_seek_after_an_overwrite_in_place_is_refused() {
+    let dir = TempDir::new("flac-overwritten");
+    let (path, data) = flac_fixture(&dir);
+    let mut original = open(&path, &OpenHints::default()).unwrap();
+    original.seek(5).unwrap();
+    let file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    std::io::Write::write_all(&mut &file, &data).unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+    file.set_modified(later).unwrap();
+    drop(file);
+    let error = original.seek(7).unwrap_err();
+    assert!(matches!(error, SourceError::Changed), "{error}");
 }
 
 #[test]

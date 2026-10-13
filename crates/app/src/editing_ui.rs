@@ -71,22 +71,24 @@ pub(super) struct EditCommands {
 
 /// What the unsaved-edits question asks.
 const UNSAVED_QUESTION: &str = "Save the edits?";
+/// What it asks when the edits cannot be saved, the file under them having changed.
+const CHANGED_QUESTION: &str = "Discard the edits?";
 
 impl Shell {
     pub(super) fn editing(&self) -> Option<&Editing> {
         self.file.as_ref()?.editing.as_ref()
     }
 
-    /// The edits to change, none while the file under them is being replaced.
+    /// The edits to change, none while the file under them is being replaced or has changed.
     pub(super) fn editing_mut(&mut self) -> Option<&mut Editing> {
-        if self.replacement_active {
+        if self.replacement_active || self.capture_changed() {
             return None;
         }
         self.file.as_mut()?.editing.as_mut()
     }
 
     pub(super) fn edit_commands_available(&self) -> EditCommands {
-        let Some(editing) = self.editing() else {
+        let Some(editing) = self.editing().filter(|_| !self.capture_changed()) else {
             return EditCommands::default();
         };
         let selected = self.time_selection().is_some();
@@ -267,17 +269,20 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let origin = Origin {
-            path: source.meta.source.clone(),
-            hints: source.hints.clone(),
-        };
         let Some(lease) = self.file.as_ref().map(|file| file.lease.clone()) else {
             return;
         };
-        let updates = crate::minimap::start(origin, source.meta, lease);
+        let updates = crate::minimap::start(source.source_file(), lease);
         let task = cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
-                let Ok(snapshot) = update else { break };
+                let snapshot = match update {
+                    Ok(snapshot) => snapshot,
+                    Err(error) => {
+                        tracing::warn!(%error, "pasted file's envelope unavailable");
+                        let _ = shell.update(cx, |shell, cx| shell.envelope_failed(&error, cx));
+                        break;
+                    }
+                };
                 let applied =
                     shell.update_in(cx, |shell, _, cx| shell.envelope_ready(id, snapshot, cx));
                 if applied.is_err() {
@@ -287,6 +292,13 @@ impl Shell {
         });
         if let Some(file) = &mut self.file {
             file._edit_tasks.push(task);
+        }
+    }
+
+    fn envelope_failed(&mut self, error: &anyhow::Error, cx: &mut Context<Self>) {
+        if let Some(file) = &mut self.file {
+            file.state.document.note_failure(error);
+            cx.notify();
         }
     }
 
@@ -331,7 +343,8 @@ impl Shell {
             .as_ref()
             .map(|file| file.state.document.origin().name())
             .unwrap_or_default();
-        let answer = Self::ask_unsaved(&name, window, cx);
+        // The writer refuses a changed source, so Save is not offered for one.
+        let answer = Self::ask_unsaved(&name, !self.capture_changed(), window, cx);
         cx.spawn_in(window, async move |shell, cx| {
             let Ok(answer) = answer.recv().await else {
                 return;
@@ -353,13 +366,24 @@ impl Shell {
     /// Ask whether to save the edits, answering 0 to save, 1 to discard and 2 to cancel.
     ///
     /// The system's own dialog asks where there is one, and the toolkit's dialog elsewhere.
+    /// Without `savable` only Discard and Cancel are offered.
     fn ask_unsaved(
         name: &str,
+        savable: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> async_channel::Receiver<usize> {
         let (answer, answered) = async_channel::bounded(1);
-        let detail = format!("The edits to {name} are lost otherwise.");
+        let (question, detail) = match savable {
+            true => (
+                UNSAVED_QUESTION,
+                format!("The edits to {name} are lost otherwise."),
+            ),
+            false => (
+                CHANGED_QUESTION,
+                format!("{name} changed on disk, so its edits cannot be saved."),
+            ),
+        };
         let native = cfg!(any(target_os = "macos", target_os = "windows"));
         // A window without the toolkit's root, as in a headless test, has no dialog layer.
         if native
@@ -368,16 +392,20 @@ impl Shell {
                 .flatten()
                 .is_none()
         {
+            let (buttons, first): (&[&str], usize) = match savable {
+                true => (&["Save", "Discard", "Cancel"], 0),
+                false => (&["Discard", "Cancel"], 1),
+            };
             let prompt = window.prompt(
                 gpui_kit::PromptLevel::Warning,
-                UNSAVED_QUESTION,
+                question,
                 Some(&detail),
-                &["Save", "Discard", "Cancel"],
+                buttons,
                 cx,
             );
             cx.spawn(async move |_, _| {
                 if let Ok(index) = prompt.await {
-                    let _ = answer.send(index).await;
+                    let _ = answer.send(index + first).await;
                 }
             })
             .detach();
@@ -398,8 +426,14 @@ impl Shell {
                     answer.try_send(index).is_ok()
                 }
             };
+            let save = savable.then(|| {
+                Button::new("save")
+                    .primary()
+                    .label("Save")
+                    .on_click(reply(0))
+            });
             dialog
-                .title(UNSAVED_QUESTION)
+                .title(question)
                 .w(px(400.))
                 .close_button(false)
                 .overlay_closable(false)
@@ -413,15 +447,10 @@ impl Shell {
                             h_flex()
                                 .gap_2()
                                 .child(Button::new("cancel").label("Cancel").on_click(reply(2)))
-                                .child(
-                                    Button::new("save")
-                                        .primary()
-                                        .label("Save")
-                                        .on_click(reply(0)),
-                                ),
+                                .children(save),
                         ),
                 )
-                .on_ok(keyed(0))
+                .on_ok(keyed(if savable { 0 } else { 1 }))
                 .on_cancel(keyed(2))
         });
         answered
@@ -434,7 +463,8 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(editing) = self.editing_mut() {
+        // Not `editing_mut`: edits on a changed file are discarded this way too.
+        if let Some(editing) = self.file.as_mut().and_then(|file| file.editing.as_mut()) {
             editing.mark_saved();
         }
         match pending {

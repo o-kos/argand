@@ -30,7 +30,7 @@ Out of scope: an overwrite in place of a memory-mapped file while it is read, wi
 - `argand_io::reopen` takes the expected `SourceStamp` and fails with `Changed` when the new handle's stamp differs or is unknown. The unchecked form goes away, so no caller can skip the check. `reopen_stamped` folds into it, and `extraction.rs` drops its own comparison.
 - Every caller has the stamp it needs. The minimap uses the document's (`FileInfo::stamp`) or the editing source's. The analysis worker's edit state carries each source's stamp beside its meta and hints. Pasted envelopes take it from `editing::Source`. A source without a stamp cannot be reopened, which is `Changed` too: its stamp is absent only when its file changed while it was opened.
 - On activation, a background task stamps by path every file the shown capture reads, at most once per pending check. The result is applied only when the document and the stamps it was started with are still current. A save that rebinds the file (#193) replaces the stamps first, so the application's own write is never reported. No check runs while `replacement_active` holds.
-- Either signal sets one `Shell` state, `changed: Option<Changed { path }>`, naming the file that changed (the opened one or a pasted one). While it is set:
+- Either signal sets `Document::changed`, naming the first file found changed (the opened one or a pasted one), so it goes with the document. While it is set:
   - the status bar shows `<name> changed on disk` with a standard `Button` labelled Reopen, in place of the analysis status. The shown picture, minimap, view and selection stay;
   - the document asks for no new analysis; navigation keeps mapping the held pictures, as it does while a re-analysis is pending;
   - edits are refused, as while the file is let go of (`Shell::editing_mut`).
@@ -45,22 +45,22 @@ Out of scope: an overwrite in place of a memory-mapped file while it is read, wi
 
 ## Implementation steps
 
-- [ ] `SourceError::Changed` in `argand-core`.
-- [ ] A positioned-read `MediaSource` over `Arc<File>` in `argand-io`. The decoder's seek, count and level scan use it, and each fresh parser re-checks the handle's stamp.
-- [ ] `argand_io::reopen(meta, hints, stamp)`, failing with `Changed`. Remove the unchecked form and `reopen_stamped`, and migrate the minimap, the analysis worker, the pasted envelopes and extraction.
-- [ ] I/O tests: a FLAC seek after the path is replaced by a same-length file still reads the original; a FLAC seek after an overwrite in place is `Changed`; `reopen` of a same-length replacement is `Changed`; `reopen` with the right stamp succeeds.
-- [ ] `Shell::changed`: recognise `Changed` from analysis, minimap and envelope failures; stop analysis requests and refuse edits while it is set.
-- [ ] The activation check: background stamping of the capture's files, applied only to the current document and stamps.
-- [ ] Status bar notice with Reopen; Reopen with Discard/Cancel when edits are unsaved.
-- [ ] App tests without a window: the activation result for a stale document or stamp is ignored; a changed stamp sets `changed`. Headless GPUI tests: Reopen opens the file again; with unsaved edits it asks first.
-- [ ] AGENTS.md and CHANGELOG.md.
+- [x] `SourceError::Changed` in `argand-core`.
+- [x] A positioned-read `MediaSource` over `Arc<File>` in `argand-io`. The decoder's seek, count and level scan use it, and each fresh parser re-checks the handle's stamp.
+- [x] `argand_io::reopen(meta, hints, stamp)`, failing with `Changed`. Remove the unchecked form and `reopen_stamped`, and migrate the minimap, the analysis worker, the pasted envelopes and extraction.
+- [x] I/O tests (each fails without the decoder change): a FLAC seek after the path is replaced by a same-length file still reads the original; a FLAC seek after an overwrite in place is `Changed`; `reopen` of a same-length replacement is `Changed`; `reopen` with the right stamp succeeds.
+- [x] `Document::changed`: recognise `Changed` from analysis, minimap and envelope failures; stop analysis requests and refuse edits while it is set.
+- [x] The activation check: background stamping of the capture's files, applied only to the current document and stamps.
+- [x] Status bar notice with Reopen; Reopen with Discard/Cancel when edits are unsaved.
+- [x] Tests: `disk_change` recognises `Changed` through an error chain and finds a rewritten or removed file. Headless GPUI tests: a stale check (another document, other stamps) is ignored; the activation check notices a rewrite, refuses edits, and Reopen asks first, Cancel keeps the document and Discard opens the file again; a minimap refused by a replaced file marks the capture.
+- [x] AGENTS.md and CHANGELOG.md.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Manual, release binary: open a FLAC capture, replace it with another of the same length, and pan. The picture stays the original's and the status bar offers Reopen. Same for a WAVE capture after switching away from the window and back. Reopen shows the new file.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [ ] Manual, release binary: open a FLAC capture, replace it by rename with another of the same length, and pan. The original keeps being drawn. Switch away from the window and back: the status bar offers Reopen, and Reopen shows the new file. The same with a WAVE capture, and with unsaved edits, where only Discard and Cancel are offered.

@@ -5,6 +5,7 @@
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use argand_core::{Domain, SampleFormat, SampleSource, SampleType, SignalMeta, SourceError};
 use symphonia::core::audio::SampleBuffer;
@@ -16,6 +17,7 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
 use crate::normalize::{AUTO_HEADROOM, Normalize, gain_factor};
+use crate::shared_file::SharedFile;
 
 pub struct DecodedSource {
     reader: Box<dyn FormatReader>,
@@ -38,6 +40,8 @@ pub struct DecodedSource {
     next_ts: Option<u64>,
     /// The decoded file as it was opened.
     stamp: Option<crate::write::SourceStamp>,
+    /// The handle the file was opened through, which every fresh parser of it reads.
+    file: Arc<File>,
 }
 
 /// Level policy for decoder-backed opening; an absent budget preserves full scans.
@@ -99,7 +103,7 @@ impl DecodedSource {
             Normalize::None => 1.0,
             Normalize::Factor(v) => v,
             Normalize::Auto => {
-                let peak = Self::reopen(&self.meta, 0.)?.measure_peak(scan_bytes)? * AUTO_HEADROOM;
+                let peak = self.fresh()?.measure_peak(scan_bytes)? * AUTO_HEADROOM;
                 if peak > 1e-9 { peak } else { 1.0 }
             }
         };
@@ -132,8 +136,10 @@ impl DecodedSource {
         known_len: Option<u64>,
     ) -> Result<Self, SourceError> {
         let file = File::open(path)?;
-        Self::open_file(
-            file,
+        let stamp = crate::write::SourceStamp::of_file(&file).ok();
+        Self::open_shared(
+            Arc::new(file),
+            stamp,
             path,
             container,
             center_freq,
@@ -142,17 +148,42 @@ impl DecodedSource {
         )
     }
 
-    /// Decode an already opened `file`, which is what the stamp is taken from.
-    fn open_file(
-        file: File,
+    /// A parser of the same handle from its start, keeping this one's levels and strictness.
+    ///
+    /// The handle is stamped again first, so a file overwritten in place is not decoded as a mix.
+    fn fresh(&self) -> Result<Self, SourceError> {
+        let now = crate::write::SourceStamp::of_file(&self.file).ok();
+        if self.stamp.is_none() || now != self.stamp {
+            return Err(SourceError::Changed);
+        }
+        let mut fresh = Self::open_shared(
+            self.file.clone(),
+            self.stamp,
+            &self.meta.source,
+            self.meta.container,
+            Some(self.meta.center_freq),
+            Some(self.meta.sample_rate),
+            Some(self.meta.len_samples),
+        )?;
+        fresh.meta.sample_type = self.meta.sample_type;
+        fresh.meta.divisor = self.divisor;
+        fresh.divisor = self.divisor;
+        fresh.scale = self.scale;
+        Ok(if self.strict { fresh.strict() } else { fresh })
+    }
+
+    /// Decode `file`, whose stamp at opening is `stamp`.
+    fn open_shared(
+        file: Arc<File>,
+        stamp: Option<crate::write::SourceStamp>,
         path: &Path,
         container: &'static str,
         center_freq: Option<f64>,
         sample_rate_override: Option<f64>,
         known_len: Option<u64>,
     ) -> Result<Self, SourceError> {
-        let stamp = crate::write::SourceStamp::of_file(&file).ok();
-        let mss = MediaSourceStream::new(Box::new(file), Default::default());
+        let mss =
+            MediaSourceStream::new(Box::new(SharedFile::new(file.clone())?), Default::default());
 
         let mut hint = Hint::new();
         if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
@@ -246,6 +277,7 @@ impl DecodedSource {
             strict: false,
             next_ts: None,
             stamp,
+            file: file.clone(),
         };
 
         // STREAMINFO usually carries the length; when it does not, the only
@@ -253,9 +285,7 @@ impl DecodedSource {
         // zero here, which then truncated the whole analysis.
         if source.meta.len_samples == 0 && known_len.is_none() {
             tracing::debug!("stream reports no frame count, counting by decoding");
-            let mut counter =
-                Self::open_plain(path, container, Some(0.0), sample_rate_override, Some(0))?;
-            source.meta.len_samples = counter.count_samples()?;
+            source.meta.len_samples = source.fresh()?.count_samples()?;
         }
 
         Ok(source)
@@ -404,16 +434,19 @@ impl DecodedSource {
         path: &Path,
         container: &'static str,
     ) -> Result<Self, SourceError> {
-        let mut source = Self::open_file(file, path, container, Some(0.0), None, Some(0))?.strict();
+        let stamp = crate::write::SourceStamp::of_file(&file).ok();
+        let mut source = Self::open_shared(
+            Arc::new(file),
+            stamp,
+            path,
+            container,
+            Some(0.0),
+            None,
+            Some(0),
+        )?
+        .strict();
         if source.meta.len_samples == 0 {
-            let mut counter = Self::open_plain(path, container, Some(0.0), None, Some(0))?.strict();
-            // The count comes from a second handle, which must be the same file as the first.
-            if counter.stamp != source.stamp || source.stamp.is_none() {
-                return Err(SourceError::Decode(
-                    "the file changed while it was counted".into(),
-                ));
-            }
-            source.meta.len_samples = counter.count_samples()?;
+            source.meta.len_samples = source.fresh()?.count_samples()?;
         }
         Ok(source)
     }
@@ -507,10 +540,7 @@ impl SampleSource for DecodedSource {
         // A fresh parser avoids stale data without recounting or renormalizing.
         // Strict decoding checks packet timestamps instead, so it keeps the handle it opened.
         if self.meta.container == "flac" && !self.strict {
-            let mut fresh = Self::reopen(&self.meta, 0.)?;
-            fresh.scale = self.scale;
-            fresh.strict = self.strict;
-            *self = fresh;
+            *self = self.fresh()?;
             if sample == 0 {
                 return Ok(());
             }

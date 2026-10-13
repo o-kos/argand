@@ -40,6 +40,8 @@ mod shortcuts;
 #[path = "backdrop.rs"]
 mod backdrop;
 
+#[path = "disk_change_ui.rs"]
+mod disk_change_ui;
 #[path = "editing_ui.rs"]
 mod editing_ui;
 #[path = "hints.rs"]
@@ -326,6 +328,8 @@ struct OpenFile {
     _edit_tasks: Vec<Task<()>>,
     /// Created once the file has described itself, and dropped with it.
     plot: Option<PlotHandle>,
+    /// The pending check that the capture's files are still the ones opened.
+    disk_check: Option<Task<()>>,
 }
 
 /// The document's plot, with the subscription that carries its intents.
@@ -470,6 +474,7 @@ impl Shell {
         let activation = cx.observe_window_activation(window, |shell, window, cx| {
             if window.is_window_active() {
                 shell.recent_files.refresh(&shell.session.recent);
+                shell.check_disk(window, cx);
             } else if let Some(plot) = shell.plot_entity() {
                 // The release may happen in another window and never arrive here.
                 plot.update(cx, |plot, cx| plot.end_gestures(cx));
@@ -724,6 +729,7 @@ impl Shell {
             released,
             _edit_tasks: Vec::new(),
             plot: None,
+            disk_check: None,
         });
         cx.notify();
     }
@@ -938,19 +944,18 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let Some(file) = &mut self.file else { return };
+        let document = &file.state.document;
         // The file's own description, which edits leave unchanged.
-        let file_meta = file
-            .editing
-            .as_ref()
-            .map(|editing| editing.file().meta.clone());
-        let Some(meta) = file_meta.or_else(|| file.state.document.meta().cloned()) else {
-            return;
+        let source = match &file.editing {
+            Some(editing) => Some(editing.file().source_file()),
+            None => document.meta().map(|meta| argand_io::write::SourceFile {
+                meta: meta.clone(),
+                hints: document.origin().hints.clone(),
+                stamp: document.stamp(),
+            }),
         };
-        let updates = crate::minimap::start(
-            file.state.document.origin().clone(),
-            meta,
-            file.lease.clone(),
-        );
+        let Some(source) = source else { return };
+        let updates = crate::minimap::start(source, file.lease.clone());
         file._minimap_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
                 // A minimap already shown stays until the one replacing it is complete.
@@ -991,6 +996,7 @@ impl Shell {
             }
             Err(error) => {
                 tracing::warn!(%error, "minimap unavailable");
+                file.state.document.note_failure(&error);
                 file.state.document.minimap_failed(format!("{error:#}"));
                 self.waveform = None;
             }
@@ -1044,6 +1050,10 @@ impl Shell {
     /// Silent when the file has not opened yet or the panel has not been laid
     /// out: both arrive on their own, and each one calls back here.
     pub(super) fn ask_for_a_picture(&mut self) {
+        // A changed file would be drawn as another one; the held picture stays.
+        if self.capture_changed() {
+            return;
+        }
         let Some(file) = self.file.as_ref() else {
             return;
         };
