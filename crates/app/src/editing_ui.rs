@@ -89,7 +89,7 @@ impl Shell {
         let Some(editing) = self.editing() else {
             return EditCommands::default();
         };
-        let selected = self.selection.is_some();
+        let selected = self.time_selection().is_some();
         let clip = self.clipboard.is_some();
         EditCommands {
             undo: editing.can_undo(),
@@ -166,7 +166,9 @@ impl Shell {
     }
 
     fn delete_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(span) = self.selection else { return };
+        let Some(span) = self.time_selection() else {
+            return;
+        };
         let Some(editing) = self.editing_mut() else {
             return;
         };
@@ -175,7 +177,9 @@ impl Shell {
     }
 
     fn copy_selection(&mut self, cx: &mut Context<Self>) {
-        let Some(span) = self.selection else { return };
+        let Some(span) = self.time_selection() else {
+            return;
+        };
         let Some(editing) = self.editing() else {
             return;
         };
@@ -239,6 +243,7 @@ impl Shell {
         file.state.document.follow_edit(before);
         file.state.analyst.set_edit(state);
         self.selection = selection.and_then(|span| span.within(len));
+        self.band = None;
         // The wider picture is not moved with the edit, so it goes until the new one is drawn.
         self.release_backdrop(window, cx);
         self.upload_pending = true;
@@ -457,7 +462,7 @@ impl Shell {
             }))
             .on_action(cx.listener(|shell, _: &CopySelection, _, cx| shell.copy_selection(cx)))
             .on_action(cx.listener(|shell, _: &PasteClipboard, window, cx| {
-                if let Some(span) = shell.selection {
+                if let Some(span) = shell.time_selection() {
                     shell.paste(Placement::Replace(span), window, cx);
                 }
             }))
@@ -635,6 +640,49 @@ mod tests {
             Some(PathBuf::from("/captures/a.iqw")),
             "Escape cancels"
         );
+    }
+
+    #[gpui_kit::test]
+    fn a_band_is_clamped_to_the_capture_and_leaves_nothing_to_edit(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        described(cx, &shell, "/captures/a.iqw");
+        shell.update_in(cx, |shell, _, cx| {
+            shell.select(
+                argand_core::Selection {
+                    time: SampleSpan::between(0, 100),
+                    band: argand_core::FrequencyBand::between(-1e9, 1_000.),
+                },
+                cx,
+            );
+        });
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(
+                shell.band,
+                argand_core::FrequencyBand::between(-12_000., 1_000.)
+            );
+            assert_eq!(
+                shell.time_selection(),
+                None,
+                "a rectangle is not a time selection"
+            );
+            assert!(!shell.edit_commands_available().cut);
+        });
+        shell.update_in(cx, |shell, _, cx| {
+            shell.select(
+                argand_core::Selection {
+                    time: SampleSpan::between(0, 100),
+                    band: argand_core::FrequencyBand::between(20_000., 30_000.),
+                },
+                cx,
+            );
+        });
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(
+                (shell.selection, shell.band),
+                (None, None),
+                "a band beyond the capture selects nothing"
+            );
+        });
     }
 
     #[gpui_kit::test]

@@ -30,8 +30,8 @@ pub(super) struct PlotSnapshot {
     pub show_scale_ui: bool,
     /// The mouse position counts only while this holds, since it goes stale once the pointer leaves.
     pub pointer_in_window: bool,
-    /// The time selection as fractions of the view, where any of it shows.
-    pub selection: Option<(f64, f64)>,
+    /// The selection as fractions of the visible picture, where any of it shows.
+    pub selection: Option<waveform::Selected>,
     /// A finished save, said over the picture until the next input.
     pub notice: Option<gpui_kit::SharedString>,
     /// Which edit commands the spectrum's context menu can offer.
@@ -49,8 +49,8 @@ pub(super) enum PlotIntent {
     },
     /// The pointer, and with it the readout, changed.
     Pointer,
-    /// The time selection a drag or a click left, if any.
-    Select(Option<argand_core::SampleSpan>),
+    /// The selection a drag or a click left, if any.
+    Select(Option<argand_core::Selection>),
     /// A drag began on these axes, whose tick schemes are held from here.
     GestureStarted {
         time: bool,
@@ -1123,13 +1123,13 @@ mod tests {
     fn selections(
         cx: &mut TestAppContext,
         handle: WindowHandle<Harness>,
-    ) -> Vec<Option<argand_core::SampleSpan>> {
+    ) -> Vec<Option<argand_core::Selection>> {
         handle
             .update(cx, |harness, _, _| {
                 std::mem::take(&mut harness.intents)
                     .into_iter()
                     .filter_map(|intent| match intent {
-                        PlotIntent::Select(span) => Some(span),
+                        PlotIntent::Select(selection) => Some(selection),
                         _ => None,
                     })
                     .collect()
@@ -1164,8 +1164,18 @@ mod tests {
         snapshot().extents.time.view.boundary(fraction)
     }
 
-    fn span(a: u64, b: u64) -> Option<argand_core::SampleSpan> {
-        argand_core::SampleSpan::between(a, b)
+    fn span(a: u64, b: u64) -> Option<argand_core::Selection> {
+        argand_core::SampleSpan::between(a, b).map(argand_core::Selection::time)
+    }
+
+    /// The frequency at a fraction down from the top of the visible band.
+    fn hertz_at(fraction: f64) -> f64 {
+        let (low, high) = snapshot().extents.hertz;
+        high - fraction * (high - low)
+    }
+
+    fn band(a: f64, b: f64) -> Option<argand_core::FrequencyBand> {
+        argand_core::FrequencyBand::between(a, b)
     }
 
     fn space(cx: &mut TestAppContext, handle: WindowHandle<Harness>, down: bool) {
@@ -1294,7 +1304,34 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn ctrl_drag_on_the_spectrum_is_kept_for_the_rectangle(cx: &mut TestAppContext) {
+    fn ctrl_drag_on_the_spectrum_selects_a_rectangle(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let from = spectrum.center();
+        let to = from - point(px(80.), px(30.));
+        let ctrl = gpui_kit::Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        left_drag(cx, handle, from, to, ctrl);
+        let down = |y: Pixels| {
+            f32::from(y - spectrum.top()) as f64 / f32::from(spectrum.size.height) as f64
+        };
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            Some(argand_core::Selection {
+                time: argand_core::SampleSpan::between(
+                    boundary_at(spectrum, to.x),
+                    boundary_at(spectrum, from.x)
+                ),
+                band: band(hertz_at(down(from.y)), hertz_at(down(to.y))),
+            })
+        );
+        assert_eq!(drag_steps(cx, handle), 0, "a rectangle is not a pan");
+    }
+
+    #[gpui_kit::test]
+    fn a_rectangle_without_height_selects_nothing(cx: &mut TestAppContext) {
         let handle = open(cx);
         let from = spectrum(cx, handle).center();
         let ctrl = gpui_kit::Modifiers {
@@ -1302,14 +1339,168 @@ mod tests {
             ..Default::default()
         };
         left_drag(cx, handle, from, from - point(px(80.), px(0.)), ctrl);
-        let intents = handle
-            .update(cx, |harness, _, _| std::mem::take(&mut harness.intents))
+        assert_eq!(selections(cx, handle).last().copied().flatten(), None);
+    }
+
+    /// The frequency ruler as the last frame laid it out.
+    fn frequency_ruler(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> Bounds<Pixels> {
+        handle
+            .update(cx, |harness, _, cx| {
+                let geometry = harness.plot.as_ref().unwrap().read(cx).geometry;
+                geometry.unwrap().frequency_ruler
+            })
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn a_left_drag_on_the_frequency_ruler_selects_a_band(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let ruler = frequency_ruler(cx, handle);
+        let from = ruler.center();
+        let to = from + point(px(0.), px(40.));
+        left_drag(cx, handle, from, to, gpui_kit::Modifiers::default());
+        let down = |y: Pixels| {
+            f32::from(y - spectrum.top()) as f64 / f32::from(spectrum.size.height) as f64
+        };
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            Some(argand_core::Selection {
+                time: None,
+                band: band(hertz_at(down(from.y)), hertz_at(down(to.y))),
+            })
+        );
+        assert_eq!(
+            drag_steps(cx, handle),
+            0,
+            "the ruler selects rather than pans"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_middle_drag_on_the_frequency_ruler_still_pans(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, _| {
+                    plot.snapshot.as_mut().unwrap().frequency = crate::frequency::View {
+                        start: 0.25,
+                        span: 0.5,
+                    };
+                });
+            })
             .unwrap();
-        assert!(
-            !intents
-                .iter()
-                .any(|intent| matches!(intent, PlotIntent::Drag { .. } | PlotIntent::Select(_))),
-            "{intents:?}"
+        frame(cx, handle);
+        let from = frequency_ruler(cx, handle).center();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        let none = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(from, None, none);
+        input.simulate_mouse_down(from, MouseButton::Middle, none);
+        input.simulate_mouse_move(from + point(px(0.), px(30.)), MouseButton::Middle, none);
+        input.simulate_mouse_up(from + point(px(0.), px(30.)), MouseButton::Middle, none);
+        cx.run_until_parked();
+        assert!(drag_steps(cx, handle) > 0);
+        assert!(selections(cx, handle).is_empty());
+    }
+
+    #[gpui_kit::test]
+    fn a_vertical_plot_selects_a_band_along_its_frequency_axis(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, cx| {
+                    plot.snapshot.as_mut().unwrap().extents.orientation =
+                        crate::orientation::Mode::Vertical;
+                    plot.reorient(cx);
+                });
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
+        let spectrum = spectrum(cx, handle);
+        let from = frequency_ruler(cx, handle).center();
+        let to = from + point(px(50.), px(0.));
+        left_drag(cx, handle, from, to, gpui_kit::Modifiers::default());
+        // Frequency runs to the right, so the right edge is the top of the band.
+        let down = |x: Pixels| {
+            1. - f32::from(x - spectrum.left()) as f64 / f32::from(spectrum.size.width) as f64
+        };
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            Some(argand_core::Selection {
+                time: None,
+                band: band(hertz_at(down(from.x)), hertz_at(down(to.x))),
+            })
+        );
+    }
+
+    #[gpui_kit::test]
+    fn space_and_a_left_drag_on_the_frequency_ruler_pan(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, _| {
+                    plot.snapshot.as_mut().unwrap().frequency = crate::frequency::View {
+                        start: 0.25,
+                        span: 0.5,
+                    };
+                });
+            })
+            .unwrap();
+        frame(cx, handle);
+        let from = frequency_ruler(cx, handle).center();
+        space(cx, handle, true);
+        left_drag(
+            cx,
+            handle,
+            from,
+            from + point(px(0.), px(30.)),
+            gpui_kit::Modifiers::default(),
+        );
+        assert!(drag_steps(cx, handle) > 0);
+        assert!(selections(cx, handle).is_empty());
+    }
+
+    #[gpui_kit::test]
+    fn a_vertical_plot_selects_a_rectangle_along_both_axes(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.clone().unwrap();
+                plot.update(cx, |plot, cx| {
+                    plot.snapshot.as_mut().unwrap().extents.orientation =
+                        crate::orientation::Mode::Vertical;
+                    plot.reorient(cx);
+                });
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
+        let spectrum = spectrum(cx, handle);
+        let from = spectrum.center();
+        let to = from + point(px(40.), px(80.));
+        let ctrl = gpui_kit::Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        left_drag(cx, handle, from, to, ctrl);
+        let along = |y: Pixels| {
+            let fraction =
+                f32::from(y - spectrum.top()) as f64 / f32::from(spectrum.size.height) as f64;
+            snapshot().extents.time.view.boundary(fraction)
+        };
+        let down = |x: Pixels| {
+            1. - f32::from(x - spectrum.left()) as f64 / f32::from(spectrum.size.width) as f64
+        };
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            Some(argand_core::Selection {
+                time: argand_core::SampleSpan::between(along(from.y), along(to.y)),
+                band: band(hertz_at(down(from.x)), hertz_at(down(to.x))),
+            })
         );
     }
 

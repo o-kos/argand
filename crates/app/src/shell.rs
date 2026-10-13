@@ -406,6 +406,8 @@ struct Shell {
     view: Option<crate::navigation::View>,
     /// The time selection, in samples of the open file.
     selection: Option<argand_core::SampleSpan>,
+    /// The selected band in physical hertz, with `selection` a rectangle and without it the whole capture.
+    band: Option<argand_core::FrequencyBand>,
     /// A save in progress, which outlives the file it was started from.
     saving: Option<saving_ui::Saving>,
     save_notice: Option<saving_ui::Notice>,
@@ -515,6 +517,7 @@ impl Shell {
             plot: None,
             view: None,
             selection: None,
+            band: None,
             saving: None,
             save_notice: None,
             save_updates: None,
@@ -688,6 +691,7 @@ impl Shell {
         self.plot = None;
         self.view = None;
         self.selection = None;
+        self.band = None;
         self.recent_files.clear_current();
         self.time_scheme = None;
         self.tick_pan = None;

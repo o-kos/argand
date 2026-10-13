@@ -21,6 +21,10 @@ use crate::decoder::{DecodedSource, RATE_TAG, REFERENCE_TAG};
 use crate::riff::{self, ARGD_ID, ARGD_LEN, ARGD_VERSION, AUXI_CENTER, AUXI_LEN, AUXI_RATE};
 use crate::{OpenHints, RiffError};
 
+mod float_wave;
+
+pub use float_wave::{FloatWave, FloatWaveRequest};
+
 /// Bytes moved per read and write, rounded down to whole samples.
 const COPY_BYTES: usize = 4 << 20;
 
@@ -527,9 +531,9 @@ fn stage_with_limit(
 }
 
 /// The protected file the target now is, recognised by its stamp's identity.
-fn protected_target(request: &SaveRequest) -> Option<&Protected> {
-    let now = identity(&fs::metadata(&request.target).ok()?)?;
-    request.protected.iter().find(|protected| {
+fn protected_target<'a>(protected: &'a [Protected], target: &Path) -> Option<&'a Protected> {
+    let now = identity(&fs::metadata(target).ok()?)?;
+    protected.iter().find(|protected| {
         protected
             .stamp
             .is_some_and(|stamp| stamp.identity == Some(now))
@@ -541,21 +545,32 @@ fn check_request(request: &SaveRequest, replaces_target: bool) -> Result<(), Wri
     if replaces_target {
         return check_segments(request);
     }
-    if let Some(path) = request
+    let read = request
         .sources
         .iter()
-        .map(|source| &source.meta.source)
-        .chain(request.protected.iter().map(|protected| &protected.path))
-        .find(|path| same_file(path, &request.target))
+        .map(|source| source.meta.source.clone());
+    check_target(read, &request.protected, &request.target)?;
+    check_segments(request)
+}
+
+/// Refuse a target that is a file read or protected, by path or by a protected file's identity.
+fn check_target(
+    read: impl Iterator<Item = PathBuf>,
+    protected: &[Protected],
+    target: &Path,
+) -> Result<(), WriteError> {
+    if let Some(path) = read
+        .chain(protected.iter().map(|protected| protected.path.clone()))
+        .find(|path| same_file(path, target))
     {
-        return Err(WriteError::SameFile { path: path.clone() });
+        return Err(WriteError::SameFile { path });
     }
-    if let Some(protected) = protected_target(request) {
+    if let Some(protected) = protected_target(protected, target) {
         return Err(WriteError::SameFile {
             path: protected.path.clone(),
         });
     }
-    check_segments(request)
+    Ok(())
 }
 
 /// Refuse a request that reads past one of its sources.

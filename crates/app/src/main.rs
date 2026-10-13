@@ -20,6 +20,7 @@ mod cpu;
 mod document;
 mod editing;
 mod execution;
+mod extraction;
 mod frequency;
 mod minimap;
 mod navigation;
