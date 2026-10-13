@@ -207,8 +207,8 @@ pub struct Document {
     file_info: FileInfo,
     sample_extrema: Option<Vec<(f32, f32)>>,
     minimap_error: Option<String>,
-    /// A file the capture reads that is no longer the one opened.
-    changed: Option<std::path::PathBuf>,
+    /// Set once a file the capture reads is no longer the one opened, naming it when known.
+    changed: Option<Option<std::path::PathBuf>>,
 }
 
 impl Document {
@@ -228,20 +228,31 @@ impl Document {
         }
     }
 
-    /// The file the capture reads that changed on disk since it was opened, once one has.
-    pub fn changed(&self) -> Option<&std::path::Path> {
-        self.changed.as_deref()
+    /// Whether a file the capture reads changed on disk since it was opened.
+    pub fn is_changed(&self) -> bool {
+        self.changed.is_some()
     }
 
-    /// Note that `path` changed on disk; the first file noted is the one named.
-    pub fn mark_changed(&mut self, path: std::path::PathBuf) {
-        self.changed.get_or_insert(path);
+    /// The file that changed on disk, when it is known which one.
+    pub fn changed_file(&self) -> Option<&std::path::Path> {
+        self.changed.as_ref()?.as_deref()
+    }
+
+    /// Note that a file changed on disk, `path` when known; a file named later names it.
+    pub fn mark_changed(&mut self, path: Option<std::path::PathBuf>) {
+        if !matches!(self.changed, Some(Some(_))) {
+            self.changed = Some(path);
+        }
+    }
+
+    /// Forget a change to files the capture no longer reads.
+    pub fn clear_changed(&mut self) {
+        self.changed = None;
     }
 
     /// Note a failed read, remembering the file when the failure says it changed on disk.
     pub fn note_failure(&mut self, error: &anyhow::Error) {
         if let Some(path) = crate::disk_change::changed_file(error) {
-            let path = path.unwrap_or_else(|| self.origin.path.clone());
             self.mark_changed(path);
         }
     }

@@ -24,6 +24,19 @@ pub fn changed_file(error: &anyhow::Error) -> Option<Option<PathBuf>> {
     })
 }
 
+/// `error` with `path` named as the changed file, when it says a file changed without naming one.
+pub fn naming(error: anyhow::Error, path: &Path) -> anyhow::Error {
+    if changed_file(&error) != Some(None) {
+        return error;
+    }
+    let context = format!("{error:#}");
+    anyhow::Error::from(IoError::Source {
+        path: path.to_owned(),
+        source: SourceError::Changed,
+    })
+    .context(context)
+}
+
 /// The files a capture reads, each with the stamp it was opened with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Watched(pub Vec<(PathBuf, SourceStamp)>);
@@ -64,6 +77,24 @@ mod tests {
     fn a_reader_error_names_no_file() {
         let error = anyhow::Error::from(SourceError::Changed).context("transform failed");
         assert_eq!(changed_file(&error), Some(None));
+    }
+
+    #[test]
+    fn an_unnamed_change_takes_the_file_it_was_read_from() {
+        let path = PathBuf::from("/captures/b.flac");
+        let error = anyhow::Error::from(SourceError::Changed).context("minimap");
+        assert_eq!(
+            changed_file(&naming(error, &path)),
+            Some(Some(path.clone()))
+        );
+        let other = anyhow::Error::from(IoError::Source {
+            path: PathBuf::from("/captures/a.wav"),
+            source: SourceError::Changed,
+        });
+        assert_eq!(
+            changed_file(&naming(other, &path)),
+            Some(Some(PathBuf::from("/captures/a.wav")))
+        );
     }
 
     #[test]

@@ -639,22 +639,28 @@ the length count, the automatic level scan) reads it through `shared_file::Share
 cursor of positioned reads (`read_at`, `seek_read` on Windows) that keeps its own offset and
 never relies on the handle's position (which `seek_read` moves), after stamping the handle again (`DecodedSource::fresh`). `argand_io::reopen`
 takes the stamp the file was first opened with and fails unless the path has it before parsing
-(so a removed, emptied or unreadable replacement is a change too) and the new handles have it.
+(so a removed, emptied or unreadable replacement is a change too, also when it is replaced
+between that check and the parse) and the new handles have it.
 Both failures are `argand_core::SourceError::Changed`, which `IoError::is_changed` and
 `disk_change::changed_file` recognise through an `anyhow` chain. The minimap, the analysis
 worker's pasted sources (`EditState::sources` carries each `SourceFile`), pasted envelopes and
 extraction all reopen with a stamp.
 
-`Document::changed` names the first file found changed: from a failed analysis, minimap or
-envelope (`Document::note_failure`; a pasted file's envelope only while the current version
-still reads it under that stamp), or from the activation check (`disk_change_ui.rs`), which
+A reader cannot name the file it found changed, so `disk_change::naming` names it where it is
+known: the minimap names its file, and the analysis worker names the opened file while the
+capture reads nothing else; otherwise the notice says the capture changed. `Document::is_changed`
+holds from a failed analysis, minimap or envelope (`Document::note_failure`; the opened file's
+minimap and a pasted file's envelope only while the current version still reads that file), or from the activation check (`disk_change_ui.rs`), which
 stamps the files the current version reads by path on a thread of its own, at most one at a
 time per document, and applies the result only to the same document and the same stamps. No
 check starts or applies while `replacement_active` or while a saved file is being rebound
 (`OpenFile::rebinding`, when the document still holds the old stamp), and `swap_readers` drops
 a pending one. While it is set, `ask_for_a_picture` asks for nothing,
-`OpenFileState::accept` rejects every analysis delivery and the minimap takes no snapshot or
-failure, so the held picture and minimap stay, edits are refused (`editing_mut`, `edit_commands_available`), and the status bar
+`OpenFileState::holds_picture` rejects progress and pictures (including a backdrop restyle in
+flight) while an opening or a failure still lands, and the minimap takes no snapshot or
+failure, so the held picture and minimap stay. A Save as that rebinds the capture to its saved
+file clears it (`Rebind::Fresh`), and a late storage description applies only to the opening
+with its stamp (`Shell::file_stored`), edits are refused (`editing_mut`, `edit_commands_available`), and the status bar
 shows `<name> changed on disk` with a Reopen button in place of the analysis status. Reopen
 opens the origin again; the unsaved-edits question then offers only Discard and Cancel
 (`ask_unsaved` without `savable`), because the writer refuses a changed source. An overwrite

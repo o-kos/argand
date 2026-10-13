@@ -40,9 +40,7 @@ impl Shell {
             return;
         };
         // While new readers open a saved file, the document's stamp is still the old file's.
-        if file.state.document.changed().is_some()
-            || file.disk_check.is_some()
-            || file.rebinding.is_some()
+        if file.state.document.is_changed() || file.disk_check.is_some() || file.rebinding.is_some()
         {
             return;
         }
@@ -89,7 +87,7 @@ impl Shell {
         }
         if let Some(path) = changed {
             tracing::warn!(path = %path.display(), "the capture changed on disk");
-            file.state.document.mark_changed(path);
+            file.state.document.mark_changed(Some(path));
             cx.notify();
         }
     }
@@ -98,7 +96,7 @@ impl Shell {
     pub(super) fn capture_changed(&self) -> bool {
         self.file
             .as_ref()
-            .is_some_and(|file| file.state.document.changed().is_some())
+            .is_some_and(|file| file.state.document.is_changed())
     }
 
     /// Open the changed capture afresh, asking first about unsaved edits.
@@ -115,15 +113,21 @@ impl Shell {
 
     /// The status-bar notice of a changed file, with the command that opens the capture again.
     pub(super) fn changed_item(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let path = self.file.as_ref()?.state.document.changed()?;
-        let name = path
-            .file_name()
-            .unwrap_or(path.as_os_str())
-            .to_string_lossy()
-            .into_owned();
+        let document = &self.file.as_ref()?.state.document;
+        if !document.is_changed() {
+            return None;
+        }
+        let path = document.changed_file();
+        let text = match path.and_then(|path| path.file_name()) {
+            Some(name) => format!("{} changed on disk", name.to_string_lossy()),
+            None => "The capture changed on disk".to_owned(),
+        };
         let hint = MetadataHint {
             title: "Changed on disk",
-            value: path.display().to_string(),
+            value: path.map_or_else(
+                || "A file the capture reads".to_owned(),
+                |path| path.display().to_string(),
+            ),
             explanation: "The picture shows the file as it was opened".into(),
             rows: Vec::new(),
         };
@@ -142,7 +146,7 @@ impl Shell {
                         .overflow_hidden()
                         .text_ellipsis()
                         .whitespace_nowrap()
-                        .child(format!("{name} changed on disk")),
+                        .child(text),
                 )
                 .child(
                     Button::new("reopen-changed")
@@ -306,7 +310,7 @@ mod tests {
             shell.file.as_ref().and_then(|file| {
                 file.state
                     .document
-                    .changed()
+                    .changed_file()
                     .map(std::path::Path::to_path_buf)
             })
         });
@@ -365,5 +369,69 @@ mod tests {
             !shell.read_with(cx, |shell, _| shell.capture_changed()),
             "a check started before is not applied"
         );
+    }
+
+    #[gpui_kit::test]
+    fn save_as_of_a_changed_capture_goes_on_from_the_saved_file(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        let path = opened_and_edited(cx, &shell, "changed-save-as");
+        shell.update(cx, |shell, cx| {
+            shell.envelope_failed(
+                argand_edit::SourceId(0),
+                shell.editing().and_then(|editing| editing.file().stamp),
+                &anyhow::Error::from(argand_core::SourceError::Changed),
+                cx,
+            );
+        });
+        assert!(shell.read_with(cx, |shell, _| shell.capture_changed()));
+        // What Save as wrote, read in place of the changed file from now on.
+        let saved = path.with_file_name("saved.wav");
+        write_wave(&saved, 47_900);
+        shell.update_in(cx, |shell, window, cx| {
+            shell.rebind_saved_as(saved.clone(), window, cx);
+        });
+        wait_until(cx, &shell, "the saved file to be read", |shell| {
+            shell
+                .file
+                .as_ref()
+                .is_some_and(|file| file.rebinding.is_none())
+                && shell
+                    .editing()
+                    .is_some_and(crate::editing::Editing::is_described)
+        });
+        shell.read_with(cx, |shell, _| {
+            assert!(!shell.capture_changed());
+            assert_eq!(
+                shell
+                    .editing()
+                    .map(|editing| editing.file().meta.source.clone()),
+                Some(saved)
+            );
+        });
+    }
+
+    #[gpui_kit::test]
+    fn a_late_description_of_another_opening_keeps_the_stamp(cx: &mut TestAppContext) {
+        let (shell, cx) = open_window(cx);
+        let path = opened_and_edited(cx, &shell, "changed-described");
+        let (document, stamp) = shell.read_with(cx, |shell, _| {
+            (
+                shell.file.as_ref().map(|file| file.id),
+                shell.editing().and_then(|editing| editing.file().stamp),
+            )
+        });
+        let Some(document) = document else {
+            panic!("no document");
+        };
+        let mut earlier = shell.read_with(cx, |shell, _| shell.editing().unwrap().file().clone());
+        earlier.stamp = None;
+        shell.update(cx, |shell, cx| {
+            shell.file_stored(document, &earlier, None, cx)
+        });
+        assert_eq!(
+            shell.read_with(cx, |shell, _| shell.editing().and_then(|e| e.file().stamp)),
+            stamp
+        );
+        assert!(stamp.is_some(), "{}", path.display());
     }
 }

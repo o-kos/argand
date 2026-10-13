@@ -790,7 +790,7 @@ impl Shell {
         let Some(file) = self.file.as_mut() else {
             return;
         };
-        if !file.state.analyst.accepts(&delivery) {
+        if !file.state.analyst.accepts(&delivery) || file.state.holds_picture(&delivery) {
             return;
         }
         let Some(delivery) = self.refresh_backdrop_style(delivery, window, cx) else {
@@ -980,9 +980,14 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let Some(file) = &mut self.file else { return };
-        if file.state.document.changed().is_some() {
+        if file.state.document.is_changed() {
             return;
         }
+        // The opened file can be edited out of the capture, and then its scan says nothing about it.
+        let read = file
+            .editing
+            .as_ref()
+            .is_none_or(|editing| editing.source_files().first().is_some_and(Option::is_some));
         match update {
             Ok(snapshot) => {
                 file.state.document.minimap_ready(&snapshot);
@@ -999,9 +1004,11 @@ impl Shell {
             }
             Err(error) => {
                 tracing::warn!(%error, "minimap unavailable");
-                file.state.document.note_failure(&error);
+                if read {
+                    file.state.document.note_failure(&error);
+                }
                 // A changed file keeps the minimap of the file as it was opened.
-                if file.state.document.changed().is_none() {
+                if !file.state.document.is_changed() {
                     file.state.document.minimap_failed(format!("{error:#}"));
                     self.waveform = None;
                 }

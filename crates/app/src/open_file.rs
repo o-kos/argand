@@ -1,4 +1,4 @@
-use crate::analysis::{Analyst, Delivery};
+use crate::analysis::{Analyst, Delivery, Update};
 use crate::document::{Document, Effect};
 use crate::settings::Settings;
 
@@ -43,6 +43,18 @@ impl OpenFileState {
         matches
     }
 
+    /// Whether `delivery` would change the picture of a capture whose file changed on disk.
+    ///
+    /// The picture shown stays, whatever a pass already running reads; an opening or a failure
+    /// still lands, so readers rebinding a saved file finish.
+    pub(crate) fn holds_picture(&self, delivery: &Delivery) -> bool {
+        self.document.is_changed()
+            && matches!(
+                delivery.update,
+                Update::Progress { .. } | Update::Snapshot { .. } | Update::Ready { .. }
+            )
+    }
+
     /// Simulate an accepted picture for a test that has no delivery of its
     /// own.
     #[cfg(test)]
@@ -56,8 +68,7 @@ impl OpenFileState {
     /// last good settings in place and a cancelled editor preview keeps them
     /// until the restored settings produce their own picture.
     pub(crate) fn accept(&mut self, delivery: Delivery, settings: &Settings) -> Option<Effect> {
-        // Once a file changed on disk the picture shown stays, whatever a pass already running reads.
-        if !self.analyst.accepts(&delivery) || self.document.changed().is_some() {
+        if !self.analyst.accepts(&delivery) || self.holds_picture(&delivery) {
             return None;
         }
         let effect = self.document.apply(delivery.update);
@@ -71,7 +82,6 @@ impl OpenFileState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::Update;
     use argand_core::{DbGrid, Psd, SpectrogramImage};
     use argand_dsp::{Analysis, DynamicRangeResult};
     use std::path::PathBuf;
@@ -322,7 +332,9 @@ mod tests {
         state.analyst.request_view(request_b(), None);
         state
             .document
-            .mark_changed(PathBuf::from("/captures/a.iqw"));
+            .mark_changed(Some(PathBuf::from("/captures/a.iqw")));
         assert_eq!(state.accept(ready(2, 2), &settings), None);
+        // A failure still lands, as does the opening of readers rebinding a saved file.
+        assert_eq!(state.accept(failed(2, 2), &settings), Some(Effect::Status));
     }
 }

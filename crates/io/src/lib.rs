@@ -125,7 +125,13 @@ pub fn reopen(
         center_freq: Some(meta.center_freq),
         ..hints.clone()
     };
-    let (source, now) = open_impl(&meta.source, &hints, Some(meta))?;
+    // A file replaced after the check above fails to parse as itself; that is a change too.
+    let (source, now) = open_impl(&meta.source, &hints, Some(meta)).map_err(|error| {
+        match write::SourceStamp::of(&meta.source).ok() == stamp {
+            true => error,
+            false => changed(),
+        }
+    })?;
     if now != stamp || source.meta().len_samples != meta.len_samples {
         return Err(changed());
     }

@@ -94,10 +94,10 @@ impl Shell {
             return;
         };
         let PreparedStyle { db, image, .. } = prepared;
-        let accepted = self
-            .file
-            .as_ref()
-            .is_some_and(|file| file.state.analyst.accepts(&refresh.delivery));
+        let accepted = self.file.as_ref().is_some_and(|file| {
+            file.state.analyst.accepts(&refresh.delivery)
+                && !file.state.holds_picture(&refresh.delivery)
+        });
         let plot = self.plot_entity();
         let Some(backdrop) = &mut self.backdrop else {
             return;

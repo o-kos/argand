@@ -135,7 +135,7 @@ impl Shell {
     }
 
     /// Record how the file of `document` stores its samples, in its edits and in a clipboard copied from it.
-    fn file_stored(
+    pub(super) fn file_stored(
         &mut self,
         document: u64,
         opened: &crate::editing::Source,
@@ -151,6 +151,11 @@ impl Shell {
             .as_mut()
             .filter(|file| file.id == document)
             .and_then(|file| file.editing.as_mut())
+            // A save rebinds the document to its saved file, whose stamp this must not undo.
+            .filter(|editing| {
+                editing.file().meta.source == opened.meta.source
+                    && editing.file().stamp == opened.stamp
+            })
         {
             editing.describe_file(opened.stamp, storage);
         }

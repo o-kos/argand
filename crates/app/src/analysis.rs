@@ -369,7 +369,12 @@ fn serve(
                 Ok(cache) => cached = Some(cache),
                 Err(DspError::Cancelled) => continue,
                 Err(error) => {
-                    replies.send(request.generation, Update::Failed(error.into()));
+                    let mut error = anyhow::Error::from(error);
+                    // A reader that finds its file changed cannot name it; only the opened file can be meant.
+                    if source.capture().sources() == [argand_edit::SourceId(0)] {
+                        error = crate::disk_change::naming(error, path);
+                    }
+                    replies.send(request.generation, Update::Failed(error));
                     continue;
                 }
             }

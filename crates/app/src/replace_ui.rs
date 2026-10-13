@@ -367,6 +367,10 @@ impl Shell {
         }
         match to {
             Rebind::Fresh(previous) => {
+                // The samples now come from the saved file, not from the files that changed.
+                if let Some(file) = self.file.as_mut() {
+                    file.state.document.clear_changed();
+                }
                 self.start_editing(cx);
                 let same = self
                     .file

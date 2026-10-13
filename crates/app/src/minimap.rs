@@ -43,7 +43,8 @@ pub fn start(
                     build(source.as_mut(), &|| !sender.is_closed(), &mut |snapshot| {
                         sender.try_send(Ok(Arc::new(snapshot))).is_ok()
                     })
-                });
+                })
+                .map_err(|error| crate::disk_change::naming(error, &file.meta.source));
             if let Err(error) = result {
                 let _ = sender.try_send(Err(error));
             }
