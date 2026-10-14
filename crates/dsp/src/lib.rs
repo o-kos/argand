@@ -9,6 +9,7 @@
 pub mod extract;
 pub mod resample;
 pub mod stft;
+pub mod suppress;
 pub mod waveform;
 pub mod window;
 
@@ -20,5 +21,6 @@ pub use stft::{
     Shading, StftConfig, analyze, analyze_overview, analyze_overview_with_refresh,
     analyze_progressive, analyze_progressive_with_options, shade, suggested_range_db,
 };
+pub use suppress::{SuppressPlan, Suppressor};
 pub use waveform::EnvelopeBuilder;
 pub use window::{ParseWindowError, WINDOW_NAMES, Window, WindowTable};

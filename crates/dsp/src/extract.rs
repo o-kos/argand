@@ -27,10 +27,10 @@ pub const NARROWEST_BAND: f64 = 1.0 / 32_768.0;
 /// It is also the resolution of every other limit. A real capture's mirror closer
 /// than this to its band stays, and a complex band this close to the whole capture
 /// is the whole capture.
-const NARROWEST_TRANSITION: f64 = NARROWEST_BAND / 4.0;
+pub(crate) const NARROWEST_TRANSITION: f64 = NARROWEST_BAND / 4.0;
 
 /// The largest FFT the convolution uses.
-const LARGEST_FFT: usize = 1 << 22;
+pub(crate) const LARGEST_FFT: usize = 1 << 22;
 
 /// The part of the decimated rate left to the filter's transition.
 const TRANSITION: f64 = 1.25;
@@ -41,7 +41,7 @@ pub enum ExtractError {
     BadRate(f64),
     #[error("the band {low} to {high} Hz is not inside the capture's band")]
     OutsideCapture { low: f64, high: f64 },
-    #[error("the band is {width} Hz wide, narrower than the {narrowest} Hz that can be saved")]
+    #[error("the band is {width} Hz wide, narrower than the {narrowest} Hz a band can be")]
     TooNarrow { width: f64, narrowest: f64 },
     #[error("a span of {0} samples is too long to extract")]
     TooLong(u64),
@@ -66,21 +66,7 @@ impl ExtractPlan {
     /// The edges are relative to the capture's baseband 0 Hz. A complex capture
     /// spans `-rate/2..rate/2` and a real one `0..rate/2`.
     pub fn check(rate: f64, low: f64, high: f64, real: bool) -> Result<(), ExtractError> {
-        if !(rate.is_finite() && rate > 0.0) {
-            return Err(ExtractError::BadRate(rate));
-        }
-        let nyquist = rate / 2.0;
-        let floor = if real { 0.0 } else { -nyquist };
-        let inside = low.is_finite() && high.is_finite() && low >= floor && high <= nyquist;
-        if !inside || low >= high {
-            return Err(ExtractError::OutsideCapture { low, high });
-        }
-        let width = high - low;
-        let narrowest = rate * NARROWEST_BAND;
-        if width < narrowest {
-            return Err(ExtractError::TooNarrow { width, narrowest });
-        }
-        Ok(())
+        check_band(rate, low, high, real)
     }
 
     /// Plan the extraction of `low..high` hertz from a capture at `rate`, as [`Self::check`] allows.
@@ -166,6 +152,25 @@ impl ExtractPlan {
     }
 }
 
+/// Refuse a band outside the capture's or narrower than the narrowest band.
+pub(crate) fn check_band(rate: f64, low: f64, high: f64, real: bool) -> Result<(), ExtractError> {
+    if !(rate.is_finite() && rate > 0.0) {
+        return Err(ExtractError::BadRate(rate));
+    }
+    let nyquist = rate / 2.0;
+    let floor = if real { 0.0 } else { -nyquist };
+    let inside = low.is_finite() && high.is_finite() && low >= floor && high <= nyquist;
+    if !inside || low >= high {
+        return Err(ExtractError::OutsideCapture { low, high });
+    }
+    let width = high - low;
+    let narrowest = rate * NARROWEST_BAND;
+    if width < narrowest {
+        return Err(ExtractError::TooNarrow { width, narrowest });
+    }
+    Ok(())
+}
+
 /// The width of the filter's transition, or none for a complex band that is the whole capture.
 ///
 /// It is the narrowest of three limits. What aliases when decimating must land
@@ -194,7 +199,7 @@ fn transition(rate: f64, low: f64, high: f64, decimation: u64, real: bool) -> Op
 }
 
 /// A Kaiser-windowed sinc passing `pass` hertz and stopping from `stop`, with DC gain `gain`.
-fn low_pass(rate: f64, pass: f64, stop: f64, gain: f64) -> Vec<f32> {
+pub(crate) fn low_pass(rate: f64, pass: f64, stop: f64, gain: f64) -> Vec<f32> {
     let cutoff = (pass + stop) / 2.0;
     if cutoff >= rate / 2.0 {
         return vec![gain as f32];
