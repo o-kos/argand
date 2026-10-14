@@ -13,6 +13,7 @@ fn source_file(path: &Path, hints: OpenHints) -> SourceFile {
         meta,
         hints,
         stamp: SourceStamp::of(path).ok(),
+        encoding: None,
     }
 }
 
@@ -1186,4 +1187,176 @@ fn a_declined_layout_with_several_data_chunks_saves_what_it_opens() {
     let saved = run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
     assert_eq!(saved.samples, open(&source, &OpenHints::default()).unwrap().meta().len_samples);
     assert_eq!(data_bytes(&target), data);
+}
+
+/// Computed samples kept as unit-scale `f32`, encoded on the scale of the capture at `capture`.
+fn computed(path: &Path, capture: &Path, domain: Domain, values: &[f32]) -> SourceFile {
+    computed_with(path, capture, &OpenHints::default(), domain, values)
+}
+
+fn computed_with(path: &Path, capture: &Path, hints: &OpenHints, domain: Domain, values: &[f32]) -> SourceFile {
+    let f32_type = SampleType::new(domain, SampleFormat::F32);
+    write_wav(path, f32_type, 48_000, values, 1.0);
+    let (factor, offset) = open(capture, hints)
+        .unwrap()
+        .original_sample_units()
+        .unwrap();
+    SourceFile {
+        encoding: Some(Encoding { factor, offset }),
+        ..source_file(path, OpenHints::default())
+    }
+}
+
+/// Copied, computed and copied again, as a capture suppressed in its middle is saved.
+fn suppressed(capture: SourceFile, computed: SourceFile, target: PathBuf) -> SaveRequest {
+    let len = capture.meta.len_samples;
+    let computed_len = computed.meta.len_samples;
+    SaveRequest::joined(
+        vec![capture, computed],
+        vec![
+            Segment { source: 0, start: 0, len: 10 },
+            Segment { source: 1, start: 0, len: computed_len },
+            Segment { source: 0, start: 10 + computed_len, len: len - 10 - computed_len },
+        ],
+        target,
+    )
+    .unwrap()
+}
+
+/// Values beyond full scale on both sides, and a few within it.
+const COMPUTED: [f32; 8] = [0.25, -0.5, 1.5, -2.0, 0.0, 0.999_999, -1.0, 0.125];
+
+#[test]
+fn computed_samples_are_encoded_in_the_captures_format_and_clamped() {
+    let dir = TempDir::new("write-computed");
+    type Encode = fn(f32) -> Vec<u8>;
+    let cases: [(&str, Encode); 4] = [
+        ("iq_i16", |v| ((f64::from(v) * 32768.0).round().clamp(-32768.0, 32767.0) as i16).to_le_bytes().to_vec()),
+        ("iq_i32", |v| ((f64::from(v) * 2_147_483_648.0).round().clamp(-2_147_483_648.0, 2_147_483_647.0) as i32).to_le_bytes().to_vec()),
+        ("rl_u8", |v| vec![(f64::from(v) * 128.0 + 128.0).round().clamp(0.0, 255.0) as u8]),
+        ("iq_f32", |v| v.to_le_bytes().to_vec()),
+    ];
+    for (name, encode) in cases {
+        let sample_type: SampleType = name.parse().unwrap();
+        let source = write_wav(&dir.join(&format!("{name}.wav")), sample_type, 48_000, &signal(sample_type, 100), 1.0);
+        let channels = sample_type.channels();
+        let values: Vec<f32> = COMPUTED.iter().copied().cycle().take(4 * channels).collect();
+        let scratch = computed(&dir.join(&format!("{name}-computed.wav")), &source, sample_type.domain, &values);
+        let target = dir.join(&format!("{name}-saved.wav"));
+        let saved = run(&suppressed(source_file(&source, OpenHints::default()), scratch, target.clone())).unwrap();
+        assert_eq!(saved.samples, 100);
+
+        let block = sample_type.bytes_per_sample();
+        let original = data_bytes(&source);
+        let mut expected = original[..10 * block].to_vec();
+        for &value in &values {
+            expected.extend(encode(value));
+        }
+        expected.extend_from_slice(&original[14 * block..]);
+        assert_eq!(data_bytes(&target), expected, "{name}");
+    }
+}
+
+#[test]
+fn computed_samples_are_encoded_in_twenty_four_bits() {
+    let dir = TempDir::new("write-computed-24");
+    let source = dir.join("a.wav");
+    let data = write_wav24(&source, 2, 400);
+    let values: Vec<f32> = COMPUTED.to_vec();
+    let scratch = computed(&dir.join("computed.wav"), &source, Domain::Iq, &values);
+    let target = dir.join("b.wav");
+    let mut request = suppressed(source_file(&source, OpenHints::default()), scratch, target.clone());
+    request.meta.sample_rate = 96_000.0;
+    request.sources[1].meta.sample_rate = 96_000.0;
+    run(&request).unwrap();
+    let mut expected = data[..10 * 6].to_vec();
+    for &value in &values {
+        let stored = (f64::from(value) * 8_388_608.0).round().clamp(-8_388_608.0, 8_388_607.0) as i32;
+        expected.extend_from_slice(&stored.to_le_bytes()[..3]);
+    }
+    expected.extend_from_slice(&data[14 * 6..]);
+    assert_eq!(data_bytes(&target), expected);
+}
+
+#[test]
+fn computed_samples_are_encoded_into_flac_and_headerless_output() {
+    let dir = TempDir::new("write-computed-flac");
+    let source = dir.join("a.flac");
+    let samples = write_flac_fixture(&source, 2, 16, 3000);
+    let values: Vec<f32> = COMPUTED.to_vec();
+    let mut scratch = computed(&dir.join("computed.wav"), &source, Domain::Iq, &values);
+    scratch.meta.sample_rate = 44_100.0;
+    let target = dir.join("b.flac");
+    let saved = run(&suppressed(source_file(&source, OpenHints::default()), scratch, target.clone())).unwrap();
+    assert_eq!(saved.container, "flac");
+    let mut expected = samples[..20].to_vec();
+    expected.extend(values.iter().map(|&v| (f64::from(v) * 32768.0).round().clamp(-32768.0, 32767.0) as i32));
+    expected.extend_from_slice(&samples[28..]);
+    assert_eq!(flac_ints(&target, 16), expected);
+
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let mut bytes = b"PREAMBLE".to_vec();
+    bytes.extend(encode(SampleFormat::I16, &signal(i16, 100)));
+    let raw = dir.join("c.raw");
+    fs::write(&raw, &bytes).unwrap();
+    let hints = OpenHints {
+        raw: Some(RawSpec { sample_type: i16, sample_rate: Some(48_000.0) }),
+        byte_offset: 8,
+        ..Default::default()
+    };
+    let scratch = computed_with(&dir.join("computed-raw.wav"), &raw, &hints, Domain::Iq, &values);
+    let mut request = suppressed(source_file(&raw, hints), scratch, raw.clone());
+    request.replacing = replacing(&raw);
+    request.output = Output::Headerless { preamble: 8 };
+    run(&request).unwrap();
+    let mut expected = bytes[..8 + 10 * 4].to_vec();
+    for &value in &values {
+        expected.extend_from_slice(&((f64::from(value) * 32768.0).round().clamp(-32768.0, 32767.0) as i16).to_le_bytes());
+    }
+    expected.extend_from_slice(&bytes[8 + 14 * 4..]);
+    assert_eq!(fs::read(&raw).unwrap(), expected);
+}
+
+#[test]
+fn computed_samples_cannot_set_the_format() {
+    let dir = TempDir::new("write-computed-first");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 100), 1.0);
+    let scratch = computed(&dir.join("computed.wav"), &source, Domain::Iq, &[0.5; 8]);
+    let request = SaveRequest::joined(
+        vec![scratch],
+        vec![Segment { source: 0, start: 0, len: 4 }],
+        dir.join("b.wav"),
+    )
+    .unwrap();
+    assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
+    assert_eq!(names(&dir), ["a.wav", "computed.wav"]);
+}
+
+#[test]
+fn a_computed_source_changed_since_it_was_written_is_refused() {
+    let dir = TempDir::new("write-computed-changed");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 100), 1.0);
+    let path = dir.join("computed.wav");
+    let scratch = computed(&path, &source, Domain::Iq, &[0.5; 8]);
+    let earlier = fs::metadata(&path).unwrap().modified().unwrap();
+    write_wav(&path, SampleType::new(Domain::Iq, SampleFormat::F32), 48_000, &[0.25; 8], 1.0);
+    modified_after(&path, earlier);
+    let request = suppressed(source_file(&source, OpenHints::default()), scratch, dir.join("b.wav"));
+    assert!(matches!(run(&request), Err(WriteError::SourceChanged { .. })));
+}
+
+#[test]
+fn computed_samples_of_another_layout_are_refused() {
+    let dir = TempDir::new("write-computed-layout");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 100), 1.0);
+    let other = write_wav(&dir.join("other.wav"), i16, 48_000, &signal(i16, 8), 1.0);
+    let scratch = SourceFile {
+        encoding: Some(Encoding { factor: 32768.0, offset: 0.0 }),
+        ..source_file(&other, OpenHints::default())
+    };
+    let request = suppressed(source_file(&source, OpenHints::default()), scratch, dir.join("b.wav"));
+    assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
 }

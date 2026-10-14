@@ -52,6 +52,7 @@ fn a_job_reports_progress_and_the_saved_file() {
             meta: opened.meta().clone(),
             hints: hints.clone(),
             stamp: None,
+            encoding: None,
         },
         SampleSpan::between(10, 20),
         target.clone(),

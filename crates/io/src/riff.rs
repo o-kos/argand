@@ -31,8 +31,8 @@ const SIZE_UNKNOWN: u32 = 0xFFFF_FFFF;
 /// Smallest useful `ds64`: riffSize, dataSize, sampleCount, tableLength.
 const DS64_MIN_LEN: usize = 28;
 
-const WAVE_FORMAT_PCM: u16 = 1;
-const WAVE_FORMAT_IEEE_FLOAT: u16 = 3;
+pub(crate) const WAVE_FORMAT_PCM: u16 = 1;
+pub(crate) const WAVE_FORMAT_IEEE_FLOAT: u16 = 3;
 const WAVE_FORMAT_EXTENSIBLE: u16 = 0xFFFE;
 
 /// Where the samples live in a WAVE file and how to read them.

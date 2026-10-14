@@ -20,6 +20,7 @@ fn capture(dir: &TempDir, frequency: f64) -> SourceFile {
         meta: source.meta().clone(),
         hints: OpenHints::default(),
         stamp,
+        encoding: None,
     }
 }
 
@@ -153,7 +154,7 @@ fn a_real_rectangle_stays_real_and_moves_its_lower_edge_to_zero() {
     }).collect();
     let path = write_wav(&dir.join("real.wav"), SampleType::new(Domain::Real, SampleFormat::F32), RATE as u32, &values, 1.0);
     let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
-    let source = SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp };
+    let source = SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp, encoding: None };
     let target = dir.join("rectangle.wav");
     let span = SampleSpan::between(12_000, 36_000).unwrap();
     let band = FrequencyBand::between(10_005_000.0, 10_007_000.0).unwrap();
@@ -176,7 +177,7 @@ fn a_non_kilohertz_source_rate_changes_samples_as_well_as_the_header() {
     let values = iq_tone(11_999, rate, 2_700.0, 0.5);
     let path = write_wav(&dir.join("iq.wav"), SampleType::new(Domain::Iq, SampleFormat::F32), rate as u32, &values, 1.0);
     let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
-    let source = SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp };
+    let source = SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp, encoding: None };
     let target = dir.join("band.wav");
     let span = SampleSpan::between(0, 11_999).unwrap();
     let band = FrequencyBand::between(10_002_000.0, 10_003_000.0).unwrap();
@@ -197,7 +198,7 @@ fn real_capture(dir: &TempDir, frequency: f64) -> SourceFile {
     }).collect();
     let path = write_wav(&dir.join("real.wav"), SampleType::new(Domain::Real, SampleFormat::F32), RATE as u32, &values, 1.0);
     let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
-    SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp }
+    SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp, encoding: None }
 }
 
 #[test]
@@ -237,7 +238,7 @@ fn a_full_band_rectangle_preserves_a_tone_next_to_native_nyquist() {
     }
     let path = write_wav(&dir.join("iq.wav"), SampleType::new(Domain::Iq, SampleFormat::F32), rate as u32, &values, 1.0);
     let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
-    let source = SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp };
+    let source = SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp, encoding: None };
     let target = dir.join("full.wav");
     let span = SampleSpan::between(1_200_000, 1_248_000).unwrap();
     let band = FrequencyBand::between(10_000_000.0 - rate / 2.0, 10_000_000.0 + rate / 2.0).unwrap();
@@ -262,7 +263,7 @@ fn resampling_keeps_filter_tails_beyond_short_capture_edges() {
     let dir = TempDir::new("extract-single-sample");
     let path = write_wav(&dir.join("iq.wav"), SampleType::new(Domain::Iq, SampleFormat::F32), 1_000, &[0.5, 0.0], 1.0);
     let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
-    let source = SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp };
+    let source = SourceFile { meta: source.meta().clone(), hints: OpenHints::default(), stamp, encoding: None };
     let target = dir.join("full.wav");
     let span = SampleSpan::between(0, 1).unwrap();
     let band = FrequencyBand::between(10_000_000.0 - 500.0, 10_000_000.0 + 500.0).unwrap();

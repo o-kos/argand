@@ -40,6 +40,18 @@ pub struct SourceFile {
     pub hints: OpenHints,
     /// The file as it was when it was opened, which it must still be.
     pub stamp: Option<SourceStamp>,
+    /// How computed `f32` samples map to the capture's stored units, none for a file of the capture's own.
+    pub encoding: Option<Encoding>,
+}
+
+/// How a computed value becomes a stored one, as `value * factor + offset`.
+///
+/// It is the inverse of what reading the capture did, so a computed sample is
+/// stored on the scale the capture's own samples are.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Encoding {
+    pub factor: f64,
+    pub offset: f64,
 }
 
 /// `len` samples of source `source` of a request, from its sample `start`.
@@ -55,6 +67,8 @@ pub struct Segment {
 /// The segments are written in order. Every source must store its samples the
 /// same way ([`storage`]) at the rate `meta` states, and the first sets the
 /// output format, while `meta` sets the rate and reference frequency written.
+/// A computed source (one with an [`Encoding`]) is encoded into that format
+/// instead, its own storage never compared, so the first source must not be one.
 #[derive(Debug, Clone)]
 pub struct SaveRequest {
     /// What the saved file states about itself, its sample rate and reference frequency.
@@ -449,12 +463,11 @@ fn stage_with_limit(
     let mut partial = Partial::create(target)?;
     let container = match (first, request.output) {
         (Storage::Linear { .. }, Output::Headerless { preamble }) => {
-            let mut copies = copies(&mut opened);
             write_headerless(
                 &mut partial,
                 request,
                 preamble,
-                &mut copies,
+                &mut opened,
                 progress,
                 cancel,
             )?;
@@ -466,27 +479,17 @@ fn stage_with_limit(
                 reason: "flac samples cannot be written without a container".into(),
             });
         }
-        (Storage::Linear { .. }, Output::Native) => {
-            let mut copies = copies(&mut opened);
-            write_wave(
-                &mut partial,
-                request,
-                &mut copies,
-                riff_limit,
-                progress,
-                cancel,
-            )?
-        }
+        (Storage::Linear { .. }, Output::Native) => write_wave(
+            &mut partial,
+            request,
+            &mut opened,
+            riff_limit,
+            progress,
+            cancel,
+        )?,
         (Storage::Flac { bits, .. }, Output::Native) => {
-            let mut exacts: Vec<&mut Exact> = opened
-                .iter_mut()
-                .filter_map(|open| match &mut open.reader {
-                    Reader::Decode(exact) => Some(exact.as_mut()),
-                    Reader::Copy { .. } => None,
-                })
-                .collect();
             let mut decoding = Decoding {
-                exacts: &mut exacts,
+                opened: &mut opened,
                 request,
                 bits,
             };
@@ -596,31 +599,29 @@ fn check_segments(request: &SaveRequest) -> Result<(), WriteError> {
 
 /// The storage every source shares, refusing one stored differently or at another rate.
 fn common_storage(request: &SaveRequest, opened: &[Opened]) -> Result<Storage, WriteError> {
-    let first = opened[0].reader.storage();
+    let first = &request.sources[0];
+    if first.encoding.is_some() {
+        return Err(WriteError::Unsupported {
+            path: first.meta.source.clone(),
+            reason: "computed samples cannot set the format of the file they are saved in".into(),
+        });
+    }
+    let storage = opened[0].reader.storage();
     let rate = request.meta.sample_rate;
-    match request
-        .sources
-        .iter()
-        .zip(opened)
-        .find(|(source, open)| open.reader.storage() != first || source.meta.sample_rate != rate)
-    {
+    let odd = request.sources.iter().zip(opened).find(|(source, open)| {
+        let stored = match source.encoding {
+            Some(_) => open.reader.is_computed_layout(source.meta.channels()),
+            None => open.reader.storage() == storage,
+        };
+        !stored || source.meta.sample_rate != rate
+    });
+    match odd {
         Some((odd, _)) => Err(WriteError::Unsupported {
             path: odd.meta.source.clone(),
             reason: "its samples are stored differently from the capture it is saved with".into(),
         }),
-        None => Ok(first),
+        None => Ok(storage),
     }
-}
-
-/// The handles and layouts of sources copied byte for byte.
-fn copies(opened: &mut [Opened]) -> Vec<(&mut File, &CopyLayout)> {
-    opened
-        .iter_mut()
-        .filter_map(|open| match &mut open.reader {
-            Reader::Copy { input, layout } => Some((input, &*layout)),
-            Reader::Decode(_) => None,
-        })
-        .collect()
 }
 
 /// A source opened for saving, checked to be the file that was opened as the capture.
@@ -753,6 +754,18 @@ impl Reader {
             path: path.clone(),
             reason: "unrecognised container".into(),
         })
+    }
+
+    /// Whether this is real or I/Q `f32` on the unit scale with `channels` values, as computed samples are kept.
+    fn is_computed_layout(&self, channels: usize) -> bool {
+        let expected = Storage::Linear {
+            format_tag: riff::WAVE_FORMAT_IEEE_FLOAT,
+            bits: 32,
+            channels: channels as u16,
+            block: channels as u16 * 4,
+            unscaled_float: false,
+        };
+        self.storage() == expected
     }
 
     fn storage(&self) -> Storage {
@@ -938,39 +951,60 @@ pub fn writes_as_wave(meta: &SignalMeta, hints: &OpenHints) -> bool {
 fn write_wave(
     partial: &mut Partial,
     request: &SaveRequest,
-    copies: &mut [(&mut File, &CopyLayout)],
+    opened: &mut [Opened],
     riff_limit: u64,
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<&'static str, WriteError> {
     let total = request.total();
-    let block = copies[0].1.block;
+    let (fmt, block) = match &opened[0].reader {
+        Reader::Copy { layout, .. } => (layout.fmt.clone(), layout.block),
+        Reader::Decode(_) => return Err(WriteError::OutOfRange),
+    };
     let data_len = total.checked_mul(block).ok_or(WriteError::OutOfRange)?;
     let meta = &request.meta;
-    let container =
-        write_wave_header(partial, meta, &copies[0].1.fmt, data_len, total, riff_limit)?;
-    let mut done = 0;
-    progress(0, total);
-    for segment in &request.segments {
-        let (input, layout) = &mut copies[segment.source];
-        let path = &request.sources[segment.source].meta.source;
-        copy_samples(
-            partial,
-            input,
-            layout,
-            path,
-            *segment,
-            &mut |copied| {
-                progress(done + copied, total);
-            },
-            cancel,
-        )?;
-        done += segment.len;
-    }
+    let container = write_wave_header(partial, meta, &fmt, data_len, total, riff_limit)?;
+    write_linear_segments(partial, request, opened, progress, cancel)?;
     if data_len % 2 == 1 {
         partial.write(&[0])?;
     }
     Ok(container)
+}
+
+/// Every segment in order, copied byte for byte or, when computed, encoded in the first source's linear storage.
+fn write_linear_segments(
+    partial: &mut Partial,
+    request: &SaveRequest,
+    opened: &mut [Opened],
+    progress: &mut dyn FnMut(u64, u64),
+    cancel: &AtomicBool,
+) -> Result<(), WriteError> {
+    let target = Linear::of(opened[0].reader.storage(), &request.meta.source)?;
+    let total = request.total();
+    let mut done = 0;
+    progress(0, total);
+    for segment in &request.segments {
+        let source = &request.sources[segment.source];
+        let path = &source.meta.source;
+        let Reader::Copy { input, layout } = &mut opened[segment.source].reader else {
+            return Err(WriteError::OutOfRange);
+        };
+        let mut copied = |copied| progress(done + copied, total);
+        match source.encoding {
+            Some(encoding) => {
+                let computed = Computed {
+                    input,
+                    layout,
+                    path,
+                    encoding,
+                };
+                computed.encode_linear(partial, target, *segment, &mut copied, cancel)?;
+            }
+            None => copy_samples(partial, input, layout, path, *segment, &mut copied, cancel)?,
+        }
+        done += segment.len;
+    }
+    Ok(())
 }
 
 /// Samples with no header after the replaced file's own preamble, as a headerless capture is saved over itself.
@@ -978,7 +1012,7 @@ fn write_headerless(
     partial: &mut Partial,
     request: &SaveRequest,
     preamble: u64,
-    copies: &mut [(&mut File, &CopyLayout)],
+    opened: &mut [Opened],
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<(), WriteError> {
@@ -989,24 +1023,7 @@ fn write_headerless(
         });
     };
     copy_preamble(partial, replacing, preamble)?;
-    let total = request.total();
-    let mut done = 0;
-    progress(0, total);
-    for segment in &request.segments {
-        let (input, layout) = &mut copies[segment.source];
-        let path = &request.sources[segment.source].meta.source;
-        copy_samples(
-            partial,
-            input,
-            layout,
-            path,
-            *segment,
-            &mut |copied| progress(done + copied, total),
-            cancel,
-        )?;
-        done += segment.len;
-    }
-    Ok(())
+    write_linear_segments(partial, request, opened, progress, cancel)
 }
 
 /// Copy the bytes before the samples of the replaced file, checking it is the file that was opened.
@@ -1201,6 +1218,144 @@ fn copy_samples(
     Ok(())
 }
 
+impl Encoding {
+    /// The stored value of a computed one.
+    pub fn apply(self, value: f32) -> f64 {
+        f64::from(value) * self.factor + self.offset
+    }
+}
+
+/// How computed values are written into a linear storage.
+#[derive(Debug, Clone, Copy)]
+enum Linear {
+    /// Eight-bit offset binary.
+    Unsigned8,
+    /// Signed integers of this many bytes, little-endian.
+    Signed(usize),
+    Float32,
+    Float64,
+}
+
+impl Linear {
+    /// The encoding of `storage`, refused for a layout whose stored integers are not its container's.
+    fn of(storage: Storage, path: &Path) -> Result<Self, WriteError> {
+        let Storage::Linear {
+            format_tag,
+            bits,
+            channels,
+            block,
+            unscaled_float,
+        } = storage
+        else {
+            return Err(WriteError::OutOfRange);
+        };
+        let width = usize::from(block) / usize::from(channels.max(1));
+        let linear = match (format_tag, width) {
+            _ if unscaled_float && width == 4 => Some(Self::Float32),
+            (riff::WAVE_FORMAT_IEEE_FLOAT, 4) => Some(Self::Float32),
+            (riff::WAVE_FORMAT_IEEE_FLOAT, 8) => Some(Self::Float64),
+            (riff::WAVE_FORMAT_PCM, 1) if bits == 8 => Some(Self::Unsigned8),
+            (riff::WAVE_FORMAT_PCM, 2..=4) if usize::from(bits) == width * 8 => {
+                Some(Self::Signed(width))
+            }
+            _ => None,
+        };
+        linear.ok_or_else(|| WriteError::Unsupported {
+            path: path.to_owned(),
+            reason: format!(
+                "computed samples cannot be stored as {bits} bit samples of {width} bytes"
+            ),
+        })
+    }
+
+    /// Append a stored value, clamped to what the format holds.
+    fn push(self, stored: f64, out: &mut Vec<u8>) {
+        match self {
+            Self::Unsigned8 => out.push(stored.round().clamp(0.0, 255.0) as u8),
+            Self::Signed(bytes) => {
+                let limit = (1i64 << (bytes * 8 - 1)) as f64;
+                let value = stored.round().clamp(-limit, limit - 1.0) as i64;
+                out.extend_from_slice(&value.to_le_bytes()[..bytes]);
+            }
+            Self::Float32 => out.extend_from_slice(&(stored as f32).to_le_bytes()),
+            Self::Float64 => out.extend_from_slice(&stored.to_le_bytes()),
+        }
+    }
+}
+
+/// A computed source, its `f32` samples read through the handle checked when it was opened.
+struct Computed<'a> {
+    input: &'a mut File,
+    layout: &'a CopyLayout,
+    path: &'a Path,
+    encoding: Encoding,
+}
+
+impl Computed<'_> {
+    /// Fill `values` with `count` samples from sample `start`.
+    fn read(&mut self, start: u64, count: u64, values: &mut [f32]) -> Result<(), WriteError> {
+        let changed = || WriteError::SourceChanged {
+            path: self.path.to_owned(),
+        };
+        let mut bytes = Vec::new();
+        let mut done = 0u64;
+        let mut filled = 0;
+        while done < count {
+            let (offset, left) = self.layout.locate(start + done).ok_or_else(changed)?;
+            let samples = left.min(count - done);
+            bytes.resize((samples * self.layout.block) as usize, 0);
+            self.input
+                .seek(SeekFrom::Start(offset))
+                .and_then(|_| self.input.read_exact(&mut bytes))
+                .map_err(|error| match error.kind() {
+                    std::io::ErrorKind::UnexpectedEof => changed(),
+                    _ => WriteError::Read {
+                        path: self.path.to_owned(),
+                        source: error,
+                    },
+                })?;
+            for value in bytes.chunks_exact(4) {
+                values[filled] = f32::from_le_bytes([value[0], value[1], value[2], value[3]]);
+                filled += 1;
+            }
+            done += samples;
+        }
+        Ok(())
+    }
+
+    /// Encode `segment` of the computed samples into `target`, a block at a time.
+    fn encode_linear(
+        mut self,
+        partial: &mut Partial,
+        target: Linear,
+        segment: Segment,
+        copied: &mut dyn FnMut(u64),
+        cancel: &AtomicBool,
+    ) -> Result<(), WriteError> {
+        let channels = (self.layout.block / 4).max(1) as usize;
+        let per_chunk = (COPY_BYTES / (4 * channels)).max(1) as u64;
+        let mut values = vec![0.0f32; per_chunk.min(segment.len) as usize * channels];
+        let mut out = Vec::new();
+        let mut done = 0u64;
+        while done < segment.len {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(WriteError::Cancelled);
+            }
+            let count = per_chunk.min(segment.len - done);
+            let values = &mut values[..count as usize * channels];
+            self.read(segment.start + done, count, values)?;
+            out.clear();
+            for &value in values.iter() {
+                target.push(self.encoding.apply(value), &mut out);
+            }
+            partial.write(&out)?;
+            done += count;
+            copied(done);
+        }
+        Ok(())
+    }
+}
+
 impl Exact {
     /// Open the source again, refusing it if it is no longer the capture that was opened.
     /// Decode the already checked `input`, refusing it if it is no longer the capture that was opened.
@@ -1231,13 +1386,13 @@ impl Exact {
 }
 
 /// The segments of a request read as exact integers through one strict decoder per source.
-struct Decoding<'a, 'b> {
-    exacts: &'a mut [&'b mut Exact],
+struct Decoding<'a> {
+    opened: &'a mut [Opened],
     request: &'a SaveRequest,
     bits: u32,
 }
 
-impl Decoding<'_, '_> {
+impl Decoding<'_> {
     /// Hand every segment to `sink` as interleaved integers, `block` samples at a time across segments.
     fn each_block(
         &mut self,
@@ -1247,33 +1402,43 @@ impl Decoding<'_, '_> {
         sink: &mut dyn FnMut(&[i32]) -> Result<(), WriteError>,
     ) -> Result<(), WriteError> {
         let channels = self.request.sources[0].meta.channels();
-        let scale = f64::from(1u32 << (self.bits - 1));
         let mut values = vec![0.0f32; block * channels];
         let mut ints: Vec<i32> = Vec::with_capacity(block * channels);
         let total = self.request.total();
         let mut done = 0u64;
         progress(0, total);
         for segment in &self.request.segments {
-            let path = &self.request.sources[segment.source].meta.source;
+            let source = &self.request.sources[segment.source];
+            let path = &source.meta.source;
             let source_error = |error| WriteError::Source {
                 path: path.clone(),
                 source: error,
             };
-            let decoder = &mut self.exacts[segment.source].decoder;
-            decoder.seek(segment.start).map_err(source_error)?;
+            let reader = &mut self.opened[segment.source].reader;
+            if let Reader::Decode(exact) = reader {
+                exact.decoder.seek(segment.start).map_err(source_error)?;
+            }
             let mut left = segment.len;
+            let mut at = segment.start;
             while left > 0 {
                 if cancel.load(Ordering::Relaxed) {
                     return Err(WriteError::Cancelled);
                 }
                 let room = block - ints.len() / channels;
                 let want = (room as u64).min(left) as usize * channels;
-                read_exactly(decoder, &mut values[..want], path)?;
-                for value in &values[..want] {
-                    ints.push(exact_integer(*value, scale, self.bits)?);
-                }
-                left -= (want / channels) as u64;
-                done += (want / channels) as u64;
+                let count = (want / channels) as u64;
+                integers(
+                    reader,
+                    source,
+                    at,
+                    count,
+                    self.bits,
+                    &mut values[..want],
+                    &mut ints,
+                )?;
+                at += count;
+                left -= count;
+                done += count;
                 if ints.len() == block * channels {
                     sink(&ints)?;
                     ints.clear();
@@ -1287,6 +1452,43 @@ impl Decoding<'_, '_> {
         progress(done, total);
         Ok(())
     }
+}
+
+/// Append `count` samples of `source` from `at` to `ints` as integers of `bits`, decoded exactly or encoded when computed.
+fn integers(
+    reader: &mut Reader,
+    source: &SourceFile,
+    at: u64,
+    count: u64,
+    bits: u32,
+    values: &mut [f32],
+    ints: &mut Vec<i32>,
+) -> Result<(), WriteError> {
+    let path = &source.meta.source;
+    let scale = f64::from(1u32 << (bits - 1));
+    match (reader, source.encoding) {
+        (Reader::Decode(exact), None) => {
+            read_exactly(&mut exact.decoder, values, path)?;
+            for value in values.iter() {
+                ints.push(exact_integer(*value, scale, bits)?);
+            }
+        }
+        (Reader::Copy { input, layout }, Some(encoding)) => {
+            let mut computed = Computed {
+                input,
+                layout,
+                path,
+                encoding,
+            };
+            computed.read(at, count, values)?;
+            for value in values.iter() {
+                let stored = encoding.apply(*value).round().clamp(-scale, scale - 1.0);
+                ints.push(stored as i32);
+            }
+        }
+        _ => return Err(WriteError::OutOfRange),
+    }
+    Ok(())
 }
 
 /// Fill `values` from `decoder`, refusing a stream that ends first.
@@ -1327,7 +1529,7 @@ fn exact_integer(value: f32, scale: f64, bits: u32) -> Result<i32, WriteError> {
 
 fn write_flac(
     partial: &mut Partial,
-    decoding: &mut Decoding<'_, '_>,
+    decoding: &mut Decoding<'_>,
     rate: usize,
     total: u64,
     progress: &mut dyn FnMut(u64, u64),
@@ -1391,7 +1593,7 @@ fn write_flac(
 /// A FLAC source the encoder cannot state the rate of, written as WAVE of the same whole-byte depth.
 fn write_decoded_wave(
     partial: &mut Partial,
-    decoding: &mut Decoding<'_, '_>,
+    decoding: &mut Decoding<'_>,
     total: u64,
     riff_limit: u64,
     progress: &mut dyn FnMut(u64, u64),

@@ -67,8 +67,8 @@ Out of scope: a key binding (the owner chooses one at acceptance), suppressing s
 
 - [x] `argand_dsp::suppress`: `SuppressPlan` (band checks, taps, margin, taper length) and `Suppressor` (overlap-save band-stop with delay compensation and taper), sharing the filter helpers with `extract`.
 - [x] DSP tests: a tone inside the band falls by at least 75 dB, samples of tones beyond the transition change by no more than the stopband ripple; real bands at 0 Hz and at Fs/2 and a complex band at ±Fs/2; a rectangle leaves samples before and after its widened span unchanged and suppresses the span itself; a too narrow band is refused; output length equals input length.
-- [ ] `argand_io::write`: `Encoding`, `SourceFile::encoding`, the storage of the first uncomputed source, encoding for linear (8, 16, 24 and 32-bit PCM, float, unscaled float), headerless and FLAC output with clamping.
-- [ ] Writer tests: a capture of copied and computed segments saves as 16-bit WAVE, 24-bit, float, headerless and FLAC, untouched samples byte for byte and computed ones encoded and clamped; a request of computed sources only is refused; a computed source whose stamp changed is refused.
+- [x] `argand_io::write`: `Encoding`, `SourceFile::encoding`, the storage of the first uncomputed source, encoding for linear (8, 16, 24 and 32-bit PCM, float, unscaled float), headerless and FLAC output with clamping.
+- [x] Writer tests: a capture of copied and computed segments saves as 16-bit WAVE, 24-bit, float, headerless and FLAC, untouched samples byte for byte and computed ones encoded and clamped; a request of computed sources only is refused; a computed source whose stamp changed is refused.
 - [ ] Scratch folder: lock, removal of folders of gone processes at start-up, `Scratch` removing its file on drop.
 - [ ] `editing.rs`: `Computed`, `Editing::suppress`, paste of computed sources, `repicture` over computed spans, `save_request` with the opened file first.
 - [ ] `suppression.rs`: the job, reading the edited capture through `EditedSource` and writing the scratch file.

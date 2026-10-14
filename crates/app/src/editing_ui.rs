@@ -114,6 +114,7 @@ impl Shell {
             meta: meta.clone(),
             hints: hints.clone(),
             stamp,
+            encoding: None,
         };
         if let Some(clipboard) = &mut self.clipboard {
             clipboard.adopt(&editing_source(&source));

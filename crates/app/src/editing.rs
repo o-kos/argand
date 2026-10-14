@@ -49,6 +49,7 @@ impl Source {
             meta: self.meta.clone(),
             hints: self.hints.clone(),
             stamp: self.stamp,
+            encoding: None,
         }
     }
 }

@@ -952,6 +952,7 @@ impl Shell {
                 meta: meta.clone(),
                 hints: document.origin().hints.clone(),
                 stamp: document.stamp(),
+                encoding: None,
             }),
         };
         let Some(source) = source else { return };
