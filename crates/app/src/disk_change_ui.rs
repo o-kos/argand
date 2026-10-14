@@ -219,10 +219,10 @@ mod tests {
         });
         assert!(!shell.read_with(cx, |shell, _| shell.capture_changed()));
 
-        // Windows refuses to truncate a mapped file but lets its name go.
-        std::fs::remove_file(&path).unwrap();
-        write_wave(&path, 48_000);
-        let file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+        // Rewritten in place without truncation, which Windows allows for a mapped file.
+        let bytes = std::fs::read(&path).unwrap();
+        let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut file, &bytes).unwrap();
         file.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
             .unwrap();
         drop(file);
