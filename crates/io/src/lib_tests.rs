@@ -479,6 +479,14 @@ fn a_same_length_replacement_is_not_reopened() {
     let meta = original.meta().clone();
     drop(original);
     let other = write_wav(&dir.join("b.wav"), st, 48000, &[0.5, 0.5, 0.5, 0.5], 1.0);
+    // Windows stamps carry no file ID until #199, so only the time tells the files apart.
+    #[cfg(windows)]
+    std::fs::File::options()
+        .write(true)
+        .open(&other)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+        .unwrap();
     std::fs::rename(&other, &path).unwrap();
     assert!(reopen(&meta, &OpenHints::default(), stamp).is_err_and(|error| error.is_changed()));
     std::fs::write(&path, b"").unwrap();
