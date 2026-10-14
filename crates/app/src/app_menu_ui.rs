@@ -180,6 +180,12 @@ impl Shell {
                     Box::new(editing_ui::DeleteSelection),
                     can.cut,
                 ))
+                .item(PopupMenuItem::separator())
+                .item(row(
+                    "Suppress band",
+                    Box::new(editing_ui::SuppressBand),
+                    can.suppress,
+                ))
         })
     }
 

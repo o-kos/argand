@@ -58,6 +58,8 @@ mod replace_ui;
 mod saving_ui;
 #[path = "settings_ui.rs"]
 mod settings_ui;
+#[path = "suppression_ui.rs"]
+mod suppression_ui;
 
 use crate::analysis::Delivery;
 use crate::axes;
@@ -416,6 +418,8 @@ struct Shell {
     saving: Option<saving_ui::Saving>,
     save_notice: Option<saving_ui::Notice>,
     save_updates: Option<Task<()>>,
+    suppressing: Option<suppression_ui::Suppressing>,
+    suppress_updates: Option<Task<()>>,
     /// What was copied, which outlives the capture it came from.
     clipboard: Option<crate::editing::Clipboard>,
 
@@ -526,6 +530,8 @@ impl Shell {
             saving: None,
             save_notice: None,
             save_updates: None,
+            suppressing: None,
+            suppress_updates: None,
             clipboard: None,
 
             replacement_active: false,
@@ -697,6 +703,9 @@ impl Shell {
         self.view = None;
         self.selection = None;
         self.band = None;
+        // A band computed for the previous file has nowhere to go.
+        self.suppressing = None;
+        self.suppress_updates = None;
         self.recent_files.clear_current();
         self.time_scheme = None;
         self.tick_pan = None;

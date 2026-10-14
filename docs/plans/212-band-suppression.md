@@ -37,9 +37,9 @@ Out of scope: a key binding (the owner chooses one at acceptance), suppressing s
 ### Computed sources
 
 - The suppressed span is written once, as real or I/Q `f32` on the capture's unit scale, through `argand_io::write::FloatWave` into a scratch folder, and becomes a new `editing::Source` with `computed: Some(Computed)`. The edit is `Capture::replace(span, clip of the new source)`; undo and redo only switch versions.
-- `Computed` holds an `Arc<Scratch>` that removes the file when the last reference goes (document, history, clipboard), and the `Encoding` (`factor`, `offset`) of the opened file, taken from its reader's `original_sample_units` when the edit is made. A capture whose reader has no such mapping cannot be suppressed.
+- `Source::computed` holds an `Arc<Scratch>` that removes the file when the last reference goes (document, history, clipboard). The `Encoding` (`factor`, `offset`) is the saving document's own, taken from its reader's `original_sample_units` when it opens, so computed samples pasted into another capture are stored on that capture's scale. A capture whose reader has no such mapping cannot be suppressed.
 - Scratch files live in `<temp>/argand-scratch/<pid>/` while `<temp>/argand-scratch/<pid>.lock` is held with `File::try_lock`. At start-up, every `<pid>.lock` that can be locked belongs to a process that has gone, and its folder is removed. A crash therefore leaves files only until the next start.
-- A computed source holds the capture's own rate and channels, so pasting it is allowed whatever the storage; the paste check compares storage only between files.
+- A computed source holds the capture's own rate and channels, so pasting it is allowed whatever the storage, refused only at another rate or kind. A paste checks only the sources its clip reads, so a clip of computed samples alone does not need the file it was computed from to match.
 - `Editing::repicture` keeps the shown picture over the replaced span: a sample neither version holds elsewhere maps to its own position when either version holds a computed source there and the lengths agree. The picture is replaced as a whole once the new analysis completes, as after every other edit, so a suppression over the whole capture never blanks the spectrogram.
 - The selection after the edit is the time span the rectangle had, or none for a band; the band is cleared as after every edit, and undo restores each version's selection.
 
@@ -53,7 +53,7 @@ Out of scope: a key binding (the owner chooses one at acceptance), suppressing s
 
 - `editing_ui` adds the `SuppressBand` action: Edit → Suppress band, and Suppress band in the spectrogram's context menu, enabled while a band is selected (a band or a rectangle), the capture has not changed on disk, no save or suppression runs, and its file is described. No key binding yet.
 - `suppression.rs` (toolkit-neutral) runs the computation on its own thread with the save job's shape: progress every 100 ms through a bounded channel, a cancel flag, and a drop that cancels and waits at most one second for the scratch file to go. The edit is applied only when the document and its version are still the ones it started from.
-- While it runs, edits, saving and opening another file wait: the status bar shows `Suppressing…` with progress and a cancelling ×, at the place of a save, and a failure stays there until closed. A cancellation leaves the capture as it was.
+- While it runs, edits and saving wait: the status bar shows `Suppressing the band…` with progress and a cancelling ×, beside a save's place, and a failure stays there until closed. Opening another file cancels it. A cancellation leaves the capture as it was.
 
 ## Rejected alternatives
 
@@ -69,11 +69,11 @@ Out of scope: a key binding (the owner chooses one at acceptance), suppressing s
 - [x] DSP tests: a tone inside the band falls by at least 75 dB, samples of tones beyond the transition change by no more than the stopband ripple; real bands at 0 Hz and at Fs/2 and a complex band at ±Fs/2; a rectangle leaves samples before and after its widened span unchanged and suppresses the span itself; a too narrow band is refused; output length equals input length.
 - [x] `argand_io::write`: `Encoding`, `SourceFile::encoding`, the storage of the first uncomputed source, encoding for linear (8, 16, 24 and 32-bit PCM, float, unscaled float), headerless and FLAC output with clamping.
 - [x] Writer tests: a capture of copied and computed segments saves as 16-bit WAVE, 24-bit, float, headerless and FLAC, untouched samples byte for byte and computed ones encoded and clamped; a request of computed sources only is refused; a computed source whose stamp changed is refused.
-- [ ] Scratch folder: lock, removal of folders of gone processes at start-up, `Scratch` removing its file on drop.
-- [ ] `editing.rs`: `Computed`, `Editing::suppress`, paste of computed sources, `repicture` over computed spans, `save_request` with the opened file first.
-- [ ] `suppression.rs`: the job, reading the edited capture through `EditedSource` and writing the scratch file.
-- [ ] `editing_ui.rs` and the status bar: the action, menu rows, enabling, progress, cancel, failure, applying the edit.
-- [ ] App tests: suppression of a band and of a rectangle applies one edit with the expected pieces and selection, undo and redo switch it, a stale result is dropped, the scratch file goes with the last reference, saving a suppressed capture writes the computed samples, start-up removes a gone process's folder.
+- [x] Scratch folder: lock, removal of folders of gone processes at start-up, `Scratch` removing its file on drop.
+- [x] `editing.rs`: `Computed`, `Editing::suppress`, paste of computed sources, `repicture` over computed spans, `save_request` with the opened file first.
+- [x] `suppression.rs`: the job, reading the edited capture through `EditedSource` and writing the scratch file.
+- [x] `editing_ui.rs` and the status bar: the action, menu rows, enabling, progress, cancel, failure, applying the edit.
+- [x] App tests: suppression of a band and of a rectangle applies one edit with the expected pieces and selection, undo and redo switch it, a stale result is dropped, the scratch file goes with the last reference, saving a suppressed capture writes the computed samples, start-up removes a gone process's folder.
 - [ ] `AGENTS.md`, `IMPLEMENTATION_PLAN.md` (phase 5 step 5) and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.

@@ -1225,7 +1225,7 @@ fn edit_items(
     can: super::editing_ui::EditCommands,
 ) -> gpui_kit::component::menu::PopupMenu {
     use super::editing_ui::{
-        CopySelection, CutSelection, DeleteSelection, PasteClipboard, PasteHere,
+        CopySelection, CutSelection, DeleteSelection, PasteClipboard, PasteHere, SuppressBand,
     };
     menu.item(
         PopupMenuItem::new("Cut")
@@ -1252,6 +1252,12 @@ fn edit_items(
         PopupMenuItem::new("Delete")
             .disabled(!can.cut)
             .action(Box::new(DeleteSelection)),
+    )
+    .item(PopupMenuItem::separator())
+    .item(
+        PopupMenuItem::new("Suppress band")
+            .disabled(!can.suppress)
+            .action(Box::new(SuppressBand)),
     )
 }
 

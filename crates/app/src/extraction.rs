@@ -79,7 +79,7 @@ pub fn run(
         return Err(WriteError::OutOfRange);
     }
     let plan = request.plan()?;
-    let mut source = open(request)?;
+    let mut source = open(&request.capture, &request.sources, &request.meta)?;
     let resampling = output_plan(request, &plan)?;
     let padding = resampling.margin().saturating_mul(plan.decimation());
     let leading = padding.saturating_sub(request.span.start());
@@ -135,13 +135,7 @@ pub fn run(
     if cancel.load(Ordering::Relaxed) {
         return Err(WriteError::Cancelled);
     }
-    // A mapped file changed while it was read gives other samples without an error.
-    for source in request.sources.iter().flatten() {
-        let path = &source.meta.source;
-        if argand_io::write::SourceStamp::of(path).ok() != source.stamp {
-            return Err(WriteError::SourceChanged { path: path.clone() });
-        }
-    }
+    unchanged(&request.sources)?;
     output.finish(cancel)
 }
 
@@ -261,10 +255,25 @@ impl Output {
     }
 }
 
-/// The capture read through its files, each checked to be the file it was when opened.
-fn open(request: &ExtractRequest) -> Result<EditedSource, WriteError> {
+/// Refuse files that changed while they were read, which a mapped file does without an error.
+pub fn unchanged(sources: &[Option<SourceFile>]) -> Result<(), WriteError> {
+    for source in sources.iter().flatten() {
+        let path = &source.meta.source;
+        if argand_io::write::SourceStamp::of(path).ok() != source.stamp {
+            return Err(WriteError::SourceChanged { path: path.clone() });
+        }
+    }
+    Ok(())
+}
+
+/// `capture` read through its files, each checked to be the file it was when opened, and described by `meta`.
+pub fn open(
+    capture: &Capture,
+    sources: &[Option<SourceFile>],
+    meta: &SignalMeta,
+) -> Result<EditedSource, WriteError> {
     let mut opened: Vec<Option<Box<dyn SampleSource>>> = Vec::new();
-    for source in &request.sources {
+    for source in sources {
         let Some(source) = source else {
             opened.push(None);
             continue;
@@ -283,10 +292,11 @@ fn open(request: &ExtractRequest) -> Result<EditedSource, WriteError> {
             })?;
         opened.push(Some(reader));
     }
-    let mut meta = request.meta.clone();
-    meta.len_samples = request.capture.len();
-    EditedSource::new(request.capture.clone(), opened, meta).map_err(|error| WriteError::Source {
-        path: request.meta.source.clone(),
+    let path = meta.source.clone();
+    let mut meta = meta.clone();
+    meta.len_samples = capture.len();
+    EditedSource::new(capture.clone(), opened, meta).map_err(|error| WriteError::Source {
+        path,
         source: error,
     })
 }

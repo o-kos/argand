@@ -33,10 +33,12 @@ mod profiling;
 mod recent;
 mod release;
 mod saving;
+mod scratch;
 mod session;
 mod settings;
 mod shell;
 mod spectrogram;
+mod suppression;
 mod theme;
 mod time_ruler;
 mod waveform;
@@ -68,6 +70,13 @@ fn main() {
     let writer = state_path
         .filter(|_| restored.writable)
         .and_then(|path| Saver::spawn(Writer::new(path, restored.session.clone())));
+
+    // Removing what gone instances left must not hold up the first window.
+    let _ = std::thread::Builder::new()
+        .name("argand-scratch".into())
+        .spawn(|| {
+            scratch::folder();
+        });
 
     shell::run(config, restored.session, writer, args.origin());
 }

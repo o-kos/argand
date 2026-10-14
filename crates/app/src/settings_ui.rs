@@ -356,6 +356,7 @@ impl Shell {
             )
             .children(self.changed_item(cx))
             // Last, so it keeps its place whatever the readouts beside it do.
+            .children(self.suppress_item(cx))
             .children(self.save_item(cx))
     }
 

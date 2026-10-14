@@ -15,7 +15,8 @@ actions!(
         CopySelection,
         PasteClipboard,
         PasteHere,
-        DeleteSelection
+        DeleteSelection,
+        SuppressBand
     ]
 );
 
@@ -67,6 +68,7 @@ pub(super) struct EditCommands {
     pub cut: bool,
     pub paste: bool,
     pub replace: bool,
+    pub suppress: bool,
 }
 
 /// What the unsaved-edits question asks.
@@ -81,14 +83,15 @@ impl Shell {
 
     /// The edits to change, none while the file under them is being replaced or has changed.
     pub(super) fn editing_mut(&mut self) -> Option<&mut Editing> {
-        if self.replacement_active || self.capture_changed() {
+        if self.replacement_active || self.capture_changed() || self.suppressing.is_some() {
             return None;
         }
         self.file.as_mut()?.editing.as_mut()
     }
 
     pub(super) fn edit_commands_available(&self) -> EditCommands {
-        let Some(editing) = self.editing().filter(|_| !self.capture_changed()) else {
+        let idle = !self.capture_changed() && self.suppressing.is_none();
+        let Some(editing) = self.editing().filter(|_| idle) else {
             return EditCommands::default();
         };
         let selected = self.time_selection().is_some();
@@ -99,6 +102,7 @@ impl Shell {
             cut: selected,
             paste: clip,
             replace: clip && selected,
+            suppress: self.can_suppress(),
         }
     }
 
@@ -121,6 +125,7 @@ impl Shell {
         }
         let mut editing = Editing::new(meta, hints);
         editing.describe_file(stamp, None);
+        editing.describe_units(file.state.document.sample_units());
         file.editing = Some(editing);
         let document = file.id;
         let opened = editing_source(&source);
@@ -534,6 +539,9 @@ impl Shell {
             .on_action(cx.listener(|shell, _: &PasteHere, window, cx| shell.paste_here(window, cx)))
             .on_action(cx.listener(|shell, _: &DeleteSelection, window, cx| {
                 shell.delete_selection(window, cx);
+            }))
+            .on_action(cx.listener(|shell, _: &SuppressBand, window, cx| {
+                shell.suppress_band(window, cx);
             }))
     }
 }
