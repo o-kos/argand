@@ -219,6 +219,8 @@ mod tests {
         });
         assert!(!shell.read_with(cx, |shell, _| shell.capture_changed()));
 
+        // Windows refuses to truncate a mapped file but lets its name go.
+        std::fs::remove_file(&path).unwrap();
         write_wave(&path, 48_000);
         let file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
         file.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
@@ -346,6 +348,7 @@ mod tests {
             panic!("the capture is not watched");
         };
         // The file was just saved over, and the document still holds the old stamp.
+        std::fs::remove_file(&path).unwrap();
         write_wave(&path, 48_000);
         shell.update(cx, |shell, _| {
             let file = shell.file.as_mut().unwrap();
