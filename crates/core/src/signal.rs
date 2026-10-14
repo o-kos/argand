@@ -95,6 +95,9 @@ pub enum SourceError {
     SeekOutOfRange { requested: u64, total: u64 },
     #[error("decode failed: {0}")]
     Decode(String),
+    /// The file is no longer the one that was opened.
+    #[error("the file changed on disk since it was opened")]
+    Changed,
 }
 
 /// A reader hint; it never changes the samples returned.

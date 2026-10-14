@@ -17,6 +17,7 @@ mod chrome;
 mod cli;
 mod config;
 mod cpu;
+mod disk_change;
 mod document;
 mod editing;
 mod execution;

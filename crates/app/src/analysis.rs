@@ -117,7 +117,7 @@ pub struct EditState {
     pub version: u64,
     pub capture: argand_edit::Capture,
     /// Indexed by source id, the file itself being source 0 and left `None`.
-    pub sources: Vec<Option<(SignalMeta, OpenHints)>>,
+    pub sources: Vec<Option<argand_io::write::SourceFile>>,
 }
 
 fn same_analysis(a: AnalysisRequest, b: AnalysisRequest) -> bool {
@@ -369,7 +369,12 @@ fn serve(
                 Ok(cache) => cached = Some(cache),
                 Err(DspError::Cancelled) => continue,
                 Err(error) => {
-                    replies.send(request.generation, Update::Failed(error.into()));
+                    let mut error = anyhow::Error::from(error);
+                    // A reader that finds its file changed cannot name it; only the opened file can be meant.
+                    if source.capture().sources() == [argand_edit::SourceId(0)] {
+                        error = crate::disk_change::naming(error, path);
+                    }
+                    replies.send(request.generation, Update::Failed(error));
                     continue;
                 }
             }
@@ -393,10 +398,10 @@ fn follow_edit(
         if source.has_source(id) {
             continue;
         }
-        let Some(Some((meta, hints))) = state.sources.get(id.0 as usize) else {
+        let Some(Some(file)) = state.sources.get(id.0 as usize) else {
             anyhow::bail!("source {} of the edited capture cannot be opened", id.0);
         };
-        source.insert_source(id, argand_io::reopen(meta, hints)?);
+        source.insert_source(id, argand_io::reopen(&file.meta, &file.hints, file.stamp)?);
     }
     source.set_capture(state.capture.clone())?;
     Ok(())

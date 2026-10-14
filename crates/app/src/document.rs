@@ -207,6 +207,8 @@ pub struct Document {
     file_info: FileInfo,
     sample_extrema: Option<Vec<(f32, f32)>>,
     minimap_error: Option<String>,
+    /// Set once a file the capture reads is no longer the one opened, naming it when known.
+    changed: Option<Option<std::path::PathBuf>>,
 }
 
 impl Document {
@@ -222,6 +224,36 @@ impl Document {
             file_info: FileInfo::default(),
             sample_extrema: None,
             minimap_error: None,
+            changed: None,
+        }
+    }
+
+    /// Whether a file the capture reads changed on disk since it was opened.
+    pub fn is_changed(&self) -> bool {
+        self.changed.is_some()
+    }
+
+    /// The file that changed on disk, when it is known which one.
+    pub fn changed_file(&self) -> Option<&std::path::Path> {
+        self.changed.as_ref()?.as_deref()
+    }
+
+    /// Note that a file changed on disk, `path` when known; a file named later names it.
+    pub fn mark_changed(&mut self, path: Option<std::path::PathBuf>) {
+        if !matches!(self.changed, Some(Some(_))) {
+            self.changed = Some(path);
+        }
+    }
+
+    /// Forget a change to files the capture no longer reads.
+    pub fn clear_changed(&mut self) {
+        self.changed = None;
+    }
+
+    /// Note a failed read, remembering the file when the failure says it changed on disk.
+    pub fn note_failure(&mut self, error: &anyhow::Error) {
+        if let Some(path) = crate::disk_change::changed_file(error) {
+            self.mark_changed(path);
         }
     }
 
@@ -363,6 +395,7 @@ impl Document {
                 Effect::Analysis
             }
             Update::Failed(error) => {
+                self.note_failure(&error);
                 // The chain, because the outer message names the step and the
                 // inner one says what actually went wrong.
                 self.status = Status::Failed(format!("{error:#}"));

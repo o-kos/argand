@@ -271,16 +271,16 @@ fn open(request: &ExtractRequest) -> Result<EditedSource, WriteError> {
         };
         let path = &source.meta.source;
         // The levels the window shows, not a normalization resolved again with another budget.
-        let (reader, stamp) =
-            argand_io::reopen_stamped(&source.meta, &source.hints).map_err(|error| {
-                WriteError::Unsupported {
-                    path: path.clone(),
-                    reason: error.to_string(),
+        let reader =
+            argand_io::reopen(&source.meta, &source.hints, source.stamp).map_err(|error| {
+                match error.is_changed() {
+                    true => WriteError::SourceChanged { path: path.clone() },
+                    false => WriteError::Unsupported {
+                        path: path.clone(),
+                        reason: error.to_string(),
+                    },
                 }
             })?;
-        if stamp.is_none() || stamp != source.stamp {
-            return Err(WriteError::SourceChanged { path: path.clone() });
-        }
         opened.push(Some(reader));
     }
     let mut meta = request.meta.clone();
