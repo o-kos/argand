@@ -38,8 +38,8 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 ## Cargo workspace architecture
 
 - **argand-core:** domain types such as `Signal`, real or complex sample metadata, `Selection`, and units. It also owns toolkit-independent render view models such as `WaveformEnvelope`, `DbGrid`, `SpectrogramImage`, and primitive lists, and the axis tick layout in `argand-core::axis`, which measures candidate labels through the `LabelMeasure` trait so that every front end places its marks by one policy. A view model's shape fields are the caller's to set, so its accessors check every coordinate against the declared shape and settle the product with `checked_mul`; one index past the end of a row is a valid offset into the next one, so an unchecked read answers with a neighbour's data that looks like a picture. The accessors differ in how strict they are, and the difference is deliberate. `SpectrogramImage::get` and `put` settle the whole buffer through `shape()` and answer nothing until it matches. `DbGrid::column`, `DbGrid::value` and `WaveformEnvelope::column` do not consult `shape()`; they check the one coordinate, settle that offset with `checked_mul` and take the cell from the slice, so a cell inside the declared shape stays readable where the buffer runs longer than that shape. It must not depend on GUI or heavy DSP code.
-- **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, and band extraction (`extract`: frequency shift, low-pass filtering integer decimation and fractional-rate reconstruction, see "Band and rectangle selection (#202)"). Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
-- **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see "Saving (#186)"). A plain RIFF WAVE may split its samples over several `data` chunks, as KiwiSDR recorders do with a `kiwi` GNSS chunk before each (#204): `riff::WavLayout::runs` walks the chunks after the first `data` up to the stated RIFF end and returns each body as a `DataRun`, `MmapSource` reads the runs as one array and the writer copies them into one `data` chunk. `write::FloatWave` writes computed real or I/Q `f32` samples. RF64/BW64 and a file with nothing after its first `data` chunk are one run, without a walk. This is the future connection point for custom formats through the worker.
+- **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, and band extraction (`extract`: frequency shift, low-pass filtering integer decimation and fractional-rate reconstruction, see "Band and rectangle selection (#202)") and band suppression (`suppress`, see "Band suppression (#212)"). Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
+- **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see "Saving (#186)"). A plain RIFF WAVE may split its samples over several `data` chunks, as KiwiSDR recorders do with a `kiwi` GNSS chunk before each (#204): `riff::WavLayout::runs` walks the chunks after the first `data` up to the stated RIFF end and returns each body as a `DataRun`, `MmapSource` reads the runs as one array and the writer copies them into one `data` chunk. `write::FloatWave` writes computed real or I/Q `f32` samples, and a `SourceFile` with an `Encoding` is such a file that a save encodes into the capture's own format (#212). RF64/BW64 and a file with nothing after its first `data` chunk are one run, without a walk. This is the future connection point for custom formats through the worker.
 - **argand-edit:** the editing engine: an immutable piece table (`Capture`) over the files a capture reads, `Clip`s of it, a `History` of versions for undo and redo, and `EditedSource`, a `SampleSource` reading a capture through one opened source per `SourceId` (see "Editing (#195, #196)"). It depends on `argand-core` only.
 - **argand-app:** the application binary, `argand`, using the GPUI Kit facade over GPUI and gpui-component. It opens a signal file, analyses it on a thread of its own, and draws the spectrogram with axes. Its modules divide by whether they name a toolkit: `config.rs`, `session.rs`, `document.rs` and `analysis.rs` do not and are tested without a window, while `shell.rs`, `chrome.rs`, `axes.rs` and `spectrogram.rs` do. It will further own cursors, selections, scrolling, transport, and the detailed spectrum window. This is the single shipped binary alongside `aspec`.
 - **argand-worker:** a planned processing worker binary that loads C ABI libraries and communicates through a stdio protocol. It is deferred.
@@ -666,6 +666,44 @@ opens the origin again; the unsaved-edits question then offers only Discard and 
 (`ask_unsaved` without `savable`), because the writer refuses a changed source. An overwrite
 in place of a mapped file is seen only by the activation check, and one that keeps length and
 modification time is beyond `SourceStamp`.
+
+## Band suppression (#212)
+
+Edit → Suppress band, and the same row in the spectrogram's context menu, takes the selected
+band out of the capture: over the whole capture for a band, over its time span for a
+rectangle. It has no key binding yet. `argand_dsp::suppress` computes `x − w·b`, where `b` is
+a band-pass of the input whose transitions lie outside the band (a quarter of its width, at
+least Fs/131072, at most the room beside it) and `w` a raised-cosine taper. For a complex
+capture the band-pass is the low-pass of half the band modulated to its centre; for a real
+one it is `LP(high) − LP(low)`, the first a unit impulse at Fs/2 and the second absent at
+0 Hz, so no mirror counts twice. A complex band within Fs/131072 of the whole capture
+suppresses everything. A rectangle's span widens by the filter's half length on each side,
+inside the capture, and the taper fades over that widening, so the whole selected span is
+suppressed without a click. Convolution is overlap-save as in `extract`, with the delay
+compensated, so output `n` is input `n`.
+
+`suppression.rs` computes it on a thread of its own (`saving::spawn`, the save thread made
+generic) with progress, a cancel and the status-bar item `Suppressing the band…`
+(`suppression_ui.rs`). Edits and saves wait for it, and opening another file cancels it. The
+changed span is written as unit-scale `f32` through `FloatWave` into a scratch file.
+`scratch.rs` keeps those in `<temp>/argand-scratch/<pid>/` under a lock on `<pid>.lock`, and
+every instance removes the folders of locks nobody holds when it starts. `Scratch` removes its
+file when the last `Arc` goes, held by `editing::Source::computed` in the document, its
+history and the clipboard. The edit is `Editing::replace_computed`, applied only to the
+document and version the computation started from: the length is kept, the rectangle's time
+span stays selected and the band is cleared. `Editing::repicture` keeps the shown picture over
+samples computed in place, or brought back by undo, until the new analysis lands, so a
+suppression over the whole capture never blanks the spectrogram.
+
+A save encodes computed samples into the format of its first source without an `Encoding`,
+which `Editing::save_request` makes the opened file whenever a computed source is read, even
+when none of the file is left. The encoding is `value * factor + offset` from the saving
+document's own `original_sample_units` (`Editing::describe_units`), so computed samples pasted
+into another capture are stored on its scale. Integers are rounded and clamped without a
+warning (8-bit offset binary, and 16, 24 and 32 bits whose stored width is their
+container's), floats are written as `f32` or `f64`, and FLAC gets integers clamped to its
+depth. Untouched samples are still copied byte for byte. A computed source pastes into any
+capture of the same rate and kind, and a paste checks only the sources its clip reads.
 
 ## Ruler marks and grid visibility (#71, #72)
 

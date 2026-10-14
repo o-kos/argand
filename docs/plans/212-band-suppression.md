@@ -74,14 +74,14 @@ Out of scope: a key binding (the owner chooses one at acceptance), suppressing s
 - [x] `suppression.rs`: the job, reading the edited capture through `EditedSource` and writing the scratch file.
 - [x] `editing_ui.rs` and the status bar: the action, menu rows, enabling, progress, cancel, failure, applying the edit.
 - [x] App tests: suppression of a band and of a rectangle applies one edit with the expected pieces and selection, undo and redo switch it, a stale result is dropped, the scratch file goes with the last reference, saving a suppressed capture writes the computed samples, start-up removes a gone process's folder.
-- [ ] `AGENTS.md`, `IMPLEMENTATION_PLAN.md` (phase 5 step 5) and `CHANGELOG.md`.
+- [x] `AGENTS.md`, `IMPLEMENTATION_PLAN.md` (phase 5 step 5) and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Manual, release binary: suppress a band holding a strong tone in an I/Q capture and in a real one, and a rectangle over a burst; the spectrogram shows the band dark and nothing else changed; undo and redo; cut and paste across the suppressed span; Save and Save as reopen with the band suppressed; a 16-bit capture saves as 16-bit.
