@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- Edit → Invert spectrum (Ctrl+Shift+I) mirrors the spectrum of the whole capture: an I/Q capture is conjugated, a real one is multiplied by (−1)^n. Edit → Normalize level… measures the peak of the whole capture (the largest |I + jQ|, or |x| for a real capture) in the background and scales it to a level in dBFS, I and Q by one factor. Both are applied while the capture is read, are undone and redone like other edits, are shown in the status bar, and are written into the file when it is saved, every sample encoded again with integers rounded and clamped. A copy pastes only into a capture inverted and levelled as it was (#188, #190).
+
 - Edit → Suppress band (Ctrl+Shift+M) takes the selected frequency band out of the capture and fills it with noise as loud as the frequencies beside it, following that level over time, over the whole capture for a band or over the selected time for a rectangle, fading in and out just outside it. Everything outside the band, the length, the timing and the selection are kept. It runs in the background with progress and a cancel, is undone and redone at once, and Save writes it in the capture's own format, clamping integer samples beyond full scale (#212).
 
 - A capture whose file is replaced or rewritten while it is open is no longer drawn as the other file. When a read finds the file changed, or the window finds it changed on returning to it, the status bar says so and offers Reopen; the picture already shown stays, and edits on it can only be discarded (#200).
