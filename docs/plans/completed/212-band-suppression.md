@@ -82,8 +82,8 @@ Out of scope: suppressing several bands in one pass, and a band-stop with a user
 - [x] Review round 4 (same reviewer, agreed by the owner after the manual check had changed the behaviour): two findings, both accepted. The neighbouring bins began right past the transition, so a strong tone at a narrow band's edge leaked into most of them through the Hann window and raised the fill by 5 to 10 dB; they now start 8 bins further out and span at least 32. The residue and the fill crossed with `1 − H` and `H`, a 3 dB dip in the middle of both transitions and of the fade in time; the fill now takes the power-complementary gains. Each fix has a test that fails without it.
 - [x] Review round 5 (same reviewer, agreed by the owner): two findings, both accepted. The fill's `√(2|H| − |H|²)` lifted its stopband to about −20 dB just past the transition, so an empty part of the spectrum gained audible noise; the residue and the fill now cross as cosine and sine of the band-pass, which keeps the fill below −60 dB past the transitions and the power within 0.5 dB through them. Scratch files sat in the shared temporary folder, readable by other users; they now live in the user's cache folder, mode 0700. Each has a test that fails without it.
 - [x] `AGENTS.md`, `IMPLEMENTATION_PLAN.md` (phase 5 step 5) and `CHANGELOG.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -91,4 +91,6 @@ Out of scope: suppressing several bands in one pass, and a band-stop with a user
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Manual, release binary: suppress a band holding a strong tone in an I/Q capture and in a real one, and a rectangle over a burst; the spectrogram shows the band dark and nothing else changed; undo and redo; cut and paste across the suppressed span; Save and Save as reopen with the band suppressed; a 16-bit capture saves as 16-bit.
+- [x] Manual, release binary: suppress a band holding a strong tone in an I/Q capture and in a real one, and a rectangle over a burst; the spectrogram shows the band dark and nothing else changed; undo and redo; cut and paste across the suppressed span; Save and Save as reopen with the band suppressed; a 16-bit capture saves as 16-bit.
+
+The owner checked the release binary on 2026-10-15: after the first check the band was filled with its neighbours' noise and the selection kept, and the owner accepted the result. Individual results were not separately reported.
