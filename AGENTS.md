@@ -751,9 +751,11 @@ Normalize level asks for a target in a gpui-component `Dialog` (−60 to 0 dBFS,
 then the last target of the run), then `levelling.rs` measures the peak of the unadjusted
 capture on the save thread's shape (`saving::spawn`, `Measuring the level…` with a cancel in
 the status bar; edits and saves wait, opening a file cancels it). The peak is the largest
-`|I + jQ|`, or `|x|` for a real capture, and dBFS is relative to the stored format's full scale
-(`Storage::full_scale` through the opened file's `Encoding`, `Editing::full_scale`), not to the
-read unit scale that the normalization and gain hints move. The gain replaces any before it,
+`|I + jQ|`, or `|x|` for a real capture, taken piece by piece in stored units, each source
+through its own `original_sample_units` (a computed one through its encoding), because pasted
+files may be read on other scales while the gain acts on stored values. dBFS is relative to the
+stored format's full scale (`Storage::full_scale`, `Editing::full_scale`), not to the read unit
+scale that the normalization and gain hints move. The gain replaces any before it,
 applies only to the document and version measured, adds no version within 0.001 dB of the one
 in force, and a silent capture is refused.
 
@@ -766,7 +768,8 @@ integers are adjusted, all rounded and clamped without a warning, so inverting �
 document reads the saved file, which holds the adjusted samples, with the identity. A
 `Clipboard` remembers the adjustment it was copied under and pastes only into a capture under
 the same one (`PasteError::Adjustment`), and copies of a file saved adjusted cannot follow it
-onto the saved file.
+onto the saved file. Under a real inversion a piece moved to a position of the other parity
+reads negated, a constant phase that leaves its spectrum alone.
 
 ## Ruler marks and grid visibility (#71, #72)
 
