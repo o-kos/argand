@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use argand_core::{SampleSpan, SignalMeta};
+use argand_core::{SampleSpan, Selection, SignalMeta};
 use argand_edit::{Capture, Clip, History, Piece, SourceId};
 use argand_io::OpenHints;
 use argand_io::write::{Encoding, SaveRequest, Segment, SourceFile, SourceStamp, Storage};
@@ -219,7 +219,7 @@ impl std::error::Error for PasteError {}
 /// One document's sources, edit history and source envelopes.
 pub struct Editing {
     sources: Vec<Source>,
-    history: History<Option<SampleSpan>>,
+    history: History<Selection>,
     envelopes: Vec<Option<Arc<Snapshot>>>,
     /// Sources whose envelope is being built, so a second edit does not start another scan.
     building: Vec<bool>,
@@ -235,7 +235,7 @@ impl Editing {
         let capture = Capture::whole(SourceId(0), meta.len_samples);
         Self {
             sources: vec![Source::new(meta, hints)],
-            history: History::new(capture.clone(), None),
+            history: History::new(capture.clone(), Selection::default()),
             envelopes: vec![None],
             building: vec![true],
             pictured: capture,
@@ -297,25 +297,26 @@ impl Editing {
         self.encoding.is_some()
     }
 
-    /// The selection the current version left, which undo and redo bring back.
-    pub fn selection(&self) -> Option<SampleSpan> {
+    /// Everything the current version left selected, which undo and redo bring back.
+    pub fn marked(&self) -> Selection {
         *self.history.state()
     }
 
     /// Remove `span`, leaving nothing selected.
     pub fn delete(&mut self, span: SampleSpan) {
         let capture = self.capture().delete(span);
-        self.history.apply(capture, None);
+        self.history.apply(capture, Selection::default());
     }
 
-    /// Put the computed samples of `computed` in place of `span`, keeping the length and leaving `selection` selected.
+    /// Put the computed samples of `computed` in place of `span`, keeping the length and `selection` selected.
     ///
+    /// Undoing it selects `selection` too, so neither changes what is selected.
     /// Refused when the computed samples are not as many as the span holds.
     pub fn replace_computed(
         &mut self,
         span: SampleSpan,
         computed: Source,
-        selection: Option<SampleSpan>,
+        selection: Selection,
     ) -> bool {
         let len = computed.meta.len_samples;
         if computed.computed.is_none() || len != span.count() || span.end() > self.len() {
@@ -331,6 +332,7 @@ impl Editing {
         self.sources.push(computed);
         self.envelopes.push(None);
         self.building.push(false);
+        self.history.set_state(selection);
         self.history.apply(capture, selection);
         true
     }
@@ -390,7 +392,7 @@ impl Editing {
         self.building
             .resize(self.sources.len() + added.len(), false);
         self.sources.extend(added);
-        self.history.apply(capture, Some(pasted));
+        self.history.apply(capture, Selection::time(pasted));
         Ok(pasted)
     }
 

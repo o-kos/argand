@@ -11,8 +11,8 @@ pub(super) struct Suppressing {
     job: crate::saving::Job,
     document: u64,
     version: u64,
-    /// The time span the rectangle had, selected again once the edit is made.
-    selection: Option<argand_core::SampleSpan>,
+    /// What was selected, which stays selected after the edit and after undoing it.
+    selection: argand_core::Selection,
     progress: Option<(u64, u64)>,
 }
 
@@ -85,7 +85,10 @@ impl Shell {
             job,
             document: file.id,
             version: editing.version(),
-            selection: self.selection,
+            selection: argand_core::Selection {
+                time: self.selection,
+                band: self.band,
+            },
             progress: None,
         });
         cx.notify();
@@ -259,18 +262,24 @@ mod tests {
             let editing = shell.editing().unwrap();
             assert_eq!(editing.len(), 48_000);
             assert_eq!(editing.capture().pieces().len(), 3);
-            assert_eq!(shell.band, None);
+            assert_eq!(shell.band, FrequencyBand::between(2_000.0, 4_000.0));
             assert_eq!(shell.selection, SampleSpan::between(10_000, 20_000));
         });
+        let selected = |cx: &mut gpui_kit::VisualTestContext| {
+            shell.read_with(cx, |shell, _| (shell.selection, shell.band))
+        };
+        let rectangle = selected(cx);
         shell.update_in(cx, |_, window, cx| {
             window.dispatch_action(Box::new(editing_ui::Undo), cx);
         });
         cx.run_until_parked();
         assert!(shell.read_with(cx, |shell, _| shell.editing().unwrap().is_untouched()));
+        assert_eq!(selected(cx), rectangle, "undoing it keeps the selection");
         shell.update_in(cx, |_, window, cx| {
             window.dispatch_action(Box::new(editing_ui::Redo), cx);
         });
         cx.run_until_parked();
+        assert_eq!(selected(cx), rectangle);
 
         let target = path.with_file_name("saved.wav");
         shell.update_in(cx, |shell, window, cx| {

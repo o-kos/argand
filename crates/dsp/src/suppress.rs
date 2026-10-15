@@ -1,11 +1,17 @@
 //! Suppressing a frequency band of a capture, keeping its length and everything outside the band.
 //!
-//! The output is `x[n] − w[n]·b[n]`, where `b` is the band-pass of the input
-//! and `w` a time taper, 1 across a band suppressed over the whole capture.
-//! The band-pass passes the band whole with its transitions outside it, so
-//! the band falls by the filter's stopband attenuation and frequencies past
-//! the transitions are left as they were. It is applied by overlap-save FFT
-//! convolution with its delay compensated, so output `n` is input `n`.
+//! The output is `x[n] − w[n]·(b[n] − σ[n]·u[n])`, where `b` is the band-pass
+//! of the input, `u` the band-pass of unit white noise, `σ` the noise level
+//! of the frequencies beside the band and `w` a time taper, 1 across a band
+//! suppressed over the whole capture. The band-pass passes the band whole with
+//! its transitions outside it, so the band's content gives way to noise as
+//! loud as its neighbours' and frequencies past the transitions are left as
+//! they were. It is applied by overlap-save FFT convolution with its delay
+//! compensated, so output `n` is input `n`.
+//!
+//! [`NoiseFloor`] measures `σ` beforehand, block by block over the region, as
+//! the median power of the neighbouring frequencies, so tones there do not
+//! raise it and a level that changes over time is followed.
 //!
 //! Like `extract`, everything here is a pure stream over blocks the caller
 //! reads, with no I/O and no threads.
@@ -20,11 +26,24 @@ use crate::extract::{ExtractError, LARGEST_FFT, NARROWEST_TRANSITION, check_band
 /// The shortest fade, which keeps a short filter or a whole band suppressed in time from clicking.
 pub const SHORTEST_TAPER: u64 = 256;
 
+/// The longest transform the noise floor is measured with.
+const NOISE_FFT: usize = 4096;
+/// The fewest samples the noise floor is measured over.
+const SHORTEST_NOISE_FFT: usize = 64;
+/// The most blocks the noise floor follows over time.
+const NOISE_BLOCKS: u64 = 256;
+/// Segments measured in each block.
+const SEGMENTS_PER_BLOCK: u64 = 8;
+
 /// How a band is suppressed, with the band-pass that finds it.
 #[derive(Debug, Clone)]
 pub struct SuppressPlan {
     /// Band-pass taps, an odd number of them centred on the middle one.
     taps: Vec<Complex32>,
+    rate: f64,
+    real: bool,
+    /// The frequencies beside the band, clear of its transitions, whose noise fills it.
+    neighbours: Vec<(f64, f64)>,
 }
 
 impl SuppressPlan {
@@ -39,12 +58,29 @@ impl SuppressPlan {
     /// Plan the suppression of `low..high` hertz in a capture at `rate`, as [`Self::check`] allows.
     pub fn new(rate: f64, low: f64, high: f64, real: bool) -> Result<Self, ExtractError> {
         Self::check(rate, low, high, real)?;
-        let taps = if real {
+        let (taps, transition) = if real {
             real_band_pass(rate, low, high)
         } else {
             complex_band_pass(rate, low, high)
         };
-        Ok(Self { taps })
+        let neighbours = transition.map_or_else(Vec::new, |transition| {
+            let floor = if real { 0.0 } else { -rate / 2.0 };
+            let extent = (high - low).max(rate / 256.0);
+            [
+                (low - transition - extent, low - transition),
+                (high + transition, high + transition + extent),
+            ]
+            .into_iter()
+            .map(|(from, to)| (from.max(floor), to.min(rate / 2.0)))
+            .filter(|(from, to)| from < to)
+            .collect()
+        });
+        Ok(Self {
+            taps,
+            rate,
+            real,
+            neighbours,
+        })
     }
 
     /// Input samples the filter reads on each side of what it suppresses.
@@ -68,19 +104,20 @@ fn transition(rate: f64, width: f64, room: f64) -> f64 {
     (width / 4.0).min(room).max(narrowest)
 }
 
-/// A complex band-pass, the low-pass of half the band modulated to its centre.
-fn complex_band_pass(rate: f64, low: f64, high: f64) -> Vec<Complex32> {
+/// A complex band-pass, the low-pass of half the band modulated to its centre, with its transition.
+fn complex_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<f64>) {
     let width = high - low;
     // The transitions on both sides of the band share what lies outside it.
     let room = (rate - width) / 2.0;
     if room < rate * NARROWEST_TRANSITION {
-        return vec![Complex32::new(1.0, 0.0)];
+        return (vec![Complex32::new(1.0, 0.0)], None);
     }
     let transition = transition(rate, width, room);
     let lp = low_pass(rate, width / 2.0, width / 2.0 + transition, 1.0);
     let centre = (low + high) / 2.0;
     let half = (lp.len() / 2) as f64;
-    lp.iter()
+    let taps = lp
+        .iter()
         .enumerate()
         .map(|(k, &tap)| {
             let turn = std::f64::consts::TAU * centre * (k as f64 - half) / rate;
@@ -88,20 +125,21 @@ fn complex_band_pass(rate: f64, low: f64, high: f64) -> Vec<Complex32> {
             let tap = f64::from(tap);
             Complex32::new((tap * cos) as f32, (tap * sin) as f32)
         })
-        .collect()
+        .collect();
+    (taps, Some(transition))
 }
 
 /// A real band-pass, the low-pass to `high` less the low-pass to `low`, both with their transitions outside the band.
 ///
 /// A band from 0 Hz needs no second term, and a band to Fs/2 makes the first a
 /// unit impulse, so no transition runs past the capture's edge.
-fn real_band_pass(rate: f64, low: f64, high: f64) -> Vec<Complex32> {
+fn real_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<f64>) {
     let narrowest = rate * NARROWEST_TRANSITION;
     let nyquist = rate / 2.0;
     let from_zero = low < narrowest;
     let to_nyquist = nyquist - high < narrowest;
     let room = match (from_zero, to_nyquist) {
-        (true, true) => return vec![Complex32::new(1.0, 0.0)],
+        (true, true) => return (vec![Complex32::new(1.0, 0.0)], None),
         (true, false) => nyquist - high,
         (false, true) => low,
         (false, false) => low.min(nyquist - high),
@@ -125,7 +163,242 @@ fn real_band_pass(rate: f64, low: f64, high: f64) -> Vec<Complex32> {
             tap.re += sign * value;
         }
     }
-    taps
+    (taps, Some(transition))
+}
+
+/// The noise level beside a band, measured over a region block by block.
+///
+/// The caller reads the segments [`NoiseFloor::segments`] names and pushes
+/// each, then takes the levels with [`NoiseFloor::finish`].
+pub struct NoiseFloor {
+    size: usize,
+    fft: Option<Arc<dyn Fft<f32>>>,
+    window: Vec<f32>,
+    /// The window's power, which makes a bin of white noise its variance.
+    power: f32,
+    /// The transform bins that lie beside the band.
+    bins: Vec<usize>,
+    /// Summed bin powers of each block, bin by bin.
+    sums: Vec<Vec<f32>>,
+    counts: Vec<u32>,
+    block_len: u64,
+    len: u64,
+    work: Vec<Complex32>,
+    scratch: Vec<Complex32>,
+}
+
+impl NoiseFloor {
+    /// Prepare to measure the neighbours of `plan`'s band over a region of `len` samples.
+    pub fn new(plan: &SuppressPlan, len: u64) -> Self {
+        let longest = usize::try_from(len).unwrap_or(usize::MAX).min(NOISE_FFT);
+        let size = if longest >= SHORTEST_NOISE_FFT {
+            1 << longest.ilog2()
+        } else {
+            0
+        };
+        let bins: Vec<usize> = (0..size)
+            .filter(|&k| {
+                let frequency = bin_frequency(k, size, plan.rate, plan.real);
+                frequency.is_some_and(|frequency| {
+                    plan.neighbours
+                        .iter()
+                        .any(|&(from, to)| (from..=to).contains(&frequency))
+                })
+            })
+            .collect();
+        let size = if bins.is_empty() { 0 } else { size };
+        let blocks = match size {
+            0 => 0,
+            _ => (len / (SEGMENTS_PER_BLOCK * size as u64)).clamp(1, NOISE_BLOCKS),
+        };
+        let fft = (size > 0).then(|| FftPlanner::new().plan_fft_forward(size));
+        let window: Vec<f32> = (0..size)
+            .map(|n| {
+                let phase = std::f64::consts::TAU * n as f64 / size as f64;
+                (0.5 - 0.5 * phase.cos()) as f32
+            })
+            .collect();
+        let power = window.iter().map(|w| w * w).sum();
+        let scratch =
+            vec![Complex32::default(); fft.as_ref().map_or(0, |fft| fft.get_inplace_scratch_len())];
+        Self {
+            size,
+            fft,
+            window,
+            power,
+            sums: vec![vec![0.0; bins.len()]; blocks as usize],
+            counts: vec![0; blocks as usize],
+            bins,
+            block_len: len.div_ceil(blocks.max(1)),
+            len,
+            work: vec![Complex32::default(); size],
+            scratch,
+        }
+    }
+
+    /// Samples in each segment to read.
+    pub fn segment_len(&self) -> usize {
+        self.size
+    }
+
+    /// Where each segment to read starts in the region, a few spread over every block.
+    pub fn segments(&self) -> Vec<u64> {
+        let size = self.size as u64;
+        if size == 0 {
+            return Vec::new();
+        }
+        let mut starts = Vec::new();
+        for block in 0..self.counts.len() as u64 {
+            let first = (block * self.block_len).min(self.len - size);
+            let last = ((block + 1) * self.block_len)
+                .min(self.len)
+                .saturating_sub(size)
+                .max(first);
+            let count = ((last - first) / size + 1).min(SEGMENTS_PER_BLOCK);
+            for segment in 0..count {
+                let step = (last - first) / count.saturating_sub(1).max(1);
+                starts.push(first + segment * step);
+            }
+        }
+        starts
+    }
+
+    /// Measure the segment starting at region sample `start`, interleaved with `channels` values each.
+    pub fn push(&mut self, start: u64, input: &[f32], channels: usize) {
+        let Some(fft) = &self.fft else {
+            return;
+        };
+        if input.len() < self.size * channels {
+            return;
+        }
+        for (n, (work, sample)) in self
+            .work
+            .iter_mut()
+            .zip(input.chunks_exact(channels.max(1)))
+            .enumerate()
+        {
+            let q = if channels > 1 { sample[1] } else { 0.0 };
+            *work = Complex32::new(sample[0], q) * self.window[n];
+        }
+        fft.process_with_scratch(&mut self.work, &mut self.scratch);
+        let block =
+            ((start + self.size as u64 / 2) / self.block_len).min(self.counts.len() as u64 - 1);
+        let block = block as usize;
+        for (sum, &bin) in self.sums[block].iter_mut().zip(&self.bins) {
+            *sum += self.work[bin].norm_sqr() / self.power;
+        }
+        self.counts[block] += 1;
+    }
+
+    /// The noise level of every block, none when nothing beside the band could be measured.
+    pub fn finish(self) -> Option<NoiseFill> {
+        let mut levels: Vec<Option<f32>> = self
+            .sums
+            .iter()
+            .zip(&self.counts)
+            .map(|(sums, &count)| (count > 0).then(|| block_level(sums, count)))
+            .collect();
+        // A block with no segment of its own takes the nearest measured one's level.
+        let measured: Vec<(usize, f32)> = levels
+            .iter()
+            .enumerate()
+            .filter_map(|(index, level)| level.map(|level| (index, level)))
+            .collect();
+        if measured.is_empty() {
+            return None;
+        }
+        for (index, level) in levels.iter_mut().enumerate() {
+            if level.is_none() {
+                let nearest = measured.iter().min_by_key(|(at, _)| at.abs_diff(index));
+                *level = nearest.map(|&(_, level)| level);
+            }
+        }
+        Some(NoiseFill {
+            levels: levels.into_iter().flatten().collect(),
+            block_len: self.block_len,
+        })
+    }
+}
+
+/// The frequency of transform bin `k`, none for the mirror half of a real capture's transform.
+fn bin_frequency(k: usize, size: usize, rate: f64, real: bool) -> Option<f64> {
+    let resolution = rate / size as f64;
+    match (real, k <= size / 2) {
+        (_, true) => Some(k as f64 * resolution),
+        (false, false) => Some((k as f64 - size as f64) * resolution),
+        (true, false) => None,
+    }
+}
+
+/// The noise amplitude of a block from its summed bin powers over `count` segments.
+///
+/// The median keeps tones beside the band from raising it, and the factor turns
+/// the median of an average of `count` exponential powers into their mean.
+fn block_level(sums: &[f32], count: u32) -> f32 {
+    let mut powers: Vec<f32> = sums.iter().map(|sum| sum / count as f32).collect();
+    let middle = powers.len() / 2;
+    let (_, median, _) = powers.select_nth_unstable_by(middle, f32::total_cmp);
+    let segments = count as f32;
+    (*median * segments / (segments - 1.0 / 3.0)).sqrt()
+}
+
+/// The noise level over a region, block by block, that fills a suppressed band.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoiseFill {
+    /// The noise amplitude of each block.
+    pub levels: Vec<f32>,
+    pub block_len: u64,
+}
+
+impl NoiseFill {
+    /// The amplitude at region sample `n`, interpolated between the blocks' centres.
+    fn at(&self, n: u64) -> f32 {
+        let position = n as f64 / self.block_len as f64 - 0.5;
+        let last = self.levels.len() - 1;
+        if position <= 0.0 || last == 0 {
+            return self.levels[0];
+        }
+        let below = (position.floor() as usize).min(last);
+        let above = (below + 1).min(last);
+        let fraction = (position - below as f64).min(1.0) as f32;
+        self.levels[below] + (self.levels[above] - self.levels[below]) * fraction
+    }
+}
+
+/// Gaussian noise from a fixed seed, so a suppression computes the same samples every time.
+struct Noise {
+    state: u64,
+    spare: Option<f32>,
+}
+
+impl Noise {
+    const fn new(seed: u64) -> Self {
+        Self {
+            state: seed,
+            spare: None,
+        }
+    }
+
+    /// A uniform value in `(0, 1]`, by SplitMix64.
+    fn uniform(&mut self) -> f64 {
+        self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^= z >> 31;
+        ((z >> 11) + 1) as f64 / (1u64 << 53) as f64
+    }
+
+    /// A standard normal value, by Box and Muller.
+    fn gaussian(&mut self) -> f32 {
+        if let Some(spare) = self.spare.take() {
+            return spare;
+        }
+        let radius = (-2.0 * self.uniform().ln()).sqrt();
+        let (sin, cos) = (std::f64::consts::TAU * self.uniform()).sin_cos();
+        self.spare = Some((radius * sin) as f32);
+        (radius * cos) as f32
+    }
 }
 
 /// The suppression of one region, fed its input in order.
@@ -139,9 +412,16 @@ pub struct Suppressor {
     spectrum: Vec<Complex32>,
     /// Input samples, the last `taps - 1` of the previous block first.
     block: Vec<Complex32>,
+    /// Unit noise, kept as `block` is, while the band is filled with noise.
+    noise_block: Vec<Complex32>,
     /// How much of `block` holds samples.
     fill: usize,
     work: Vec<Complex32>,
+    noise_work: Vec<Complex32>,
+    noise: Noise,
+    /// The noise level of the band's neighbours, none to leave the band empty.
+    level: Option<NoiseFill>,
+    real: bool,
     scratch: Vec<Complex32>,
     taps: usize,
     margin: u64,
@@ -186,8 +466,13 @@ impl Suppressor {
             inverse,
             spectrum,
             block: vec![Complex32::default(); size],
+            noise_block: Vec::new(),
             fill: 0,
             work: vec![Complex32::default(); size],
+            noise_work: Vec::new(),
+            noise: Noise::new(0x5EED_A26A_7D00_0001),
+            level: None,
+            real: plan.real,
             scratch,
             taps,
             margin,
@@ -198,6 +483,15 @@ impl Suppressor {
             rise,
             fall,
         })
+    }
+
+    /// Fill the band with noise as loud as `level` says its neighbours are.
+    #[must_use]
+    pub fn filled_with(mut self, level: NoiseFill) -> Self {
+        self.noise_block = vec![Complex32::default(); self.block.len()];
+        self.noise_work = vec![Complex32::default(); self.block.len()];
+        self.level = Some(level);
+        self
     }
 
     /// Whether every output of the region has been given.
@@ -233,6 +527,9 @@ impl Suppressor {
             return;
         }
         self.block[self.fill] = Complex32::new(i, q);
+        if self.level.is_some() {
+            self.noise_block[self.fill] = self.unit_noise();
+        }
         self.fill += 1;
         self.taken += 1;
         let last = self.taken == self.total + 2 * self.margin;
@@ -241,33 +538,58 @@ impl Suppressor {
         }
     }
 
+    /// Noise of unit power, real for a real capture.
+    fn unit_noise(&mut self) -> Complex32 {
+        if self.real {
+            return Complex32::new(self.noise.gaussian(), 0.0);
+        }
+        let scale = std::f32::consts::FRAC_1_SQRT_2;
+        Complex32::new(self.noise.gaussian() * scale, self.noise.gaussian() * scale)
+    }
+
     /// Filter the block and give the outputs due within it, keeping its tail for the next.
     fn convolve(&mut self, out: &mut Vec<[f32; 2]>) {
-        self.work.copy_from_slice(&self.block);
-        // Samples past the fill are stale, and zeros there change no output before it.
-        self.work[self.fill..].fill(Complex32::default());
-        self.forward
-            .process_with_scratch(&mut self.work, &mut self.scratch);
-        for (bin, filter) in self.work.iter_mut().zip(&self.spectrum) {
-            *bin *= filter;
+        band_pass(
+            &self.block,
+            self.fill,
+            &mut self.work,
+            &self.spectrum,
+            (&self.forward, &self.inverse),
+            &mut self.scratch,
+        );
+        if self.level.is_some() {
+            band_pass(
+                &self.noise_block,
+                self.fill,
+                &mut self.noise_work,
+                &self.spectrum,
+                (&self.forward, &self.inverse),
+                &mut self.scratch,
+            );
         }
-        self.inverse
-            .process_with_scratch(&mut self.work, &mut self.scratch);
         // Output n is the band-pass at input n + 2·margin, centred on input n + margin.
         while !self.is_done() {
             let at = self.given + 2 * self.margin;
             if at >= self.start + self.fill as u64 {
                 break;
             }
-            let filtered = self.work[(at - self.start) as usize];
+            let index = (at - self.start) as usize;
+            let mut filtered = self.work[index];
+            if let Some(level) = &self.level {
+                filtered -= self.noise_work[index] * level.at(self.given);
+            }
             let input = self.block[(at - self.margin - self.start) as usize];
             let weight = self.weight(self.given);
             let value = input - filtered * weight;
-            out.push([value.re, value.im]);
+            // Rounding in the transform leaves a real capture a trace of imaginary part.
+            out.push([value.re, if self.real { 0.0 } else { value.im }]);
             self.given += 1;
         }
         let kept = (self.taps - 1).min(self.fill);
         self.block.copy_within(self.fill - kept..self.fill, 0);
+        if self.level.is_some() {
+            self.noise_block.copy_within(self.fill - kept..self.fill, 0);
+        }
         self.start += (self.fill - kept) as u64;
         self.fill = kept;
     }
@@ -287,6 +609,25 @@ impl Suppressor {
         }
         1.0
     }
+}
+
+/// Filter the first `fill` samples of `block` into `work`, the samples past it read as zeros.
+fn band_pass(
+    block: &[Complex32],
+    fill: usize,
+    work: &mut [Complex32],
+    spectrum: &[Complex32],
+    (forward, inverse): (&Arc<dyn Fft<f32>>, &Arc<dyn Fft<f32>>),
+    scratch: &mut [Complex32],
+) {
+    work.copy_from_slice(block);
+    // Samples past the fill are stale, and zeros there change no output before it.
+    work[fill..].fill(Complex32::default());
+    forward.process_with_scratch(work, scratch);
+    for (bin, filter) in work.iter_mut().zip(spectrum) {
+        *bin *= filter;
+    }
+    inverse.process_with_scratch(work, scratch);
 }
 
 #[cfg(test)]

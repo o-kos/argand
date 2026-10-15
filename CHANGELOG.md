@@ -13,7 +13,7 @@ promise applies to.
 
 ### Added
 
-- Edit → Suppress band (Ctrl+Shift+M) takes the selected frequency band out of the capture by about 80 dB, over the whole capture for a band or over the selected time for a rectangle, fading in and out just outside it. Everything outside the band, the length and the timing are kept. It runs in the background with progress and a cancel, is undone and redone at once, and Save writes it in the capture's own format, clamping integer samples beyond full scale (#212).
+- Edit → Suppress band (Ctrl+Shift+M) takes the selected frequency band out of the capture and fills it with noise as loud as the frequencies beside it, following that level over time, over the whole capture for a band or over the selected time for a rectangle, fading in and out just outside it. Everything outside the band, the length, the timing and the selection are kept. It runs in the background with progress and a cancel, is undone and redone at once, and Save writes it in the capture's own format, clamping integer samples beyond full scale (#212).
 
 - A capture whose file is replaced or rewritten while it is open is no longer drawn as the other file. When a read finds the file changed, or the window finds it changed on returning to it, the status bar says so and offers Reopen; the picture already shown stays, and edits on it can only be discarded (#200).
 

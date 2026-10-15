@@ -445,7 +445,7 @@ frequency anchor or both, and an axis the gesture selects without extent selects
 The shell keeps the band beside its time span (`Shell::band` next to `Shell::selection`),
 clamped to the capture's band (`Shell::capture_band`: the reference ± Fs/2 for complex, the
 reference to Fs/2 above it for real); every gesture replaces both, a file opening and an
-edit clear the band. Edit commands act on `Shell::time_selection` only, which is none while
+edit clear the band, except a suppression, which keeps both (#212). Edit commands act on `Shell::time_selection` only, which is none while
 a band is selected. The spectrum tints the band across the visible time, or the rectangle,
 through `waveform::selected_rect`; the minimap tints only a time span. The status bar adds
 the band's edges and width in the frequency ruler's unit (`axes::frequency_unit`).
@@ -670,10 +670,18 @@ modification time is beyond `SourceStamp`.
 ## Band suppression (#212)
 
 Edit → Suppress band, and the same row in the spectrogram's context menu, takes the selected
-band out of the capture: over the whole capture for a band, over its time span for a
-rectangle. Its key is Ctrl+Shift+M in the `Plot` context (Cmd+Shift+M on macOS). `argand_dsp::suppress` computes `x − w·b`, where `b` is
-a band-pass of the input whose transitions lie outside the band (a quarter of its width, at
-least Fs/131072, at most the room beside it) and `w` a raised-cosine taper. For a complex
+band out of the capture and fills it with noise as loud as the frequencies beside it: over
+the whole capture for a band, over its time span for a rectangle. Its key is Ctrl+Shift+M in
+the `Plot` context (Cmd+Shift+M on macOS). `argand_dsp::suppress` computes
+`x − w·(b − σ·u)`, where `b` is a band-pass of the input whose transitions lie outside the
+band (a quarter of its width, at least Fs/131072, at most the room beside it), `u` the same
+band-pass of unit Gaussian noise from a fixed seed, `σ` the neighbours' noise amplitude and
+`w` a raised-cosine taper. `NoiseFloor` measures `σ` first: the region is cut into at most 256
+blocks, up to eight Hann-windowed segments of at most 4096 samples are read in each, and a
+block's level is the median bin power over the neighbouring bands (as wide as the band, at
+least Fs/256, beyond its transitions and inside the capture), corrected from median to mean.
+`NoiseFill` interpolates the levels between block centres, so the fill follows a background
+that changes over time, and a band with no neighbours (the whole capture) is left empty. For a complex
 capture the band-pass is the low-pass of half the band modulated to its centre; for a real
 one it is `LP(high) − LP(low)`, the first a unit impulse at Fs/2 and the second absent at
 0 Hz, so no mirror counts twice. A complex band within Fs/131072 of the whole capture
@@ -691,8 +699,11 @@ every instance removes the folders of locks nobody holds when it starts, under `
 so no instance removes a lock file another is taking. `Scratch` removes its file when the
 last `Arc` goes, held by `editing::Source::computed` in the document, its history and the
 clipboard, and by a save of it (`SaveOf::_scratch`) until that save ends. The edit is `Editing::replace_computed`, applied only to the
-document and version the computation started from: the length is kept, the rectangle's time
-span stays selected and the band is cleared. `Editing::repicture` keeps the shown picture over
+document and version the computation started from: the length is kept and what was selected,
+time span and band, stays selected. The edit also sets the version before it to that
+selection (`History::set_state`), and every version keeps the band beside its time span
+(`History<Selection>`), so neither the edit, its undo nor its redo changes the selection and
+only the picture changes, once its analysis lands. `Editing::repicture` keeps the shown picture over
 samples computed in place, or brought back by undo, until the new analysis lands, so a
 suppression over the whole capture never blanks the spectrogram.
 

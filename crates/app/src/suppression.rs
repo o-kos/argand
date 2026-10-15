@@ -1,15 +1,17 @@
 //! Suppressing a band of a capture, over the whole of it or a time span, on a thread of its own.
 //!
-//! The edited capture is read through an `EditedSource`, `argand_dsp::suppress`
-//! takes the band out, and the samples it changed are written as unit-scale
-//! `f32` into a scratch file, which the edit then reads in place of the span.
+//! The edited capture is read through an `EditedSource`, first a few segments
+//! to measure the noise beside the band, then the whole region, which
+//! `argand_dsp::suppress` fills with that noise in place of the band. The samples
+//! it changed are written as unit-scale `f32` into a scratch file, which the
+//! edit then reads in place of the span.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use argand_core::{FrequencyBand, SampleSource, SampleSpan, SignalMeta};
-use argand_dsp::{SuppressPlan, Suppressor};
+use argand_dsp::{NoiseFill, NoiseFloor, SuppressPlan, Suppressor};
 use argand_edit::Capture;
 use argand_io::write::{FloatWave, FloatWaveRequest, SourceFile, SourceStamp, WriteError};
 
@@ -104,12 +106,28 @@ pub fn run(
     let margin = plan.margin();
     let from = span.start().saturating_sub(margin);
     let to = span.end().saturating_add(margin).min(len);
-    let mut suppressor = Suppressor::new(&plan, span.count(), rise, fall).map_err(|error| {
+    let floor = NoiseFloor::new(&plan, span.count());
+    let measured = floor.segments().len() as u64 * floor.segment_len() as u64;
+    let total = measured + (to - from);
+    progress(0, total);
+    let fill = measure(
+        &mut source,
+        floor,
+        span,
+        &request.meta,
+        &mut |done| progress(done, total),
+        cancel,
+    )?;
+    let suppressor = Suppressor::new(&plan, span.count(), rise, fall).map_err(|error| {
         WriteError::Unsupported {
             path: request.meta.source.clone(),
             reason: error.to_string(),
         }
     })?;
+    let mut suppressor = match fill {
+        Some(fill) => suppressor.filled_with(fill),
+        None => suppressor,
+    };
     let mut file = FloatWave::create(FloatWaveRequest {
         meta: request.meta.clone(),
         samples: span.count(),
@@ -127,14 +145,12 @@ pub fn run(
     };
     source.seek(from).map_err(read_error)?;
     let mut buffer = vec![0.0f32; BLOCK_SAMPLES * channels];
-    let total = to - from;
     let mut done = 0;
-    progress(0, total);
-    while done < total {
+    while done < to - from {
         if cancel.load(Ordering::Relaxed) {
             return Err(WriteError::Cancelled);
         }
-        let want = ((total - done) as usize).min(BLOCK_SAMPLES) * channels;
+        let want = ((to - from - done) as usize).min(BLOCK_SAMPLES) * channels;
         let read = source.read(&mut buffer[..want]).map_err(read_error)?;
         if read == 0 {
             return Err(WriteError::SourceChanged { path: path.clone() });
@@ -143,7 +159,7 @@ pub fn run(
         file.write(&out)?;
         out.clear();
         done += (read / channels) as u64;
-        progress(done, total);
+        progress(measured + done, total);
     }
     suppressor.push_zeros(suppressor.wanted(), &mut out);
     file.write(&out)?;
@@ -168,6 +184,43 @@ pub fn run(
         meta,
         stamp,
     })
+}
+
+/// Measure the noise beside the band over `span` of `source`, reporting samples read.
+fn measure(
+    source: &mut dyn SampleSource,
+    mut floor: NoiseFloor,
+    span: SampleSpan,
+    meta: &SignalMeta,
+    progress: &mut dyn FnMut(u64),
+    cancel: &AtomicBool,
+) -> Result<Option<NoiseFill>, WriteError> {
+    let channels = meta.channels();
+    let size = floor.segment_len();
+    let mut segment = vec![0.0f32; size * channels];
+    let read_error = |error| WriteError::Source {
+        path: meta.source.clone(),
+        source: error,
+    };
+    for (index, start) in floor.segments().into_iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(WriteError::Cancelled);
+        }
+        source.seek(span.start() + start).map_err(read_error)?;
+        let mut filled = 0;
+        while filled < segment.len() {
+            let read = source.read(&mut segment[filled..]).map_err(read_error)?;
+            if read == 0 {
+                return Err(WriteError::SourceChanged {
+                    path: meta.source.clone(),
+                });
+            }
+            filled += read;
+        }
+        floor.push(start, &segment, channels);
+        progress((index as u64 + 1) * size as u64);
+    }
+    Ok(floor.finish())
 }
 
 /// Start computing a suppression, with progress as a save reports it.

@@ -196,3 +196,133 @@ fn a_band_too_narrow_or_outside_the_capture_is_refused() {
     let plan = SuppressPlan::new(RATE, 1_000.0, 2_000.0, false).unwrap();
     assert!(Suppressor::new(&plan, 10, 6, 5).is_err());
 }
+
+/// White noise of `amplitude` per sample, complex or real, from a fixed seed.
+fn white(len: usize, channels: usize, seed: u64, amplitude: impl Fn(usize) -> f32) -> Vec<f32> {
+    let mut noise = Noise::new(seed);
+    let scale = if channels == 2 { std::f32::consts::FRAC_1_SQRT_2 } else { 1.0 };
+    (0..len)
+        .flat_map(|n| {
+            let a = amplitude(n) * scale;
+            let pair = [noise.gaussian() * a, noise.gaussian() * a];
+            pair.into_iter().take(channels)
+        })
+        .collect()
+}
+
+/// Measure the noise beside `plan`'s band in `input`, as an application does before suppressing.
+fn measure(plan: &SuppressPlan, input: &[f32], channels: usize) -> Option<NoiseFill> {
+    let len = (input.len() / channels) as u64;
+    let mut floor = NoiseFloor::new(plan, len);
+    let size = floor.segment_len();
+    for start in floor.segments() {
+        let from = start as usize * channels;
+        floor.push(start, &input[from..from + size * channels], channels);
+    }
+    floor.finish()
+}
+
+fn suppress_filled(plan: &SuppressPlan, input: &[f32], channels: usize) -> Vec<[f32; 2]> {
+    let len = (input.len() / channels) as u64;
+    let fill = measure(plan, input, channels).expect("neighbours measured");
+    let mut suppressor = Suppressor::new(plan, len, 0, 0).unwrap().filled_with(fill);
+    let mut out = Vec::new();
+    suppressor.push_zeros(plan.margin(), &mut out);
+    suppressor.push(input, channels, &mut out);
+    let wanted = suppressor.wanted();
+    suppressor.push_zeros(wanted, &mut out);
+    out
+}
+
+/// The mean power per transform bin of `values` between `low` and `high` hertz, over samples `from..to`.
+fn band_power(values: &[[f32; 2]], low: f64, high: f64, from: usize, to: usize) -> f64 {
+    let size = 1024;
+    let fft = FftPlanner::new().plan_fft_forward(size);
+    let window: Vec<f32> = (0..size)
+        .map(|n| (0.5 - 0.5 * (std::f64::consts::TAU * n as f64 / size as f64).cos()) as f32)
+        .collect();
+    let power: f32 = window.iter().map(|w| w * w).sum();
+    let (mut sum, mut count) = (0.0f64, 0usize);
+    let mut start = from;
+    while start + size <= to {
+        let mut work: Vec<Complex32> = values[start..start + size]
+            .iter()
+            .zip(&window)
+            .map(|(&[i, q], &w)| Complex32::new(i, q) * w)
+            .collect();
+        fft.process(&mut work);
+        for (k, bin) in work.iter().enumerate() {
+            let frequency = bin_frequency(k, size, RATE, false).unwrap_or(0.0);
+            if (low..high).contains(&frequency) {
+                sum += f64::from(bin.norm_sqr() / power);
+                count += 1;
+            }
+        }
+        start += size;
+    }
+    sum / count as f64
+}
+
+fn db(ratio: f64) -> f64 {
+    10.0 * ratio.log10()
+}
+
+#[test]
+fn a_suppressed_band_is_filled_with_noise_as_loud_as_its_neighbours() {
+    let plan = SuppressPlan::new(RATE, 5_000.0, 7_000.0, false).unwrap();
+    let len = 96_000;
+    let noise = white(len, 2, 1, |_| 0.01);
+    let tone = span(len, 2, tone(6_000.0, 0.5));
+    let input: Vec<f32> = noise.iter().zip(&tone).map(|(a, b)| a + b).collect();
+    let out = suppress_filled(&plan, &input, 2);
+    let inside = band_power(&out, 5_200.0, 6_800.0, 10_000, 86_000);
+    let beside = band_power(&out, 1_000.0, 4_000.0, 10_000, 86_000);
+    assert!(db(inside / beside).abs() < 1.0, "{} dB", db(inside / beside));
+    // No trace of the tone stays above the noise.
+    let peak = middle(&out)
+        .iter()
+        .enumerate()
+        .fold((0.0, 0.0), |(re, im), (n, &[i, q])| {
+            let turn = -std::f64::consts::TAU * 6_000.0 * n as f64 / RATE;
+            let (sin, cos) = turn.sin_cos();
+            (re + f64::from(i) * cos - f64::from(q) * sin, im + f64::from(i) * sin + f64::from(q) * cos)
+        });
+    let level = peak.0.hypot(peak.1) / middle(&out).len() as f64;
+    assert!(level < 0.001, "{level}");
+}
+
+#[test]
+fn the_fill_follows_a_noise_level_that_changes_over_time() {
+    let plan = SuppressPlan::new(RATE, -2_000.0, 2_000.0, false).unwrap();
+    let len = 400_000;
+    let input = white(len, 2, 2, |n| if n < len / 2 { 0.02 } else { 0.002 });
+    let out = suppress_filled(&plan, &input, 2);
+    for (from, to) in [(20_000, 150_000), (250_000, 380_000)] {
+        let inside = band_power(&out, -1_500.0, 1_500.0, from, to);
+        let beside = band_power(&out, 6_000.0, 12_000.0, from, to);
+        assert!(db(inside / beside).abs() < 1.5, "{from}..{to}: {} dB", db(inside / beside));
+    }
+}
+
+#[test]
+fn a_real_band_is_filled_with_real_noise() {
+    let plan = SuppressPlan::new(RATE, 5_000.0, 7_000.0, true).unwrap();
+    let len = 96_000;
+    let input = white(len, 1, 3, |_| 0.01);
+    let out = suppress_filled(&plan, &input, 1);
+    assert!(out.iter().all(|&[_, q]| q == 0.0));
+    let inside = band_power(&out, 5_200.0, 6_800.0, 10_000, 86_000);
+    let beside = band_power(&out, 1_000.0, 4_000.0, 10_000, 86_000);
+    assert!(db(inside / beside).abs() < 1.0, "{} dB", db(inside / beside));
+}
+
+#[test]
+fn nothing_fills_a_band_without_neighbours_and_the_fill_is_the_same_every_time() {
+    let whole = SuppressPlan::new(RATE, -24_000.0, 24_000.0, false).unwrap();
+    let input = white(10_000, 2, 4, |_| 0.01);
+    assert_eq!(measure(&whole, &input, 2), None);
+    let short = SuppressPlan::new(RATE, 1_000.0, 3_000.0, false).unwrap();
+    assert_eq!(measure(&short, &input[..40], 2), None);
+    let plan = SuppressPlan::new(RATE, 1_000.0, 3_000.0, false).unwrap();
+    assert_eq!(suppress_filled(&plan, &input, 2), suppress_filled(&plan, &input, 2));
+}

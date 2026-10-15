@@ -39,7 +39,7 @@ fn delete_and_undo_change_the_length_and_the_unsaved_state() {
     assert!(document.is_untouched() && !document.is_dirty());
     document.delete(span(10, 30));
     assert_eq!(document.len(), 80);
-    assert!(document.is_dirty() && document.selection().is_none());
+    assert!(document.is_dirty() && document.marked().time.is_none());
     assert!(document.undo());
     assert_eq!(document.len(), 100);
     assert!(!document.is_dirty() && document.is_untouched());
@@ -55,7 +55,7 @@ fn a_paste_into_the_same_capture_needs_no_check_and_selects_what_it_pasted() {
     let pasted = document.paste(&clipboard, Placement::At(50)).unwrap();
     assert_eq!(pasted, span(50, 60));
     assert_eq!(document.len(), 110);
-    assert_eq!(document.selection(), Some(pasted));
+    assert_eq!(document.marked().time, Some(pasted));
     let replaced = document.paste(&clipboard, Placement::Replace(span(0, 50))).unwrap();
     assert_eq!(replaced, span(0, 10));
     assert_eq!(document.len(), 70);
@@ -262,10 +262,14 @@ fn computed_samples_replace_their_span_as_one_edit() {
     let mut document = editing("/a.wav", 100, 1000.0);
     document.describe_units(Some((32768.0, 0.0)));
     assert!(document.can_compute());
-    assert!(!document.replace_computed(span(10, 30), computed(&dir.join("short.wav"), 19, 1000.0), None));
-    assert!(document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), Some(span(15, 25))));
+    assert!(!document.replace_computed(span(10, 30), computed(&dir.join("short.wav"), 19, 1000.0), Selection::default()));
+    let rectangle = Selection {
+        time: Some(span(15, 25)),
+        band: argand_core::FrequencyBand::between(100.0, 200.0),
+    };
+    assert!(document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), rectangle));
     assert_eq!(document.len(), 100);
-    assert_eq!(document.selection(), Some(span(15, 25)));
+    assert_eq!(document.marked(), rectangle);
     let pieces: Vec<(u32, u64, u64)> = document
         .capture()
         .pieces()
@@ -275,7 +279,9 @@ fn computed_samples_replace_their_span_as_one_edit() {
     assert_eq!(pieces, [(0, 0, 10), (1, 0, 20), (0, 30, 70)]);
     assert!(document.undo());
     assert!(document.is_untouched());
+    assert_eq!(document.marked(), rectangle, "undoing it keeps the selection");
     assert!(document.redo());
+    assert_eq!(document.marked(), rectangle);
     assert_eq!(document.missing_envelopes().len(), 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -285,7 +291,7 @@ fn a_scratch_file_goes_once_no_version_or_clipboard_reads_it() {
     let dir = scratch_dir("lifetime");
     let path = dir.join("1.wav");
     let mut document = editing("/a.wav", 100, 1000.0);
-    document.replace_computed(span(0, 10), computed(&path, 10, 1000.0), None);
+    document.replace_computed(span(0, 10), computed(&path, 10, 1000.0), Selection::default());
     let clipboard = document.copy(span(0, 5));
     drop(document);
     assert!(path.exists(), "the clipboard still reads it");
@@ -298,7 +304,7 @@ fn a_scratch_file_goes_once_no_version_or_clipboard_reads_it() {
 fn computed_samples_paste_into_a_capture_stored_otherwise_of_the_same_rate_and_kind() {
     let dir = scratch_dir("paste");
     let mut source = editing("/a.wav", 100, 1000.0);
-    source.replace_computed(span(0, 10), computed(&dir.join("1.wav"), 10, 1000.0), None);
+    source.replace_computed(span(0, 10), computed(&dir.join("1.wav"), 10, 1000.0), Selection::default());
     let clipboard = source.copy(span(0, 10));
     let mut other = Editing::new(meta("/b.wav", 50, 1000.0), OpenHints::default());
     other.describe_file(
@@ -335,7 +341,7 @@ fn computed_samples_paste_into_a_capture_stored_otherwise_of_the_same_rate_and_k
 fn the_picture_stays_over_samples_computed_in_place_and_brought_back() {
     let dir = scratch_dir("picture");
     let mut document = editing("/a.wav", 100, 1000.0);
-    document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), None);
+    document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), Selection::default());
     let moved = document.repicture();
     assert_eq!(moved(5), Some(5));
     assert_eq!(moved(20), Some(20));
@@ -350,7 +356,7 @@ fn a_save_of_computed_samples_reads_the_opened_file_first_and_encodes_them() {
     let dir = scratch_dir("save");
     let mut document = editing("/a.wav", 100, 1000.0);
     document.describe_units(Some((32768.0, 0.0)));
-    document.replace_computed(span(0, 100), computed(&dir.join("1.wav"), 100, 1000.0), None);
+    document.replace_computed(span(0, 100), computed(&dir.join("1.wav"), 100, 1000.0), Selection::default());
     let request = document.save_request(None, PathBuf::from("/b.wav")).unwrap();
     assert_eq!(request.sources.len(), 2);
     assert_eq!(request.sources[0].meta.source, PathBuf::from("/a.wav"));

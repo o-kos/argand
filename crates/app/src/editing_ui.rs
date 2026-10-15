@@ -249,15 +249,15 @@ impl Shell {
             return;
         };
         let len = editing.len();
-        let selection = editing.selection();
+        let marked = editing.marked();
         let missing = editing.missing_envelopes();
         let state = editing.edit_state();
         let before = editing.repicture();
         file.state.document.set_len(len);
         file.state.document.follow_edit(before);
         file.state.analyst.set_edit(state);
-        self.selection = selection.and_then(|span| span.within(len));
-        self.band = None;
+        self.selection = marked.time.and_then(|span| span.within(len));
+        self.band = marked.band;
         // The wider picture is not moved with the edit, so it goes until the new one is drawn.
         self.release_backdrop(window, cx);
         self.upload_pending = true;
