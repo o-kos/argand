@@ -10,7 +10,7 @@ Edit → Suppress band removes the selected frequencies from the capture and kee
 
 This is the first edit that computes samples instead of rearranging them, so it adds three things the editing engine does not have yet: a source that holds computed samples, a temporary home for it, and a writer path that encodes those samples into the capture's storage.
 
-Out of scope: a key binding (the owner chooses one at acceptance), suppressing several bands in one pass, and a band-stop with a user-chosen attenuation or transition.
+Out of scope: suppressing several bands in one pass, and a band-stop with a user-chosen attenuation or transition.
 
 ## Context
 
@@ -51,7 +51,7 @@ Out of scope: a key binding (the owner chooses one at acceptance), suppressing s
 
 ### Commands and the job
 
-- `editing_ui` adds the `SuppressBand` action: Edit → Suppress band, and Suppress band in the spectrogram's context menu, enabled while a band is selected (a band or a rectangle), the capture has not changed on disk, no save or suppression runs, and its file is described. No key binding yet.
+- `editing_ui` adds the `SuppressBand` action: Edit → Suppress band, and Suppress band in the spectrogram's context menu, enabled while a band is selected (a band or a rectangle), the capture has not changed on disk, no save or suppression runs, and its file is described. The owner chose Ctrl+Shift+M in the `Plot` context (Cmd+Shift+M on macOS).
 - `suppression.rs` (toolkit-neutral) runs the computation on its own thread with the save job's shape: progress every 100 ms through a bounded channel, a cancel flag, and a drop that cancels and waits at most one second for the scratch file to go. The edit is applied only when the document and its version are still the ones it started from.
 - While it runs, edits and saving wait: the status bar shows `Suppressing the band…` with progress and a cancelling ×, beside a save's place, and a failure stays there until closed. Opening another file cancels it. A cancellation leaves the capture as it was.
 

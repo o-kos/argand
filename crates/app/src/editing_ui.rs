@@ -38,6 +38,7 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         KeyBinding::new(&command("c"), CopySelection, Some("Plot")),
         KeyBinding::new(&command("v"), PasteClipboard, Some("Plot")),
         KeyBinding::new("delete", DeleteSelection, Some("Plot")),
+        KeyBinding::new(&command("shift-m"), SuppressBand, Some("Plot")),
     ];
     if cfg!(target_os = "windows") {
         keys.push(KeyBinding::new("ctrl-y", Redo, Some("Plot")));

@@ -671,7 +671,7 @@ modification time is beyond `SourceStamp`.
 
 Edit → Suppress band, and the same row in the spectrogram's context menu, takes the selected
 band out of the capture: over the whole capture for a band, over its time span for a
-rectangle. It has no key binding yet. `argand_dsp::suppress` computes `x − w·b`, where `b` is
+rectangle. Its key is Ctrl+Shift+M in the `Plot` context (Cmd+Shift+M on macOS). `argand_dsp::suppress` computes `x − w·b`, where `b` is
 a band-pass of the input whose transitions lie outside the band (a quarter of its width, at
 least Fs/131072, at most the room beside it) and `w` a raised-cosine taper. For a complex
 capture the band-pass is the low-pass of half the band modulated to its centre; for a real
