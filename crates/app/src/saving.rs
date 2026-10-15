@@ -17,11 +17,11 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 /// How long closing the window waits for a cancelled save to remove its temporary file.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
 
-/// What the save thread reports.
+/// What a save thread reports, ending with its outcome.
 #[derive(Debug)]
-pub enum Update {
+pub enum Update<T = Outcome> {
     Progress { done: u64, total: u64 },
-    Finished(Outcome),
+    Finished(T),
 }
 
 /// How a save ended.
@@ -34,7 +34,7 @@ pub enum Outcome {
     Failed(String),
 }
 
-/// A save in progress, cancelled when dropped.
+/// A save, or other work on a thread of its own, in progress, cancelled when dropped.
 pub struct Job {
     cancel: Arc<AtomicBool>,
     finished: mpsc::Receiver<()>,
@@ -57,7 +57,7 @@ impl Drop for Job {
 ///
 /// With `staged` the temporary file is handed back rather than moved into place.
 pub fn start(request: SaveRequest, staged: bool) -> (Job, async_channel::Receiver<Update>) {
-    spawn(move |progress, cancel| {
+    spawn_save(move |progress, cancel| {
         if staged {
             stage(&request, progress, cancel).map(|staged| Outcome::Staged(Box::new(staged)))
         } else {
@@ -70,17 +70,54 @@ pub fn start(request: SaveRequest, staged: bool) -> (Job, async_channel::Receive
 pub fn start_extraction(
     request: crate::extraction::ExtractRequest,
 ) -> (Job, async_channel::Receiver<Update>) {
-    spawn(move |progress, cancel| {
+    spawn_save(move |progress, cancel| {
         crate::extraction::run(&request, progress, cancel).map(Outcome::Saved)
     })
 }
 
-/// Run `work` on the save thread, carrying its progress and outcome back.
-fn spawn(
+/// How a write that ended in `result` is reported, a cancellation apart from a failure.
+pub fn ended<T>(result: Result<T, WriteError>, what: &str) -> Ended<T> {
+    match result {
+        Ok(value) => Ended::Done(value),
+        Err(WriteError::Cancelled) => Ended::Cancelled,
+        Err(error) => {
+            let text = message(&error);
+            tracing::warn!(error = %text, "{what} failed");
+            Ended::Failed(text)
+        }
+    }
+}
+
+/// How work other than a save ended.
+#[derive(Debug)]
+pub enum Ended<T> {
+    Done(T),
+    Cancelled,
+    Failed(String),
+}
+
+fn spawn_save(
     work: impl FnOnce(&mut dyn FnMut(u64, u64), &AtomicBool) -> Result<Outcome, WriteError>
     + Send
     + 'static,
 ) -> (Job, async_channel::Receiver<Update>) {
+    spawn(
+        "argand-save",
+        move |progress, cancel| match ended(work(progress, cancel), "save") {
+            Ended::Done(outcome) => outcome,
+            Ended::Cancelled => Outcome::Cancelled,
+            Ended::Failed(text) => Outcome::Failed(text),
+        },
+        Outcome::Failed,
+    )
+}
+
+/// Run `work` on a thread named `name`, carrying its progress and outcome back, or `failed` when no thread starts.
+pub fn spawn<T: Send + 'static>(
+    name: &str,
+    work: impl FnOnce(&mut dyn FnMut(u64, u64), &AtomicBool) -> T + Send + 'static,
+    failed: impl FnOnce(String) -> T,
+) -> (Job, async_channel::Receiver<Update<T>>) {
     let cancel = Arc::new(AtomicBool::new(false));
     let (finished_tx, finished) = mpsc::channel();
     let (sender, receiver) = async_channel::bounded(2);
@@ -90,7 +127,7 @@ fn spawn(
     };
     let outgoing = sender.clone();
     let spawned = std::thread::Builder::new()
-        .name("argand-save".into())
+        .name(name.into())
         .spawn(move || {
             let mut last = Instant::now();
             let mut progress = |done: u64, total: u64| {
@@ -99,21 +136,13 @@ fn spawn(
                     let _ = sender.try_send(Update::Progress { done, total });
                 }
             };
-            let outcome = match work(&mut progress, &cancel) {
-                Ok(outcome) => outcome,
-                Err(WriteError::Cancelled) => Outcome::Cancelled,
-                Err(error) => {
-                    let text = message(&error);
-                    tracing::warn!(error = %text, "save failed");
-                    Outcome::Failed(text)
-                }
-            };
+            let outcome = work(&mut progress, &cancel);
             // The temporary file is gone, or handed over, once the write returns.
             let _ = finished_tx.send(());
             let _ = sender.send_blocking(Update::Finished(outcome));
         });
     if let Err(error) = spawned {
-        let _ = outgoing.try_send(Update::Finished(Outcome::Failed(error.to_string())));
+        let _ = outgoing.try_send(Update::Finished(failed(error.to_string())));
     }
     (job, receiver)
 }

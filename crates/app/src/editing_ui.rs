@@ -15,7 +15,8 @@ actions!(
         CopySelection,
         PasteClipboard,
         PasteHere,
-        DeleteSelection
+        DeleteSelection,
+        SuppressBand
     ]
 );
 
@@ -37,6 +38,7 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         KeyBinding::new(&command("c"), CopySelection, Some("Plot")),
         KeyBinding::new(&command("v"), PasteClipboard, Some("Plot")),
         KeyBinding::new("delete", DeleteSelection, Some("Plot")),
+        KeyBinding::new(&command("shift-m"), SuppressBand, Some("Plot")),
     ];
     if cfg!(target_os = "windows") {
         keys.push(KeyBinding::new("ctrl-y", Redo, Some("Plot")));
@@ -67,6 +69,7 @@ pub(super) struct EditCommands {
     pub cut: bool,
     pub paste: bool,
     pub replace: bool,
+    pub suppress: bool,
 }
 
 /// What the unsaved-edits question asks.
@@ -81,14 +84,15 @@ impl Shell {
 
     /// The edits to change, none while the file under them is being replaced or has changed.
     pub(super) fn editing_mut(&mut self) -> Option<&mut Editing> {
-        if self.replacement_active || self.capture_changed() {
+        if self.replacement_active || self.capture_changed() || self.suppressing.is_some() {
             return None;
         }
         self.file.as_mut()?.editing.as_mut()
     }
 
     pub(super) fn edit_commands_available(&self) -> EditCommands {
-        let Some(editing) = self.editing().filter(|_| !self.capture_changed()) else {
+        let idle = !self.capture_changed() && self.suppressing.is_none();
+        let Some(editing) = self.editing().filter(|_| idle) else {
             return EditCommands::default();
         };
         let selected = self.time_selection().is_some();
@@ -99,6 +103,7 @@ impl Shell {
             cut: selected,
             paste: clip,
             replace: clip && selected,
+            suppress: self.can_suppress(),
         }
     }
 
@@ -114,12 +119,14 @@ impl Shell {
             meta: meta.clone(),
             hints: hints.clone(),
             stamp,
+            encoding: None,
         };
         if let Some(clipboard) = &mut self.clipboard {
             clipboard.adopt(&editing_source(&source));
         }
         let mut editing = Editing::new(meta, hints);
         editing.describe_file(stamp, None);
+        editing.describe_units(file.state.document.sample_units());
         file.editing = Some(editing);
         let document = file.id;
         let opened = editing_source(&source);
@@ -242,15 +249,15 @@ impl Shell {
             return;
         };
         let len = editing.len();
-        let selection = editing.selection();
+        let marked = editing.marked();
         let missing = editing.missing_envelopes();
         let state = editing.edit_state();
         let before = editing.repicture();
         file.state.document.set_len(len);
         file.state.document.follow_edit(before);
         file.state.analyst.set_edit(state);
-        self.selection = selection.and_then(|span| span.within(len));
-        self.band = None;
+        self.selection = marked.time.and_then(|span| span.within(len));
+        self.band = marked.band;
         // The wider picture is not moved with the edit, so it goes until the new one is drawn.
         self.release_backdrop(window, cx);
         self.upload_pending = true;
@@ -533,6 +540,9 @@ impl Shell {
             .on_action(cx.listener(|shell, _: &PasteHere, window, cx| shell.paste_here(window, cx)))
             .on_action(cx.listener(|shell, _: &DeleteSelection, window, cx| {
                 shell.delete_selection(window, cx);
+            }))
+            .on_action(cx.listener(|shell, _: &SuppressBand, window, cx| {
+                shell.suppress_band(window, cx);
             }))
     }
 }

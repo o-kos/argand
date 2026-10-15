@@ -43,6 +43,11 @@ impl<S> History<S> {
         &self.versions[self.current].state
     }
 
+    /// Change the state the current version left, as an edit does that wants its undo to bring something else back.
+    pub fn set_state(&mut self, state: S) {
+        self.versions[self.current].state = state;
+    }
+
     /// A number no other version of this history shares, for telling stale work apart.
     pub fn version(&self) -> u64 {
         self.versions[self.current].serial

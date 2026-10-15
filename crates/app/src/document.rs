@@ -275,6 +275,11 @@ impl Document {
         self.file_info.stamp
     }
 
+    /// How the file's reader maps read values back to stored ones, as `value * factor + offset`.
+    pub fn sample_units(&self) -> Option<(f64, f64)> {
+        self.file_info.sample_units
+    }
+
     /// Move the picture's columns to where an edit put their samples, emptying the columns of samples it never showed.
     ///
     /// `before` answers where the version pictured held a sample of the current one.

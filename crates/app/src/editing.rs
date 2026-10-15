@@ -6,13 +6,14 @@
 
 use std::sync::Arc;
 
-use argand_core::{SampleSpan, SignalMeta};
+use argand_core::{SampleSpan, Selection, SignalMeta};
 use argand_edit::{Capture, Clip, History, Piece, SourceId};
 use argand_io::OpenHints;
-use argand_io::write::{SaveRequest, Segment, SourceFile, SourceStamp, Storage};
+use argand_io::write::{Encoding, SaveRequest, Segment, SourceFile, SourceStamp, Storage};
 
 use crate::analysis::EditState;
 use crate::minimap::Snapshot;
+use crate::scratch::Scratch;
 
 /// A file a capture reads from, with what is known about it so far.
 #[derive(Debug, Clone)]
@@ -23,6 +24,8 @@ pub struct Source {
     pub stamp: Option<SourceStamp>,
     /// How it stores its samples, which decides what can be pasted into it.
     pub storage: Option<Storage>,
+    /// The scratch file of computed samples this is, none for a file of the user's.
+    pub computed: Option<Arc<Scratch>>,
 }
 
 impl Source {
@@ -32,12 +35,30 @@ impl Source {
             hints,
             stamp: None,
             storage: None,
+            computed: None,
+        }
+    }
+
+    /// Computed samples kept in `scratch`, which `meta` and `stamp` describe as written.
+    pub fn computed(scratch: Arc<Scratch>, meta: SignalMeta, stamp: Option<SourceStamp>) -> Self {
+        Self {
+            meta,
+            hints: OpenHints::default(),
+            stamp,
+            storage: None,
+            computed: Some(scratch),
         }
     }
 
     /// Whether `other` reads the same samples, which takes the same file opened the same way.
     fn same_file(&self, other: &Self) -> bool {
-        self.meta.source == other.meta.source
+        let same_scratch = match (&self.computed, &other.computed) {
+            (Some(ours), Some(theirs)) => Arc::ptr_eq(ours, theirs),
+            (None, None) => true,
+            _ => false,
+        };
+        same_scratch
+            && self.meta.source == other.meta.source
             && self.stamp == other.stamp
             && self.hints == other.hints
             && self.meta.sample_type == other.meta.sample_type
@@ -49,6 +70,15 @@ impl Source {
             meta: self.meta.clone(),
             hints: self.hints.clone(),
             stamp: self.stamp,
+            encoding: None,
+        }
+    }
+
+    /// The file as a save reads it, its computed samples encoded with `encoding` when it is a scratch file.
+    fn saved_from(&self, encoding: Option<Encoding>) -> SourceFile {
+        SourceFile {
+            encoding: self.computed.as_ref().and(encoding),
+            ..self.source_file()
         }
     }
 }
@@ -161,6 +191,7 @@ pub enum PasteError {
     Unknown { name: String },
     Storage { name: String },
     Rate { name: String },
+    Kind { name: String },
     Empty,
 }
 
@@ -177,6 +208,7 @@ impl std::fmt::Display for PasteError {
                 write!(f, "{name} stores its samples differently from this capture")
             }
             Self::Rate { name } => write!(f, "{name} has another sample rate"),
+            Self::Kind { name } => write!(f, "{name} is not the same kind of signal"),
             Self::Empty => f.write_str("there is nothing to paste"),
         }
     }
@@ -187,12 +219,14 @@ impl std::error::Error for PasteError {}
 /// One document's sources, edit history and source envelopes.
 pub struct Editing {
     sources: Vec<Source>,
-    history: History<Option<SampleSpan>>,
+    history: History<Selection>,
     envelopes: Vec<Option<Arc<Snapshot>>>,
     /// Sources whose envelope is being built, so a second edit does not start another scan.
     building: Vec<bool>,
     /// The version whose samples the picture on screen shows.
     pictured: Capture,
+    /// How the opened file's read values map back to stored ones, which computed samples are saved by.
+    encoding: Option<Encoding>,
 }
 
 impl Editing {
@@ -201,10 +235,11 @@ impl Editing {
         let capture = Capture::whole(SourceId(0), meta.len_samples);
         Self {
             sources: vec![Source::new(meta, hints)],
-            history: History::new(capture.clone(), None),
+            history: History::new(capture.clone(), Selection::default()),
             envelopes: vec![None],
             building: vec![true],
             pictured: capture,
+            encoding: None,
         }
     }
 
@@ -243,15 +278,63 @@ impl Editing {
         self.sources[0].storage = storage;
     }
 
-    /// The selection the current version left, which undo and redo bring back.
-    pub fn selection(&self) -> Option<SampleSpan> {
+    /// Record how the opened file's reader maps read values back to stored ones.
+    pub fn describe_units(&mut self, units: Option<(f64, f64)>) {
+        self.encoding = units.map(|(factor, offset)| Encoding { factor, offset });
+    }
+
+    /// The scratch files the current version reads, for work that must outlive the document.
+    pub fn scratches(&self) -> Vec<Arc<Scratch>> {
+        self.capture()
+            .sources()
+            .iter()
+            .filter_map(|id| self.sources[id.0 as usize].computed.clone())
+            .collect()
+    }
+
+    /// Whether computed samples can be added, which saving them needs.
+    pub fn can_compute(&self) -> bool {
+        self.encoding.is_some()
+    }
+
+    /// Everything the current version left selected, which undo and redo bring back.
+    pub fn marked(&self) -> Selection {
         *self.history.state()
     }
 
     /// Remove `span`, leaving nothing selected.
     pub fn delete(&mut self, span: SampleSpan) {
         let capture = self.capture().delete(span);
-        self.history.apply(capture, None);
+        self.history.apply(capture, Selection::default());
+    }
+
+    /// Put the computed samples of `computed` in place of `span`, keeping the length and `selection` selected.
+    ///
+    /// Undoing it selects `selection` too, so neither changes what is selected.
+    /// Refused when the computed samples are not as many as the span holds.
+    pub fn replace_computed(
+        &mut self,
+        span: SampleSpan,
+        computed: Source,
+        selection: Selection,
+    ) -> bool {
+        let len = computed.meta.len_samples;
+        if computed.computed.is_none() || len != span.count() || span.end() > self.len() {
+            return false;
+        }
+        let id = SourceId(self.sources.len() as u32);
+        let clip = Clip::new(vec![Piece {
+            source: id,
+            start: 0,
+            len,
+        }]);
+        let capture = self.capture().replace(span, &clip);
+        self.sources.push(computed);
+        self.envelopes.push(None);
+        self.building.push(false);
+        self.history.set_state(selection);
+        self.history.apply(capture, selection);
+        true
     }
 
     pub fn copy(&self, span: SampleSpan) -> Clipboard {
@@ -272,7 +355,18 @@ impl Editing {
         }
         let mut ids = Vec::with_capacity(clipboard.sources.len());
         let mut added = Vec::new();
-        for source in &clipboard.sources {
+        let used: Vec<SourceId> = clipboard
+            .clip
+            .pieces()
+            .iter()
+            .map(|piece| piece.source)
+            .collect();
+        for (index, source) in clipboard.sources.iter().enumerate() {
+            // A file the clip does not read is neither checked nor added.
+            if !used.contains(&SourceId(index as u32)) {
+                ids.push(SourceId(u32::MAX));
+                continue;
+            }
             let id = match self.find(source) {
                 Some(id) => id,
                 None => {
@@ -298,7 +392,7 @@ impl Editing {
         self.building
             .resize(self.sources.len() + added.len(), false);
         self.sources.extend(added);
-        self.history.apply(capture, Some(pasted));
+        self.history.apply(capture, Selection::time(pasted));
         Ok(pasted)
     }
 
@@ -318,14 +412,21 @@ impl Editing {
             .file_name()
             .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
         let file = self.file();
+        if file.meta.sample_rate != source.meta.sample_rate {
+            return Err(PasteError::Rate { name });
+        }
+        // Computed samples are encoded into this capture's storage when it is saved.
+        if source.computed.is_some() {
+            if source.meta.channels() != file.meta.channels() {
+                return Err(PasteError::Kind { name });
+            }
+            return Ok(());
+        }
         let (Some(ours), Some(theirs)) = (file.storage, source.storage) else {
             return Err(PasteError::Unknown { name });
         };
         if ours != theirs {
             return Err(PasteError::Storage { name });
-        }
-        if file.meta.sample_rate != source.meta.sample_rate {
-            return Err(PasteError::Rate { name });
         }
         Ok(())
     }
@@ -352,6 +453,7 @@ impl Editing {
             hints: file.hints.clone(),
             stamp: None,
             storage: file.storage,
+            computed: None,
         }
     }
 
@@ -426,10 +528,31 @@ impl Editing {
     }
 
     /// Where the version shown before held each sample of the current one, which the picture now shows.
+    ///
+    /// A sample computed in place of another, or the other brought back, keeps its position, so the
+    /// picture of what it replaced stays until the new one lands.
     pub fn repicture(&mut self) -> impl Fn(u64) -> Option<u64> + use<> {
         let now = self.capture().clone();
         let before = std::mem::replace(&mut self.pictured, now.clone());
-        move |at| now.position_in(at, &before)
+        let computed: Vec<bool> = self
+            .sources
+            .iter()
+            .map(|source| source.computed.is_some())
+            .collect();
+        let same_length = now.len() == before.len();
+        move |at| {
+            let in_place = || {
+                let computed_at = |capture: &Capture| {
+                    let (index, _) = capture.locate(at);
+                    capture
+                        .pieces()
+                        .get(index)
+                        .is_some_and(|piece| computed[piece.source.0 as usize])
+                };
+                (same_length && (computed_at(&now) || computed_at(&before))).then_some(at)
+            };
+            now.position_in(at, &before).or_else(in_place)
+        }
     }
 
     /// The minimap of the current version, put together from the source envelopes.
@@ -470,7 +593,7 @@ impl Editing {
             .enumerate()
             .map(|(index, source)| {
                 used.contains(&SourceId(index as u32))
-                    .then(|| source.source_file())
+                    .then(|| source.saved_from(self.encoding))
             })
             .collect()
     }
@@ -488,6 +611,13 @@ impl Editing {
             return None;
         }
         let mut used: Vec<SourceId> = pieces.iter().map(|piece| piece.source).collect();
+        // Computed samples take the opened file's format, so it comes first even when none of it is left.
+        let computed = used
+            .iter()
+            .any(|id| self.sources[id.0 as usize].computed.is_some());
+        if computed {
+            used.push(SourceId(0));
+        }
         used.sort_unstable();
         used.dedup();
         let file = self.file();
@@ -495,7 +625,7 @@ impl Editing {
             meta: file.meta.clone(),
             sources: used
                 .iter()
-                .map(|id| self.sources[id.0 as usize].source_file())
+                .map(|id| self.sources[id.0 as usize].saved_from(self.encoding))
                 .collect(),
             segments: pieces
                 .into_iter()

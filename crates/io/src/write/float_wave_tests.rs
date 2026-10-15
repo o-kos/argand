@@ -119,6 +119,7 @@ fn a_source_is_not_a_target() {
         meta: source.meta().clone(),
         hints: OpenHints::default(),
         stamp: SourceStamp::of(&path).ok(),
+        encoding: None,
     }];
     assert!(matches!(
         FloatWave::create(request),

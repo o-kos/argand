@@ -39,7 +39,7 @@ fn delete_and_undo_change_the_length_and_the_unsaved_state() {
     assert!(document.is_untouched() && !document.is_dirty());
     document.delete(span(10, 30));
     assert_eq!(document.len(), 80);
-    assert!(document.is_dirty() && document.selection().is_none());
+    assert!(document.is_dirty() && document.marked().time.is_none());
     assert!(document.undo());
     assert_eq!(document.len(), 100);
     assert!(!document.is_dirty() && document.is_untouched());
@@ -55,7 +55,7 @@ fn a_paste_into_the_same_capture_needs_no_check_and_selects_what_it_pasted() {
     let pasted = document.paste(&clipboard, Placement::At(50)).unwrap();
     assert_eq!(pasted, span(50, 60));
     assert_eq!(document.len(), 110);
-    assert_eq!(document.selection(), Some(pasted));
+    assert_eq!(document.marked().time, Some(pasted));
     let replaced = document.paste(&clipboard, Placement::Replace(span(0, 50))).unwrap();
     assert_eq!(replaced, span(0, 10));
     assert_eq!(document.len(), 70);
@@ -235,4 +235,140 @@ fn an_envelope_left_unfinished_is_asked_for_again_after_a_restore() {
     assert!(document.missing_envelopes().is_empty());
     document.restart_envelopes();
     assert_eq!(document.missing_envelopes().len(), 1, "its builder went with the closed document");
+}
+
+/// Computed samples of `len`, at the capture's rate and kind, in a scratch file at `path`.
+fn computed(path: &std::path::Path, len: u64, rate: f64) -> Source {
+    std::fs::write(path, b"computed").unwrap();
+    let mut meta = meta(&path.to_string_lossy(), len, rate);
+    meta.sample_type = SampleType::new(Domain::Iq, SampleFormat::F32);
+    meta.divisor = 1.0;
+    Source::computed(
+        Arc::new(Scratch::new(path.to_owned())),
+        meta,
+        argand_io::write::SourceStamp::of(path).ok(),
+    )
+}
+
+fn scratch_dir(label: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("argand-editing-{label}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn computed_samples_replace_their_span_as_one_edit() {
+    let dir = scratch_dir("replace");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.describe_units(Some((32768.0, 0.0)));
+    assert!(document.can_compute());
+    assert!(!document.replace_computed(span(10, 30), computed(&dir.join("short.wav"), 19, 1000.0), Selection::default()));
+    let rectangle = Selection {
+        time: Some(span(15, 25)),
+        band: argand_core::FrequencyBand::between(100.0, 200.0),
+    };
+    assert!(document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), rectangle));
+    assert_eq!(document.len(), 100);
+    assert_eq!(document.marked(), rectangle);
+    let pieces: Vec<(u32, u64, u64)> = document
+        .capture()
+        .pieces()
+        .iter()
+        .map(|piece| (piece.source.0, piece.start, piece.len))
+        .collect();
+    assert_eq!(pieces, [(0, 0, 10), (1, 0, 20), (0, 30, 70)]);
+    assert!(document.undo());
+    assert!(document.is_untouched());
+    assert_eq!(document.marked(), rectangle, "undoing it keeps the selection");
+    assert!(document.redo());
+    assert_eq!(document.marked(), rectangle);
+    assert_eq!(document.missing_envelopes().len(), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_scratch_file_goes_once_no_version_or_clipboard_reads_it() {
+    let dir = scratch_dir("lifetime");
+    let path = dir.join("1.wav");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.replace_computed(span(0, 10), computed(&path, 10, 1000.0), Selection::default());
+    let clipboard = document.copy(span(0, 5));
+    drop(document);
+    assert!(path.exists(), "the clipboard still reads it");
+    drop(clipboard);
+    assert!(!path.exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn computed_samples_paste_into_a_capture_stored_otherwise_of_the_same_rate_and_kind() {
+    let dir = scratch_dir("paste");
+    let mut source = editing("/a.wav", 100, 1000.0);
+    source.replace_computed(span(0, 10), computed(&dir.join("1.wav"), 10, 1000.0), Selection::default());
+    let clipboard = source.copy(span(0, 10));
+    let mut other = Editing::new(meta("/b.wav", 50, 1000.0), OpenHints::default());
+    other.describe_file(
+        None,
+        Some(Storage::Linear {
+            format_tag: 1,
+            bits: 32,
+            channels: 2,
+            block: 8,
+            unscaled_float: false,
+        }),
+    );
+    assert!(other.paste(&clipboard, Placement::At(0)).is_ok());
+    let mut slower = editing("/c.wav", 50, 500.0);
+    assert!(matches!(
+        slower.paste(&clipboard, Placement::At(0)),
+        Err(PasteError::Rate { .. })
+    ));
+    let mut real = Editing::new(
+        SignalMeta {
+            sample_type: SampleType::new(Domain::Real, SampleFormat::I16),
+            ..meta("/d.wav", 50, 1000.0)
+        },
+        OpenHints::default(),
+    );
+    assert!(matches!(
+        real.paste(&clipboard, Placement::At(0)),
+        Err(PasteError::Kind { .. })
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_picture_stays_over_samples_computed_in_place_and_brought_back() {
+    let dir = scratch_dir("picture");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), Selection::default());
+    let moved = document.repicture();
+    assert_eq!(moved(5), Some(5));
+    assert_eq!(moved(20), Some(20));
+    assert!(document.undo());
+    let moved = document.repicture();
+    assert_eq!(moved(20), Some(20));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_save_of_computed_samples_reads_the_opened_file_first_and_encodes_them() {
+    let dir = scratch_dir("save");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.describe_units(Some((32768.0, 0.0)));
+    document.replace_computed(span(0, 100), computed(&dir.join("1.wav"), 100, 1000.0), Selection::default());
+    let request = document.save_request(None, PathBuf::from("/b.wav")).unwrap();
+    assert_eq!(request.sources.len(), 2);
+    assert_eq!(request.sources[0].meta.source, PathBuf::from("/a.wav"));
+    assert_eq!(request.sources[0].encoding, None);
+    assert_eq!(
+        request.sources[1].encoding,
+        Some(argand_io::write::Encoding {
+            factor: 32768.0,
+            offset: 0.0
+        })
+    );
+    assert_eq!(request.segments.len(), 1);
+    assert_eq!(request.segments[0].source, 1);
+    let _ = std::fs::remove_dir_all(&dir);
 }
