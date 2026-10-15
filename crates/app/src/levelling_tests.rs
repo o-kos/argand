@@ -1,5 +1,5 @@
 use super::*;
-use argand_core::{Domain, SampleFormat, SampleType};
+use argand_core::{Adjustment, Domain, SampleFormat, SampleType};
 use argand_edit::SourceId;
 use argand_io::OpenHints;
 use argand_io::testutil::{TempDir, write_wav};
@@ -61,4 +61,40 @@ fn the_gain_puts_the_peak_at_the_target() {
     assert_eq!(super::gain(0.0, 1.0, -1.0), None);
     assert_eq!(super::gain(0.5, 1.0, 1.0), None);
     assert_eq!(super::gain(0.5, 1.0, -61.0), None);
+}
+
+/// An I/Q 16-bit file holding `peak` of full scale, opened with `hints`.
+fn i16_file(dir: &TempDir, name: &str, peak: f32, hints: OpenHints) -> SourceFile {
+    let iq_i16: SampleType = "iq_i16".parse().unwrap();
+    let path = write_wav(&dir.join(name), iq_i16, 48_000, &[peak, 0.0, 0.0, -peak / 2.0], 1.0);
+    let (source, stamp) = argand_io::open_stamped(&path, &hints).unwrap();
+    SourceFile {
+        meta: source.meta().clone(),
+        hints,
+        stamp,
+        encoding: None,
+    }
+}
+
+#[test]
+fn files_read_on_different_scales_are_measured_in_stored_units() {
+    let dir = TempDir::new("level-scales");
+    let louder = OpenHints {
+        normalize: Some(argand_io::Normalize::Factor(16_384.0)),
+        ..Default::default()
+    };
+    let quiet = i16_file(&dir, "a.wav", 0.1, louder);
+    let loud = i16_file(&dir, "b.wav", 0.9, OpenHints::default());
+    let clip = argand_edit::Clip::new(vec![argand_edit::Piece {
+        source: SourceId(1),
+        start: 0,
+        len: 2,
+    }]);
+    let request = LevelRequest {
+        capture: Capture::whole(SourceId(0), 2).insert(2, &clip),
+        meta: quiet.meta.clone(),
+        sources: vec![Some(quiet), Some(loud)],
+    };
+    let peak = run(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    assert!((peak - 0.9 * 32_768.0).abs() < 1.0, "{peak}");
 }

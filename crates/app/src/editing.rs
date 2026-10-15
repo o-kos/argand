@@ -387,12 +387,12 @@ impl Editing {
         true
     }
 
-    /// The value read for the opened file's full scale, which a level in dBFS is relative to.
+    /// The stored value of full scale, which a level in dBFS is relative to.
+    ///
+    /// None until the opened file's storage and units are known, which also store computed samples.
     pub fn full_scale(&self) -> Option<f64> {
-        let encoding = self.encoding?;
-        let storage = self.file().storage?;
-        let value = storage.full_scale() / encoding.factor;
-        (value.is_finite() && value > 0.0).then_some(value)
+        self.encoding?;
+        Some(self.file().storage?.full_scale())
     }
 
     /// Paste `clipboard`, selecting what was pasted.

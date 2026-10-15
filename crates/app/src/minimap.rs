@@ -198,7 +198,7 @@ pub fn adjusted(snapshot: Snapshot, adjustment: argand_core::Adjustment) -> Snap
     }
     let mut envelope = snapshot.envelope;
     let channels = envelope.channels.max(1);
-    let gain = adjustment.gain() as f32;
+    let gain = adjustment.gain();
     for (at, (min, max)) in envelope
         .min
         .iter_mut()
@@ -213,8 +213,8 @@ pub fn adjusted(snapshot: Snapshot, adjustment: argand_core::Adjustment) -> Snap
             (true, _, 1) => (-*max, -*min),
             _ => (*min, *max),
         };
-        *min = low * gain;
-        *max = high * gain;
+        *min = (f64::from(low) * gain) as f32;
+        *max = (f64::from(high) * gain) as f32;
     }
     finished(envelope, snapshot.complete, snapshot.samples)
 }

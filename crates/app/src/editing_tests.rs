@@ -413,9 +413,9 @@ fn copies_of_a_file_saved_adjusted_cannot_follow_it() {
 }
 
 #[test]
-fn full_scale_is_the_read_value_of_the_stored_full_scale() {
+fn full_scale_is_the_stored_full_scale_once_the_units_are_known() {
     let mut document = editing("/a.wav", 100, 1000.0);
     assert_eq!(document.full_scale(), None, "the reader's units are not known yet");
     document.describe_units(Some((32768.0 / 4.0, 0.0)));
-    assert_eq!(document.full_scale(), Some(4.0));
+    assert_eq!(document.full_scale(), Some(32768.0));
 }
