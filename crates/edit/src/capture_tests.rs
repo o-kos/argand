@@ -146,3 +146,19 @@ fn a_sample_is_found_where_the_other_version_held_it() {
     assert_eq!(pasted.position_in(2, &before), None, "the other file was never in it");
     assert_eq!(pasted.position_in(5, &after), Some(0));
 }
+
+#[test]
+fn edits_keep_the_adjustment() {
+    let adjustment = argand_core::Adjustment::IDENTITY.inverted();
+    let capture = Capture::whole(A, 100).with_adjustment(adjustment);
+    assert_ne!(capture, Capture::whole(A, 100));
+    let clip = Clip::new(vec![Piece { source: B, start: 0, len: 5 }]);
+    for edited in [
+        capture.delete(span(10, 20)),
+        capture.insert(3, &clip),
+        capture.replace(span(1, 4), &clip),
+    ] {
+        assert_eq!(edited.adjustment(), adjustment);
+    }
+    assert_eq!(capture.position_in(42, &Capture::whole(A, 100)), Some(42));
+}

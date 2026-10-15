@@ -1420,3 +1420,167 @@ fn computed_samples_are_refused_where_the_value_does_not_fill_its_container() {
     let request = suppressed(source_file(&partial, OpenHints::default()), scratch, dir.join("partial-saved.wav"));
     assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
 }
+
+fn adjusted(mut request: SaveRequest, invert: bool, gain: f64, first: u64) -> SaveRequest {
+    request.adjustment = Adjustment::new(invert, gain).unwrap();
+    request.first = first;
+    request
+}
+
+/// What a linear WAVE stores a value of `format` as.
+fn linear_of(format: SampleFormat) -> Linear {
+    match format {
+        SampleFormat::U8 => Linear::Unsigned8,
+        SampleFormat::I16 => Linear::Signed(2),
+        SampleFormat::I32 => Linear::Signed(4),
+        SampleFormat::F32 | SampleFormat::F16x8 => Linear::Float32,
+    }
+}
+
+#[test]
+fn every_wave_sample_type_is_encoded_again_through_an_adjustment() {
+    let dir = TempDir::new("write-adjusted-types");
+    for sample_type in all_sample_types() {
+        let source = dir.join(&format!("{sample_type}.wav"));
+        write_wav(&source, sample_type, 48_000, &signal(sample_type, 1000), 1.0);
+        let target = dir.join(&format!("{sample_type}-adjusted.wav"));
+        let span = SampleSpan::between(101, 734);
+        let request = adjusted(request(&source, OpenHints::default(), span, target.clone()), true, 0.5, 101);
+        assert_eq!(run(&request).unwrap().samples, 633);
+
+        let linear = linear_of(sample_type.format);
+        let width = linear.width();
+        let channels = sample_type.channels();
+        let original = data_bytes(&source);
+        let mut expected = Vec::new();
+        for (at, value) in original[101 * width * channels..734 * width * channels].chunks_exact(width).enumerate() {
+            let stored = linear.decode(value);
+            let index = 101 + (at / channels) as u64;
+            let flipped = match channels {
+                1 => index % 2 == 1,
+                _ => at % channels == 1,
+            };
+            let zero = linear.zero();
+            let factor = if flipped { -0.5 } else { 0.5 };
+            linear.push(zero + factor * (stored - zero), &mut expected);
+        }
+        assert_eq!(data_bytes(&target), expected, "{sample_type}");
+    }
+}
+
+#[test]
+fn inverting_sixteen_bits_conjugates_and_clamps_the_most_negative_value() {
+    let dir = TempDir::new("write-adjusted-i16");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = dir.join("a.wav");
+    write_wav(&source, i16, 48_000, &[100.0 / 32768.0, -200.0 / 32768.0, -1.0, -1.0], 1.0);
+    let target = dir.join("b.wav");
+    run(&adjusted(request(&source, OpenHints::default(), None, target.clone()), true, 1.0, 0)).unwrap();
+    let stored: Vec<i16> = data_bytes(&target)
+        .chunks_exact(2)
+        .map(|value| i16::from_le_bytes([value[0], value[1]]))
+        .collect();
+    assert_eq!(stored, [100, 200, -32768, 32767]);
+}
+
+#[test]
+fn a_real_inversion_counts_the_parity_from_the_capture_index() {
+    let dir = TempDir::new("write-adjusted-real");
+    let real: SampleType = "rl_i16".parse().unwrap();
+    let source = dir.join("a.wav");
+    write_wav(&source, real, 48_000, &[1000.0 / 32768.0; 6], 1.0);
+    let stored = |first| {
+        let target = dir.join(&format!("b{first}.wav"));
+        run(&adjusted(request(&source, OpenHints::default(), SampleSpan::between(1, 5), target.clone()), true, 1.0, first)).unwrap();
+        data_bytes(&target)
+            .chunks_exact(2)
+            .map(|value| i16::from_le_bytes([value[0], value[1]]))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(stored(1), [-1000, 1000, -1000, 1000]);
+    assert_eq!(stored(4), [1000, -1000, 1000, -1000]);
+}
+
+#[test]
+fn the_gain_clamps_twenty_four_bits() {
+    let dir = TempDir::new("write-adjusted-24");
+    let source = dir.join("a.wav");
+    let data = write_wav24(&source, 2, 400);
+    let target = dir.join("b.wav");
+    run(&adjusted(request(&source, OpenHints::default(), None, target.clone()), false, 4.0, 0)).unwrap();
+    let mut expected = Vec::new();
+    for value in data.chunks_exact(3) {
+        let stored = i32::from_le_bytes([0, value[0], value[1], value[2]]) >> 8;
+        let scaled = (f64::from(stored) * 4.0).clamp(-8_388_608.0, 8_388_607.0) as i32;
+        expected.extend_from_slice(&scaled.to_le_bytes()[..3]);
+    }
+    assert_eq!(data_bytes(&target), expected);
+}
+
+#[test]
+fn flac_integers_go_through_the_adjustment() {
+    let dir = TempDir::new("write-adjusted-flac");
+    let source = dir.join("a.flac");
+    let samples = write_flac_fixture(&source, 2, 16, 3000);
+    let target = dir.join("b.flac");
+    let span = SampleSpan::between(7, 2500);
+    run(&adjusted(request(&source, OpenHints::default(), span, target.clone()), true, 1.0, 7)).unwrap();
+    let expected: Vec<i32> = samples[14..5000]
+        .iter()
+        .enumerate()
+        .map(|(at, &value)| if at % 2 == 1 { (-value).min(32767) } else { value })
+        .collect();
+    assert_eq!(flac_ints(&target, 16), expected);
+}
+
+#[test]
+fn computed_and_headerless_samples_go_through_the_adjustment() {
+    let dir = TempDir::new("write-adjusted-computed");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let mut bytes = b"PREAMBLE".to_vec();
+    bytes.extend(encode(SampleFormat::I16, &signal(i16, 100)));
+    let raw = dir.join("c.raw");
+    fs::write(&raw, &bytes).unwrap();
+    let hints = OpenHints {
+        raw: Some(RawSpec { sample_type: i16, sample_rate: Some(48_000.0) }),
+        byte_offset: 8,
+        ..Default::default()
+    };
+    let values: Vec<f32> = COMPUTED.to_vec();
+    let scratch = computed_with(&dir.join("computed-raw.wav"), &raw, &hints, Domain::Iq, &values);
+    let mut request = adjusted(suppressed(source_file(&raw, hints), scratch, raw.clone()), true, 0.5, 0);
+    request.replacing = replacing(&raw);
+    request.output = Output::Headerless { preamble: 8 };
+    run(&request).unwrap();
+    let half = |at: usize, stored: f64| {
+        let factor = if at % 2 == 1 { -0.5 } else { 0.5 };
+        ((stored * factor).round().clamp(-32768.0, 32767.0) as i16).to_le_bytes()
+    };
+    let mut expected = bytes[..8].to_vec();
+    let original = &bytes[8..];
+    let mut at = 0;
+    for value in original[..10 * 4].chunks_exact(2) {
+        expected.extend_from_slice(&half(at, f64::from(i16::from_le_bytes([value[0], value[1]]))));
+        at += 1;
+    }
+    for &value in &values {
+        expected.extend_from_slice(&half(at, f64::from(value) * 32768.0));
+        at += 1;
+    }
+    for value in original[14 * 4..].chunks_exact(2) {
+        expected.extend_from_slice(&half(at, f64::from(i16::from_le_bytes([value[0], value[1]]))));
+        at += 1;
+    }
+    assert_eq!(fs::read(&raw).unwrap(), expected);
+}
+
+#[test]
+fn an_adjustment_is_refused_where_the_value_does_not_fill_its_container() {
+    let dir = TempDir::new("write-adjusted-valid");
+    let partial = dir.join("partial.wav");
+    write_extensible(&partial, 20, 100);
+    let target = dir.join("partial-saved.wav");
+    let request = adjusted(request(&partial, OpenHints::default(), None, target), true, 1.0, 0);
+    assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
+    assert_eq!(names(&dir), ["partial.wav"]);
+}

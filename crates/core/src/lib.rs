@@ -4,6 +4,7 @@
 //! not know about file containers, transforms or any GUI toolkit -- that
 //! separation is what keeps the render seam replaceable.
 
+pub mod adjustment;
 pub mod axis;
 pub mod colormap;
 pub mod fmt;
@@ -15,6 +16,7 @@ pub mod view;
 #[cfg(any(test, feature = "testutil"))]
 pub mod testutil;
 
+pub use adjustment::Adjustment;
 pub use axis::{Axis, AxisKind, LabelMeasure, LabelMetrics, LabelRun, Tick};
 pub use colormap::{COLORMAP_NAMES, Colormap, GRADIENT_SIZE, Gradient, gradient_index};
 pub use fmt::{format_bytes, format_duration, format_hz, format_samples};
