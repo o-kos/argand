@@ -84,7 +84,7 @@ impl Shell {
         let file = editing.file();
         if !editing.is_dirty() {
             Err(Unsavable::Unchanged)
-        } else if self.saving.is_some() || self.suppressing.is_some() {
+        } else if self.saving.is_some() || self.computing() {
             Err(Unsavable::Busy)
         } else if editing.capture().is_empty() {
             Err(Unsavable::Empty)

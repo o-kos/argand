@@ -49,14 +49,19 @@ pub struct Suppressed {
 
 impl SuppressRequest {
     /// The band's edges relative to the capture's baseband 0 Hz, held to the capture's band.
+    ///
+    /// The edges are where the sources hold the band, which an inversion mirrors.
     fn edges(&self) -> (f64, f64) {
         let nyquist = self.meta.sample_rate / 2.0;
         let floor = if self.meta.is_iq() { -nyquist } else { 0.0 };
         let reference = self.meta.center_freq;
-        (
-            (self.band.low() - reference).max(floor),
-            (self.band.high() - reference).min(nyquist),
-        )
+        let low = (self.band.low() - reference).max(floor);
+        let high = (self.band.high() - reference).min(nyquist);
+        match (self.capture.adjustment().invert(), self.meta.is_iq()) {
+            (false, _) => (low, high),
+            (true, true) => (-high, -low),
+            (true, false) => (nyquist - high, nyquist - low),
+        }
     }
 
     /// Whether the band can be suppressed, quickly enough for the window's thread.
@@ -101,7 +106,11 @@ pub fn run(
 ) -> Result<Suppressed, WriteError> {
     let plan = request.plan()?;
     let (span, rise, fall) = request.region(plan.taper()).ok_or(WriteError::OutOfRange)?;
-    let mut source = crate::extraction::open(&request.capture, &request.sources, &request.meta)?;
+    // Computed samples stand in for the sources' own, the adjustment being applied on reading.
+    let unadjusted = request
+        .capture
+        .with_adjustment(argand_core::Adjustment::IDENTITY);
+    let mut source = crate::extraction::open(&unadjusted, &request.sources, &request.meta)?;
     let len = request.capture.len();
     let margin = plan.margin();
     let from = span.start().saturating_sub(margin);

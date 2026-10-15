@@ -188,6 +188,37 @@ pub fn compose(
     finished(envelope, complete, total)
 }
 
+/// `snapshot` as the capture reads through `adjustment`, without reading a sample.
+///
+/// A real inversion flips every other sample, which a cell's extremes do not
+/// tell apart, so each cell takes its symmetric hull and errs outward.
+pub fn adjusted(snapshot: Snapshot, adjustment: argand_core::Adjustment) -> Snapshot {
+    if adjustment.is_identity() {
+        return snapshot;
+    }
+    let mut envelope = snapshot.envelope;
+    let channels = envelope.channels.max(1);
+    let gain = adjustment.gain() as f32;
+    for (at, (min, max)) in envelope
+        .min
+        .iter_mut()
+        .zip(envelope.max.iter_mut())
+        .enumerate()
+    {
+        let (low, high) = match (adjustment.invert(), channels, at % channels) {
+            (true, 1, _) => {
+                let hull = min.abs().max(max.abs());
+                (-hull, hull)
+            }
+            (true, _, 1) => (-*max, -*min),
+            _ => (*min, *max),
+        };
+        *min = low * gain;
+        *max = high * gain;
+    }
+    finished(envelope, snapshot.complete, snapshot.samples)
+}
+
 /// Widen `column` of `envelope` by the source cells holding samples `start .. start + len`.
 fn widen_from(
     envelope: &mut WaveformEnvelope,

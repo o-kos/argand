@@ -308,6 +308,7 @@ impl Shell {
                 bar.child(div().px_2().whitespace_nowrap().child("No signal loaded"))
             })
             .when(has_file, |bar| bar.child(self.analysis_control(cx)))
+            .children(self.adjustment_item(cx))
             .child(div().flex_1().min_w_0())
             .children(self.selection_item(cx))
             .when_some(self.cursor_readout(cx), |bar, (text, level)| {
@@ -357,6 +358,7 @@ impl Shell {
             .children(self.changed_item(cx))
             // Last, so it keeps its place whatever the readouts beside it do.
             .children(self.suppress_item(cx))
+            .children(self.level_item(cx))
             .children(self.save_item(cx))
     }
 

@@ -162,3 +162,18 @@ fn a_band_too_narrow_is_refused_before_any_work() {
     request.band = FrequencyBand::between(REFERENCE + 1_000.0, REFERENCE + 1_000.5).unwrap();
     assert!(request.check().is_err());
 }
+
+#[test]
+fn a_band_of_an_inverted_capture_is_suppressed_where_it_is_shown() {
+    let dir = TempDir::new("suppress-inverted");
+    let mut request = request(&dir, capture(&dir), None);
+    request.capture = request
+        .capture
+        .with_adjustment(argand_core::Adjustment::IDENTITY.inverted());
+    request.band = FrequencyBand::between(REFERENCE + 8_000.0, REFERENCE + 10_000.0).unwrap();
+    let suppressed = run(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    let values = edited(&request, &suppressed);
+    let quarter = LEN / 4;
+    assert!(level(&values, 9_000.0, quarter, 3 * quarter) < 0.2 * 1e-4);
+    assert!((level(&values, -6_000.0, quarter, 3 * quarter) - 0.4).abs() < 1e-4);
+}

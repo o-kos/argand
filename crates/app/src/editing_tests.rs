@@ -372,3 +372,50 @@ fn a_save_of_computed_samples_reads_the_opened_file_first_and_encodes_them() {
     assert_eq!(request.segments[0].source, 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn an_adjustment_is_a_version_that_keeps_the_pieces_and_the_selection() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let selected = Selection::time(span(10, 20));
+    let inverted = Adjustment::IDENTITY.inverted();
+    assert!(document.adjust(inverted, selected));
+    assert!(!document.adjust(inverted, selected), "nothing new to add");
+    assert_eq!(document.adjustment(), inverted);
+    assert_eq!(document.marked(), selected);
+    assert!(document.is_dirty() && !document.is_untouched());
+    let request = document.save_request(Some(span(5, 50)), PathBuf::from("/b.wav")).unwrap();
+    assert_eq!((request.adjustment, request.first), (inverted, 5));
+    assert!(document.undo());
+    assert_eq!(document.marked(), selected);
+    assert!(document.adjustment().is_identity() && document.is_untouched());
+}
+
+#[test]
+fn a_copy_pastes_only_under_the_adjustment_it_was_copied_under() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let before = document.copy(span(0, 10));
+    document.adjust(Adjustment::new(false, 2.0).unwrap(), Selection::default());
+    assert_eq!(
+        document.paste(&before, Placement::At(0)),
+        Err(PasteError::Adjustment)
+    );
+    let after = document.copy(span(0, 10));
+    assert!(document.paste(&after, Placement::At(0)).is_ok());
+}
+
+#[test]
+fn copies_of_a_file_saved_adjusted_cannot_follow_it() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let clipboard = document.copy(span(60, 70));
+    document.adjust(Adjustment::IDENTITY.inverted(), Selection::default());
+    let written = document.written_source();
+    assert!(clipboard.moved_onto(document.file(), document.capture(), &written).is_none());
+}
+
+#[test]
+fn full_scale_is_the_read_value_of_the_stored_full_scale() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    assert_eq!(document.full_scale(), None, "the reader's units are not known yet");
+    document.describe_units(Some((32768.0 / 4.0, 0.0)));
+    assert_eq!(document.full_scale(), Some(4.0));
+}

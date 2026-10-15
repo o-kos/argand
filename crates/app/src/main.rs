@@ -23,6 +23,7 @@ mod editing;
 mod execution;
 mod extraction;
 mod frequency;
+mod levelling;
 mod minimap;
 mod navigation;
 mod numbers;

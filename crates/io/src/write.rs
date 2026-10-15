@@ -180,6 +180,21 @@ pub enum Storage {
     Flac { bits: u32, channels: usize },
 }
 
+impl Storage {
+    /// The stored value of full scale, which a level in dBFS is relative to.
+    pub fn full_scale(self) -> f64 {
+        match self {
+            Self::Linear {
+                format_tag,
+                unscaled_float,
+                ..
+            } if unscaled_float || format_tag == riff::WAVE_FORMAT_IEEE_FLOAT => 1.0,
+            Self::Linear { bits, .. } => f64::from(1u32 << (bits.clamp(1, 32) - 1)),
+            Self::Flac { bits, .. } => f64::from(1u32 << (bits.clamp(1, 32) - 1)),
+        }
+    }
+}
+
 /// How `source` stores its samples, read from the file as it is now.
 pub fn storage(source: &SourceFile) -> Result<Storage, WriteError> {
     Ok(Opened::open(source)?.reader.storage())

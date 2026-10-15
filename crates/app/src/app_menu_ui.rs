@@ -186,6 +186,21 @@ impl Shell {
                     Box::new(editing_ui::SuppressBand),
                     can.suppress,
                 ))
+                .item(PopupMenuItem::separator())
+                .item(
+                    action_row(
+                        "Invert spectrum",
+                        Box::new(editing_ui::InvertSpectrum),
+                        can.inverted,
+                        focus.clone(),
+                    )
+                    .disabled(!can.invert),
+                )
+                .item(row(
+                    "Normalize level…",
+                    Box::new(editing_ui::NormalizeLevel),
+                    can.normalize,
+                ))
         })
     }
 
