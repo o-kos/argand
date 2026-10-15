@@ -983,7 +983,15 @@ fn write_linear_segments(
     let Reader::Copy { layout, .. } = &opened[0].reader else {
         return Err(WriteError::OutOfRange);
     };
-    let target = Linear::of(layout, &request.meta.source)?;
+    // Only computed samples need the format to be encodable, copied ones go as they are.
+    let computed = request
+        .sources
+        .iter()
+        .any(|source| source.encoding.is_some());
+    let target = match computed {
+        true => Some(Linear::of(layout, &request.meta.source)?),
+        false => None,
+    };
     let total = request.total();
     let mut done = 0;
     progress(0, total);
@@ -994,8 +1002,8 @@ fn write_linear_segments(
             return Err(WriteError::OutOfRange);
         };
         let mut copied = |copied| progress(done + copied, total);
-        match source.encoding {
-            Some(encoding) => {
+        match (source.encoding, target) {
+            (Some(encoding), Some(target)) => {
                 let computed = Computed {
                     input,
                     layout,
@@ -1004,7 +1012,8 @@ fn write_linear_segments(
                 };
                 computed.encode_linear(partial, target, *segment, &mut copied, cancel)?;
             }
-            None => copy_samples(partial, input, layout, path, *segment, &mut copied, cancel)?,
+            (None, _) => copy_samples(partial, input, layout, path, *segment, &mut copied, cancel)?,
+            (Some(_), None) => return Err(WriteError::OutOfRange),
         }
         done += segment.len;
     }

@@ -1408,11 +1408,14 @@ fn computed_samples_are_refused_where_the_value_does_not_fill_its_container() {
     let full = dir.join("full.wav");
     write_extensible(&full, 24, 100);
     let scratch = computed(&dir.join("full-computed.wav"), &full, Domain::Iq, &[0.5; 8]);
-    let request = suppressed(source_file(&full, OpenHints::default()), scratch, dir.join("full-saved.wav"));
-    run(&request).unwrap();
+    run(&suppressed(source_file(&full, OpenHints::default()), scratch, dir.join("full-saved.wav"))).unwrap();
 
     let partial = dir.join("partial.wav");
     write_extensible(&partial, 20, 100);
+    // Its own samples alone are still copied as they are.
+    let copied = dir.join("partial-copied.wav");
+    run(&request(&partial, OpenHints::default(), SampleSpan::between(10, 90), copied.clone())).unwrap();
+    assert_eq!(data_bytes(&copied), data_bytes(&partial)[10 * 6..90 * 6]);
     let scratch = computed(&dir.join("partial-computed.wav"), &partial, Domain::Iq, &[0.5; 8]);
     let request = suppressed(source_file(&partial, OpenHints::default()), scratch, dir.join("partial-saved.wav"));
     assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
