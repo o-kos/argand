@@ -1,15 +1,17 @@
 //! What a capture does to its samples as it is read, over the whole of it.
 //!
 //! An edited capture keeps its sources' own samples and applies one adjustment
-//! on top: a spectral inversion and a level. Reading, saving and the minimap
-//! all apply the same one, so what is shown is what a save writes.
+//! to all of them, a spectral inversion and a level. Reading, saving and the
+//! minimap all apply the same one, so what is shown is what a save writes.
 
 /// A spectral inversion and a gain applied to every sample of a capture.
 ///
 /// Inverting conjugates a complex sample (`Q` changes sign), which mirrors its
 /// band about the reference frequency, and multiplies a real sample by
-/// `(−1)^n`, which mirrors `0 .. Fs/2` about `Fs/4`. The gain scales I and Q
-/// by one factor, so a complex sample keeps its phase.
+/// `(−1)^n`, which mirrors `0 .. Fs/2` about `Fs/4`. The `n` of a sample is its
+/// index in the file it comes from, so a sample reads the same wherever an
+/// edit moves it. The gain scales I and Q by one factor, so a complex sample
+/// keeps its phase.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Adjustment {
     invert: bool,
@@ -62,7 +64,16 @@ impl Adjustment {
         Self::new(self.invert, gain)
     }
 
-    /// What value `channel` of capture sample `index` is multiplied by.
+    /// The adjustment that undoes this one.
+    #[must_use]
+    pub fn inverse(self) -> Self {
+        Self {
+            invert: self.invert,
+            gain: 1.0 / self.gain,
+        }
+    }
+
+    /// What value `channel` of the sample at `index` of its file is multiplied by.
     ///
     /// `channels` is 2 for a complex capture, whose second channel is Q, and 1 for a real one.
     pub fn factor(self, channels: usize, channel: usize, index: u64) -> f64 {
@@ -74,7 +85,7 @@ impl Adjustment {
         if flipped { -self.gain } else { self.gain }
     }
 
-    /// Adjustment interleaved values whose first sample is capture sample `first`.
+    /// Adjust interleaved values whose first sample is sample `first` of its file.
     pub fn apply(self, values: &mut [f32], channels: usize, first: u64) {
         if self.is_identity() || channels == 0 {
             return;

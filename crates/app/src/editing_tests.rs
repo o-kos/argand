@@ -384,7 +384,7 @@ fn an_adjustment_is_a_version_that_keeps_the_pieces_and_the_selection() {
     assert_eq!(document.marked(), selected);
     assert!(document.is_dirty() && !document.is_untouched());
     let request = document.save_request(Some(span(5, 50)), PathBuf::from("/b.wav")).unwrap();
-    assert_eq!((request.adjustment, request.first), (inverted, 5));
+    assert_eq!(request.adjustment, inverted);
     assert!(document.undo());
     assert_eq!(document.marked(), selected);
     assert!(document.adjustment().is_identity() && document.is_untouched());

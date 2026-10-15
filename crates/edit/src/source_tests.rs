@@ -109,19 +109,19 @@ fn a_new_version_and_a_missing_source() {
 }
 
 #[test]
-fn the_adjustment_follows_capture_positions_across_pieces_and_seeks() {
+fn the_adjustment_keeps_each_samples_sign_wherever_an_edit_moves_it() {
     let inverted = argand_core::Adjustment::new(true, 2.0).unwrap();
     let capture = Capture::whole(SourceId(0), 6)
         .delete(span(1, 2))
         .with_adjustment(inverted);
     let mut source = edited(capture, 1);
-    let expected = [0., -4., 6., -8., 10.];
+    let expected = [0., 4., -6., 8., -10.];
     for chunk in [1, 2, 64] {
         source.seek(0).unwrap();
         assert_eq!(read_all(&mut source, chunk), expected, "chunk {chunk}");
     }
     source.seek(3).unwrap();
-    assert_eq!(read_all(&mut source, 64), [-8., 10.]);
+    assert_eq!(read_all(&mut source, 64), [8., -10.]);
     let mut iq = edited(Capture::whole(SourceId(0), 2).with_adjustment(inverted), 2);
     assert_eq!(read_all(&mut iq, 3), [0., -0., 2., -2.]);
 }

@@ -733,16 +733,17 @@ Edit → Invert spectrum (Ctrl+Shift+I in the `Plot` context, Cmd+Shift+I on mac
 row) and Edit → Normalize level… act on the whole capture, never a selection, and change no
 file until it is saved. `argand_core::Adjustment { invert, gain }` is what a capture applies
 to every sample as it is read: inverting conjugates a complex sample and multiplies a real one
-by `(−1)^n`, `n` counted in the capture, and the gain scales I and Q alike
-(`Adjustment::factor`). It is named apart from the FFT transform settings on purpose.
-`argand_edit::Capture` carries one, kept by its edits and part of its equality, and
-`EditedSource` applies it after putting the pieces together, so pieces always hold their
-sources' own samples. Each command is a version in the history (`Editing::adjust`, with the
+by `(−1)^n`, and the gain scales I and Q alike (`Adjustment::factor`). It is named apart from
+the FFT transform settings on purpose. `n` is the sample's index in its own source, not its
+position in the capture, so a sample reads the same wherever a cut, paste or delete moves it;
+counted in the capture, every odd shift would negate what follows it. `argand_edit::Capture`
+carries one, kept by its edits and part of its equality, and `EditedSource` applies it to each
+piece as it reads it, so pieces always hold their sources' own samples. Each command is a version in the history (`Editing::adjust`, with the
 selection kept as suppression keeps it), marks the capture unsaved and leaves the pieces, so
-`repicture` holds the picture until the new analysis lands. Suppression reads the capture
-without its adjustment and mirrors the band through the inversion (`SuppressRequest::edges`),
-so its scratch samples are adjusted on reading like the rest; extraction reads the adjusted
-capture. The minimap is the composed envelope adjusted (`minimap::adjusted`): scaled, the Q
+`repicture` holds the picture until the new analysis lands. Suppression computes on the
+adjusted capture, as shown, and stores its scratch samples through `Adjustment::inverse` at
+their own indices, so the adjustment reads them back as computed and undoing it leaves them
+consistent with their neighbours; extraction reads the adjusted capture. The minimap is the composed envelope adjusted (`minimap::adjusted`): scaled, the Q
 channel's extremes negated and swapped, and a real inversion's cells taken as their symmetric
 hull, which errs outward. The status bar shows `Inverted`, the gain in dB or both after the
 analysis item (`adjustment_item`).
@@ -760,16 +761,14 @@ applies only to the document and version measured, adds no version within 0.001 
 in force, and a silent capture is refused.
 
 A save with any adjustment but the identity encodes every sample again
-(`SaveRequest::adjustment`, `SaveRequest::first` the capture index of the first written
-sample): linear stored values are decoded, scaled around the format's zero (128 for 8-bit
+(`SaveRequest::adjustment`, its parity from each segment's own source index): linear stored values are decoded, scaled around the format's zero (128 for 8-bit
 offset binary) and pushed through `Linear::push`, computed samples are encoded first, and FLAC
 integers are adjusted, all rounded and clamped without a warning, so inverting −32768 gives
 32767. A linear layout `Linear::of` refuses is refused. After Save over or a whole Save as the
 document reads the saved file, which holds the adjusted samples, with the identity. A
 `Clipboard` remembers the adjustment it was copied under and pastes only into a capture under
 the same one (`PasteError::Adjustment`), and copies of a file saved adjusted cannot follow it
-onto the saved file. Under a real inversion a piece moved to a position of the other parity
-reads negated, a constant phase that leaves its spectrum alone.
+onto the saved file.
 
 ## Ruler marks and grid visibility (#71, #72)
 

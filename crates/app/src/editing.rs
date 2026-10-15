@@ -695,7 +695,6 @@ impl Editing {
             replacing: None,
             output: argand_io::write::Output::Native,
             adjustment: self.adjustment(),
-            first: span.map_or(0, SampleSpan::start),
         })
     }
 }

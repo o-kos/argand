@@ -83,8 +83,6 @@ pub struct SaveRequest {
     pub output: Output,
     /// What every written sample goes through, any other than the identity encoding every sample again.
     pub adjustment: Adjustment,
-    /// The capture index of the first written sample, which the parity of a real inversion counts from.
-    pub first: u64,
 }
 
 /// A file a save writes over on purpose, as it was when it was opened.
@@ -128,7 +126,6 @@ impl SaveRequest {
             replacing: None,
             output: Output::Native,
             adjustment: Adjustment::IDENTITY,
-            first: 0,
         }
     }
 
@@ -148,7 +145,6 @@ impl SaveRequest {
             replacing: None,
             output: Output::Native,
             adjustment: Adjustment::IDENTITY,
-            first: 0,
         })
     }
 
@@ -1041,7 +1037,7 @@ fn write_linear_segments(
                 let adjusted = Adjusted {
                     adjustment: request.adjustment,
                     channels: request.meta.channels(),
-                    first: request.first + done,
+                    first: segment.start,
                 };
                 stored.encode_linear(partial, adjusted, *segment, &mut copied, cancel)?;
             }
@@ -1381,7 +1377,7 @@ impl Linear {
     }
 }
 
-/// An adjustment and the capture index of the first sample it is applied to.
+/// An adjustment and the index in its source of the first sample it is applied to.
 #[derive(Debug, Clone, Copy)]
 struct Adjusted {
     adjustment: Adjustment,
@@ -1616,7 +1612,7 @@ impl Decoding<'_> {
                 let adjusted = Adjusted {
                     adjustment: self.request.adjustment,
                     channels,
-                    first: self.request.first + done,
+                    first: at,
                 };
                 integers(
                     reader,

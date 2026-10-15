@@ -50,3 +50,12 @@ fn inverting_twice_is_the_identity() {
     assert!(Adjustment::IDENTITY.inverted().inverted().is_identity());
     assert!(!Adjustment::IDENTITY.inverted().is_identity());
 }
+
+#[test]
+fn the_inverse_undoes_the_adjustment() {
+    let adjustment = Adjustment::new(true, 4.0).unwrap();
+    let mut values = [0.5f32, -0.25, 0.125];
+    adjustment.apply(&mut values, 1, 3);
+    adjustment.inverse().apply(&mut values, 1, 3);
+    assert_eq!(values, [0.5, -0.25, 0.125]);
+}

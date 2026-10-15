@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use argand_core::{FrequencyBand, SampleSource, SampleSpan, SignalMeta};
+use argand_core::{Adjustment, FrequencyBand, SampleSource, SampleSpan, SignalMeta};
 use argand_dsp::{NoiseFill, NoiseFloor, SuppressPlan, Suppressor};
 use argand_edit::Capture;
 use argand_io::write::{FloatWave, FloatWaveRequest, SourceFile, SourceStamp, WriteError};
@@ -49,19 +49,14 @@ pub struct Suppressed {
 
 impl SuppressRequest {
     /// The band's edges relative to the capture's baseband 0 Hz, held to the capture's band.
-    ///
-    /// The edges are where the sources hold the band, which an inversion mirrors.
     fn edges(&self) -> (f64, f64) {
         let nyquist = self.meta.sample_rate / 2.0;
         let floor = if self.meta.is_iq() { -nyquist } else { 0.0 };
         let reference = self.meta.center_freq;
-        let low = (self.band.low() - reference).max(floor);
-        let high = (self.band.high() - reference).min(nyquist);
-        match (self.capture.adjustment().invert(), self.meta.is_iq()) {
-            (false, _) => (low, high),
-            (true, true) => (-high, -low),
-            (true, false) => (nyquist - high, nyquist - low),
-        }
+        (
+            (self.band.low() - reference).max(floor),
+            (self.band.high() - reference).min(nyquist),
+        )
     }
 
     /// Whether the band can be suppressed, quickly enough for the window's thread.
@@ -106,11 +101,10 @@ pub fn run(
 ) -> Result<Suppressed, WriteError> {
     let plan = request.plan()?;
     let (span, rise, fall) = request.region(plan.taper()).ok_or(WriteError::OutOfRange)?;
-    // Computed samples stand in for the sources' own, the adjustment being applied on reading.
-    let unadjusted = request
-        .capture
-        .with_adjustment(argand_core::Adjustment::IDENTITY);
-    let mut source = crate::extraction::open(&unadjusted, &request.sources, &request.meta)?;
+    let mut source = crate::extraction::open(&request.capture, &request.sources, &request.meta)?;
+    // The samples are computed as shown and stored so that the adjustment reads them back so.
+    let stored = request.capture.adjustment().inverse();
+    let mut written = 0u64;
     let len = request.capture.len();
     let margin = plan.margin();
     let from = span.start().saturating_sub(margin);
@@ -165,12 +159,15 @@ pub fn run(
             return Err(WriteError::SourceChanged { path: path.clone() });
         }
         suppressor.push(&buffer[..read], channels, &mut out);
+        store(stored, &mut out, channels, written);
+        written += out.len() as u64;
         file.write(&out)?;
         out.clear();
         done += (read / channels) as u64;
         progress(measured + done, total);
     }
     suppressor.push_zeros(suppressor.wanted(), &mut out);
+    store(stored, &mut out, channels, written);
     file.write(&out)?;
     if cancel.load(Ordering::Relaxed) {
         return Err(WriteError::Cancelled);
@@ -193,6 +190,13 @@ pub fn run(
         meta,
         stamp,
     })
+}
+
+/// Turn computed samples into what `stored` reads back as them, the first being sample `first` of the scratch file.
+fn store(stored: Adjustment, samples: &mut [[f32; 2]], channels: usize, first: u64) {
+    for (offset, sample) in samples.iter_mut().enumerate() {
+        stored.apply(&mut sample[..channels], channels, first + offset as u64);
+    }
 }
 
 /// Measure the noise beside the band over `span` of `source`, reporting samples read.
