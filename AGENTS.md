@@ -673,13 +673,16 @@ Edit → Suppress band, and the same row in the spectrogram's context menu, take
 band out of the capture and fills it with noise as loud as the frequencies beside it: over
 the whole capture for a band, over its time span for a rectangle. Its key is Ctrl+Shift+M in
 the `Plot` context (Cmd+Shift+M on macOS). `argand_dsp::suppress` computes
-`x − w·(b − σ·u)`, where `b` is a band-pass of the input whose transitions lie outside the
-band (a quarter of its width, at least Fs/131072, at most the room beside it), `u` the same
-band-pass of unit Gaussian noise from a fixed seed, `σ` the neighbours' noise amplitude and
-`w` a raised-cosine taper. `NoiseFloor` measures `σ` first: the region is cut into at most 256
+`x − w·b + f·σ·v`, where `b` is a band-pass of the input whose transitions lie outside the
+band (a quarter of its width, at least Fs/131072, at most the room beside it), `w` a
+raised-cosine taper, `σ` the neighbours' noise amplitude and `v` unit Gaussian noise from a
+fixed seed through the complementary band-pass. The residue keeps `1 − w·|H|`, so that
+band-pass has the power gain `2|H| − |H|²` and `f` the power `2w − w²`, which keeps a noise
+background level through the frequency transitions and the fade in time. `NoiseFloor` measures `σ` first: the region is cut into at most 256
 blocks, up to eight Hann-windowed segments of at most 4096 samples are read in each, and a
 block's level is the median bin power over the neighbouring bands (as wide as the band, at
-least Fs/256, beyond its transitions and inside the capture), corrected from median to mean.
+least 32 bins, starting 8 bins past its transitions so a tone at its edge does not leak into
+them, and inside the capture), corrected from median to mean.
 `NoiseFill` interpolates the levels between block centres, so the fill follows a background
 that changes over time, and a band with no neighbours (the whole capture) is left empty. For a complex
 capture the band-pass is the low-pass of half the band modulated to its centre; for a real

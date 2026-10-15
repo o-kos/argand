@@ -326,3 +326,61 @@ fn nothing_fills_a_band_without_neighbours_and_the_fill_is_the_same_every_time()
     let plan = SuppressPlan::new(RATE, 1_000.0, 3_000.0, false).unwrap();
     assert_eq!(suppress_filled(&plan, &input, 2), suppress_filled(&plan, &input, 2));
 }
+
+#[test]
+fn the_background_stays_level_through_the_transitions() {
+    let plan = SuppressPlan::new(RATE, 5_000.0, 7_000.0, false).unwrap();
+    let len = 192_000;
+    let input = white(len, 2, 5, |_| 0.01);
+    let out = suppress_filled(&plan, &input, 2);
+    let reference = band_power(&out, 1_000.0, 3_000.0, 20_000, 172_000);
+    let mut low = 4_200.0;
+    while low < 7_800.0 {
+        let slice = band_power(&out, low, low + 200.0, 20_000, 172_000);
+        assert!(db(slice / reference).abs() < 1.0, "{low} Hz: {} dB", db(slice / reference));
+        low += 200.0;
+    }
+}
+
+#[test]
+fn the_background_stays_level_through_the_fade_in_time() {
+    let plan = SuppressPlan::new(RATE, -3_000.0, 3_000.0, false).unwrap();
+    let len = 120_000;
+    let taper = 40_000;
+    let input = white(len, 2, 6, |_| 0.01);
+    let fill = measure(&plan, &input, 2).unwrap();
+    let mut suppressor = Suppressor::new(&plan, len as u64, taper, taper)
+        .unwrap()
+        .filled_with(fill);
+    let mut out = Vec::new();
+    suppressor.push_zeros(plan.margin(), &mut out);
+    suppressor.push(&input, 2, &mut out);
+    let wanted = suppressor.wanted();
+    suppressor.push_zeros(wanted, &mut out);
+    let reference = band_power(&out, 8_000.0, 14_000.0, 2_000, 118_000);
+    for from in (2_000..110_000).step_by(8_192) {
+        let slice = band_power(&out, -2_500.0, 2_500.0, from, from + 8_192);
+        assert!(db(slice / reference).abs() < 1.0, "{from}: {} dB", db(slice / reference));
+    }
+}
+
+#[test]
+fn a_strong_tone_at_a_narrow_bands_edge_does_not_raise_the_fill() {
+    let len = 262_144;
+    let noise = white(len, 2, 7, |_| 0.001);
+    let tone = span(len, 2, tone(6_001.0, 0.5));
+    let input: Vec<f32> = noise.iter().zip(&tone).map(|(a, b)| a + b).collect();
+    let plan = SuppressPlan::new(RATE, 5_991.0, 6_011.0, false).unwrap();
+    let fill = measure(&plan, &input, 2).unwrap();
+    for level in fill.levels {
+        let error = db(f64::from(level * level) / 1e-6);
+        assert!(error.abs() < 1.5, "{error} dB");
+    }
+    let real = SuppressPlan::new(RATE, 5_991.0, 6_011.0, true).unwrap();
+    let input: Vec<f32> = input.chunks(2).map(|pair| pair[0] * std::f32::consts::SQRT_2).collect();
+    let fill = measure(&real, &input, 1).unwrap();
+    for level in fill.levels {
+        let error = db(f64::from(level * level) / 1e-6);
+        assert!(error.abs() < 1.5, "real {error} dB");
+    }
+}

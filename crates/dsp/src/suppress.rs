@@ -1,12 +1,15 @@
 //! Suppressing a frequency band of a capture, keeping its length and everything outside the band.
 //!
-//! The output is `x[n] − w[n]·(b[n] − σ[n]·u[n])`, where `b` is the band-pass
-//! of the input, `u` the band-pass of unit white noise, `σ` the noise level
-//! of the frequencies beside the band and `w` a time taper, 1 across a band
-//! suppressed over the whole capture. The band-pass passes the band whole with
-//! its transitions outside it, so the band's content gives way to noise as
-//! loud as its neighbours' and frequencies past the transitions are left as
-//! they were. It is applied by overlap-save FFT convolution with its delay
+//! The output is `x[n] − w[n]·b[n] + f[n]·σ[n]·v[n]`, where `b` is the band-pass
+//! of the input, `w` a time taper (1 across a band suppressed over the whole
+//! capture), `σ` the noise level of the frequencies beside the band and `v`
+//! unit white noise through the complementary band-pass. The band-pass passes
+//! the band whole with its transitions outside it, so the band's content gives
+//! way to noise as loud as its neighbours' and frequencies past the transitions
+//! are left as they were. The residue keeps `1 − w·|H|` of the input, so the
+//! fill's filter has the power gain `2|H| − |H|²` and its taper `f` the power
+//! `2w − w²`, which keeps a noise background level through both transitions.
+//! Both are applied by overlap-save FFT convolution with their delay
 //! compensated, so output `n` is input `n`.
 //!
 //! [`NoiseFloor`] measures `σ` beforehand, block by block over the region, as
@@ -34,6 +37,10 @@ const SHORTEST_NOISE_FFT: usize = 64;
 const NOISE_BLOCKS: u64 = 256;
 /// Segments measured in each block.
 const SEGMENTS_PER_BLOCK: u64 = 8;
+/// Bins left between a band's transition and the noise measured beside it, past a Hann window's leakage of a tone.
+const GUARD_BINS: f64 = 8.0;
+/// The fewest bins measured on each side of a band.
+const MEASURED_BINS: f64 = 32.0;
 
 /// How a band is suppressed, with the band-pass that finds it.
 #[derive(Debug, Clone)]
@@ -42,8 +49,10 @@ pub struct SuppressPlan {
     taps: Vec<Complex32>,
     rate: f64,
     real: bool,
-    /// The frequencies beside the band, clear of its transitions, whose noise fills it.
-    neighbours: Vec<(f64, f64)>,
+    /// The band and the transition beside it, none when the band is the whole capture.
+    edges: Option<(f64, f64, f64)>,
+    /// The band-pass the fill's noise takes, which with the residue of the band keeps the noise power level.
+    noise_taps: Vec<Complex32>,
 }
 
 impl SuppressPlan {
@@ -63,24 +72,36 @@ impl SuppressPlan {
         } else {
             complex_band_pass(rate, low, high)
         };
-        let neighbours = transition.map_or_else(Vec::new, |transition| {
-            let floor = if real { 0.0 } else { -rate / 2.0 };
-            let extent = (high - low).max(rate / 256.0);
-            [
-                (low - transition - extent, low - transition),
-                (high + transition, high + transition + extent),
-            ]
-            .into_iter()
-            .map(|(from, to)| (from.max(floor), to.min(rate / 2.0)))
-            .filter(|(from, to)| from < to)
-            .collect()
-        });
+        let noise_taps = complementary(&taps, real);
         Ok(Self {
             taps,
             rate,
             real,
-            neighbours,
+            edges: transition.map(|transition| (low, high, transition)),
+            noise_taps,
         })
+    }
+
+    /// The frequencies beside the band whose noise fills it, for a transform of `bins` bins.
+    ///
+    /// They start a few bins past the band's transitions, so a tone at the band's
+    /// edge does not leak into them, and stay inside the capture.
+    fn neighbours(&self, bins: usize) -> Vec<(f64, f64)> {
+        let Some((low, high, transition)) = self.edges else {
+            return Vec::new();
+        };
+        let resolution = self.rate / bins as f64;
+        let guard = transition + GUARD_BINS * resolution;
+        let extent = (high - low).max(MEASURED_BINS * resolution);
+        let floor = if self.real { 0.0 } else { -self.rate / 2.0 };
+        [
+            (low - guard - extent, low - guard),
+            (high + guard, high + guard + extent),
+        ]
+        .into_iter()
+        .map(|(from, to)| (from.max(floor), to.min(self.rate / 2.0)))
+        .filter(|(from, to)| from < to)
+        .collect()
     }
 
     /// Input samples the filter reads on each side of what it suppresses.
@@ -166,6 +187,49 @@ fn real_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<f64
     (taps, Some(transition))
 }
 
+/// The band-pass whose power gain is `2|H| − |H|²` where `taps` has gain `|H|`, with the same delay.
+///
+/// The band's residue passes with `1 − |H|`, so the residue's power and the
+/// fill's add up to the noise power through the transitions as well.
+fn complementary(taps: &[Complex32], real: bool) -> Vec<Complex32> {
+    let len = taps.len();
+    if len == 1 {
+        return taps.to_vec();
+    }
+    let size = (4 * len).next_power_of_two();
+    let mut planner = FftPlanner::new();
+    let mut spectrum = vec![Complex32::default(); size];
+    spectrum[..len].copy_from_slice(taps);
+    planner.plan_fft_forward(size).process(&mut spectrum);
+    let centre = (len / 2) as f64;
+    for (k, bin) in spectrum.iter_mut().enumerate() {
+        let gain = f64::from(bin.norm());
+        let power = (2.0 * gain - gain * gain).max(0.0);
+        let turn = -std::f64::consts::TAU * k as f64 * centre / size as f64;
+        let (sin, cos) = turn.sin_cos();
+        let magnitude = power.sqrt() / size as f64;
+        *bin = Complex32::new((magnitude * cos) as f32, (magnitude * sin) as f32);
+    }
+    planner.plan_fft_inverse(size).process(&mut spectrum);
+    let beta = 0.1102 * (80.0 - 8.7);
+    let norm = crate::extract::bessel_i0(beta);
+    spectrum[..len]
+        .iter()
+        .enumerate()
+        .map(|(k, &tap)| {
+            let ratio = (k as f64 - centre) / centre;
+            let window =
+                crate::extract::bessel_i0(beta * (1.0 - ratio * ratio).max(0.0).sqrt()) / norm;
+            let tap = tap * window as f32;
+            if real {
+                Complex32::new(tap.re, 0.0)
+            } else {
+                tap
+            }
+        })
+        .collect()
+}
+
 /// The noise level beside a band, measured over a region block by block.
 ///
 /// The caller reads the segments [`NoiseFloor::segments`] names and pushes
@@ -196,11 +260,12 @@ impl NoiseFloor {
         } else {
             0
         };
+        let neighbours = plan.neighbours(size.max(1));
         let bins: Vec<usize> = (0..size)
             .filter(|&k| {
                 let frequency = bin_frequency(k, size, plan.rate, plan.real);
                 frequency.is_some_and(|frequency| {
-                    plan.neighbours
+                    neighbours
                         .iter()
                         .any(|&(from, to)| (from..=to).contains(&frequency))
                 })
@@ -410,6 +475,9 @@ pub struct Suppressor {
     inverse: Arc<dyn Fft<f32>>,
     /// The filter's spectrum at the FFT size, scaled for the inverse transform.
     spectrum: Vec<Complex32>,
+    /// The fill's filter, as `spectrum` is, while the band is filled with noise.
+    noise_spectrum: Vec<Complex32>,
+    noise_taps: Vec<Complex32>,
     /// Input samples, the last `taps - 1` of the previous block first.
     block: Vec<Complex32>,
     /// Unit noise, kept as `block` is, while the band is filled with noise.
@@ -465,6 +533,8 @@ impl Suppressor {
             forward,
             inverse,
             spectrum,
+            noise_spectrum: Vec::new(),
+            noise_taps: plan.noise_taps.clone(),
             block: vec![Complex32::default(); size],
             noise_block: Vec::new(),
             fill: 0,
@@ -488,8 +558,17 @@ impl Suppressor {
     /// Fill the band with noise as loud as `level` says its neighbours are.
     #[must_use]
     pub fn filled_with(mut self, level: NoiseFill) -> Self {
-        self.noise_block = vec![Complex32::default(); self.block.len()];
-        self.noise_work = vec![Complex32::default(); self.block.len()];
+        let size = self.block.len();
+        let scale = 1.0 / size as f32;
+        let mut spectrum = vec![Complex32::default(); size];
+        for (bin, &tap) in spectrum.iter_mut().zip(&self.noise_taps) {
+            *bin = tap * scale;
+        }
+        self.forward
+            .process_with_scratch(&mut spectrum, &mut self.scratch);
+        self.noise_spectrum = spectrum;
+        self.noise_block = vec![Complex32::default(); size];
+        self.noise_work = vec![Complex32::default(); size];
         self.level = Some(level);
         self
     }
@@ -562,7 +641,7 @@ impl Suppressor {
                 &self.noise_block,
                 self.fill,
                 &mut self.noise_work,
-                &self.spectrum,
+                &self.noise_spectrum,
                 (&self.forward, &self.inverse),
                 &mut self.scratch,
             );
@@ -574,13 +653,14 @@ impl Suppressor {
                 break;
             }
             let index = (at - self.start) as usize;
-            let mut filtered = self.work[index];
-            if let Some(level) = &self.level {
-                filtered -= self.noise_work[index] * level.at(self.given);
-            }
             let input = self.block[(at - self.margin - self.start) as usize];
             let weight = self.weight(self.given);
-            let value = input - filtered * weight;
+            let mut value = input - self.work[index] * weight;
+            if let Some(level) = &self.level {
+                // The residue keeps 1 − w of the band, so the fill takes the power that leaves.
+                let fill = (2.0 * weight - weight * weight).max(0.0).sqrt();
+                value += self.noise_work[index] * level.at(self.given) * fill;
+            }
             // Rounding in the transform leaves a real capture a trace of imaginary part.
             out.push([value.re, if self.real { 0.0 } else { value.im }]);
             self.given += 1;
