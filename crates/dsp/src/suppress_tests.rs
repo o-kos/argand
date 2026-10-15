@@ -121,7 +121,7 @@ fn a_complex_band_at_the_capture_edge_is_suppressed() {
     for frequency in [21_000.0, 23_900.0, -24_000.0] {
         let input = span(48_000, 2, tone(frequency, 0.5));
         let out = suppress(&plan, &input, 2, 4096, (0, 0));
-        assert!(largest(&out) < SUPPRESSED, "{frequency} Hz stays");
+        assert!(largest(&out) < SUPPRESSED, "{frequency} Hz stays at {}", largest(&out));
     }
     for frequency in [-10_000.0, 0.0, 18_500.0] {
         let input = span(48_000, 2, tone(frequency, 0.5));
@@ -382,5 +382,40 @@ fn a_strong_tone_at_a_narrow_bands_edge_does_not_raise_the_fill() {
     for level in fill.levels {
         let error = db(f64::from(level * level) / 1e-6);
         assert!(error.abs() < 1.5, "real {error} dB");
+    }
+}
+
+/// The power gain in decibels of `taps` at `frequency`.
+fn gain_db(taps: &[Complex32], frequency: f64) -> f64 {
+    let centre = (taps.len() / 2) as f64;
+    let response: Complex32 = taps
+        .iter()
+        .enumerate()
+        .map(|(k, &tap)| {
+            let turn = -std::f64::consts::TAU * frequency * (k as f64 - centre) / RATE;
+            tap * Complex32::new(turn.cos() as f32, turn.sin() as f32)
+        })
+        .sum();
+    10.0 * f64::from(response.norm_sqr()).max(1e-30).log10()
+}
+
+#[test]
+fn the_fill_stays_inside_the_band_and_its_transitions() {
+    for real in [false, true] {
+        let plan = SuppressPlan::new(RATE, 5_000.0, 7_000.0, real).unwrap();
+        // The transition is 500 Hz on each side, and past it the fill must not be heard.
+        for frequency in [1_000.0, 3_000.0, 4_400.0, 7_600.0, 9_000.0, 15_000.0] {
+            let gain = gain_db(&plan.noise_taps, frequency);
+            assert!(gain < -60.0, "real {real}: {frequency} Hz at {gain} dB");
+        }
+        // Inside the band and through the transitions the residue and the fill keep the power.
+        let mut frequency = 4_500.0;
+        while frequency <= 7_500.0 {
+            let lost = 10f64.powf(gain_db(plan.taps(), frequency) / 20.0);
+            let fill = 10f64.powf(gain_db(&plan.noise_taps, frequency) / 10.0);
+            let total = 10.0 * ((1.0 - lost).powi(2) + fill).log10();
+            assert!(total.abs() < 0.5, "real {real}: {frequency} Hz at {total} dB");
+            frequency += 50.0;
+        }
     }
 }

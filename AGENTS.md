@@ -673,12 +673,16 @@ Edit → Suppress band, and the same row in the spectrogram's context menu, take
 band out of the capture and fills it with noise as loud as the frequencies beside it: over
 the whole capture for a band, over its time span for a rectangle. Its key is Ctrl+Shift+M in
 the `Plot` context (Cmd+Shift+M on macOS). `argand_dsp::suppress` computes
-`x − w·b + f·σ·v`, where `b` is a band-pass of the input whose transitions lie outside the
-band (a quarter of its width, at least Fs/131072, at most the room beside it), `w` a
-raised-cosine taper, `σ` the neighbours' noise amplitude and `v` unit Gaussian noise from a
-fixed seed through the complementary band-pass. The residue keeps `1 − w·|H|`, so that
-band-pass has the power gain `2|H| − |H|²` and `f` the power `2w − w²`, which keeps a noise
-background level through the frequency transitions and the fade in time. `NoiseFloor` measures `σ` first: the region is cut into at most 256
+`x − (1 − cos(πw/2))·b + sin(πw/2)·σ·v`, where `A` is a band-pass whose transitions lie
+outside the band (a quarter of its width, at least Fs/131072, at most the room beside it, a
+fifth of it still passed so the band's own edges stay suppressed), `b` the input through
+`1 − cos(πA/2)`, `v` unit Gaussian noise from a fixed seed through `sin(πA/2)`, `w` a
+raised-cosine taper and `σ` the neighbours' noise amplitude. Cosine and sine keep a noise
+background's power through the transitions and the fade, and both are smooth in `A`, so the
+fill keeps `A`'s stopband (no square root near zero lifting it) and the input past the
+transitions is left untouched far below `f32` precision. The two filters are derived from
+`A` by frequency sampling and truncated to twice its length, because their responses reach
+further in time than `A`'s. `NoiseFloor` measures `σ` first: the region is cut into at most 256
 blocks, up to eight Hann-windowed segments of at most 4096 samples are read in each, and a
 block's level is the median bin power over the neighbouring bands (as wide as the band, at
 least 32 bins, starting 8 bins past its transitions so a tone at its edge does not leak into
@@ -697,7 +701,8 @@ compensated, so output `n` is input `n`.
 generic) with progress, a cancel and the status-bar item `Suppressing the band…`
 (`suppression_ui.rs`). Edits and saves wait for it, and opening another file cancels it. The
 changed span is written as unit-scale `f32` through `FloatWave` into a scratch file.
-`scratch.rs` keeps those in `<temp>/argand-scratch/<pid>/` under a lock on `<pid>.lock`, and
+`scratch.rs` keeps those in `<cache>/argand/scratch/<pid>/`, the user's own cache folder and
+mode 0700 on Unix, never the shared temporary folder, under a lock on `<pid>.lock`, and
 every instance removes the folders of locks nobody holds when it starts, under `sweep.lock`
 so no instance removes a lock file another is taking. `Scratch` removes its file when the
 last `Arc` goes, held by `editing::Source::computed` in the document, its history and the

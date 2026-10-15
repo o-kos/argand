@@ -1,16 +1,15 @@
 //! Suppressing a frequency band of a capture, keeping its length and everything outside the band.
 //!
-//! The output is `x[n] − w[n]·b[n] + f[n]·σ[n]·v[n]`, where `b` is the band-pass
-//! of the input, `w` a time taper (1 across a band suppressed over the whole
-//! capture), `σ` the noise level of the frequencies beside the band and `v`
-//! unit white noise through the complementary band-pass. The band-pass passes
-//! the band whole with its transitions outside it, so the band's content gives
-//! way to noise as loud as its neighbours' and frequencies past the transitions
-//! are left as they were. The residue keeps `1 − w·|H|` of the input, so the
-//! fill's filter has the power gain `2|H| − |H|²` and its taper `f` the power
-//! `2w − w²`, which keeps a noise background level through both transitions.
-//! Both are applied by overlap-save FFT convolution with their delay
-//! compensated, so output `n` is input `n`.
+//! The output is `x[n] − (1 − cos(πw[n]/2))·b[n] + sin(πw[n]/2)·σ[n]·v[n]`,
+//! where `w` is a time taper (1 across a band suppressed over the whole
+//! capture), `σ` the noise level of the frequencies beside the band, `b` the
+//! input through the filter `1 − cos(πA/2)` and `v` unit white noise through
+//! `sin(πA/2)`, with `A` a band-pass that passes the band whole and has its
+//! transitions outside it. Cosine and sine keep the power of a noise
+//! background through the transitions and the fade, so the band's content
+//! gives way to noise as loud as its neighbours' and frequencies past the
+//! transitions are left as they were. Both filters are applied by overlap-save
+//! FFT convolution with their delay compensated, so output `n` is input `n`.
 //!
 //! [`NoiseFloor`] measures `σ` beforehand, block by block over the region, as
 //! the median power of the neighbouring frequencies, so tones there do not
@@ -29,6 +28,9 @@ use crate::extract::{ExtractError, LARGEST_FFT, NARROWEST_TRANSITION, check_band
 /// The shortest fade, which keeps a short filter or a whole band suppressed in time from clicking.
 pub const SHORTEST_TAPER: u64 = 256;
 
+/// The part of a transition the band-pass still passes, so the band's own edges stay suppressed once its filters are derived.
+const EDGE_ROOM: f64 = 0.2;
+
 /// The longest transform the noise floor is measured with.
 const NOISE_FFT: usize = 4096;
 /// The fewest samples the noise floor is measured over.
@@ -45,13 +47,13 @@ const MEASURED_BINS: f64 = 32.0;
 /// How a band is suppressed, with the band-pass that finds it.
 #[derive(Debug, Clone)]
 pub struct SuppressPlan {
-    /// Band-pass taps, an odd number of them centred on the middle one.
+    /// The filter whose output the input loses, an odd number of taps centred on the middle one.
     taps: Vec<Complex32>,
     rate: f64,
     real: bool,
     /// The band and the transition beside it, none when the band is the whole capture.
     edges: Option<(f64, f64, f64)>,
-    /// The band-pass the fill's noise takes, which with the residue of the band keeps the noise power level.
+    /// The filter the fill's noise takes, which with the band's residue keeps the background's power.
     noise_taps: Vec<Complex32>,
 }
 
@@ -72,7 +74,7 @@ impl SuppressPlan {
         } else {
             complex_band_pass(rate, low, high)
         };
-        let noise_taps = complementary(&taps, real);
+        let (taps, noise_taps) = crossfade(&taps, real);
         Ok(Self {
             taps,
             rate,
@@ -134,7 +136,8 @@ fn complex_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<
         return (vec![Complex32::new(1.0, 0.0)], None);
     }
     let transition = transition(rate, width, room);
-    let lp = low_pass(rate, width / 2.0, width / 2.0 + transition, 1.0);
+    let pass = width / 2.0 + EDGE_ROOM * transition;
+    let lp = low_pass(rate, pass, width / 2.0 + transition, 1.0);
     let centre = (low + high) / 2.0;
     let half = (lp.len() / 2) as f64;
     let taps = lp
@@ -169,12 +172,12 @@ fn real_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<f64
     let upper = if to_nyquist {
         vec![1.0]
     } else {
-        low_pass(rate, high, high + transition, 1.0)
+        low_pass(rate, high + EDGE_ROOM * transition, high + transition, 1.0)
     };
     let lower = if from_zero {
         Vec::new()
     } else {
-        low_pass(rate, low - transition, low, 1.0)
+        low_pass(rate, low - transition, low - EDGE_ROOM * transition, 1.0)
     };
     let len = upper.len().max(lower.len());
     let mut taps = vec![Complex32::default(); len];
@@ -187,47 +190,66 @@ fn real_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<f64
     (taps, Some(transition))
 }
 
-/// The band-pass whose power gain is `2|H| − |H|²` where `taps` has gain `|H|`, with the same delay.
+/// The filters a band's residue and its fill take, from the band-pass `taps`.
 ///
-/// The band's residue passes with `1 − |H|`, so the residue's power and the
-/// fill's add up to the noise power through the transitions as well.
-fn complementary(taps: &[Complex32], real: bool) -> Vec<Complex32> {
+/// With `A` the band-pass's zero-phase response, the input loses its share
+/// through `1 − cos(πA/2)` and the fill passes `sin(πA/2)`, so the residue's
+/// power and the fill's add up to the background's at every frequency. Both are
+/// smooth in `A`, so they keep its stopband once truncated to its length, and
+/// the residue's is far deeper. A whole band keeps the unit impulse for both.
+fn crossfade(taps: &[Complex32], real: bool) -> (Vec<Complex32>, Vec<Complex32>) {
     let len = taps.len();
     if len == 1 {
-        return taps.to_vec();
+        return (taps.to_vec(), taps.to_vec());
     }
-    let size = (4 * len).next_power_of_two();
+    // Cosine and sine of the response reach further in time than it does, so they get twice its length.
+    let long = 2 * len - 1;
+    let size = (2 * long).next_power_of_two();
     let mut planner = FftPlanner::new();
-    let mut spectrum = vec![Complex32::default(); size];
-    spectrum[..len].copy_from_slice(taps);
-    planner.plan_fft_forward(size).process(&mut spectrum);
+    let mut response = vec![Complex32::default(); size];
+    response[..len].copy_from_slice(taps);
+    planner.plan_fft_forward(size).process(&mut response);
     let centre = (len / 2) as f64;
-    for (k, bin) in spectrum.iter_mut().enumerate() {
-        let gain = f64::from(bin.norm());
-        let power = (2.0 * gain - gain * gain).max(0.0);
-        let turn = -std::f64::consts::TAU * k as f64 * centre / size as f64;
+    let long_centre = (long / 2) as f64;
+    let mut residue = vec![Complex32::default(); size];
+    let mut fill = vec![Complex32::default(); size];
+    for (k, bin) in response.iter().enumerate() {
+        let turn = std::f64::consts::TAU * k as f64 * centre / size as f64;
         let (sin, cos) = turn.sin_cos();
-        let magnitude = power.sqrt() / size as f64;
-        *bin = Complex32::new((magnitude * cos) as f32, (magnitude * sin) as f32);
+        // The band-pass's response with its delay taken out, real for a linear-phase filter.
+        let zero_phase = f64::from(bin.re) * cos - f64::from(bin.im) * sin;
+        let angle = std::f64::consts::FRAC_PI_2 * zero_phase;
+        let shift = std::f64::consts::TAU * k as f64 * long_centre / size as f64;
+        let delay = Complex32::new(
+            (shift.cos() / size as f64) as f32,
+            (-shift.sin() / size as f64) as f32,
+        );
+        residue[k] = delay * (1.0 - angle.cos()) as f32;
+        fill[k] = delay * angle.sin() as f32;
     }
-    planner.plan_fft_inverse(size).process(&mut spectrum);
+    let inverse = planner.plan_fft_inverse(size);
+    inverse.process(&mut residue);
+    inverse.process(&mut fill);
     let beta = 0.1102 * (80.0 - 8.7);
     let norm = crate::extract::bessel_i0(beta);
-    spectrum[..len]
-        .iter()
-        .enumerate()
-        .map(|(k, &tap)| {
-            let ratio = (k as f64 - centre) / centre;
-            let window =
-                crate::extract::bessel_i0(beta * (1.0 - ratio * ratio).max(0.0).sqrt()) / norm;
-            let tap = tap * window as f32;
-            if real {
-                Complex32::new(tap.re, 0.0)
-            } else {
-                tap
-            }
-        })
-        .collect()
+    let truncate = |impulse: &[Complex32]| -> Vec<Complex32> {
+        impulse[..long]
+            .iter()
+            .enumerate()
+            .map(|(k, &tap)| {
+                let ratio = (k as f64 - long_centre) / long_centre;
+                let window =
+                    crate::extract::bessel_i0(beta * (1.0 - ratio * ratio).max(0.0).sqrt()) / norm;
+                let tap = tap * window as f32;
+                if real {
+                    Complex32::new(tap.re, 0.0)
+                } else {
+                    tap
+                }
+            })
+            .collect()
+    };
+    (truncate(&residue), truncate(&fill))
 }
 
 /// The noise level beside a band, measured over a region block by block.
@@ -655,11 +677,11 @@ impl Suppressor {
             let index = (at - self.start) as usize;
             let input = self.block[(at - self.margin - self.start) as usize];
             let weight = self.weight(self.given);
-            let mut value = input - self.work[index] * weight;
+            // The fade crosses the residue and the fill as cosine and sine, keeping their power.
+            let angle = std::f32::consts::FRAC_PI_2 * weight;
+            let mut value = input - self.work[index] * (1.0 - angle.cos());
             if let Some(level) = &self.level {
-                // The residue keeps 1 − w of the band, so the fill takes the power that leaves.
-                let fill = (2.0 * weight - weight * weight).max(0.0).sqrt();
-                value += self.noise_work[index] * level.at(self.given) * fill;
+                value += self.noise_work[index] * level.at(self.given) * angle.sin();
             }
             // Rounding in the transform leaves a real capture a trace of imaginary part.
             out.push([value.re, if self.real { 0.0 } else { value.im }]);

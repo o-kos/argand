@@ -1,7 +1,8 @@
 //! Files holding computed samples while a capture is edited, removed once nothing refers to them.
 //!
-//! Each running instance keeps its files in `<temp>/argand-scratch/<pid>/`
-//! while it holds a lock on `<temp>/argand-scratch/<pid>.lock`. A lock that can
+//! Each running instance keeps its files in `<cache>/argand/scratch/<pid>/`,
+//! in the user's own cache folder and open to nobody else, while it holds a
+//! lock on `<cache>/argand/scratch/<pid>.lock`. A lock that can
 //! be taken belongs to an instance that has gone, so its folder is removed the
 //! next time any instance starts, which is all a crash leaves behind. Removing
 //! folders and taking one happen under `sweep.lock`, so no instance removes a
@@ -24,6 +25,7 @@ impl Folder {
     /// Take this instance's folder under `root`, first removing those of instances that have gone.
     pub fn open(root: &Path, pid: u32) -> std::io::Result<Self> {
         fs::create_dir_all(root)?;
+        private(root)?;
         let sweeping = File::options()
             .create(true)
             .write(true)
@@ -47,6 +49,7 @@ impl Folder {
         // Files a gone instance with this pid left are not ours to read.
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path)?;
+        private(&path)?;
         Ok(Self {
             path,
             next: AtomicU64::new(1),
@@ -59,6 +62,19 @@ impl Folder {
         let n = self.next.fetch_add(1, Ordering::Relaxed);
         self.path.join(format!("{n}.{extension}"))
     }
+}
+
+/// Keep `folder` to its owner, since computed samples are as private as the capture they come from.
+#[cfg(unix)]
+fn private(folder: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700))
+}
+
+/// A folder under the user's own profile is closed to other users already.
+#[cfg(not(unix))]
+fn private(_folder: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// Remove the folders of instances whose lock nobody holds.
@@ -91,7 +107,11 @@ pub fn folder() -> Option<&'static Folder> {
     static FOLDER: OnceLock<Option<Folder>> = OnceLock::new();
     FOLDER
         .get_or_init(|| {
-            let root = std::env::temp_dir().join("argand-scratch");
+            // The shared temporary folder would show the samples to other users and often lives in memory.
+            let Some(root) = dirs::cache_dir().map(|cache| cache.join("argand").join("scratch")) else {
+                tracing::warn!("no cache folder for computed samples");
+                return None;
+            };
             Folder::open(&root, std::process::id())
                 .inspect_err(|error| {
                     tracing::warn!(%error, root = %root.display(), "no scratch folder for computed samples");

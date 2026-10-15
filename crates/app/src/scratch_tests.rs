@@ -50,3 +50,17 @@ fn names_are_never_reused_and_a_scratch_file_goes_with_its_last_reference() {
     drop(folder);
     let _ = fs::remove_dir_all(&root);
 }
+
+#[cfg(unix)]
+#[test]
+fn the_folders_are_open_to_their_owner_alone() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = root("private");
+    let folder = Folder::open(&root, 1).unwrap();
+    for path in [root.clone(), root.join("1")] {
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700, "{}", path.display());
+    }
+    drop(folder);
+    let _ = fs::remove_dir_all(&root);
+}
