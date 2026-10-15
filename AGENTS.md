@@ -677,9 +677,9 @@ least Fs/131072, at most the room beside it) and `w` a raised-cosine taper. For 
 capture the band-pass is the low-pass of half the band modulated to its centre; for a real
 one it is `LP(high) âˆ’ LP(low)`, the first a unit impulse at Fs/2 and the second absent at
 0 Hz, so no mirror counts twice. A complex band within Fs/131072 of the whole capture
-suppresses everything. A rectangle's span widens by the filter's half length on each side,
-inside the capture, and the taper fades over that widening, so the whole selected span is
-suppressed without a click. Convolution is overlap-save as in `extract`, with the delay
+suppresses everything. A rectangle's span widens by the filter's half length, at least 256
+samples (`SHORTEST_TAPER`), on each side, inside the capture, and the taper fades over that
+widening, so the whole selected span is suppressed without a click. Convolution is overlap-save as in `extract`, with the delay
 compensated, so output `n` is input `n`.
 
 `suppression.rs` computes it on a thread of its own (`saving::spawn`, the save thread made
@@ -687,9 +687,10 @@ generic) with progress, a cancel and the status-bar item `Suppressing the bandâ€
 (`suppression_ui.rs`). Edits and saves wait for it, and opening another file cancels it. The
 changed span is written as unit-scale `f32` through `FloatWave` into a scratch file.
 `scratch.rs` keeps those in `<temp>/argand-scratch/<pid>/` under a lock on `<pid>.lock`, and
-every instance removes the folders of locks nobody holds when it starts. `Scratch` removes its
-file when the last `Arc` goes, held by `editing::Source::computed` in the document, its
-history and the clipboard. The edit is `Editing::replace_computed`, applied only to the
+every instance removes the folders of locks nobody holds when it starts, under `sweep.lock`
+so no instance removes a lock file another is taking. `Scratch` removes its file when the
+last `Arc` goes, held by `editing::Source::computed` in the document, its history and the
+clipboard, and by a save of it (`SaveOf::_scratch`) until that save ends. The edit is `Editing::replace_computed`, applied only to the
 document and version the computation started from: the length is kept, the rectangle's time
 span stays selected and the band is cleared. `Editing::repicture` keeps the shown picture over
 samples computed in place, or brought back by undo, until the new analysis lands, so a
@@ -700,9 +701,11 @@ which `Editing::save_request` makes the opened file whenever a computed source i
 when none of the file is left. The encoding is `value * factor + offset` from the saving
 document's own `original_sample_units` (`Editing::describe_units`), so computed samples pasted
 into another capture are stored on its scale. Integers are rounded and clamped without a
-warning (8-bit offset binary, and 16, 24 and 32 bits whose stored width is their
-container's), floats are written as `f32` or `f64`, and FLAC gets integers clamped to its
-depth. Untouched samples are still copied byte for byte. A computed source pastes into any
+warning (8-bit offset binary, and 16, 24 and 32 bits whose value fills its container, so an
+extensible header with fewer valid bits is refused), floats are written as `f32` or `f64`, and FLAC gets integers clamped to its
+depth. Computed samples of another kind than the capture are refused. Untouched samples are
+still copied byte for byte. The opened file must still be its stamped self to give the format,
+even when none of it is left. A computed source pastes into any
 capture of the same rate and kind, and a paste checks only the sources its clip reads.
 
 ## Ruler marks and grid visibility (#71, #72)

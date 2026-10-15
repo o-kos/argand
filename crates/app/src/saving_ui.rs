@@ -32,6 +32,8 @@ pub(super) struct SaveOf {
     pub(super) then: Option<editing_ui::Pending>,
     /// Whether this save replaces the open file, which needs it let go of first.
     pub(super) over: bool,
+    /// The scratch files it reads, kept until it ends even when the document goes first.
+    pub(super) _scratch: Vec<Arc<crate::scratch::Scratch>>,
 }
 
 #[cfg(test)]
@@ -45,6 +47,7 @@ impl SaveOf {
             rebind: true,
             then: None,
             over: false,
+            _scratch: Vec::new(),
         }
     }
 }
@@ -127,6 +130,7 @@ impl Shell {
             rebind: whole && edited,
             then: then.filter(|_| whole),
             over: false,
+            _scratch: editing.scratches(),
         };
         let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
@@ -219,6 +223,7 @@ impl Shell {
             rebind: false,
             then: None,
             over: false,
+            _scratch: editing.scratches(),
         };
         let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {

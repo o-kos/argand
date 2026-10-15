@@ -283,6 +283,15 @@ impl Editing {
         self.encoding = units.map(|(factor, offset)| Encoding { factor, offset });
     }
 
+    /// The scratch files the current version reads, for work that must outlive the document.
+    pub fn scratches(&self) -> Vec<Arc<Scratch>> {
+        self.capture()
+            .sources()
+            .iter()
+            .filter_map(|id| self.sources[id.0 as usize].computed.clone())
+            .collect()
+    }
+
     /// Whether computed samples can be added, which saving them needs.
     pub fn can_compute(&self) -> bool {
         self.encoding.is_some()

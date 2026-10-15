@@ -84,7 +84,7 @@ impl Shell {
         let file = editing.file();
         if !editing.is_dirty() {
             Err(Unsavable::Unchanged)
-        } else if self.saving.is_some() {
+        } else if self.saving.is_some() || self.suppressing.is_some() {
             Err(Unsavable::Busy)
         } else if editing.capture().is_empty() {
             Err(Unsavable::Empty)
@@ -151,6 +151,7 @@ impl Shell {
             rebind: true,
             then,
             over: true,
+            _scratch: editing.scratches(),
         };
         self.interrupt_plot(cx);
         self.start_save(request, of, window, cx);

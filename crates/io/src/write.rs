@@ -608,12 +608,13 @@ fn common_storage(request: &SaveRequest, opened: &[Opened]) -> Result<Storage, W
     }
     let storage = opened[0].reader.storage();
     let rate = request.meta.sample_rate;
+    let channels = request.meta.channels();
     let odd = request.sources.iter().zip(opened).find(|(source, open)| {
         let stored = match source.encoding {
-            Some(_) => open.reader.is_computed_layout(source.meta.channels()),
+            Some(_) => open.reader.is_computed_layout(channels),
             None => open.reader.storage() == storage,
         };
-        !stored || source.meta.sample_rate != rate
+        !stored || source.meta.sample_rate != rate || source.meta.channels() != channels
     });
     match odd {
         Some((odd, _)) => Err(WriteError::Unsupported {
@@ -979,7 +980,10 @@ fn write_linear_segments(
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<(), WriteError> {
-    let target = Linear::of(opened[0].reader.storage(), &request.meta.source)?;
+    let Reader::Copy { layout, .. } = &opened[0].reader else {
+        return Err(WriteError::OutOfRange);
+    };
+    let target = Linear::of(layout, &request.meta.source)?;
     let total = request.total();
     let mut done = 0;
     progress(0, total);
@@ -1237,19 +1241,34 @@ enum Linear {
 }
 
 impl Linear {
-    /// The encoding of `storage`, refused for a layout whose stored integers are not its container's.
-    fn of(storage: Storage, path: &Path) -> Result<Self, WriteError> {
+    /// The encoding of `layout`, refused for one whose stored integers do not fill their container.
+    fn of(layout: &CopyLayout, path: &Path) -> Result<Self, WriteError> {
         let Storage::Linear {
             format_tag,
             bits,
             channels,
             block,
             unscaled_float,
-        } = storage
+        } = layout.storage()
         else {
             return Err(WriteError::OutOfRange);
         };
         let width = usize::from(block) / usize::from(channels.max(1));
+        // An extensible header states the bits that carry the value apart from the container's.
+        let extensible =
+            u16::from_le_bytes([layout.fmt[0], layout.fmt[1]]) == riff::WAVE_FORMAT_EXTENSIBLE;
+        let valid = match layout.fmt.get(18..20) {
+            Some(word) if extensible => u16::from_le_bytes([word[0], word[1]]),
+            _ => bits,
+        };
+        if valid != bits {
+            return Err(WriteError::Unsupported {
+                path: path.to_owned(),
+                reason: format!(
+                    "computed samples cannot be stored as {valid} bits in {bits} bit containers"
+                ),
+            });
+        }
         let linear = match (format_tag, width) {
             _ if unscaled_float && width == 4 => Some(Self::Float32),
             (riff::WAVE_FORMAT_IEEE_FLOAT, 4) => Some(Self::Float32),

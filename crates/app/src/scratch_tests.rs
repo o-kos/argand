@@ -16,6 +16,7 @@ fn the_folder_of_an_instance_that_has_gone_is_removed() {
     assert!(!root.join("1").exists());
     assert!(!root.join("1.lock").exists());
     assert!(root.join("2").is_dir());
+    assert!(root.join("2.lock").exists() && root.join("sweep.lock").exists());
     drop(folder);
     let _ = fs::remove_dir_all(&root);
 }

@@ -134,6 +134,8 @@ fn a_complex_band_at_the_capture_edge_is_suppressed() {
 fn the_whole_complex_band_suppresses_everything() {
     let plan = SuppressPlan::new(RATE, -24_000.0, 24_000.0, false).unwrap();
     assert_eq!(plan.margin(), 0);
+    // Limited in time, it still fades rather than cutting.
+    assert_eq!(plan.taper(), SHORTEST_TAPER);
     let input = span(1000, 2, tone(3_000.0, 0.5));
     let out = suppress(&plan, &input, 2, 64, (0, 0));
     assert!(out.iter().all(|&[i, q]| i.hypot(q) < 1e-6));

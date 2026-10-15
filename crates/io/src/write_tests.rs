@@ -1360,3 +1360,60 @@ fn computed_samples_of_another_layout_are_refused() {
     let request = suppressed(source_file(&source, OpenHints::default()), scratch, dir.join("b.wav"));
     assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
 }
+
+#[test]
+fn computed_samples_of_another_kind_than_the_capture_are_refused() {
+    let dir = TempDir::new("write-computed-kind");
+    let i16: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 100), 1.0);
+    let scratch = computed(&dir.join("computed.wav"), &source, Domain::Real, &[0.5; 4]);
+    let request = suppressed(source_file(&source, OpenHints::default()), scratch, dir.join("b.wav"));
+    assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
+    assert_eq!(names(&dir), ["a.wav", "computed.wav"]);
+}
+
+/// A 24-bit extensible WAVE whose header says only `valid` of the bits carry the value.
+fn write_extensible(path: &Path, valid: u16, frames: usize) {
+    let mut data = Vec::new();
+    for n in 0..frames * 2 {
+        data.extend_from_slice(&((n as i32 * 16) << 4).to_le_bytes()[..3]);
+    }
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&0xFFFEu16.to_le_bytes());
+    fmt.extend_from_slice(&2u16.to_le_bytes());
+    fmt.extend_from_slice(&48_000u32.to_le_bytes());
+    fmt.extend_from_slice(&(48_000u32 * 6).to_le_bytes());
+    fmt.extend_from_slice(&6u16.to_le_bytes());
+    fmt.extend_from_slice(&24u16.to_le_bytes());
+    fmt.extend_from_slice(&22u16.to_le_bytes());
+    fmt.extend_from_slice(&valid.to_le_bytes());
+    fmt.extend_from_slice(&3u32.to_le_bytes());
+    fmt.extend_from_slice(&[1, 0, 0, 0, 0, 0, 0x10, 0, 0x80, 0, 0, 0xAA, 0, 0x38, 0x9B, 0x71]);
+    let mut file = Vec::new();
+    file.extend_from_slice(b"RIFF");
+    file.extend_from_slice(&((4 + 8 + fmt.len() + 8 + data.len()) as u32).to_le_bytes());
+    file.extend_from_slice(b"WAVE");
+    file.extend_from_slice(b"fmt ");
+    file.extend_from_slice(&(fmt.len() as u32).to_le_bytes());
+    file.extend_from_slice(&fmt);
+    file.extend_from_slice(b"data");
+    file.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    file.extend_from_slice(&data);
+    fs::write(path, &file).unwrap();
+}
+
+#[test]
+fn computed_samples_are_refused_where_the_value_does_not_fill_its_container() {
+    let dir = TempDir::new("write-computed-valid");
+    let full = dir.join("full.wav");
+    write_extensible(&full, 24, 100);
+    let scratch = computed(&dir.join("full-computed.wav"), &full, Domain::Iq, &[0.5; 8]);
+    let request = suppressed(source_file(&full, OpenHints::default()), scratch, dir.join("full-saved.wav"));
+    run(&request).unwrap();
+
+    let partial = dir.join("partial.wav");
+    write_extensible(&partial, 20, 100);
+    let scratch = computed(&dir.join("partial-computed.wav"), &partial, Domain::Iq, &[0.5; 8]);
+    let request = suppressed(source_file(&partial, OpenHints::default()), scratch, dir.join("partial-saved.wav"));
+    assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
+}

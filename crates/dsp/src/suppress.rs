@@ -17,6 +17,9 @@ use rustfft::{Fft, FftPlanner};
 
 use crate::extract::{ExtractError, LARGEST_FFT, NARROWEST_TRANSITION, check_band, low_pass};
 
+/// The shortest fade, which keeps a short filter or a whole band suppressed in time from clicking.
+pub const SHORTEST_TAPER: u64 = 256;
+
 /// How a band is suppressed, with the band-pass that finds it.
 #[derive(Debug, Clone)]
 pub struct SuppressPlan {
@@ -49,9 +52,9 @@ impl SuppressPlan {
         (self.taps.len() / 2) as u64
     }
 
-    /// Samples over which a suppression limited in time fades in and out, the filter's own time resolution.
+    /// Samples over which a suppression limited in time fades in and out, the filter's own time resolution or more.
     pub fn taper(&self) -> u64 {
-        self.margin()
+        self.margin().max(SHORTEST_TAPER)
     }
 
     pub fn taps(&self) -> &[Complex32] {

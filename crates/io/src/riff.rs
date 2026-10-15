@@ -33,7 +33,7 @@ const DS64_MIN_LEN: usize = 28;
 
 pub(crate) const WAVE_FORMAT_PCM: u16 = 1;
 pub(crate) const WAVE_FORMAT_IEEE_FLOAT: u16 = 3;
-const WAVE_FORMAT_EXTENSIBLE: u16 = 0xFFFE;
+pub(crate) const WAVE_FORMAT_EXTENSIBLE: u16 = 0xFFFE;
 
 /// Where the samples live in a WAVE file and how to read them.
 ///

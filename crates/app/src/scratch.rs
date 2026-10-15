@@ -3,7 +3,9 @@
 //! Each running instance keeps its files in `<temp>/argand-scratch/<pid>/`
 //! while it holds a lock on `<temp>/argand-scratch/<pid>.lock`. A lock that can
 //! be taken belongs to an instance that has gone, so its folder is removed the
-//! next time any instance starts, which is all a crash leaves behind.
+//! next time any instance starts, which is all a crash leaves behind. Removing
+//! folders and taking one happen under `sweep.lock`, so no instance removes a
+//! lock file another is about to take.
 
 use std::fs::{self, File, TryLockError};
 use std::path::{Path, PathBuf};
@@ -22,6 +24,12 @@ impl Folder {
     /// Take this instance's folder under `root`, first removing those of instances that have gone.
     pub fn open(root: &Path, pid: u32) -> std::io::Result<Self> {
         fs::create_dir_all(root)?;
+        let sweeping = File::options()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(root.join("sweep.lock"))?;
+        sweeping.lock()?;
         sweep(root);
         let lock = File::options()
             .create(true)
@@ -60,7 +68,10 @@ fn sweep(root: &Path) {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().is_none_or(|extension| extension != "lock") {
+        let instance = path
+            .file_stem()
+            .and_then(|stem| stem.to_str()?.parse::<u32>().ok());
+        if path.extension().is_none_or(|extension| extension != "lock") || instance.is_none() {
             continue;
         }
         let Ok(lock) = File::options().write(true).open(&path) else {

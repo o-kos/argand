@@ -249,6 +249,7 @@ mod tests {
         assert!(shell.read_with(cx, |shell, _| {
             shell.suppressing.is_some()
                 && !shell.can_save(false)
+                && shell.can_save_over().is_err()
                 && shell.edit_commands_available() == editing_ui::EditCommands::default()
         }));
         wait_until(cx, &shell, "the band to be suppressed", |shell| {
@@ -283,6 +284,7 @@ mod tests {
                 rebind: false,
                 then: None,
                 over: false,
+                _scratch: editing.scratches(),
             };
             shell.start_save(request, of, window, cx);
         });
