@@ -423,3 +423,42 @@ fn a_full_history_of_blocked_probes_does_not_hide_a_new_local_file() {
     receive_checks(&mut recent, RECENT_LIMIT);
     assert_eq!(recent.visible(), replacement);
 }
+
+#[test]
+fn long_folders_keep_their_ends_and_stay_apart() {
+    let ireland = "/k/vps1_irelandnorthwest3.proxy2.kiwisdr.com_8073_518_20261009T230800Z/iq.wav";
+    let wessex = "/k/vps1_wessex.zapto.org_8074_490_20261009T230800Z/iq.wav";
+    assert_eq!(
+        named(&[ireland, wessex]),
+        [sep("…/vps1_ire…T230800Z/iq.wav"), sep("…/vps1_wes…T230800Z/iq.wav")]
+    );
+}
+
+#[test]
+fn folders_alike_at_both_ends_grow_until_they_differ() {
+    let a = "/k/vps1_23175.proxy2_8073_518_20261011T163000Z/iq.wav";
+    let b = "/k/vps1_23175.proxy2_8073_490_20261011T163000Z/iq.wav";
+    let labels = named(&[a, b]);
+    assert_ne!(labels[0], labels[1]);
+    assert_eq!(
+        labels,
+        [
+            sep("…/vps1_23175.proxy2_…8_20261011T163000Z/iq.wav"),
+            sep("…/vps1_23175.proxy2_…0_20261011T163000Z/iq.wav")
+        ]
+    );
+}
+
+#[test]
+fn long_file_names_keep_their_extension_and_stay_apart() {
+    assert_eq!(
+        named(&[
+            "/a/kiwisdr_ireland_20261009T230800Z.wav",
+            "/a/kiwisdr_ireland_20261010T230800Z.wav",
+            "/a/short.wav",
+        ]),
+        ["kiwisdr_irela…9T230800Z.wav", "kiwisdr_irela…0T230800Z.wav", "short.wav"]
+            .map(str::to_owned)
+            .to_vec()
+    );
+}

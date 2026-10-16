@@ -13,7 +13,7 @@ promise applies to.
 
 ### Added
 
-- The tenth recent file carries 0 on the start page and in File, and opens with Alt+0 there or 0 in File, after 1 to 9. Recent files sharing a name are told apart by the nearest parent folder that differs, with the folders between elided, such as `…/123/…/iq.wav` beside `…/12/…/iq.wav` (#216).
+- The tenth recent file carries 0 on the start page and in File, and opens with Alt+0 there or 0 in File, after 1 to 9. Recent files sharing a name are told apart by the nearest parent folder that differs, with the folders between elided, such as `…/123/…/iq.wav` beside `…/12/…/iq.wav`, and long file and folder names keep their start and end, as long as still tells them apart (#216).
 
 - Edit → Invert spectrum (Ctrl+Shift+I) mirrors the spectrum of the whole capture: an I/Q capture is conjugated, a real one is multiplied by (−1)^n. Edit → Normalize level (Ctrl+Shift+N) measures the peak of the whole capture (the largest |I + jQ|, or |x| for a real capture) in the background and scales it to just below full scale (−0.1 dBFS), I and Q by one factor. Both are available while nothing is selected, are applied while the capture is read, are undone and redone like other edits, are shown in the status bar, and are written into the file when it is saved, every sample encoded again with integers rounded and clamped. A copy pastes only into a capture inverted and levelled as it was (#188, #190).
 

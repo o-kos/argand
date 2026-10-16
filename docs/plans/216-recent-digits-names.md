@@ -21,6 +21,7 @@ Recent rows are named by their file alone, so captures of the same name in diffe
 - One toolkit-neutral helper, `app_menu::digit(index)`, answers the digit of a shown row: `1`..`9` for the first nine, `0` for the tenth, none beyond. The start page, File, `RecentFiles::shortcut` and both key tables use it, so the ten keys and the drawn digits cannot drift apart.
 - The labels move to `recent::labels` beside the list they name. For each group of shown files sharing a file name, a file's label goes outward through its parent folders to the first depth at which its folders up to there differ from every other file in the group. Of the folders up to that depth, those that every file of the group shares at the same depth are elided, consecutive elisions joining into one `…`. Folders beyond that depth are one leading `…`; a file whose whole path was needed starts from its root. A unique file name keeps the name alone. The separator is the platform's own.
 - The start page hint keeps the file name over its full folder, so the whole path stays one hover away.
+- ➕ A file name or a shown folder longer than 20 characters keeps its first and last characters around `…`, 8 on each side at first, as the owner chose after seeing long KiwiSDR folder names fill the row. The sides grow together, for all file names of the list at once and for the folders of one group at one depth at once, until every two different names, or folders, stay different once shortened. The 8 characters at the end keep a usual extension whole.
 
 ## Rejected alternatives
 
@@ -32,6 +33,9 @@ Recent rows are named by their file alone, so captures of the same name in diffe
 
 - [x] `app_menu::digit`, digits in `file_items`, `RecentFiles::shortcut`, Alt+0 and `0` bindings, the start page digit; tests.
 - [x] `recent::labels` replacing `session::recent_labels`, used by the start page and File; tests for the owner's example, a differing nearest folder, different depths, three files, unique names.
+- [x] ➕ Long file names and folders shortened around `…` while they stay apart (`recent::shortened`, `recent::side`), with tests on the owner's KiwiSDR folders, folders alike at both ends and long file names.
+- [x] Review round 1 (`gpt-6-sol` medium, before the shortening): one finding, declined. A real folder named `…` reads like an elision, so `/a/a/a/f` and `/a/a/…/a/f` beside `/…/a/f` both read `…/a/…/f`. Such a folder name is contrived, the rows still open their own files, and the hint shows the whole path.
+- [ ] Review round 2 (same reviewer).
 - [x] ➕ The start page hint names the bare file over its folder, since the row's label may now hold folders.
 - [x] `AGENTS.md` and `CHANGELOG.md`.
 - [ ] Complete validation.

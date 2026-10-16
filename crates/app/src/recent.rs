@@ -112,21 +112,71 @@ impl RecentFiles {
 /// apart from the others. Folders every one of them has at that depth are
 /// elided with `…`, and so are those beyond the telling one. A file whose whole
 /// path is needed starts from its root.
+///
+/// A long file name or folder keeps its start and end around `…`, both as
+/// short as still tells it from the other names, or folders at its depth.
 pub fn labels(recent: &[Recent]) -> Vec<String> {
     let names: Vec<String> = recent.iter().map(|entry| file_name(&entry.path)).collect();
     let folders: Vec<Vec<String>> = recent.iter().map(|entry| folders(&entry.path)).collect();
+    let name_side = side(names.iter());
     (0..recent.len())
         .map(|index| {
-            let others: Vec<&[String]> = (0..recent.len())
-                .filter(|&other| other != index && names[other] == names[index])
-                .map(|other| folders[other].as_slice())
+            let name = shortened(&names[index], name_side);
+            let group: Vec<usize> = (0..recent.len())
+                .filter(|&other| names[other] == names[index])
                 .collect();
-            if others.is_empty() {
-                return names[index].clone();
+            if group.len() == 1 {
+                return name;
             }
-            told_apart(&recent[index].path, &names[index], &folders[index], &others)
+            let others: Vec<&[String]> = group
+                .iter()
+                .filter(|&&other| other != index)
+                .map(|&other| folders[other].as_slice())
+                .collect();
+            let folder = |at: usize, folder: &str| {
+                let side = side(group.iter().filter_map(|&member| folders[member].get(at)));
+                shortened(folder, side)
+            };
+            told_apart(&recent[index].path, &name, &folders[index], &others, folder)
         })
         .collect()
+}
+
+/// Names no longer than this are shown whole.
+const LONGEST_WHOLE: usize = 20;
+/// The characters a shortened name keeps on each side at least.
+const SHORTEST_SIDE: usize = 8;
+
+/// `text` as its first and last `side` characters around `…`, or whole when that is not shorter.
+fn shortened(text: &str, side: usize) -> String {
+    let count = text.chars().count();
+    if count <= LONGEST_WHOLE || count <= 2 * side + 1 {
+        return text.to_owned();
+    }
+    let head: String = text.chars().take(side).collect();
+    let tail: String = text.chars().skip(count - side).collect();
+    format!("{head}…{tail}")
+}
+
+/// The shortest side that keeps every two different `texts` different once shortened.
+fn side<'a>(texts: impl Iterator<Item = &'a String>) -> usize {
+    let mut distinct: Vec<&String> = texts.collect();
+    distinct.sort_unstable();
+    distinct.dedup();
+    let longest = distinct
+        .iter()
+        .map(|text| text.chars().count())
+        .max()
+        .unwrap_or(0);
+    (SHORTEST_SIDE..=longest.max(SHORTEST_SIDE))
+        .find(|&side| {
+            let mut short: Vec<String> =
+                distinct.iter().map(|text| shortened(text, side)).collect();
+            short.sort_unstable();
+            short.dedup();
+            short.len() == distinct.len()
+        })
+        .unwrap_or(longest)
 }
 
 fn file_name(path: &Path) -> String {
@@ -149,8 +199,14 @@ fn folders(path: &Path) -> Vec<String> {
         .collect()
 }
 
-/// `name` with the folders of `own` that tell it apart from every one of `others`.
-fn told_apart(path: &Path, name: &str, own: &[String], others: &[&[String]]) -> String {
+/// `name` with the folders of `own` that tell it apart from every one of `others`, each as `folder` shows it.
+fn told_apart(
+    path: &Path,
+    name: &str,
+    own: &[String],
+    others: &[&[String]],
+    folder: impl Fn(usize, &str) -> String,
+) -> String {
     let differs = |depth: usize| {
         others
             .iter()
@@ -170,7 +226,7 @@ fn told_apart(path: &Path, name: &str, own: &[String], others: &[&[String]]) -> 
         // A path shown to its root is told apart by where it starts, so nothing of it is elided.
         let shared = !whole && others.iter().all(|other| other.get(at) == Some(&own[at]));
         if !shared {
-            segments.push(own[at].clone());
+            segments.push(folder(at, &own[at]));
         } else if segments.last() != Some(&ellipsis) {
             segments.push(ellipsis.clone());
         }
