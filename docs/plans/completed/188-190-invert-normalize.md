@@ -82,16 +82,18 @@ Out of scope: inverting or normalizing a time selection (the owner decided whole
 - [x] Review round 2 (same reviewer): both fixes confirmed and the comment finding withdrawn, but the reviewer challenged the declined parity finding with a concrete case: under a real inversion, copying one sample over its neighbour changes the shown signal's spectrum, because the moved sample's sign changes against everything around it. Accepted, and it is wider than a paste, since a delete of odd length negated everything after it. The parity of `(−1)^n` now counts each sample's index in its own source (`EditedSource` per piece, the writer per segment), so edits move samples as shown. Suppression, whose scratch samples are a source of their own, now computes on the shown capture and stores through the inverse adjustment instead of mirroring the band, and `SaveRequest::first` is gone. Tests cover a delete across the parity, a saved request of two segments of opposite parity, and a rectangle suppressed from an odd sample of an inverted real capture with a gain.
 - [x] Review round 3 (same reviewer): two findings, both accepted, both about the parity of a real inversion. A rectangle suppressed from a sample of odd index wrote its scratch samples from index 0, so once the inversion was undone the kept frequencies of that span turned over against their neighbours; the scratch file now starts with one silent sample whenever that aligns the parity (`Suppressed::offset`, `replace_computed` taking the offset). Where the span crosses pieces of different alignment, made by edits under the inversion, the later pieces cannot share the first one's parity; the span reads as computed under the adjustment it was computed with, and its edges against those pieces turn over under the other one, as the pieces' own edges already did. A copy made under a real inversion that a save over the file would move to the other parity is now cleared rather than moved, since it would read turned over (`Clipboard::moved_onto`). Each fix has a test that fails without it. The round limit is reached, so further review of these fixes is the owner's call.
 - [x] Review round 4 (same reviewer, agreed by the owner): the round 3 fixes and the later behaviour changes confirmed with no code findings. Two documentation findings, both accepted: the plan still described the first suppression approach and the old manual check of a chosen target, and `AGENTS.md` promised that every computed sample keeps the parity of the one it replaces, which holds only for the span's first piece; both now say what the code does.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Manual, release binary: invert an I/Q capture with an offset tone and a real one, the tone moves to the mirrored frequency; normalize a quiet capture and a loud one, the peak lands at −0.1 dBFS and the status item and the picture's level follow; both commands are unavailable with a time span, a band or a rectangle selected; undo and redo; Save and Save as reopen inverted and at the new level; a 16-bit capture saves as 16-bit; suppress a band of an inverted capture.
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Manual, release binary: invert an I/Q capture with an offset tone and a real one, the tone moves to the mirrored frequency; normalize a quiet capture and a loud one, the peak lands at −0.1 dBFS and the status item and the picture's level follow; both commands are unavailable with a time span, a band or a rectangle selected; undo and redo; Save and Save as reopen inverted and at the new level; a 16-bit capture saves as 16-bit; suppress a band of an inverted capture.
+
+The owner checked the release binary on 2026-10-16 and accepted the result. Individual results were not separately reported.
 
 ## Post-completion
 
