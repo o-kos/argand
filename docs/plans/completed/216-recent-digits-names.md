@@ -38,16 +38,18 @@ Recent rows are named by their file alone, so captures of the same name in diffe
 - [x] Review round 2 (same reviewer, after the shortening): no findings. The reviewer confirmed the shortening keeps labels distinct and matched, counts characters and handles the 20/21 character boundary, and did not contest the declined round 1 finding.
 - [x] ➕ The start page hint names the bare file over its folder, since the row's label may now hold folders.
 - [x] `AGENTS.md` and `CHANGELOG.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Manual, release binary: ten recent files show 1..9 and 0 on the start page and in File, Alt+0 and `0` open the tenth; files of the same name in different folders read as in the Issue's example.
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Manual, release binary: ten recent files show 1..9 and 0 on the start page and in File, Alt+0 and `0` open the tenth; files of the same name in different folders read as in the Issue's example.
+
+The owner checked the release binary on 2026-10-16 and confirmed it works.
 
 ## Post-completion
 
