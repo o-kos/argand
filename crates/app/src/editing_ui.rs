@@ -42,6 +42,7 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         KeyBinding::new("delete", DeleteSelection, Some("Plot")),
         KeyBinding::new(&command("shift-m"), SuppressBand, Some("Plot")),
         KeyBinding::new(&command("shift-i"), InvertSpectrum, Some("Plot")),
+        KeyBinding::new(&command("shift-n"), NormalizeLevel, Some("Plot")),
     ];
     if cfg!(target_os = "windows") {
         keys.push(KeyBinding::new("ctrl-y", Redo, Some("Plot")));
@@ -111,7 +112,7 @@ impl Shell {
             paste: clip,
             replace: clip && selected,
             suppress: self.can_suppress(),
-            invert: self.can_adjust(),
+            invert: self.can_invert(),
             normalize: self.can_normalize(),
             inverted: editing.adjustment().invert(),
         }

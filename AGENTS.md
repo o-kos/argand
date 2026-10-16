@@ -730,8 +730,10 @@ capture of the same rate and kind, and a paste checks only the sources its clip 
 ## Inverting and normalizing (#188, #190)
 
 Edit → Invert spectrum (Ctrl+Shift+I in the `Plot` context, Cmd+Shift+I on macOS, a checked
-row) and Edit → Normalize level… act on the whole capture, never a selection, and change no
-file until it is saved. `argand_core::Adjustment { invert, gain }` is what a capture applies
+row) and Edit → Normalize level… (Ctrl+Shift+N, Cmd+Shift+N) act on the whole capture, never a
+selection, and change no file until it is saved. Invert spectrum is disabled while anything is
+selected, a time span, a band or a rectangle, because it would read as inverting only that, as
+the owner decided. `argand_core::Adjustment { invert, gain }` is what a capture applies
 to every sample as it is read: inverting conjugates a complex sample and multiplies a real one
 by `(−1)^n`, and the gain scales I and Q alike (`Adjustment::factor`). It is named apart from
 the FFT transform settings on purpose. `n` is the sample's index in its own source, not its

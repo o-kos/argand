@@ -55,16 +55,20 @@ impl Shell {
                 .is_some_and(|editing| editing.full_scale().is_some())
     }
 
+    /// Whether Invert spectrum can act now, which a selection forbids, as it would suggest inverting only what is selected.
+    pub(super) fn can_invert(&self) -> bool {
+        self.can_adjust() && self.selection.is_none() && self.band.is_none()
+    }
+
     pub(super) fn invert_spectrum(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.can_adjust() {
+        if !self.can_invert() {
             return;
         }
-        let selection = self.marked_now();
         let Some(editing) = self.editing_mut() else {
             return;
         };
         let inverted = editing.adjustment().inverted();
-        if editing.adjust(inverted, selection) {
+        if editing.adjust(inverted, argand_core::Selection::default()) {
             self.edited(window, cx);
         }
     }
@@ -426,13 +430,34 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn inverting_is_one_edit_that_keeps_the_selection_and_is_saved_conjugated(
+    fn inverting_is_refused_with_a_selection_and_saved_conjugated_without_one(
         cx: &mut TestAppContext,
     ) {
         let (shell, cx) = open_window(cx);
         let path = opened(cx, &shell, "invert-ui");
+        let selections = [
+            (SampleSpan::between(100, 200), None),
+            (None, argand_core::FrequencyBand::between(1_000.0, 2_000.0)),
+            (
+                SampleSpan::between(100, 200),
+                argand_core::FrequencyBand::between(1_000.0, 2_000.0),
+            ),
+        ];
+        for (time, band) in selections {
+            shell.update(cx, |shell, _| {
+                shell.selection = time;
+                shell.band = band;
+            });
+            assert!(!shell.read_with(cx, |shell, _| shell.edit_commands_available().invert));
+            shell.update_in(cx, |_, window, cx| {
+                window.dispatch_action(Box::new(editing_ui::InvertSpectrum), cx);
+            });
+            cx.run_until_parked();
+            assert!(adjustment(cx, &shell).is_identity(), "{time:?} {band:?}");
+        }
         shell.update(cx, |shell, _| {
-            shell.selection = SampleSpan::between(100, 200);
+            shell.selection = None;
+            shell.band = None;
         });
         let copied = shell.update(cx, |shell, _| {
             shell
@@ -450,7 +475,6 @@ mod tests {
             let editing = shell.editing().unwrap();
             assert!(editing.is_dirty() && !editing.is_untouched());
             assert_eq!(editing.capture().pieces().len(), 1);
-            assert_eq!(shell.selection, SampleSpan::between(100, 200));
             assert!(shell.edit_commands_available().inverted);
         });
         let refused = shell.update(cx, |shell, _| {
@@ -470,10 +494,6 @@ mod tests {
         });
         cx.run_until_parked();
         assert!(adjustment(cx, &shell).is_identity());
-        assert_eq!(
-            shell.read_with(cx, |shell, _| shell.selection),
-            SampleSpan::between(100, 200)
-        );
         shell.update_in(cx, |_, window, cx| {
             window.dispatch_action(Box::new(editing_ui::Redo), cx);
         });

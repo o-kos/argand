@@ -53,7 +53,8 @@ Out of scope: inverting or normalizing a time selection (the owner decided whole
 
 ### Commands and display
 
-- Edit → Invert spectrum, a checked row, Ctrl+Shift+I in the `Plot` context (Cmd+Shift+I on macOS), and Edit → Normalize level…, without a key. Both are enabled like suppression: a described capture, not changed on disk, no save, suppression or measurement running.
+- Edit → Invert spectrum, a checked row, Ctrl+Shift+I in the `Plot` context (Cmd+Shift+I on macOS), and Edit → Normalize level…, ➕ Ctrl+Shift+N (Cmd+Shift+N), as the owner asked. Both are enabled like suppression: a described capture, not changed on disk, no save, suppression or measurement running.
+- ➕ Invert spectrum is disabled while anything is selected (a time span, a band or a rectangle), as the owner decided after the review rounds: with a selection the command would read as inverting only what is selected, which is a different, computed operation.
 - While an adjustment is on, the status bar shows an item after the file group: `Inverted`, `+3.0 dB`, or both, with a hint saying that the spectrum is inverted or the level changed while reading, and that saving writes it into the file.
 
 ## Rejected alternatives
