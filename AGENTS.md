@@ -742,8 +742,10 @@ piece as it reads it, so pieces always hold their sources' own samples. Each com
 selection kept as suppression keeps it), marks the capture unsaved and leaves the pieces, so
 `repicture` holds the picture until the new analysis lands. Suppression computes on the
 adjusted capture, as shown, and stores its scratch samples through `Adjustment::inverse` at
-their own indices, so the adjustment reads them back as computed and undoing it leaves them
-consistent with their neighbours; extraction reads the adjusted capture. The minimap is the composed envelope adjusted (`minimap::adjusted`): scaled, the Q
+their own indices, so the adjustment reads them back as computed; a real capture's scratch file
+starts with one silent sample when that gives each computed sample the parity of the one it
+replaces (`Suppressed::offset`), so undoing the inversion leaves them in phase with their
+neighbours. Extraction reads the adjusted capture. The minimap is the composed envelope adjusted (`minimap::adjusted`): scaled, the Q
 channel's extremes negated and swapped, and a real inversion's cells taken as their symmetric
 hull, which errs outward. The status bar shows `Inverted`, the gain in dB or both after the
 analysis item (`adjustment_item`).
@@ -767,8 +769,9 @@ integers are adjusted, all rounded and clamped without a warning, so inverting â
 32767. A linear layout `Linear::of` refuses is refused. After Save over or a whole Save as the
 document reads the saved file, which holds the adjusted samples, with the identity. A
 `Clipboard` remembers the adjustment it was copied under and pastes only into a capture under
-the same one (`PasteError::Adjustment`), and copies of a file saved adjusted cannot follow it
-onto the saved file.
+the same one (`PasteError::Adjustment`). Copies of a file saved adjusted cannot follow it onto
+the saved file, nor can copies made under a real inversion that the save moves to the other
+parity.
 
 ## Ruler marks and grid visibility (#71, #72)
 

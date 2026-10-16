@@ -95,7 +95,8 @@ pub struct Clipboard {
 impl Clipboard {
     /// The same samples read from `written`, the file `saved` was just written over `replaced` as.
     ///
-    /// Nothing when some copied samples of `replaced` are not in what was saved, or were saved adjusted.
+    /// Nothing when some copied samples of `replaced` are not in what was saved, were saved adjusted,
+    /// or would read otherwise under the inversion they were copied with.
     pub fn moved_onto(&self, replaced: &Source, saved: &Capture, written: &Source) -> Option<Self> {
         let moved: Vec<bool> = self
             .sources
@@ -116,7 +117,15 @@ impl Clipboard {
                 pieces.push(*piece);
                 continue;
             }
+            let mut at = piece.start;
+            // A real inversion signs a sample by its index, which a move to the other parity would turn over.
+            let signed =
+                self.adjustment.invert() && !self.sources[piece.source.0 as usize].meta.is_iq();
             for (start, len) in positions_in(saved, piece.start, piece.len)? {
+                if signed && (start ^ at) & 1 == 1 {
+                    return None;
+                }
+                at += len;
                 pieces.push(Piece {
                     source: piece.source,
                     start,
@@ -332,7 +341,7 @@ impl Editing {
         self.history.apply(capture, Selection::default());
     }
 
-    /// Put the computed samples of `computed` in place of `span`, keeping the length and `selection` selected.
+    /// Put the computed samples of `computed` from its sample `offset` in place of `span`, keeping the length and `selection` selected.
     ///
     /// Undoing it selects `selection` too, so neither changes what is selected.
     /// Refused when the computed samples are not as many as the span holds.
@@ -340,16 +349,20 @@ impl Editing {
         &mut self,
         span: SampleSpan,
         computed: Source,
+        offset: u64,
         selection: Selection,
     ) -> bool {
-        let len = computed.meta.len_samples;
-        if computed.computed.is_none() || len != span.count() || span.end() > self.len() {
+        let len = span.count();
+        if computed.computed.is_none()
+            || computed.meta.len_samples != offset + len
+            || span.end() > self.len()
+        {
             return false;
         }
         let id = SourceId(self.sources.len() as u32);
         let clip = Clip::new(vec![Piece {
             source: id,
-            start: 0,
+            start: offset,
             len,
         }]);
         let capture = self.capture().replace(span, &clip);

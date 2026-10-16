@@ -41,6 +41,8 @@ pub struct SuppressRequest {
 #[derive(Debug)]
 pub struct Suppressed {
     pub span: SampleSpan,
+    /// Where in the scratch file the span's samples begin, after a sample that aligns their parity.
+    pub offset: u64,
     pub scratch: Arc<Scratch>,
     /// The scratch file as it reads, its length the span's.
     pub meta: SignalMeta,
@@ -76,6 +78,22 @@ impl SuppressRequest {
         })
     }
 
+    /// Samples put before the computed ones so each shares the parity of the sample it replaces.
+    ///
+    /// A real inversion signs a sample by its index in its own file, so a scratch
+    /// sample read at another parity than the one it replaces would turn over
+    /// once the inversion is undone.
+    fn parity_offset(&self, start: u64) -> u64 {
+        if self.meta.is_iq() {
+            return 0;
+        }
+        let (index, offset) = self.capture.locate(start);
+        self.capture
+            .pieces()
+            .get(index)
+            .map_or(0, |piece| (piece.start + offset) % 2)
+    }
+
     /// The span the samples change in, with the taper's rise and fall within it.
     ///
     /// A time span is widened by the taper on each side, so the whole of it is
@@ -104,7 +122,6 @@ pub fn run(
     let mut source = crate::extraction::open(&request.capture, &request.sources, &request.meta)?;
     // The samples are computed as shown and stored so that the adjustment reads them back so.
     let stored = request.capture.adjustment().inverse();
-    let mut written = 0u64;
     let len = request.capture.len();
     let margin = plan.margin();
     let from = span.start().saturating_sub(margin);
@@ -131,13 +148,16 @@ pub fn run(
         Some(fill) => suppressor.filled_with(fill),
         None => suppressor,
     };
+    let offset = request.parity_offset(span.start());
     let mut file = FloatWave::create(FloatWaveRequest {
         meta: request.meta.clone(),
-        samples: span.count(),
+        samples: offset + span.count(),
         target: request.target.clone(),
         sources: request.sources.iter().flatten().cloned().collect(),
         protected: Vec::new(),
     })?;
+    file.write(&vec![[0.0; 2]; offset as usize])?;
+    let mut written = offset;
     let mut out = Vec::new();
     suppressor.push_zeros(margin - (span.start() - from), &mut out);
     let channels = request.meta.channels();
@@ -181,11 +201,12 @@ pub fn run(
             reason: error.to_string(),
         })?;
     let meta = opened.meta().clone();
-    if meta.len_samples != span.count() || meta.channels() != channels {
+    if meta.len_samples != offset + span.count() || meta.channels() != channels {
         return Err(WriteError::SourceChanged { path: saved.path });
     }
     Ok(Suppressed {
         span,
+        offset,
         scratch,
         meta,
         stamp,

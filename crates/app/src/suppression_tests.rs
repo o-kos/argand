@@ -60,7 +60,7 @@ fn edited(request: &SuppressRequest, suppressed: &Suppressed) -> Vec<f32> {
     };
     let clip = Clip::new(vec![Piece {
         source: SourceId(1),
-        start: 0,
+        start: suppressed.offset,
         len: suppressed.span.count(),
     }]);
     let capture = request.capture.replace(suppressed.span, &clip);
@@ -224,4 +224,20 @@ fn a_rectangle_of_an_inverted_real_capture_keeps_what_is_shown_around_it() {
     };
     assert!(real_level(&after, 15_000.0) < 1e-3, "{}", real_level(&after, 15_000.0));
     assert!((real_level(&after, 21_000.0) - 0.6).abs() < 1e-3);
+
+    // Undoing the inversion, the kept 3 kHz tone goes on in phase with the samples around it.
+    let mut plain = request.clone();
+    plain.capture = plain.capture.with_adjustment(argand_core::Adjustment::IDENTITY);
+    let (before, after) = (original(&plain), edited(&plain, &suppressed));
+    let phasor = |values: &[f32]| {
+        let (mut re, mut im) = (0.0, 0.0);
+        for (n, value) in values.iter().enumerate().take(29_000).skip(22_000) {
+            let turn = std::f64::consts::TAU * 3_000.0 * n as f64 / RATE;
+            re += f64::from(*value) * turn.cos();
+            im += f64::from(*value) * turn.sin();
+        }
+        (2.0 * re / 7_000.0, 2.0 * im / 7_000.0)
+    };
+    let (kept, was) = (phasor(&after), phasor(&before));
+    assert!((kept.0 - was.0).abs() < 1e-3 && (kept.1 - was.1).abs() < 1e-3, "{kept:?} {was:?}");
 }

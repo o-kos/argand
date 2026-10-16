@@ -145,7 +145,12 @@ impl Shell {
         }
         let computed =
             crate::editing::Source::computed(suppressed.scratch, suppressed.meta, suppressed.stamp);
-        if editing.replace_computed(suppressed.span, computed, finished.selection) {
+        if editing.replace_computed(
+            suppressed.span,
+            computed,
+            suppressed.offset,
+            finished.selection,
+        ) {
             self.edited(window, cx);
         }
     }
