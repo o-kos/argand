@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use argand_core::SampleSpan;
+use argand_core::{Adjustment, SampleSpan};
 
 /// Which source a piece reads from, as an index into a table the caller keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -71,12 +71,13 @@ impl Clip {
     }
 }
 
-/// A capture as an immutable list of pieces.
+/// A capture as an immutable list of pieces, read through one adjustment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Capture {
     pieces: Arc<[Piece]>,
     /// `ends[i]` is the capture sample just past piece `i`.
     ends: Arc<[u64]>,
+    adjustment: Adjustment,
 }
 
 impl Capture {
@@ -102,6 +103,21 @@ impl Capture {
         Self {
             pieces: pieces.into(),
             ends,
+            adjustment: Adjustment::IDENTITY,
+        }
+    }
+
+    /// What reading applies to every sample, the pieces holding their sources' own.
+    pub fn adjustment(&self) -> Adjustment {
+        self.adjustment
+    }
+
+    /// The same pieces read through `adjustment`.
+    #[must_use]
+    pub fn with_adjustment(&self, adjustment: Adjustment) -> Self {
+        Self {
+            adjustment,
+            ..self.clone()
         }
     }
 
@@ -190,7 +206,7 @@ impl Capture {
         let mut pieces = self.before(at);
         pieces.extend_from_slice(clip.pieces());
         pieces.extend(self.after(at));
-        Self::from_pieces(pieces)
+        Self::from_pieces(pieces).with_adjustment(self.adjustment)
     }
 
     /// The capture with `span` replaced by `clip`.
@@ -202,7 +218,7 @@ impl Capture {
         let mut pieces = self.before(span.start());
         pieces.extend_from_slice(clip.pieces());
         pieces.extend(self.after(span.end()));
-        Self::from_pieces(pieces)
+        Self::from_pieces(pieces).with_adjustment(self.adjustment)
     }
 
     /// The pieces covering capture samples before `at`.

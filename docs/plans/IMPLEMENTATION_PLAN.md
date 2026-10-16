@@ -110,6 +110,7 @@ Steps, one Issue each:
 3. The editing engine in `argand-edit`: a piece table over the memory-mapped original and inserted buffers, an undo and redo command stack and a clipboard; delete, copy and paste of a time range; saving the edited capture. Keep I and Q together. Invalidate waveform and spectrogram caches only for affected regions (#195, #196; saving over the open file is #193).
 4. Frequency band and rectangle selection, with frequency shift, low-pass filtering and decimation in `argand-dsp` for saving them (#202).
 5. Suppressing a band or a rectangle, undoable through the editing engine (#212).
+6. Inverting the spectrum and normalizing the level of the whole capture, applied while it is read and written when it is saved (#188, #190).
 
 **Done when:** cuts and pastes in multi-hour files are immediate, undo and redo remain stable, waveform and spectrogram views update correctly after edits, and a band or rectangle saves as a file that opens with the right sample rate and centre frequency.
 

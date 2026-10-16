@@ -60,13 +60,13 @@ fn edited(request: &SuppressRequest, suppressed: &Suppressed) -> Vec<f32> {
     };
     let clip = Clip::new(vec![Piece {
         source: SourceId(1),
-        start: 0,
+        start: suppressed.offset,
         len: suppressed.span.count(),
     }]);
     let capture = request.capture.replace(suppressed.span, &clip);
     let sources = vec![request.sources[0].clone(), Some(computed)];
     let mut source = crate::extraction::open(&capture, &sources, &request.meta).unwrap();
-    let mut values = vec![0.0; LEN * 2];
+    let mut values = vec![0.0; LEN * request.meta.channels()];
     let mut filled = 0;
     while filled < values.len() {
         filled += source.read(&mut values[filled..]).unwrap();
@@ -77,7 +77,7 @@ fn edited(request: &SuppressRequest, suppressed: &Suppressed) -> Vec<f32> {
 fn original(request: &SuppressRequest) -> Vec<f32> {
     let mut source: EditedSource =
         crate::extraction::open(&request.capture, &request.sources, &request.meta).unwrap();
-    let mut values = vec![0.0; LEN * 2];
+    let mut values = vec![0.0; LEN * request.meta.channels()];
     let mut filled = 0;
     while filled < values.len() {
         filled += source.read(&mut values[filled..]).unwrap();
@@ -161,4 +161,83 @@ fn a_band_too_narrow_is_refused_before_any_work() {
     let mut request = request(&dir, capture(&dir), None);
     request.band = FrequencyBand::between(REFERENCE + 1_000.0, REFERENCE + 1_000.5).unwrap();
     assert!(request.check().is_err());
+}
+
+#[test]
+fn a_band_of_an_inverted_capture_is_suppressed_where_it_is_shown() {
+    let dir = TempDir::new("suppress-inverted");
+    let mut request = request(&dir, capture(&dir), None);
+    request.capture = request
+        .capture
+        .with_adjustment(argand_core::Adjustment::IDENTITY.inverted());
+    request.band = FrequencyBand::between(REFERENCE + 8_000.0, REFERENCE + 10_000.0).unwrap();
+    let suppressed = run(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    let values = edited(&request, &suppressed);
+    let quarter = LEN / 4;
+    assert!(level(&values, 9_000.0, quarter, 3 * quarter) < 0.2 * 1e-4);
+    assert!((level(&values, -6_000.0, quarter, 3 * quarter) - 0.4).abs() < 1e-4);
+}
+
+#[test]
+fn a_rectangle_of_an_inverted_real_capture_keeps_what_is_shown_around_it() {
+    let dir = TempDir::new("suppress-inverted-real");
+    let values: Vec<f32> = (0..LEN)
+        .map(|n| {
+            let t = n as f64 / RATE;
+            (0.3 * (std::f64::consts::TAU * 3_000.0 * t).cos()
+                + 0.3 * (std::f64::consts::TAU * 9_000.0 * t).cos()) as f32
+        })
+        .collect();
+    let path = write_wav(
+        &dir.join("capture.wav"),
+        SampleType::new(Domain::Real, SampleFormat::F32),
+        RATE as u32,
+        &values,
+        1.0,
+    );
+    let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
+    let file = SourceFile {
+        meta: source.meta().clone(),
+        hints: OpenHints::default(),
+        stamp,
+        encoding: None,
+    };
+    let mut request = request(&dir, file, SampleSpan::between(20_001, 30_001));
+    request.meta.center_freq = 0.0;
+    request.capture = request
+        .capture
+        .with_adjustment(argand_core::Adjustment::new(true, 2.0).unwrap());
+    // Shown inverted, the 9 kHz tone sits at 15 kHz and the 3 kHz one at 21 kHz.
+    request.band = FrequencyBand::between(14_000.0, 16_000.0).unwrap();
+    let suppressed = run(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    let (before, after) = (original(&request), edited(&request, &suppressed));
+    let start = suppressed.span.start() as usize;
+    assert_eq!(after[..start], before[..start]);
+    let real_level = |values: &[f32], frequency: f64| {
+        let (mut re, mut im) = (0.0, 0.0);
+        for (n, value) in values.iter().enumerate().take(29_000).skip(22_000) {
+            let turn = std::f64::consts::TAU * frequency * n as f64 / RATE;
+            re += f64::from(*value) * turn.cos();
+            im += f64::from(*value) * turn.sin();
+        }
+        2.0 * re.hypot(im) / 7_000.0
+    };
+    assert!(real_level(&after, 15_000.0) < 1e-3, "{}", real_level(&after, 15_000.0));
+    assert!((real_level(&after, 21_000.0) - 0.6).abs() < 1e-3);
+
+    // Undoing the inversion, the kept 3 kHz tone goes on in phase with the samples around it.
+    let mut plain = request.clone();
+    plain.capture = plain.capture.with_adjustment(argand_core::Adjustment::IDENTITY);
+    let (before, after) = (original(&plain), edited(&plain, &suppressed));
+    let phasor = |values: &[f32]| {
+        let (mut re, mut im) = (0.0, 0.0);
+        for (n, value) in values.iter().enumerate().take(29_000).skip(22_000) {
+            let turn = std::f64::consts::TAU * 3_000.0 * n as f64 / RATE;
+            re += f64::from(*value) * turn.cos();
+            im += f64::from(*value) * turn.sin();
+        }
+        (2.0 * re / 7_000.0, 2.0 * im / 7_000.0)
+    };
+    let (kept, was) = (phasor(&after), phasor(&before));
+    assert!((kept.0 - was.0).abs() < 1e-3 && (kept.1 - was.1).abs() < 1e-3, "{kept:?} {was:?}");
 }

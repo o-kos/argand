@@ -266,6 +266,21 @@ pub fn unchanged(sources: &[Option<SourceFile>]) -> Result<(), WriteError> {
     Ok(())
 }
 
+/// `source` opened again, checked to be the file it was when first opened.
+pub fn reopen(source: &SourceFile) -> Result<Box<dyn SampleSource>, WriteError> {
+    let path = &source.meta.source;
+    // The levels the window shows, not a normalization resolved again with another budget.
+    argand_io::reopen(&source.meta, &source.hints, source.stamp).map_err(|error| {
+        match error.is_changed() {
+            true => WriteError::SourceChanged { path: path.clone() },
+            false => WriteError::Unsupported {
+                path: path.clone(),
+                reason: error.to_string(),
+            },
+        }
+    })
+}
+
 /// `capture` read through its files, each checked to be the file it was when opened, and described by `meta`.
 pub fn open(
     capture: &Capture,
@@ -278,19 +293,7 @@ pub fn open(
             opened.push(None);
             continue;
         };
-        let path = &source.meta.source;
-        // The levels the window shows, not a normalization resolved again with another budget.
-        let reader =
-            argand_io::reopen(&source.meta, &source.hints, source.stamp).map_err(|error| {
-                match error.is_changed() {
-                    true => WriteError::SourceChanged { path: path.clone() },
-                    false => WriteError::Unsupported {
-                        path: path.clone(),
-                        reason: error.to_string(),
-                    },
-                }
-            })?;
-        opened.push(Some(reader));
+        opened.push(Some(reopen(source)?));
     }
     let path = meta.source.clone();
     let mut meta = meta.clone();

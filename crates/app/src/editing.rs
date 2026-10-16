@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use argand_core::{SampleSpan, Selection, SignalMeta};
+use argand_core::{Adjustment, SampleSpan, Selection, SignalMeta};
 use argand_edit::{Capture, Clip, History, Piece, SourceId};
 use argand_io::OpenHints;
 use argand_io::write::{Encoding, SaveRequest, Segment, SourceFile, SourceStamp, Storage};
@@ -88,25 +88,44 @@ impl Source {
 pub struct Clipboard {
     sources: Vec<Source>,
     clip: Clip,
+    /// What the capture it was copied from applied to its samples.
+    adjustment: Adjustment,
 }
 
 impl Clipboard {
     /// The same samples read from `written`, the file `saved` was just written over `replaced` as.
     ///
-    /// Nothing when some copied samples of `replaced` are not in what was saved.
+    /// Nothing when some copied samples of `replaced` are not in what was saved, were saved adjusted,
+    /// or would read otherwise under the inversion they were copied with.
     pub fn moved_onto(&self, replaced: &Source, saved: &Capture, written: &Source) -> Option<Self> {
         let moved: Vec<bool> = self
             .sources
             .iter()
             .map(|source| source.same_file(replaced))
             .collect();
+        let reads_moved = self
+            .clip
+            .pieces()
+            .iter()
+            .any(|piece| moved[piece.source.0 as usize]);
+        if reads_moved && !saved.adjustment().is_identity() {
+            return None;
+        }
         let mut pieces = Vec::with_capacity(self.clip.pieces().len());
         for piece in self.clip.pieces() {
             if !moved[piece.source.0 as usize] {
                 pieces.push(*piece);
                 continue;
             }
+            let mut at = piece.start;
+            // A real inversion signs a sample by its index, which a move to the other parity would turn over.
+            let signed =
+                self.adjustment.invert() && !self.sources[piece.source.0 as usize].meta.is_iq();
             for (start, len) in positions_in(saved, piece.start, piece.len)? {
+                if signed && (start ^ at) & 1 == 1 {
+                    return None;
+                }
+                at += len;
                 pieces.push(Piece {
                     source: piece.source,
                     start,
@@ -129,6 +148,7 @@ impl Clipboard {
         Some(Self {
             sources,
             clip: Clip::new(pieces),
+            adjustment: self.adjustment,
         })
     }
 
@@ -188,10 +208,20 @@ pub enum Placement {
 /// Why a paste was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PasteError {
-    Unknown { name: String },
-    Storage { name: String },
-    Rate { name: String },
-    Kind { name: String },
+    Unknown {
+        name: String,
+    },
+    Storage {
+        name: String,
+    },
+    Rate {
+        name: String,
+    },
+    Kind {
+        name: String,
+    },
+    /// Copied from a capture inverted or levelled otherwise than this one.
+    Adjustment,
     Empty,
 }
 
@@ -209,6 +239,9 @@ impl std::fmt::Display for PasteError {
             }
             Self::Rate { name } => write!(f, "{name} has another sample rate"),
             Self::Kind { name } => write!(f, "{name} is not the same kind of signal"),
+            Self::Adjustment => f.write_str(
+                "the samples were copied with another spectrum inversion or level, copy them again",
+            ),
             Self::Empty => f.write_str("there is nothing to paste"),
         }
     }
@@ -308,7 +341,7 @@ impl Editing {
         self.history.apply(capture, Selection::default());
     }
 
-    /// Put the computed samples of `computed` in place of `span`, keeping the length and `selection` selected.
+    /// Put the computed samples of `computed` from its sample `offset` in place of `span`, keeping the length and `selection` selected.
     ///
     /// Undoing it selects `selection` too, so neither changes what is selected.
     /// Refused when the computed samples are not as many as the span holds.
@@ -316,16 +349,20 @@ impl Editing {
         &mut self,
         span: SampleSpan,
         computed: Source,
+        offset: u64,
         selection: Selection,
     ) -> bool {
-        let len = computed.meta.len_samples;
-        if computed.computed.is_none() || len != span.count() || span.end() > self.len() {
+        let len = span.count();
+        if computed.computed.is_none()
+            || computed.meta.len_samples != offset + len
+            || span.end() > self.len()
+        {
             return false;
         }
         let id = SourceId(self.sources.len() as u32);
         let clip = Clip::new(vec![Piece {
             source: id,
-            start: 0,
+            start: offset,
             len,
         }]);
         let capture = self.capture().replace(span, &clip);
@@ -341,7 +378,34 @@ impl Editing {
         Clipboard {
             sources: self.sources.clone(),
             clip: self.capture().copy(span),
+            adjustment: self.adjustment(),
         }
+    }
+
+    /// What reading applies to every sample of the current version.
+    pub fn adjustment(&self) -> Adjustment {
+        self.capture().adjustment()
+    }
+
+    /// Read the whole capture through `adjustment` from now on, keeping `selection` selected.
+    ///
+    /// Undoing it selects the same, and nothing is added when the adjustment is already in force.
+    pub fn adjust(&mut self, adjustment: Adjustment, selection: Selection) -> bool {
+        if adjustment == self.adjustment() {
+            return false;
+        }
+        let capture = self.capture().with_adjustment(adjustment);
+        self.history.set_state(selection);
+        self.history.apply(capture, selection);
+        true
+    }
+
+    /// The stored value of full scale, which a level in dBFS is relative to.
+    ///
+    /// None until the opened file's storage and units are known, which also store computed samples.
+    pub fn full_scale(&self) -> Option<f64> {
+        self.encoding?;
+        Some(self.file().storage?.full_scale())
     }
 
     /// Paste `clipboard`, selecting what was pasted.
@@ -352,6 +416,9 @@ impl Editing {
     ) -> Result<SampleSpan, PasteError> {
         if clipboard.clip.is_empty() {
             return Err(PasteError::Empty);
+        }
+        if clipboard.adjustment != self.adjustment() {
+            return Err(PasteError::Adjustment);
         }
         let mut ids = Vec::with_capacity(clipboard.sources.len());
         let mut added = Vec::new();
@@ -559,12 +626,13 @@ impl Editing {
     pub fn minimap(&self) -> Option<Snapshot> {
         self.envelopes[0].as_ref()?;
         let meta = &self.file().meta;
-        Some(crate::minimap::compose(
+        let composed = crate::minimap::compose(
             self.capture(),
             &self.envelopes,
             meta.channels(),
             meta.sample_rate,
-        ))
+        );
+        Some(crate::minimap::adjusted(composed, self.adjustment()))
     }
 
     /// Whether the current version is the file exactly as it was opened.
@@ -639,6 +707,7 @@ impl Editing {
             protected: self.protected(),
             replacing: None,
             output: argand_io::write::Output::Native,
+            adjustment: self.adjustment(),
         })
     }
 }

@@ -16,7 +16,9 @@ actions!(
         PasteClipboard,
         PasteHere,
         DeleteSelection,
-        SuppressBand
+        SuppressBand,
+        InvertSpectrum,
+        NormalizeLevel
     ]
 );
 
@@ -39,6 +41,8 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         KeyBinding::new(&command("v"), PasteClipboard, Some("Plot")),
         KeyBinding::new("delete", DeleteSelection, Some("Plot")),
         KeyBinding::new(&command("shift-m"), SuppressBand, Some("Plot")),
+        KeyBinding::new(&command("shift-i"), InvertSpectrum, Some("Plot")),
+        KeyBinding::new(&command("shift-n"), NormalizeLevel, Some("Plot")),
     ];
     if cfg!(target_os = "windows") {
         keys.push(KeyBinding::new("ctrl-y", Redo, Some("Plot")));
@@ -70,6 +74,10 @@ pub(super) struct EditCommands {
     pub paste: bool,
     pub replace: bool,
     pub suppress: bool,
+    pub invert: bool,
+    pub normalize: bool,
+    /// Whether the spectrum is read inverted, which the menu row is checked by.
+    pub inverted: bool,
 }
 
 /// What the unsaved-edits question asks.
@@ -84,14 +92,14 @@ impl Shell {
 
     /// The edits to change, none while the file under them is being replaced or has changed.
     pub(super) fn editing_mut(&mut self) -> Option<&mut Editing> {
-        if self.replacement_active || self.capture_changed() || self.suppressing.is_some() {
+        if self.replacement_active || self.capture_changed() || self.computing() {
             return None;
         }
         self.file.as_mut()?.editing.as_mut()
     }
 
     pub(super) fn edit_commands_available(&self) -> EditCommands {
-        let idle = !self.capture_changed() && self.suppressing.is_none();
+        let idle = !self.capture_changed() && !self.computing();
         let Some(editing) = self.editing().filter(|_| idle) else {
             return EditCommands::default();
         };
@@ -104,6 +112,9 @@ impl Shell {
             paste: clip,
             replace: clip && selected,
             suppress: self.can_suppress(),
+            invert: self.can_invert(),
+            normalize: self.can_normalize(),
+            inverted: editing.adjustment().invert(),
         }
     }
 
@@ -543,6 +554,12 @@ impl Shell {
             }))
             .on_action(cx.listener(|shell, _: &SuppressBand, window, cx| {
                 shell.suppress_band(window, cx);
+            }))
+            .on_action(cx.listener(|shell, _: &InvertSpectrum, window, cx| {
+                shell.invert_spectrum(window, cx);
+            }))
+            .on_action(cx.listener(|shell, _: &NormalizeLevel, window, cx| {
+                shell.normalize(window, cx);
             }))
     }
 }

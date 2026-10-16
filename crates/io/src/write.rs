@@ -11,7 +11,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use argand_core::{SampleFormat, SampleSource, SampleSpan, SignalMeta, SourceError};
+use argand_core::{Adjustment, SampleFormat, SampleSource, SampleSpan, SignalMeta, SourceError};
 use flacenc::bitsink::ByteSink;
 use flacenc::component::{BitRepr, StreamInfo};
 use flacenc::error::Verify;
@@ -81,6 +81,8 @@ pub struct SaveRequest {
     /// The file this save replaces, which may then be its target while it keeps its stamp.
     pub replacing: Option<Replacing>,
     pub output: Output,
+    /// What every written sample goes through, any other than the identity encoding every sample again.
+    pub adjustment: Adjustment,
 }
 
 /// A file a save writes over on purpose, as it was when it was opened.
@@ -123,6 +125,7 @@ impl SaveRequest {
             protected: Vec::new(),
             replacing: None,
             output: Output::Native,
+            adjustment: Adjustment::IDENTITY,
         }
     }
 
@@ -141,6 +144,7 @@ impl SaveRequest {
             protected: Vec::new(),
             replacing: None,
             output: Output::Native,
+            adjustment: Adjustment::IDENTITY,
         })
     }
 
@@ -170,6 +174,21 @@ pub enum Storage {
     },
     /// FLAC at this bit depth and channel count.
     Flac { bits: u32, channels: usize },
+}
+
+impl Storage {
+    /// The stored value of full scale, which a level in dBFS is relative to.
+    pub fn full_scale(self) -> f64 {
+        match self {
+            Self::Linear {
+                format_tag,
+                unscaled_float,
+                ..
+            } if unscaled_float || format_tag == riff::WAVE_FORMAT_IEEE_FLOAT => 1.0,
+            Self::Linear { bits, .. } => f64::from(1u32 << (bits.clamp(1, 32) - 1)),
+            Self::Flac { bits, .. } => f64::from(1u32 << (bits.clamp(1, 32) - 1)),
+        }
+    }
 }
 
 /// How `source` stores its samples, read from the file as it is now.
@@ -983,12 +1002,13 @@ fn write_linear_segments(
     let Reader::Copy { layout, .. } = &opened[0].reader else {
         return Err(WriteError::OutOfRange);
     };
-    // Only computed samples need the format to be encodable, copied ones go as they are.
+    // Only computed or adjusted samples need the format to be encodable, copied ones go as they are.
+    let adjusted = !request.adjustment.is_identity();
     let computed = request
         .sources
         .iter()
         .any(|source| source.encoding.is_some());
-    let target = match computed {
+    let target = match computed || adjusted {
         true => Some(Linear::of(layout, &request.meta.source)?),
         false => None,
     };
@@ -1003,17 +1023,25 @@ fn write_linear_segments(
         };
         let mut copied = |copied| progress(done + copied, total);
         match (source.encoding, target) {
-            (Some(encoding), Some(target)) => {
-                let computed = Computed {
+            (None, _) if !adjusted => {
+                copy_samples(partial, input, layout, path, *segment, &mut copied, cancel)?;
+            }
+            (encoding, Some(linear)) => {
+                let stored = Stored {
                     input,
                     layout,
                     path,
                     encoding,
+                    linear,
                 };
-                computed.encode_linear(partial, target, *segment, &mut copied, cancel)?;
+                let adjusted = Adjusted {
+                    adjustment: request.adjustment,
+                    channels: request.meta.channels(),
+                    first: segment.start,
+                };
+                stored.encode_linear(partial, adjusted, *segment, &mut copied, cancel)?;
             }
-            (None, _) => copy_samples(partial, input, layout, path, *segment, &mut copied, cancel)?,
-            (Some(_), None) => return Err(WriteError::OutOfRange),
+            (_, None) => return Err(WriteError::OutOfRange),
         }
         done += segment.len;
     }
@@ -1296,6 +1324,44 @@ impl Linear {
         })
     }
 
+    /// The stored value of silence, which an adjustment scales around.
+    fn zero(self) -> f64 {
+        match self {
+            Self::Unsigned8 => 128.0,
+            _ => 0.0,
+        }
+    }
+
+    /// Bytes per stored value.
+    fn width(self) -> usize {
+        match self {
+            Self::Unsigned8 => 1,
+            Self::Signed(bytes) => bytes,
+            Self::Float32 => 4,
+            Self::Float64 => 8,
+        }
+    }
+
+    /// The stored value in `bytes`, which hold exactly one.
+    fn decode(self, bytes: &[u8]) -> f64 {
+        let mut word = [0u8; 8];
+        match self {
+            Self::Unsigned8 => f64::from(bytes[0]),
+            Self::Signed(width) => {
+                word[8 - width..].copy_from_slice(bytes);
+                (i64::from_le_bytes(word) >> ((8 - width) * 8)) as f64
+            }
+            Self::Float32 => {
+                word[..4].copy_from_slice(bytes);
+                f64::from(f32::from_le_bytes([word[0], word[1], word[2], word[3]]))
+            }
+            Self::Float64 => {
+                word.copy_from_slice(bytes);
+                f64::from_le_bytes(word)
+            }
+        }
+    }
+
     /// Append a stored value, clamped to what the format holds.
     fn push(self, stored: f64, out: &mut Vec<u8>) {
         match self {
@@ -1311,12 +1377,132 @@ impl Linear {
     }
 }
 
+/// An adjustment and the index in its source of the first sample it is applied to.
+#[derive(Debug, Clone, Copy)]
+struct Adjusted {
+    adjustment: Adjustment,
+    channels: usize,
+    first: u64,
+}
+
+impl Adjusted {
+    /// `stored`, value `at` of an interleaved run from `first`, scaled around `zero`.
+    fn apply(self, stored: f64, at: usize, zero: f64) -> f64 {
+        let channels = self.channels.max(1);
+        let index = self.first + (at / channels) as u64;
+        let factor = self.adjustment.factor(channels, at % channels, index);
+        zero + factor * (stored - zero)
+    }
+
+    /// The same adjustment from `count` samples further on.
+    fn after(self, count: u64) -> Self {
+        Self {
+            first: self.first + count,
+            ..self
+        }
+    }
+}
+
+/// A linear source's stored values, encoded from computed `f32` when it has an encoding.
+struct Stored<'a> {
+    input: &'a mut File,
+    layout: &'a CopyLayout,
+    path: &'a Path,
+    encoding: Option<Encoding>,
+    /// How the output, and every source that is not computed, stores a value.
+    linear: Linear,
+}
+
+impl Stored<'_> {
+    /// Fill `values` with the stored values of `count` samples from sample `start`.
+    fn read(&mut self, start: u64, count: u64, values: &mut Vec<f64>) -> Result<(), WriteError> {
+        values.clear();
+        if let Some(encoding) = self.encoding {
+            let channels = (self.layout.block / 4).max(1) as usize;
+            let mut computed = vec![0.0f32; count as usize * channels];
+            let mut reader = Computed {
+                input: self.input,
+                layout: self.layout,
+                path: self.path,
+            };
+            reader.read(start, count, &mut computed)?;
+            values.extend(computed.iter().map(|value| encoding.apply(*value)));
+            return Ok(());
+        }
+        let changed = || WriteError::SourceChanged {
+            path: self.path.to_owned(),
+        };
+        let mut bytes = Vec::new();
+        let mut done = 0u64;
+        while done < count {
+            let (offset, left) = self.layout.locate(start + done).ok_or_else(changed)?;
+            let samples = left.min(count - done);
+            bytes.resize((samples * self.layout.block) as usize, 0);
+            self.input
+                .seek(SeekFrom::Start(offset))
+                .and_then(|_| self.input.read_exact(&mut bytes))
+                .map_err(|error| match error.kind() {
+                    std::io::ErrorKind::UnexpectedEof => changed(),
+                    _ => WriteError::Read {
+                        path: self.path.to_owned(),
+                        source: error,
+                    },
+                })?;
+            let width = self.linear.width();
+            values.extend(
+                bytes
+                    .chunks_exact(width)
+                    .map(|value| self.linear.decode(value)),
+            );
+            done += samples;
+        }
+        Ok(())
+    }
+
+    /// Encode `segment` into the output's linear storage through `adjusted`, a block at a time.
+    fn encode_linear(
+        mut self,
+        partial: &mut Partial,
+        adjusted: Adjusted,
+        segment: Segment,
+        copied: &mut dyn FnMut(u64),
+        cancel: &AtomicBool,
+    ) -> Result<(), WriteError> {
+        let channels = adjusted.channels.max(1);
+        let per_chunk = (COPY_BYTES / (8 * channels)).max(1) as u64;
+        let zero = self.linear.zero();
+        let mut values = Vec::new();
+        let mut out = Vec::new();
+        let mut done = 0u64;
+        while done < segment.len {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(WriteError::Cancelled);
+            }
+            let count = per_chunk.min(segment.len - done);
+            self.read(segment.start + done, count, &mut values)?;
+            if values.len() != count as usize * channels {
+                return Err(WriteError::SourceChanged {
+                    path: self.path.to_owned(),
+                });
+            }
+            out.clear();
+            let from = adjusted.after(done);
+            for (at, &stored) in values.iter().enumerate() {
+                self.linear.push(from.apply(stored, at, zero), &mut out);
+            }
+            partial.write(&out)?;
+            done += count;
+            copied(done);
+        }
+        Ok(())
+    }
+}
+
 /// A computed source, its `f32` samples read through the handle checked when it was opened.
 struct Computed<'a> {
     input: &'a mut File,
     layout: &'a CopyLayout,
     path: &'a Path,
-    encoding: Encoding,
 }
 
 impl Computed<'_> {
@@ -1347,38 +1533,6 @@ impl Computed<'_> {
                 filled += 1;
             }
             done += samples;
-        }
-        Ok(())
-    }
-
-    /// Encode `segment` of the computed samples into `target`, a block at a time.
-    fn encode_linear(
-        mut self,
-        partial: &mut Partial,
-        target: Linear,
-        segment: Segment,
-        copied: &mut dyn FnMut(u64),
-        cancel: &AtomicBool,
-    ) -> Result<(), WriteError> {
-        let channels = (self.layout.block / 4).max(1) as usize;
-        let per_chunk = (COPY_BYTES / (4 * channels)).max(1) as u64;
-        let mut values = vec![0.0f32; per_chunk.min(segment.len) as usize * channels];
-        let mut out = Vec::new();
-        let mut done = 0u64;
-        while done < segment.len {
-            if cancel.load(Ordering::Relaxed) {
-                return Err(WriteError::Cancelled);
-            }
-            let count = per_chunk.min(segment.len - done);
-            let values = &mut values[..count as usize * channels];
-            self.read(segment.start + done, count, values)?;
-            out.clear();
-            for &value in values.iter() {
-                target.push(self.encoding.apply(value), &mut out);
-            }
-            partial.write(&out)?;
-            done += count;
-            copied(done);
         }
         Ok(())
     }
@@ -1455,12 +1609,17 @@ impl Decoding<'_> {
                 let room = block - ints.len() / channels;
                 let want = (room as u64).min(left) as usize * channels;
                 let count = (want / channels) as u64;
+                let adjusted = Adjusted {
+                    adjustment: self.request.adjustment,
+                    channels,
+                    first: at,
+                };
                 integers(
                     reader,
                     source,
-                    at,
-                    count,
+                    (at, count),
                     self.bits,
+                    adjusted,
                     &mut values[..want],
                     &mut ints,
                 )?;
@@ -1486,19 +1645,26 @@ impl Decoding<'_> {
 fn integers(
     reader: &mut Reader,
     source: &SourceFile,
-    at: u64,
-    count: u64,
+    (at, count): (u64, u64),
     bits: u32,
+    adjusted: Adjusted,
     values: &mut [f32],
     ints: &mut Vec<i32>,
 ) -> Result<(), WriteError> {
     let path = &source.meta.source;
     let scale = f64::from(1u32 << (bits - 1));
+    let identity = adjusted.adjustment.is_identity();
     match (reader, source.encoding) {
         (Reader::Decode(exact), None) => {
             read_exactly(&mut exact.decoder, values, path)?;
-            for value in values.iter() {
-                ints.push(exact_integer(*value, scale, bits)?);
+            for (index, value) in values.iter().enumerate() {
+                let exact = exact_integer(*value, scale, bits)?;
+                if identity {
+                    ints.push(exact);
+                    continue;
+                }
+                let stored = adjusted.apply(f64::from(exact), index, 0.0);
+                ints.push(stored.round().clamp(-scale, scale - 1.0) as i32);
             }
         }
         (Reader::Copy { input, layout }, Some(encoding)) => {
@@ -1506,12 +1672,11 @@ fn integers(
                 input,
                 layout,
                 path,
-                encoding,
             };
             computed.read(at, count, values)?;
-            for value in values.iter() {
-                let stored = encoding.apply(*value).round().clamp(-scale, scale - 1.0);
-                ints.push(stored as i32);
+            for (index, value) in values.iter().enumerate() {
+                let stored = adjusted.apply(encoding.apply(*value), index, 0.0);
+                ints.push(stored.round().clamp(-scale, scale - 1.0) as i32);
             }
         }
         _ => return Err(WriteError::OutOfRange),

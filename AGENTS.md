@@ -37,7 +37,7 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 
 ## Cargo workspace architecture
 
-- **argand-core:** domain types such as `Signal`, real or complex sample metadata, `Selection`, and units. It also owns toolkit-independent render view models such as `WaveformEnvelope`, `DbGrid`, `SpectrogramImage`, and primitive lists, and the axis tick layout in `argand-core::axis`, which measures candidate labels through the `LabelMeasure` trait so that every front end places its marks by one policy. A view model's shape fields are the caller's to set, so its accessors check every coordinate against the declared shape and settle the product with `checked_mul`; one index past the end of a row is a valid offset into the next one, so an unchecked read answers with a neighbour's data that looks like a picture. The accessors differ in how strict they are, and the difference is deliberate. `SpectrogramImage::get` and `put` settle the whole buffer through `shape()` and answer nothing until it matches. `DbGrid::column`, `DbGrid::value` and `WaveformEnvelope::column` do not consult `shape()`; they check the one coordinate, settle that offset with `checked_mul` and take the cell from the slice, so a cell inside the declared shape stays readable where the buffer runs longer than that shape. It must not depend on GUI or heavy DSP code.
+- **argand-core:** domain types such as `Signal`, real or complex sample metadata, `Selection`, and units. It also owns toolkit-independent render view models such as `WaveformEnvelope`, `DbGrid`, `SpectrogramImage`, and primitive lists, and the axis tick layout in `argand-core::axis`, which measures candidate labels through the `LabelMeasure` trait so that every front end places its marks by one policy. A view model's shape fields are the caller's to set, so its accessors check every coordinate against the declared shape and settle the product with `checked_mul`; one index past the end of a row is a valid offset into the next one, so an unchecked read answers with a neighbour's data that looks like a picture. The accessors differ in how strict they are, and the difference is deliberate. `SpectrogramImage::get` and `put` settle the whole buffer through `shape()` and answer nothing until it matches. `DbGrid::column`, `DbGrid::value` and `WaveformEnvelope::column` do not consult `shape()`; they check the one coordinate, settle that offset with `checked_mul` and take the cell from the slice, so a cell inside the declared shape stays readable where the buffer runs longer than that shape. It also owns `Adjustment`, the spectral inversion and gain a capture applies to its samples as it is read (see "Inverting and normalizing (#188, #190)"). It must not depend on GUI or heavy DSP code.
 - **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, and band extraction (`extract`: frequency shift, low-pass filtering integer decimation and fractional-rate reconstruction, see "Band and rectangle selection (#202)") and band suppression (`suppress`, see "Band suppression (#212)"). Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
 - **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see "Saving (#186)"). A plain RIFF WAVE may split its samples over several `data` chunks, as KiwiSDR recorders do with a `kiwi` GNSS chunk before each (#204): `riff::WavLayout::runs` walks the chunks after the first `data` up to the stated RIFF end and returns each body as a `DataRun`, `MmapSource` reads the runs as one array and the writer copies them into one `data` chunk. `write::FloatWave` writes computed real or I/Q `f32` samples, and a `SourceFile` with an `Encoding` is such a file that a save encodes into the capture's own format (#212). RF64/BW64 and a file with nothing after its first `data` chunk are one run, without a walk. This is the future connection point for custom formats through the worker.
 - **argand-edit:** the editing engine: an immutable piece table (`Capture`) over the files a capture reads, `Clip`s of it, a `History` of versions for undo and redo, and `EditedSource`, a `SampleSource` reading a capture through one opened source per `SourceId` (see "Editing (#195, #196)"). It depends on `argand-core` only.
@@ -726,6 +726,56 @@ depth. Computed samples of another kind than the capture are refused. Untouched 
 still copied byte for byte. The opened file must still be its stamped self to give the format,
 even when none of it is left. A computed source pastes into any
 capture of the same rate and kind, and a paste checks only the sources its clip reads.
+
+## Inverting and normalizing (#188, #190)
+
+Edit → Invert spectrum (Ctrl+Shift+I in the `Plot` context, Cmd+Shift+I on macOS, a checked
+row) and Edit → Normalize level (Ctrl+Shift+N, Cmd+Shift+N) act on the whole capture, never a
+selection, and change no file until it is saved. Both are disabled while anything is selected,
+a time span, a band or a rectangle, because they would read as acting on that alone, as the
+owner decided. `argand_core::Adjustment { invert, gain }` is what a capture applies
+to every sample as it is read: inverting conjugates a complex sample and multiplies a real one
+by `(−1)^n`, and the gain scales I and Q alike (`Adjustment::factor`). It is named apart from
+the FFT transform settings on purpose. `n` is the sample's index in its own source, not its
+position in the capture, so a sample reads the same wherever a cut, paste or delete moves it;
+counted in the capture, every odd shift would negate what follows it. `argand_edit::Capture`
+carries one, kept by its edits and part of its equality, and `EditedSource` applies it to each
+piece as it reads it, so pieces always hold their sources' own samples. Each command is a version in the history (`Editing::adjust`, with the
+selection kept as suppression keeps it), marks the capture unsaved and leaves the pieces, so
+`repicture` holds the picture until the new analysis lands. Suppression computes on the
+adjusted capture, as shown, and stores its scratch samples through `Adjustment::inverse` at
+their own indices, so the adjustment reads them back as computed. A real capture's scratch file
+starts with one silent sample when that gives its samples the parity of the samples they
+replace in the span's first piece (`Suppressed::offset`), so undoing the inversion leaves them
+in phase with their neighbours. Where the span runs on into a piece of the other alignment, made
+by edits under the inversion, the computed samples over that piece turn over once the
+inversion is undone, as that piece itself turns over against the first. Extraction reads the adjusted capture. The minimap is the composed envelope adjusted (`minimap::adjusted`): scaled, the Q
+channel's extremes negated and swapped, and a real inversion's cells taken as their symmetric
+hull, which errs outward. The status bar shows `Inverted`, the gain in dB or both after the
+analysis item (`adjustment_item`).
+
+Normalize level asks nothing: the normal form is one, the peak at `levelling::TARGET`, −0.1
+dBFS, just below full scale, as the owner chose. `levelling.rs` measures the peak of the unadjusted
+capture on the save thread's shape (`saving::spawn`, `Measuring the level…` with a cancel in
+the status bar; edits and saves wait, opening a file cancels it). The peak is the largest
+`|I + jQ|`, or `|x|` for a real capture, taken piece by piece in stored units, each source
+through its own `original_sample_units` (a computed one through its encoding), because pasted
+files may be read on other scales while the gain acts on stored values. dBFS is relative to the
+stored format's full scale (`Storage::full_scale`, `Editing::full_scale`), not to the read unit
+scale that the normalization and gain hints move. The gain replaces any before it,
+applies only to the document and version measured, adds no version within 0.001 dB of the one
+in force, and a silent capture is refused.
+
+A save with any adjustment but the identity encodes every sample again
+(`SaveRequest::adjustment`, its parity from each segment's own source index): linear stored values are decoded, scaled around the format's zero (128 for 8-bit
+offset binary) and pushed through `Linear::push`, computed samples are encoded first, and FLAC
+integers are adjusted, all rounded and clamped without a warning, so inverting −32768 gives
+32767. A linear layout `Linear::of` refuses is refused. After Save over or a whole Save as the
+document reads the saved file, which holds the adjusted samples, with the identity. A
+`Clipboard` remembers the adjustment it was copied under and pastes only into a capture under
+the same one (`PasteError::Adjustment`). Copies of a file saved adjusted cannot follow it onto
+the saved file, nor can copies made under a real inversion that the save moves to the other
+parity.
 
 ## Ruler marks and grid visibility (#71, #72)
 

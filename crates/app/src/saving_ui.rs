@@ -63,7 +63,7 @@ impl Shell {
     /// Whether a save of the capture, or of its time selection, can start now.
     pub(super) fn can_save(&self, selection_only: bool) -> bool {
         self.saving.is_none()
-            && self.suppressing.is_none()
+            && !self.computing()
             && self
                 .editing()
                 .is_some_and(|editing| !editing.capture().is_empty() && editing.is_described())

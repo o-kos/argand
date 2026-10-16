@@ -200,3 +200,32 @@ fn a_source_without_an_envelope_yet_is_drawn_empty_and_incomplete() {
     assert_eq!(composed.envelope.max[12], 0.0);
     assert_eq!(composed.envelope.max[9], 9.5);
 }
+
+#[test]
+fn an_adjusted_envelope_is_conjugated_scaled_and_hulled_without_a_read() {
+    let mut iq = WaveformEnvelope::new(1, 2);
+    iq.min.copy_from_slice(&[-0.1, -0.2]);
+    iq.max.copy_from_slice(&[0.3, 0.4]);
+    let iq = adjusted(
+        finished(iq, true, 10),
+        argand_core::Adjustment::new(true, 2.0).unwrap(),
+    );
+    assert_eq!(iq.envelope.min, [-0.2, -0.8]);
+    assert_eq!(iq.envelope.max, [0.6, 0.4]);
+    assert_eq!(iq.full_scale, 0.8);
+
+    let mut real = WaveformEnvelope::new(1, 1);
+    real.min[0] = -0.1;
+    real.max[0] = 0.3;
+    let real = adjusted(finished(real, true, 10), argand_core::Adjustment::IDENTITY.inverted());
+    assert_eq!((real.envelope.min[0], real.envelope.max[0]), (-0.3, 0.3));
+}
+
+#[test]
+fn a_gain_beyond_f32_range_still_scales_a_tiny_envelope() {
+    let mut tiny = WaveformEnvelope::new(1, 1);
+    tiny.min[0] = -1e-40;
+    tiny.max[0] = 1e-40;
+    let scaled = adjusted(finished(tiny, true, 10), argand_core::Adjustment::new(false, 8.9e39).unwrap());
+    assert!(scaled.envelope.max[0].is_finite() && (scaled.envelope.max[0] - 0.89).abs() < 0.01);
+}

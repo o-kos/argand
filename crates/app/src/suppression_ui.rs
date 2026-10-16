@@ -21,7 +21,7 @@ impl Shell {
     pub(super) fn can_suppress(&self) -> bool {
         self.band.is_some()
             && self.saving.is_none()
-            && self.suppressing.is_none()
+            && !self.computing()
             && !self.replacement_active
             && !self.capture_changed()
             && self.editing().is_some_and(|editing| {
@@ -145,7 +145,12 @@ impl Shell {
         }
         let computed =
             crate::editing::Source::computed(suppressed.scratch, suppressed.meta, suppressed.stamp);
-        if editing.replace_computed(suppressed.span, computed, finished.selection) {
+        if editing.replace_computed(
+            suppressed.span,
+            computed,
+            suppressed.offset,
+            finished.selection,
+        ) {
             self.edited(window, cx);
         }
     }

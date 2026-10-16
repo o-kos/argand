@@ -4,7 +4,7 @@ use argand_core::{AccessPattern, SampleRange, SampleSource, SampleSpan, SignalMe
 
 use crate::{Capture, SourceId};
 
-/// A [`SampleSource`] over a capture, reading each piece from its own source.
+/// A [`SampleSource`] over a capture, reading each piece from its own source through the capture's adjustment.
 ///
 /// Every consumer builds its own, with its own opened sources, so no reader
 /// shares a cursor with another.
@@ -131,6 +131,7 @@ impl SampleSource for EditedSource {
     fn read(&mut self, buf: &mut [f32]) -> Result<usize, SourceError> {
         let channels = self.meta.channels();
         let usable = buf.len() / channels;
+        let adjustment = self.capture.adjustment();
         let mut written = 0;
         while written < usable && self.pos < self.meta.len_samples {
             let (index, offset) = self.capture.locate(self.pos);
@@ -142,6 +143,12 @@ impl SampleSource for EditedSource {
             }
             let want = (piece.len - offset).min((usable - written) as u64) as usize;
             let read = source.read(&mut buf[written * channels..(written + want) * channels])?;
+            // A sample keeps its sign wherever an edit moves it, so the parity is its own source's.
+            adjustment.apply(
+                &mut buf[written * channels..written * channels + read],
+                channels,
+                piece.start + offset,
+            );
             let got = read / channels;
             if got == 0 {
                 return Err(SourceError::Decode(format!(

@@ -262,12 +262,12 @@ fn computed_samples_replace_their_span_as_one_edit() {
     let mut document = editing("/a.wav", 100, 1000.0);
     document.describe_units(Some((32768.0, 0.0)));
     assert!(document.can_compute());
-    assert!(!document.replace_computed(span(10, 30), computed(&dir.join("short.wav"), 19, 1000.0), Selection::default()));
+    assert!(!document.replace_computed(span(10, 30), computed(&dir.join("short.wav"), 19, 1000.0), 0, Selection::default()));
     let rectangle = Selection {
         time: Some(span(15, 25)),
         band: argand_core::FrequencyBand::between(100.0, 200.0),
     };
-    assert!(document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), rectangle));
+    assert!(document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), 0, rectangle));
     assert_eq!(document.len(), 100);
     assert_eq!(document.marked(), rectangle);
     let pieces: Vec<(u32, u64, u64)> = document
@@ -291,7 +291,7 @@ fn a_scratch_file_goes_once_no_version_or_clipboard_reads_it() {
     let dir = scratch_dir("lifetime");
     let path = dir.join("1.wav");
     let mut document = editing("/a.wav", 100, 1000.0);
-    document.replace_computed(span(0, 10), computed(&path, 10, 1000.0), Selection::default());
+    document.replace_computed(span(0, 10), computed(&path, 10, 1000.0), 0, Selection::default());
     let clipboard = document.copy(span(0, 5));
     drop(document);
     assert!(path.exists(), "the clipboard still reads it");
@@ -304,7 +304,7 @@ fn a_scratch_file_goes_once_no_version_or_clipboard_reads_it() {
 fn computed_samples_paste_into_a_capture_stored_otherwise_of_the_same_rate_and_kind() {
     let dir = scratch_dir("paste");
     let mut source = editing("/a.wav", 100, 1000.0);
-    source.replace_computed(span(0, 10), computed(&dir.join("1.wav"), 10, 1000.0), Selection::default());
+    source.replace_computed(span(0, 10), computed(&dir.join("1.wav"), 10, 1000.0), 0, Selection::default());
     let clipboard = source.copy(span(0, 10));
     let mut other = Editing::new(meta("/b.wav", 50, 1000.0), OpenHints::default());
     other.describe_file(
@@ -341,7 +341,7 @@ fn computed_samples_paste_into_a_capture_stored_otherwise_of_the_same_rate_and_k
 fn the_picture_stays_over_samples_computed_in_place_and_brought_back() {
     let dir = scratch_dir("picture");
     let mut document = editing("/a.wav", 100, 1000.0);
-    document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), Selection::default());
+    document.replace_computed(span(10, 30), computed(&dir.join("1.wav"), 20, 1000.0), 0, Selection::default());
     let moved = document.repicture();
     assert_eq!(moved(5), Some(5));
     assert_eq!(moved(20), Some(20));
@@ -356,7 +356,7 @@ fn a_save_of_computed_samples_reads_the_opened_file_first_and_encodes_them() {
     let dir = scratch_dir("save");
     let mut document = editing("/a.wav", 100, 1000.0);
     document.describe_units(Some((32768.0, 0.0)));
-    document.replace_computed(span(0, 100), computed(&dir.join("1.wav"), 100, 1000.0), Selection::default());
+    document.replace_computed(span(0, 100), computed(&dir.join("1.wav"), 100, 1000.0), 0, Selection::default());
     let request = document.save_request(None, PathBuf::from("/b.wav")).unwrap();
     assert_eq!(request.sources.len(), 2);
     assert_eq!(request.sources[0].meta.source, PathBuf::from("/a.wav"));
@@ -371,4 +371,70 @@ fn a_save_of_computed_samples_reads_the_opened_file_first_and_encodes_them() {
     assert_eq!(request.segments.len(), 1);
     assert_eq!(request.segments[0].source, 1);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_adjustment_is_a_version_that_keeps_the_pieces_and_the_selection() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let selected = Selection::time(span(10, 20));
+    let inverted = Adjustment::IDENTITY.inverted();
+    assert!(document.adjust(inverted, selected));
+    assert!(!document.adjust(inverted, selected), "nothing new to add");
+    assert_eq!(document.adjustment(), inverted);
+    assert_eq!(document.marked(), selected);
+    assert!(document.is_dirty() && !document.is_untouched());
+    let request = document.save_request(Some(span(5, 50)), PathBuf::from("/b.wav")).unwrap();
+    assert_eq!(request.adjustment, inverted);
+    assert!(document.undo());
+    assert_eq!(document.marked(), selected);
+    assert!(document.adjustment().is_identity() && document.is_untouched());
+}
+
+#[test]
+fn a_copy_pastes_only_under_the_adjustment_it_was_copied_under() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let before = document.copy(span(0, 10));
+    document.adjust(Adjustment::new(false, 2.0).unwrap(), Selection::default());
+    assert_eq!(
+        document.paste(&before, Placement::At(0)),
+        Err(PasteError::Adjustment)
+    );
+    let after = document.copy(span(0, 10));
+    assert!(document.paste(&after, Placement::At(0)).is_ok());
+}
+
+#[test]
+fn copies_of_a_file_saved_adjusted_cannot_follow_it() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let clipboard = document.copy(span(60, 70));
+    document.adjust(Adjustment::IDENTITY.inverted(), Selection::default());
+    let written = document.written_source();
+    assert!(clipboard.moved_onto(document.file(), document.capture(), &written).is_none());
+}
+
+#[test]
+fn full_scale_is_the_stored_full_scale_once_the_units_are_known() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    assert_eq!(document.full_scale(), None, "the reader's units are not known yet");
+    document.describe_units(Some((32768.0 / 4.0, 0.0)));
+    assert_eq!(document.full_scale(), Some(32768.0));
+}
+
+#[test]
+fn a_copy_under_a_real_inversion_cannot_follow_its_samples_to_the_other_parity() {
+    let mut meta = meta("/a.wav", 100, 1000.0);
+    meta.sample_type = SampleType::new(Domain::Real, SampleFormat::I16);
+    let mut document = Editing::new(meta, OpenHints::default());
+    document.adjust(Adjustment::IDENTITY.inverted(), Selection::default());
+    let odd = document.copy(span(61, 62));
+    let even = document.copy(span(60, 62));
+    document.undo();
+    document.delete(span(0, 1));
+    let written = document.written_source();
+    assert!(odd.moved_onto(document.file(), document.capture(), &written).is_none());
+    assert!(even.moved_onto(document.file(), document.capture(), &written).is_none());
+    document.undo();
+    document.delete(span(0, 2));
+    let written = document.written_source();
+    assert!(odd.moved_onto(document.file(), document.capture(), &written).is_some());
 }

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use argand_core::{FrequencyBand, SampleSource, SampleSpan, SignalMeta};
+use argand_core::{Adjustment, FrequencyBand, SampleSource, SampleSpan, SignalMeta};
 use argand_dsp::{NoiseFill, NoiseFloor, SuppressPlan, Suppressor};
 use argand_edit::Capture;
 use argand_io::write::{FloatWave, FloatWaveRequest, SourceFile, SourceStamp, WriteError};
@@ -41,6 +41,8 @@ pub struct SuppressRequest {
 #[derive(Debug)]
 pub struct Suppressed {
     pub span: SampleSpan,
+    /// Where in the scratch file the span's samples begin, after a sample that aligns their parity.
+    pub offset: u64,
     pub scratch: Arc<Scratch>,
     /// The scratch file as it reads, its length the span's.
     pub meta: SignalMeta,
@@ -76,6 +78,22 @@ impl SuppressRequest {
         })
     }
 
+    /// Samples put before the computed ones so each shares the parity of the sample it replaces.
+    ///
+    /// A real inversion signs a sample by its index in its own file, so a scratch
+    /// sample read at another parity than the one it replaces would turn over
+    /// once the inversion is undone.
+    fn parity_offset(&self, start: u64) -> u64 {
+        if self.meta.is_iq() {
+            return 0;
+        }
+        let (index, offset) = self.capture.locate(start);
+        self.capture
+            .pieces()
+            .get(index)
+            .map_or(0, |piece| (piece.start + offset) % 2)
+    }
+
     /// The span the samples change in, with the taper's rise and fall within it.
     ///
     /// A time span is widened by the taper on each side, so the whole of it is
@@ -102,6 +120,8 @@ pub fn run(
     let plan = request.plan()?;
     let (span, rise, fall) = request.region(plan.taper()).ok_or(WriteError::OutOfRange)?;
     let mut source = crate::extraction::open(&request.capture, &request.sources, &request.meta)?;
+    // The samples are computed as shown and stored so that the adjustment reads them back so.
+    let stored = request.capture.adjustment().inverse();
     let len = request.capture.len();
     let margin = plan.margin();
     let from = span.start().saturating_sub(margin);
@@ -128,13 +148,16 @@ pub fn run(
         Some(fill) => suppressor.filled_with(fill),
         None => suppressor,
     };
+    let offset = request.parity_offset(span.start());
     let mut file = FloatWave::create(FloatWaveRequest {
         meta: request.meta.clone(),
-        samples: span.count(),
+        samples: offset + span.count(),
         target: request.target.clone(),
         sources: request.sources.iter().flatten().cloned().collect(),
         protected: Vec::new(),
     })?;
+    file.write(&vec![[0.0; 2]; offset as usize])?;
+    let mut written = offset;
     let mut out = Vec::new();
     suppressor.push_zeros(margin - (span.start() - from), &mut out);
     let channels = request.meta.channels();
@@ -156,12 +179,15 @@ pub fn run(
             return Err(WriteError::SourceChanged { path: path.clone() });
         }
         suppressor.push(&buffer[..read], channels, &mut out);
+        store(stored, &mut out, channels, written);
+        written += out.len() as u64;
         file.write(&out)?;
         out.clear();
         done += (read / channels) as u64;
         progress(measured + done, total);
     }
     suppressor.push_zeros(suppressor.wanted(), &mut out);
+    store(stored, &mut out, channels, written);
     file.write(&out)?;
     if cancel.load(Ordering::Relaxed) {
         return Err(WriteError::Cancelled);
@@ -175,15 +201,23 @@ pub fn run(
             reason: error.to_string(),
         })?;
     let meta = opened.meta().clone();
-    if meta.len_samples != span.count() || meta.channels() != channels {
+    if meta.len_samples != offset + span.count() || meta.channels() != channels {
         return Err(WriteError::SourceChanged { path: saved.path });
     }
     Ok(Suppressed {
         span,
+        offset,
         scratch,
         meta,
         stamp,
     })
+}
+
+/// Turn computed samples into what `stored` reads back as them, the first being sample `first` of the scratch file.
+fn store(stored: Adjustment, samples: &mut [[f32; 2]], channels: usize, first: u64) {
+    for (offset, sample) in samples.iter_mut().enumerate() {
+        stored.apply(&mut sample[..channels], channels, first + offset as u64);
+    }
 }
 
 /// Measure the noise beside the band over `span` of `source`, reporting samples read.
