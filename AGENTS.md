@@ -744,10 +744,12 @@ piece as it reads it, so pieces always hold their sources' own samples. Each com
 selection kept as suppression keeps it), marks the capture unsaved and leaves the pieces, so
 `repicture` holds the picture until the new analysis lands. Suppression computes on the
 adjusted capture, as shown, and stores its scratch samples through `Adjustment::inverse` at
-their own indices, so the adjustment reads them back as computed; a real capture's scratch file
-starts with one silent sample when that gives each computed sample the parity of the one it
-replaces (`Suppressed::offset`), so undoing the inversion leaves them in phase with their
-neighbours. Extraction reads the adjusted capture. The minimap is the composed envelope adjusted (`minimap::adjusted`): scaled, the Q
+their own indices, so the adjustment reads them back as computed. A real capture's scratch file
+starts with one silent sample when that gives its samples the parity of the samples they
+replace in the span's first piece (`Suppressed::offset`), so undoing the inversion leaves them
+in phase with their neighbours. Where the span runs on into a piece of the other alignment, made
+by edits under the inversion, the computed samples over that piece turn over once the
+inversion is undone, as that piece itself turns over against the first. Extraction reads the adjusted capture. The minimap is the composed envelope adjusted (`minimap::adjusted`): scaled, the Q
 channel's extremes negated and swapped, and a real inversion's cells taken as their symmetric
 hull, which errs outward. The status bar shows `Inverted`, the gain in dB or both after the
 analysis item (`adjustment_item`).
