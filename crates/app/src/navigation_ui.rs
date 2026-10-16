@@ -152,14 +152,14 @@ impl PlotGeometry {
         self,
         pointer: Option<gpui_kit::Point<Pixels>>,
         panning: bool,
-        selecting: bool,
+        selecting: Option<gpui_kit::CursorStyle>,
         space: bool,
     ) -> Option<gpui_kit::CursorStyle> {
         if panning {
             return None;
         }
-        if selecting {
-            return Some(gpui_kit::CursorStyle::Crosshair);
+        if let Some(cursor) = selecting {
+            return Some(cursor);
         }
         let position = pointer?;
         (space && self.spectrum.contains(&position) && !self.controls_at(position))
@@ -167,7 +167,7 @@ impl PlotGeometry {
     }
 
     /// Whether a left press here starts a time selection rather than a pan.
-    fn selects_at(self, position: gpui_kit::Point<Pixels>) -> bool {
+    pub(super) fn selects_at(self, position: gpui_kit::Point<Pixels>) -> bool {
         self.spectrum.contains(&position) && !self.controls_at(position)
     }
 
@@ -178,7 +178,7 @@ impl PlotGeometry {
             .any(|hint| rect_contains(hint.bounds, position))
     }
 
-    fn controls_at(self, position: gpui_kit::Point<Pixels>) -> bool {
+    pub(super) fn controls_at(self, position: gpui_kit::Point<Pixels>) -> bool {
         self.unit_at(position)
             || self
                 .zoom_zones
@@ -214,7 +214,7 @@ impl PlotGeometry {
         )
     }
 
-    fn fractions(self, position: gpui_kit::Point<Pixels>) -> (f64, f64) {
+    pub(super) fn fractions(self, position: gpui_kit::Point<Pixels>) -> (f64, f64) {
         self.orientation.fractions(
             f32::from(position.x - self.spectrum.left()) as f64
                 / f32::from(self.spectrum.size.width) as f64,
@@ -223,7 +223,7 @@ impl PlotGeometry {
         )
     }
 
-    fn minimap_fraction(self, position: gpui_kit::Point<Pixels>) -> f64 {
+    pub(super) fn minimap_fraction(self, position: gpui_kit::Point<Pixels>) -> f64 {
         let delta = position - self.minimap.origin;
         f32::from(self.orientation.axes(delta.x, delta.y).0) as f64
             / f32::from(
@@ -280,20 +280,50 @@ impl PlotGeometry {
     }
 }
 
-/// A time selection being dragged out from the boundary it was pressed at.
+/// A selection being dragged out from the boundary it was pressed at, or reshaped or moved.
 #[derive(Clone, Copy)]
 pub(super) struct Selecting {
     /// The sample the drag started at, unless it selects a band alone.
-    anchor: Option<u64>,
+    pub(super) anchor: Option<u64>,
     /// The frequency in hertz the drag started at, when it selects a band or a rectangle.
-    anchor_hz: Option<f64>,
-    origin: gpui_kit::Point<Pixels>,
+    pub(super) anchor_hz: Option<f64>,
+    pub(super) origin: gpui_kit::Point<Pixels>,
     /// Set once the pointer has gone far enough for this to be a drag and not a click.
-    moved: bool,
+    pub(super) moved: bool,
+    /// The time span kept while only a band edge moves.
+    pub(super) keep_time: Option<argand_core::SampleSpan>,
+    /// The band kept while only a time edge moves.
+    pub(super) keep_band: Option<argand_core::FrequencyBand>,
+    /// Whether the time follows the minimap, which spans the whole capture.
+    pub(super) minimap: bool,
+    /// Whether a click that never became a drag clears the selection.
+    pub(super) clears: bool,
+    /// The selection as it was when a drag inside it began to move it whole.
+    pub(super) moving: Option<argand_core::Selection>,
+    /// The cursor the gesture keeps while it lasts.
+    pub(super) cursor: gpui_kit::CursorStyle,
+}
+
+impl Selecting {
+    /// A new selection from the press at `origin`.
+    fn fresh(origin: gpui_kit::Point<Pixels>, anchor: Option<u64>, anchor_hz: Option<f64>) -> Self {
+        Self {
+            anchor,
+            anchor_hz,
+            origin,
+            moved: false,
+            keep_time: None,
+            keep_band: None,
+            minimap: false,
+            clears: true,
+            moving: None,
+            cursor: gpui_kit::CursorStyle::Crosshair,
+        }
+    }
 }
 
 /// The physical frequency at `fraction` down from the top of the visible band `hertz`.
-fn hertz(hertz: (f64, f64), fraction: f64) -> f64 {
+pub(super) fn hertz(hertz: (f64, f64), fraction: f64) -> f64 {
     hertz.1 - fraction * (hertz.1 - hertz.0)
 }
 
@@ -523,18 +553,9 @@ impl Shell {
         }
     }
 
-    /// The selection as the status bar shows it, in the rulers' units.
+    /// The band of a selection as the status bar shows it, the time span being labelled on the plot.
     pub(super) fn selection_readout(&self) -> Option<String> {
-        let meta = self.file.as_ref()?.state.document.meta()?;
-        let time = self
-            .selection
-            .and_then(|span| span.within(meta.len_samples))
-            .map(|span| self.session.time_ruler.selection(span, meta.sample_rate));
-        let band = self.band.and_then(|band| self.band_readout(band));
-        match (time, band) {
-            (Some(time), Some(band)) => Some(format!("{time}, {band}")),
-            (time, band) => time.or(band),
-        }
+        self.band.and_then(|band| self.band_readout(band))
     }
 
     /// A band's edges and width in the frequency ruler's unit, to the precision of one row.
@@ -878,16 +899,26 @@ impl plot_view::PlotView {
         self.selecting = None;
         let on_spectrum = geometry.selects_at(event.position);
         let on_ruler = geometry.frequency_ruler.contains(&event.position);
+        let grabbed = (event.button == MouseButton::Left && !self.space)
+            .then(|| self.grab_selection(event, geometry))
+            .flatten();
+        if let Some(selecting) = grabbed {
+            self.selecting = Some(selecting);
+            if selecting.moved {
+                self.select_to(event.position, cx);
+            }
+            cx.notify();
+            return;
+        }
         if event.button == MouseButton::Left && !self.space && (on_spectrum || on_ruler) {
             let (time, frequency) = geometry.fractions(event.position);
             let view = snapshot.extents.time.view;
-            self.selecting = Some(Selecting {
-                anchor: on_spectrum.then(|| view.boundary(time)),
-                anchor_hz: (on_ruler || event.modifiers.control)
+            self.selecting = Some(Selecting::fresh(
+                event.position,
+                on_spectrum.then(|| view.boundary(time)),
+                (on_ruler || event.modifiers.control)
                     .then(|| hertz(snapshot.extents.hertz, frequency)),
-                origin: event.position,
-                moved: false,
-            });
+            ));
             cx.notify();
             return;
         }
@@ -1050,26 +1081,36 @@ impl plot_view::PlotView {
         let delta = position - selecting.origin;
         selecting.moved |= f32::from(delta.x).hypot(f32::from(delta.y)) >= CLICK_SLOP;
         self.selecting = Some(selecting);
-        if selecting.moved {
-            let (time, frequency) = geometry.fractions(position);
-            let view = snapshot.extents.time.view;
-            let span = selecting
-                .anchor
-                .map(|anchor| argand_core::SampleSpan::between(anchor, view.boundary(time)));
-            let band = selecting.anchor_hz.map(|anchor| {
-                argand_core::FrequencyBand::between(
-                    anchor,
-                    hertz(snapshot.extents.hertz, frequency),
-                )
-            });
-            // Each axis the gesture selects must have some extent, or nothing is selected.
-            let selection = match (span, band) {
-                (Some(None), _) | (_, Some(None)) => None,
-                (time, band) => Some(argand_core::Selection {
-                    time: time.flatten(),
-                    band: band.flatten(),
-                }),
-            };
+        if !selecting.moved {
+            return;
+        }
+        if let Some(from) = selecting.moving {
+            let moved = self.moved_selection(from, selecting.origin, position);
+            cx.emit(plot_view::PlotIntent::Select(moved));
+            return;
+        }
+        let (time, frequency) = geometry.fractions(position);
+        let boundary = match selecting.minimap {
+            true => View::full(snapshot.extents.time.total)
+                .boundary(geometry.minimap_fraction(position)),
+            false => snapshot.extents.time.view.boundary(time),
+        };
+        let span = selecting
+            .anchor
+            .map(|anchor| argand_core::SampleSpan::between(anchor, boundary));
+        let band = selecting.anchor_hz.map(|anchor| {
+            argand_core::FrequencyBand::between(anchor, hertz(snapshot.extents.hertz, frequency))
+        });
+        // Each axis the gesture selects must have some extent, or nothing is selected.
+        let selection = match (span, band) {
+            (Some(None), _) | (_, Some(None)) => None,
+            (time, band) => Some(argand_core::Selection {
+                time: time.flatten().or(selecting.keep_time),
+                band: band.flatten().or(selecting.keep_band),
+            }),
+        };
+        // An edge laid on its partner leaves the selection as it last was.
+        if selection.is_some() || selecting.clears {
             cx.emit(plot_view::PlotIntent::Select(selection));
         }
     }
@@ -1086,7 +1127,7 @@ impl plot_view::PlotView {
             if self
                 .selecting
                 .take()
-                .is_some_and(|selecting| !selecting.moved)
+                .is_some_and(|selecting| !selecting.moved && selecting.clears)
             {
                 cx.emit(plot_view::PlotIntent::Select(None));
             }
@@ -1395,20 +1436,20 @@ mod tests {
         let spectrum = Some(point(px(60.), px(100.)));
         let ruler = Some(point(px(60.), px(160.)));
         assert_eq!(
-            geometry.selection_cursor(spectrum, false, false, true),
+            geometry.selection_cursor(spectrum, false, None, true),
             Some(OpenHand)
         );
-        assert_eq!(geometry.selection_cursor(ruler, false, false, true), None);
+        assert_eq!(geometry.selection_cursor(ruler, false, None, true), None);
         assert_eq!(
-            geometry.selection_cursor(spectrum, false, false, false),
+            geometry.selection_cursor(spectrum, false, None, false),
             None
         );
         assert_eq!(
-            geometry.selection_cursor(ruler, false, true, false),
+            geometry.selection_cursor(ruler, false, Some(gpui_kit::CursorStyle::Crosshair), false),
             Some(Crosshair)
         );
         assert_eq!(
-            geometry.selection_cursor(spectrum, true, false, true),
+            geometry.selection_cursor(spectrum, true, None, true),
             None,
             "a pan in progress keeps its closed hand"
         );

@@ -23,6 +23,10 @@ mod cursor_guides;
 pub(crate) use cursor_guides::Readout;
 pub use cursor_guides::{BadgeMetrics, CursorGuides, frequency_unit};
 
+#[path = "selection_badges.rs"]
+mod selection_badges;
+pub use selection_badges::SelectionBadges;
+
 /// Room between a label and whatever it labels.
 const LABEL_PAD: f32 = 9.0;
 /// Space between the complete axis layout and adjacent panels or window edges.
@@ -460,6 +464,24 @@ impl Labels {
             font_id,
             widest,
         }
+    }
+
+    /// One label in several colours, each run `(bytes, colour)` in order.
+    fn shape_runs(&self, text: &str, runs: &[(usize, Hsla)]) -> gpui_kit::ShapedLine {
+        let runs: Vec<gpui_kit::TextRun> = runs
+            .iter()
+            .filter(|(len, _)| *len > 0)
+            .map(|&(len, color)| gpui_kit::TextRun {
+                len,
+                font: self.font.clone(),
+                color,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            })
+            .collect();
+        self.text
+            .shape_line(text.to_owned().into(), px(LABEL_SIZE), &runs, None)
     }
 
     /// One label, shaped and ready to paint.

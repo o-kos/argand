@@ -434,8 +434,36 @@ open hand, and a selection in progress keeps the crosshair. Shell keeps `selecti
 file opens and never persists it; navigation and orientation changes keep it.
 The snapshot carries it as view fractions (`View::fractions_of`); the spectrum
 and the minimap tint it with `blue_light` at 0.3 under the grid
-(`waveform::time_band`, at least one device pixel wide), and the status bar shows
-start, end and length in the time ruler's units (`time_ruler::Mode::selection`).
+(`waveform::time_band`, at least one device pixel wide).
+
+## Selection on the plot (#183)
+
+A time selection carries its readouts as badges over the plot (`axes::SelectionBadges`,
+`selection_badges.rs`), in the Alt badge look: the start and the end outside their edges on
+the low-frequency side (the bottom, or the left in vertical orientation), the length over the
+middle of the visible selection on the other side. `time_ruler::Mode::counters` gives the
+three values exact to the sample in the ruler's mode, each padded on the left to the width the
+capture's own length takes, its padding drawn as zeros, with the zeros and separators before
+the first significant digit (never the units digit) dimmed, so a value keeps its width while
+an edge moves. A hidden edge has no badge; badges stay inside the plot, the end badge goes
+past the start badge where they would overlap and is dropped without room, and they take no
+input, painted over the grid and under the zoom pairs and the Alt guides. The status bar shows
+only a band's edges.
+
+`selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
+every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
+pixels of an edge grabs it (`Grab::Edges`): a time edge on the spectrum along the band's
+extent and on the minimap, a band edge on the spectrum along the time extent and on the
+frequency ruler, both at a corner. The other edge is the anchor and the axis not grabbed is
+kept (`Selecting::keep_time`, `keep_band`), so dragging past the other edge swaps them and an
+edge laid on its partner leaves the selection as it was; a click on an edge changes nothing.
+Inside the selection on the spectrum (`Grab::Inside`) a drag moves it whole
+(`PlotView::moved_selection`), its length and width kept, held to the capture's time and band;
+a click there clears it. Shift+press moves the nearer edge of each selected axis to the
+pointer and keeps dragging it. The pointer shows the resize cursor across the grabbed axis,
+a diagonal at a corner, an open hand inside and a closed hand while moving
+(`selection_gestures::grab_cursor`, `PlotView::hover_cursor`). Space and the middle button
+still pan everywhere.
 
 ## Band and rectangle selection (#202)
 

@@ -32,6 +32,12 @@ pub(super) struct PlotSnapshot {
     pub pointer_in_window: bool,
     /// The selection as fractions of the visible picture, where any of it shows.
     pub selection: Option<waveform::Selected>,
+    /// The selection in samples and hertz, which its gestures change.
+    pub selected: argand_core::Selection,
+    /// The capture's band in hertz, which a band's edges stop at.
+    pub capture_band: Option<(f64, f64)>,
+    /// A time selection's readouts on the plot.
+    pub badges: Option<axes::SelectionBadges>,
     /// A finished save, said over the picture until the next input.
     pub notice: Option<gpui_kit::SharedString>,
     /// Which edit commands the spectrum's context menu can offer.
@@ -355,9 +361,10 @@ impl Render for PlotView {
                     .selection_cursor(
                         self.pointer,
                         self.panning(),
-                        self.selecting.is_some(),
+                        self.selecting.map(|selecting| selecting.cursor),
                         self.space,
                     )
+                    .or_else(|| self.hover_cursor())
                     .unwrap_or_else(|| {
                         geometry.cursor(
                             self.pointer,
@@ -550,6 +557,9 @@ mod tests {
             show_scale_ui: false,
             pointer_in_window: true,
             selection: None,
+            selected: argand_core::Selection::default(),
+            capture_band: None,
+            badges: None,
             notice: None,
             edit: Default::default(),
         }
@@ -1815,6 +1825,140 @@ mod tests {
                 anchor: 0.5,
             })],
             "the pairs that return work"
+        );
+    }
+
+    /// Show `selection` on the plot, as the shell does after a gesture.
+    fn show_selection(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        selection: argand_core::Selection,
+    ) {
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                    plot.snapshot.as_mut().unwrap().selected = selection;
+                    cx.notify();
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    /// Where `sample` lies across the spectrum.
+    fn x_of(spectrum: Bounds<Pixels>, sample: u64) -> Pixels {
+        let view = snapshot().extents.time.view;
+        let fraction = (sample - view.start) as f32 / view.len as f32;
+        spectrum.left() + spectrum.size.width * fraction
+    }
+
+    #[gpui_kit::test]
+    fn dragging_an_edge_reshapes_the_selection_and_swaps_past_the_other(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let centre = spectrum.center();
+        let (start, end) = (
+            boundary_at(spectrum, centre.x - px(50.)),
+            boundary_at(spectrum, centre.x + px(50.)),
+        );
+        show_selection(cx, handle, span(start, end).unwrap());
+        let edge = point(x_of(spectrum, end), centre.y);
+        let past = point(centre.x - px(100.), centre.y);
+        left_drag(cx, handle, edge, past, gpui_kit::Modifiers::default());
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            span(boundary_at(spectrum, past.x), start),
+            "the start stays and the end goes past it"
+        );
+        left_drag(cx, handle, edge, edge, gpui_kit::Modifiers::default());
+        assert!(
+            selections(cx, handle).is_empty(),
+            "a click on an edge keeps the selection"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_drag_inside_moves_the_whole_selection(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let centre = spectrum.center();
+        let (start, end) = (
+            boundary_at(spectrum, centre.x - px(50.)),
+            boundary_at(spectrum, centre.x + px(50.)),
+        );
+        show_selection(cx, handle, span(start, end).unwrap());
+        left_drag(
+            cx,
+            handle,
+            centre,
+            centre + point(px(80.), px(0.)),
+            gpui_kit::Modifiers::default(),
+        );
+        let view = snapshot().extents.time.view;
+        let shift =
+            (80. / f64::from(f32::from(spectrum.size.width)) * view.len as f64).round() as u64;
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            span(start + shift, end + shift)
+        );
+        left_drag(cx, handle, centre, centre, gpui_kit::Modifiers::default());
+        assert_eq!(selections(cx, handle), [None], "a click inside clears it");
+    }
+
+    #[gpui_kit::test]
+    fn shift_click_moves_the_nearer_edge_to_the_pointer(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let centre = spectrum.center();
+        let (start, end) = (
+            boundary_at(spectrum, centre.x - px(50.)),
+            boundary_at(spectrum, centre.x + px(50.)),
+        );
+        show_selection(cx, handle, span(start, end).unwrap());
+        let at = centre + point(px(120.), px(0.));
+        let shift = gpui_kit::Modifiers {
+            shift: true,
+            ..Default::default()
+        };
+        left_drag(cx, handle, at, at, shift);
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            span(start, boundary_at(spectrum, at.x))
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_band_edge_drags_on_the_frequency_ruler_and_the_cursor_says_so(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let ruler = frequency_ruler(cx, handle);
+        let selected = argand_core::Selection {
+            time: None,
+            band: band(hertz_at(0.3), hertz_at(0.6)),
+        };
+        show_selection(cx, handle, selected);
+        let y = |fraction: f32| spectrum.top() + spectrum.size.height * fraction;
+        let edge = point(ruler.center().x, y(0.3));
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(edge, None, gpui_kit::Modifiers::default());
+        cx.run_until_parked();
+        let cursor = handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().read(cx).hover_cursor()
+            })
+            .unwrap();
+        assert_eq!(cursor, Some(gpui_kit::CursorStyle::ResizeUpDown));
+        let to = point(edge.x, y(0.1));
+        left_drag(cx, handle, edge, to, gpui_kit::Modifiers::default());
+        let down = |y: Pixels| {
+            f32::from(y - spectrum.top()) as f64 / f32::from(spectrum.size.height) as f64
+        };
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            Some(argand_core::Selection {
+                time: None,
+                band: band(hertz_at(down(to.y)), hertz_at(0.6)),
+            })
         );
     }
 }

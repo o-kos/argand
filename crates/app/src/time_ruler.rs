@@ -38,42 +38,97 @@ impl Mode {
     }
 }
 
+/// One value of a selection readout, as wide as the capture's own length and with its insignificant lead dimmed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Counter {
+    pub text: String,
+    /// The bytes of `text` drawn dimmed, zeros and separators before the first significant digit.
+    pub dim: std::ops::Range<usize>,
+}
+
 impl Mode {
-    /// A selection as its start, end and length, exact to the sample in this mode's units.
+    /// A selection's start, end and length, exact to the sample in this mode's units.
     ///
     /// Samples name the first and the last sample selected, the way the ruler
     /// numbers them. Clock and seconds give the boundaries in time, with as many
-    /// decimals as one sample needs, and fall back to samples where seconds
-    /// cannot tell neighbouring samples apart.
-    pub fn selection(self, span: argand_core::SampleSpan, rate: f64) -> String {
-        let Some(precision) = exact_time_precision(span, rate).filter(|&precision| match self {
+    /// decimals as one sample of the capture needs, and fall back to samples
+    /// where seconds cannot tell neighbouring samples apart. Each value is as wide
+    /// as the capture's `total` samples take, so it keeps its width while an edge
+    /// is dragged.
+    pub fn counters(self, span: argand_core::SampleSpan, rate: f64, total: u64) -> [Counter; 3] {
+        let whole = argand_core::SampleSpan::between(0, total.max(span.end())).unwrap_or(span);
+        let precision = exact_time_precision(whole, rate).filter(|&precision| match self {
             Self::Samples => false,
             Self::Clock => precision <= CLOCK_DECIMALS,
             Self::Seconds => true,
-        }) else {
-            return format!(
-                "#{} – #{} ({})",
-                crate::numbers::number(span.start()),
-                crate::numbers::number(span.end() - 1),
-                crate::numbers::number(span.count())
-            );
+        });
+        let Some(precision) = precision else {
+            let index = |sample: u64| format!("#{}", crate::numbers::number(sample));
+            let last = whole.end() - 1;
+            return [
+                counter(&index(span.start()), &index(last)),
+                counter(&index(span.end() - 1), &index(last)),
+                counter(
+                    &crate::numbers::number(span.count()),
+                    &crate::numbers::number(whole.count()),
+                ),
+            ];
         };
-        let end = span.end() as f64 / rate;
+        let duration = whole.end() as f64 / rate;
         let time = |seconds: f64| match self {
             Self::Clock => crate::numbers::current().axis_label(
-                &axis::format_time(seconds, end, 10_f64.powi(-(precision as i32))),
+                &axis::format_time(seconds, duration, 10_f64.powi(-(precision as i32))),
                 AxisKind::PreciseTime,
             ),
             Self::Seconds | Self::Samples => {
                 crate::numbers::text(&format!("{seconds:.precision$} s"))
             }
         };
-        format!(
-            "{} – {} ({})",
-            time(span.start() as f64 / rate),
-            time(end),
-            crate::numbers::text(&format!("{:.precision$} s", span.count() as f64 / rate))
-        )
+        let widest = time(duration);
+        [
+            counter(&time(span.start() as f64 / rate), &widest),
+            counter(&time(span.end() as f64 / rate), &widest),
+            counter(&time(span.count() as f64 / rate), &widest),
+        ]
+    }
+}
+
+/// `value` padded on the left to the width of `widest`, its padding drawn as zeros, with its lead dimmed.
+///
+/// A leading run without digits, such as the `#` of a sample index, stays in
+/// front of the padding.
+fn counter(value: &str, widest: &str) -> Counter {
+    let numbers = crate::numbers::current();
+    let digits = numbers.digits();
+    let is_digit = |c: char| digits.contains(&c);
+    let lead: String = value.chars().take_while(|&c| !is_digit(c)).collect();
+    let body = &value[lead.len()..];
+    let room = widest
+        .chars()
+        .skip_while(|&c| !is_digit(c))
+        .count()
+        .saturating_sub(body.chars().count());
+    let padding: String = widest
+        .chars()
+        .skip_while(|&c| !is_digit(c))
+        .take(room)
+        .map(|c| if is_digit(c) { digits[0] } else { c })
+        .collect();
+    let padded = format!("{padding}{body}");
+    // The units digit stays bright, so a zero value still reads as one.
+    let units = padded.find(numbers.decimal()).unwrap_or(padded.len());
+    let units = padded[..units]
+        .char_indices()
+        .rev()
+        .find(|(_, c)| is_digit(*c))
+        .map_or(0, |(at, _)| at);
+    let dim_end = padded
+        .char_indices()
+        .find(|&(at, c)| at >= units || (is_digit(c) && c != digits[0]))
+        .map_or(padded.len(), |(at, _)| at);
+    Counter {
+        text: format!("{lead}{padded}"),
+        dim: lead.len()..lead.len() + dim_end,
     }
 }
 
@@ -192,40 +247,67 @@ mod tests {
         );
     }
 
+    fn span(a: u64, b: u64) -> argand_core::SampleSpan {
+        argand_core::SampleSpan::between(a, b).expect("a span")
+    }
+
+    fn texts(counters: [Counter; 3]) -> [String; 3] {
+        counters.map(|counter| counter.text)
+    }
+
+    fn dimmed(counter: &Counter) -> &str {
+        &counter.text[counter.dim.clone()]
+    }
+
     #[test]
     fn a_selection_reads_sample_exact_in_every_mode() {
-        let span = argand_core::SampleSpan::between(4_000_000, 4_001_000).expect("a span");
+        let span = span(4_000_000, 4_001_000);
         assert_eq!(
-            Mode::Samples.selection(span, 2e6),
-            "#4,000,000 – #4,000,999 (1,000)"
+            texts(Mode::Samples.counters(span, 2e6, 4_100_000)),
+            ["#4,000,000", "#4,000,999", "0,001,000"]
         );
         assert_eq!(
-            Mode::Seconds.selection(span, 2e6),
-            "2.0000000 s – 2.0005000 s (0.0005000 s)"
+            texts(Mode::Seconds.counters(span, 2e6, 4_100_000)),
+            ["2.0000000 s", "2.0005000 s", "0.0005000 s"]
         );
         assert_eq!(
-            Mode::Clock.selection(span, 2e6),
-            "0:02.0000000 – 0:02.0005000 (0.0005000 s)"
+            texts(Mode::Clock.counters(span, 2e6, 4_100_000)),
+            ["0:02.0000000", "0:02.0005000", "0:00.0005000"]
         );
     }
 
     #[test]
-    fn a_selection_seconds_cannot_tell_apart_is_given_in_samples() {
-        let span = |a, b| argand_core::SampleSpan::between(a, b).expect("a span");
-        let fast = Mode::Seconds.selection(span(100, 101), 4e9);
-        assert_eq!(fast, "0.0000000250 s – 0.0000000253 s (0.0000000003 s)");
+    fn counters_keep_the_capture_s_width_and_dim_their_lead() {
+        let [start, end, length] = Mode::Samples.counters(span(12, 345), 1e3, 1_000_000);
+        assert_eq!(start.text, "#000,012");
+        assert_eq!(dimmed(&start), "000,0");
+        assert_eq!((end.text.as_str(), dimmed(&end)), ("#000,344", "000,"));
         assert_eq!(
-            Mode::Clock.selection(span(100, 101), 4e9),
-            "#100 – #100 (1)",
+            (length.text.as_str(), dimmed(&length)),
+            ("0,000,333", "0,000,")
+        );
+        let [start, ..] = Mode::Seconds.counters(span(0, 10), 1e3, 100_000);
+        assert_eq!((start.text.as_str(), dimmed(&start)), ("000.000 s", "00"));
+        let [_, end, _] = Mode::Clock.counters(span(0, 3_600_000), 1e3, 7_200_000);
+        assert_eq!((end.text.as_str(), dimmed(&end)), ("1:00:00.000", ""));
+    }
+
+    #[test]
+    fn a_selection_seconds_cannot_tell_apart_is_given_in_samples() {
+        let fast = Mode::Seconds.counters(span(100, 101), 4e9, 200);
+        assert_eq!(texts(fast)[0], "0.0000000250 s");
+        assert_eq!(
+            texts(Mode::Clock.counters(span(100, 101), 4e9, 200)),
+            ["#100", "#100", "001"],
             "the clock stops at nanoseconds"
         );
         assert_eq!(
-            Mode::Clock.selection(span(u64::MAX - 1, u64::MAX), 24e6),
-            Mode::Samples.selection(span(u64::MAX - 1, u64::MAX), 24e6)
+            texts(Mode::Clock.counters(span(u64::MAX - 1, u64::MAX), 24e6, u64::MAX)),
+            texts(Mode::Samples.counters(span(u64::MAX - 1, u64::MAX), 24e6, u64::MAX))
         );
         assert_eq!(
-            Mode::Seconds.selection(span(0, 10), 0.),
-            "#0 – #9 (10)",
+            texts(Mode::Seconds.counters(span(0, 10), 0., 10)),
+            ["#0", "#9", "10"],
             "no rate, no seconds"
         );
     }
