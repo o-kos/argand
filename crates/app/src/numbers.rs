@@ -129,6 +129,10 @@ impl Numbers {
         self.digits
     }
 
+    pub fn decimal(&self) -> &str {
+        &self.decimal
+    }
+
     pub fn format(&self, value: &str, grouped: bool) -> String {
         let normalized = value.replace('−', "-");
         let formatter = if grouped { &self.grouped } else { &self.plain };

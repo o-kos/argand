@@ -48,19 +48,19 @@ A time selection carries its own readouts on the plot, as ocenaudio does: the st
 
 ## Implementation steps
 
-- [ ] `time_ruler`: split the selection readout into start, end and length counters with their padded width and dimmed prefix; tests.
-- [ ] Shell: the selection in samples and hertz and the counters in `PlotSnapshot`; the status bar without the time part.
-- [ ] Painting the three badges with their placement rules; placement tests.
-- [ ] Gestures: grab zones and cursors, edge drags for time and frequency, corners, moving, Shift+click, on spectrogram, minimap and frequency ruler; headless tests.
-- [ ] `AGENTS.md` and `CHANGELOG.md`.
+- [x] `time_ruler`: split the selection readout into start, end and length counters with their padded width and dimmed prefix; tests.
+- [x] Shell: the selection in samples and hertz and the counters in `PlotSnapshot`; the status bar without the time part.
+- [x] Painting the three badges with their placement rules; placement tests.
+- [x] Gestures: grab zones and cursors, edge drags for time and frequency, corners, moving, Shift+click, on spectrogram, minimap and frequency ruler; headless tests.
+- [x] `AGENTS.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] Manual, release binary: labels in both orientations and all three ruler modes, a narrow selection, edges off screen; dragging time and frequency edges and corners, swapping edges, moving a selection, Shift+click, on spectrogram, minimap and frequency ruler.
 
