@@ -2,7 +2,7 @@
 
 Resolves #216.
 
-Class B (two GUI modules and the toolkit-neutral recent list, local invariants, concrete acceptance criteria). Implementer: Claude in the session. Reviewer: to be agreed with the owner before the first round (proposed `gpt-6-sol` medium).
+Class B (two GUI modules and the toolkit-neutral recent list, local invariants, concrete acceptance criteria). Implementer: Claude in the session. Reviewer: `gpt-6-sol` medium, agreed with the owner.
 
 ## Overview
 
