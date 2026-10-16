@@ -22,8 +22,17 @@ pub enum Row<T> {
     Separator,
 }
 
-/// How many recent rows promise a digit, as the start page's own list does.
-const DIGITS: usize = 9;
+/// How many recent rows promise a digit, 1 to 9 and then 0, as a keyboard row runs.
+pub const DIGITS: usize = 10;
+
+/// The digit the shown recent row `index` promises, none past the tenth.
+pub fn digit(index: usize) -> Option<u8> {
+    match index {
+        0..9 => Some(index as u8 + 1),
+        9 => Some(0),
+        _ => None,
+    }
+}
 
 /// The rows of the File submenu, in the order they are drawn.
 ///
@@ -43,7 +52,7 @@ pub fn file_items<T>(recent: Vec<(String, T)>) -> Vec<Row<T>> {
                 .into_iter()
                 .enumerate()
                 .map(|(index, (label, origin))| Row::Recent {
-                    number: (index < DIGITS).then_some((index + 1) as u8),
+                    number: digit(index),
                     label,
                     origin,
                 }),
@@ -113,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_first_nine_recent_rows_promise_a_digit() {
+    fn the_first_ten_recent_rows_promise_one_to_nine_then_zero() {
         let numbers: Vec<Option<u8>> = file_items(recent(11))
             .iter()
             .filter_map(|row| match row {
@@ -135,7 +144,8 @@ mod tests {
                 Some(9)
             ]
         );
-        assert_eq!(numbers[9..], [None, None]);
+        assert_eq!(numbers[9..], [Some(0), None]);
+        assert_eq!(digit(DIGITS), None);
     }
 
     #[test]

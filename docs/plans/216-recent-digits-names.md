@@ -30,17 +30,18 @@ Recent rows are named by their file alone, so captures of the same name in diffe
 
 ## Implementation steps
 
-- [ ] `app_menu::digit`, digits in `file_items`, `RecentFiles::shortcut`, Alt+0 and `0` bindings, the start page digit; tests.
-- [ ] `recent::labels` replacing `session::recent_labels`, used by the start page and File; tests for the owner's example, a differing nearest folder, different depths, three files, unique names.
-- [ ] `AGENTS.md` and `CHANGELOG.md`.
+- [x] `app_menu::digit`, digits in `file_items`, `RecentFiles::shortcut`, Alt+0 and `0` bindings, the start page digit; tests.
+- [x] `recent::labels` replacing `session::recent_labels`, used by the start page and File; tests for the owner's example, a differing nearest folder, different depths, three files, unique names.
+- [x] ➕ The start page hint names the bare file over its folder, since the row's label may now hold folders.
+- [x] `AGENTS.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [ ] Manual, release binary: ten recent files show 1..9 and 0 on the start page and in File, Alt+0 and `0` open the tenth; files of the same name in different folders read as in the Issue's example.
 

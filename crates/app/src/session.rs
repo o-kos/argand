@@ -248,27 +248,6 @@ pub struct Recent {
     pub hints: Hints,
 }
 
-/// What a menu calls each entry of the recent list.
-///
-/// The file name alone, which is what a person recognises. Two captures that
-/// share one are told apart where the list has room for it, in the start page's
-/// hint, and nowhere else: a list where every line is a path is a list nobody
-/// reads, and a name long enough to fill the row is a name that ends in an
-/// ellipsis rather than a directory.
-pub fn recent_labels(recent: &[Recent]) -> Vec<String> {
-    recent
-        .iter()
-        .map(|entry| {
-            entry
-                .path
-                .file_name()
-                .unwrap_or(entry.path.as_os_str())
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect()
-}
-
 /// Everything one run hands to the next.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {

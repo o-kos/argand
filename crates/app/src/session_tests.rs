@@ -728,23 +728,6 @@ window_state = \"normal\"\n")
 }
 
 #[test]
-fn two_captures_with_the_same_name_share_the_bare_name() {
-    // One capture name in two real directories, which the list shows alike.
-    let root = TempDir::new("labels");
-    let (a, b) = (root.join("a"), root.join("b"));
-    let mut session = Session::default();
-    for path in [b.join("12.579.iqw"), a.join("12.579.iqw"), a.join("other.iqw")] {
-        session.remember(&path, &OpenHints::default());
-    }
-
-    assert_eq!(
-        recent_labels(&session.recent),
-        ["other.iqw", "12.579.iqw", "12.579.iqw"],
-        "every entry is named by its file alone"
-    );
-}
-
-#[test]
 fn a_saved_panel_split_is_read_and_forgotten() {
     let dir = TempDir::new("panel-split");
     let path = dir.join(FILE_NAME);

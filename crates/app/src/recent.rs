@@ -91,9 +91,7 @@ impl RecentFiles {
     }
 
     pub fn shortcut(&self, index: usize) -> Option<Recent> {
-        if index >= 9 {
-            return None;
-        }
+        crate::app_menu::digit(index)?;
         self.visible().get(index).cloned()
     }
 
@@ -105,6 +103,98 @@ impl RecentFiles {
             .cloned()
             .collect()
     }
+}
+
+/// What the start page and File call each shown recent file.
+///
+/// The file name alone where no other shown file has it. Files sharing a name
+/// add their parent folders, nearest first, up to the first that tells each one
+/// apart from the others. Folders every one of them has at that depth are
+/// elided with `…`, and so are those beyond the telling one. A file whose whole
+/// path is needed starts from its root.
+pub fn labels(recent: &[Recent]) -> Vec<String> {
+    let names: Vec<String> = recent.iter().map(|entry| file_name(&entry.path)).collect();
+    let folders: Vec<Vec<String>> = recent.iter().map(|entry| folders(&entry.path)).collect();
+    (0..recent.len())
+        .map(|index| {
+            let others: Vec<&[String]> = (0..recent.len())
+                .filter(|&other| other != index && names[other] == names[index])
+                .map(|other| folders[other].as_slice())
+                .collect();
+            if others.is_empty() {
+                return names[index].clone();
+            }
+            told_apart(&recent[index].path, &names[index], &folders[index], &others)
+        })
+        .collect()
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// The folders holding `path`, nearest first.
+fn folders(path: &Path) -> Vec<String> {
+    path.parent()
+        .into_iter()
+        .flat_map(Path::components)
+        .filter_map(|component| match component {
+            std::path::Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .rev()
+        .collect()
+}
+
+/// `name` with the folders of `own` that tell it apart from every one of `others`.
+fn told_apart(path: &Path, name: &str, own: &[String], others: &[&[String]]) -> String {
+    let differs = |depth: usize| {
+        others
+            .iter()
+            .all(|other| own[..depth] != other[..depth.min(other.len())])
+    };
+    let depth = (1..=own.len()).find(|&depth| differs(depth));
+    let (depth, whole) = match depth {
+        Some(depth) => (depth, depth == own.len()),
+        None => (own.len(), true),
+    };
+    let ellipsis = "…".to_string();
+    let mut segments: Vec<String> = Vec::new();
+    if !whole {
+        segments.push(ellipsis.clone());
+    }
+    for at in (0..depth).rev() {
+        // A path shown to its root is told apart by where it starts, so nothing of it is elided.
+        let shared = !whole && others.iter().all(|other| other.get(at) == Some(&own[at]));
+        if !shared {
+            segments.push(own[at].clone());
+        } else if segments.last() != Some(&ellipsis) {
+            segments.push(ellipsis.clone());
+        }
+    }
+    segments.push(name.to_owned());
+    let separator = std::path::MAIN_SEPARATOR.to_string();
+    let root = match whole {
+        true => root(path),
+        false => String::new(),
+    };
+    root + &segments.join(&separator)
+}
+
+/// The prefix and root `path` starts from, empty for a relative one.
+fn root(path: &Path) -> String {
+    path.components()
+        .take_while(|component| {
+            matches!(
+                component,
+                std::path::Component::Prefix(_) | std::path::Component::RootDir
+            )
+        })
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect()
 }
 
 #[cfg(test)]
