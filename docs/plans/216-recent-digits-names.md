@@ -35,7 +35,7 @@ Recent rows are named by their file alone, so captures of the same name in diffe
 - [x] `recent::labels` replacing `session::recent_labels`, used by the start page and File; tests for the owner's example, a differing nearest folder, different depths, three files, unique names.
 - [x] ➕ Long file names and folders shortened around `…` while they stay apart (`recent::shortened`, `recent::side`), with tests on the owner's KiwiSDR folders, folders alike at both ends and long file names.
 - [x] Review round 1 (`gpt-6-sol` medium, before the shortening): one finding, declined. A real folder named `…` reads like an elision, so `/a/a/a/f` and `/a/a/…/a/f` beside `/…/a/f` both read `…/a/…/f`. Such a folder name is contrived, the rows still open their own files, and the hint shows the whole path.
-- [ ] Review round 2 (same reviewer).
+- [x] Review round 2 (same reviewer, after the shortening): no findings. The reviewer confirmed the shortening keeps labels distinct and matched, counts characters and handles the 20/21 character boundary, and did not contest the declined round 1 finding.
 - [x] ➕ The start page hint names the bare file over its folder, since the row's label may now hold folders.
 - [x] `AGENTS.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
