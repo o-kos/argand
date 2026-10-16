@@ -14,8 +14,6 @@ pub(super) struct Levelling {
     document: u64,
     version: u64,
     target: f64,
-    /// What was selected, which stays selected after the edit and after undoing it.
-    selection: argand_core::Selection,
     progress: Option<(u64, u64)>,
 }
 
@@ -26,14 +24,6 @@ impl Shell {
     /// Whether a suppression or a measurement is running, which edits and saves wait for.
     pub(super) fn computing(&self) -> bool {
         self.suppressing.is_some() || self.levelling.is_some()
-    }
-
-    /// The time span and band selected now.
-    fn marked_now(&self) -> argand_core::Selection {
-        argand_core::Selection {
-            time: self.selection,
-            band: self.band,
-        }
     }
 
     /// Whether the whole capture can be inverted or levelled now.
@@ -49,15 +39,21 @@ impl Shell {
 
     /// Whether Normalize level can start now, which needs the stored full scale.
     pub(super) fn can_normalize(&self) -> bool {
-        self.can_adjust()
+        self.nothing_selected()
+            && self.can_adjust()
             && self
                 .editing()
                 .is_some_and(|editing| editing.full_scale().is_some())
     }
 
-    /// Whether Invert spectrum can act now, which a selection forbids, as it would suggest inverting only what is selected.
+    /// Whether Invert spectrum can act now.
     pub(super) fn can_invert(&self) -> bool {
-        self.can_adjust() && self.selection.is_none() && self.band.is_none()
+        self.nothing_selected() && self.can_adjust()
+    }
+
+    /// Whether nothing is selected, which both commands need, as a selection would suggest acting on it alone.
+    fn nothing_selected(&self) -> bool {
+        self.selection.is_none() && self.band.is_none()
     }
 
     pub(super) fn invert_spectrum(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -188,7 +184,6 @@ impl Shell {
             document: file.id,
             version: editing.version(),
             target,
-            selection: self.marked_now(),
             progress: None,
         });
         cx.notify();
@@ -257,7 +252,7 @@ impl Shell {
         }
         if adjustment
             .with_gain(gain)
-            .is_some_and(|adjusted| editing.adjust(adjusted, finished.selection))
+            .is_some_and(|adjusted| editing.adjust(adjusted, argand_core::Selection::default()))
         {
             self.edited(window, cx);
         }
@@ -526,6 +521,14 @@ mod tests {
         let (shell, cx) = open_window(cx);
         let path = opened(cx, &shell, "normalize-ui");
         shell.update_in(cx, |shell, window, cx| {
+            shell.band = argand_core::FrequencyBand::between(1_000.0, 2_000.0);
+            shell.normalize_to(-1.0, window, cx);
+        });
+        assert!(shell.read_with(cx, |shell, _| {
+            shell.levelling.is_none() && !shell.edit_commands_available().normalize
+        }));
+        shell.update_in(cx, |shell, window, cx| {
+            shell.band = None;
             shell.normalize_to(-6.020_599_913_279_624, window, cx);
         });
         assert!(shell.read_with(cx, |shell, _| {
