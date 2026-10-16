@@ -45,14 +45,13 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         // The popover confirms on Space, and no menu closes that way.
         KeyBinding::new("space", gpui_kit::NoAction, Some(CONTEXT)),
     ];
-    keys.extend((1..=9).map(|digit| {
-        KeyBinding::new(
+    keys.extend((0..app_menu::DIGITS).filter_map(|index| {
+        let digit = app_menu::digit(index)?;
+        Some(KeyBinding::new(
             &digit.to_string(),
-            OpenRecentRow {
-                index: (digit - 1) as usize,
-            },
+            OpenRecentRow { index },
             Some(CONTEXT),
-        )
+        ))
     }));
     cx.bind_keys(keys);
 }

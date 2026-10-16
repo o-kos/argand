@@ -144,12 +144,13 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
             None,
         ),
     ]);
-    cx.bind_keys((0..9).map(|index| {
-        KeyBinding::new(
-            &format!("alt-{}", index + 1),
+    cx.bind_keys((0..crate::app_menu::DIGITS).filter_map(|index| {
+        let digit = crate::app_menu::digit(index)?;
+        Some(KeyBinding::new(
+            &format!("alt-{digit}"),
             OpenRecent { index },
             Some("StartPage"),
-        )
+        ))
     }));
 }
 
@@ -1305,7 +1306,7 @@ impl Shell {
     /// choosing it here does not ask for those flags a second time.
     fn recent_entries(&self) -> Vec<(String, Origin)> {
         let recent = self.recent_files.visible();
-        let labels = crate::session::recent_labels(&recent);
+        let labels = crate::recent::labels(&recent);
         recent
             .iter()
             .zip(labels)
@@ -1515,6 +1516,11 @@ impl Shell {
             .map(|dir| dir.display().to_string())
             .filter(|dir| !dir.is_empty())
             .unwrap_or_default();
+        // The hint names the file over its whole folder, which the label may have elided.
+        let hint = entry
+            .path
+            .file_name()
+            .map_or_else(|| label.clone(), |name| name.to_string_lossy().into_owned());
         let mut button = Button::new(("start-recent", index))
             .ghost()
             .small()
@@ -1533,11 +1539,11 @@ impl Shell {
                             .w_6()
                             .flex_shrink_0()
                             .text_color(cx.theme().muted_foreground)
-                            .child(if index < 9 {
-                                crate::numbers::number(index + 1)
-                            } else {
-                                String::new()
-                            }),
+                            .child(
+                                crate::app_menu::digit(index)
+                                    .map(crate::numbers::number)
+                                    .unwrap_or_default(),
+                            ),
                     )
                     .child(
                         div()
@@ -1558,9 +1564,9 @@ impl Shell {
                     cx,
                 );
             }));
-        let hint = label;
         button.interactivity().tooltip(move |_, cx| {
-            let action = (index < 9).then(|| Box::new(OpenRecent { index }) as Box<dyn Action>);
+            let action = crate::app_menu::digit(index)
+                .map(|_| Box::new(OpenRecent { index }) as Box<dyn Action>);
             recent_hint(
                 hint.clone(),
                 directory.clone(),
@@ -1575,7 +1581,7 @@ impl Shell {
 
     fn start_page(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let recent = self.recent_files.visible();
-        let labels = crate::session::recent_labels(&recent);
+        let labels = crate::recent::labels(&recent);
         let width = (window.viewport_size().width - px(96.)).min(px(560.));
         let empty = recent.is_empty();
         let list_height = cx.theme().font_size * (recent.len() as f32 * 1.75 - 0.25).max(0.);

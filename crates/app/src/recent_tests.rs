@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use argand_io::testutil::TempDir;
 
-use crate::session::{Hints, Session, recent_labels};
+use crate::session::{Hints, Session};
 
 fn entry(path: impl Into<PathBuf>) -> Recent {
     Recent {
@@ -45,14 +45,14 @@ fn the_loaded_file_is_hidden_without_changing_history_or_shortcut_order() {
     }
     let visible = recent.visible();
     assert_eq!(visible, session.recent[1..]);
-    let labels: Vec<_> = (1..RECENT_LIMIT)
+    let expected: Vec<_> = (1..RECENT_LIMIT)
         .map(|i| format!("capture-{i}.raw"))
         .collect();
-    assert_eq!(recent_labels(&visible), labels);
+    assert_eq!(labels(&visible), expected);
     for (index, expected) in visible.iter().enumerate() {
         assert_eq!(recent.shortcut(index).as_ref(), Some(expected));
     }
-    assert!(recent.shortcut(9).is_none());
+    assert!(recent.shortcut(9).is_none(), "nine shown, nothing for 0");
     assert!(recent.shortcut(usize::MAX).is_none());
     assert_eq!(recent.entries, saved.recent);
     assert_eq!(session, saved);
@@ -87,7 +87,7 @@ fn opening_another_file_restores_the_previous_file_in_recent_order() {
     assert_eq!(recent.visible(), saved.recent[1..]);
     receive_checks(&mut recent, 3);
     assert_eq!(recent.visible(), saved.recent[1..]);
-    assert_eq!(recent_labels(&recent.visible()), ["first.raw", "third.raw"]);
+    assert_eq!(labels(&recent.visible()), ["first.raw", "third.raw"]);
     assert_eq!(recent.shortcut(0), Some(saved.recent[1].clone()));
     assert_eq!(recent.shortcut(1), Some(saved.recent[2].clone()));
     assert!(recent.shortcut(2).is_none());
@@ -107,10 +107,10 @@ fn a_relative_current_path_matches_history_and_labels_use_the_filtered_list() {
     for entry in &session.recent {
         recent.apply(entry.path.clone(), true);
     }
-    assert_eq!(recent_labels(&recent.visible()), ["a.raw", "a.raw", "b.wav"]);
+    assert_eq!(labels(&recent.visible()), [sep("…/one/a.raw"), sep("…/two/a.raw"), "b.wav".to_owned()]);
     recent.set_current(Path::new("one/./a.raw"));
     assert_eq!(recent.visible(), saved.recent[1..]);
-    assert_eq!(recent_labels(&recent.visible()), ["a.raw", "b.wav"]);
+    assert_eq!(labels(&recent.visible()), ["a.raw", "b.wav"]);
     assert_eq!(recent.shortcut(0), Some(saved.recent[1].clone()));
     assert_eq!(recent.shortcut(1), Some(saved.recent[2].clone()));
     assert!(recent.shortcut(2).is_none());
@@ -132,7 +132,7 @@ fn clearing_then_replacing_the_current_path_restores_order_labels_and_shortcuts(
 
     recent.clear_current();
     assert_eq!(recent.visible(), entries);
-    assert_eq!(recent_labels(&recent.visible()), ["a.raw", "a.raw", "b.wav"]);
+    assert_eq!(labels(&recent.visible()), [sep("…/one/a.raw"), sep("…/two/a.raw"), "b.wav".to_owned()]);
     for (index, expected) in entries.iter().enumerate() {
         assert_eq!(recent.shortcut(index).as_ref(), Some(expected));
     }
@@ -141,7 +141,7 @@ fn clearing_then_replacing_the_current_path_restores_order_labels_and_shortcuts(
 
     recent.set_current(&entries[1].path);
     assert_eq!(recent.visible(), [entries[0].clone(), entries[2].clone()]);
-    assert_eq!(recent_labels(&recent.visible()), ["a.raw", "b.wav"]);
+    assert_eq!(labels(&recent.visible()), ["a.raw", "b.wav"]);
     assert_eq!(recent.shortcut(0), Some(entries[0].clone()));
     assert_eq!(recent.shortcut(1), Some(entries[2].clone()));
     assert!(recent.shortcut(2).is_none());
@@ -199,7 +199,7 @@ fn an_oversized_history_is_bounded_to_the_session_limit() {
 }
 
 #[test]
-fn shortcuts_follow_the_filtered_list_and_stop_after_nine() {
+fn shortcuts_follow_the_filtered_list_and_stop_after_ten() {
     let entries: Vec<_> = (0..RECENT_LIMIT).map(|i| entry(i.to_string())).collect();
     let mut recent = RecentFiles::new(&entries);
     assert!(recent.shortcut(0).is_none());
@@ -211,7 +211,8 @@ fn shortcuts_follow_the_filtered_list_and_stop_after_nine() {
     }
     recent.apply(entries[0].path.clone(), true);
     assert_eq!(recent.shortcut(8), Some(entries[8].clone()));
-    assert!(recent.shortcut(9).is_none());
+    assert_eq!(recent.shortcut(9), Some(entries[9].clone()));
+    assert!(recent.shortcut(10).is_none());
     assert!(recent.shortcut(usize::MAX).is_none());
     assert_eq!(recent.visible().len(), 10);
 }
@@ -294,21 +295,62 @@ fn repeated_refreshes_coalesce_pending_paths_even_when_history_changes() {
 }
 
 #[test]
-fn duplicate_names_label_alike_and_still_match_shortcut_targets() {
+fn duplicate_names_are_told_apart_and_still_match_shortcut_targets() {
     let entries = vec![entry("one/a.raw"), entry("two/a.raw"), entry("three/b.wav")];
     let mut recent = RecentFiles::new(&entries);
     recent.apply(entries[0].path.clone(), true);
     recent.apply(entries[2].path.clone(), true);
     let visible = recent.visible();
-    assert_eq!(crate::session::recent_labels(&visible), ["a.raw", "b.wav"]);
+    assert_eq!(labels(&visible), ["a.raw", "b.wav"], "one shown is told apart by nothing");
     for (index, expected) in visible.iter().enumerate() {
         assert_eq!(recent.shortcut(index).as_ref(), Some(expected));
     }
     recent.apply(entries[1].path.clone(), true);
-    // Two directories holding one name read alike in the list.
     assert_eq!(
-        crate::session::recent_labels(&recent.visible()),
-        ["a.raw", "a.raw", "b.wav"]
+        labels(&recent.visible()),
+        [sep("one/a.raw"), sep("two/a.raw"), "b.wav".to_owned()]
+    );
+}
+
+/// `text` with `/` read as the platform's separator.
+fn sep(text: &str) -> String {
+    text.replace('/', std::path::MAIN_SEPARATOR_STR)
+}
+
+fn named(paths: &[&str]) -> Vec<String> {
+    let entries: Vec<Recent> = paths.iter().map(|path| entry(sep(path))).collect();
+    labels(&entries)
+}
+
+#[test]
+fn the_first_telling_folder_is_kept_and_the_shared_ones_elided() {
+    assert_eq!(
+        named(&["/home/wav/123/12/1/iq.wav", "/home/wav/12/12/1/iq.wav"]),
+        [sep("…/123/…/iq.wav"), sep("…/12/…/iq.wav")]
+    );
+}
+
+#[test]
+fn a_telling_nearest_folder_needs_no_inner_ellipsis() {
+    assert_eq!(
+        named(&["/data/a/iq.wav", "/data/b/iq.wav", "/data/b/other.wav"]),
+        [sep("…/a/iq.wav"), sep("…/b/iq.wav"), "other.wav".to_owned()]
+    );
+}
+
+#[test]
+fn a_path_told_apart_only_by_its_root_is_shown_whole() {
+    assert_eq!(
+        named(&["/x/iq.wav", "/y/x/iq.wav"]),
+        [sep("/x/iq.wav"), sep("/y/x/iq.wav")]
+    );
+}
+
+#[test]
+fn three_files_of_one_name_keep_every_folder_that_differs() {
+    assert_eq!(
+        named(&["/r/a/s/iq.wav", "/r/b/s/iq.wav", "/r/a/t/iq.wav"]),
+        [sep("…/a/s/iq.wav"), sep("…/b/s/iq.wav"), sep("…/t/iq.wav")]
     );
 }
 
@@ -380,4 +422,43 @@ fn a_full_history_of_blocked_probes_does_not_hide_a_new_local_file() {
     assert_eq!(recent.visible(), replacement);
     receive_checks(&mut recent, RECENT_LIMIT);
     assert_eq!(recent.visible(), replacement);
+}
+
+#[test]
+fn long_folders_keep_their_ends_and_stay_apart() {
+    let ireland = "/k/vps1_irelandnorthwest3.proxy2.kiwisdr.com_8073_518_20261009T230800Z/iq.wav";
+    let wessex = "/k/vps1_wessex.zapto.org_8074_490_20261009T230800Z/iq.wav";
+    assert_eq!(
+        named(&[ireland, wessex]),
+        [sep("…/vps1_ire…T230800Z/iq.wav"), sep("…/vps1_wes…T230800Z/iq.wav")]
+    );
+}
+
+#[test]
+fn folders_alike_at_both_ends_grow_until_they_differ() {
+    let a = "/k/vps1_23175.proxy2_8073_518_20261011T163000Z/iq.wav";
+    let b = "/k/vps1_23175.proxy2_8073_490_20261011T163000Z/iq.wav";
+    let labels = named(&[a, b]);
+    assert_ne!(labels[0], labels[1]);
+    assert_eq!(
+        labels,
+        [
+            sep("…/vps1_23175.proxy2_…8_20261011T163000Z/iq.wav"),
+            sep("…/vps1_23175.proxy2_…0_20261011T163000Z/iq.wav")
+        ]
+    );
+}
+
+#[test]
+fn long_file_names_keep_their_extension_and_stay_apart() {
+    assert_eq!(
+        named(&[
+            "/a/kiwisdr_ireland_20261009T230800Z.wav",
+            "/a/kiwisdr_ireland_20261010T230800Z.wav",
+            "/a/short.wav",
+        ]),
+        ["kiwisdr_irela…9T230800Z.wav", "kiwisdr_irela…0T230800Z.wav", "short.wav"]
+            .map(str::to_owned)
+            .to_vec()
+    );
 }
