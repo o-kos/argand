@@ -197,7 +197,7 @@ impl Shell {
                     .disabled(!can.invert),
                 )
                 .item(row(
-                    "Normalize level…",
+                    "Normalize level",
                     Box::new(editing_ui::NormalizeLevel),
                     can.normalize,
                 ))

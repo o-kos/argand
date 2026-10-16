@@ -424,8 +424,6 @@ struct Shell {
     suppress_updates: Option<Task<()>>,
     levelling: Option<levelling_ui::Levelling>,
     level_updates: Option<Task<()>>,
-    /// The level Normalize level proposes, the last one asked for.
-    level_target: f64,
     /// What was copied, which outlives the capture it came from.
     clipboard: Option<crate::editing::Clipboard>,
 
@@ -540,7 +538,6 @@ impl Shell {
             suppress_updates: None,
             levelling: None,
             level_updates: None,
-            level_target: crate::levelling::DEFAULT_TARGET,
             clipboard: None,
 
             replacement_active: false,

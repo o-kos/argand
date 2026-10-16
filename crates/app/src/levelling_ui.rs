@@ -4,16 +4,13 @@ use super::*;
 use crate::document::MetadataHint;
 use crate::saving::{Ended, Update};
 use gpui_kit::AnyElement;
-use gpui_kit::Focusable as _;
-use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{IconName, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::IconName;
 
-/// A peak being measured for one version of one document, to normalize it to `target` dBFS.
+/// A peak being measured for one version of one document, to normalize it.
 pub(super) struct Levelling {
     job: crate::saving::Job,
     document: u64,
     version: u64,
-    target: f64,
     progress: Option<(u64, u64)>,
 }
 
@@ -69,88 +66,8 @@ impl Shell {
         }
     }
 
-    /// Ask for the target level, then normalize to it.
-    pub(super) fn ask_normalize(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.can_normalize() {
-            return;
-        }
-        // A window without the toolkit's root, as in a headless test, has no dialog layer.
-        if window
-            .root::<gpui_kit::component::Root>()
-            .flatten()
-            .is_none()
-        {
-            return;
-        }
-        let shell = cx.entity().downgrade();
-        let proposed = crate::numbers::input(self.level_target);
-        let input = cx.new(|cx| InputState::new(window, cx).default_value(proposed));
-        let error: Entity<Option<String>> = cx.new(|_| None);
-        let focus = input.read(cx).focus_handle(cx);
-        window.open_dialog(cx, move |dialog, _, cx| {
-            let accept = {
-                let (input, error, shell) = (input.clone(), error.clone(), shell.clone());
-                std::rc::Rc::new(move |window: &mut Window, cx: &mut gpui_kit::App| {
-                    accept_level(&input, &error, &shell, window, cx)
-                })
-            };
-            let message = error.read(cx).clone();
-            let keyed = accept.clone();
-            let clicked = accept.clone();
-            dialog
-                .title("Normalize level")
-                .w(px(360.))
-                .close_button(false)
-                .overlay_closable(false)
-                .child(
-                    v_flex()
-                        .gap_2()
-                        .child("Scale the whole capture so that its peak lands on")
-                        .child(
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .child(Input::new(&input).w(px(120.)))
-                                .child("dBFS"),
-                        )
-                        .children(
-                            message
-                                .map(|message| div().text_color(cx.theme().danger).child(message)),
-                        ),
-                )
-                .footer(
-                    h_flex()
-                        .w_full()
-                        .justify_end()
-                        .gap_2()
-                        .child(
-                            Button::new("cancel")
-                                .label("Cancel")
-                                .on_click(|_, window, cx| window.close_dialog(cx)),
-                        )
-                        .child(
-                            Button::new("normalize")
-                                .primary()
-                                .label("Normalize")
-                                .on_click(move |_, window, cx| {
-                                    if clicked(window, cx) {
-                                        window.close_dialog(cx);
-                                    }
-                                }),
-                        ),
-                )
-                .on_ok(move |_, window, cx| keyed(window, cx))
-        });
-        window.focus(&focus, cx);
-    }
-
-    /// Measure the peak, then normalize the version it was measured on to `target` dBFS.
-    pub(super) fn normalize_to(
-        &mut self,
-        target: f64,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    /// Measure the peak, then normalize the version it was measured on.
+    pub(super) fn normalize(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.can_normalize() {
             return;
         }
@@ -165,7 +82,7 @@ impl Shell {
             sources: editing.source_files(),
             meta,
         };
-        tracing::info!(source = %request.meta.source.display(), target, "normalizing the level");
+        tracing::info!(source = %request.meta.source.display(), "normalizing the level");
         let (job, updates) = crate::levelling::start(request);
         self.level_updates = Some(cx.spawn_in(window, async move |shell, cx| {
             while let Ok(update) = updates.recv().await {
@@ -177,13 +94,11 @@ impl Shell {
                 }
             }
         }));
-        self.level_target = target;
         self.save_notice = None;
         self.levelling = Some(Levelling {
             job,
             document: file.id,
             version: editing.version(),
-            target,
             progress: None,
         });
         cx.notify();
@@ -238,7 +153,7 @@ impl Shell {
         }
         let gain = editing
             .full_scale()
-            .and_then(|full_scale| crate::levelling::gain(peak, full_scale, finished.target));
+            .and_then(|full_scale| crate::levelling::gain(peak, full_scale));
         let Some(gain) = gain else {
             self.save_notice = Some(saving_ui::Notice::Failed(
                 "Cannot normalize",
@@ -323,42 +238,6 @@ impl Shell {
                 .into_any_element(),
         )
     }
-}
-
-/// Normalize to the level typed into `input`, answering whether the dialog can close.
-fn accept_level(
-    input: &Entity<InputState>,
-    error: &Entity<Option<String>>,
-    shell: &gpui_kit::WeakEntity<Shell>,
-    window: &mut Window,
-    cx: &mut gpui_kit::App,
-) -> bool {
-    let Some(target) = target_level(input, error, cx) else {
-        return false;
-    };
-    let _ = shell.update(cx, |shell, cx| shell.normalize_to(target, window, cx));
-    true
-}
-
-/// The level typed into `input`, or none with the reason put in `error`.
-fn target_level(
-    input: &Entity<InputState>,
-    error: &Entity<Option<String>>,
-    cx: &mut gpui_kit::App,
-) -> Option<f64> {
-    let text = input.read(cx).value().to_string();
-    let lowest = crate::levelling::LOWEST_TARGET;
-    let target = crate::numbers::parse::<f64>(text.trim())
-        .ok()
-        .filter(|target| (lowest..=0.0).contains(target));
-    if target.is_none() {
-        error.update(cx, |error, cx| {
-            let lowest = crate::numbers::number(lowest);
-            *error = Some(format!("Enter a level from {lowest} to 0 dBFS"));
-            cx.notify();
-        });
-    }
-    target
 }
 
 /// `Inverted`, the gain in dB, or both, none for the identity.
@@ -517,19 +396,19 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn normalizing_measures_the_peak_and_saves_it_at_the_target(cx: &mut TestAppContext) {
+    fn normalizing_measures_the_peak_and_saves_it_just_below_full_scale(cx: &mut TestAppContext) {
         let (shell, cx) = open_window(cx);
         let path = opened(cx, &shell, "normalize-ui");
         shell.update_in(cx, |shell, window, cx| {
             shell.band = argand_core::FrequencyBand::between(1_000.0, 2_000.0);
-            shell.normalize_to(-1.0, window, cx);
+            shell.normalize(window, cx);
         });
         assert!(shell.read_with(cx, |shell, _| {
             shell.levelling.is_none() && !shell.edit_commands_available().normalize
         }));
         shell.update_in(cx, |shell, window, cx| {
             shell.band = None;
-            shell.normalize_to(-6.020_599_913_279_624, window, cx);
+            shell.normalize(window, cx);
         });
         assert!(shell.read_with(cx, |shell, _| {
             shell.levelling.is_some()
@@ -541,14 +420,15 @@ mod tests {
             shell.levelling.is_none() && shell.editing().is_some_and(Editing::is_dirty)
         });
         let gain = adjustment(cx, &shell).gain();
-        assert!((gain - 2.0).abs() < 1e-3, "{gain}");
+        let expected = 4.0 * 10f64.powf(crate::levelling::TARGET / 20.0);
+        assert!((gain - expected).abs() < 1e-3, "{gain}");
         assert_eq!(
             adjustment_text(adjustment(cx, &shell)).as_deref(),
-            Some("+6.0 dB")
+            Some("+11.9 dB")
         );
         let versions = shell.read_with(cx, |shell, _| shell.editing().unwrap().version());
         shell.update_in(cx, |shell, window, cx| {
-            shell.normalize_to(-6.020_599_913_279_624, window, cx);
+            shell.normalize(window, cx);
         });
         wait_until(cx, &shell, "the level to be measured again", |shell| {
             shell.levelling.is_none()
@@ -582,7 +462,10 @@ mod tests {
             .chunks_exact(2)
             .map(|sample| f64::from(sample[0]).hypot(f64::from(sample[1])))
             .fold(0.0, f64::max);
-        assert!((peak - 0.5).abs() < 1e-3, "{peak}");
+        assert!(
+            (peak - 10f64.powf(crate::levelling::TARGET / 20.0)).abs() < 1e-3,
+            "{peak}"
+        );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
@@ -591,7 +474,7 @@ mod tests {
         let (shell, cx) = open_window(cx);
         let path = opened(cx, &shell, "normalize-ui-open");
         shell.update_in(cx, |shell, window, cx| {
-            shell.normalize_to(-1.0, window, cx);
+            shell.normalize(window, cx);
             shell.open(Origin::new(path.clone()), window, cx);
         });
         assert!(shell.read_with(cx, |shell, _| shell.levelling.is_none()));

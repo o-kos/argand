@@ -54,13 +54,11 @@ fn a_cancelled_measurement_ends_without_a_peak() {
 }
 
 #[test]
-fn the_gain_puts_the_peak_at_the_target() {
-    let gain = gain(0.25, 1.0, -6.020_599_913_279_624).unwrap();
-    assert!((gain - 2.0).abs() < 1e-9);
-    assert!((super::gain(0.5, 2.0, 0.0).unwrap() - 4.0).abs() < 1e-12);
-    assert_eq!(super::gain(0.0, 1.0, -1.0), None);
-    assert_eq!(super::gain(0.5, 1.0, 1.0), None);
-    assert_eq!(super::gain(0.5, 1.0, -61.0), None);
+fn the_gain_puts_the_peak_just_below_full_scale() {
+    let gain = gain(0.25, 1.0).unwrap();
+    assert!((20.0 * (gain * 0.25).log10() - TARGET).abs() < 1e-9);
+    assert!((super::gain(8_192.0, 32_768.0).unwrap() - 4.0 * 10f64.powf(TARGET / 20.0)).abs() < 1e-12);
+    assert_eq!(super::gain(0.0, 1.0), None);
 }
 
 /// An I/Q 16-bit file holding `peak` of full scale, opened with `hints`.

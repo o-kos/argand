@@ -730,7 +730,7 @@ capture of the same rate and kind, and a paste checks only the sources its clip 
 ## Inverting and normalizing (#188, #190)
 
 Edit → Invert spectrum (Ctrl+Shift+I in the `Plot` context, Cmd+Shift+I on macOS, a checked
-row) and Edit → Normalize level… (Ctrl+Shift+N, Cmd+Shift+N) act on the whole capture, never a
+row) and Edit → Normalize level (Ctrl+Shift+N, Cmd+Shift+N) act on the whole capture, never a
 selection, and change no file until it is saved. Both are disabled while anything is selected,
 a time span, a band or a rectangle, because they would read as acting on that alone, as the
 owner decided. `argand_core::Adjustment { invert, gain }` is what a capture applies
@@ -752,8 +752,8 @@ channel's extremes negated and swapped, and a real inversion's cells taken as th
 hull, which errs outward. The status bar shows `Inverted`, the gain in dB or both after the
 analysis item (`adjustment_item`).
 
-Normalize level asks for a target in a gpui-component `Dialog` (−60 to 0 dBFS, −1 at first,
-then the last target of the run), then `levelling.rs` measures the peak of the unadjusted
+Normalize level asks nothing: the normal form is one, the peak at `levelling::TARGET`, −0.1
+dBFS, just below full scale, as the owner chose. `levelling.rs` measures the peak of the unadjusted
 capture on the save thread's shape (`saving::spawn`, `Measuring the level…` with a cancel in
 the status bar; edits and saves wait, opening a file cancels it). The peak is the largest
 `|I + jQ|`, or `|x|` for a real capture, taken piece by piece in stored units, each source

@@ -9,7 +9,7 @@ Class A (DSP correctness, public `argand-core` API, data safety of saving, more 
 Two whole-capture operations that change what the capture's samples are without rewriting anything until it is saved:
 
 - Edit → Invert spectrum mirrors the spectrum: a complex capture is conjugated (`Q → −Q`), mirroring its band about the reference frequency; a real one is multiplied by `(−1)^n`, mirroring `0 .. Fs/2` about `Fs/4`.
-- Edit → Normalize level… scales the capture so that its peak lands on a chosen level in dBFS, I and Q by one common factor. The peak is the largest `|I + jQ|` of a complex capture and the largest `|x|` of a real one, measured over the whole capture.
+- Edit → Normalize level scales the capture so that its peak lands just below full scale, at −0.1 dBFS, I and Q by one common factor. The peak is the largest `|I + jQ|` of a complex capture and the largest `|x|` of a real one, measured over the whole capture.
 
 Both are applied on the fly while the capture is read, as the owner decided for #188 and chose for #190, and both are versions in the edit history: undone and redone, marking the capture unsaved and asking before it is closed. A save writes them into the file by encoding every sample again; nothing is copied byte for byte while either is on.
 
@@ -36,9 +36,9 @@ Out of scope: inverting or normalizing a time selection (the owner decided whole
 
 ### Normalization
 
-- The peak is measured on the unadjusted capture by a job on its own thread (`levelling.rs`, through `saving::spawn`), reading every sample through `EditedSource` with progress, a cancel and the status-bar item `Measuring the level…`. The gain is `10^(target/20) · full_scale / peak`, replacing any gain before it, so normalizing twice gives the same result as once. Inversion does not change the peak. ➕ The peak is taken piece by piece in stored units, each source through its own read scale, since pasted files may be read on other scales.
+- The peak is measured on the unadjusted capture by a job on its own thread (`levelling.rs`, through `saving::spawn`), reading every sample through `EditedSource` with progress, a cancel and the status-bar item `Measuring the level…`. The gain is `10^(−0.1/20) · full_scale / peak`, replacing any gain before it, so normalizing twice gives the same result as once. Inversion does not change the peak. ➕ The peak is taken piece by piece in stored units, each source through its own read scale, since pasted files may be read on other scales.
 - dBFS is relative to the stored format's full scale (128 for 8-bit, `2^(bits−1)` for integers, 1.0 for float), not to the read unit scale that the normalization and gain hints move, because the gain changes what is saved. The read value of full scale is that stored value through the opened file's `Encoding`, so normalization, like suppression, needs the file described and a reader with `original_sample_units`.
-- The target comes from a standard gpui-component `Dialog` with an `Input`, −1 dBFS at first and the last target used in this run after that, accepted from −60 to 0 dBFS. A silent capture (peak 0) is refused with a message. A result within 0.001 dB of the gain already in force adds no version.
+- ➕ There is no target to choose: a normalized capture has one form, its peak at −0.1 dBFS (`levelling::TARGET`), just below full scale, as the owner decided after the review rounds. The dialog first planned, with a target from −60 to 0 dBFS, is gone. A silent capture (peak 0) is refused with a message. A result within 0.001 dB of the gain already in force adds no version.
 - The measurement applies only to the document and the version it started from, like suppression; edits and saves wait for it, and opening another file cancels it.
 
 ### Saving
@@ -53,7 +53,7 @@ Out of scope: inverting or normalizing a time selection (the owner decided whole
 
 ### Commands and display
 
-- Edit → Invert spectrum, a checked row, Ctrl+Shift+I in the `Plot` context (Cmd+Shift+I on macOS), and Edit → Normalize level…, ➕ Ctrl+Shift+N (Cmd+Shift+N), as the owner asked. Both are enabled like suppression: a described capture, not changed on disk, no save, suppression or measurement running.
+- Edit → Invert spectrum, a checked row, Ctrl+Shift+I in the `Plot` context (Cmd+Shift+I on macOS), and Edit → Normalize level, ➕ Ctrl+Shift+N (Cmd+Shift+N), as the owner asked. Both are enabled like suppression: a described capture, not changed on disk, no save, suppression or measurement running.
 - ➕ Both commands are disabled while anything is selected (a time span, a band or a rectangle), as the owner decided after the review rounds: with a selection they would read as acting on it alone, which are different, computed operations. They therefore leave nothing selected.
 - While an adjustment is on, the status bar shows an item after the file group: `Inverted`, `+3.0 dB`, or both, with a hint saying that the spectrum is inverted or the level changed while reading, and that saving writes it into the file.
 
@@ -75,7 +75,7 @@ Out of scope: inverting or normalizing a time selection (the owner decided whole
 - [x] `editing.rs`: invert and gain versions, selection kept, clipboard adjustment and `PasteError::Adjustment`, adjusted minimap, `save_request` with the adjustment, the rebound history's identity, the full-scale value for dBFS.
 - [x] `suppression.rs`: read unadjusted and mirror the band through the inversion.
 - [x] `levelling.rs`: the peak measurement job and its tests.
-- [x] `editing_ui.rs`, `app_menu_ui.rs` and the status bar: the actions, the checked row, the key, the dialog, progress and cancel, the status item and its hint.
+- [x] `editing_ui.rs`, `app_menu_ui.rs` and the status bar: the actions, the checked row, the keys, progress and cancel, the status item and its hint.
 - [x] App tests: invert and normalize add one version each, undo and redo, selection kept, a stale measurement dropped, a refused paste, suppression of a band under inversion suppresses the band shown, saving an inverted and a normalized capture writes the adjusted samples.
 - [x] `AGENTS.md`, `IMPLEMENTATION_PLAN.md` and `CHANGELOG.md`.
 - [x] Review round 1 (`gpt-6.1-sol` high): four findings, two accepted. The peak was measured in read values while the gain is applied in stored units, so a capture pasted from files opened with different normalizations could clip when saved; the peak is now taken per piece in stored units, each source through its own `original_sample_units` (or its encoding when computed), against the stored full scale. The minimap cast the gain to `f32` before multiplying, which overflows for a gain above `f32::MAX` on a tiny float signal; it now multiplies in `f64`. Declined: a real piece pasted at a position of the other parity under an inversion reads negated, since the sign of `(−1)^n` follows the capture position. That is a constant phase of π over the piece, which leaves its spectrum and the inversion itself intact, while refusing such pastes would refuse half of all positions. Declined: the comment rule covers code comments, and the flagged text is in doc comments, which the rule leaves out. Each accepted fix has a test that fails without it.

@@ -559,7 +559,7 @@ impl Shell {
                 shell.invert_spectrum(window, cx);
             }))
             .on_action(cx.listener(|shell, _: &NormalizeLevel, window, cx| {
-                shell.ask_normalize(window, cx);
+                shell.normalize(window, cx);
             }))
     }
 }

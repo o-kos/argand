@@ -17,10 +17,8 @@ use crate::saving::{Ended, Job, Update};
 /// Samples read at a time.
 const BLOCK_SAMPLES: usize = 1 << 18;
 
-/// The lowest target level a normalization accepts, in dBFS.
-pub const LOWEST_TARGET: f64 = -60.0;
-/// The target level a normalization proposes first, in dBFS.
-pub const DEFAULT_TARGET: f64 = -1.0;
+/// Where a normalization puts the peak, in dBFS, just below full scale.
+pub const TARGET: f64 = -0.1;
 
 /// A version of a capture whose peak is wanted.
 #[derive(Debug, Clone)]
@@ -105,14 +103,14 @@ fn magnitude(values: &[f32], channels: usize) -> f64 {
         .fold(0.0, f64::max)
 }
 
-/// The gain that puts `peak` at `target` dBFS, both it and `full_scale` in stored units.
+/// The gain that puts `peak` at [`TARGET`], both it and `full_scale` in stored units.
 ///
-/// None for a silent capture or a target outside what a normalization accepts.
-pub fn gain(peak: f64, full_scale: f64, target: f64) -> Option<f64> {
-    if !(LOWEST_TARGET..=0.0).contains(&target) || peak <= 0.0 || !peak.is_finite() {
+/// None for a silent capture.
+pub fn gain(peak: f64, full_scale: f64) -> Option<f64> {
+    if peak <= 0.0 || !peak.is_finite() {
         return None;
     }
-    let gain = 10f64.powf(target / 20.0) * full_scale / peak;
+    let gain = 10f64.powf(TARGET / 20.0) * full_scale / peak;
     (gain.is_finite() && gain > 0.0).then_some(gain)
 }
 
