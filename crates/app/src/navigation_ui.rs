@@ -559,6 +559,26 @@ impl Shell {
         Some([band.low(), band.high(), band.high() - band.low()].map(number))
     }
 
+    /// What a selection's typed values are written and read against.
+    pub(super) fn entry_scale(&self) -> Option<crate::selection_entry::Scale> {
+        let meta = self.file.as_ref()?.state.document.meta()?;
+        let (low, high) = self.extents()?.hertz;
+        let (unit, divisor) = axes::frequency_unit((low, high));
+        let rows = self.plot.map_or(1, |plot| plot.height.max(1));
+        let row = crate::navigation::time_precision((high - low) / rows as f64 / divisor);
+        // The finer of one hertz and one row, so a typed edge is not rounded away.
+        let hertz = divisor.log10().round().max(0.) as usize;
+        Some(crate::selection_entry::Scale {
+            mode: self.session.time_ruler,
+            rate: meta.sample_rate,
+            total: meta.len_samples,
+            unit,
+            divisor,
+            decimals: row.max(hertz),
+            band: self.capture_band()?,
+        })
+    }
+
     /// How a frequency is written in the ruler's unit, to the precision of one row.
     fn hertz_format(&self) -> Option<(impl Fn(f64) -> String, &'static str)> {
         let (low, high) = self.extents()?.hertz;
@@ -893,6 +913,17 @@ impl plot_view::PlotView {
         self.pan = None;
         self.frequency_pan = None;
         self.selecting = None;
+        // A badge takes its own left presses, a double click turning it into an input.
+        if event.button == MouseButton::Left
+            && !self.space
+            && let Some(field) = self.badge_at(event.position)
+        {
+            if event.click_count >= 2 {
+                self.open_entry(field, window, cx);
+            }
+            cx.notify();
+            return;
+        }
         let on_spectrum = geometry.selects_at(event.position);
         let on_ruler = geometry.frequency_ruler.contains(&event.position);
         let grabbed = (event.button == MouseButton::Left && !self.space)

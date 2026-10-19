@@ -38,6 +38,8 @@ pub(super) struct PlotSnapshot {
     pub capture_band: Option<(f64, f64)>,
     /// A time selection's readouts on the plot.
     pub badges: Option<axes::SelectionBadges>,
+    /// What a selection's typed values are read against.
+    pub entry: Option<crate::selection_entry::Scale>,
     /// A finished save, said over the picture until the next input.
     pub notice: Option<gpui_kit::SharedString>,
     /// Which edit commands the spectrum's context menu can offer.
@@ -109,6 +111,10 @@ pub(super) struct PlotView {
     /// The sample a paste from the spectrum's context menu goes before.
     pub(super) paste_point: Option<u64>,
     pub(super) menu_dismiss: Option<Subscription>,
+    /// Where each selection badge was painted last, in window coordinates.
+    pub(super) badges: Vec<(crate::selection_entry::Field, Bounds<Pixels>)>,
+    /// The input a badge was turned into.
+    pub(super) typing: Option<badge_entry::BadgeEntry>,
     /// Kept because dropping it stops the symbol shortcuts.
     _symbols: Subscription,
     /// Forgets Space when the plot loses focus, since its release goes elsewhere.
@@ -139,6 +145,8 @@ impl PlotView {
             open_menu: None,
             paste_point: None,
             menu_dismiss: None,
+            badges: Vec::new(),
+            typing: None,
             _symbols: symbols,
             _blur: blur,
         }
@@ -350,10 +358,11 @@ impl PlotView {
 }
 
 impl Render for PlotView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(snapshot) = self.snapshot.clone() else {
             return div().flex_1().min_h_0().into_any_element();
         };
+        let entry = self.badge_entry(window, cx);
         let cursor = self
             .geometry
             .map_or(gpui_kit::CursorStyle::Arrow, |geometry| {
@@ -408,6 +417,7 @@ impl Render for PlotView {
             )
             .children(self.ruler_zoom_buttons(&snapshot, cx))
             .children(self.saved_notice(&snapshot, cx))
+            .children(entry)
             .when(self.dragging(), |plot| {
                 plot.child(drag_tracker(cx.entity().downgrade()))
             })
@@ -560,6 +570,7 @@ mod tests {
             selected: argand_core::Selection::default(),
             capture_band: None,
             badges: None,
+            entry: None,
             notice: None,
             edit: Default::default(),
         }
@@ -1843,6 +1854,163 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
+    }
+
+    /// Show a time span with its badges and the scale they are typed in.
+    fn show_badges(cx: &mut TestAppContext, handle: WindowHandle<Harness>, start: u64, end: u64) {
+        let selected = span(start, end).unwrap();
+        let scale = crate::selection_entry::Scale {
+            mode: crate::time_ruler::Mode::Seconds,
+            rate: 1e6,
+            total: 1_000_000,
+            unit: "kHz",
+            divisor: 1e3,
+            decimals: 3,
+            band: (-500_000., 500_000.),
+        };
+        let view = snapshot().extents.time.view;
+        let fraction = |sample: u64| (sample - view.start) as f64 / view.len as f64;
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                    let snapshot = plot.snapshot.as_mut().unwrap();
+                    snapshot.selected = selected;
+                    snapshot.entry = Some(scale);
+                    snapshot.badges = Some(axes::SelectionBadges {
+                        time: Some(axes::AxisBadges {
+                            texts: scale.time_texts(selected.time.unwrap()),
+                            fields: crate::selection_entry::Field::TIME,
+                            first: Some(fraction(start)),
+                            second: Some(fraction(end)),
+                            visible: (fraction(start), fraction(end)),
+                            around: (0., 1.),
+                            alone: true,
+                        }),
+                        band: None,
+                    });
+                    cx.notify();
+                });
+            })
+            .unwrap();
+        frame(cx, handle);
+        frame(cx, handle);
+    }
+
+    /// Where the badge of `field` was painted.
+    fn badge(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        field: crate::selection_entry::Field,
+    ) -> Bounds<Pixels> {
+        handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.as_ref().unwrap().read(cx);
+                plot.badges
+                    .iter()
+                    .find(|(shown, _)| *shown == field)
+                    .map(|(_, bounds)| *bounds)
+            })
+            .unwrap()
+            .expect("the badge is painted")
+    }
+
+    fn click(
+        cx: &mut TestAppContext,
+        handle: WindowHandle<Harness>,
+        at: gpui_kit::Point<Pixels>,
+        count: usize,
+    ) {
+        handle
+            .update(cx, |harness, _, _| harness.intents.clear())
+            .unwrap();
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_mouse_move(at, None, gpui_kit::Modifiers::default());
+        input.simulate_event(gpui_kit::MouseDownEvent {
+            button: MouseButton::Left,
+            position: at,
+            modifiers: gpui_kit::Modifiers::default(),
+            click_count: count,
+            first_mouse: false,
+        });
+        input.simulate_event(gpui_kit::MouseUpEvent {
+            button: MouseButton::Left,
+            position: at,
+            modifiers: gpui_kit::Modifiers::default(),
+            click_count: count,
+        });
+        cx.run_until_parked();
+    }
+
+    fn typing(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> Option<(String, bool)> {
+        handle
+            .update(cx, |harness, _, cx| {
+                let plot = harness.plot.as_ref().unwrap().read(cx);
+                plot.typing
+                    .as_ref()
+                    .map(|entry| (entry.text(cx), entry.invalid(cx)))
+            })
+            .unwrap()
+    }
+
+    fn type_text(cx: &mut TestAppContext, handle: WindowHandle<Harness>, keys: &str) {
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.simulate_keystrokes(keys);
+        cx.run_until_parked();
+    }
+
+    #[gpui_kit::test]
+    fn a_double_click_on_a_badge_types_its_value(cx: &mut TestAppContext) {
+        use crate::selection_entry::Field;
+        let handle = open(cx);
+        cx.update(badge_entry::init);
+        show_badges(cx, handle, 400_000, 600_000);
+        let start = badge(cx, handle, Field::TimeStart);
+        click(cx, handle, start.center(), 1);
+        assert!(
+            selections(cx, handle).is_empty(),
+            "a click on a badge keeps the selection"
+        );
+        assert_eq!(typing(cx, handle), None);
+        click(cx, handle, start.center(), 2);
+        assert_eq!(
+            typing(cx, handle),
+            Some(("0.400000 s".into(), false)),
+            "the value is shown to one sample"
+        );
+        type_text(cx, handle, "0 . 3 enter");
+        assert_eq!(selections(cx, handle), [span(300_000, 600_000)]);
+        assert_eq!(typing(cx, handle), None);
+        assert!(plot_focused(cx, handle), "the plot takes the keyboard back");
+    }
+
+    #[gpui_kit::test]
+    fn a_badge_input_marks_a_bad_value_and_escape_leaves_the_selection(cx: &mut TestAppContext) {
+        use crate::selection_entry::Field;
+        let handle = open(cx);
+        cx.update(badge_entry::init);
+        show_badges(cx, handle, 400_000, 600_000);
+        let length = badge(cx, handle, Field::TimeLength);
+        click(cx, handle, length.center(), 2);
+        type_text(cx, handle, "x enter");
+        assert_eq!(
+            typing(cx, handle),
+            Some(("x".into(), true)),
+            "kept and marked"
+        );
+        assert!(selections(cx, handle).is_empty());
+        type_text(cx, handle, "backspace 1 enter");
+        assert_eq!(
+            selections(cx, handle),
+            [span(400_000, 1_000_000)],
+            "a length moves the end, held to the capture"
+        );
+        show_badges(cx, handle, 400_000, 600_000);
+        let end = badge(cx, handle, Field::TimeEnd);
+        click(cx, handle, end.center(), 2);
+        type_text(cx, handle, "0 . 7 escape");
+        assert_eq!(typing(cx, handle), None);
+        assert!(selections(cx, handle).is_empty(), "Escape changes nothing");
+        assert!(plot_focused(cx, handle));
     }
 
     /// Where `sample` lies across the spectrum.

@@ -5,6 +5,7 @@
 //! visible selection on the other side.
 
 use super::*;
+use crate::selection_entry::Field;
 
 /// Room between a badge and the plot's edge it stands on.
 const MARGIN: f32 = 4.;
@@ -37,6 +38,8 @@ pub struct SelectionBadges {
 pub struct AxisBadges {
     /// The first edge, the second edge and the extent.
     pub texts: [String; 3],
+    /// The values those texts show.
+    pub fields: [Field; 3],
     /// The first edge, none when it is not shown.
     pub first: Option<f64>,
     pub second: Option<f64>,
@@ -79,21 +82,21 @@ impl Layout {
     }
 }
 
+/// Where a selection's badges and dimension lines go, in panel coordinates.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PlacedBadges {
+    /// Each shown badge with the value it holds.
+    pub badges: Vec<(Field, String, Rect)>,
+    lines: Vec<Dimension>,
+}
+
 impl SelectionBadges {
-    pub fn paint(
-        &self,
-        frame: &Frame,
-        panel: Point<Pixels>,
-        labels: &Labels,
-        colors: [Hsla; 2],
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    /// Settle every badge in the plot, time's first, and the dimension lines through the extents.
+    pub fn place(&self, frame: &Frame, labels: &Labels) -> PlacedBadges {
         let height = labels.digit_height(LABEL_SIZE) + 2. * BADGE_PAD;
         let width = |text: &String| labels.width(text, LABEL_SIZE).ceil() + 2. * BADGE_PAD;
         let vertical = frame.orientation.vertical();
-        let mut shown: Vec<(&str, Rect)> = Vec::new();
-        let mut lines: Vec<Dimension> = Vec::new();
+        let mut placed = PlacedBadges::default();
         let mut taken: Vec<Rect> = Vec::new();
         let axes = [
             (&self.time, Layout::time(vertical)),
@@ -116,25 +119,43 @@ impl SelectionBadges {
             let places = settle(places, &mut taken, layout, frame.plot);
             if let Some(extent) = places[2] {
                 let ends = [badges.first.is_some(), badges.second.is_some()];
-                lines.push(dimension(frame.plot, layout, badges.visible, ends, extent));
+                placed
+                    .lines
+                    .push(dimension(frame.plot, layout, badges.visible, ends, extent));
             }
-            shown.extend(
+            placed.badges.extend(
                 badges
-                    .texts
-                    .iter()
+                    .fields
+                    .into_iter()
+                    .zip(badges.texts.iter().cloned())
                     .zip(places)
-                    .filter_map(|(text, rect)| Some((text.as_str(), rect?))),
+                    .filter_map(|((field, text), rect)| Some((field, text, rect?))),
             );
         }
+        placed
+    }
+}
+
+impl PlacedBadges {
+    /// Paint the lines and the badges.
+    pub fn paint(
+        &self,
+        frame: &Frame,
+        panel: Point<Pixels>,
+        labels: &Labels,
+        colors: [Hsla; 2],
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let clip = Bounds::new(
             panel + point(px(frame.plot.x), px(frame.plot.y)),
             size(px(frame.plot.width), px(frame.plot.height)),
         );
         window.with_content_mask(Some(gpui_kit::ContentMask { bounds: clip }), |window| {
-            for line in &lines {
+            for line in &self.lines {
                 line.paint(panel, colors, window);
             }
-            for (text, rect) in &shown {
+            for (_, text, rect) in &self.badges {
                 badge(text, *rect, panel, labels, colors, window, cx);
             }
         });

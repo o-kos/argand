@@ -25,7 +25,7 @@ pub use cursor_guides::{BadgeMetrics, CursorGuides, frequency_unit};
 
 #[path = "selection_badges.rs"]
 mod selection_badges;
-pub use selection_badges::{AxisBadges, SelectionBadges};
+pub use selection_badges::{AxisBadges, PlacedBadges, SelectionBadges};
 
 /// Room between a label and whatever it labels.
 const LABEL_PAD: f32 = 9.0;

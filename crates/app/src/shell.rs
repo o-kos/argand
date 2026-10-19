@@ -39,6 +39,8 @@ mod shortcuts;
 
 #[path = "backdrop.rs"]
 mod backdrop;
+#[path = "badge_entry.rs"]
+mod badge_entry;
 
 #[path = "disk_change_ui.rs"]
 mod disk_change_ui;
@@ -103,6 +105,7 @@ struct OpenRecent {
 /// The window's own keys, which a headless test registers as the window does.
 pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     editing_ui::init(cx);
+    badge_entry::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([

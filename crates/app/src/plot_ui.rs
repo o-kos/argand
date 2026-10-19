@@ -55,6 +55,7 @@ impl Shell {
             },
             capture_band: self.capture_band(),
             badges: self.selection_badges(),
+            entry: self.entry_scale(),
             notice: match &self.save_notice {
                 Some(saving_ui::Notice::Saved(name)) => Some(format!("Saved {name}").into()),
                 _ => None,
@@ -171,13 +172,14 @@ impl PlotView {
         let known_bounds = self.panel_bounds;
         let known = self.measured;
         let known_geometry = self.geometry;
+        let badges = self.badge_layout(badges, cx);
         let held = axes::Held {
             time: time_scheme,
             frequency: frequency_scheme,
             gutter: self.gutter_floor,
         };
         let view = cx.entity().downgrade();
-        let marks = self.marks(selection, badges, extents, show_grid, cx);
+        let marks = self.marks(selection, extents, show_grid, cx);
 
         canvas(
             move |bounds, window, cx| {
@@ -203,10 +205,11 @@ impl PlotView {
                 {
                     defer_layout(view.clone(), bounds, measured, geometry, frame.gutter, cx);
                 }
-                Some((frame, labels, height))
+                let placed = badges.place(&frame, &labels, bounds.origin + point(dx, dy), cx);
+                Some((frame, labels, height, placed))
             },
             move |bounds, prepainted, window, cx| {
-                let Some((frame, labels, height)) = prepainted else {
+                let Some((frame, labels, height, placed)) = prepainted else {
                     return;
                 };
                 let (dx, dy) = orientation.axes(px(0.), px(height));
@@ -243,23 +246,34 @@ impl PlotView {
                     spectrum_origin,
                     size(bounds.size.width - dx, bounds.size.height - dy),
                 );
-                marks.paint(&frame, panel, &labels, window, cx);
+                marks.paint(&frame, panel, &labels, &placed, window, cx);
             },
         )
         .size_full()
     }
 
+    fn badge_layout(
+        &self,
+        badges: Option<axes::SelectionBadges>,
+        cx: &Context<Self>,
+    ) -> BadgeLayout {
+        BadgeLayout {
+            badges,
+            known: self.badges.clone(),
+            typing: self.typing.as_ref().map(|typing| typing.field),
+            view: cx.entity().downgrade(),
+        }
+    }
+
     fn marks(
         &self,
         selection: Option<waveform::Selected>,
-        badges: Option<axes::SelectionBadges>,
         extents: axes::Extents,
         show_grid: bool,
         cx: &Context<Self>,
     ) -> Marks {
         Marks {
             selection,
-            badges,
             badge_colors: [cx.theme().foreground, cx.theme().background],
             colors: axis_colors(cx, show_grid),
             guides: self.cursor_guides(extents, cx),
@@ -508,6 +522,7 @@ impl Shell {
                 .then(|| (sample - view.start) as f64 / view.len as f64)
         };
         Some(axes::AxisBadges {
+            fields: crate::selection_entry::Field::TIME,
             texts: self.session.time_ruler.counters(
                 span,
                 meta.sample_rate,
@@ -551,12 +566,24 @@ impl Shell {
             true => (1. - to, 1. - from),
             false => (from, to),
         };
-        let (first, second, texts) = match vertical {
-            true => (band.low(), band.high(), [low_text, high_text, width]),
-            false => (band.high(), band.low(), [high_text, low_text, width]),
+        use crate::selection_entry::Field;
+        let (first, second, texts, fields) = match vertical {
+            true => (
+                band.low(),
+                band.high(),
+                [low_text, high_text, width],
+                Field::BAND,
+            ),
+            false => (
+                band.high(),
+                band.low(),
+                [high_text, low_text, width],
+                [Field::BandHigh, Field::BandLow, Field::BandWidth],
+            ),
         };
         Some(axes::AxisBadges {
             texts,
+            fields,
             first: shown(first),
             second: shown(second),
             visible,
@@ -589,7 +616,6 @@ impl Shell {
 /// What is painted over the picture, in order from the selection's tint to the Alt guides.
 struct Marks {
     selection: Option<waveform::Selected>,
-    badges: Option<axes::SelectionBadges>,
     badge_colors: [gpui_kit::Hsla; 2],
     colors: axes::Colors,
     guides: Option<axes::CursorGuides>,
@@ -601,14 +627,13 @@ impl Marks {
         frame: &axes::Frame,
         panel: Bounds<Pixels>,
         labels: &axes::Labels,
+        badges: &axes::PlacedBadges,
         window: &mut Window,
         cx: &mut gpui_kit::App,
     ) {
         paint_selection(frame, panel.origin, self.selection, window, cx);
         axes::paint(frame, panel.origin, labels, self.colors, window, cx);
-        if let Some(badges) = &self.badges {
-            badges.paint(frame, panel.origin, labels, self.badge_colors, window, cx);
-        }
+        badges.paint(frame, panel.origin, labels, self.badge_colors, window, cx);
         if let Some(guides) = &self.guides {
             guides.paint(frame, panel, labels, window, cx);
         }
@@ -998,6 +1023,52 @@ fn frequency_mapping(held: (f64, f64), shown: (f64, f64)) -> (f32, f32) {
         ((shown.1 - held.1) / span) as f32,
         ((held.1 - held.0) / span) as f32,
     )
+}
+
+/// The selection's badges, where the plot last saw them and the one an input stands over.
+struct BadgeLayout {
+    badges: Option<axes::SelectionBadges>,
+    known: Vec<(crate::selection_entry::Field, Bounds<Pixels>)>,
+    typing: Option<crate::selection_entry::Field>,
+    view: WeakEntity<PlotView>,
+}
+
+impl BadgeLayout {
+    /// Settle the badges, hand the plot where they are, and leave out the one an input stands over.
+    fn place(
+        &self,
+        frame: &axes::Frame,
+        labels: &axes::Labels,
+        panel: gpui_kit::Point<Pixels>,
+        cx: &mut gpui_kit::App,
+    ) -> axes::PlacedBadges {
+        let mut placed = self
+            .badges
+            .as_ref()
+            .map(|badges| badges.place(frame, labels))
+            .unwrap_or_default();
+        let rects: Vec<_> = placed
+            .badges
+            .iter()
+            .map(|(field, _, rect)| {
+                let origin = panel + point(px(rect.x), px(rect.y));
+                (
+                    *field,
+                    Bounds::new(origin, size(px(rect.width), px(rect.height))),
+                )
+            })
+            .collect();
+        if rects != self.known {
+            let view = self.view.clone();
+            cx.defer(move |cx| {
+                let _ = view.update(cx, |plot, cx| plot.place_badges(rects, cx));
+            });
+        }
+        placed
+            .badges
+            .retain(|(field, ..)| Some(*field) != self.typing);
+        placed
+    }
 }
 
 fn defer_layout(
