@@ -112,13 +112,12 @@ impl SelectionBadges {
                 },
                 badges.texts.each_ref().map(width),
                 height,
-            )
-            .map(|rect| rect.and_then(|rect| clear_of(rect, &taken, layout, frame.plot)));
+            );
+            let places = settle(places, &mut taken, layout, frame.plot);
             if let Some(extent) = places[2] {
                 let ends = [badges.first.is_some(), badges.second.is_some()];
                 lines.push(dimension(frame.plot, layout, badges.visible, ends, extent));
             }
-            taken.extend(places.iter().flatten());
             shown.extend(
                 badges
                     .texts
@@ -311,28 +310,49 @@ fn overlaps(a: Rect, b: Rect) -> bool {
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 }
 
-/// `rect` moved along `layout`'s axis clear of the badges `taken` by another axis, or none without room.
+/// `places` moved one after another clear of `taken`, each joining it once placed.
+pub(crate) fn settle(
+    places: [Option<Rect>; 3],
+    taken: &mut Vec<Rect>,
+    layout: Layout,
+    plot: Rect,
+) -> [Option<Rect>; 3] {
+    places.map(|rect| {
+        let rect = clear_of(rect?, taken, layout, plot)?;
+        taken.push(rect);
+        Some(rect)
+    })
+}
+
+/// `rect` moved along `layout`'s axis to the nearest place clear of the badges `taken`, or none without one.
 pub(crate) fn clear_of(rect: Rect, taken: &[Rect], layout: Layout, plot: Rect) -> Option<Rect> {
-    let Some(&obstacle) = taken.iter().find(|taken| overlaps(rect, **taken)) else {
-        return Some(rect);
+    let span = |rect: &Rect| match layout.across {
+        true => (rect.x, rect.x + rect.width),
+        false => (rect.y, rect.y + rect.height),
     };
-    let (start, end, length) = match layout.across {
-        true => (plot.x, plot.x + plot.width, rect.width),
-        false => (plot.y, plot.y + plot.height, rect.height),
+    let (start, end) = match layout.across {
+        true => (plot.x, plot.x + plot.width),
+        false => (plot.y, plot.y + plot.height),
     };
-    let (from, to) = match layout.across {
-        true => (obstacle.x, obstacle.x + obstacle.width),
-        false => (obstacle.y, obstacle.y + obstacle.height),
+    let (at, to) = span(&rect);
+    let length = to - at;
+    let moved = |place: f32| match layout.across {
+        true => Rect { x: place, ..rect },
+        false => Rect { y: place, ..rect },
     };
-    let moved = |at: f32| match layout.across {
-        true => Rect { x: at, ..rect },
-        false => Rect { y: at, ..rect },
-    };
-    [to + GAP, from - GAP - length]
-        .into_iter()
-        .filter(|&at| at >= start && at + length <= end)
+    // Where it stands, or just past either side of any badge already placed.
+    let places = std::iter::once(at).chain(taken.iter().flat_map(|taken| {
+        let (from, to) = span(taken);
+        [to + GAP, from - GAP - length]
+    }));
+    places
+        .filter(|&place| place >= start && place + length <= end)
         .map(moved)
-        .find(|moved| !taken.iter().any(|taken| overlaps(*moved, *taken)))
+        .filter(|moved| !taken.iter().any(|taken| overlaps(*moved, *taken)))
+        .min_by(|a, b| {
+            let distance = |rect: &Rect| (span(rect).0 - at).abs();
+            distance(a).total_cmp(&distance(b))
+        })
 }
 
 /// Whether an extent badge `badge` long and its arrowheads fit between edges `length` apart.
@@ -564,6 +584,57 @@ mod tests {
         let moved = clear_of(width, &[time], Layout::band(false), plot).unwrap();
         assert_eq!((moved.x, moved.y), (12., 20. + GAP));
         assert!(!overlaps(moved, time));
+    }
+
+    #[test]
+    fn badges_moved_clear_of_another_axis_stay_clear_of_each_other() {
+        let plot = Rect {
+            x: 0.,
+            y: 0.,
+            width: 800.,
+            height: 400.,
+        };
+        let badge = |x: f32, y: f32| Rect {
+            x,
+            y,
+            width: 60.,
+            height: 16.,
+        };
+        let mut taken = vec![badge(4., 4.)];
+        let settled = settle(
+            [Some(badge(4., 0.)), Some(badge(4., 24.)), None],
+            &mut taken,
+            Layout::band(false),
+            plot,
+        );
+        let (first, second) = (settled[0].unwrap(), settled[1].unwrap());
+        assert!(!overlaps(first, second));
+        assert!(
+            taken
+                .iter()
+                .enumerate()
+                .all(|(index, a)| { taken[index + 1..].iter().all(|b| !overlaps(*a, *b)) })
+        );
+    }
+
+    #[test]
+    fn a_badge_finds_the_nearest_room_past_several_others() {
+        let plot = Rect {
+            x: 0.,
+            y: 0.,
+            width: 800.,
+            height: 400.,
+        };
+        let at = |x: f32| Rect {
+            x,
+            y: 380.,
+            width: 40.,
+            height: 16.,
+        };
+        let taken = [at(736.), at(694.), at(652.)];
+        let moved = clear_of(at(736.), &taken, Layout::band(true), plot).unwrap();
+        assert_eq!(moved.x, 652. - GAP - 40.);
+        assert!(taken.iter().all(|taken| !overlaps(moved, *taken)));
     }
 
     #[test]
