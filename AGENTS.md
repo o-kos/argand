@@ -445,12 +445,14 @@ selection on the other (`selection_badges::Layout`). Time puts its start and end
 and its length at the top, or at the left and the right in vertical orientation; a band or a
 rectangle puts its high and low edges at the left and its width at the right, or at the top and
 the bottom with frequency running right. `time_ruler::Mode::counters` gives the time values
-exact to the sample in the ruler's mode, each padded on the left with zeros to the width the
-capture's own length takes, so a value keeps its width while an edge moves;
-`Shell::band_texts` gives the band's in the frequency ruler's unit. A hidden edge has no badge;
-badges stay inside the plot, the second edge's badge goes past the first's where they would
-overlap and is dropped without room, and they take no input, painted over the grid and under
-the zoom pairs and the Alt guides. The status bar shows only a band's edges and width.
+exact to the sample in the ruler's mode, the clock with the fields the capture's own length
+needs; `Shell::band_texts` gives the band's as numbers in the frequency ruler's unit, which
+only the ruler names. The extent badge sits on a dimension line (`selection_badges::Dimension`),
+a paper stroke around an ink core like the Alt guides, running from edge to edge of the
+visible selection with an arrowhead at each edge in view. A hidden edge has no badge; badges
+stay inside the plot, the second edge's badge goes past the first's where they would overlap
+and is dropped without room, and they take no input, painted over the grid and under the zoom
+pairs and the Alt guides. The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical

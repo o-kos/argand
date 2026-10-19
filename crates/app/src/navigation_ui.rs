@@ -553,29 +553,10 @@ impl Shell {
         }
     }
 
-    /// The band of a selection as the status bar shows it, the time span being labelled on the plot.
-    pub(super) fn selection_readout(&self) -> Option<String> {
-        self.band.and_then(|band| self.band_readout(band))
-    }
-
-    /// A band's edges and width in the frequency ruler's unit, to the precision of one row.
-    fn band_readout(&self, band: argand_core::FrequencyBand) -> Option<String> {
-        let (number, unit) = self.hertz_format()?;
-        Some(format!(
-            "{} – {} {unit} ({} {unit})",
-            number(band.low()),
-            number(band.high()),
-            number(band.high() - band.low())
-        ))
-    }
-
-    /// A band's low edge, high edge and width in the frequency ruler's unit, to the precision of one row.
+    /// A band's low edge, high edge and width in the frequency ruler's unit, which the ruler names.
     pub(super) fn band_texts(&self, band: argand_core::FrequencyBand) -> Option<[String; 3]> {
-        let (number, unit) = self.hertz_format()?;
-        Some(
-            [band.low(), band.high(), band.high() - band.low()]
-                .map(|hertz| format!("{} {unit}", number(hertz))),
-        )
+        let (number, _) = self.hertz_format()?;
+        Some([band.low(), band.high(), band.high() - band.low()].map(number))
     }
 
     /// How a frequency is written in the ruler's unit, to the precision of one row.

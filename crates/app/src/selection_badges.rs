@@ -12,6 +12,12 @@ const MARGIN: f32 = 4.;
 const GAP: f32 = 2.;
 /// The badge's corner radius, as the Alt badges have it.
 const RADIUS: f32 = 3.;
+/// How far an arrowhead of the dimension line reaches along it.
+const ARROW_LENGTH: f32 = 6.;
+/// Half the width of an arrowhead across the line.
+const ARROW_HALF: f32 = 3.;
+/// Room the dimension line leaves on each side of the extent badge.
+const LINE_GAP: f32 = 3.;
 
 /// A selection's readouts on the plot.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -77,6 +83,7 @@ impl SelectionBadges {
         let width = |text: &String| labels.width(text, LABEL_SIZE).ceil() + 2. * BADGE_PAD;
         let vertical = frame.orientation.vertical();
         let mut shown: Vec<(&str, Rect)> = Vec::new();
+        let mut lines: Vec<Dimension> = Vec::new();
         let axes = [
             (&self.time, Layout::time(vertical)),
             (&self.band, Layout::band(vertical)),
@@ -91,6 +98,10 @@ impl SelectionBadges {
                 badges.texts.each_ref().map(width),
                 height,
             );
+            if let Some(extent) = places[2] {
+                let ends = [badges.first.is_some(), badges.second.is_some()];
+                lines.push(dimension(frame.plot, layout, badges.visible, ends, extent));
+            }
             shown.extend(
                 badges
                     .texts
@@ -104,10 +115,105 @@ impl SelectionBadges {
             size(px(frame.plot.width), px(frame.plot.height)),
         );
         window.with_content_mask(Some(gpui_kit::ContentMask { bounds: clip }), |window| {
+            for line in &lines {
+                line.paint(panel, colors, window);
+            }
             for (text, rect) in &shown {
                 badge(text, *rect, panel, labels, colors, window, cx);
             }
         });
+    }
+}
+
+/// A line from edge to edge of the visible selection through its extent badge, with an arrowhead at each edge shown.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Dimension {
+    pub across: bool,
+    /// Where the line runs across the other axis, in panel coordinates.
+    pub at: f32,
+    /// The stretches along the axis the line is drawn over, either side of the badge.
+    pub segments: Vec<(f32, f32)>,
+    /// Arrow tips along the axis, each with the way it points, true towards larger values.
+    pub arrows: Vec<(f32, bool)>,
+}
+
+/// The dimension line of a selection `visible` along `layout`'s axis, broken by the extent badge `extent`.
+pub(crate) fn dimension(
+    plot: Rect,
+    layout: Layout,
+    visible: (f64, f64),
+    ends: [bool; 2],
+    extent: Rect,
+) -> Dimension {
+    let (origin, length, badge_from, badge_to, at) = match layout.across {
+        true => (
+            plot.x,
+            plot.width,
+            extent.x,
+            extent.x + extent.width,
+            extent.y + extent.height / 2.,
+        ),
+        false => (
+            plot.y,
+            plot.height,
+            extent.y,
+            extent.y + extent.height,
+            extent.x + extent.width / 2.,
+        ),
+    };
+    let from = origin + visible.0 as f32 * length;
+    let to = origin + visible.1 as f32 * length;
+    let segments = [(from, badge_from - LINE_GAP), (badge_to + LINE_GAP, to)]
+        .into_iter()
+        .filter(|(start, end)| end > start)
+        .collect();
+    // Arrowheads need room for both, or the line is drawn without them.
+    let room = to - from >= 2. * ARROW_LENGTH;
+    let arrows = [(ends[0], from, false), (ends[1], to, true)]
+        .into_iter()
+        .filter(|(shown, _, _)| *shown && room)
+        .map(|(_, tip, forward)| (tip, forward))
+        .collect();
+    Dimension {
+        across: layout.across,
+        at,
+        segments,
+        arrows,
+    }
+}
+
+impl Dimension {
+    /// A paper stroke around an ink core, as the Alt guides are drawn, and filled arrowheads.
+    fn paint(&self, panel: Point<Pixels>, [ink, paper]: [Hsla; 2], window: &mut Window) {
+        let screen = |along: f32, across: f32| match self.across {
+            true => panel + point(px(along), px(across)),
+            false => panel + point(px(across), px(along)),
+        };
+        for (width, color) in [(3., paper), (1., ink)] {
+            for &(start, end) in &self.segments {
+                let corner = screen(start, self.at - width / 2.);
+                let extent = match self.across {
+                    true => size(px(end - start), px(width)),
+                    false => size(px(width), px(end - start)),
+                };
+                window.paint_quad(fill(Bounds::new(corner, extent), color));
+            }
+        }
+        for &(tip, forward) in &self.arrows {
+            let back = if forward { -ARROW_LENGTH } else { ARROW_LENGTH };
+            for (grow, color) in [(1., paper), (0., ink)] {
+                let points = [
+                    screen(tip - back.signum() * grow, self.at),
+                    screen(tip + back, self.at - ARROW_HALF - grow),
+                    screen(tip + back, self.at + ARROW_HALF + grow),
+                ];
+                let mut path = gpui_kit::PathBuilder::fill();
+                path.add_polygon(&points, true);
+                if let Ok(path) = path.build() {
+                    window.paint_path(path, color);
+                }
+            }
+        }
     }
 }
 
@@ -297,6 +403,34 @@ mod tests {
         assert_eq!((start.x, start.y + start.height), (14., 70.));
         assert_eq!((end.x, end.y), (14., 170.));
         assert_eq!((length.x + length.width, length.y), (406., 112.));
+    }
+
+    #[test]
+    fn the_dimension_line_runs_between_the_edges_around_the_badge() {
+        let extent = Rect {
+            x: 190.,
+            y: 24.,
+            width: 40.,
+            height: 16.,
+        };
+        let line = dimension(
+            PLOT,
+            Layout::time(false),
+            (0.25, 0.75),
+            [true, true],
+            extent,
+        );
+        assert_eq!(line.at, 32.);
+        assert_eq!(line.segments, [(110., 187.), (233., 310.)]);
+        assert_eq!(line.arrows, [(110., false), (310., true)]);
+        let hidden = dimension(PLOT, Layout::time(false), (0., 0.75), [false, true], extent);
+        assert_eq!(
+            hidden.arrows,
+            [(310., true)],
+            "no arrow at an edge out of view"
+        );
+        let narrow = dimension(PLOT, Layout::time(false), (0.5, 0.52), [true, true], extent);
+        assert!(narrow.segments.is_empty() && narrow.arrows.is_empty());
     }
 
     #[test]

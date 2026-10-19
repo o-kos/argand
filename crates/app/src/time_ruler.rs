@@ -44,8 +44,8 @@ impl Mode {
     /// Samples name the first and the last sample selected, the way the ruler
     /// numbers them. Clock and seconds give the boundaries in time, with as many
     /// decimals as one sample of the capture needs, and fall back to samples
-    /// where seconds cannot tell neighbouring samples apart. Each value is as wide
-    /// as the capture's `total` samples take, so it keeps its width while an edge
+    /// where seconds cannot tell neighbouring samples apart. The clock keeps the
+    /// fields the capture's `total` samples need, so its width stays while an edge
     /// is dragged.
     pub fn counters(self, span: argand_core::SampleSpan, rate: f64, total: u64) -> [String; 3] {
         let whole = argand_core::SampleSpan::between(0, total.max(span.end())).unwrap_or(span);
@@ -56,14 +56,10 @@ impl Mode {
         });
         let Some(precision) = precision else {
             let index = |sample: u64| format!("#{}", crate::numbers::number(sample));
-            let last = whole.end() - 1;
             return [
-                counter(&index(span.start()), &index(last)),
-                counter(&index(span.end() - 1), &index(last)),
-                counter(
-                    &crate::numbers::number(span.count()),
-                    &crate::numbers::number(whole.count()),
-                ),
+                index(span.start()),
+                index(span.end() - 1),
+                crate::numbers::number(span.count()),
             ];
         };
         let duration = whole.end() as f64 / rate;
@@ -76,31 +72,12 @@ impl Mode {
                 crate::numbers::text(&format!("{seconds:.precision$} s"))
             }
         };
-        let widest = time(duration);
         [
-            counter(&time(span.start() as f64 / rate), &widest),
-            counter(&time(span.end() as f64 / rate), &widest),
-            counter(&time(span.count() as f64 / rate), &widest),
+            time(span.start() as f64 / rate),
+            time(span.end() as f64 / rate),
+            time(span.count() as f64 / rate),
         ]
     }
-}
-
-/// `value` padded on the left to the width of `widest`, its padding drawn as zeros.
-///
-/// A leading run without digits, such as the `#` of a sample index, stays in
-/// front of the padding.
-fn counter(value: &str, widest: &str) -> String {
-    let digits = crate::numbers::current().digits();
-    let is_digit = |c: char| digits.contains(&c);
-    let lead: String = value.chars().take_while(|&c| !is_digit(c)).collect();
-    let body = &value[lead.len()..];
-    let widest = widest.chars().skip_while(|&c| !is_digit(c));
-    let room = widest.clone().count().saturating_sub(body.chars().count());
-    let padding: String = widest
-        .take(room)
-        .map(|c| if is_digit(c) { digits[0] } else { c })
-        .collect();
-    format!("{lead}{padding}{body}")
 }
 
 /// The most decimals the clock format prints, which `argand_core::axis::format_time` caps.
@@ -231,7 +208,7 @@ mod tests {
         let span = span(4_000_000, 4_001_000);
         assert_eq!(
             texts(Mode::Samples.counters(span, 2e6, 4_100_000)),
-            ["#4,000,000", "#4,000,999", "0,001,000"]
+            ["#4,000,000", "#4,000,999", "1,000"]
         );
         assert_eq!(
             texts(Mode::Seconds.counters(span, 2e6, 4_100_000)),
@@ -244,14 +221,14 @@ mod tests {
     }
 
     #[test]
-    fn counters_keep_the_capture_s_width() {
+    fn only_the_clock_keeps_the_capture_s_fields() {
         assert_eq!(
             Mode::Samples.counters(span(12, 345), 1e3, 1_000_000),
-            ["#000,012", "#000,344", "0,000,333"]
+            ["#12", "#344", "333"]
         );
         assert_eq!(
             Mode::Seconds.counters(span(0, 10), 1e3, 100_000)[0],
-            "000.000 s"
+            "0.000 s"
         );
         assert_eq!(
             Mode::Clock.counters(span(0, 3_600_000), 1e3, 7_200_000)[1],
@@ -265,7 +242,7 @@ mod tests {
         assert_eq!(texts(fast)[0], "0.0000000250 s");
         assert_eq!(
             texts(Mode::Clock.counters(span(100, 101), 4e9, 200)),
-            ["#100", "#100", "001"],
+            ["#100", "#100", "1"],
             "the clock stops at nanoseconds"
         );
         assert_eq!(
