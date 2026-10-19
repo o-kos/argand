@@ -117,7 +117,7 @@ a domain canvas is composition, as the zoom pairs over the spectrogram are.
 
 ## Implementation steps
 
-- [ ] `selection_entry.rs` with tests: field texts, time parsing in the three modes and with
+- [x] `selection_entry.rs` with tests: field texts, time parsing in the three modes and with
       `#`, frequency parsing, applying each field with clamping, swapping and refusals, a
       locale with a comma decimal mark.
 - [ ] Split badge layout from painting, tag badges with their fields, hand their

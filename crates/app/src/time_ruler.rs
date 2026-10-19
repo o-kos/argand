@@ -55,15 +55,9 @@ impl Mode {
         seconds_per_pixel: f64,
     ) -> [String; 3] {
         let whole = argand_core::SampleSpan::between(0, total.max(span.end())).unwrap_or(span);
-        let precision = exact_time_precision(whole, rate)
-            .filter(|&precision| match self {
-                Self::Samples => false,
-                Self::Clock => precision <= CLOCK_DECIMALS,
-                Self::Seconds => true,
-            })
-            .map(|exact| {
-                pixel_precision(seconds_per_pixel).map_or(exact, |pixel| pixel.min(exact))
-            });
+        let precision = self.exact_precision(whole, rate).map(|exact| {
+            pixel_precision(seconds_per_pixel).map_or(exact, |pixel| pixel.min(exact))
+        });
         let Some(precision) = precision else {
             let index = |sample: u64| format!("#{}", crate::numbers::number(sample));
             return [
@@ -87,6 +81,24 @@ impl Mode {
             time(span.end() as f64 / rate),
             time(span.count() as f64 / rate),
         ]
+    }
+}
+
+impl Mode {
+    /// Whether a selection's values in a capture of `total` samples are written as sample indexes.
+    pub fn writes_samples(self, rate: f64, total: u64) -> bool {
+        argand_core::SampleSpan::between(0, total.max(1))
+            .and_then(|whole| self.exact_precision(whole, rate))
+            .is_none()
+    }
+
+    /// The decimals that tell every sample of `whole` apart in this mode, none where only indexes do.
+    fn exact_precision(self, whole: argand_core::SampleSpan, rate: f64) -> Option<usize> {
+        exact_time_precision(whole, rate).filter(|&precision| match self {
+            Self::Samples => false,
+            Self::Clock => precision <= CLOCK_DECIMALS,
+            Self::Seconds => true,
+        })
     }
 }
 
