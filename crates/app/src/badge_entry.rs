@@ -11,8 +11,8 @@ actions!(badge_entry, [CancelBadgeEntry]);
 /// The input's surroundings, which take the Escape the input passes on.
 const CONTEXT: &str = "BadgeEntry";
 
-/// The least width of the input, for a badge too short to type a value into.
-const MIN_WIDTH: f32 = 120.;
+/// What a small input adds to its text, its padding, border and the caret past the last character.
+const INPUT_FRAME: f32 = 2. * 8. + 2. + 2.;
 
 pub(super) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys([KeyBinding::new("escape", CancelBadgeEntry, Some(CONTEXT))]);
@@ -86,6 +86,8 @@ impl PlotView {
         let input = cx.new(|cx| InputState::new(window, cx).default_value(text.clone()));
         let events = cx.subscribe_in(&input, window, |plot, _, event, window, cx| match event {
             InputEvent::PressEnter { .. } => plot.enter_badge(window, cx),
+            // The input hugs its text, so it is laid out again as the text changes.
+            InputEvent::Change => cx.notify(),
             InputEvent::Blur => {
                 // Focus taken by another control stays there, and otherwise the plot gets it back.
                 let handle = plot
@@ -179,8 +181,8 @@ impl PlotView {
             return None;
         };
         let spectrum = geometry.spectrum;
-        let width = (badge.size.width + px(24.))
-            .max(px(MIN_WIDTH))
+        let width = (text_width(&entry.input.read(cx).value(), window, cx) + px(INPUT_FRAME))
+            .max(badge.size.width)
             .min(spectrum.size.width);
         let left = (badge.center().x - width / 2.).clamp(spectrum.left(), spectrum.right() - width);
         let input = Input::new(&entry.input)
@@ -208,6 +210,20 @@ impl PlotView {
                 .into_any_element(),
         )
     }
+}
+
+/// How wide `text` is in a small input's type.
+fn text_width(text: &str, window: &Window, cx: &gpui_kit::App) -> Pixels {
+    let style = gpui_kit::TextStyle {
+        font_family: cx.theme().font_family.clone(),
+        ..Default::default()
+    };
+    let run = style.to_run(text.len());
+    let size = window.rem_size() * 0.875;
+    let line = window
+        .text_system()
+        .shape_line(text.to_owned().into(), size, &[run], None);
+    line.width.ceil()
 }
 
 /// The value `field` holds in the selection, precise enough to read back unchanged.

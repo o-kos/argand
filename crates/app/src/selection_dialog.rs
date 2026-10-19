@@ -229,7 +229,14 @@ impl SelectionDialog {
             let slot = axis * 3 + index;
             h_flex()
                 .gap_2()
-                .child(div().w(px(64.)).pl_6().child(name))
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(88.))
+                        .pl_6()
+                        .whitespace_nowrap()
+                        .child(name),
+                )
                 .child(
                     Input::new(&self.inputs[slot])
                         .small()
@@ -241,7 +248,9 @@ impl SelectionDialog {
                 )
                 .child(
                     div()
+                        .flex_none()
                         .w(px(32.))
+                        .whitespace_nowrap()
                         .text_color(cx.theme().muted_foreground)
                         .child(unit),
                 )
