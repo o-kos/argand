@@ -63,7 +63,7 @@ A time selection carries its own readouts on the plot, as ocenaudio does: the st
 - [x] Review round 3 (same reviewer): the round 2 fix confirmed; one finding, accepted. The nearest free place could carry an edge badge away from its edge, even past the other edge's badge, and an edge badge has no line tying it back. Edge badges are now dropped where they would cover a badge already placed, and only the extent badge moves, its dimension line following it. Covered by a test. The round limit is reached, so further review of this fix is the owner's call.
 - [x] Review round 4 (same reviewer, agreed by the owner): no findings. The round 3 fix confirmed in both orientations for time spans, bands and rectangles, and the documentation found to match the code.
 - [x] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
@@ -71,7 +71,9 @@ A time selection carries its own readouts on the plot, as ocenaudio does: the st
 - [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
-- [ ] Manual, release binary: labels in both orientations and all three ruler modes, a narrow selection, edges off screen; dragging time and frequency edges and corners, swapping edges, moving a selection, Shift+click, on spectrogram, minimap and frequency ruler.
+- [x] Manual, release binary: labels in both orientations and all three ruler modes, a narrow selection, edges off screen; dragging time and frequency edges and corners, swapping edges, moving a selection, Shift+click, on spectrogram, minimap and frequency ruler.
+
+The owner checked the release binary through several rounds of changes and accepted the result on 2026-10-19. Individual results were not separately reported.
 
 ## Post-completion
 
