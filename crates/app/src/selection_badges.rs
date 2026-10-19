@@ -94,6 +94,7 @@ impl SelectionBadges {
         let vertical = frame.orientation.vertical();
         let mut shown: Vec<(&str, Rect)> = Vec::new();
         let mut lines: Vec<Dimension> = Vec::new();
+        let mut taken: Vec<Rect> = Vec::new();
         let axes = [
             (&self.time, Layout::time(vertical)),
             (&self.band, Layout::band(vertical)),
@@ -111,11 +112,13 @@ impl SelectionBadges {
                 },
                 badges.texts.each_ref().map(width),
                 height,
-            );
+            )
+            .map(|rect| rect.and_then(|rect| clear_of(rect, &taken, layout, frame.plot)));
             if let Some(extent) = places[2] {
                 let ends = [badges.first.is_some(), badges.second.is_some()];
                 lines.push(dimension(frame.plot, layout, badges.visible, ends, extent));
             }
+            taken.extend(places.iter().flatten());
             shown.extend(
                 badges
                     .texts
@@ -293,11 +296,43 @@ fn outward(edges: [Option<f64>; 2], length: f32, along: [f32; 2]) -> (Option<f32
     let (Some(first), Some(second)) = (first, second) else {
         return (first, second);
     };
+    // Without room for both side by side only the first is shown.
+    if along[0] + GAP + along[1] > length {
+        return (Some(first), None);
+    }
     let first = first.max(0.);
     let second = second.max(first + along[0] + GAP);
     // Pressed against the far end, both slide back together.
     let over = (second + along[1] - length).max(0.);
     (Some(first - over), Some(second - over))
+}
+
+fn overlaps(a: Rect, b: Rect) -> bool {
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+}
+
+/// `rect` moved along `layout`'s axis clear of the badges `taken` by another axis, or none without room.
+pub(crate) fn clear_of(rect: Rect, taken: &[Rect], layout: Layout, plot: Rect) -> Option<Rect> {
+    let Some(&obstacle) = taken.iter().find(|taken| overlaps(rect, **taken)) else {
+        return Some(rect);
+    };
+    let (start, end, length) = match layout.across {
+        true => (plot.x, plot.x + plot.width, rect.width),
+        false => (plot.y, plot.y + plot.height, rect.height),
+    };
+    let (from, to) = match layout.across {
+        true => (obstacle.x, obstacle.x + obstacle.width),
+        false => (obstacle.y, obstacle.y + obstacle.height),
+    };
+    let moved = |at: f32| match layout.across {
+        true => Rect { x: at, ..rect },
+        false => Rect { y: at, ..rect },
+    };
+    [to + GAP, from - GAP - length]
+        .into_iter()
+        .filter(|&at| at >= start && at + length <= end)
+        .map(moved)
+        .find(|moved| !taken.iter().any(|taken| overlaps(*moved, *taken)))
 }
 
 /// Whether an extent badge `badge` long and its arrowheads fit between edges `length` apart.
@@ -365,7 +400,7 @@ pub(crate) fn places(
         (false, true) => past,
         (false, false) => before,
     };
-    let middle = fits(2).then_some(clamp(middle, 2));
+    let middle = fits(2).then(|| clamp(middle, 2));
     // Beyond the selection on the far side or the near one, pressed back inside the plot.
     let beyond = |index: usize, far: bool| match far {
         true => (extent.around.1 as f32 * depth + MARGIN).min(depth - MARGIN - thick(index)),
@@ -479,6 +514,56 @@ mod tests {
         let (start, end) = (start.unwrap(), end.unwrap());
         assert_eq!(end.x + end.width, 410., "pressed against the plot's end");
         assert!(end.x >= start.x + start.width + GAP, "kept apart");
+    }
+
+    #[test]
+    fn an_extent_too_long_for_its_axis_is_dropped_rather_than_clamped() {
+        let short = Rect {
+            height: 10.,
+            ..PLOT
+        };
+        let [_, _, width] = places(short, Layout::band(false), spanning(0.2, 0.8), WIDTHS, 16.);
+        assert_eq!(width, None);
+    }
+
+    #[test]
+    fn a_crowded_one_axis_selection_without_room_for_both_keeps_the_first() {
+        let low = Rect {
+            height: 30.,
+            ..PLOT
+        };
+        let alone = Extent {
+            alone: true,
+            ..spanning(0.45, 0.55)
+        };
+        let [high, low_edge, _] = places(low, Layout::band(false), alone, WIDTHS, 16.);
+        assert!(high.is_some());
+        assert_eq!(low_edge, None);
+    }
+
+    #[test]
+    fn a_badge_of_one_axis_moves_clear_of_the_other_s() {
+        let plot = Rect {
+            x: 0.,
+            y: 0.,
+            width: 800.,
+            height: 400.,
+        };
+        let time = Rect {
+            x: 25.,
+            y: 4.,
+            width: 40.,
+            height: 16.,
+        };
+        let width = Rect {
+            x: 12.,
+            y: 12.,
+            width: 40.,
+            height: 16.,
+        };
+        let moved = clear_of(width, &[time], Layout::band(false), plot).unwrap();
+        assert_eq!((moved.x, moved.y), (12., 20. + GAP));
+        assert!(!overlaps(moved, time));
     }
 
     #[test]

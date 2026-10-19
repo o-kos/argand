@@ -61,7 +61,9 @@ impl Mode {
                 Self::Clock => precision <= CLOCK_DECIMALS,
                 Self::Seconds => true,
             })
-            .map(|exact| crate::navigation::time_precision(seconds_per_pixel).min(exact));
+            .map(|exact| {
+                pixel_precision(seconds_per_pixel).map_or(exact, |pixel| pixel.min(exact))
+            });
         let Some(precision) = precision else {
             let index = |sample: u64| format!("#{}", crate::numbers::number(sample));
             return [
@@ -86,6 +88,15 @@ impl Mode {
             time(span.count() as f64 / rate),
         ]
     }
+}
+
+/// The decimals one pixel of `seconds_per_pixel` tells apart, at least milliseconds, none for no usable pixel.
+///
+/// Unlike the ruler's own readouts this is not capped at nanoseconds, since a
+/// selection's values stop only at what one sample needs.
+fn pixel_precision(seconds_per_pixel: f64) -> Option<usize> {
+    (seconds_per_pixel.is_finite() && seconds_per_pixel > 0.)
+        .then(|| (-seconds_per_pixel.log10()).ceil().max(3.) as usize)
 }
 
 /// The most decimals the clock format prints, which `argand_core::axis::format_time` caps.
@@ -261,7 +272,11 @@ mod tests {
     #[test]
     fn a_selection_seconds_cannot_tell_apart_is_given_in_samples() {
         let fast = Mode::Seconds.counters(span(100, 101), 4e9, 200, 1e-12);
-        assert_eq!(texts(fast)[0], "0.000000025 s");
+        assert_eq!(
+            texts(fast)[0],
+            "0.0000000250 s",
+            "past nanoseconds where a pixel and a sample are finer"
+        );
         assert_eq!(
             texts(Mode::Clock.counters(span(100, 101), 4e9, 200, 1e-12)),
             ["#100", "#100", "1"],

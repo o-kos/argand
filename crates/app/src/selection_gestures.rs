@@ -132,8 +132,9 @@ fn grab(snapshot: &PlotSnapshot, geometry: PlotGeometry, position: Point<Pixels>
         Place::Minimap => (geometry.minimap_fraction(position), 0.),
         _ => geometry.fractions(position),
     };
-    // An edge is grabbed along the other axis's extent, or anywhere where that axis is not selected.
-    let along_frequency = frequency.is_none_or(|extent| extent.spans(at_frequency));
+    // An edge is grabbed along the other axis's extent, or anywhere where that axis is not selected or not shown.
+    let along_frequency =
+        place == Place::Minimap || frequency.is_none_or(|extent| extent.spans(at_frequency));
     let along_time = time.is_none_or(|extent| extent.spans(at_time));
     let time_edge = time
         .filter(|_| place != Place::FrequencyRuler && along_frequency)
@@ -179,6 +180,15 @@ pub(super) fn grab_cursor(grab: Grab, orientation: crate::orientation::Mode) -> 
         Grab::Edges { .. } if vertical => CursorStyle::ResizeLeftRight,
         Grab::Edges { .. } => CursorStyle::ResizeUpDown,
     }
+}
+
+/// `span` moved by `shift` samples, rounded, and held inside a capture of `total` samples.
+fn moved_span(span: SampleSpan, shift: f64, total: u64) -> SampleSpan {
+    // The shift alone goes through floating point, so a start near the end of a huge capture stays exact.
+    let shift = shift.round() as i128;
+    let last = i128::from(total.saturating_sub(span.count()));
+    let start = (i128::from(span.start()) + shift).clamp(0, last) as u64;
+    SampleSpan::between(start, start + span.count()).unwrap_or(span)
 }
 
 /// The edge of `span` that does not move when `edge` does.
@@ -312,12 +322,9 @@ impl PlotView {
         let (time_to, frequency_to) = geometry.fractions(position);
         let view = snapshot.extents.time.view;
         let total = snapshot.extents.time.total;
-        let time = from.time.map(|span| {
-            let shift = ((time_to - time_from) * view.len as f64).round();
-            let start =
-                (span.start() as f64 + shift).clamp(0., (total - span.count()) as f64) as u64;
-            SampleSpan::between(start, start + span.count()).unwrap_or(span)
-        });
+        let time = from
+            .time
+            .map(|span| moved_span(span, (time_to - time_from) * view.len as f64, total));
         let (low, high) = snapshot.extents.hertz;
         let band = from.band.map(|band| {
             let shift = -(frequency_to - frequency_from) * (high - low);
@@ -353,6 +360,17 @@ mod tests {
         };
         assert_eq!(narrow.edge_at(0.504), Some(Edge::High));
         assert!(extent.spans(0.25 - 3. / 400.) && !extent.spans(0.2));
+    }
+
+    #[test]
+    fn a_moved_span_stays_exact_and_inside_a_huge_capture() {
+        let span = SampleSpan::between(u64::MAX - (1 << 20), u64::MAX).unwrap();
+        assert_eq!(moved_span(span, 0., u64::MAX), span);
+        assert_eq!(moved_span(span, 1e6, u64::MAX), span, "held at the end");
+        let moved = moved_span(span, -3., u64::MAX);
+        assert_eq!(moved.start(), span.start() - 3);
+        let early = SampleSpan::between(5, 10).unwrap();
+        assert_eq!(moved_span(early, -100., 1000).start(), 0);
     }
 
     #[test]

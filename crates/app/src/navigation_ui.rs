@@ -1095,7 +1095,12 @@ impl plot_view::PlotView {
             .anchor
             .map(|anchor| argand_core::SampleSpan::between(anchor, boundary));
         let band = selecting.anchor_hz.map(|anchor| {
-            argand_core::FrequencyBand::between(anchor, hertz(snapshot.extents.hertz, frequency))
+            // A band edge stops at the capture's band rather than leave it and lose the selection.
+            let at = hertz(snapshot.extents.hertz, frequency);
+            let at = snapshot
+                .capture_band
+                .map_or(at, |(floor, ceiling)| at.clamp(floor, ceiling));
+            argand_core::FrequencyBand::between(anchor, at)
         });
         // Each axis the gesture selects must have some extent, or nothing is selected.
         let selection = match (span, band) {

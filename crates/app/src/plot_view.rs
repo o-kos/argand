@@ -1961,4 +1961,78 @@ mod tests {
             })
         );
     }
+
+    #[gpui_kit::test]
+    fn a_rectangle_s_time_edge_drags_on_the_minimap(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let minimap = handle
+            .update(cx, |harness, _, cx| {
+                harness
+                    .plot
+                    .as_ref()
+                    .unwrap()
+                    .read(cx)
+                    .geometry
+                    .unwrap()
+                    .minimap
+            })
+            .unwrap();
+        let total = snapshot().extents.time.total;
+        let (start, end) = (300_000, 600_000);
+        let rectangle = argand_core::Selection {
+            time: argand_core::SampleSpan::between(start, end),
+            band: band(hertz_at(0.25), hertz_at(0.75)),
+        };
+        show_selection(cx, handle, rectangle);
+        let x = |sample: u64| minimap.left() + minimap.size.width * (sample as f32 / total as f32);
+        let edge = point(x(end), minimap.center().y);
+        let to = point(x(800_000), minimap.center().y);
+        left_drag(cx, handle, edge, to, gpui_kit::Modifiers::default());
+        let fraction =
+            f32::from(to.x - minimap.left()) as f64 / f32::from(minimap.size.width) as f64;
+        let boundary = crate::navigation::View::full(total).boundary(fraction);
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            Some(argand_core::Selection {
+                time: argand_core::SampleSpan::between(start, boundary),
+                band: rectangle.band,
+            })
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_band_edge_stops_at_the_capture_s_band(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        let spectrum = spectrum(cx, handle);
+        let ruler = frequency_ruler(cx, handle);
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().update(cx, |plot, _| {
+                    plot.snapshot.as_mut().unwrap().capture_band = Some((0., 500_000.));
+                });
+            })
+            .unwrap();
+        let selected = argand_core::Selection {
+            time: None,
+            band: band(hertz_at(0.3), hertz_at(0.4)),
+        };
+        show_selection(cx, handle, selected);
+        let y = |fraction: f32| spectrum.top() + spectrum.size.height * fraction;
+        let edge = point(ruler.center().x, y(0.3));
+        // Far below the capture's lowest frequency, past the band's own low edge.
+        left_drag(
+            cx,
+            handle,
+            edge,
+            point(edge.x, y(0.95)),
+            gpui_kit::Modifiers::default(),
+        );
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            Some(argand_core::Selection {
+                time: None,
+                band: band(0., hertz_at(0.4)),
+            })
+        );
+    }
 }

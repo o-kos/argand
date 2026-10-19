@@ -58,6 +58,8 @@ A time selection carries its own readouts on the plot, as ocenaudio does: the st
 - [x] ➕ Band edge and width badges through one layout for both axes (`AxisBadges`, `Layout`) and their placement tests; the dimmed lead removed.
 - [x] Gestures: grab zones and cursors, edge drags for time and frequency, corners, moving, Shift+click, on spectrogram, minimap and frequency ruler; headless tests.
 - [x] `AGENTS.md` and `CHANGELOG.md`.
+- [x] Review round 1 (`gpt-6.1-sol` high): eight findings, seven accepted. An extent badge longer than its axis made `f32::clamp` panic instead of being dropped; it is now clamped only when it fits. Moving a selection near the end of a capture of `u64::MAX` samples rounded its absolute start through `f64` and overflowed; only the shift goes through floating point now (`moved_span`). A rectangle's time edge could not be grabbed on the minimap, which shows no frequency; the minimap ignores the band's extent. A band edge dragged beyond the capture's band produced a band the shell then dropped, clearing the selection; the edge now stops at the capture's band. The two axes' badges could overlap near a corner; a badge of the second axis moves along its axis clear of the first's (`clear_of`) or is dropped. Crowded edge badges of a one-axis selection lost their gap when both could not fit; only the first is shown then. Seconds stopped at nanoseconds above 1 GHz; a selection's decimals now follow the pixel down to what one sample needs (`pixel_precision`). Declined: the comment rule covers `//` comments, and the flagged text is in doc comments. Each accepted fix has a test that fails without it.
+- [ ] Review round 2 (same reviewer).
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
