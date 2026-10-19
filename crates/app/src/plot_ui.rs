@@ -517,6 +517,20 @@ impl Shell {
             first: edge(span.start()),
             second: edge(span.end()),
             visible,
+            around: self.across_screen(false)?,
+        })
+    }
+
+    /// What the selection covers across the screen of the axis other than time's, or than the band's with `band`.
+    fn across_screen(&self, band: bool) -> Option<(f64, f64)> {
+        let selected = self.selected()?;
+        let vertical = self.session.orientation.vertical();
+        Some(match (band, vertical) {
+            // Time runs right, or down, as its fractions do.
+            (true, _) => selected.time,
+            // Frequency runs down from the top, or right with its top at the right edge.
+            (false, false) => selected.frequency,
+            (false, true) => (1. - selected.frequency.1, 1. - selected.frequency.0),
         })
     }
 
@@ -545,6 +559,7 @@ impl Shell {
             first: shown(first),
             second: shown(second),
             visible,
+            around: self.across_screen(true)?,
         })
     }
 

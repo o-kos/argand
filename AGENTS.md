@@ -439,18 +439,22 @@ and the minimap tint it with `blue_light` at 0.3 under the grid
 ## Selection on the plot (#183)
 
 A selection carries its readouts as badges over the plot (`axes::SelectionBadges`,
-`selection_badges.rs`), in the Alt badge look, one `AxisBadges` per selected axis: each edge
-just outside itself on one side of the plot and the extent over the middle of the visible
-selection on the other (`selection_badges::Layout`). Time puts its start and end at the bottom
-and its length at the top, or at the left and the right in vertical orientation; a band or a
-rectangle puts its high and low edges at the left and its width at the right, or at the top and
-the bottom with frequency running right. `time_ruler::Mode::counters` gives the time values
+`selection_badges.rs`), in the Alt badge look, one `AxisBadges` per selected axis, dimensioned
+as on a drawing: each edge just outside itself and just beyond the selection on one side, the
+extent over the middle of the visible selection just beyond it on the other
+(`selection_badges::Layout`), pressed back inside the plot where there is no room beyond it.
+Time puts its start and end below the selection and its length above it, or left and right of
+it in vertical orientation; a band or a rectangle puts its high and low edges left of it and its
+width right of it, or above and below it with frequency running right. A selection that spans
+the other axis therefore has its badges at the plot's edges. `time_ruler::Mode::counters` gives the time values
 in the ruler's mode with the decimals one pixel of the visible time tells apart, as the Alt
 badges do, never more than one sample needs, the clock with the fields the capture's own
 length needs; `Shell::band_texts` gives the band's as numbers in the frequency ruler's unit, which
 only the ruler names. The extent badge sits on a dimension line (`selection_badges::Dimension`),
 a paper stroke around an ink core like the Alt guides, running from edge to edge of the
-visible selection with an arrowhead at each edge in view. A hidden edge has no badge; badges
+visible selection with an arrowhead at each edge in view. Where the badge and its arrowheads do
+not fit between the edges, the arrowheads stand outside them pointing in, the line runs on past
+them, and the badge goes past the second edge, or before the first without room there. A hidden edge has no badge; badges
 stay inside the plot, the second edge's badge goes past the first's where they would overlap
 and is dropped without room, and they take no input, painted over the grid and under the zoom
 pairs and the Alt guides. The status bar shows no selection.

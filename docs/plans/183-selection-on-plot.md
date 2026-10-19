@@ -32,7 +32,7 @@ A time selection carries its own readouts on the plot, as ocenaudio does: the st
 - The badges take no input and are painted over the selection tint and the grid, under the corner zoom pairs, the Alt guides and their badges.
 - The status bar shows only the band part of the readout.
 - ➕ A band or a rectangle shows its edges and width in the frequency ruler's unit, as the owner asked after a first look, laid out like time along the frequency axis: the high and low edges outside themselves at the plot's left and the width at its right, or at the top and the bottom with frequency running right.
-- ➕ After a first look the owner asked for no dimmed lead, then for no padding in seconds and samples, so values are written as they are and only the clock keeps the fields the capture needs; for band values without the unit, which the frequency ruler names; for the status bar to show no selection, the band having its own badges; for decimals that follow the zoom as the Alt badges do, never finer than a sample; and for a dimension line through each extent badge, with arrowheads at the edges, so the extent reads as the distance between them.
+- ➕ After a first look the owner asked for no dimmed lead, then for no padding in seconds and samples, so values are written as they are and only the clock keeps the fields the capture needs; for band values without the unit, which the frequency ruler names; for the status bar to show no selection, the band having its own badges; for decimals that follow the zoom as the Alt badges do, never finer than a sample; and for a dimension line through each extent badge, with arrowheads at the edges, so the extent reads as the distance between them. Then, for badges that stand beside the selection itself, so a rectangle's edges read as its own, and for a narrow selection's arrowheads to turn outside, pointing in, with the extent beside them.
 
 ### Gestures
 
@@ -53,6 +53,7 @@ A time selection carries its own readouts on the plot, as ocenaudio does: the st
 - [x] `time_ruler`: split the selection readout into start, end and length counters with their padded width and dimmed prefix; tests.
 - [x] Shell: the selection in samples and hertz and the counters in `PlotSnapshot`; the status bar without the time part.
 - [x] Painting the three badges with their placement rules; placement tests.
+- [x] ➕ Badges beside the selection (`Extent::around`), outside arrowheads for a narrow selection.
 - [x] ➕ Dimension lines, the status bar without the selection, plain values. 
 - [x] ➕ Band edge and width badges through one layout for both axes (`AxisBadges`, `Layout`) and their placement tests; the dimmed lead removed.
 - [x] Gestures: grab zones and cursors, edge drags for time and frequency, corners, moving, Shift+click, on spectrogram, minimap and frequency ruler; headless tests.
