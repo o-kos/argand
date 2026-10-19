@@ -53,6 +53,8 @@ pub(crate) struct Layout {
     pub across: bool,
     /// The edges stand at the far side of the other axis, the bottom or the right.
     pub edges_far: bool,
+    /// A narrow selection's extent goes before its first edge, away from the other axis's extent.
+    pub narrow_before: bool,
 }
 
 impl Layout {
@@ -61,6 +63,7 @@ impl Layout {
         Self {
             across: !vertical,
             edges_far: !vertical,
+            narrow_before: true,
         }
     }
 
@@ -69,6 +72,7 @@ impl Layout {
         Self {
             across: vertical,
             edges_far: false,
+            narrow_before: vertical,
         }
     }
 }
@@ -285,13 +289,13 @@ fn fits_between(length: f32, badge: f32) -> bool {
 /// Where the first edge's, the second edge's and the extent's badges go, each none where it is not shown.
 ///
 /// The edge badges stand just beyond the selection on the side `layout` names,
-/// each running from its edge towards the other, or outward past both edges
-/// where they are too close for that, the extent badge beyond it on the other side,
-/// over the middle of the visible selection, or past its second edge where it
-/// and its arrowheads do not fit between the edges. Badges stay inside the
-/// plot, pressed against the selection where there is no room beyond it, the
-/// second edge's badge goes past the first's where they would overlap, and a
-/// badge with no room is dropped.
+/// each running from its edge towards the other, and are left out where the
+/// edges are too close for both. The extent badge stands beyond the selection
+/// on the other side, over the middle of the visible selection, or beside it
+/// away from the other axis's extent where it and its arrowheads do not fit
+/// between the edges. Badges stay inside the plot, pressed against the
+/// selection where there is no room beyond it, and a badge with no room is
+/// dropped.
 pub(crate) fn places(
     plot: Rect,
     layout: Layout,
@@ -314,40 +318,32 @@ pub(crate) fn places(
     let fits = |index: usize| along(index) <= length && thick(index) + 2. * MARGIN <= depth;
     let clamp = |from: f32, index: usize| from.clamp(0., length - along(index));
     // Each edge's badge runs from its edge towards the other, so the corners stay free for the other axis.
-    let inner = [
-        extent.edges[0].map(|edge| edge as f32 * length),
-        extent.edges[1].map(|edge| edge as f32 * length - along(1)),
-    ];
-    let crowded = match inner {
-        [Some(first), Some(second)] => second < first + along(0) + GAP,
+    let first = extent.edges[0].map(|edge| edge as f32 * length);
+    let second = extent.edges[1].map(|edge| edge as f32 * length - along(1));
+    // Edges too close for both badges show only the extent.
+    let crowded = match (first, second) {
+        (Some(first), Some(second)) => second < first + along(0) + GAP,
         _ => false,
     };
-    // Edges too close for both turn their badges outward, past the edges.
-    let first = match crowded {
-        false => inner[0],
-        true => extent.edges[0].map(|edge| edge as f32 * length - along(0)),
-    }
-    .filter(|_| fits(0))
-    .map(|from| clamp(from, 0));
-    let mut second = match crowded {
-        false => inner[1],
-        true => extent.edges[1].map(|edge| edge as f32 * length),
-    }
-    .filter(|_| fits(1))
-    .map(|from| clamp(from, 1));
-    if let (Some(first), Some(from)) = (first, second) {
-        let past = first + along(0) + GAP;
-        second = Some(from.max(past)).filter(|&from| from + along(1) <= length);
-    }
+    let first = first
+        .filter(|_| fits(0) && !crowded)
+        .map(|from| clamp(from, 0));
+    let second = second
+        .filter(|_| fits(1) && !crowded)
+        .map(|from| clamp(from, 1));
     let (start, end) = (
         extent.visible.0 as f32 * length,
         extent.visible.1 as f32 * length,
     );
     let beside = ARROW_LENGTH + STUB + LINE_GAP;
-    let middle = match fits_between(end - start, along(2)) {
-        true => (start + end - along(2)) / 2.,
-        false if end + beside + along(2) <= length => end + beside,
-        false => start - beside - along(2),
+    let before = start - beside - along(2);
+    let past = end + beside;
+    let middle = match (fits_between(end - start, along(2)), layout.narrow_before) {
+        (true, _) => (start + end - along(2)) / 2.,
+        (false, true) if before >= 0. => before,
+        (false, false) if past + along(2) <= length => past,
+        (false, true) => past,
+        (false, false) => before,
     };
     let middle = fits(2).then_some(clamp(middle, 2));
     // Beyond the selection on the far side or the near one, pressed back inside the plot.
@@ -409,11 +405,11 @@ mod tests {
     }
 
     #[test]
-    fn edges_too_close_for_both_badges_turn_them_outward() {
-        let [start, end, _] = places(PLOT, Layout::time(false), spanning(0.5, 0.6), WIDTHS, 16.);
-        let (start, end) = (start.unwrap(), end.unwrap());
-        assert_eq!(start.x + start.width, 210.);
-        assert!((end.x - 250.).abs() < 1e-3);
+    fn edges_too_close_for_both_badges_show_only_the_extent() {
+        let [start, end, length] =
+            places(PLOT, Layout::time(false), spanning(0.5, 0.6), WIDTHS, 16.);
+        assert_eq!((start, end), (None, None));
+        assert!(length.is_some());
     }
 
     #[test]
@@ -435,27 +431,26 @@ mod tests {
     }
 
     #[test]
-    fn a_narrow_selection_puts_its_extent_past_its_second_edge() {
+    fn a_narrow_extent_stands_beside_the_selection_away_from_the_other_axis() {
+        let beside = ARROW_LENGTH + STUB + LINE_GAP;
         let [_, _, length] = places(PLOT, Layout::time(false), spanning(0.5, 0.52), WIDTHS, 16.);
         assert_eq!(
+            length.unwrap().x + 40.,
+            10. + 200. - beside,
+            "before the start, away from the width on the right"
+        );
+        let [_, _, length] = places(PLOT, Layout::time(false), spanning(0.01, 0.02), WIDTHS, 16.);
+        assert_eq!(
             length.unwrap().x,
-            10. + 208. + ARROW_LENGTH + STUB + LINE_GAP
+            10. + 8. + beside,
+            "past the end without room before the start"
         );
-        let [_, _, length] = places(PLOT, Layout::time(false), spanning(0.97, 0.98), WIDTHS, 16.);
-        assert!(
-            length.unwrap().x + 40. <= 10. + 388.,
-            "before the first edge where nothing is left past the second"
+        let [_, _, width] = places(PLOT, Layout::band(false), spanning(0.5, 0.52), WIDTHS, 16.);
+        assert_eq!(
+            width.unwrap().y,
+            20. + 104. + beside,
+            "below the band, away from the length on top"
         );
-    }
-
-    #[test]
-    fn a_narrow_selection_pushes_the_second_badge_past_the_first() {
-        // The first badge is held inside the plot over the start of the selection.
-        let [start, end, _] = places(PLOT, Layout::time(false), spanning(0., 0.05), WIDTHS, 16.);
-        let (start, end) = (start.unwrap(), end.unwrap());
-        assert_eq!(end.x, start.x + start.width + GAP);
-        let [_, end, _] = places(PLOT, Layout::time(false), spanning(0.98, 0.99), WIDTHS, 16.);
-        assert_eq!(end, None, "no room past the first badge");
     }
 
     #[test]
