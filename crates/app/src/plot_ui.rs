@@ -500,16 +500,20 @@ impl Shell {
         let span = self.selection?;
         let meta = self.file.as_ref()?.state.document.meta()?;
         let visible = view.fractions_of(span)?;
+        let columns = self.plot.map_or(1, |plot| plot.width.max(1));
+        let per_pixel = view.len as f64 / meta.sample_rate / columns as f64;
         let edge = |sample: u64| {
             (view.start..=view.start + view.len)
                 .contains(&sample)
                 .then(|| (sample - view.start) as f64 / view.len as f64)
         };
         Some(axes::AxisBadges {
-            texts: self
-                .session
-                .time_ruler
-                .counters(span, meta.sample_rate, meta.len_samples),
+            texts: self.session.time_ruler.counters(
+                span,
+                meta.sample_rate,
+                meta.len_samples,
+                per_pixel,
+            ),
             first: edge(span.start()),
             second: edge(span.end()),
             visible,

@@ -445,8 +445,9 @@ selection on the other (`selection_badges::Layout`). Time puts its start and end
 and its length at the top, or at the left and the right in vertical orientation; a band or a
 rectangle puts its high and low edges at the left and its width at the right, or at the top and
 the bottom with frequency running right. `time_ruler::Mode::counters` gives the time values
-exact to the sample in the ruler's mode, the clock with the fields the capture's own length
-needs; `Shell::band_texts` gives the band's as numbers in the frequency ruler's unit, which
+in the ruler's mode with the decimals one pixel of the visible time tells apart, as the Alt
+badges do, never more than one sample needs, the clock with the fields the capture's own
+length needs; `Shell::band_texts` gives the band's as numbers in the frequency ruler's unit, which
 only the ruler names. The extent badge sits on a dimension line (`selection_badges::Dimension`),
 a paper stroke around an ink core like the Alt guides, running from edge to edge of the
 visible selection with an arrowhead at each edge in view. A hidden edge has no badge; badges

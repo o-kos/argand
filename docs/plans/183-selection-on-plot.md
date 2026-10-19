@@ -32,7 +32,7 @@ A time selection carries its own readouts on the plot, as ocenaudio does: the st
 - The badges take no input and are painted over the selection tint and the grid, under the corner zoom pairs, the Alt guides and their badges.
 - The status bar shows only the band part of the readout.
 - ➕ A band or a rectangle shows its edges and width in the frequency ruler's unit, as the owner asked after a first look, laid out like time along the frequency axis: the high and low edges outside themselves at the plot's left and the width at its right, or at the top and the bottom with frequency running right.
-- ➕ After a first look the owner asked for no dimmed lead, then for no padding in seconds and samples, so values are written as they are and only the clock keeps the fields the capture needs; for band values without the unit, which the frequency ruler names; for the status bar to show no selection, the band having its own badges; and for a dimension line through each extent badge, with arrowheads at the edges, so the extent reads as the distance between them.
+- ➕ After a first look the owner asked for no dimmed lead, then for no padding in seconds and samples, so values are written as they are and only the clock keeps the fields the capture needs; for band values without the unit, which the frequency ruler names; for the status bar to show no selection, the band having its own badges; for decimals that follow the zoom as the Alt badges do, never finer than a sample; and for a dimension line through each extent badge, with arrowheads at the edges, so the extent reads as the distance between them.
 
 ### Gestures
 
