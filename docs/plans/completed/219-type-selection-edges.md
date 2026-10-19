@@ -22,6 +22,11 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
   applied, as it closes the analysis hint. Leaving the window closed a badge input without
   giving the keyboard to anything; a blur that hands focus to no other control now returns it
   to the plot. Each has a regression test. No findings declined.
+- Round 3: the round 2 fixes confirmed, one P2 finding, accepted. Opened from the application
+  menu with nothing selected, the dialog lost the keyboard to the plot, because the menu's
+  dismissal arrives after its action and focuses the plot, so Escape reached the plot. The
+  dialog now dismisses the menu before it opens, as Settings does, with a regression test that
+  goes through the menu. No findings declined, and nothing else substantive remained.
 
 ## Overview
 

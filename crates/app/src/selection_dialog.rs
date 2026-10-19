@@ -302,6 +302,8 @@ impl Shell {
 
     /// Open the dialog on the selection, or on the visible range where an axis is not selected.
     pub(super) fn open_selection_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The menu's dismissal would otherwise hand the keyboard back to the plot under the dialog.
+        self.dismiss_application_menu(window, cx);
         let (Some(document), Some(scale), Some(view), Some((low, high))) = (
             self.file.as_ref().map(|file| file.id),
             self.entry_scale(),
@@ -552,6 +554,23 @@ mod tests {
             "the chooser does not leave the dialog behind the plot"
         );
         assert_eq!(selected(cx, &shell).time, span(50, 200));
+    }
+
+    #[gpui_kit::test]
+    fn from_the_menu_with_nothing_selected_the_dialog_keeps_the_keyboard(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, window, cx| {
+            window.focus(&shell.focus_target(cx), cx)
+        });
+        settle(cx);
+        // Edit is the second branch, and its first usable row with nothing selected is Selection…
+        keys(cx, "f10 down down right down enter");
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        settle(cx);
+        assert!(dialog_open(cx));
+        keys(cx, "escape");
+        assert!(!dialog_open(cx), "Escape reaches the dialog, not the plot");
+        assert_eq!(selected(cx, &shell), Selection::default());
     }
 
     #[gpui_kit::test]
