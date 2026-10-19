@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- A selection's values can be typed. A double click on one of its badges turns it into an input holding the value; Enter applies it, Escape leaves it. Edit → Selection… (Ctrl+E) opens a dialog with the time start, end and length and the band's low edge, high edge and width, each axis selected by a check box, which also makes a selection when nothing is selected and moves the selection on the plot as values are entered; Cancel restores it. Time is typed in the time ruler's format (a leading `#` names a sample in any of them) and frequency in the frequency ruler's unit, both in the regional number format; a length or width moves the end, values stay inside the capture and time snaps to whole samples (#219).
+
 - A time selection shows its start and end in badges at its edges and its length over it, in the time ruler's units with a fixed width, instead of in the status bar, and a band or rectangle shows its edges and width the same way; the extent stands on a dimension line from edge to edge. Its edges, and a band's or rectangle's frequency edges, can be dragged on the spectrogram, the minimap and the frequency ruler, a drag inside moves the whole selection, and Shift+click extends it from the nearer edge (#183).
 
 - The tenth recent file carries 0 on the start page and in File, and opens with Alt+0 there or 0 in File, after 1 to 9. Recent files sharing a name are told apart by the nearest parent folder that differs, with the folders between elided, such as `…/123/…/iq.wav` beside `…/12/…/iq.wav`, and long file and folder names keep their start and end, as long as still tells them apart (#216).

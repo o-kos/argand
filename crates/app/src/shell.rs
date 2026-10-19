@@ -60,6 +60,8 @@ mod plot_view;
 mod replace_ui;
 #[path = "saving_ui.rs"]
 mod saving_ui;
+#[path = "selection_dialog.rs"]
+mod selection_dialog;
 #[path = "selection_gestures.rs"]
 mod selection_gestures;
 #[path = "settings_ui.rs"]

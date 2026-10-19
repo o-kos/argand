@@ -159,6 +159,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
         let can = self.edit_commands_available();
+        let select = self.entry_scale().is_some();
         PopupMenu::build(window, cx, move |menu, _, _| {
             let row = |label: &str, action: Box<dyn Action>, enabled: bool| {
                 action_row(label, action, false, focus.clone()).disabled(!enabled)
@@ -178,6 +179,12 @@ impl Shell {
                     "Delete",
                     Box::new(editing_ui::DeleteSelection),
                     can.cut,
+                ))
+                .item(PopupMenuItem::separator())
+                .item(row(
+                    "Selection…",
+                    Box::new(editing_ui::EditSelection),
+                    select,
                 ))
                 .item(PopupMenuItem::separator())
                 .item(row(

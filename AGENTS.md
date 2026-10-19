@@ -466,8 +466,8 @@ not fit between the edges, the arrowheads stand outside them pointing in, the li
 them, and the badge stands beside the selection away from the other axis's extent
 (`Layout::narrow_before`): time's before its start, a band's below it, or before it with
 frequency running right, and on the other side without room there. A hidden edge has no badge;
-badges stay inside the plot and take no input, painted over the grid and under the zoom pairs
-and the Alt guides. The status bar shows no selection.
+badges stay inside the plot, painted over the grid and under the zoom pairs and the Alt guides,
+and take only a left press (see "Typing a selection (#219)"). The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
@@ -483,6 +483,37 @@ pointer and keeps dragging it. The pointer shows the resize cursor across the gr
 a diagonal at a corner, an open hand inside and a closed hand while moving
 (`selection_gestures::grab_cursor`, `PlotView::hover_cursor`). Space and the middle button
 still pan everywhere.
+
+## Typing a selection (#219)
+
+`selection_entry.rs` (toolkit-neutral) writes and reads a selection's six values
+(`Field::{TimeStart, TimeEnd, TimeLength, BandLow, BandHigh, BandWidth}`) against a `Scale`
+the shell gives (`Shell::entry_scale`): time in the ruler's mode at the precision of one sample
+(`counters` with no pixel limit, so the text reads back as the same sample), frequency in the
+ruler's unit to the finer of one hertz and one row, numbers through the numeric locale. A clock
+takes one to three colon fields, seconds an optional `s`, frequency an optional unit name, and
+a leading `#` is a sample index in every mode, the end naming the last sample; where the mode
+writes indexes (`Mode::writes_samples`) a plain number is one. Times round to whole samples,
+values are held to the capture, edges swap like a drag past each other, a length or width moves
+the end or high edge, and an equal edge or a text that does not parse gives nothing.
+
+The badge layout is `SelectionBadges::place`, run in the canvas's prepaint; each badge carries
+its `Field` and `BadgeLayout` hands the rectangles to `PlotView::place_badges`. A left press on a
+badge (`PlotView::badge_at`) starts no gesture and the pointer is an arrow there; a double click
+opens a `BadgeEntry` (`badge_entry.rs`), a stock `Input` over the badge, a sibling of the plot
+surface so no `Plot` binding matches while it holds the keyboard, and the badge under it is not
+painted. Enter applies it as `PlotIntent::Select` or marks the text it refuses in the danger
+colour, Escape (the `BadgeEntry` context, since the input passes it on) and blur close it
+unchanged, unchanged text applies nothing, and a selection changed elsewhere closes it.
+
+Edit → Selection… (`EditSelection`, Ctrl+E or Cmd+E in the `Plot` context, enabled while a
+capture is described) opens `SelectionDialog` (`selection_dialog.rs`) in the stock `Dialog`
+through `Root`: a `Checkbox` per axis and three `Input`s under each, as the owner chose. An
+unchecked axis is not selected and its disabled fields hold the visible range. It applies live
+through `Shell::select`: a field whose text changed is read on Enter or blur, a check box at
+once, and every other field is written again from the result. OK and Enter read the changed
+fields and stay open while one is refused; Cancel and Escape restore the selection it opened
+on. A typed selection is an ordinary selection, never an edit.
 
 ## Band and rectangle selection (#202)
 

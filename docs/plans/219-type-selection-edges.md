@@ -123,9 +123,9 @@ a domain canvas is composition, as the zoom pairs over the spectrogram are.
 - [x] Split badge layout from painting, tag badges with their fields, hand their
       rectangles to the `PlotView`; left press on a badge starts nothing, arrow cursor.
 - [x] In-place `BadgeEntry` on double click with Enter, Escape and blur, and headless tests.
-- [ ] `SelectionDialog` with live preview, OK and Cancel, Edit → Selection… and Ctrl+E, and
+- [x] `SelectionDialog` with live preview, OK and Cancel, Edit → Selection… and Ctrl+E, and
       headless tests.
-- [ ] Update `AGENTS.md` and `CHANGELOG.md`.
+- [x] Update `AGENTS.md` and `CHANGELOG.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
