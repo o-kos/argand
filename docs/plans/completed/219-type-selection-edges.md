@@ -4,8 +4,7 @@ Resolves #219. Part of phase 5 (selection) in `IMPLEMENTATION_PLAN.md`.
 
 Class A (more than five code files: a new parser module, the badge layout, the plot's
 gestures, a new dialog, the Edit menu and its binding). Implementer: Claude in the session,
-chosen by the owner. Reviewer: `gpt-6.1-sol` high, proposed by the class table and to be
-agreed with the owner before the first round.
+chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
 
 ## Overview
 
@@ -126,15 +125,15 @@ a domain canvas is composition, as the zoom pairs over the spectrogram are.
 - [x] `SelectionDialog` with live preview, OK and Cancel, Edit → Selection… and Ctrl+E, and
       headless tests.
 - [x] Update `AGENTS.md` and `CHANGELOG.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Owner check in the release binary: edit each badge in both orientations and the three
       ruler modes, make a time, band and rectangle selection from the dialog with nothing
       selected, Cancel restores, a bad value is marked.
