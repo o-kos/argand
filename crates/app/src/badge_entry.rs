@@ -3,8 +3,8 @@
 use super::plot_view::{PlotIntent, PlotSnapshot, PlotView};
 use super::*;
 use crate::selection_entry::Field;
-use gpui_kit::AnyElement;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::{AnyElement, Focusable as _};
 
 actions!(badge_entry, [CancelBadgeEntry]);
 
@@ -86,7 +86,17 @@ impl PlotView {
         let input = cx.new(|cx| InputState::new(window, cx).default_value(text.clone()));
         let events = cx.subscribe_in(&input, window, |plot, _, event, window, cx| match event {
             InputEvent::PressEnter { .. } => plot.enter_badge(window, cx),
-            InputEvent::Blur => plot.close_entry(None, cx),
+            InputEvent::Blur => {
+                // Focus taken by another control stays there, and otherwise the plot gets it back.
+                let handle = plot
+                    .typing
+                    .as_ref()
+                    .map(|entry| entry.input.focus_handle(cx));
+                let elsewhere = window
+                    .focused(cx)
+                    .is_some_and(|focused| Some(&focused) != handle.as_ref());
+                plot.close_entry((!elsewhere).then_some(window), cx);
+            }
             _ => {}
         });
         input.update(cx, |input, cx| {

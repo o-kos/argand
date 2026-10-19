@@ -2004,6 +2004,31 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn leaving_the_window_closes_a_badge_input_and_the_plot_keeps_the_keyboard(
+        cx: &mut TestAppContext,
+    ) {
+        use crate::selection_entry::Field;
+        let handle = open(cx);
+        cx.update(badge_entry::init);
+        // An inactive test window reports no focus path, so the input would never blur.
+        cx.update_window(handle.into(), |_, window, _| window.activate_window())
+            .unwrap();
+        show_badges(cx, handle, 400_000, 600_000);
+        let start = badge(cx, handle, Field::TimeStart);
+        click(cx, handle, start.center(), 2);
+        frame(cx, handle);
+        assert!(typing(cx, handle).is_some());
+        let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+        input.deactivate_window();
+        frame(cx, handle);
+        cx.update_window(handle.into(), |_, window, _| window.activate_window())
+            .unwrap();
+        frame(cx, handle);
+        assert_eq!(typing(cx, handle), None);
+        assert!(plot_focused(cx, handle), "the plot takes the keyboard back");
+    }
+
+    #[gpui_kit::test]
     fn a_badge_input_marks_a_bad_value_and_escape_leaves_the_selection(cx: &mut TestAppContext) {
         use crate::selection_entry::Field;
         let handle = open(cx);

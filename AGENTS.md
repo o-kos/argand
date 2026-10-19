@@ -513,7 +513,10 @@ unchecked axis is not selected and its disabled fields hold the visible range. I
 through `Shell::select`: a field whose text changed is read on Enter or blur, a check box at
 once, and every other field is written again from the result. OK and Enter read the changed
 fields and stay open while one is refused; Cancel and Escape restore the selection it opened
-on. A typed selection is an ordinary selection, never an edit.
+on. Ctrl+O closes it keeping what it applied (`Shell::close_selection_dialog`), and it selects
+only in the document it opened on, closing when another one opens. A badge input that loses the
+keyboard to nothing, as when the window is left, hands it back to the plot. A typed selection
+is an ordinary selection, never an edit.
 
 ## Band and rectangle selection (#202)
 

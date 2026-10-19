@@ -16,6 +16,12 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
   through `f64`, losing precision past 2^53 and rounding past the end of such a capture, and
   whole indexes are now read as integers and clamped in integers. Each has a regression test.
   No findings declined.
+- Round 2: the round 1 fixes confirmed, two P2 findings, both accepted. Ctrl+O over the dialog
+  focused the plot and left the dialog open behind it when the chooser was cancelled, so
+  Escape cleared the plot's selection; choosing a file now closes the dialog keeping what it
+  applied, as it closes the analysis hint. Leaving the window closed a badge input without
+  giving the keyboard to anything; a blur that hands focus to no other control now returns it
+  to the plot. Each has a regression test. No findings declined.
 
 ## Overview
 

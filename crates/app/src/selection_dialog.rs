@@ -285,6 +285,21 @@ fn texts(scale: &Scale, time: SampleSpan, band: FrequencyBand) -> [String; 6] {
 }
 
 impl Shell {
+    /// Close Edit → Selection… keeping what it applied, as choosing a file closes the analysis hint.
+    pub(super) fn close_selection_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(dialog) = self
+            .selection_dialog
+            .take()
+            .and_then(|dialog| dialog.upgrade())
+        else {
+            return;
+        };
+        let open = dialog.update(cx, |dialog, _| !std::mem::replace(&mut dialog.closed, true));
+        if open {
+            window.close_dialog(cx);
+        }
+    }
+
     /// Open the dialog on the selection, or on the visible range where an axis is not selected.
     pub(super) fn open_selection_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (Some(document), Some(scale), Some(view), Some((low, high))) = (
@@ -320,6 +335,7 @@ impl Shell {
         let dialog = cx.new(|cx| {
             SelectionDialog::new(&shell, document, scale, opened, (time, band), window, cx)
         });
+        self.selection_dialog = Some(dialog.downgrade());
         window.open_dialog(cx, move |modal, _, _| {
             let confirm = dialog.clone();
             let ok = dialog.clone();
@@ -521,6 +537,21 @@ mod tests {
         assert!(!dialog_open(cx));
         let band = selected(cx, &shell).band.expect("a band");
         assert_eq!((band.low(), band.high()), (-100., 500.));
+    }
+
+    #[gpui_kit::test]
+    fn choosing_a_file_closes_the_dialog_keeping_what_it_applied(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        open_dialog(cx, &shell);
+        keys(cx, "5 0 tab");
+        shell.update_in(cx, |shell, window, cx| shell.choose_file(window, cx));
+        settle(cx);
+        assert!(
+            !dialog_open(cx),
+            "the chooser does not leave the dialog behind the plot"
+        );
+        assert_eq!(selected(cx, &shell).time, span(50, 200));
     }
 
     #[gpui_kit::test]

@@ -384,6 +384,8 @@ struct Shell {
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
     /// What the analysis hint opened with, which Escape restores.
     hint_opening: Option<HintOpening>,
+    /// Edit → Selection…, while it is open.
+    selection_dialog: Option<WeakEntity<selection_dialog::SelectionDialog>>,
     ready_status_dismissed: bool,
     /// Whether the mouse has moved in the window since it last left it.
     pointer_in_window: bool,
@@ -526,6 +528,7 @@ impl Shell {
             settings,
             analysis_hint,
             hint_opening: None,
+            selection_dialog: None,
             ready_status_dismissed: false,
             pointer_in_window: false,
             settings_error: None,
@@ -1264,6 +1267,7 @@ impl Shell {
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
         self.close_analysis_hint(cx);
+        self.close_selection_dialog(window, cx);
         // The release happens over the dialog, so nothing held now may stay pressed.
         self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);
