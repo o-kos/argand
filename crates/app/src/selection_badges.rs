@@ -1,4 +1,4 @@
-//! The start, end and length of a time selection, in badges over the plot.
+//! The start, end and length of a time selection and the width of a band, in badges over the plot.
 
 use super::*;
 use crate::time_ruler::Counter;
@@ -12,9 +12,16 @@ const RADIUS: f32 = 3.;
 /// How strongly the insignificant lead of a value shows against the badge.
 const DIM: f32 = 0.45;
 
+/// A selection's readouts on the plot.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SelectionBadges {
+    pub time: Option<TimeBadges>,
+    pub band: Option<BandBadge>,
+}
+
 /// A time selection's readouts and where its edges are, as fractions of the visible time.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SelectionBadges {
+pub struct TimeBadges {
     /// Start, end and length.
     pub counters: [Counter; 3],
     /// The start edge, none when it is outside the visible time.
@@ -24,43 +31,96 @@ pub struct SelectionBadges {
     pub visible: (f64, f64),
 }
 
+/// A band's width and the visible part of it, as fractions down from the top of the visible band.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BandBadge {
+    pub width: String,
+    pub visible: (f64, f64),
+}
+
 impl SelectionBadges {
     pub fn paint(
         &self,
         frame: &Frame,
         panel: Point<Pixels>,
         labels: &Labels,
-        [ink, paper]: [Hsla; 2],
+        colors: [Hsla; 2],
         window: &mut Window,
         cx: &mut App,
     ) {
         let height = labels.digit_height(LABEL_SIZE) + 2. * BADGE_PAD;
-        let widths = self
-            .counters
-            .clone()
-            .map(|counter| labels.width(&counter.text, LABEL_SIZE).ceil() + 2. * BADGE_PAD);
-        let places = places(
-            frame.plot,
-            frame.orientation.vertical(),
-            [
-                self.start,
-                self.end,
-                Some((self.visible.0 + self.visible.1) / 2.),
-            ],
-            widths,
-            height,
-        );
+        let width = |text: &str| labels.width(text, LABEL_SIZE).ceil() + 2. * BADGE_PAD;
+        let vertical = frame.orientation.vertical();
+        let mut shown: Vec<(Counter, Rect)> = Vec::new();
+        if let Some(time) = &self.time {
+            let widths = time.counters.clone().map(|counter| width(&counter.text));
+            let middle = Some((time.visible.0 + time.visible.1) / 2.);
+            let places = places(
+                frame.plot,
+                vertical,
+                [time.start, time.end, middle],
+                widths,
+                height,
+            );
+            shown.extend(
+                time.counters
+                    .iter()
+                    .zip(places)
+                    .filter_map(|(counter, rect)| Some((counter.clone(), rect?))),
+            );
+        }
+        if let Some(band) = &self.band {
+            let middle = (band.visible.0 + band.visible.1) / 2.;
+            let counter = Counter {
+                text: band.width.clone(),
+                dim: 0..0,
+            };
+            if let Some(rect) = band_place(frame.plot, vertical, middle, width(&band.width), height)
+            {
+                shown.push((counter, rect));
+            }
+        }
         let clip = Bounds::new(
             panel + point(px(frame.plot.x), px(frame.plot.y)),
             size(px(frame.plot.width), px(frame.plot.height)),
         );
         window.with_content_mask(Some(gpui_kit::ContentMask { bounds: clip }), |window| {
-            for (counter, rect) in self.counters.iter().zip(places) {
-                let Some(rect) = rect else { continue };
-                badge(counter, rect, panel, labels, [ink, paper], window, cx);
+            for (counter, rect) in &shown {
+                badge(counter, *rect, panel, labels, colors, window, cx);
             }
         });
     }
+}
+
+/// Where a band's width goes, beside the plot's high-time edge over the middle of the visible band.
+///
+/// `middle` is a fraction down from the top of the visible band. With
+/// frequency running to the right the badge stands on the bottom instead.
+pub(crate) fn band_place(
+    plot: Rect,
+    vertical: bool,
+    middle: f64,
+    width: f32,
+    height: f32,
+) -> Option<Rect> {
+    if vertical {
+        let fits = width <= plot.width && height + 2. * MARGIN <= plot.height;
+        let x = ((1. - middle) as f32 * plot.width - width / 2.).clamp(0., plot.width - width);
+        return fits.then_some(Rect {
+            x: plot.x + x,
+            y: plot.y + plot.height - MARGIN - height,
+            width,
+            height,
+        });
+    }
+    let fits = width + 2. * MARGIN <= plot.width && height <= plot.height;
+    let y = (middle as f32 * plot.height - height / 2.).clamp(0., plot.height - height);
+    fits.then_some(Rect {
+        x: plot.x + plot.width - MARGIN - width,
+        y: plot.y + y,
+        width,
+        height,
+    })
 }
 
 fn badge(
@@ -237,6 +297,23 @@ mod tests {
         assert_eq!(length.unwrap().x, PLOT.x);
         let [start, ..] = places(PLOT, false, [Some(0.5), None, None], [500., 60., 40.], 16.);
         assert_eq!(start, None, "wider than the plot");
+    }
+
+    #[test]
+    fn a_band_width_stands_on_the_high_time_side_over_the_band() {
+        let rect = band_place(PLOT, false, 0.25, 50., 16.).unwrap();
+        assert_eq!(
+            (rect.x + rect.width, rect.y + rect.height / 2.),
+            (406., 70.)
+        );
+        let rect = band_place(PLOT, false, 0., 50., 16.).unwrap();
+        assert_eq!(rect.y, PLOT.y, "held inside the plot");
+        let rect = band_place(PLOT, true, 0.25, 50., 16.).unwrap();
+        assert_eq!(
+            (rect.x + rect.width / 2., rect.y + rect.height),
+            (310., 216.)
+        );
+        assert_eq!(band_place(PLOT, false, 0.5, 500., 16.), None);
     }
 
     #[test]

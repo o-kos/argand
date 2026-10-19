@@ -486,8 +486,16 @@ fn plot_bounds(frame: &axes::Frame, spectrum_origin: gpui_kit::Point<Pixels>) ->
 }
 
 impl Shell {
-    /// The start, end and length of the time selection, where any of it shows.
+    /// The start, end and length of the time selection and the width of a band, where any of them shows.
     fn selection_badges(&self) -> Option<axes::SelectionBadges> {
+        let badges = axes::SelectionBadges {
+            time: self.time_badges(),
+            band: self.band_badge(),
+        };
+        (badges != axes::SelectionBadges::default()).then_some(badges)
+    }
+
+    fn time_badges(&self) -> Option<axes::TimeBadges> {
         let view = self.view?;
         let span = self.selection?;
         let meta = self.file.as_ref()?.state.document.meta()?;
@@ -497,13 +505,22 @@ impl Shell {
                 .contains(&sample)
                 .then(|| (sample - view.start) as f64 / view.len as f64)
         };
-        Some(axes::SelectionBadges {
+        Some(axes::TimeBadges {
             counters: self
                 .session
                 .time_ruler
                 .counters(span, meta.sample_rate, meta.len_samples),
             start: edge(span.start()),
             end: edge(span.end()),
+            visible,
+        })
+    }
+
+    fn band_badge(&self) -> Option<axes::BandBadge> {
+        let band = self.band?;
+        let visible = self.selected()?.frequency;
+        Some(axes::BandBadge {
+            width: self.band_width(band)?,
             visible,
         })
     }

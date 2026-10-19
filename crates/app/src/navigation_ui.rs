@@ -560,18 +560,30 @@ impl Shell {
 
     /// A band's edges and width in the frequency ruler's unit, to the precision of one row.
     fn band_readout(&self, band: argand_core::FrequencyBand) -> Option<String> {
-        let (low, high) = self.extents()?.hertz;
-        let (unit, divisor) = axes::frequency_unit((low, high));
-        let rows = self.plot.map_or(1, |plot| plot.height.max(1));
-        let precision = crate::navigation::time_precision((high - low) / rows as f64 / divisor);
-        let number =
-            |hertz: f64| crate::numbers::text(&format!("{:.*}", precision, hertz / divisor));
+        let (number, unit) = self.hertz_format()?;
         Some(format!(
             "{} – {} {unit} ({} {unit})",
             number(band.low()),
             number(band.high()),
             number(band.high() - band.low())
         ))
+    }
+
+    /// A band's width in the frequency ruler's unit, to the precision of one row.
+    pub(super) fn band_width(&self, band: argand_core::FrequencyBand) -> Option<String> {
+        let (number, unit) = self.hertz_format()?;
+        Some(format!("{} {unit}", number(band.high() - band.low())))
+    }
+
+    /// How a frequency is written in the ruler's unit, to the precision of one row.
+    fn hertz_format(&self) -> Option<(impl Fn(f64) -> String, &'static str)> {
+        let (low, high) = self.extents()?.hertz;
+        let (unit, divisor) = axes::frequency_unit((low, high));
+        let rows = self.plot.map_or(1, |plot| plot.height.max(1));
+        let precision = crate::navigation::time_precision((high - low) / rows as f64 / divisor);
+        let number =
+            move |hertz: f64| crate::numbers::text(&format!("{:.*}", precision, hertz / divisor));
+        Some((number, unit))
     }
 
     pub(super) fn cursor_readout(&self, cx: &gpui_kit::App) -> Option<(String, Option<String>)> {

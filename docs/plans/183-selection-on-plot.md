@@ -31,6 +31,7 @@ A time selection carries its own readouts on the plot, as ocenaudio does: the st
 - An edge outside the visible time has no badge. The badges are clamped inside the plot; where the start and end badges would overlap, the end badge moves past the start badge and is dropped when the plot has no room for it. The length badge is dropped when it is wider than the plot.
 - The badges take no input and are painted over the selection tint and the grid, under the corner zoom pairs, the Alt guides and their badges.
 - The status bar shows only the band part of the readout.
+- ➕ A band or a rectangle shows its width in the frequency ruler's unit, as the owner asked after a first look: a badge at the plot's right edge over the middle of the visible band, or at its bottom edge in vertical orientation, held inside the plot and dropped without room.
 
 ### Gestures
 
@@ -51,6 +52,7 @@ A time selection carries its own readouts on the plot, as ocenaudio does: the st
 - [x] `time_ruler`: split the selection readout into start, end and length counters with their padded width and dimmed prefix; tests.
 - [x] Shell: the selection in samples and hertz and the counters in `PlotSnapshot`; the status bar without the time part.
 - [x] Painting the three badges with their placement rules; placement tests.
+- [x] ➕ The band width badge (`BandBadge`, `band_place`) and its placement test.
 - [x] Gestures: grab zones and cursors, edge drags for time and frequency, corners, moving, Shift+click, on spectrogram, minimap and frequency ruler; headless tests.
 - [x] `AGENTS.md` and `CHANGELOG.md`.
 - [ ] Complete validation.

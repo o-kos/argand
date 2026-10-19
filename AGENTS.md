@@ -447,8 +447,10 @@ capture's own length takes, its padding drawn as zeros, with the zeros and separ
 the first significant digit (never the units digit) dimmed, so a value keeps its width while
 an edge moves. A hidden edge has no badge; badges stay inside the plot, the end badge goes
 past the start badge where they would overlap and is dropped without room, and they take no
-input, painted over the grid and under the zoom pairs and the Alt guides. The status bar shows
-only a band's edges.
+input, painted over the grid and under the zoom pairs and the Alt guides. A band or a
+rectangle also shows its width in the frequency ruler's unit (`axes::BandBadge`,
+`Shell::band_width`), at the plot's right edge over the middle of the visible band, or at its
+bottom edge in vertical orientation. The status bar shows only a band's edges and width.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
