@@ -441,8 +441,12 @@ and the minimap tint it with `blue_light` at 0.3 under the grid
 A selection carries its readouts as badges over the plot (`axes::SelectionBadges`,
 `selection_badges.rs`), in the Alt badge look, one `AxisBadges` per selected axis, dimensioned
 as on a drawing: each edge's badge just beyond the selection on one side, running from its
-edge towards the other so the corners stay free for the other axis, and left out where the
-edges are too close for both, so a small selection shows only its extents, the
+edge towards the other so the corners stay free for the other axis. Where the edges are too
+close for both, a rectangle shows only that axis's extent, while a selection of one axis
+(`Extent::alone`), whose badges meet no others, turns them outward past its edges. Edge badges
+that have no room beyond the selection and, pressed inside, would cover the other side's
+dimension line stand just past that line instead, at their edges, and give way to the extent
+badge where they would meet it. The
 extent over the middle of the visible selection just beyond it on the other
 (`selection_badges::Layout`), pressed back inside the plot where there is no room beyond it.
 Time puts its start and end below the selection and its length above it, or left and right of
@@ -458,9 +462,9 @@ visible selection with an arrowhead at each edge in view. Where the badge and it
 not fit between the edges, the arrowheads stand outside them pointing in, the line runs on past
 them, and the badge stands beside the selection away from the other axis's extent
 (`Layout::narrow_before`): time's before its start, a band's below it, or before it with
-frequency running right, and on the other side without room there. A hidden edge has no badge; badges
-stay inside the plot, the second and they take no input, painted over the grid and under the zoom
-pairs and the Alt guides. The status bar shows no selection.
+frequency running right, and on the other side without room there. A hidden edge has no badge;
+badges stay inside the plot and take no input, painted over the grid and under the zoom pairs
+and the Alt guides. The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical

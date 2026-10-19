@@ -518,6 +518,7 @@ impl Shell {
             second: edge(span.end()),
             visible,
             around: self.across_screen(false)?,
+            alone: self.band.is_none(),
         })
     }
 
@@ -560,6 +561,7 @@ impl Shell {
             second: shown(second),
             visible,
             around: self.across_screen(true)?,
+            alone: self.selection.is_none(),
         })
     }
 

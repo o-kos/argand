@@ -44,6 +44,8 @@ pub struct AxisBadges {
     pub visible: (f64, f64),
     /// What the selection covers of the other axis, as fractions across the screen, which the badges stand beside.
     pub around: (f64, f64),
+    /// Whether this is the only axis selected, whose edge badges then meet no others.
+    pub alone: bool,
 }
 
 /// Which way an axis runs on the screen and on which side its edges are labelled.
@@ -105,6 +107,7 @@ impl SelectionBadges {
                     edges: [badges.first, badges.second],
                     visible: badges.visible,
                     around: badges.around,
+                    alone: badges.alone,
                 },
                 badges.texts.each_ref().map(width),
                 height,
@@ -279,6 +282,22 @@ pub(crate) struct Extent {
     pub visible: (f64, f64),
     /// The part of the other axis it covers.
     pub around: (f64, f64),
+    /// Whether no other axis is selected, so crowded edge badges turn outward rather than give way.
+    pub alone: bool,
+}
+
+/// Edge badges past their edges, the first before it and the second after it, kept apart and inside `length`.
+fn outward(edges: [Option<f64>; 2], length: f32, along: [f32; 2]) -> (Option<f32>, Option<f32>) {
+    let first = edges[0].map(|edge| edge as f32 * length - along[0]);
+    let second = edges[1].map(|edge| edge as f32 * length);
+    let (Some(first), Some(second)) = (first, second) else {
+        return (first, second);
+    };
+    let first = first.max(0.);
+    let second = second.max(first + along[0] + GAP);
+    // Pressed against the far end, both slide back together.
+    let over = (second + along[1] - length).max(0.);
+    (Some(first - over), Some(second - over))
 }
 
 /// Whether an extent badge `badge` long and its arrowheads fit between edges `length` apart.
@@ -320,17 +339,18 @@ pub(crate) fn places(
     // Each edge's badge runs from its edge towards the other, so the corners stay free for the other axis.
     let first = extent.edges[0].map(|edge| edge as f32 * length);
     let second = extent.edges[1].map(|edge| edge as f32 * length - along(1));
-    // Edges too close for both badges show only the extent.
     let crowded = match (first, second) {
         (Some(first), Some(second)) => second < first + along(0) + GAP,
         _ => false,
     };
-    let first = first
-        .filter(|_| fits(0) && !crowded)
-        .map(|from| clamp(from, 0));
-    let second = second
-        .filter(|_| fits(1) && !crowded)
-        .map(|from| clamp(from, 1));
+    let (first, second) = match (crowded, extent.alone) {
+        (false, _) => (first, second),
+        // Edges too close for both badges show only the extent beside another axis's badges.
+        (true, false) => (None, None),
+        (true, true) => outward(extent.edges, length, [along(0), along(1)]),
+    };
+    let first = first.filter(|_| fits(0)).map(|from| clamp(from, 0));
+    let second = second.filter(|_| fits(1)).map(|from| clamp(from, 1));
     let (start, end) = (
         extent.visible.0 as f32 * length,
         extent.visible.1 as f32 * length,
@@ -351,9 +371,44 @@ pub(crate) fn places(
         true => (extent.around.1 as f32 * depth + MARGIN).min(depth - MARGIN - thick(index)),
         false => (extent.around.0 as f32 * depth - MARGIN - thick(index)).max(MARGIN),
     };
-    let rect = |index: usize, from: f32| {
-        let edge = index < 2;
-        let side = beyond(index, edge == layout.edges_far);
+    let extent_at = beyond(2, !layout.edges_far);
+    let edge_at = |index: usize| -> (f32, bool) {
+        let wanted = match layout.edges_far {
+            true => extent.around.1 as f32 * depth + MARGIN,
+            false => extent.around.0 as f32 * depth - MARGIN - thick(index),
+        };
+        if (MARGIN..=depth - MARGIN - thick(index)).contains(&wanted) {
+            return (wanted, false);
+        }
+        let pressed = beyond(index, layout.edges_far);
+        let on_extent = middle.is_some()
+            && pressed < extent_at + thick(2)
+            && pressed + thick(index) > extent_at;
+        if !on_extent {
+            return (pressed, false);
+        }
+        // Pressed into the other side's dimension line, the edge badges stand just past that line instead.
+        let line = extent_at + thick(2) / 2.;
+        let at = match layout.edges_far {
+            true => line - LINE_GAP - thick(index),
+            false => line + LINE_GAP,
+        };
+        (at.clamp(MARGIN, depth - MARGIN - thick(index)), true)
+    };
+    let edges = [
+        first.map(|from| (from, edge_at(0))),
+        second.map(|from| (from, edge_at(1))),
+    ];
+    // Beside the dimension line the edge badges share the axis with the extent badge, and give way to it.
+    let clear_of_middle = |index: usize, from: f32| {
+        middle.is_none_or(|middle| {
+            from + along(index) + GAP <= middle || middle + along(2) + GAP <= from
+        })
+    };
+    let blocked = edges.iter().enumerate().any(|(index, edge)| {
+        edge.is_some_and(|(from, (_, shared))| shared && !clear_of_middle(index, from))
+    });
+    let rect = |index: usize, from: f32, side: f32| {
         let (x, y) = match layout.across {
             true => (from, side),
             false => (side, from),
@@ -365,10 +420,11 @@ pub(crate) fn places(
             height,
         }
     };
+    let [first, second] = edges.map(|edge| edge.filter(|_| !blocked));
     [
-        first.map(|from| rect(0, from)),
-        second.map(|from| rect(1, from)),
-        middle.map(|from| rect(2, from)),
+        first.map(|(from, (side, _))| rect(0, from, side)),
+        second.map(|(from, (side, _))| rect(1, from, side)),
+        middle.map(|from| rect(2, from, extent_at)),
     ]
 }
 
@@ -391,6 +447,7 @@ mod tests {
             edges: [Some(from), Some(to)],
             visible: (from, to),
             around: (0., 1.),
+            alone: false,
         }
     }
 
@@ -402,6 +459,26 @@ mod tests {
         assert_eq!((start.x, start.y), (110., 200.));
         assert_eq!((end.x + end.width, end.y), (310., 200.));
         assert_eq!((length.x, length.y), (190., 24.));
+    }
+
+    #[test]
+    fn a_selection_of_one_axis_turns_crowded_edge_badges_outward() {
+        let alone = Extent {
+            alone: true,
+            ..spanning(0.5, 0.6)
+        };
+        let [start, end, _] = places(PLOT, Layout::time(false), alone, WIDTHS, 16.);
+        let (start, end) = (start.unwrap(), end.unwrap());
+        assert_eq!(start.x + start.width, 210.);
+        assert!((end.x - 250.).abs() < 1e-3);
+        let edge = Extent {
+            alone: true,
+            ..spanning(0.98, 0.99)
+        };
+        let [start, end, _] = places(PLOT, Layout::time(false), edge, WIDTHS, 16.);
+        let (start, end) = (start.unwrap(), end.unwrap());
+        assert_eq!(end.x + end.width, 410., "pressed against the plot's end");
+        assert!(end.x >= start.x + start.width + GAP, "kept apart");
     }
 
     #[test]
@@ -451,6 +528,28 @@ mod tests {
             20. + 104. + beside,
             "below the band, away from the length on top"
         );
+    }
+
+    #[test]
+    fn edge_badges_with_no_room_beside_a_narrow_selection_join_its_extent() {
+        // A tall narrow rectangle against the plot's left edge, as a band.
+        let extent = Extent {
+            around: (0., 0.1),
+            ..spanning(0.1, 0.9)
+        };
+        let [high, low, width] = places(PLOT, Layout::band(false), extent, WIDTHS, 16.);
+        let (high, low, width) = (high.unwrap(), low.unwrap(), width.unwrap());
+        let line = width.x + width.width / 2.;
+        assert_eq!(high.x, line + LINE_GAP, "past the width's line");
+        assert_eq!(low.x, line + LINE_GAP);
+        assert_eq!((high.y, low.y + low.height), (40., 200.));
+        let short = Extent {
+            around: (0., 0.1),
+            ..spanning(0.4, 0.6)
+        };
+        let [high, low, width] = places(PLOT, Layout::band(false), short, WIDTHS, 16.);
+        assert_eq!((high, low), (None, None), "no room beside the width");
+        assert!(width.is_some());
     }
 
     #[test]
