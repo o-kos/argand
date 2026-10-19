@@ -13,7 +13,7 @@ promise applies to.
 
 ### Added
 
-- A time selection shows its start and end in badges at its edges and its length over it, in the time ruler's units with a fixed width, instead of in the status bar, and a band or rectangle shows its width beside it. Its edges, and a band's or rectangle's frequency edges, can be dragged on the spectrogram, the minimap and the frequency ruler, a drag inside moves the whole selection, and Shift+click extends it from the nearer edge (#183).
+- A time selection shows its start and end in badges at its edges and its length over it, in the time ruler's units with a fixed width, instead of in the status bar, and a band or rectangle shows its edges and width the same way. Its edges, and a band's or rectangle's frequency edges, can be dragged on the spectrogram, the minimap and the frequency ruler, a drag inside moves the whole selection, and Shift+click extends it from the nearer edge (#183).
 
 - The tenth recent file carries 0 on the start page and in File, and opens with Alt+0 there or 0 in File, after 1 to 9. Recent files sharing a name are told apart by the nearest parent folder that differs, with the folders between elided, such as `…/123/…/iq.wav` beside `…/12/…/iq.wav`, and long file and folder names keep their start and end, as long as still tells them apart (#216).
 

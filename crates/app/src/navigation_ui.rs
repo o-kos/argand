@@ -569,10 +569,13 @@ impl Shell {
         ))
     }
 
-    /// A band's width in the frequency ruler's unit, to the precision of one row.
-    pub(super) fn band_width(&self, band: argand_core::FrequencyBand) -> Option<String> {
+    /// A band's low edge, high edge and width in the frequency ruler's unit, to the precision of one row.
+    pub(super) fn band_texts(&self, band: argand_core::FrequencyBand) -> Option<[String; 3]> {
         let (number, unit) = self.hertz_format()?;
-        Some(format!("{} {unit}", number(band.high() - band.low())))
+        Some(
+            [band.low(), band.high(), band.high() - band.low()]
+                .map(|hertz| format!("{} {unit}", number(hertz))),
+        )
     }
 
     /// How a frequency is written in the ruler's unit, to the precision of one row.

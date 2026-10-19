@@ -495,7 +495,7 @@ impl Shell {
         (badges != axes::SelectionBadges::default()).then_some(badges)
     }
 
-    fn time_badges(&self) -> Option<axes::TimeBadges> {
+    fn time_badges(&self) -> Option<axes::AxisBadges> {
         let view = self.view?;
         let span = self.selection?;
         let meta = self.file.as_ref()?.state.document.meta()?;
@@ -505,22 +505,41 @@ impl Shell {
                 .contains(&sample)
                 .then(|| (sample - view.start) as f64 / view.len as f64)
         };
-        Some(axes::TimeBadges {
-            counters: self
+        Some(axes::AxisBadges {
+            texts: self
                 .session
                 .time_ruler
                 .counters(span, meta.sample_rate, meta.len_samples),
-            start: edge(span.start()),
-            end: edge(span.end()),
+            first: edge(span.start()),
+            second: edge(span.end()),
             visible,
         })
     }
 
-    fn band_badge(&self) -> Option<axes::BandBadge> {
+    fn band_badge(&self) -> Option<axes::AxisBadges> {
         let band = self.band?;
-        let visible = self.selected()?.frequency;
-        Some(axes::BandBadge {
-            width: self.band_width(band)?,
+        let (low, high) = self.extents()?.hertz;
+        let [low_text, high_text, width] = self.band_texts(band)?;
+        // Down from the top of the visible band, or to the right where frequency runs right.
+        let vertical = self.session.orientation.vertical();
+        let along = |hertz: f64| {
+            let down = (high - hertz) / (high - low);
+            if vertical { 1. - down } else { down }
+        };
+        let shown = |hertz: f64| Some(along(hertz)).filter(|at| (0. ..=1.).contains(at));
+        let (from, to) = self.selected()?.frequency;
+        let visible = match vertical {
+            true => (1. - to, 1. - from),
+            false => (from, to),
+        };
+        let (first, second, texts) = match vertical {
+            true => (band.low(), band.high(), [low_text, high_text, width]),
+            false => (band.high(), band.low(), [high_text, low_text, width]),
+        };
+        Some(axes::AxisBadges {
+            texts,
+            first: shown(first),
+            second: shown(second),
             visible,
         })
     }

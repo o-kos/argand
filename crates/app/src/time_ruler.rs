@@ -38,14 +38,6 @@ impl Mode {
     }
 }
 
-/// One value of a selection readout, as wide as the capture's own length and with its insignificant lead dimmed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Counter {
-    pub text: String,
-    /// The bytes of `text` drawn dimmed, zeros and separators before the first significant digit.
-    pub dim: std::ops::Range<usize>,
-}
-
 impl Mode {
     /// A selection's start, end and length, exact to the sample in this mode's units.
     ///
@@ -55,7 +47,7 @@ impl Mode {
     /// where seconds cannot tell neighbouring samples apart. Each value is as wide
     /// as the capture's `total` samples take, so it keeps its width while an edge
     /// is dragged.
-    pub fn counters(self, span: argand_core::SampleSpan, rate: f64, total: u64) -> [Counter; 3] {
+    pub fn counters(self, span: argand_core::SampleSpan, rate: f64, total: u64) -> [String; 3] {
         let whole = argand_core::SampleSpan::between(0, total.max(span.end())).unwrap_or(span);
         let precision = exact_time_precision(whole, rate).filter(|&precision| match self {
             Self::Samples => false,
@@ -93,43 +85,22 @@ impl Mode {
     }
 }
 
-/// `value` padded on the left to the width of `widest`, its padding drawn as zeros, with its lead dimmed.
+/// `value` padded on the left to the width of `widest`, its padding drawn as zeros.
 ///
 /// A leading run without digits, such as the `#` of a sample index, stays in
 /// front of the padding.
-fn counter(value: &str, widest: &str) -> Counter {
-    let numbers = crate::numbers::current();
-    let digits = numbers.digits();
+fn counter(value: &str, widest: &str) -> String {
+    let digits = crate::numbers::current().digits();
     let is_digit = |c: char| digits.contains(&c);
     let lead: String = value.chars().take_while(|&c| !is_digit(c)).collect();
     let body = &value[lead.len()..];
-    let room = widest
-        .chars()
-        .skip_while(|&c| !is_digit(c))
-        .count()
-        .saturating_sub(body.chars().count());
+    let widest = widest.chars().skip_while(|&c| !is_digit(c));
+    let room = widest.clone().count().saturating_sub(body.chars().count());
     let padding: String = widest
-        .chars()
-        .skip_while(|&c| !is_digit(c))
         .take(room)
         .map(|c| if is_digit(c) { digits[0] } else { c })
         .collect();
-    let padded = format!("{padding}{body}");
-    // The units digit stays bright, so a zero value still reads as one.
-    let units = padded.find(numbers.decimal()).unwrap_or(padded.len());
-    let units = padded[..units]
-        .char_indices()
-        .rev()
-        .find(|(_, c)| is_digit(*c))
-        .map_or(0, |(at, _)| at);
-    let dim_end = padded
-        .char_indices()
-        .find(|&(at, c)| at >= units || (is_digit(c) && c != digits[0]))
-        .map_or(padded.len(), |(at, _)| at);
-    Counter {
-        text: format!("{lead}{padded}"),
-        dim: lead.len()..lead.len() + dim_end,
-    }
+    format!("{lead}{padding}{body}")
 }
 
 /// The most decimals the clock format prints, which `argand_core::axis::format_time` caps.
@@ -251,12 +222,8 @@ mod tests {
         argand_core::SampleSpan::between(a, b).expect("a span")
     }
 
-    fn texts(counters: [Counter; 3]) -> [String; 3] {
-        counters.map(|counter| counter.text)
-    }
-
-    fn dimmed(counter: &Counter) -> &str {
-        &counter.text[counter.dim.clone()]
+    fn texts(counters: [String; 3]) -> [String; 3] {
+        counters
     }
 
     #[test]
@@ -277,19 +244,19 @@ mod tests {
     }
 
     #[test]
-    fn counters_keep_the_capture_s_width_and_dim_their_lead() {
-        let [start, end, length] = Mode::Samples.counters(span(12, 345), 1e3, 1_000_000);
-        assert_eq!(start.text, "#000,012");
-        assert_eq!(dimmed(&start), "000,0");
-        assert_eq!((end.text.as_str(), dimmed(&end)), ("#000,344", "000,"));
+    fn counters_keep_the_capture_s_width() {
         assert_eq!(
-            (length.text.as_str(), dimmed(&length)),
-            ("0,000,333", "0,000,")
+            Mode::Samples.counters(span(12, 345), 1e3, 1_000_000),
+            ["#000,012", "#000,344", "0,000,333"]
         );
-        let [start, ..] = Mode::Seconds.counters(span(0, 10), 1e3, 100_000);
-        assert_eq!((start.text.as_str(), dimmed(&start)), ("000.000 s", "00"));
-        let [_, end, _] = Mode::Clock.counters(span(0, 3_600_000), 1e3, 7_200_000);
-        assert_eq!((end.text.as_str(), dimmed(&end)), ("1:00:00.000", ""));
+        assert_eq!(
+            Mode::Seconds.counters(span(0, 10), 1e3, 100_000)[0],
+            "000.000 s"
+        );
+        assert_eq!(
+            Mode::Clock.counters(span(0, 3_600_000), 1e3, 7_200_000)[1],
+            "1:00:00.000"
+        );
     }
 
     #[test]
