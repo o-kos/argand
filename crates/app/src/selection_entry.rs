@@ -83,11 +83,11 @@ impl Scale {
         text: &str,
     ) -> Option<SampleSpan> {
         let samples = self.samples(numbers, field, text)?;
-        let at = samples.round().clamp(0., self.total as f64) as u64;
+        let at = samples.clamp(0, i128::from(self.total)) as u64;
         match field {
             Field::TimeStart => SampleSpan::between(at, span.end()),
             Field::TimeEnd => SampleSpan::between(span.start(), at),
-            Field::TimeLength if samples > 0. => {
+            Field::TimeLength if samples > 0 => {
                 let end = span.start().saturating_add(at).min(self.total);
                 SampleSpan::between(span.start(), end)
             }
@@ -95,29 +95,30 @@ impl Scale {
         }
     }
 
-    /// The boundary or the count of samples `text` names for `field`.
+    /// The boundary or the count of samples `text` names for `field`, rounded to a whole sample.
     ///
     /// A leading `#` names a sample in every mode, as the readouts write one,
     /// and the end then names the last sample selected. Where the mode writes
     /// indexes, as it does where seconds cannot tell samples apart, a plain
-    /// number is one too.
-    fn samples(&self, numbers: &Numbers, field: Field, text: &str) -> Option<f64> {
+    /// number is one too. A whole index is read as an integer, never through `f64`.
+    fn samples(&self, numbers: &Numbers, field: Field, text: &str) -> Option<i128> {
         let text = text.trim();
         let (index, text) = match text.strip_prefix('#') {
             Some(rest) => (true, rest),
             None => (self.mode.writes_samples(self.rate, self.total), text),
         };
-        let samples = match index {
-            true => {
-                let index = number(numbers, text)?;
-                match field {
-                    Field::TimeEnd => index + 1.,
-                    _ => index,
-                }
-            }
-            false => self.seconds(numbers, text)? * self.rate,
+        if !index {
+            return whole(self.seconds(numbers, text)? * self.rate);
+        }
+        let canonical = numbers.canonical(text.trim()).ok()?;
+        let index = match canonical.parse::<i128>() {
+            Ok(index) => index,
+            Err(_) => whole(number(numbers, text)?)?,
         };
-        samples.is_finite().then_some(samples)
+        Some(match field {
+            Field::TimeEnd => index.saturating_add(1),
+            _ => index,
+        })
     }
 
     /// Seconds written in this mode: a clock of up to three fields, or a number with an optional `s`.
@@ -174,6 +175,11 @@ impl Scale {
             _ => None,
         }
     }
+}
+
+/// `samples` rounded to a whole count, saturating far beyond any capture.
+fn whole(samples: f64) -> Option<i128> {
+    samples.is_finite().then(|| samples.round() as i128)
 }
 
 /// A number written with the locale's digits, grouping and decimal mark.

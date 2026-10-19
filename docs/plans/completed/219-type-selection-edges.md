@@ -6,6 +6,17 @@ Class A (more than five code files: a new parser module, the badge layout, the p
 gestures, a new dialog, the Edit menu and its binding). Implementer: Claude in the session,
 chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
 
+## Review
+
+- Round 1 (`gpt-6.1-sol` high): three P2 findings, all accepted. An open badge input read its
+  text in the units the rulers showed at Enter, so a frequency zoom between typing and Enter
+  changed the unit, and it now keeps the `Scale` it was written in. The dialog could apply or
+  restore a selection in another document opened under it with Ctrl+O, and it now selects only
+  in the document it opened on and closes when another one opens. Sample indexes were read
+  through `f64`, losing precision past 2^53 and rounding past the end of such a capture, and
+  whole indexes are now read as integers and clamped in integers. Each has a regression test.
+  No findings declined.
+
 ## Overview
 
 A selection's edges can only be set with the mouse (#183). This adds two ways to type them:

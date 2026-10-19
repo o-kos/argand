@@ -1984,6 +1984,26 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn a_badge_input_reads_its_text_in_the_units_it_was_written_in(cx: &mut TestAppContext) {
+        use crate::selection_entry::Field;
+        let handle = open(cx);
+        cx.update(badge_entry::init);
+        show_badges(cx, handle, 400_000, 600_000);
+        let start = badge(cx, handle, Field::TimeStart);
+        click(cx, handle, start.center(), 2);
+        handle
+            .update(cx, |harness, _, cx| {
+                harness.plot.as_ref().unwrap().update(cx, |plot, _| {
+                    let entry = plot.snapshot.as_mut().unwrap().entry.as_mut().unwrap();
+                    entry.mode = crate::time_ruler::Mode::Samples;
+                });
+            })
+            .unwrap();
+        type_text(cx, handle, "0 . 3 enter");
+        assert_eq!(selections(cx, handle), [span(300_000, 600_000)]);
+    }
+
+    #[gpui_kit::test]
     fn a_badge_input_marks_a_bad_value_and_escape_leaves_the_selection(cx: &mut TestAppContext) {
         use crate::selection_entry::Field;
         let handle = open(cx);

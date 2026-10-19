@@ -24,6 +24,8 @@ pub(super) struct BadgeEntry {
     input: Entity<InputState>,
     /// The text it opened with, which changes nothing when entered unchanged.
     opened: String,
+    /// The units its text was written in, which it is read back in whatever the rulers show since.
+    scale: crate::selection_entry::Scale,
     /// The selection it opened on, which it is closed without once changed elsewhere.
     selection: argand_core::Selection,
     /// The text last refused, marked while it stands unchanged.
@@ -77,7 +79,7 @@ impl PlotView {
         let Some(snapshot) = &self.snapshot else {
             return;
         };
-        let Some(text) = entry_text(snapshot, field) else {
+        let (Some(scale), Some(text)) = (snapshot.entry, entry_text(snapshot, field)) else {
             return;
         };
         let selection = snapshot.selected;
@@ -95,6 +97,7 @@ impl PlotView {
             field,
             input,
             opened: text,
+            scale,
             selection,
             refused: None,
             _events: events,
@@ -111,10 +114,7 @@ impl PlotView {
         if text == entry.opened {
             return self.close_entry(Some(window), cx);
         }
-        let typed = self
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| typed(snapshot, entry.field, &text));
+        let typed = typed(&entry.scale, entry.selection, entry.field, &text);
         match typed {
             Some(selection) => {
                 self.close_entry(Some(window), cx);
@@ -211,10 +211,13 @@ fn entry_text(snapshot: &PlotSnapshot, field: Field) -> Option<String> {
     texts.into_iter().nth(field.index())
 }
 
-/// The selection with `field` typed as `text`, none where the text gives none.
-fn typed(snapshot: &PlotSnapshot, field: Field, text: &str) -> Option<argand_core::Selection> {
-    let scale = snapshot.entry?;
-    let mut selection = snapshot.selected;
+/// `selection` with `field` typed as `text`, none where the text gives none.
+fn typed(
+    scale: &crate::selection_entry::Scale,
+    mut selection: argand_core::Selection,
+    field: Field,
+    text: &str,
+) -> Option<argand_core::Selection> {
     match field.is_time() {
         true => selection.time = Some(scale.time(selection.time?, field, text)?),
         false => selection.band = Some(scale.band(selection.band?, field, text)?),

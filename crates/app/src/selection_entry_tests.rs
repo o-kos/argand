@@ -195,3 +195,29 @@ fn band_texts_read_back_as_the_same_band() {
         assert!((read.low() - selected.low()).abs() < 1. && (read.high() - selected.high()).abs() < 1.);
     }
 }
+
+#[test]
+fn indexes_beyond_f64_stay_exact_and_inside_the_capture() {
+    let total = (1_u64 << 53) + 3;
+    let scale = Scale {
+        total,
+        ..scale(Mode::Samples)
+    };
+    let selected = span(0, 10);
+    assert_eq!(
+        scale.time_in(&en(), selected, Field::TimeStart, "#9007199254740993"),
+        Some(span(10, (1 << 53) + 1))
+    );
+    assert_eq!(
+        scale.time_in(&en(), selected, Field::TimeEnd, "#9007199254740994"),
+        Some(span(0, total))
+    );
+    assert_eq!(
+        scale.time_in(&en(), selected, Field::TimeEnd, "#99999999999999999999999"),
+        Some(span(0, total))
+    );
+    assert_eq!(
+        scale.time_in(&en(), selected, Field::TimeLength, "#-3"),
+        None
+    );
+}

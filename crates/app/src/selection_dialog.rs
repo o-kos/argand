@@ -20,6 +20,8 @@ const FIELDS: [Field; 6] = [
 /// Every value of the selection, each axis selected by its check box.
 pub(super) struct SelectionDialog {
     shell: WeakEntity<Shell>,
+    /// The document it was opened on, which alone it selects in.
+    document: u64,
     scale: Scale,
     /// The selection the dialog opened on, which Cancel restores.
     opened: Selection,
@@ -42,7 +44,8 @@ pub(super) struct SelectionDialog {
 
 impl SelectionDialog {
     fn new(
-        shell: WeakEntity<Shell>,
+        shell: &Entity<Shell>,
+        document: u64,
         scale: Scale,
         opened: Selection,
         (time, band): (SampleSpan, FrequencyBand),
@@ -53,7 +56,7 @@ impl SelectionDialog {
         let inputs = shown
             .clone()
             .map(|text| cx.new(|cx| InputState::new(window, cx).default_value(text)));
-        let events = FIELDS
+        let mut events: Vec<Subscription> = FIELDS
             .iter()
             .zip(&inputs)
             .map(|(&field, input)| {
@@ -64,8 +67,19 @@ impl SelectionDialog {
                 })
             })
             .collect();
+        // Another document opened under the dialog leaves it nothing to select in.
+        events.push(
+            cx.observe_in(shell, window, move |dialog, shell, window, cx| {
+                let current = shell.read(cx).file.as_ref().map(|file| file.id);
+                if !dialog.closed && current != Some(document) {
+                    dialog.closed = true;
+                    window.close_dialog(cx);
+                }
+            }),
+        );
         Self {
-            shell,
+            shell: shell.downgrade(),
+            document,
             scale,
             opened,
             time,
@@ -142,10 +156,17 @@ impl SelectionDialog {
     }
 
     fn apply(&self, cx: &mut Context<Self>) {
-        let selection = self.selection();
-        let _ = self
-            .shell
-            .update(cx, |shell, cx| shell.select(selection, cx));
+        self.select(self.selection(), cx);
+    }
+
+    /// Select in the document the dialog was opened on, and nowhere else.
+    fn select(&self, selection: Selection, cx: &mut Context<Self>) {
+        let document = self.document;
+        let _ = self.shell.update(cx, |shell, cx| {
+            if shell.file.as_ref().is_some_and(|file| file.id == document) {
+                shell.select(selection, cx);
+            }
+        });
     }
 
     fn check(&mut self, axis: usize, checked: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -171,8 +192,7 @@ impl SelectionDialog {
 
     fn cancel(&mut self, cx: &mut Context<Self>) {
         self.closed = true;
-        let opened = self.opened;
-        let _ = self.shell.update(cx, |shell, cx| shell.select(opened, cx));
+        self.select(self.opened, cx);
     }
 
     /// Put the keyboard in the first field of the first checked axis, if any.
@@ -267,7 +287,8 @@ fn texts(scale: &Scale, time: SampleSpan, band: FrequencyBand) -> [String; 6] {
 impl Shell {
     /// Open the dialog on the selection, or on the visible range where an axis is not selected.
     pub(super) fn open_selection_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (Some(scale), Some(view), Some((low, high))) = (
+        let (Some(document), Some(scale), Some(view), Some((low, high))) = (
+            self.file.as_ref().map(|file| file.id),
             self.entry_scale(),
             self.view,
             self.extents().map(|extents| extents.hertz),
@@ -295,9 +316,10 @@ impl Shell {
         if let Some(plot) = self.plot_view() {
             plot.update(cx, |plot, cx| plot.interrupt(cx));
         }
-        let shell = cx.entity().downgrade();
-        let dialog =
-            cx.new(|cx| SelectionDialog::new(shell, scale, opened, (time, band), window, cx));
+        let shell = cx.entity();
+        let dialog = cx.new(|cx| {
+            SelectionDialog::new(&shell, document, scale, opened, (time, band), window, cx)
+        });
         window.open_dialog(cx, move |modal, _, _| {
             let confirm = dialog.clone();
             let ok = dialog.clone();
@@ -499,5 +521,23 @@ mod tests {
         assert!(!dialog_open(cx));
         let band = selected(cx, &shell).band.expect("a band");
         assert_eq!((band.low(), band.high()), (-100., 500.));
+    }
+
+    #[gpui_kit::test]
+    fn another_document_opened_under_the_dialog_closes_it(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        open_dialog(cx, &shell);
+        keys(cx, "5 0");
+        shell.update_in(cx, |shell, window, cx| {
+            shell.open(Origin::new(PathBuf::from("/captures/b.iqw")), window, cx);
+        });
+        settle(cx);
+        assert!(!dialog_open(cx));
+        assert_eq!(
+            selected(cx, &shell),
+            Selection::default(),
+            "nothing carried over"
+        );
     }
 }
