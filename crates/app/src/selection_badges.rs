@@ -1,0 +1,826 @@
+//! A selection's edges and extent, in badges over the plot.
+//!
+//! Along each selected axis the two edges are labelled just outside
+//! themselves on one side of the plot, and the extent over the middle of the
+//! visible selection on the other side.
+
+use super::*;
+
+/// Room between a badge and the plot's edge it stands on.
+const MARGIN: f32 = 4.;
+/// The least gap the far edge's badge keeps from the near edge's badge it is pushed past.
+const GAP: f32 = 2.;
+/// The badge's corner radius, as the Alt badges have it.
+const RADIUS: f32 = 3.;
+/// How far an arrowhead of the dimension line reaches along it.
+const ARROW_LENGTH: f32 = 6.;
+/// Half the width of an arrowhead across the line.
+const ARROW_HALF: f32 = 3.;
+/// Room the dimension line leaves on each side of the extent badge.
+const LINE_GAP: f32 = 3.;
+/// How far the dimension line runs on past an arrowhead turned outside a narrow selection.
+const STUB: f32 = 8.;
+
+/// A selection's readouts on the plot.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SelectionBadges {
+    pub time: Option<AxisBadges>,
+    pub band: Option<AxisBadges>,
+}
+
+/// One selected axis's readouts and where its edges are, as fractions along the axis on screen.
+///
+/// Fractions run down or to the right, so the first edge is the one met first
+/// that way: the start in time, the high edge of a band shown upright and its
+/// low edge with frequency running right.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AxisBadges {
+    /// The first edge, the second edge and the extent.
+    pub texts: [String; 3],
+    /// The first edge, none when it is not shown.
+    pub first: Option<f64>,
+    pub second: Option<f64>,
+    /// The visible part of the selection.
+    pub visible: (f64, f64),
+    /// What the selection covers of the other axis, as fractions across the screen, which the badges stand beside.
+    pub around: (f64, f64),
+    /// Whether this is the only axis selected, whose edge badges then meet no others.
+    pub alone: bool,
+}
+
+/// Which way an axis runs on the screen and on which side its edges are labelled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Layout {
+    /// The axis runs across the screen, not down it.
+    pub across: bool,
+    /// The edges stand at the far side of the other axis, the bottom or the right.
+    pub edges_far: bool,
+    /// A narrow selection's extent goes before its first edge, away from the other axis's extent.
+    pub narrow_before: bool,
+}
+
+impl Layout {
+    /// Time runs right with its edges at the bottom, or down with its edges at the left.
+    fn time(vertical: bool) -> Self {
+        Self {
+            across: !vertical,
+            edges_far: !vertical,
+            narrow_before: true,
+        }
+    }
+
+    /// Frequency runs up with its edges at the left, or right with its edges at the top.
+    fn band(vertical: bool) -> Self {
+        Self {
+            across: vertical,
+            edges_far: false,
+            narrow_before: vertical,
+        }
+    }
+}
+
+impl SelectionBadges {
+    pub fn paint(
+        &self,
+        frame: &Frame,
+        panel: Point<Pixels>,
+        labels: &Labels,
+        colors: [Hsla; 2],
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let height = labels.digit_height(LABEL_SIZE) + 2. * BADGE_PAD;
+        let width = |text: &String| labels.width(text, LABEL_SIZE).ceil() + 2. * BADGE_PAD;
+        let vertical = frame.orientation.vertical();
+        let mut shown: Vec<(&str, Rect)> = Vec::new();
+        let mut lines: Vec<Dimension> = Vec::new();
+        let mut taken: Vec<Rect> = Vec::new();
+        let axes = [
+            (&self.time, Layout::time(vertical)),
+            (&self.band, Layout::band(vertical)),
+        ];
+        for (badges, layout) in axes {
+            let Some(badges) = badges else { continue };
+            let places = places(
+                frame.plot,
+                layout,
+                Extent {
+                    edges: [badges.first, badges.second],
+                    visible: badges.visible,
+                    around: badges.around,
+                    alone: badges.alone,
+                },
+                badges.texts.each_ref().map(width),
+                height,
+            );
+            let places = settle(places, &mut taken, layout, frame.plot);
+            if let Some(extent) = places[2] {
+                let ends = [badges.first.is_some(), badges.second.is_some()];
+                lines.push(dimension(frame.plot, layout, badges.visible, ends, extent));
+            }
+            shown.extend(
+                badges
+                    .texts
+                    .iter()
+                    .zip(places)
+                    .filter_map(|(text, rect)| Some((text.as_str(), rect?))),
+            );
+        }
+        let clip = Bounds::new(
+            panel + point(px(frame.plot.x), px(frame.plot.y)),
+            size(px(frame.plot.width), px(frame.plot.height)),
+        );
+        window.with_content_mask(Some(gpui_kit::ContentMask { bounds: clip }), |window| {
+            for line in &lines {
+                line.paint(panel, colors, window);
+            }
+            for (text, rect) in &shown {
+                badge(text, *rect, panel, labels, colors, window, cx);
+            }
+        });
+    }
+}
+
+/// A line from edge to edge of the visible selection through its extent badge, with an arrowhead at each edge shown.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Dimension {
+    pub across: bool,
+    /// Where the line runs across the other axis, in panel coordinates.
+    pub at: f32,
+    /// The stretches along the axis the line is drawn over, either side of the badge.
+    pub segments: Vec<(f32, f32)>,
+    /// Arrow tips along the axis, each with the way it points, true towards larger values.
+    pub arrows: Vec<(f32, bool)>,
+}
+
+/// The dimension line of a selection `visible` along `layout`'s axis, broken by the extent badge `extent`.
+pub(crate) fn dimension(
+    plot: Rect,
+    layout: Layout,
+    visible: (f64, f64),
+    ends: [bool; 2],
+    extent: Rect,
+) -> Dimension {
+    let (origin, length, badge_from, badge_to, at) = match layout.across {
+        true => (
+            plot.x,
+            plot.width,
+            extent.x,
+            extent.x + extent.width,
+            extent.y + extent.height / 2.,
+        ),
+        false => (
+            plot.y,
+            plot.height,
+            extent.y,
+            extent.y + extent.height,
+            extent.x + extent.width / 2.,
+        ),
+    };
+    let from = origin + visible.0 as f32 * length;
+    let to = origin + visible.1 as f32 * length;
+    // A narrow selection takes its arrowheads outside, pointing in, with the line running on past them.
+    let inside = fits_between(to - from, badge_to - badge_from);
+    let (line_from, line_to) = match inside {
+        true => (from, to),
+        false => (from - ARROW_LENGTH - STUB, to + ARROW_LENGTH + STUB),
+    };
+    let segments = [
+        (line_from, badge_from - LINE_GAP),
+        (badge_to + LINE_GAP, line_to),
+    ]
+    .into_iter()
+    .filter(|(start, end)| end > start)
+    .collect();
+    let arrows = [(ends[0], from, !inside), (ends[1], to, inside)]
+        .into_iter()
+        .filter(|(shown, _, _)| *shown)
+        .map(|(_, tip, forward)| (tip, forward))
+        .collect();
+    Dimension {
+        across: layout.across,
+        at,
+        segments,
+        arrows,
+    }
+}
+
+impl Dimension {
+    /// A paper stroke around an ink core, as the Alt guides are drawn, and filled arrowheads.
+    fn paint(&self, panel: Point<Pixels>, [ink, paper]: [Hsla; 2], window: &mut Window) {
+        let screen = |along: f32, across: f32| match self.across {
+            true => panel + point(px(along), px(across)),
+            false => panel + point(px(across), px(along)),
+        };
+        for (width, color) in [(3., paper), (1., ink)] {
+            for &(start, end) in &self.segments {
+                let corner = screen(start, self.at - width / 2.);
+                let extent = match self.across {
+                    true => size(px(end - start), px(width)),
+                    false => size(px(width), px(end - start)),
+                };
+                window.paint_quad(fill(Bounds::new(corner, extent), color));
+            }
+        }
+        for &(tip, forward) in &self.arrows {
+            let back = if forward { -ARROW_LENGTH } else { ARROW_LENGTH };
+            for (grow, color) in [(1., paper), (0., ink)] {
+                let points = [
+                    screen(tip - back.signum() * grow, self.at),
+                    screen(tip + back, self.at - ARROW_HALF - grow),
+                    screen(tip + back, self.at + ARROW_HALF + grow),
+                ];
+                let mut path = gpui_kit::PathBuilder::fill();
+                path.add_polygon(&points, true);
+                if let Ok(path) = path.build() {
+                    window.paint_path(path, color);
+                }
+            }
+        }
+    }
+}
+
+fn badge(
+    text: &str,
+    rect: Rect,
+    panel: Point<Pixels>,
+    labels: &Labels,
+    [ink, paper]: [Hsla; 2],
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let origin = panel + point(px(rect.x), px(rect.y));
+    let ring = Bounds::new(
+        origin - point(px(1.), px(1.)),
+        size(px(rect.width + 2.), px(rect.height + 2.)),
+    );
+    window.paint_quad(fill(ring, paper).corner_radii(px(RADIUS + 1.)));
+    window.paint_quad(
+        fill(
+            Bounds::new(origin, size(px(rect.width), px(rect.height))),
+            ink,
+        )
+        .corner_radii(px(RADIUS)),
+    );
+    let shaped = labels.shape(text, paper);
+    let top = labels.line_top(rect.height / 2., &shaped);
+    let left = (px(rect.width) - shaped.width) / 2.;
+    let _ = shaped.paint(
+        origin + point(left, px(top)),
+        px(LINE_HEIGHT),
+        gpui_kit::TextAlign::Left,
+        None,
+        window,
+        cx,
+    );
+}
+
+/// Where a selection lies along one axis and across the other, as fractions of the plot.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Extent {
+    /// The two edges along the axis, none for one not shown.
+    pub edges: [Option<f64>; 2],
+    /// The visible part along the axis.
+    pub visible: (f64, f64),
+    /// The part of the other axis it covers.
+    pub around: (f64, f64),
+    /// Whether no other axis is selected, so crowded edge badges turn outward rather than give way.
+    pub alone: bool,
+}
+
+/// Edge badges past their edges, the first before it and the second after it, kept apart and inside `length`.
+fn outward(edges: [Option<f64>; 2], length: f32, along: [f32; 2]) -> (Option<f32>, Option<f32>) {
+    let first = edges[0].map(|edge| edge as f32 * length - along[0]);
+    let second = edges[1].map(|edge| edge as f32 * length);
+    let (Some(first), Some(second)) = (first, second) else {
+        return (first, second);
+    };
+    // Without room for both side by side only the first is shown.
+    if along[0] + GAP + along[1] > length {
+        return (Some(first), None);
+    }
+    let first = first.max(0.);
+    let second = second.max(first + along[0] + GAP);
+    // Pressed against the far end, both slide back together.
+    let over = (second + along[1] - length).max(0.);
+    (Some(first - over), Some(second - over))
+}
+
+fn overlaps(a: Rect, b: Rect) -> bool {
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+}
+
+/// `places` settled one after another clear of `taken`, each joining it once placed.
+///
+/// An edge badge has nothing joining it to its edge but where it stands, so it
+/// is dropped rather than moved; the extent badge moves along its axis, since its
+/// dimension line follows it.
+pub(crate) fn settle(
+    places: [Option<Rect>; 3],
+    taken: &mut Vec<Rect>,
+    layout: Layout,
+    plot: Rect,
+) -> [Option<Rect>; 3] {
+    let mut index = 0;
+    places.map(|rect| {
+        let edge = index < 2;
+        index += 1;
+        let rect = rect?;
+        let rect = match edge {
+            true => (!taken.iter().any(|taken| overlaps(rect, *taken))).then_some(rect)?,
+            false => clear_of(rect, taken, layout, plot)?,
+        };
+        taken.push(rect);
+        Some(rect)
+    })
+}
+
+/// `rect` moved along `layout`'s axis to the nearest place clear of the badges `taken`, or none without one.
+pub(crate) fn clear_of(rect: Rect, taken: &[Rect], layout: Layout, plot: Rect) -> Option<Rect> {
+    let span = |rect: &Rect| match layout.across {
+        true => (rect.x, rect.x + rect.width),
+        false => (rect.y, rect.y + rect.height),
+    };
+    let (start, end) = match layout.across {
+        true => (plot.x, plot.x + plot.width),
+        false => (plot.y, plot.y + plot.height),
+    };
+    let (at, to) = span(&rect);
+    let length = to - at;
+    let moved = |place: f32| match layout.across {
+        true => Rect { x: place, ..rect },
+        false => Rect { y: place, ..rect },
+    };
+    // Where it stands, or just past either side of any badge already placed.
+    let places = std::iter::once(at).chain(taken.iter().flat_map(|taken| {
+        let (from, to) = span(taken);
+        [to + GAP, from - GAP - length]
+    }));
+    places
+        .filter(|&place| place >= start && place + length <= end)
+        .map(moved)
+        .filter(|moved| !taken.iter().any(|taken| overlaps(*moved, *taken)))
+        .min_by(|a, b| {
+            let distance = |rect: &Rect| (span(rect).0 - at).abs();
+            distance(a).total_cmp(&distance(b))
+        })
+}
+
+/// Whether an extent badge `badge` long and its arrowheads fit between edges `length` apart.
+fn fits_between(length: f32, badge: f32) -> bool {
+    length >= badge + 2. * (ARROW_LENGTH + LINE_GAP)
+}
+
+/// Where the first edge's, the second edge's and the extent's badges go, each none where it is not shown.
+///
+/// The edge badges stand just beyond the selection on the side `layout` names,
+/// each running from its edge towards the other, and are left out where the
+/// edges are too close for both. The extent badge stands beyond the selection
+/// on the other side, over the middle of the visible selection, or beside it
+/// away from the other axis's extent where it and its arrowheads do not fit
+/// between the edges. Badges stay inside the plot, pressed against the
+/// selection where there is no room beyond it, and a badge with no room is
+/// dropped.
+pub(crate) fn places(
+    plot: Rect,
+    layout: Layout,
+    extent: Extent,
+    widths: [f32; 3],
+    height: f32,
+) -> [Option<Rect>; 3] {
+    let (length, depth) = match layout.across {
+        true => (plot.width, plot.height),
+        false => (plot.height, plot.width),
+    };
+    let along = |index: usize| match layout.across {
+        true => widths[index],
+        false => height,
+    };
+    let thick = |index: usize| match layout.across {
+        true => height,
+        false => widths[index],
+    };
+    let fits = |index: usize| along(index) <= length && thick(index) + 2. * MARGIN <= depth;
+    let clamp = |from: f32, index: usize| from.clamp(0., length - along(index));
+    // Each edge's badge runs from its edge towards the other, so the corners stay free for the other axis.
+    let first = extent.edges[0].map(|edge| edge as f32 * length);
+    let second = extent.edges[1].map(|edge| edge as f32 * length - along(1));
+    let crowded = match (first, second) {
+        (Some(first), Some(second)) => second < first + along(0) + GAP,
+        _ => false,
+    };
+    let (first, second) = match (crowded, extent.alone) {
+        (false, _) => (first, second),
+        // Edges too close for both badges show only the extent beside another axis's badges.
+        (true, false) => (None, None),
+        (true, true) => outward(extent.edges, length, [along(0), along(1)]),
+    };
+    let first = first.filter(|_| fits(0)).map(|from| clamp(from, 0));
+    let second = second.filter(|_| fits(1)).map(|from| clamp(from, 1));
+    let (start, end) = (
+        extent.visible.0 as f32 * length,
+        extent.visible.1 as f32 * length,
+    );
+    let beside = ARROW_LENGTH + STUB + LINE_GAP;
+    let before = start - beside - along(2);
+    let past = end + beside;
+    let middle = match (fits_between(end - start, along(2)), layout.narrow_before) {
+        (true, _) => (start + end - along(2)) / 2.,
+        (false, true) if before >= 0. => before,
+        (false, false) if past + along(2) <= length => past,
+        (false, true) => past,
+        (false, false) => before,
+    };
+    let middle = fits(2).then(|| clamp(middle, 2));
+    // Beyond the selection on the far side or the near one, pressed back inside the plot.
+    let beyond = |index: usize, far: bool| match far {
+        true => (extent.around.1 as f32 * depth + MARGIN).min(depth - MARGIN - thick(index)),
+        false => (extent.around.0 as f32 * depth - MARGIN - thick(index)).max(MARGIN),
+    };
+    let extent_at = beyond(2, !layout.edges_far);
+    let edge_at = |index: usize| -> (f32, bool) {
+        let wanted = match layout.edges_far {
+            true => extent.around.1 as f32 * depth + MARGIN,
+            false => extent.around.0 as f32 * depth - MARGIN - thick(index),
+        };
+        if (MARGIN..=depth - MARGIN - thick(index)).contains(&wanted) {
+            return (wanted, false);
+        }
+        let pressed = beyond(index, layout.edges_far);
+        let on_extent = middle.is_some()
+            && pressed < extent_at + thick(2)
+            && pressed + thick(index) > extent_at;
+        if !on_extent {
+            return (pressed, false);
+        }
+        // Pressed into the other side's dimension line, the edge badges stand just past that line instead.
+        let line = extent_at + thick(2) / 2.;
+        let at = match layout.edges_far {
+            true => line - LINE_GAP - thick(index),
+            false => line + LINE_GAP,
+        };
+        (at.clamp(MARGIN, depth - MARGIN - thick(index)), true)
+    };
+    let edges = [
+        first.map(|from| (from, edge_at(0))),
+        second.map(|from| (from, edge_at(1))),
+    ];
+    // Beside the dimension line the edge badges share the axis with the extent badge, and give way to it.
+    let clear_of_middle = |index: usize, from: f32| {
+        middle.is_none_or(|middle| {
+            from + along(index) + GAP <= middle || middle + along(2) + GAP <= from
+        })
+    };
+    let blocked = edges.iter().enumerate().any(|(index, edge)| {
+        edge.is_some_and(|(from, (_, shared))| shared && !clear_of_middle(index, from))
+    });
+    let rect = |index: usize, from: f32, side: f32| {
+        let (x, y) = match layout.across {
+            true => (from, side),
+            false => (side, from),
+        };
+        Rect {
+            x: plot.x + x,
+            y: plot.y + y,
+            width: widths[index],
+            height,
+        }
+    };
+    let [first, second] = edges.map(|edge| edge.filter(|_| !blocked));
+    [
+        first.map(|(from, (side, _))| rect(0, from, side)),
+        second.map(|(from, (side, _))| rect(1, from, side)),
+        middle.map(|from| rect(2, from, extent_at)),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PLOT: Rect = Rect {
+        x: 10.,
+        y: 20.,
+        width: 400.,
+        height: 200.,
+    };
+
+    const WIDTHS: [f32; 3] = [60., 60., 40.];
+
+    /// A selection between `from` and `to` along the axis, covering all of the other.
+    fn spanning(from: f64, to: f64) -> Extent {
+        Extent {
+            edges: [Some(from), Some(to)],
+            visible: (from, to),
+            around: (0., 1.),
+            alone: false,
+        }
+    }
+
+    #[test]
+    fn time_edges_run_inward_from_themselves_below_and_the_length_on_top() {
+        let [start, end, length] =
+            places(PLOT, Layout::time(false), spanning(0.25, 0.75), WIDTHS, 16.);
+        let (start, end, length) = (start.unwrap(), end.unwrap(), length.unwrap());
+        assert_eq!((start.x, start.y), (110., 200.));
+        assert_eq!((end.x + end.width, end.y), (310., 200.));
+        assert_eq!((length.x, length.y), (190., 24.));
+    }
+
+    #[test]
+    fn a_selection_of_one_axis_turns_crowded_edge_badges_outward() {
+        let alone = Extent {
+            alone: true,
+            ..spanning(0.5, 0.6)
+        };
+        let [start, end, _] = places(PLOT, Layout::time(false), alone, WIDTHS, 16.);
+        let (start, end) = (start.unwrap(), end.unwrap());
+        assert_eq!(start.x + start.width, 210.);
+        assert!((end.x - 250.).abs() < 1e-3);
+        let edge = Extent {
+            alone: true,
+            ..spanning(0.98, 0.99)
+        };
+        let [start, end, _] = places(PLOT, Layout::time(false), edge, WIDTHS, 16.);
+        let (start, end) = (start.unwrap(), end.unwrap());
+        assert_eq!(end.x + end.width, 410., "pressed against the plot's end");
+        assert!(end.x >= start.x + start.width + GAP, "kept apart");
+    }
+
+    #[test]
+    fn an_extent_too_long_for_its_axis_is_dropped_rather_than_clamped() {
+        let short = Rect {
+            height: 10.,
+            ..PLOT
+        };
+        let [_, _, width] = places(short, Layout::band(false), spanning(0.2, 0.8), WIDTHS, 16.);
+        assert_eq!(width, None);
+    }
+
+    #[test]
+    fn a_crowded_one_axis_selection_without_room_for_both_keeps_the_first() {
+        let low = Rect {
+            height: 30.,
+            ..PLOT
+        };
+        let alone = Extent {
+            alone: true,
+            ..spanning(0.45, 0.55)
+        };
+        let [high, low_edge, _] = places(low, Layout::band(false), alone, WIDTHS, 16.);
+        assert!(high.is_some());
+        assert_eq!(low_edge, None);
+    }
+
+    #[test]
+    fn a_badge_of_one_axis_moves_clear_of_the_other_s() {
+        let plot = Rect {
+            x: 0.,
+            y: 0.,
+            width: 800.,
+            height: 400.,
+        };
+        let time = Rect {
+            x: 25.,
+            y: 4.,
+            width: 40.,
+            height: 16.,
+        };
+        let width = Rect {
+            x: 12.,
+            y: 12.,
+            width: 40.,
+            height: 16.,
+        };
+        let moved = clear_of(width, &[time], Layout::band(false), plot).unwrap();
+        assert_eq!((moved.x, moved.y), (12., 20. + GAP));
+        assert!(!overlaps(moved, time));
+    }
+
+    #[test]
+    fn edge_badges_in_the_way_are_dropped_and_the_extent_moves_clear() {
+        let plot = Rect {
+            x: 0.,
+            y: 0.,
+            width: 800.,
+            height: 400.,
+        };
+        let badge = |x: f32, y: f32| Rect {
+            x,
+            y,
+            width: 60.,
+            height: 16.,
+        };
+        let mut taken = vec![badge(4., 4.)];
+        let settled = settle(
+            [
+                Some(badge(4., 0.)),
+                Some(badge(4., 24.)),
+                Some(badge(4., 12.)),
+            ],
+            &mut taken,
+            Layout::band(false),
+            plot,
+        );
+        assert_eq!(
+            settled[0], None,
+            "an edge badge in the way is dropped, not moved off its edge"
+        );
+        assert_eq!(settled[1], Some(badge(4., 24.)));
+        let extent = settled[2].unwrap();
+        assert_ne!(
+            extent,
+            badge(4., 12.),
+            "the extent moves, its line following it"
+        );
+        assert!(
+            taken
+                .iter()
+                .enumerate()
+                .all(|(index, a)| { taken[index + 1..].iter().all(|b| !overlaps(*a, *b)) })
+        );
+    }
+
+    #[test]
+    fn a_badge_finds_the_nearest_room_past_several_others() {
+        let plot = Rect {
+            x: 0.,
+            y: 0.,
+            width: 800.,
+            height: 400.,
+        };
+        let at = |x: f32| Rect {
+            x,
+            y: 380.,
+            width: 40.,
+            height: 16.,
+        };
+        let taken = [at(736.), at(694.), at(652.)];
+        let moved = clear_of(at(736.), &taken, Layout::band(true), plot).unwrap();
+        assert_eq!(moved.x, 652. - GAP - 40.);
+        assert!(taken.iter().all(|taken| !overlaps(moved, *taken)));
+    }
+
+    #[test]
+    fn edges_too_close_for_both_badges_show_only_the_extent() {
+        let [start, end, length] =
+            places(PLOT, Layout::time(false), spanning(0.5, 0.6), WIDTHS, 16.);
+        assert_eq!((start, end), (None, None));
+        assert!(length.is_some());
+    }
+
+    #[test]
+    fn a_rectangle_s_badges_stand_beside_it_rather_than_at_the_plot_s_edges() {
+        let extent = Extent {
+            around: (0.25, 0.75),
+            ..spanning(0.25, 0.75)
+        };
+        let [start, _, length] = places(PLOT, Layout::time(false), extent, WIDTHS, 16.);
+        assert_eq!(
+            start.unwrap().y,
+            20. + 150. + MARGIN,
+            "just under the rectangle"
+        );
+        assert_eq!(length.unwrap().y, 20. + 50. - MARGIN - 16., "just over it");
+        let [high, _, width] = places(PLOT, Layout::band(false), extent, WIDTHS, 16.);
+        assert_eq!(high.unwrap().x, 10. + 100. - MARGIN - 60., "left of it");
+        assert_eq!(width.unwrap().x, 10. + 300. + MARGIN, "right of it");
+    }
+
+    #[test]
+    fn a_narrow_extent_stands_beside_the_selection_away_from_the_other_axis() {
+        let beside = ARROW_LENGTH + STUB + LINE_GAP;
+        let [_, _, length] = places(PLOT, Layout::time(false), spanning(0.5, 0.52), WIDTHS, 16.);
+        assert_eq!(
+            length.unwrap().x + 40.,
+            10. + 200. - beside,
+            "before the start, away from the width on the right"
+        );
+        let [_, _, length] = places(PLOT, Layout::time(false), spanning(0.01, 0.02), WIDTHS, 16.);
+        assert_eq!(
+            length.unwrap().x,
+            10. + 8. + beside,
+            "past the end without room before the start"
+        );
+        let [_, _, width] = places(PLOT, Layout::band(false), spanning(0.5, 0.52), WIDTHS, 16.);
+        assert_eq!(
+            width.unwrap().y,
+            20. + 104. + beside,
+            "below the band, away from the length on top"
+        );
+    }
+
+    #[test]
+    fn edge_badges_with_no_room_beside_a_narrow_selection_join_its_extent() {
+        // A tall narrow rectangle against the plot's left edge, as a band.
+        let extent = Extent {
+            around: (0., 0.1),
+            ..spanning(0.1, 0.9)
+        };
+        let [high, low, width] = places(PLOT, Layout::band(false), extent, WIDTHS, 16.);
+        let (high, low, width) = (high.unwrap(), low.unwrap(), width.unwrap());
+        let line = width.x + width.width / 2.;
+        assert_eq!(high.x, line + LINE_GAP, "past the width's line");
+        assert_eq!(low.x, line + LINE_GAP);
+        assert_eq!((high.y, low.y + low.height), (40., 200.));
+        let short = Extent {
+            around: (0., 0.1),
+            ..spanning(0.4, 0.6)
+        };
+        let [high, low, width] = places(PLOT, Layout::band(false), short, WIDTHS, 16.);
+        assert_eq!((high, low), (None, None), "no room beside the width");
+        assert!(width.is_some());
+    }
+
+    #[test]
+    fn badges_stay_inside_the_plot_and_hidden_edges_have_none() {
+        let extent = Extent {
+            edges: [Some(0.), None],
+            ..spanning(0., 1.)
+        };
+        let [start, end, _] = places(PLOT, Layout::time(false), extent, WIDTHS, 16.);
+        assert_eq!(start.unwrap().x, PLOT.x);
+        assert_eq!(end, None);
+        let [start, ..] = places(
+            PLOT,
+            Layout::time(false),
+            spanning(0.5, 0.6),
+            [500., 60., 40.],
+            16.,
+        );
+        assert_eq!(start, None, "wider than the plot");
+    }
+
+    #[test]
+    fn vertical_time_puts_the_edges_on_the_left_and_the_length_on_the_right() {
+        let [start, end, length] =
+            places(PLOT, Layout::time(true), spanning(0.25, 0.75), WIDTHS, 16.);
+        let (start, end, length) = (start.unwrap(), end.unwrap(), length.unwrap());
+        assert_eq!((start.x, start.y), (14., 70.));
+        assert_eq!((end.x, end.y + end.height), (14., 170.));
+        assert_eq!((length.x + length.width, length.y), (406., 112.));
+    }
+
+    #[test]
+    fn the_dimension_line_runs_between_the_edges_around_the_badge() {
+        let extent = Rect {
+            x: 190.,
+            y: 24.,
+            width: 40.,
+            height: 16.,
+        };
+        let line = dimension(
+            PLOT,
+            Layout::time(false),
+            (0.25, 0.75),
+            [true, true],
+            extent,
+        );
+        assert_eq!(line.at, 32.);
+        assert_eq!(line.segments, [(110., 187.), (233., 310.)]);
+        assert_eq!(line.arrows, [(110., false), (310., true)]);
+        let hidden = dimension(PLOT, Layout::time(false), (0., 0.75), [false, true], extent);
+        assert_eq!(
+            hidden.arrows,
+            [(310., true)],
+            "no arrow at an edge out of view"
+        );
+    }
+
+    #[test]
+    fn a_narrow_selection_takes_its_arrowheads_outside_pointing_in() {
+        let beside = Rect {
+            x: 10. + 208. + 17.,
+            y: 24.,
+            width: 40.,
+            height: 16.,
+        };
+        let line = dimension(PLOT, Layout::time(false), (0.5, 0.52), [true, true], beside);
+        assert_eq!(line.arrows, [(210., true), (218., false)]);
+        assert_eq!(
+            line.segments,
+            [(210. - ARROW_LENGTH - STUB, 235. - LINE_GAP)],
+            "the line runs on to the badge past the second edge"
+        );
+    }
+
+    #[test]
+    fn band_edges_stand_at_the_left_and_the_width_at_the_right() {
+        let [high, low, width] =
+            places(PLOT, Layout::band(false), spanning(0.25, 0.75), WIDTHS, 16.);
+        let (high, low, width) = (high.unwrap(), low.unwrap(), width.unwrap());
+        assert_eq!((high.x, high.y), (14., 70.));
+        assert_eq!((low.x, low.y + low.height), (14., 170.));
+        assert_eq!((width.x + width.width, width.y), (406., 112.));
+    }
+
+    #[test]
+    fn vertical_band_edges_stand_at_the_top_and_the_width_at_the_bottom() {
+        let [low, high, width] =
+            places(PLOT, Layout::band(true), spanning(0.25, 0.75), WIDTHS, 16.);
+        let (low, high, width) = (low.unwrap(), high.unwrap(), width.unwrap());
+        assert_eq!((low.x, low.y), (110., 24.));
+        assert_eq!((high.x + high.width, high.y), (310., 24.));
+        assert_eq!((width.x, width.y + width.height), (190., 216.));
+    }
+}

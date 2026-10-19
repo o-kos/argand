@@ -39,42 +39,64 @@ impl Mode {
 }
 
 impl Mode {
-    /// A selection as its start, end and length, exact to the sample in this mode's units.
+    /// A selection's start, end and length in this mode's units.
     ///
     /// Samples name the first and the last sample selected, the way the ruler
-    /// numbers them. Clock and seconds give the boundaries in time, with as many
-    /// decimals as one sample needs, and fall back to samples where seconds
-    /// cannot tell neighbouring samples apart.
-    pub fn selection(self, span: argand_core::SampleSpan, rate: f64) -> String {
-        let Some(precision) = exact_time_precision(span, rate).filter(|&precision| match self {
-            Self::Samples => false,
-            Self::Clock => precision <= CLOCK_DECIMALS,
-            Self::Seconds => true,
-        }) else {
-            return format!(
-                "#{} – #{} ({})",
-                crate::numbers::number(span.start()),
-                crate::numbers::number(span.end() - 1),
-                crate::numbers::number(span.count())
-            );
+    /// numbers them. Clock and seconds give the boundaries in time with the
+    /// decimals one pixel of `seconds_per_pixel` tells apart, never more than one
+    /// sample needs, and fall back to samples where seconds cannot tell
+    /// neighbouring samples apart. The clock keeps the fields the capture's
+    /// `total` samples need, so its width stays while an edge is dragged.
+    pub fn counters(
+        self,
+        span: argand_core::SampleSpan,
+        rate: f64,
+        total: u64,
+        seconds_per_pixel: f64,
+    ) -> [String; 3] {
+        let whole = argand_core::SampleSpan::between(0, total.max(span.end())).unwrap_or(span);
+        let precision = exact_time_precision(whole, rate)
+            .filter(|&precision| match self {
+                Self::Samples => false,
+                Self::Clock => precision <= CLOCK_DECIMALS,
+                Self::Seconds => true,
+            })
+            .map(|exact| {
+                pixel_precision(seconds_per_pixel).map_or(exact, |pixel| pixel.min(exact))
+            });
+        let Some(precision) = precision else {
+            let index = |sample: u64| format!("#{}", crate::numbers::number(sample));
+            return [
+                index(span.start()),
+                index(span.end() - 1),
+                crate::numbers::number(span.count()),
+            ];
         };
-        let end = span.end() as f64 / rate;
+        let duration = whole.end() as f64 / rate;
         let time = |seconds: f64| match self {
             Self::Clock => crate::numbers::current().axis_label(
-                &axis::format_time(seconds, end, 10_f64.powi(-(precision as i32))),
+                &axis::format_time(seconds, duration, 10_f64.powi(-(precision as i32))),
                 AxisKind::PreciseTime,
             ),
             Self::Seconds | Self::Samples => {
                 crate::numbers::text(&format!("{seconds:.precision$} s"))
             }
         };
-        format!(
-            "{} – {} ({})",
+        [
             time(span.start() as f64 / rate),
-            time(end),
-            crate::numbers::text(&format!("{:.precision$} s", span.count() as f64 / rate))
-        )
+            time(span.end() as f64 / rate),
+            time(span.count() as f64 / rate),
+        ]
     }
+}
+
+/// The decimals one pixel of `seconds_per_pixel` tells apart, at least milliseconds, none for no usable pixel.
+///
+/// Unlike the ruler's own readouts this is not capped at nanoseconds, since a
+/// selection's values stop only at what one sample needs.
+fn pixel_precision(seconds_per_pixel: f64) -> Option<usize> {
+    (seconds_per_pixel.is_finite() && seconds_per_pixel > 0.)
+        .then(|| (-seconds_per_pixel.log10()).ceil().max(3.) as usize)
 }
 
 /// The most decimals the clock format prints, which `argand_core::axis::format_time` caps.
@@ -192,40 +214,81 @@ mod tests {
         );
     }
 
+    fn span(a: u64, b: u64) -> argand_core::SampleSpan {
+        argand_core::SampleSpan::between(a, b).expect("a span")
+    }
+
+    fn texts(counters: [String; 3]) -> [String; 3] {
+        counters
+    }
+
     #[test]
     fn a_selection_reads_sample_exact_in_every_mode() {
-        let span = argand_core::SampleSpan::between(4_000_000, 4_001_000).expect("a span");
+        let span = span(4_000_000, 4_001_000);
         assert_eq!(
-            Mode::Samples.selection(span, 2e6),
-            "#4,000,000 – #4,000,999 (1,000)"
+            texts(Mode::Samples.counters(span, 2e6, 4_100_000, 1e-9)),
+            ["#4,000,000", "#4,000,999", "1,000"]
         );
         assert_eq!(
-            Mode::Seconds.selection(span, 2e6),
-            "2.0000000 s – 2.0005000 s (0.0005000 s)"
+            texts(Mode::Seconds.counters(span, 2e6, 4_100_000, 1e-9)),
+            ["2.0000000 s", "2.0005000 s", "0.0005000 s"]
         );
         assert_eq!(
-            Mode::Clock.selection(span, 2e6),
-            "0:02.0000000 – 0:02.0005000 (0.0005000 s)"
+            texts(Mode::Clock.counters(span, 2e6, 4_100_000, 1e-9)),
+            ["0:02.0000000", "0:02.0005000", "0:00.0005000"]
+        );
+    }
+
+    #[test]
+    fn only_the_clock_keeps_the_capture_s_fields() {
+        assert_eq!(
+            Mode::Samples.counters(span(12, 345), 1e3, 1_000_000, 1e-9),
+            ["#12", "#344", "333"]
+        );
+        assert_eq!(
+            Mode::Seconds.counters(span(0, 10), 1e3, 100_000, 1e-9)[0],
+            "0.000 s"
+        );
+        assert_eq!(
+            Mode::Clock.counters(span(0, 3_600_000), 1e3, 7_200_000, 1e-9)[1],
+            "1:00:00.000"
+        );
+    }
+
+    #[test]
+    fn decimals_follow_the_zoom_but_never_pass_one_sample() {
+        let span = span(4_000_000, 4_001_000);
+        assert_eq!(
+            texts(Mode::Seconds.counters(span, 2e6, 4_100_000, 0.004)),
+            ["2.000 s", "2.001 s", "0.001 s"],
+            "milliseconds where a pixel holds four of them"
+        );
+        assert_eq!(
+            texts(Mode::Seconds.counters(span, 2e6, 4_100_000, 2e-6)),
+            ["2.000000 s", "2.000500 s", "0.000500 s"]
         );
     }
 
     #[test]
     fn a_selection_seconds_cannot_tell_apart_is_given_in_samples() {
-        let span = |a, b| argand_core::SampleSpan::between(a, b).expect("a span");
-        let fast = Mode::Seconds.selection(span(100, 101), 4e9);
-        assert_eq!(fast, "0.0000000250 s – 0.0000000253 s (0.0000000003 s)");
+        let fast = Mode::Seconds.counters(span(100, 101), 4e9, 200, 1e-12);
         assert_eq!(
-            Mode::Clock.selection(span(100, 101), 4e9),
-            "#100 – #100 (1)",
+            texts(fast)[0],
+            "0.0000000250 s",
+            "past nanoseconds where a pixel and a sample are finer"
+        );
+        assert_eq!(
+            texts(Mode::Clock.counters(span(100, 101), 4e9, 200, 1e-12)),
+            ["#100", "#100", "1"],
             "the clock stops at nanoseconds"
         );
         assert_eq!(
-            Mode::Clock.selection(span(u64::MAX - 1, u64::MAX), 24e6),
-            Mode::Samples.selection(span(u64::MAX - 1, u64::MAX), 24e6)
+            texts(Mode::Clock.counters(span(u64::MAX - 1, u64::MAX), 24e6, u64::MAX, 1e-9)),
+            texts(Mode::Samples.counters(span(u64::MAX - 1, u64::MAX), 24e6, u64::MAX, 1e-9))
         );
         assert_eq!(
-            Mode::Seconds.selection(span(0, 10), 0.),
-            "#0 – #9 (10)",
+            texts(Mode::Seconds.counters(span(0, 10), 0., 10, 1e-9)),
+            ["#0", "#9", "10"],
             "no rate, no seconds"
         );
     }

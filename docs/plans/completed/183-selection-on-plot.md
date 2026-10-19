@@ -1,0 +1,80 @@
+# Issue #183: Show a selection's start, end and length on the plot, and handle it there
+
+Resolves #183 (with #197 folded in).
+
+Class A (expected diff above 400 lines, gestures across `navigation_ui.rs`, `plot_view.rs`, `plot_ui.rs` and the shell). Implementer: Claude in the session. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
+
+## Overview
+
+A time selection carries its own readouts on the plot, as ocenaudio does: the start and the end in framed labels at the selection's edges, the length in a framed label centred over it. The selection is also handled on the plot: its edges are dragged, a drag inside moves it, and Shift+click extends it.
+
+## Owner decisions
+
+- The length label is a readout only, without buttons.
+- The status bar drops the time part of the selection readout; the band's edges and width stay there.
+- The labels are not editable.
+- Gestures in this Issue: dragging the time edges (spectrogram and minimap), Shift+click extending from the nearer edge, a drag inside the selection moving it whole, and dragging the frequency edges of a band or a rectangle (spectrogram and frequency ruler).
+
+## Context
+
+- `Shell::selection` (a `SampleSpan`) and `Shell::band` (a `FrequencyBand`) hold the selection; `PlotView` only receives it as fractions (`PlotSnapshot::selection`, `waveform::Selected`) and reports gestures as `PlotIntent::Select`.
+- `PlotView::press` decides a gesture once per press (`Selecting` with time and frequency anchors); `View::boundary` snaps to whole samples and stops at the visible edge; a press that moves under 3 pixels is a click and clears the selection.
+- `time_ruler::Mode::selection` formats start, end and length exactly to the sample for the status bar.
+- `cursor_guides.rs` paints the Alt badges in the axis font with tabular figures (`axes::Labels`), ink fill inside a paper ring.
+
+## Decisions
+
+### Labels
+
+- Three badges in the Alt badge look (ink fill, paper ring, axis font, tabular figures): start, end and length. The start badge sits on the low-frequency side of the plot with its far edge on the selection's start edge, outside the selection; the end badge likewise outside the end edge. The length badge sits on the high-frequency side, centred over the visible part of the selection. Horizontal orientation puts start and end at the bottom of the plot and the length at the top; vertical orientation, with time down and frequency to the right, puts start and end on the left at the edges' rows and the length on the right.
+- Values come in the time ruler's mode, exact to the sample, from `time_ruler::Mode::selection`'s rules split into three values. Each value is padded on the left to the width the capture's own length takes in that mode and precision, digits of the padding drawn as `0`; the leading run of zeros and separators, up to the first significant digit and never the units digit before the decimal mark, is drawn in a dimmed ink. The width therefore does not change while an edge is dragged.
+- An edge outside the visible time has no badge. The badges are clamped inside the plot; where the start and end badges would overlap, the end badge moves past the start badge and is dropped when the plot has no room for it. The length badge is dropped when it is wider than the plot.
+- The badges take no input and are painted over the selection tint and the grid, under the corner zoom pairs, the Alt guides and their badges.
+- The status bar shows only the band part of the readout.
+- ➕ A band or a rectangle shows its edges and width in the frequency ruler's unit, as the owner asked after a first look, laid out like time along the frequency axis: the high and low edges outside themselves at the plot's left and the width at its right, or at the top and the bottom with frequency running right.
+- ➕ After a first look the owner asked for no dimmed lead, then for no padding in seconds and samples, so values are written as they are and only the clock keeps the fields the capture needs; for band values without the unit, which the frequency ruler names; for the status bar to show no selection, the band having its own badges; for decimals that follow the zoom as the Alt badges do, never finer than a sample; and for a dimension line through each extent badge, with arrowheads at the edges, so the extent reads as the distance between them. Then, for badges that stand beside the selection itself, so a rectangle's edges read as its own, and for a narrow selection's arrowheads to turn outside, pointing in, with the extent beside them. Each edge's badge runs inward from its edge, so a rectangle's corners, where the two axes' badges collided, stay free; a rectangle too small for both edge badges along an axis shows only that axis's extent, placed away from the other axis's dimension line, while a selection of one axis always shows its edges, turned outward when crowded; edge badges with no room beside a rectangle at the plot's edge join the other side's dimension line.
+
+### Gestures
+
+- Grab zones, in this priority: the corner zoom pairs and unit captions as now; a selection edge within 4 logical pixels; the inside of the selection; anywhere else.
+- Time edges: on the spectrogram across the selection's frequency extent, and on the minimap. The pointer shows the horizontal resize cursor (vertical in vertical orientation); a drag moves that edge, snapped by `View::boundary`, and dragging it past the other edge swaps them.
+- Frequency edges of a band or a rectangle: on the spectrogram across the selection's time extent, and on the frequency ruler. Resize cursor across the frequency axis; the edge follows the pointer in hertz, clamped to the capture's band, swapping as above. Where a time edge and a frequency edge meet, the corner drags both, with a diagonal resize cursor.
+- Inside the selection on the spectrogram, the pointer shows an open hand and a drag moves the whole selection, its length and width kept, clamped to the capture's time and band; the cursor closes while moving. A click there without moving still clears the selection. The minimap keeps its viewport drag inside the selection; only its edges are grabbed there.
+- Shift+click on the spectrogram moves the nearer time edge, and with a band also the nearer frequency edge, to the pointer; Shift+click on the frequency ruler moves the nearer band edge. Holding the button after Shift+press continues as that edge drag.
+- None of these is an edit: they report `PlotIntent::Select` as a drag does now. Space+drag and the middle button still pan everywhere.
+
+## Rejected alternatives
+
+- Labels inside the selection: they would cover the selected picture and collide in a narrow selection.
+- A separate move cursor: GPUI has none; the open and closed hands already mean "drag this".
+
+## Implementation steps
+
+- [x] `time_ruler`: split the selection readout into start, end and length counters with their padded width and dimmed prefix; tests.
+- [x] Shell: the selection in samples and hertz and the counters in `PlotSnapshot`; the status bar without the time part.
+- [x] Painting the three badges with their placement rules; placement tests.
+- [x] ➕ Badges beside the selection (`Extent::around`), outside arrowheads for a narrow selection.
+- [x] ➕ Dimension lines, the status bar without the selection, plain values. 
+- [x] ➕ Band edge and width badges through one layout for both axes (`AxisBadges`, `Layout`) and their placement tests; the dimmed lead removed.
+- [x] Gestures: grab zones and cursors, edge drags for time and frequency, corners, moving, Shift+click, on spectrogram, minimap and frequency ruler; headless tests.
+- [x] `AGENTS.md` and `CHANGELOG.md`.
+- [x] Review round 1 (`gpt-6.1-sol` high): eight findings, seven accepted. An extent badge longer than its axis made `f32::clamp` panic instead of being dropped; it is now clamped only when it fits. Moving a selection near the end of a capture of `u64::MAX` samples rounded its absolute start through `f64` and overflowed; only the shift goes through floating point now (`moved_span`). A rectangle's time edge could not be grabbed on the minimap, which shows no frequency; the minimap ignores the band's extent. A band edge dragged beyond the capture's band produced a band the shell then dropped, clearing the selection; the edge now stops at the capture's band. The two axes' badges could overlap near a corner; a badge of the second axis moves along its axis clear of the first's (`clear_of`) or is dropped. Crowded edge badges of a one-axis selection lost their gap when both could not fit; only the first is shown then. Seconds stopped at nanoseconds above 1 GHz; a selection's decimals now follow the pixel down to what one sample needs (`pixel_precision`). Declined: the comment rule covers `//` comments, and the flagged text is in doc comments. Each accepted fix has a test that fails without it.
+- [x] Review round 2 (same reviewer): the round 1 fixes confirmed and the declined comment finding accepted as declined; two findings, both accepted. Badges of one axis moved clear of the other's could land on each other, because they were checked only against the other axis; they are now placed one after another, each clear of every badge placed before it (`settle`). A badge with room further along was dropped, because only the two places beside the first obstacle were tried; it now takes the nearest free place beside any placed badge. Each has a test.
+- [x] Review round 3 (same reviewer): the round 2 fix confirmed; one finding, accepted. The nearest free place could carry an edge badge away from its edge, even past the other edge's badge, and an edge badge has no line tying it back. Edge badges are now dropped where they would cover a badge already placed, and only the extent badge moves, its dimension line following it. Covered by a test. The round limit is reached, so further review of this fix is the owner's call.
+- [x] Review round 4 (same reviewer, agreed by the owner): no findings. The round 3 fix confirmed in both orientations for time spans, bands and rectangles, and the documentation found to match the code.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
+
+## Validation
+
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass
+- [x] Manual, release binary: labels in both orientations and all three ruler modes, a narrow selection, edges off screen; dragging time and frequency edges and corners, swapping edges, moving a selection, Shift+click, on spectrogram, minimap and frequency ruler.
+
+The owner checked the release binary through several rounds of changes and accepted the result on 2026-10-19. Individual results were not separately reported.
+
+## Post-completion
+
+None.

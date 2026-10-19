@@ -49,6 +49,12 @@ impl Shell {
             show_scale_ui: self.session.show_scale_ui,
             pointer_in_window: self.pointer_in_window,
             selection: self.selected(),
+            selected: argand_core::Selection {
+                time: self.selection,
+                band: self.band,
+            },
+            capture_band: self.capture_band(),
+            badges: self.selection_badges(),
             notice: match &self.save_notice {
                 Some(saving_ui::Notice::Saved(name)) => Some(format!("Saved {name}").into()),
                 _ => None,
@@ -157,6 +163,7 @@ impl PlotView {
             show_grid,
             show_scale_ui: scale_ui_visible,
             selection,
+            badges,
             ..
         } = snapshot;
         let orientation = extents.orientation;
@@ -170,8 +177,7 @@ impl PlotView {
             gutter: self.gutter_floor,
         };
         let view = cx.entity().downgrade();
-        let guides = self.cursor_guides(extents, cx);
-        let colors = axis_colors(cx, show_grid);
+        let marks = self.marks(selection, badges, extents, show_grid, cx);
 
         canvas(
             move |bounds, window, cx| {
@@ -233,18 +239,31 @@ impl PlotView {
                         tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
                     }
                 }
-                paint_selection(&frame, spectrum_origin, selection, window, cx);
-                axes::paint(&frame, spectrum_origin, &labels, colors, window, cx);
-                if let Some(guides) = &guides {
-                    let panel = Bounds::new(
-                        spectrum_origin,
-                        size(bounds.size.width - dx, bounds.size.height - dy),
-                    );
-                    guides.paint(&frame, panel, &labels, window, cx);
-                }
+                let panel = Bounds::new(
+                    spectrum_origin,
+                    size(bounds.size.width - dx, bounds.size.height - dy),
+                );
+                marks.paint(&frame, panel, &labels, window, cx);
             },
         )
         .size_full()
+    }
+
+    fn marks(
+        &self,
+        selection: Option<waveform::Selected>,
+        badges: Option<axes::SelectionBadges>,
+        extents: axes::Extents,
+        show_grid: bool,
+        cx: &Context<Self>,
+    ) -> Marks {
+        Marks {
+            selection,
+            badges,
+            badge_colors: [cx.theme().foreground, cx.theme().background],
+            colors: axis_colors(cx, show_grid),
+            guides: self.cursor_guides(extents, cx),
+        }
     }
 
     fn cursor_guides(
@@ -467,6 +486,85 @@ fn plot_bounds(frame: &axes::Frame, spectrum_origin: gpui_kit::Point<Pixels>) ->
 }
 
 impl Shell {
+    /// The start, end and length of the time selection and the width of a band, where any of them shows.
+    fn selection_badges(&self) -> Option<axes::SelectionBadges> {
+        let badges = axes::SelectionBadges {
+            time: self.time_badges(),
+            band: self.band_badge(),
+        };
+        (badges != axes::SelectionBadges::default()).then_some(badges)
+    }
+
+    fn time_badges(&self) -> Option<axes::AxisBadges> {
+        let view = self.view?;
+        let span = self.selection?;
+        let meta = self.file.as_ref()?.state.document.meta()?;
+        let visible = view.fractions_of(span)?;
+        let columns = self.plot.map_or(1, |plot| plot.width.max(1));
+        let per_pixel = view.len as f64 / meta.sample_rate / columns as f64;
+        let edge = |sample: u64| {
+            (view.start..=view.start + view.len)
+                .contains(&sample)
+                .then(|| (sample - view.start) as f64 / view.len as f64)
+        };
+        Some(axes::AxisBadges {
+            texts: self.session.time_ruler.counters(
+                span,
+                meta.sample_rate,
+                meta.len_samples,
+                per_pixel,
+            ),
+            first: edge(span.start()),
+            second: edge(span.end()),
+            visible,
+            around: self.across_screen(false)?,
+            alone: self.band.is_none(),
+        })
+    }
+
+    /// What the selection covers across the screen of the axis other than time's, or than the band's with `band`.
+    fn across_screen(&self, band: bool) -> Option<(f64, f64)> {
+        let selected = self.selected()?;
+        let vertical = self.session.orientation.vertical();
+        Some(match (band, vertical) {
+            // Time runs right, or down, as its fractions do.
+            (true, _) => selected.time,
+            // Frequency runs down from the top, or right with its top at the right edge.
+            (false, false) => selected.frequency,
+            (false, true) => (1. - selected.frequency.1, 1. - selected.frequency.0),
+        })
+    }
+
+    fn band_badge(&self) -> Option<axes::AxisBadges> {
+        let band = self.band?;
+        let (low, high) = self.extents()?.hertz;
+        let [low_text, high_text, width] = self.band_texts(band)?;
+        // Down from the top of the visible band, or to the right where frequency runs right.
+        let vertical = self.session.orientation.vertical();
+        let along = |hertz: f64| {
+            let down = (high - hertz) / (high - low);
+            if vertical { 1. - down } else { down }
+        };
+        let shown = |hertz: f64| Some(along(hertz)).filter(|at| (0. ..=1.).contains(at));
+        let (from, to) = self.selected()?.frequency;
+        let visible = match vertical {
+            true => (1. - to, 1. - from),
+            false => (from, to),
+        };
+        let (first, second, texts) = match vertical {
+            true => (band.low(), band.high(), [low_text, high_text, width]),
+            false => (band.high(), band.low(), [high_text, low_text, width]),
+        };
+        Some(axes::AxisBadges {
+            texts,
+            first: shown(first),
+            second: shown(second),
+            visible,
+            around: self.across_screen(true)?,
+            alone: self.selection.is_none(),
+        })
+    }
+
     /// The selection as fractions of the visible picture, none where none of it shows.
     fn selected(&self) -> Option<waveform::Selected> {
         let view = self.view?;
@@ -485,6 +583,35 @@ impl Shell {
             None => (0., 1.),
         };
         Some(waveform::Selected { time, frequency })
+    }
+}
+
+/// What is painted over the picture, in order from the selection's tint to the Alt guides.
+struct Marks {
+    selection: Option<waveform::Selected>,
+    badges: Option<axes::SelectionBadges>,
+    badge_colors: [gpui_kit::Hsla; 2],
+    colors: axes::Colors,
+    guides: Option<axes::CursorGuides>,
+}
+
+impl Marks {
+    fn paint(
+        &self,
+        frame: &axes::Frame,
+        panel: Bounds<Pixels>,
+        labels: &axes::Labels,
+        window: &mut Window,
+        cx: &mut gpui_kit::App,
+    ) {
+        paint_selection(frame, panel.origin, self.selection, window, cx);
+        axes::paint(frame, panel.origin, labels, self.colors, window, cx);
+        if let Some(badges) = &self.badges {
+            badges.paint(frame, panel.origin, labels, self.badge_colors, window, cx);
+        }
+        if let Some(guides) = &self.guides {
+            guides.paint(frame, panel, labels, window, cx);
+        }
     }
 }
 
