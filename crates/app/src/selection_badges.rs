@@ -310,15 +310,26 @@ fn overlaps(a: Rect, b: Rect) -> bool {
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 }
 
-/// `places` moved one after another clear of `taken`, each joining it once placed.
+/// `places` settled one after another clear of `taken`, each joining it once placed.
+///
+/// An edge badge has nothing joining it to its edge but where it stands, so it
+/// is dropped rather than moved; the extent badge moves along its axis, since its
+/// dimension line follows it.
 pub(crate) fn settle(
     places: [Option<Rect>; 3],
     taken: &mut Vec<Rect>,
     layout: Layout,
     plot: Rect,
 ) -> [Option<Rect>; 3] {
+    let mut index = 0;
     places.map(|rect| {
-        let rect = clear_of(rect?, taken, layout, plot)?;
+        let edge = index < 2;
+        index += 1;
+        let rect = rect?;
+        let rect = match edge {
+            true => (!taken.iter().any(|taken| overlaps(rect, *taken))).then_some(rect)?,
+            false => clear_of(rect, taken, layout, plot)?,
+        };
         taken.push(rect);
         Some(rect)
     })
@@ -587,7 +598,7 @@ mod tests {
     }
 
     #[test]
-    fn badges_moved_clear_of_another_axis_stay_clear_of_each_other() {
+    fn edge_badges_in_the_way_are_dropped_and_the_extent_moves_clear() {
         let plot = Rect {
             x: 0.,
             y: 0.,
@@ -602,13 +613,26 @@ mod tests {
         };
         let mut taken = vec![badge(4., 4.)];
         let settled = settle(
-            [Some(badge(4., 0.)), Some(badge(4., 24.)), None],
+            [
+                Some(badge(4., 0.)),
+                Some(badge(4., 24.)),
+                Some(badge(4., 12.)),
+            ],
             &mut taken,
             Layout::band(false),
             plot,
         );
-        let (first, second) = (settled[0].unwrap(), settled[1].unwrap());
-        assert!(!overlaps(first, second));
+        assert_eq!(
+            settled[0], None,
+            "an edge badge in the way is dropped, not moved off its edge"
+        );
+        assert_eq!(settled[1], Some(badge(4., 24.)));
+        let extent = settled[2].unwrap();
+        assert_ne!(
+            extent,
+            badge(4., 12.),
+            "the extent moves, its line following it"
+        );
         assert!(
             taken
                 .iter()

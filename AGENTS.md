@@ -446,7 +446,10 @@ close for both, a rectangle shows only that axis's extent, while a selection of 
 (`Extent::alone`), whose badges meet no others, turns them outward past its edges. Edge badges
 that have no room beyond the selection and, pressed inside, would cover the other side's
 dimension line stand just past that line instead, at their edges, and give way to the extent
-badge where they would meet it. The
+badge where they would meet it. Badges are settled one after another, time's first
+(`selection_badges::settle`): an edge badge that would cover one already placed is dropped,
+since only its place ties it to its edge, and an extent badge moves along its axis to the
+nearest free place (`clear_of`), its dimension line following it. The
 extent over the middle of the visible selection just beyond it on the other
 (`selection_badges::Layout`), pressed back inside the plot where there is no room beyond it.
 Time puts its start and end below the selection and its length above it, or left and right of
