@@ -284,8 +284,9 @@ fn fits_between(length: f32, badge: f32) -> bool {
 
 /// Where the first edge's, the second edge's and the extent's badges go, each none where it is not shown.
 ///
-/// The edge badges stand outside their edges and just beyond the selection on
-/// the side `layout` names, the extent badge beyond it on the other side,
+/// The edge badges stand just beyond the selection on the side `layout` names,
+/// each running from its edge towards the other, or outward past both edges
+/// where they are too close for that, the extent badge beyond it on the other side,
 /// over the middle of the visible selection, or past its second edge where it
 /// and its arrowheads do not fit between the edges. Badges stay inside the
 /// plot, pressed against the selection where there is no room beyond it, the
@@ -312,12 +313,28 @@ pub(crate) fn places(
     };
     let fits = |index: usize| along(index) <= length && thick(index) + 2. * MARGIN <= depth;
     let clamp = |from: f32, index: usize| from.clamp(0., length - along(index));
-    let first = extent.edges[0]
-        .filter(|_| fits(0))
-        .map(|edge| clamp(edge as f32 * length - along(0), 0));
-    let mut second = extent.edges[1]
-        .filter(|_| fits(1))
-        .map(|edge| clamp(edge as f32 * length, 1));
+    // Each edge's badge runs from its edge towards the other, so the corners stay free for the other axis.
+    let inner = [
+        extent.edges[0].map(|edge| edge as f32 * length),
+        extent.edges[1].map(|edge| edge as f32 * length - along(1)),
+    ];
+    let crowded = match inner {
+        [Some(first), Some(second)] => second < first + along(0) + GAP,
+        _ => false,
+    };
+    // Edges too close for both turn their badges outward, past the edges.
+    let first = match crowded {
+        false => inner[0],
+        true => extent.edges[0].map(|edge| edge as f32 * length - along(0)),
+    }
+    .filter(|_| fits(0))
+    .map(|from| clamp(from, 0));
+    let mut second = match crowded {
+        false => inner[1],
+        true => extent.edges[1].map(|edge| edge as f32 * length),
+    }
+    .filter(|_| fits(1))
+    .map(|from| clamp(from, 1));
     if let (Some(first), Some(from)) = (first, second) {
         let past = first + along(0) + GAP;
         second = Some(from.max(past)).filter(|&from| from + along(1) <= length);
@@ -382,13 +399,21 @@ mod tests {
     }
 
     #[test]
-    fn time_edges_stand_outside_themselves_at_the_bottom_and_the_length_on_top() {
+    fn time_edges_run_inward_from_themselves_below_and_the_length_on_top() {
         let [start, end, length] =
             places(PLOT, Layout::time(false), spanning(0.25, 0.75), WIDTHS, 16.);
         let (start, end, length) = (start.unwrap(), end.unwrap(), length.unwrap());
-        assert_eq!((start.x + start.width, start.y), (110., 200.));
-        assert_eq!((end.x, end.y), (310., 200.));
+        assert_eq!((start.x, start.y), (110., 200.));
+        assert_eq!((end.x + end.width, end.y), (310., 200.));
         assert_eq!((length.x, length.y), (190., 24.));
+    }
+
+    #[test]
+    fn edges_too_close_for_both_badges_turn_them_outward() {
+        let [start, end, _] = places(PLOT, Layout::time(false), spanning(0.5, 0.6), WIDTHS, 16.);
+        let (start, end) = (start.unwrap(), end.unwrap());
+        assert_eq!(start.x + start.width, 210.);
+        assert!((end.x - 250.).abs() < 1e-3);
     }
 
     #[test]
@@ -457,8 +482,8 @@ mod tests {
         let [start, end, length] =
             places(PLOT, Layout::time(true), spanning(0.25, 0.75), WIDTHS, 16.);
         let (start, end, length) = (start.unwrap(), end.unwrap(), length.unwrap());
-        assert_eq!((start.x, start.y + start.height), (14., 70.));
-        assert_eq!((end.x, end.y), (14., 170.));
+        assert_eq!((start.x, start.y), (14., 70.));
+        assert_eq!((end.x, end.y + end.height), (14., 170.));
         assert_eq!((length.x + length.width, length.y), (406., 112.));
     }
 
@@ -510,8 +535,8 @@ mod tests {
         let [high, low, width] =
             places(PLOT, Layout::band(false), spanning(0.25, 0.75), WIDTHS, 16.);
         let (high, low, width) = (high.unwrap(), low.unwrap(), width.unwrap());
-        assert_eq!((high.x, high.y + high.height), (14., 70.));
-        assert_eq!((low.x, low.y), (14., 170.));
+        assert_eq!((high.x, high.y), (14., 70.));
+        assert_eq!((low.x, low.y + low.height), (14., 170.));
         assert_eq!((width.x + width.width, width.y), (406., 112.));
     }
 
@@ -520,8 +545,8 @@ mod tests {
         let [low, high, width] =
             places(PLOT, Layout::band(true), spanning(0.25, 0.75), WIDTHS, 16.);
         let (low, high, width) = (low.unwrap(), high.unwrap(), width.unwrap());
-        assert_eq!((low.x + low.width, low.y), (110., 24.));
-        assert_eq!((high.x, high.y), (310., 24.));
+        assert_eq!((low.x, low.y), (110., 24.));
+        assert_eq!((high.x + high.width, high.y), (310., 24.));
         assert_eq!((width.x, width.y + width.height), (190., 216.));
     }
 }

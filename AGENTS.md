@@ -440,7 +440,9 @@ and the minimap tint it with `blue_light` at 0.3 under the grid
 
 A selection carries its readouts as badges over the plot (`axes::SelectionBadges`,
 `selection_badges.rs`), in the Alt badge look, one `AxisBadges` per selected axis, dimensioned
-as on a drawing: each edge just outside itself and just beyond the selection on one side, the
+as on a drawing: each edge's badge just beyond the selection on one side, running from its
+edge towards the other so the corners stay free for the other axis (outward past both edges
+where they are too close for that), the
 extent over the middle of the visible selection just beyond it on the other
 (`selection_badges::Layout`), pressed back inside the plot where there is no room beyond it.
 Time puts its start and end below the selection and its length above it, or left and right of
