@@ -488,9 +488,10 @@ still pan everywhere.
 
 `selection_entry.rs` (toolkit-neutral) writes and reads a selection's six values
 (`Field::{TimeStart, TimeEnd, TimeLength, BandLow, BandHigh, BandWidth}`) against a `Scale`
-the shell gives (`Shell::entry_scale`): time in the ruler's mode at the precision of one sample
-(`counters` with no pixel limit, so the text reads back as the same sample), frequency in the
-ruler's unit to the finer of one hertz and one row, numbers through the numeric locale. A clock
+the shell gives (`Shell::entry_scale`), which the badges' own texts come from too, so the badges,
+the badge input and the dialog show one value alike: time in the ruler's mode to one pixel of the
+visible time, frequency in the ruler's unit to one row, numbers through the numeric locale. A
+text left unchanged is never read again, so its rounding moves no edge. A clock
 takes one to three colon fields, seconds an optional `s`, frequency an optional unit name, and
 a leading `#` is a sample index in every mode, the end naming the last sample; where the mode
 writes indexes (`Mode::writes_samples`) a plain number is one. Times round to whole samples,
@@ -500,7 +501,8 @@ the end or high edge, and an equal edge or a text that does not parse gives noth
 The badge layout is `SelectionBadges::place`, run in the canvas's prepaint; each badge carries
 its `Field` and `BadgeLayout` hands the rectangles to `PlotView::place_badges`. A left press on a
 badge (`PlotView::badge_at`) starts no gesture and the pointer is an arrow there; a double click
-opens a `BadgeEntry` (`badge_entry.rs`), a stock `Input` over the badge, a sibling of the plot
+opens a `BadgeEntry` (`badge_entry.rs`), a stock `Input` with `appearance(false)` in the badge's
+type and padding, framed and as wide as the badge with room for the caret, a sibling of the plot
 surface so no `Plot` binding matches while it holds the keyboard, and the badge under it is not
 painted. Enter applies it as `PlotIntent::Select` or marks the text it refuses in the danger
 colour, Escape (the `BadgeEntry` context, since the input passes it on) and blur close it

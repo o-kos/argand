@@ -1863,6 +1863,7 @@ mod tests {
             mode: crate::time_ruler::Mode::Seconds,
             rate: 1e6,
             total: 1_000_000,
+            seconds_per_pixel: 1e-3,
             unit: "kHz",
             divisor: 1e3,
             decimals: 3,
@@ -1974,8 +1975,8 @@ mod tests {
         click(cx, handle, start.center(), 2);
         assert_eq!(
             typing(cx, handle),
-            Some(("0.400000 s".into(), false)),
-            "the value is shown to one sample"
+            Some(("0.400 s".into(), false)),
+            "the input holds what the badge showed"
         );
         type_text(cx, handle, "0 . 3 enter");
         assert_eq!(selections(cx, handle), [span(300_000, 600_000)]);

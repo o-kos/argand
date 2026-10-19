@@ -7,6 +7,7 @@ fn scale(mode: Mode) -> Scale {
         mode,
         rate: RATE,
         total: 100_000,
+        seconds_per_pixel: 0.,
         unit: "kHz",
         divisor: 1e3,
         decimals: 3,

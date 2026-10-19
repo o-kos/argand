@@ -512,10 +512,7 @@ impl Shell {
     fn time_badges(&self) -> Option<axes::AxisBadges> {
         let view = self.view?;
         let span = self.selection?;
-        let meta = self.file.as_ref()?.state.document.meta()?;
         let visible = view.fractions_of(span)?;
-        let columns = self.plot.map_or(1, |plot| plot.width.max(1));
-        let per_pixel = view.len as f64 / meta.sample_rate / columns as f64;
         let edge = |sample: u64| {
             (view.start..=view.start + view.len)
                 .contains(&sample)
@@ -523,12 +520,7 @@ impl Shell {
         };
         Some(axes::AxisBadges {
             fields: crate::selection_entry::Field::TIME,
-            texts: self.session.time_ruler.counters(
-                span,
-                meta.sample_rate,
-                meta.len_samples,
-                per_pixel,
-            ),
+            texts: self.entry_scale()?.time_texts(span),
             first: edge(span.start()),
             second: edge(span.end()),
             visible,
@@ -553,7 +545,7 @@ impl Shell {
     fn band_badge(&self) -> Option<axes::AxisBadges> {
         let band = self.band?;
         let (low, high) = self.extents()?.hertz;
-        let [low_text, high_text, width] = self.band_texts(band)?;
+        let [low_text, high_text, width] = self.entry_scale()?.band_texts(band);
         // Down from the top of the visible band, or to the right where frequency runs right.
         let vertical = self.session.orientation.vertical();
         let along = |hertz: f64| {

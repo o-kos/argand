@@ -11,8 +11,8 @@ actions!(badge_entry, [CancelBadgeEntry]);
 /// The input's surroundings, which take the Escape the input passes on.
 const CONTEXT: &str = "BadgeEntry";
 
-/// What a small input adds to its text, its padding, border and the caret past the last character.
-const INPUT_FRAME: f32 = 2. * 8. + 2. + 2.;
+/// Room past the badge's text for the caret after its last character.
+const CARET_ROOM: f32 = 4.;
 
 pub(super) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys([KeyBinding::new("escape", CancelBadgeEntry, Some(CONTEXT))]);
@@ -86,8 +86,6 @@ impl PlotView {
         let input = cx.new(|cx| InputState::new(window, cx).default_value(text.clone()));
         let events = cx.subscribe_in(&input, window, |plot, _, event, window, cx| match event {
             InputEvent::PressEnter { .. } => plot.enter_badge(window, cx),
-            // The input hugs its text, so it is laid out again as the text changes.
-            InputEvent::Change => cx.notify(),
             InputEvent::Blur => {
                 // Focus taken by another control stays there, and otherwise the plot gets it back.
                 let handle = plot
@@ -181,16 +179,20 @@ impl PlotView {
             return None;
         };
         let spectrum = geometry.spectrum;
-        let width = (text_width(&entry.input.read(cx).value(), window, cx) + px(INPUT_FRAME))
-            .max(badge.size.width)
-            .min(spectrum.size.width);
+        let width = (badge.size.width + px(CARET_ROOM)).min(spectrum.size.width);
         let left = (badge.center().x - width / 2.).clamp(spectrum.left(), spectrum.right() - width);
+        let frame = match entry.marked(cx) {
+            true => cx.theme().danger,
+            false => cx.theme().foreground,
+        };
+        // The badge's own type and padding, so the value stays where the badge showed it.
         let input = Input::new(&entry.input)
-            .small()
-            .w(width)
-            .when(entry.marked(cx), |input| {
-                input.border_color(cx.theme().danger)
-            });
+            .appearance(false)
+            .text_size(px(axes::LABEL_SIZE))
+            .px(px(axes::BADGE_PAD))
+            .py_0()
+            .h_full()
+            .w_full();
         Some(
             div()
                 .id("badge-entry")
@@ -203,27 +205,16 @@ impl PlotView {
                 .absolute()
                 .left(left - origin.x)
                 .top(badge.top() - origin.y)
+                .w(width)
                 .h(badge.size.height)
-                .flex()
-                .items_center()
+                .bg(cx.theme().background)
+                .border_1()
+                .border_color(frame)
+                .rounded(px(3.))
                 .child(input)
                 .into_any_element(),
         )
     }
-}
-
-/// How wide `text` is in a small input's type.
-fn text_width(text: &str, window: &Window, cx: &gpui_kit::App) -> Pixels {
-    let style = gpui_kit::TextStyle {
-        font_family: cx.theme().font_family.clone(),
-        ..Default::default()
-    };
-    let run = style.to_run(text.len());
-    let size = window.rem_size() * 0.875;
-    let line = window
-        .text_system()
-        .shape_line(text.to_owned().into(), size, &[run], None);
-    line.width.ceil()
 }
 
 /// The value `field` holds in the selection, precise enough to read back unchanged.

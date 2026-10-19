@@ -40,14 +40,14 @@ const BOTTOM_LABEL_DROP: f32 = 6.0;
 /// Least clear space below the bottom labels' ink, more than above so they do not crowd the status bar.
 const BOTTOM_LABEL_FOOT: f32 = 8.0;
 /// Room between an Alt badge's edges and the ink of its digits, on every side.
-const BADGE_PAD: f32 = 3.0;
+pub(crate) const BADGE_PAD: f32 = 3.0;
 /// Where a bottom-ruler label starts, past its one-pixel tick and the gap.
 const BOTTOM_LABEL_START: f32 = 1.0 + BOTTOM_LABEL_GAP;
 /// The size the labels are drawn at.
 ///
 /// A shade under the window's smallest text: an axis is read by glancing at
 /// it, and the marks should not compete with the picture they surround.
-const LABEL_SIZE: f32 = 11.0;
+pub(crate) const LABEL_SIZE: f32 = 11.0;
 
 /// What the axes span: the requested time view and the full frequency range.
 ///

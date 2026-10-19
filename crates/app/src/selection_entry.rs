@@ -43,6 +43,8 @@ pub struct Scale {
     pub rate: f64,
     /// The capture's length in samples.
     pub total: u64,
+    /// The time one pixel of the plot shows, which the readouts' decimals tell apart.
+    pub seconds_per_pixel: f64,
     /// The frequency ruler's unit and the hertz one of it stands for.
     pub unit: &'static str,
     pub divisor: f64,
@@ -53,9 +55,10 @@ pub struct Scale {
 }
 
 impl Scale {
-    /// A span's start, end and length, precise enough to read back as the same samples.
+    /// A span's start, end and length as the selection's badges show them.
     pub fn time_texts(&self, span: SampleSpan) -> [String; 3] {
-        self.mode.counters(span, self.rate, self.total, 0.)
+        self.mode
+            .counters(span, self.rate, self.total, self.seconds_per_pixel)
     }
 
     /// A band's low edge, high edge and width in the ruler's unit.

@@ -6,6 +6,13 @@ Class A (more than five code files: a new parser module, the badge layout, the p
 gestures, a new dialog, the Edit menu and its binding). Implementer: Claude in the session,
 chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
 
+## Owner feedback
+
+- The badge input was wider than its value and grew while typing, and showed more decimals than
+  the badge. It is now a stock `Input` with `appearance(false)` in the badge's type and padding,
+  as wide as the badge with room for the caret, holding the badge's own text.
+- The dialog's labels wrapped. Their column no longer wraps and is wide enough for Length.
+
 ## Review
 
 - Round 1 (`gpt-6.1-sol` high): three P2 findings, all accepted. An open badge input read its
@@ -74,11 +81,11 @@ The result is an ordinary selection, the same as one dragged out, never an edit.
   and their parsing, with no GPUI type, so it is tested without a window. A `Scale`
   carries the ruler mode, sample rate, sample count, the frequency unit's divisor and
   decimals and the capture's band.
-- **Texts to type over.** A field shows its value at the precision that tells every sample
-  apart (`counters` with no pixel limit), so the text read back gives the same sample. A
-  band shows its edges in the ruler's unit to the finer of one hertz and one row. A field
-  whose text is unchanged is never parsed again, so an edge made by a drag keeps its exact
-  value when another field is typed.
+- **Texts to type over.** A field shows its value as the badges show it, both written by one
+  `Scale`: time to one pixel of the visible time, frequency to one row. A field whose text is
+  unchanged is never parsed again, so that rounding moves no edge, and a typed value carries
+  the precision it is typed with. (First written at the precision of one sample, changed at
+  the owner's request so the input and the dialog show what the badge shows.)
 - **Parsing.** Every number is read through `numbers::parse` (locale digits, grouping and
   decimal mark). Time in clock mode takes one to three colon-separated fields
   (`h:mm:ss.fff`, `m:ss.fff` or seconds); seconds mode takes a number with an optional
@@ -126,8 +133,6 @@ The result is an ordinary selection, the same as one dragged out, never an edit.
 - Laying transparent, occluding hit areas over the badges: they would take the crosshair,
   the wheel and middle-button pans as well; the plot's own press already decides gestures
   once.
-- Formatting the inputs at the badges' pixel precision: the text read back would move an
-  edge the user did not touch.
 - Applying only on OK: the owner chose live preview.
 
 ## Custom control audit
