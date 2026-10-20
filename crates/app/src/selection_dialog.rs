@@ -232,9 +232,7 @@ impl SelectionDialog {
             .disabled(!self.checked[slot / 3])
             // The focus ring would hide the refusal on the very field that holds the keyboard.
             .when(self.marked(slot, cx), |input| {
-                input
-                    .focus_bordered(false)
-                    .border_color(cx.theme().danger)
+                input.focus_bordered(false).border_color(cx.theme().danger)
             });
         div()
             .absolute()
