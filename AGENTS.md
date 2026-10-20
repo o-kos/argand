@@ -433,10 +433,10 @@ forgotten on blur and in `end_gestures`; while it is held the spectrum shows an
 open hand, and a selection in progress keeps the crosshair. Shell keeps `selection`, clears it when a
 file opens and never persists it; navigation and orientation changes keep it.
 The snapshot carries it as view fractions (`View::fractions_of`); the spectrum
-and the minimap tint it with a white veil at 0.18 under the grid
-(`waveform::time_band`, at least one device pixel wide), and the spectrum outlines it, a paper
-stroke around an ink core, on the sides inside the plot (`waveform::outline_sides`, #219, the
-owner's variant D), since the tint alone does not show on a bright picture.
+dims the picture outside it under the grid, black at 0.55, leaving the selection in its own
+colours (`waveform::outside`, #219, the owner's variant C, since a tint did not show on a bright
+picture), and the minimap tints it with `blue_light` at 0.3 (`waveform::time_band`, at least one
+device pixel wide).
 
 ## Selection on the plot (#183)
 

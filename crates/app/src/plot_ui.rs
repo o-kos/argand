@@ -122,7 +122,7 @@ impl Shell {
                 .selection
                 .zip(total)
                 .and_then(|(span, total)| crate::navigation::View::full(total).fractions_of(span)),
-            selection_fill: selection_fill(),
+            selection_fill: selection_fill(cx),
             separator: cx.theme().border,
             paper: gpui_kit::rgb((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)).into(),
             ink: waveform::Ink {
@@ -623,7 +623,7 @@ impl Marks {
         window: &mut Window,
         cx: &mut gpui_kit::App,
     ) {
-        paint_selection(frame, panel.origin, self.selection, window, cx);
+        paint_selection(frame, panel.origin, self.selection, window);
         axes::paint(frame, panel.origin, labels, self.colors, window, cx);
         badges.paint(frame, panel.origin, labels, self.badge_colors, window, cx);
         if let Some(guides) = &self.guides {
@@ -632,36 +632,37 @@ impl Marks {
     }
 }
 
-/// Tint the selection, given as fractions of the visible picture, under the grid, and outline it.
+/// Dim the picture outside the selection, given as fractions of the visible picture, under the grid.
 ///
-/// The outline is a paper stroke around an ink core, as the dimension lines
-/// are drawn, so it shows on a bright picture where the tint alone does not.
+/// The selection keeps the picture's own colours, which a tint over it would
+/// not show on a bright picture.
 fn paint_selection(
     frame: &axes::Frame,
     spectrum_origin: gpui_kit::Point<Pixels>,
     selection: Option<waveform::Selected>,
     window: &mut Window,
-    cx: &gpui_kit::App,
 ) {
     let Some(selected) = selection else {
         return;
     };
     let plot = plot_bounds(frame, spectrum_origin);
     let rect = waveform::selected_rect(plot, frame.orientation, selected, window.scale_factor());
-    window.paint_quad(gpui_kit::fill(rect, selection_fill()));
-    let sides = waveform::outline_sides(rect, plot);
-    for (width, color) in [(3., cx.theme().background), (1., cx.theme().foreground)] {
-        for &(from, to) in &sides {
-            let half = px(width / 2.);
-            let stroke = Bounds::from_corners(from - point(half, half), to + point(half, half));
-            window.paint_quad(gpui_kit::fill(stroke, color));
-        }
+    for part in waveform::outside(rect, plot) {
+        window.paint_quad(gpui_kit::fill(part, OUTSIDE_SELECTION));
     }
 }
 
-/// The tint laid over the selection, a light veil because the picture under it is dark in either theme.
-fn selection_fill() -> gpui_kit::Hsla {
-    gpui_kit::white().opacity(0.18)
+/// The shade over the picture outside a selection, dark because the owner chose dimming over tinting.
+const OUTSIDE_SELECTION: gpui_kit::Hsla = gpui_kit::Hsla {
+    h: 0.,
+    s: 0.,
+    l: 0.,
+    a: 0.55,
+};
+
+/// The tint laid over the selected time on the minimap, light because the picture under it is dark in either theme.
+fn selection_fill(cx: &gpui_kit::App) -> gpui_kit::Hsla {
+    cx.theme().blue_light.opacity(0.3)
 }
 
 fn axis_colors(cx: &gpui_kit::App, show_grid: bool) -> axes::Colors {

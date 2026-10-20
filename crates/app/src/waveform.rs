@@ -173,30 +173,22 @@ pub fn selected_rect(
     }
 }
 
-/// The sides of a selected `rect` to outline, those inside `plot`, each as a start and an end.
-///
-/// A side on the plot's own edge is the selection running on out of view, which no line marks.
-pub fn outline_sides(
-    rect: Bounds<Pixels>,
-    plot: Bounds<Pixels>,
-) -> Vec<(Point<Pixels>, Point<Pixels>)> {
-    let (left, right, top, bottom) = (rect.left(), rect.right(), rect.top(), rect.bottom());
-    let sides = [
-        (left > plot.left(), (point(left, top), point(left, bottom))),
-        (
-            right < plot.right(),
-            (point(right, top), point(right, bottom)),
+/// The parts of `plot` outside a selected `rect`, the bands above and below it and the sides beside it.
+pub fn outside(rect: Bounds<Pixels>, plot: Bounds<Pixels>) -> Vec<Bounds<Pixels>> {
+    let (left, right) = (rect.left().max(plot.left()), rect.right().min(plot.right()));
+    let (top, bottom) = (rect.top().max(plot.top()), rect.bottom().min(plot.bottom()));
+    let parts = [
+        Bounds::from_corners(plot.origin, point(plot.right(), top)),
+        Bounds::from_corners(
+            point(plot.left(), bottom),
+            point(plot.right(), plot.bottom()),
         ),
-        (top > plot.top(), (point(left, top), point(right, top))),
-        (
-            bottom < plot.bottom(),
-            (point(left, bottom), point(right, bottom)),
-        ),
+        Bounds::from_corners(point(plot.left(), top), point(left, bottom)),
+        Bounds::from_corners(point(right, top), point(plot.right(), bottom)),
     ];
-    sides
+    parts
         .into_iter()
-        .filter(|(inside, _)| *inside)
-        .map(|(_, side)| side)
+        .filter(|part| part.size.width > px(0.) && part.size.height > px(0.))
         .collect()
 }
 
@@ -255,19 +247,28 @@ mod tests {
     use crate::orientation::Mode;
 
     #[test]
-    fn only_the_sides_inside_the_plot_are_outlined() {
+    fn everything_outside_the_selection_is_dimmed_once() {
         let plot = Bounds::new(point(px(0.), px(0.)), size(px(100.), px(50.)));
         let band = Bounds::new(point(px(0.), px(10.)), size(px(100.), px(20.)));
         assert_eq!(
-            outline_sides(band, plot),
+            outside(band, plot),
             [
-                (point(px(0.), px(10.)), point(px(100.), px(10.))),
-                (point(px(0.), px(30.)), point(px(100.), px(30.)))
+                Bounds::new(point(px(0.), px(0.)), size(px(100.), px(10.))),
+                Bounds::new(point(px(0.), px(30.)), size(px(100.), px(20.)))
             ],
-            "a band across the whole view is outlined along its edges only"
+            "a band across the whole view leaves the rows above and below"
         );
         let inside = Bounds::new(point(px(10.), px(10.)), size(px(20.), px(20.)));
-        assert_eq!(outline_sides(inside, plot).len(), 4);
+        let parts = outside(inside, plot);
+        let area: f32 = parts
+            .iter()
+            .map(|part| f32::from(part.size.width) * f32::from(part.size.height))
+            .sum();
+        assert_eq!(
+            area,
+            100. * 50. - 20. * 20.,
+            "the parts tile the rest of the plot"
+        );
     }
 
     #[test]

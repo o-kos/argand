@@ -41,8 +41,8 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
   band from the visible range. The lit segment was dimmer than the orientation's, because only
   that one was marked `selected`. The pointers became symmetric triangles rather than a
   tooltip's tail. The selection tint does not show on a bright spectrogram; four variants were
-  drawn on a real screenshot for the owner to choose from. The owner chose D: a white veil at 0.18 and an outline in the
-  dimension lines' paper and ink on the sides inside the plot.
+  drawn on a real screenshot for the owner to choose from. The owner first chose D, an outline over a white veil, then C: the
+  picture outside the selection is dimmed and the selection keeps its own colours.
 
 ## Review
 
