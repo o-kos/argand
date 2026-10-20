@@ -209,65 +209,54 @@ impl SelectionDialog {
         });
     }
 
-    fn axis(&self, axis: usize, cx: &mut Context<Self>) -> gpui_kit::Div {
-        let (id, title, unit, names) = match axis {
-            0 => (
-                "time-axis",
-                "Time",
-                self.scale.mode.caption(),
-                ["Start", "End", "Length"],
-            ),
-            _ => (
-                "band-axis",
-                "Band",
-                self.scale.unit,
-                ["Low", "High", "Width"],
-            ),
+    /// One axis's check box, named with the unit its fields are written in.
+    fn check_box(&self, axis: usize, cx: &mut Context<Self>) -> Checkbox {
+        let (id, title, unit) = match axis {
+            0 => ("time-axis", "Time", self.scale.mode.caption()),
+            _ => ("band-axis", "Band", self.scale.unit),
         };
-        let checked = self.checked[axis];
-        let rows = names.into_iter().enumerate().map(|(index, name)| {
-            let slot = axis * 3 + index;
-            h_flex()
-                .gap_2()
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(88.))
-                        .pl_6()
-                        .whitespace_nowrap()
-                        .child(name),
-                )
-                .child(
-                    Input::new(&self.inputs[slot])
-                        .small()
-                        .flex_1()
-                        .disabled(!checked)
-                        .when(self.marked(slot, cx), |input| {
-                            input.border_color(cx.theme().danger)
-                        }),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(32.))
-                        .whitespace_nowrap()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(unit),
-                )
-        });
-        v_flex()
-            .gap_1()
-            .child(
-                Checkbox::new(id)
-                    .label(title)
-                    .checked(checked)
-                    .on_click(cx.listener(move |dialog, checked: &bool, window, cx| {
-                        dialog.check(axis, *checked, window, cx)
-                    })),
-            )
-            .children(rows)
+        Checkbox::new(id)
+            .label(format!("{title}, {unit}"))
+            .checked(self.checked[axis])
+            .on_click(cx.listener(move |dialog, checked: &bool, window, cx| {
+                dialog.check(axis, *checked, window, cx)
+            }))
+    }
+
+    /// The field of `slot` with its left edge at `x`, centred on `y`.
+    fn field(&self, slot: usize, (x, y): (f32, f32), cx: &mut Context<Self>) -> gpui_kit::Div {
+        let input = Input::new(&self.inputs[slot])
+            .small()
+            .w_full()
+            .disabled(!self.checked[slot / 3])
+            .when(self.marked(slot, cx), |input| {
+                input.border_color(cx.theme().danger)
+            });
+        div()
+            .absolute()
+            .left(px(x))
+            .top(px(y - FIELD.1 / 2.))
+            .w(px(FIELD.0))
+            .h(px(FIELD.1))
+            .flex()
+            .items_center()
+            .child(input)
     }
 }
+
+/// A field's width and the height it is centred in.
+const FIELD: (f32, f32) = (104., 24.);
+/// The selection drawn in the dialog, as left, top, width and height.
+const AREA: (f32, f32, f32, f32) = (124., 44., 220., 104.);
+/// How far the length's line stands above the area.
+const LINE_GAP: f32 = 24.;
+/// Room between the area and the fields beside and under it.
+const FIELD_GAP: f32 = 8.;
+/// The drawing's whole size.
+const DRAWING: (f32, f32) = (
+    AREA.0 + AREA.2 + FIELD_GAP + FIELD.0,
+    AREA.1 + AREA.3 + FIELD_GAP + FIELD.1,
+);
 
 impl Render for SelectionDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -279,10 +268,109 @@ impl Render for SelectionDialog {
                 dialog.update(cx, |dialog, cx| dialog.focus_first(window, cx))
             });
         }
+        let (left, top, width, height) = AREA;
+        let (right, bottom) = (left + width, top + height);
+        let above = top - LINE_GAP;
+        // The width's line runs through its field, which stands clear right of the area.
+        let beside = right + FIELD_GAP + FIELD.0 / 2.;
+        let ink = |checked: bool| match checked {
+            true => cx.theme().foreground,
+            false => cx.theme().muted_foreground.opacity(0.5),
+        };
+        let lines = [
+            ((left, above), (right, above), ink(self.checked[0])),
+            ((beside, top), (beside, bottom), ink(self.checked[1])),
+        ];
+        let below = bottom + FIELD_GAP + FIELD.1 / 2.;
+        let beside_area = left - FIELD_GAP - FIELD.0;
+        let places = [
+            // Start and end under the area's edges, the length on its line above.
+            (left, below),
+            (right - FIELD.0, below),
+            ((left + right - FIELD.0) / 2., above),
+            // Low and high beside the area's bottom and top, the width on its line at the right.
+            (beside_area, bottom - FIELD.1 / 2.),
+            (beside_area, top + FIELD.1 / 2.),
+            (beside - FIELD.0 / 2., (top + bottom) / 2.),
+        ];
+        let drawing = div()
+            .relative()
+            .w(px(DRAWING.0))
+            .h(px(DRAWING.1))
+            .child(
+                div()
+                    .absolute()
+                    .left(px(left))
+                    .top(px(top))
+                    .w(px(width))
+                    .h(px(height))
+                    .bg(cx.theme().blue_light.opacity(0.3)),
+            )
+            .child(
+                canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, _| {
+                        for (from, to, color) in lines {
+                            paint_dimension(bounds.origin, from, to, color, window);
+                        }
+                    },
+                )
+                .absolute()
+                .size_full(),
+            )
+            .children(
+                places
+                    .into_iter()
+                    .enumerate()
+                    .map(|(slot, place)| self.field(slot, place, cx)),
+            );
         v_flex()
             .gap_3()
-            .child(self.axis(0, cx))
-            .child(self.axis(1, cx))
+            .child(
+                h_flex()
+                    .gap_6()
+                    .child(self.check_box(0, cx))
+                    .child(self.check_box(1, cx)),
+            )
+            .child(drawing)
+    }
+}
+
+/// A dimension line from `from` to `to`, straight across or down, with an arrowhead at each end.
+fn paint_dimension(
+    origin: gpui_kit::Point<Pixels>,
+    from: (f32, f32),
+    to: (f32, f32),
+    color: gpui_kit::Hsla,
+    window: &mut Window,
+) {
+    const HEAD: f32 = 6.;
+    const HALF: f32 = 3.;
+    let at = |x: f32, y: f32| origin + gpui_kit::point(px(x), px(y));
+    let across = from.1 == to.1;
+    let line = match across {
+        true => Bounds::new(at(from.0, from.1 - 0.5), size(px(to.0 - from.0), px(1.))),
+        false => Bounds::new(at(from.0 - 0.5, from.1), size(px(1.), px(to.1 - from.1))),
+    };
+    window.paint_quad(gpui_kit::fill(line, color));
+    for (tip, back) in [(from, HEAD), (to, -HEAD)] {
+        let points = match across {
+            true => [
+                at(tip.0, tip.1),
+                at(tip.0 + back, tip.1 - HALF),
+                at(tip.0 + back, tip.1 + HALF),
+            ],
+            false => [
+                at(tip.0, tip.1),
+                at(tip.0 - HALF, tip.1 + back),
+                at(tip.0 + HALF, tip.1 + back),
+            ],
+        };
+        let mut path = gpui_kit::PathBuilder::fill();
+        path.add_polygon(&points, true);
+        if let Ok(path) = path.build() {
+            window.paint_path(path, color);
+        }
     }
 }
 
@@ -354,7 +442,7 @@ impl Shell {
             let escape = dialog.clone();
             modal
                 .title("Selection")
-                .w(px(360.))
+                .w(px(DRAWING.0 + 32.))
                 .close_button(false)
                 .overlay_closable(false)
                 .child(dialog.clone())

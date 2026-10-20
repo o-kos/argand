@@ -501,8 +501,9 @@ the end or high edge, and an equal edge or a text that does not parse gives noth
 The badge layout is `SelectionBadges::place`, run in the canvas's prepaint; each badge carries
 its `Field` and `BadgeLayout` hands the rectangles to `PlotView::place_badges`. A left press on a
 badge (`PlotView::badge_at`) starts no gesture and the pointer is an arrow there; a double click
-opens a `BadgeEntry` (`badge_entry.rs`), a stock `Input` with `appearance(false)` in the badge's
-type and padding, framed and as wide as the badge with room for the caret, a sibling of the plot
+opens a `BadgeEntry` (`badge_entry.rs`), an extra-small stock `Input` with `appearance(false)` in
+the badge's type and padding, keeping its own height centred on the badge in a frame as wide as
+the badge with room for the caret, a sibling of the plot
 surface so no `Plot` binding matches while it holds the keyboard, and the badge under it is not
 painted. Enter applies it as `PlotIntent::Select` or marks the text it refuses in the danger
 colour, Escape (the `BadgeEntry` context, since the input passes it on) and blur close it
@@ -510,8 +511,11 @@ unchanged, unchanged text applies nothing, and a selection changed elsewhere clo
 
 Edit → Selection… (`EditSelection`, Ctrl+E or Cmd+E in the `Plot` context, enabled while a
 capture is described) opens `SelectionDialog` (`selection_dialog.rs`) in the stock `Dialog`
-through `Root`: a `Checkbox` per axis and three `Input`s under each, as the owner chose. An
-unchecked axis is not selected and its disabled fields hold the visible range. It applies live
+through `Root`: a `Checkbox` per axis named with its unit, and a drawing of the selection as the
+badges show it, as the owner asked, with the six `Input`s placed around it, the start and end
+under it, the length on a dimension line above, the low and high edges at its left and the
+width on a dimension line at its right (`paint_dimension`). An unchecked axis is not selected,
+its line is muted and its disabled fields hold the visible range. It applies live
 through `Shell::select`: a field whose text changed is read on Enter or blur, a check box at
 once, and every other field is written again from the result. OK and Enter read the changed
 fields and stay open while one is refused; Cancel and Escape restore the selection it opened

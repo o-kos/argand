@@ -11,7 +11,12 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
 - The badge input was wider than its value and grew while typing, and showed more decimals than
   the badge. It is now a stock `Input` with `appearance(false)` in the badge's type and padding,
   as wide as the badge with room for the caret, holding the badge's own text.
-- The dialog's labels wrapped. Their column no longer wraps and is wide enough for Length.
+- The dialog's labels wrapped, and its list of labelled rows did not read as a selection. It is
+  now a drawing of the selection laid out as its badges are on the plot, the fields standing
+  where the badges would, each axis's check box named with its unit.
+- The badge input's text fell below its frame, which was the badge's height while the input
+  keeps a taller line of its own. The input is extra small and keeps its own height, centred on
+  the badge, and the frame holds it.
 
 ## Review
 

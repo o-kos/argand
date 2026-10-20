@@ -187,11 +187,10 @@ impl PlotView {
         };
         // The badge's own type and padding, so the value stays where the badge showed it.
         let input = Input::new(&entry.input)
+            .xsmall()
             .appearance(false)
             .text_size(px(axes::LABEL_SIZE))
             .px(px(axes::BADGE_PAD))
-            .py_0()
-            .h_full()
             .w_full();
         Some(
             div()
@@ -205,13 +204,19 @@ impl PlotView {
                 .absolute()
                 .left(left - origin.x)
                 .top(badge.top() - origin.y)
-                .w(width)
                 .h(badge.size.height)
-                .bg(cx.theme().background)
-                .border_1()
-                .border_color(frame)
-                .rounded(px(3.))
-                .child(input)
+                .flex()
+                .items_center()
+                // The input keeps its own height, centred on the badge, and the frame holds it.
+                .child(
+                    div()
+                        .w(width)
+                        .bg(cx.theme().background)
+                        .border_1()
+                        .border_color(frame)
+                        .rounded(px(3.))
+                        .child(input),
+                )
                 .into_any_element(),
         )
     }
