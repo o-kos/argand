@@ -530,7 +530,10 @@ start and end under it, the length on a dimension line above, the low and high e
 and the width on a dimension line at its right (`paint_dimension`), each line naming its unit
 past its end, in the hint's own look and type. An axis not selected shows the visible range
 muted, and a value typed there selects it. It applies live through `Shell::select`: a field whose
-text changed is read on Enter or blur, and every other field is written again from the result.
+text changed is read on Enter or blur, and every other field is written again from the result,
+except one holding the keyboard that is already typed in, since a field's blur arrives after the
+next one took the keyboard. Tab and Shift+Tab go round its six fields, bound in its own context
+(`NextField`, `PreviousField`) because the window's Tab would walk out of it.
 Up and Down step the focused field, here and in the badge input, by one of the last digit it
 shows, ten with Shift, and a sample index by one sample (`Scale::time_step`,
 `Scale::band_step`); a changed text is read first. It closes as the analysis hint does, which the

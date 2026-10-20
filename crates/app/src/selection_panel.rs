@@ -134,7 +134,10 @@ impl SelectionPanel {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let texts = texts(&self.scale, self.time, self.band);
         for (slot, text) in texts.into_iter().enumerate() {
-            if self.marked(slot, cx) {
+            // A field leaving focus is read after the next one took it, which may already be typed in.
+            let typing = self.inputs[slot].focus_handle(cx).is_focused(window)
+                && *self.inputs[slot].read(cx).value() != *self.shown[slot];
+            if self.marked(slot, cx) || typing {
                 continue;
             }
             if *self.inputs[slot].read(cx).value() != *text {
@@ -250,11 +253,88 @@ impl SelectionPanel {
         self.focus_field(axis * 3, window, cx);
     }
 
+    /// Move the keyboard `by` fields on from the one holding it, round the panel.
+    fn traverse(&self, by: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let at = self
+            .inputs
+            .iter()
+            .position(|input| input.focus_handle(cx).is_focused(window))
+            .unwrap_or(FIELDS.len() - 1);
+        self.focus_field((at + by) % FIELDS.len(), window, cx);
+    }
+
     fn focus_field(&self, slot: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.inputs[slot].update(cx, |input, cx| {
             input.focus(window, cx);
             input.select_all(window, cx);
         });
+    }
+
+    /// The selection drawn with its fields around it and its dimension lines.
+    fn drawing(&self, cx: &mut Context<Self>) -> gpui_kit::Div {
+        let (left, top, width, height) = AREA;
+        let (right, bottom) = (left + width, top + height);
+        let above = top - LINE_GAP;
+        // The width's line runs through its field, which stands clear right of the area.
+        let beside = right + FIELD_GAP + FIELD.0 / 2.;
+        let ink = |checked: bool| match checked {
+            true => cx.theme().foreground,
+            false => cx.theme().muted_foreground.opacity(0.5),
+        };
+        let lines = [
+            ((left, above), (right, above), ink(self.checked[0])),
+            ((beside, top), (beside, bottom), ink(self.checked[1])),
+        ];
+        let below = bottom + FIELD_GAP + FIELD.1 / 2.;
+        let beside_area = left - FIELD_GAP - FIELD.0;
+        let places = [
+            // Start and end under the area's edges, the length on its line above.
+            (left, below),
+            (right - FIELD.0, below),
+            ((left + right - FIELD.0) / 2., above),
+            // Low and high beside the area's bottom and top, the width on its line at the right.
+            (beside_area, bottom - FIELD.1 / 2.),
+            (beside_area, top + FIELD.1 / 2.),
+            (beside - FIELD.0 / 2., (top + bottom) / 2.),
+        ];
+        div()
+            .relative()
+            .w(px(DRAWING.0))
+            .h(px(DRAWING.1))
+            .child(
+                div()
+                    .absolute()
+                    .left(px(left))
+                    .top(px(top))
+                    .w(px(width))
+                    .h(px(height))
+                    .bg(cx.theme().blue_light.opacity(0.3)),
+            )
+            .child(
+                canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, _| {
+                        for (from, to, color) in lines {
+                            paint_dimension(bounds.origin, from, to, color, window);
+                        }
+                    },
+                )
+                .absolute()
+                .size_full(),
+            )
+            .children(
+                places
+                    .into_iter()
+                    .enumerate()
+                    .map(|(slot, place)| self.field(slot, place, cx)),
+            )
+            // Each line names its unit where a ruler would, past its end.
+            .child(self.unit(
+                self.scale.mode.caption(),
+                (right + FIELD_GAP + 12., above),
+                cx,
+            ))
+            .child(self.unit(self.scale.unit, (beside, top - FIELD.1 / 2. - 4.), cx))
     }
 
     /// A unit caption in the rulers' muted type, centred on `(x, y)`.
@@ -310,8 +390,15 @@ impl SelectionPanel {
 /// The panel's surroundings, where Up and Down step the focused field.
 const CONTEXT: &str = "SelectionPanel";
 
+actions!(selection_panel, [NextField, PreviousField]);
+
 pub(super) fn init(cx: &mut gpui_kit::App) {
     super::badge_entry::step_keys(CONTEXT, cx);
+    // Bound here rather than left to the window, whose Tab would walk out of the panel.
+    cx.bind_keys([
+        KeyBinding::new("tab", NextField, Some(CONTEXT)),
+        KeyBinding::new("shift-tab", PreviousField, Some(CONTEXT)),
+    ]);
 }
 
 /// A field's width and the height it is centred in.
@@ -338,69 +425,7 @@ impl Render for SelectionPanel {
                 dialog.update(cx, |dialog, cx| dialog.focus_first(window, cx))
             });
         }
-        let (left, top, width, height) = AREA;
-        let (right, bottom) = (left + width, top + height);
-        let above = top - LINE_GAP;
-        // The width's line runs through its field, which stands clear right of the area.
-        let beside = right + FIELD_GAP + FIELD.0 / 2.;
-        let ink = |checked: bool| match checked {
-            true => cx.theme().foreground,
-            false => cx.theme().muted_foreground.opacity(0.5),
-        };
-        let lines = [
-            ((left, above), (right, above), ink(self.checked[0])),
-            ((beside, top), (beside, bottom), ink(self.checked[1])),
-        ];
-        let below = bottom + FIELD_GAP + FIELD.1 / 2.;
-        let beside_area = left - FIELD_GAP - FIELD.0;
-        let places = [
-            // Start and end under the area's edges, the length on its line above.
-            (left, below),
-            (right - FIELD.0, below),
-            ((left + right - FIELD.0) / 2., above),
-            // Low and high beside the area's bottom and top, the width on its line at the right.
-            (beside_area, bottom - FIELD.1 / 2.),
-            (beside_area, top + FIELD.1 / 2.),
-            (beside - FIELD.0 / 2., (top + bottom) / 2.),
-        ];
-        let drawing = div()
-            .relative()
-            .w(px(DRAWING.0))
-            .h(px(DRAWING.1))
-            .child(
-                div()
-                    .absolute()
-                    .left(px(left))
-                    .top(px(top))
-                    .w(px(width))
-                    .h(px(height))
-                    .bg(cx.theme().blue_light.opacity(0.3)),
-            )
-            .child(
-                canvas(
-                    |_, _, _| (),
-                    move |bounds, _, window, _| {
-                        for (from, to, color) in lines {
-                            paint_dimension(bounds.origin, from, to, color, window);
-                        }
-                    },
-                )
-                .absolute()
-                .size_full(),
-            )
-            .children(
-                places
-                    .into_iter()
-                    .enumerate()
-                    .map(|(slot, place)| self.field(slot, place, cx)),
-            )
-            // Each line names its unit where a ruler would, past its end.
-            .child(self.unit(
-                self.scale.mode.caption(),
-                (right + FIELD_GAP + 12., above),
-                cx,
-            ))
-            .child(self.unit(self.scale.unit, (beside, top - FIELD.1 / 2. - 4.), cx));
+        let drawing = self.drawing(cx);
         // Enter keeps the values and closes the panel, but only once every changed field reads.
         let confirm = cx.listener(|panel: &mut Self, _: &Confirm, window, cx| {
             if panel.confirm(window, cx) {
@@ -410,6 +435,13 @@ impl Render for SelectionPanel {
         on_steps(div().id("selection-panel"), Self::step, cx)
             .key_context(CONTEXT)
             .on_action(confirm)
+            // Tab goes round the panel's own fields, which hold the keyboard while it is open.
+            .on_action(
+                cx.listener(|panel, _: &NextField, window, cx| panel.traverse(1, window, cx)),
+            )
+            .on_action(cx.listener(|panel, _: &PreviousField, window, cx| {
+                panel.traverse(FIELDS.len() - 1, window, cx)
+            }))
             .font_family(cx.theme().font_family.clone())
             .bg(crate::theme::sheet(cx))
             .text_color(cx.theme().popover_foreground)
@@ -753,6 +785,47 @@ mod tests {
             "the end names the last sample"
         );
         assert!(!panel_open(cx, &shell), "Enter keeps it and closes");
+    }
+
+    #[gpui_kit::test]
+    fn tab_goes_round_the_panel_s_own_fields(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        toggle(cx, &shell);
+        keys(cx, "tab tab tab tab tab tab");
+        assert!(panel_open(cx, &shell));
+        keys(cx, "5 0 enter");
+        assert_eq!(
+            selected(cx, &shell).time,
+            span(50, 200),
+            "back on the start, six fields on"
+        );
+        toggle(cx, &shell);
+        keys(cx, "shift-tab 3 0 0 enter");
+        let band = selected(cx, &shell)
+            .band
+            .expect("the width selects the band");
+        assert_eq!(
+            (band.low(), band.high()),
+            (-500., -200.),
+            "the width is the last field"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_field_read_late_leaves_the_next_one_being_typed_in(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        toggle(cx, &shell);
+        // Tab and the next value arrive before the frame that reports the first field left.
+        cx.simulate_keystrokes("5 0 tab 3 0 0");
+        settle(cx);
+        keys(cx, "enter");
+        assert_eq!(
+            selected(cx, &shell).time,
+            span(50, 301),
+            "300 is the last sample"
+        );
     }
 
     #[gpui_kit::test]
