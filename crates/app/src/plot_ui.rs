@@ -122,7 +122,7 @@ impl Shell {
                 .selection
                 .zip(total)
                 .and_then(|(span, total)| crate::navigation::View::full(total).fractions_of(span)),
-            selection_fill: selection_fill(cx),
+            selection_fill: selection_fill(),
             separator: cx.theme().border,
             paper: gpui_kit::rgb((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)).into(),
             ink: waveform::Ink {
@@ -632,7 +632,10 @@ impl Marks {
     }
 }
 
-/// Tint the selection, given as fractions of the visible picture, under the grid.
+/// Tint the selection, given as fractions of the visible picture, under the grid, and outline it.
+///
+/// The outline is a paper stroke around an ink core, as the dimension lines
+/// are drawn, so it shows on a bright picture where the tint alone does not.
 fn paint_selection(
     frame: &axes::Frame,
     spectrum_origin: gpui_kit::Point<Pixels>,
@@ -645,12 +648,20 @@ fn paint_selection(
     };
     let plot = plot_bounds(frame, spectrum_origin);
     let rect = waveform::selected_rect(plot, frame.orientation, selected, window.scale_factor());
-    window.paint_quad(gpui_kit::fill(rect, selection_fill(cx)));
+    window.paint_quad(gpui_kit::fill(rect, selection_fill()));
+    let sides = waveform::outline_sides(rect, plot);
+    for (width, color) in [(3., cx.theme().background), (1., cx.theme().foreground)] {
+        for &(from, to) in &sides {
+            let half = px(width / 2.);
+            let stroke = Bounds::from_corners(from - point(half, half), to + point(half, half));
+            window.paint_quad(gpui_kit::fill(stroke, color));
+        }
+    }
 }
 
-/// The tint laid over the selected time, light because the picture under it is dark in either theme.
-fn selection_fill(cx: &gpui_kit::App) -> gpui_kit::Hsla {
-    cx.theme().blue_light.opacity(0.3)
+/// The tint laid over the selection, a light veil because the picture under it is dark in either theme.
+fn selection_fill() -> gpui_kit::Hsla {
+    gpui_kit::white().opacity(0.18)
 }
 
 fn axis_colors(cx: &gpui_kit::App, show_grid: bool) -> axes::Colors {

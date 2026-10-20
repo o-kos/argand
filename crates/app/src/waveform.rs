@@ -173,6 +173,33 @@ pub fn selected_rect(
     }
 }
 
+/// The sides of a selected `rect` to outline, those inside `plot`, each as a start and an end.
+///
+/// A side on the plot's own edge is the selection running on out of view, which no line marks.
+pub fn outline_sides(
+    rect: Bounds<Pixels>,
+    plot: Bounds<Pixels>,
+) -> Vec<(Point<Pixels>, Point<Pixels>)> {
+    let (left, right, top, bottom) = (rect.left(), rect.right(), rect.top(), rect.bottom());
+    let sides = [
+        (left > plot.left(), (point(left, top), point(left, bottom))),
+        (
+            right < plot.right(),
+            (point(right, top), point(right, bottom)),
+        ),
+        (top > plot.top(), (point(left, top), point(right, top))),
+        (
+            bottom < plot.bottom(),
+            (point(left, bottom), point(right, bottom)),
+        ),
+    ];
+    sides
+        .into_iter()
+        .filter(|(inside, _)| *inside)
+        .map(|(_, side)| side)
+        .collect()
+}
+
 #[derive(Clone)]
 pub struct Panel {
     pub waveform: Option<Arc<Waveform>>,
@@ -226,6 +253,22 @@ impl Panel {
 mod tests {
     use super::*;
     use crate::orientation::Mode;
+
+    #[test]
+    fn only_the_sides_inside_the_plot_are_outlined() {
+        let plot = Bounds::new(point(px(0.), px(0.)), size(px(100.), px(50.)));
+        let band = Bounds::new(point(px(0.), px(10.)), size(px(100.), px(20.)));
+        assert_eq!(
+            outline_sides(band, plot),
+            [
+                (point(px(0.), px(10.)), point(px(100.), px(10.))),
+                (point(px(0.), px(30.)), point(px(100.), px(30.)))
+            ],
+            "a band across the whole view is outlined along its edges only"
+        );
+        let inside = Bounds::new(point(px(10.), px(10.)), size(px(20.), px(20.)));
+        assert_eq!(outline_sides(inside, plot).len(), 4);
+    }
 
     #[test]
     fn a_rectangle_covers_its_time_and_its_band_in_both_orientations() {
