@@ -29,6 +29,13 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
   lines along the edges were too faint, and vanished where an edge is the plot's own; of three
   drawn variants the owner chose a small pointer in the badge's ink reaching the edge's corner. The dialog's type follows the app's small type. Checked in the
   release build on a second monitor with keyboard input sent to the window.
+- The dialog itself did not suit (2026-10-20): wherever it opened it covered something useful, its
+  segments did not belong in it, and OK and Cancel came from another world. At the owner's
+  suggestion it is now a panel like the analysis settings, a `PinnedHint` under three title-bar
+  segments right of Grid. The owner chose: a segment selects its kind and opens the panel, the lit
+  one toggles it; the plot stays live under the panel, which follows it. With no check boxes and
+  no segments in the panel, a value typed for an axis not selected selects it, which also keeps
+  the panel usable from the keyboard alone.
 
 ## Review
 
@@ -132,16 +139,13 @@ The result is an ordinary selection, the same as one dragged out, never an edit.
   blur close it unchanged; focus returns to the plot. Any change of the selection from
   elsewhere, a gesture or a file opening closes it. The plot emits the parsed result as
   `PlotIntent::Select`, so it takes the shell's ordinary path.
-- **The dialog.** `selection_dialog.rs` holds a `SelectionDialog` entity: two standard
-  `Checkbox`es and six standard `Input`s in a grid with each axis's unit after it, in a
-  stock `Dialog` with OK and Cancel. It opens on the time start (or the first enabled
-  field) and remembers the selection it opened with. `on_ok` first applies the field
-  holding focus, and keeps the dialog open if it does not parse; `on_cancel` restores the
-  opening selection. Each applied value goes through `Shell::select` and every field is
-  refreshed from the result except one holding an error. The dialog is offered whenever a
-  capture is described, and is disabled while another dialog is open.
-- **Menu and key.** `EditSelection` is bound to Ctrl+E (Cmd+E) in the `Plot` context and
-  sits in the Edit menu after Delete, as `Selection…`.
+- **The panel.** `selection_panel.rs` holds a `SelectionPanel` shown in a `PinnedHint` under
+  the title bar's Time, Band and Both segments, without the analysis hint's backdrop, so the
+  plot stays live and the panel follows it. It applies each read value at once; Enter keeps the
+  values and closes once every changed field reads, Escape restores the opening selection.
+  (It replaced a modal dialog, see "Owner feedback".)
+- **Menu and key.** `EditSelection` is bound to Ctrl+E (Cmd+E) in the `Plot` context and sits in
+  the Edit menu as Selection panel; both toggle the panel.
 
 ## Rejected alternatives
 
@@ -151,6 +155,8 @@ The result is an ordinary selection, the same as one dragged out, never an edit.
   the wheel and middle-button pans as well; the plot's own press already decides gestures
   once.
 - Applying only on OK: the owner chose live preview.
+- A modal dialog, whatever its placement: it covered something useful wherever it stood, and its
+  own buttons and segments did not belong to the app's surfaces.
 
 ## Custom control audit
 

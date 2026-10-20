@@ -182,7 +182,7 @@ impl Shell {
                 ))
                 .item(PopupMenuItem::separator())
                 .item(row(
-                    "Selection…",
+                    "Selection panel",
                     Box::new(editing_ui::EditSelection),
                     select,
                 ))
@@ -537,9 +537,11 @@ impl Shell {
                 let separator = div().w(px(1.)).h(px(16.)).mx_1().bg(cx.theme().border);
                 let orientation = self.orientation_segments(cx);
                 let grid = self.grid_button(cx);
+                let selection = self.selection_segments(cx);
                 bar.child(separator)
                     .child(title_control("title-orientation-control", orientation))
                     .child(title_control("title-grid-control", grid))
+                    .child(title_control("title-selection-control", selection))
             })
     }
 
@@ -624,6 +626,72 @@ impl Shell {
         segment
     }
 
+    /// What the selection holds, Time, Band or Both, with the selection panel hanging under it.
+    ///
+    /// A segment selects its kind and opens the panel, or toggles the panel where
+    /// it is the kind already selected. Each takes its own click, since the
+    /// group's handler hears the mouse only.
+    fn selection_segments(&self, cx: &mut Context<Self>) -> AnyElement {
+        let current = self.selection_kind();
+        let kinds = super::selection_panel::KINDS;
+        // The arrows run along the axis they select as the plot is turned.
+        let (along_time, across_time) = match self.session.orientation.vertical() {
+            false => (Lucide::MoveHorizontal, Lucide::MoveVertical),
+            true => (Lucide::MoveVertical, Lucide::MoveHorizontal),
+        };
+        let icons = [along_time, across_time, Lucide::SquareDashed];
+        let segments =
+            kinds
+                .iter()
+                .zip(icons)
+                .enumerate()
+                .map(|(index, (&(id, label, kind), icon))| {
+                    let state = if kind == current {
+                        ToolbarState::Selected
+                    } else {
+                        ToolbarState::Off
+                    };
+                    let mut segment = Button::new(id)
+                        .tab_stop(false)
+                        .custom(toolbar_style(state, cx))
+                        .rounded(ButtonRounded::Size(px(FRAME_RADIUS - 1.)))
+                        .small()
+                        .w(px(SEGMENT))
+                        .h(px(TOOLBAR_HEIGHT - 2.))
+                        .px_0()
+                        .child(Self::toolbar_glyph(id, icon.path(), state, cx))
+                        .on_click(cx.listener(move |shell, _, window, cx| {
+                            shell.choose_selection_kind(kind, window, cx)
+                        }));
+                    // Painted, because a border takes the colour of the button's own states.
+                    if index > 0 {
+                        let line = div().absolute().left_0().top_0().bottom_0().w(px(1.));
+                        segment = segment.relative().child(line.bg(frame_colour(cx)));
+                    }
+                    let hint = match label {
+                        "Both" => "Select time and band".to_owned(),
+                        label => format!("Select {}", label.to_lowercase()),
+                    };
+                    segment.interactivity().tooltip(move |_, cx| {
+                        shortcut_tooltip(hint.clone(), None, "Plot", px(360.), cx)
+                    });
+                    segment
+                });
+        let group = ButtonGroup::new("selection-segments")
+            .rounded(px(FRAME_RADIUS))
+            .border_1()
+            .border_color(frame_colour(cx))
+            .h(px(TOOLBAR_HEIGHT))
+            .children(segments);
+        super::hints::pinned(
+            "selection-hint",
+            &self.selection_hint,
+            GroupTrigger(group),
+            gpui_kit::Anchor::TopLeft,
+            cx,
+        )
+    }
+
     /// The grid toggle, whose two states are the option on and the option off.
     fn grid_button(&self, cx: &mut Context<Self>) -> Button {
         let id = "toggle-grid";
@@ -682,6 +750,31 @@ impl Shell {
                 glyph.group_hover(id, |style| style.text_color(accent))
             })
             .into_any_element()
+    }
+}
+
+/// The selection segments as the panel's trigger, which the popover may not mark selected.
+struct GroupTrigger(ButtonGroup);
+
+impl Selectable for GroupTrigger {
+    fn selected(self, _selected: bool) -> Self {
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        false
+    }
+}
+
+impl IntoElement for GroupTrigger {
+    type Element = AnyElement;
+
+    fn into_element(self) -> Self::Element {
+        self.0.into_any_element()
+    }
+
+    fn into_any_element(self) -> AnyElement {
+        self.0.into_any_element()
     }
 }
 
@@ -854,8 +947,8 @@ pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App, document: bool)
     if !document {
         return app;
     }
-    // The framed segment group and Grid, the separator, three gaps and its margins.
-    app + px(SEGMENT * 2. + 2. + TOOLBAR_HEIGHT + 1.) + window.rem_size() * 1.25
+    // The two framed segment groups and Grid, the separator, four gaps and its margins.
+    app + px(SEGMENT * 5. + 4. + TOOLBAR_HEIGHT + 1.) + window.rem_size() * 1.5
 }
 
 fn app_button_width(window: &Window, cx: &gpui_kit::App) -> Pixels {
@@ -1086,14 +1179,15 @@ mod tests {
         let drawn = cx
             .update_window(handle.into(), |_, window, _| {
                 let first = window.find("application-menu-button").bounds();
-                let last = window.find("toggle-grid").bounds();
-                last.right() - first.origin.x
+                // The last segment stands inside its group's one-pixel frame.
+                let last = window.find("select-both").bounds();
+                last.right() + px(1.) - first.origin.x
             })
             .unwrap();
         assert_eq!(
             reserved(cx, true),
             drawn,
-            "the title reserves the segments, the separator and the grid"
+            "the title reserves both segment groups, the separator and the grid"
         );
     }
 

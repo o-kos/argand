@@ -473,7 +473,13 @@ impl Shell {
                     .border_color(cx.theme().border)
                     .child(super::app_menu_ui::keeps_focus(
                         "fft-summary-keeps-focus",
-                        hints::pinned("analysis-hint", &self.analysis_hint, summary, cx),
+                        hints::pinned(
+                            "analysis-hint",
+                            &self.analysis_hint,
+                            summary,
+                            gpui_kit::Anchor::BottomLeft,
+                            cx,
+                        ),
                     )),
             )
             .child(self.range_control(displayed, cx))

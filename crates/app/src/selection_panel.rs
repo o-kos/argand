@@ -1,13 +1,15 @@
-//! Edit → Selection…, every value of the selection typed in a dialog and shown on the plot at once.
+//! The selection panel, every value of the selection typed in a pinned hint under the toolbar.
+//!
+//! It applies each value at once and follows the selection made on the plot
+//! while it is open, since the plot stays live under it.
 
 use super::badge_entry::on_steps;
 use super::*;
 use crate::selection_entry::{Field, Scale};
 use argand_core::{FrequencyBand, SampleSpan, Selection};
 use gpui_kit::Focusable as _;
-use gpui_kit::component::button::ButtonGroup;
+use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{Selectable as _, WindowExt as _, h_flex};
 
 /// The fields in the order they are laid out and kept, time's first.
 const FIELDS: [Field; 6] = [
@@ -19,22 +21,20 @@ const FIELDS: [Field; 6] = [
     Field::BandWidth,
 ];
 
-/// What the dialog selects, in the order of its segments.
-const KINDS: [(&str, &str, [bool; 2]); 3] = [
+/// What the toolbar's segments select, in their order, as the time and band they keep.
+pub(super) const KINDS: [(&str, &str, [bool; 2]); 3] = [
     ("select-time", "Time", [true, false]),
     ("select-band", "Band", [false, true]),
     ("select-both", "Both", [true, true]),
 ];
 
-/// Every value of the selection, the axes it selects chosen by a segment.
-pub(super) struct SelectionDialog {
+/// Every value of the selection, for the axes the toolbar's segment selects.
+pub(super) struct SelectionPanel {
     shell: WeakEntity<Shell>,
     /// The document it was opened on, which alone it selects in.
     document: u64,
     scale: Scale,
-    /// The selection the dialog opened on, which Cancel restores.
-    opened: Selection,
-    /// Each axis's values, kept while its box is unchecked.
+    /// Each axis's values, kept while the axis is not selected.
     time: SampleSpan,
     band: FrequencyBand,
     /// Whether time and the band are selected.
@@ -44,14 +44,14 @@ pub(super) struct SelectionDialog {
     shown: [String; 6],
     /// The text each field last refused, marked while it stands.
     refused: [Option<String>; 6],
-    /// Set once OK or Cancel closed it, so the fields leaving focus read nothing.
+    /// Set once it closed, so the fields leaving focus read nothing.
     closed: bool,
     /// Whether its first frame has put the keyboard in a field.
     placed: bool,
     _events: Vec<Subscription>,
 }
 
-impl SelectionDialog {
+impl SelectionPanel {
     fn new(
         shell: &Entity<Shell>,
         document: u64,
@@ -76,21 +76,14 @@ impl SelectionDialog {
                 })
             })
             .collect();
-        // Another document opened under the dialog leaves it nothing to select in.
-        events.push(
-            cx.observe_in(shell, window, move |dialog, shell, window, cx| {
-                let current = shell.read(cx).file.as_ref().map(|file| file.id);
-                if !dialog.closed && current != Some(document) {
-                    dialog.closed = true;
-                    window.close_dialog(cx);
-                }
-            }),
-        );
+        // The plot stays live, so a selection made there shows here, and another document closes the panel.
+        events.push(cx.observe_in(shell, window, |panel, shell, window, cx| {
+            panel.follow(&shell, window, cx)
+        }));
         Self {
             shell: shell.downgrade(),
             document,
             scale,
-            opened,
             time,
             band,
             checked: [opened.time.is_some(), opened.band.is_some()],
@@ -130,6 +123,8 @@ impl SelectionDialog {
             return false;
         }
         self.refused[slot] = None;
+        // A value typed for an axis not selected selects it.
+        self.checked[usize::from(!field.is_time())] = true;
         self.refresh(window, cx);
         self.apply(cx);
         true
@@ -168,7 +163,34 @@ impl SelectionDialog {
         self.select(self.selection(), cx);
     }
 
-    /// Select in the document the dialog was opened on, and nowhere else.
+    /// Take up the selection the shell holds where it is not the panel's own, closing on another document.
+    fn follow(&mut self, shell: &Entity<Shell>, window: &mut Window, cx: &mut Context<Self>) {
+        let shell = shell.read(cx);
+        if self.closed {
+            return;
+        }
+        if shell.file.as_ref().map(|file| file.id) != Some(self.document) {
+            self.closed = true;
+            let hint = shell.selection_hint.clone();
+            cx.defer(move |cx| hint.update(cx, |hint, cx| hint.close(false, cx)));
+            return;
+        }
+        let selected = Selection {
+            time: shell.selection,
+            band: shell.band,
+        };
+        let scale = shell.entry_scale();
+        if selected == self.selection() && scale.is_none_or(|scale| scale == self.scale) {
+            return;
+        }
+        self.scale = scale.unwrap_or(self.scale);
+        self.checked = [selected.time.is_some(), selected.band.is_some()];
+        self.time = selected.time.unwrap_or(self.time);
+        self.band = selected.band.unwrap_or(self.band);
+        self.refresh(window, cx);
+    }
+
+    /// Select in the document the panel was opened on, and nowhere else.
     fn select(&self, selection: Selection, cx: &mut Context<Self>) {
         let document = self.document;
         let _ = self.shell.update(cx, |shell, cx| {
@@ -176,17 +198,6 @@ impl SelectionDialog {
                 shell.select(selection, cx);
             }
         });
-    }
-
-    /// Select the axes a segment names, putting the keyboard in the first field it adds.
-    fn choose(&mut self, checked: [bool; 2], window: &mut Window, cx: &mut Context<Self>) {
-        let added = (0..2).find(|&axis| checked[axis] && !self.checked[axis]);
-        self.checked = checked;
-        if let Some(axis) = added {
-            self.focus_field(axis * 3, window, cx);
-        }
-        self.apply(cx);
-        cx.notify();
     }
 
     /// Step the field holding the keyboard by its last digit, reading a changed text first.
@@ -219,28 +230,24 @@ impl SelectionDialog {
         }
     }
 
-    /// Read every changed field of the checked axes, answering whether all of them were usable.
+    /// Read every changed field, answering whether all of them were usable.
     fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let mut usable = true;
         for field in FIELDS {
-            if self.checked[usize::from(!field.is_time())] {
-                usable &= self.commit(field, window, cx);
-            }
+            usable &= self.commit(field, window, cx);
         }
         self.closed = usable;
         usable
     }
 
-    fn cancel(&mut self, cx: &mut Context<Self>) {
-        self.closed = true;
-        self.select(self.opened, cx);
-    }
-
-    /// Put the keyboard in the first field of the first checked axis, if any.
+    /// Put the keyboard in the first field of the first selected axis, or of time with none.
     fn focus_first(&self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(axis) = self.checked.iter().position(|&checked| checked) {
-            self.focus_field(axis * 3, window, cx);
-        }
+        let axis = self
+            .checked
+            .iter()
+            .position(|&checked| checked)
+            .unwrap_or(0);
+        self.focus_field(axis * 3, window, cx);
     }
 
     fn focus_field(&self, slot: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -248,27 +255,6 @@ impl SelectionDialog {
             input.focus(window, cx);
             input.select_all(window, cx);
         });
-    }
-
-    /// The segments choosing time, the band or both, standard buttons in one group.
-    ///
-    /// Each button takes its own click, since the group's handler hears the
-    /// mouse only and a segment chosen from the keyboard would never reach it.
-    fn kinds(&self, cx: &mut Context<Self>) -> ButtonGroup {
-        let current = self.checked;
-        KINDS.iter().fold(
-            ButtonGroup::new("selection-kind").small(),
-            |group, &(id, label, kind)| {
-                group.child(
-                    Button::new(id)
-                        .label(label)
-                        .selected(kind == current)
-                        .on_click(cx.listener(move |dialog, _, window, cx| {
-                            dialog.choose(kind, window, cx)
-                        })),
-                )
-            },
-        )
     }
 
     /// A unit caption in the rulers' muted type, centred on `(x, y)`.
@@ -298,7 +284,10 @@ impl SelectionDialog {
             .small()
             .w_full()
             .text_align(gpui_kit::TextAlign::Center)
-            .disabled(!self.checked[slot / 3])
+            // An axis not selected shows the visible range muted, and a value typed there selects it.
+            .when(!self.checked[slot / 3], |input| {
+                input.text_color(cx.theme().muted_foreground)
+            })
             // The focus ring would hide the refusal on the very field that holds the keyboard.
             .when(self.marked(slot, cx), |input| {
                 input.focus_bordered(false).border_color(cx.theme().danger)
@@ -312,21 +301,14 @@ impl SelectionDialog {
             .flex()
             .items_center()
             // The dimension lines run under the fields, so a field must hide the line it stands on.
-            .bg(cx.theme().background)
+            .bg(crate::theme::sheet(cx))
             .rounded(cx.theme().radius)
             .child(input)
     }
 }
 
-/// The dialog's width, its drawing and the padding either side.
-const WIDTH: f32 = DRAWING.0 + 32.;
-/// About how much the dialog adds to its drawing's height, its title, segments, buttons and padding.
-const CHROME_HEIGHT: f32 = 140.;
-/// The room the dialog keeps from the window's edges where it stands beside the selection.
-const EDGE: f32 = 16.;
-
-/// The dialog's surroundings, where Up and Down step the focused field.
-const CONTEXT: &str = "SelectionDialog";
+/// The panel's surroundings, where Up and Down step the focused field.
+const CONTEXT: &str = "SelectionPanel";
 
 pub(super) fn init(cx: &mut gpui_kit::App) {
     super::badge_entry::step_keys(CONTEXT, cx);
@@ -334,7 +316,7 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
 
 /// A field's width and the height it is centred in.
 const FIELD: (f32, f32) = (104., 24.);
-/// The selection drawn in the dialog, as left, top, width and height.
+/// The selection drawn in the panel, as left, top, width and height.
 const AREA: (f32, f32, f32, f32) = (124., 44., 220., 104.);
 /// How far the length's line stands above the area.
 const LINE_GAP: f32 = 24.;
@@ -346,9 +328,9 @@ const DRAWING: (f32, f32) = (
     AREA.1 + AREA.3 + FIELD_GAP + FIELD.1,
 );
 
-impl Render for SelectionDialog {
+impl Render for SelectionPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // The dialog takes the keyboard as it opens, so the field takes it after the first frame.
+        // The popover takes the keyboard as it opens, so the field takes it after the first frame.
         if !self.placed {
             self.placed = true;
             let dialog = cx.entity();
@@ -419,13 +401,36 @@ impl Render for SelectionDialog {
                 cx,
             ))
             .child(self.unit(self.scale.unit, (beside, top - FIELD.1 / 2. - 4.), cx));
-        on_steps(div().id("selection-dialog"), Self::step, cx)
+        // Enter keeps the values and closes the panel, but only once every changed field reads.
+        let confirm = cx.listener(|panel: &mut Self, _: &Confirm, window, cx| {
+            if panel.confirm(window, cx) {
+                cx.propagate();
+            }
+        });
+        on_steps(div().id("selection-panel"), Self::step, cx)
             .key_context(CONTEXT)
+            .on_action(confirm)
+            .font_family(cx.theme().font_family.clone())
+            .bg(crate::theme::sheet(cx))
+            .text_color(cx.theme().popover_foreground)
+            .border_1()
+            .border_color(cx.theme().border)
+            .shadow_md()
+            .rounded(cx.theme().radius)
+            .px_3()
+            .py_2()
             .text_sm()
             .flex()
             .flex_col()
-            .gap_3()
-            .child(self.kinds(cx))
+            .gap_1()
+            .child(
+                div()
+                    .h_6()
+                    .flex()
+                    .items_center()
+                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .child("Selection"),
+            )
             .child(drawing)
     }
 }
@@ -475,159 +480,117 @@ fn texts(scale: &Scale, time: SampleSpan, band: FrequencyBand) -> [String; 6] {
     [start, end, length, low, high, width]
 }
 
+/// The panel for the shell's selection, or for the visible range where an axis is not selected.
+pub(super) fn selection_panel(
+    owner: WeakEntity<Shell>,
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::AnyView {
+    let Some(shell) = owner.upgrade() else {
+        return cx.new(|_| gpui_kit::Empty).into();
+    };
+    let read = shell.read(cx);
+    let opened = Selection {
+        time: read.selection,
+        band: read.band,
+    };
+    let start = (
+        read.file.as_ref().map(|file| file.id),
+        read.entry_scale(),
+        read.view,
+        read.extents().map(|extents| extents.hertz),
+    );
+    let (Some(document), Some(scale), Some(view), Some((low, high))) = start else {
+        return cx.new(|_| gpui_kit::Empty).into();
+    };
+    let (floor, ceiling) = scale.band;
+    let visible_band = FrequencyBand::between(low.max(floor), high.min(ceiling));
+    let visible_time = SampleSpan::between(view.start, view.start + view.len);
+    let (Some(time), Some(band)) = (opened.time.or(visible_time), opened.band.or(visible_band))
+    else {
+        return cx.new(|_| gpui_kit::Empty).into();
+    };
+    cx.new(|cx| SelectionPanel::new(&shell, document, scale, opened, (time, band), window, cx))
+        .into()
+}
+
 impl Shell {
-    /// Where the dialog covers least of the selection, as a shift from its centred place and its top.
-    ///
-    /// It stands at the top as the toolkit puts it, or at the bottom, the left
-    /// or the right, whichever covers the least of the selection shown.
-    fn away_from_selection(&self, window: &mut Window, cx: &gpui_kit::App) -> (Pixels, Pixels) {
-        // The toolkit places a dialog inside the window's frame and keeps its spacing below it.
-        let padding = chrome::Frame::for_window(window).padding;
-        let viewport = window.viewport_size();
-        let view = gpui_kit::size(
-            viewport.width - padding.left - padding.right,
-            viewport.height - padding.top - padding.bottom,
-        );
-        let below = cx.theme().spacing_tokens().lg;
-        let size = gpui_kit::size(px(WIDTH).min(view.width), px(DRAWING.1 + CHROME_HEIGHT));
-        let centred = (view.width - size.width) / 2.;
-        let middle = ((view.height - size.height) / 2.).max(px(0.));
-        let places = [
-            (centred, view.height / 10.),
-            (centred, (view.height - size.height - below).max(px(0.))),
-            (px(EDGE), middle),
-            ((view.width - size.width - px(EDGE)).max(px(0.)), middle),
-        ];
-        let origin = gpui_kit::point(padding.left, padding.top);
-        let selection = self
-            .selected()
-            .zip(self.plot_view())
-            .and_then(|(selected, plot)| {
-                let geometry = plot.read(cx).geometry?;
-                Some(waveform::selected_rect(
-                    geometry.spectrum,
-                    geometry.orientation,
-                    selected,
-                    geometry.scale,
-                ))
-            });
-        let covered = |&(left, top): &(Pixels, Pixels)| {
-            selection.map_or(0., |selection| {
-                let dialog = Bounds::new(origin + gpui_kit::point(left, top), size);
-                let common = dialog.intersect(&selection);
-                f32::from(common.size.width.max(px(0.))) * f32::from(common.size.height.max(px(0.)))
-            })
-        };
-        // The first of equally covering places wins, so with nothing in the way it stays where the toolkit puts it.
-        let (left, top) = places.iter().fold(places[0], |best, place| {
-            match covered(place) < covered(&best) {
-                true => *place,
-                false => best,
-            }
-        });
-        (left - centred, top)
+    /// The axes the selection holds, time's and the band's.
+    pub(super) fn selection_kind(&self) -> [bool; 2] {
+        [self.selection.is_some(), self.band.is_some()]
     }
 
-    /// Close Edit → Selection… keeping what it applied, as choosing a file closes the analysis hint.
-    pub(super) fn close_selection_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(dialog) = self
-            .selection_dialog
-            .take()
-            .and_then(|dialog| dialog.upgrade())
-        else {
-            return;
-        };
-        let open = dialog.update(cx, |dialog, _| !std::mem::replace(&mut dialog.closed, true));
-        if open {
-            window.close_dialog(cx);
-        }
+    /// Close the selection panel, keeping the selection.
+    pub(super) fn close_selection_hint(&mut self, cx: &mut Context<Self>) {
+        self.selection_hint
+            .update(cx, |hint, cx| hint.close(false, cx));
     }
 
-    /// Open the dialog on the selection, or on the visible range where an axis is not selected.
-    pub(super) fn open_selection_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // The menu's dismissal would otherwise hand the keyboard back to the plot under the dialog.
+    /// Ctrl+E and Edit → Selection…, which open the panel or close it keeping the selection.
+    pub(super) fn toggle_selection_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
-        let (Some(document), Some(scale), Some(view), Some((low, high))) = (
-            self.file.as_ref().map(|file| file.id),
-            self.entry_scale(),
-            self.view,
-            self.extents().map(|extents| extents.hertz),
-        ) else {
-            return;
-        };
-        let has_root = window
-            .root::<gpui_kit::component::Root>()
-            .flatten()
-            .is_some();
-        if !has_root || window.has_active_dialog(cx) {
+        if self.entry_scale().is_none() {
             return;
         }
-        let (floor, ceiling) = scale.band;
-        let visible_band = FrequencyBand::between(low.max(floor), high.min(ceiling));
-        let visible_time = SampleSpan::between(view.start, view.start + view.len);
-        let opened = Selection {
-            time: self.selection,
-            band: self.band,
-        };
-        let (Some(time), Some(band)) = (opened.time.or(visible_time), opened.band.or(visible_band))
-        else {
+        let hint = self.selection_hint.clone();
+        if hint.read(cx).is_open() {
+            hint.update(cx, |hint, cx| hint.close(false, cx));
             return;
-        };
-        if let Some(plot) = self.plot_view() {
-            plot.update(cx, |plot, cx| plot.interrupt(cx));
         }
-        let (offset, top) = self.away_from_selection(window, cx);
-        let shell = cx.entity();
-        let dialog = cx.new(|cx| {
-            SelectionDialog::new(&shell, document, scale, opened, (time, band), window, cx)
+        // The panel reads the shell as it is built, so it waits until this update ends.
+        window.defer(cx, move |window, cx| {
+            hint.update(cx, |hint, cx| hint.open(window, cx));
         });
-        self.selection_dialog = Some(dialog.downgrade());
-        window.open_dialog(cx, move |modal, _, _| {
-            let confirm = dialog.clone();
-            let ok = dialog.clone();
-            let cancel = dialog.clone();
-            let escape = dialog.clone();
-            modal
-                // The app's surfaces title themselves in its small type, made bold.
-                .title(
-                    div()
-                        .text_sm()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .child("Selection"),
-                )
-                .w(px(WIDTH))
-                .margin_top(top)
-                .ml(offset)
-                .close_button(false)
-                .overlay_closable(false)
-                .child(dialog.clone())
-                .footer(
-                    h_flex()
-                        .w_full()
-                        .justify_end()
-                        .gap_2()
-                        .child(Button::new("cancel").small().label("Cancel").on_click(
-                            move |_, window, cx| {
-                                cancel.update(cx, |dialog, cx| dialog.cancel(cx));
-                                window.close_dialog(cx);
-                            },
-                        ))
-                        .child(Button::new("ok").small().primary().label("OK").on_click(
-                            move |_, window, cx| {
-                                if ok.update(cx, |dialog, cx| dialog.confirm(window, cx)) {
-                                    window.close_dialog(cx);
-                                }
-                            },
-                        )),
-                )
-                .on_ok(move |_, window, cx| {
-                    confirm.update(cx, |dialog, cx| dialog.confirm(window, cx))
-                })
-                .on_cancel(move |_, _, cx| {
-                    escape.update(cx, |dialog, cx| dialog.cancel(cx));
-                    true
-                })
+    }
+
+    /// A segment chose what to select: the same kind toggles the panel, another one selects it and opens it.
+    pub(super) fn choose_selection_kind(
+        &mut self,
+        kind: [bool; 2],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if kind == self.selection_kind() {
+            return self.toggle_selection_panel(window, cx);
+        }
+        let Some(view) = self.view else { return };
+        let visible_time = argand_core::SampleSpan::between(view.start, view.start + view.len);
+        let visible_band = self.extents().and_then(|extents| {
+            let (low, high) = extents.hertz;
+            argand_core::FrequencyBand::between(low, high)
         });
+        let selection = Selection {
+            time: kind[0].then(|| self.selection.or(visible_time)).flatten(),
+            band: kind[1].then(|| self.band.or(visible_band)).flatten(),
+        };
+        self.select(selection, cx);
+        if !self.selection_hint.read(cx).is_open() {
+            self.toggle_selection_panel(window, cx);
+        }
+    }
+
+    /// What the panel opening and closing means for the selection.
+    pub(super) fn selection_hint_changed(
+        &mut self,
+        _: Entity<hints::PinnedHint>,
+        event: &hints::Pinned,
+        cx: &mut Context<Self>,
+    ) {
+        match *event {
+            hints::Pinned::Opened => {
+                self.selection_opening = Some(Selection {
+                    time: self.selection,
+                    band: self.band,
+                });
+            }
+            hints::Pinned::Closed { revert } => {
+                let opening = self.selection_opening.take();
+                if let (true, Some(opening)) = (revert, opening) {
+                    self.select(opening, cx);
+                }
+            }
+        }
+        cx.notify();
     }
 }
 
@@ -640,7 +603,7 @@ mod tests {
     use gpui_kit::test::TestWindowExt;
     use std::path::PathBuf;
 
-    /// A shell under the toolkit's root, which the dialog layer needs, with a described capture.
+    /// A shell under the toolkit's root, which the popover layer needs, with a described capture.
     fn open(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
         cx.update(|cx| {
             gpui_kit::init(cx);
@@ -696,16 +659,15 @@ mod tests {
         })
     }
 
-    fn open_dialog(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
+    /// Ctrl+E, as the plot binds it.
+    fn toggle(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
         shell.update_in(cx, |shell, window, cx| {
-            shell.open_selection_dialog(window, cx)
+            shell.toggle_selection_panel(window, cx)
         });
-        // The opening animation runs on the wall clock, and a click lands where it ends.
-        std::thread::sleep(std::time::Duration::from_millis(400));
         settle(cx);
     }
 
-    /// Let the dialog's opening animation end and a frame report focus changes.
+    /// Let the popover open and a frame report focus changes.
     fn settle(cx: &mut gpui_kit::VisualTestContext) {
         cx.executor()
             .advance_clock(std::time::Duration::from_secs(1));
@@ -719,8 +681,28 @@ mod tests {
         settle(cx);
     }
 
-    fn dialog_open(cx: &mut gpui_kit::VisualTestContext) -> bool {
-        cx.update(|window, cx| window.has_active_dialog(cx))
+    fn panel_open(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
+        shell.read_with(cx, |shell, cx| shell.selection_hint.read(cx).is_open())
+    }
+
+    /// The text each field of the open panel holds.
+    fn texts(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> Vec<String> {
+        shell.read_with(cx, |shell, cx| {
+            let view = shell
+                .selection_hint
+                .read(cx)
+                .view()
+                .expect("the panel is open");
+            let panel = view
+                .downcast::<SelectionPanel>()
+                .expect("a selection panel");
+            panel
+                .read(cx)
+                .inputs
+                .iter()
+                .map(|input| input.read(cx).value().to_string())
+                .collect()
+        })
     }
 
     fn span(a: u64, b: u64) -> Option<SampleSpan> {
@@ -731,8 +713,8 @@ mod tests {
     fn a_typed_value_moves_the_selection_live_and_enter_keeps_it(cx: &mut TestAppContext) {
         let (shell, cx) = open(cx);
         shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
-        open_dialog(cx, &shell);
-        assert!(dialog_open(cx));
+        toggle(cx, &shell);
+        assert!(panel_open(cx, &shell));
         keys(cx, "5 0 tab");
         assert_eq!(
             selected(cx, &shell).time,
@@ -745,14 +727,39 @@ mod tests {
             span(50, 500),
             "the end names the last sample"
         );
-        assert!(!dialog_open(cx), "Enter keeps it and closes");
+        assert!(!panel_open(cx, &shell), "Enter keeps it and closes");
+    }
+
+    #[gpui_kit::test]
+    fn escape_restores_the_selection_the_panel_opened_on(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        toggle(cx, &shell);
+        keys(cx, "5 0 tab");
+        assert_eq!(selected(cx, &shell).time, span(50, 200));
+        keys(cx, "7 escape");
+        assert!(!panel_open(cx, &shell));
+        assert_eq!(selected(cx, &shell).time, span(100, 200));
+    }
+
+    #[gpui_kit::test]
+    fn a_bad_value_keeps_the_panel_open_and_changes_nothing(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        toggle(cx, &shell);
+        keys(cx, "x enter");
+        assert!(panel_open(cx, &shell), "Enter waits for a usable value");
+        assert_eq!(selected(cx, &shell).time, span(100, 200));
+        keys(cx, "backspace 1 5 0 enter");
+        assert!(!panel_open(cx, &shell));
+        assert_eq!(selected(cx, &shell).time, span(150, 200));
     }
 
     #[gpui_kit::test]
     fn up_and_down_step_the_focused_field_by_its_last_digit(cx: &mut TestAppContext) {
         let (shell, cx) = open(cx);
         shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
-        open_dialog(cx, &shell);
+        toggle(cx, &shell);
         keys(cx, "up");
         assert_eq!(selected(cx, &shell).time, span(101, 200));
         keys(cx, "shift-down");
@@ -766,37 +773,15 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn escape_restores_the_selection_the_dialog_opened_on(cx: &mut TestAppContext) {
+    fn a_segment_selects_its_kind_from_the_visible_range_and_opens_the_panel(
+        cx: &mut TestAppContext,
+    ) {
         let (shell, cx) = open(cx);
-        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
-        open_dialog(cx, &shell);
-        keys(cx, "5 0 tab");
-        assert_eq!(selected(cx, &shell).time, span(50, 200));
-        keys(cx, "7 escape");
-        assert!(!dialog_open(cx));
-        assert_eq!(selected(cx, &shell).time, span(100, 200));
-    }
-
-    #[gpui_kit::test]
-    fn a_bad_value_keeps_the_dialog_open_and_changes_nothing(cx: &mut TestAppContext) {
-        let (shell, cx) = open(cx);
-        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
-        open_dialog(cx, &shell);
-        keys(cx, "x enter");
-        assert!(dialog_open(cx), "OK waits for a usable value");
-        assert_eq!(selected(cx, &shell).time, span(100, 200));
-        keys(cx, "backspace 1 5 0 enter");
-        assert!(!dialog_open(cx));
-        assert_eq!(selected(cx, &shell).time, span(150, 200));
-    }
-
-    #[gpui_kit::test]
-    fn with_nothing_selected_a_checked_axis_selects_the_visible_range(cx: &mut TestAppContext) {
-        let (shell, cx) = open(cx);
-        open_dialog(cx, &shell);
-        assert_eq!(selected(cx, &shell), Selection::default());
-        cx.update(|window, cx| window.click("select-band", cx));
+        shell.update_in(cx, |shell, window, cx| {
+            shell.choose_selection_kind([false, true], window, cx)
+        });
         settle(cx);
+        assert!(panel_open(cx, &shell));
         let band = selected(cx, &shell).band.expect("a band");
         assert_eq!(
             (band.low(), band.high()),
@@ -804,55 +789,87 @@ mod tests {
             "the whole visible band"
         );
         assert_eq!(selected(cx, &shell).time, None);
-        keys(cx, "- 1 0 0 enter");
-        assert!(!dialog_open(cx));
+        keys(cx, "secondary-a - 1 0 0 enter");
         let band = selected(cx, &shell).band.expect("a band");
         assert_eq!((band.low(), band.high()), (-100., 500.));
-    }
-
-    #[gpui_kit::test]
-    fn choosing_a_file_closes_the_dialog_keeping_what_it_applied(cx: &mut TestAppContext) {
-        let (shell, cx) = open(cx);
-        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
-        open_dialog(cx, &shell);
-        keys(cx, "5 0 tab");
-        shell.update_in(cx, |shell, window, cx| shell.choose_file(window, cx));
+        shell.update_in(cx, |shell, window, cx| {
+            shell.choose_selection_kind([false, true], window, cx)
+        });
         settle(cx);
         assert!(
-            !dialog_open(cx),
-            "the chooser does not leave the dialog behind the plot"
+            panel_open(cx, &shell),
+            "the kind already selected toggles the panel"
         );
-        assert_eq!(selected(cx, &shell).time, span(50, 200));
     }
 
     #[gpui_kit::test]
-    fn from_the_menu_with_nothing_selected_the_dialog_keeps_the_keyboard(cx: &mut TestAppContext) {
+    fn the_panel_follows_a_selection_made_on_the_plot(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        toggle(cx, &shell);
+        shell.update_in(cx, |shell, _, cx| {
+            shell.select(Selection::time(SampleSpan::between(300, 700).unwrap()), cx)
+        });
+        settle(cx);
+        assert_eq!(&texts(cx, &shell)[..3], ["#300", "#699", "400"]);
+        assert!(panel_open(cx, &shell));
+    }
+
+    #[gpui_kit::test]
+    fn from_the_menu_the_panel_keeps_the_keyboard(cx: &mut TestAppContext) {
         let (shell, cx) = open(cx);
         shell.update_in(cx, |shell, window, cx| {
             window.focus(&shell.focus_target(cx), cx)
         });
         settle(cx);
-        // Edit is the second branch, and its first usable row with nothing selected is Selection…
+        // Edit is the second branch, and its first usable row with nothing to edit is the panel.
         keys(cx, "f10 down down right down enter");
-        std::thread::sleep(std::time::Duration::from_millis(400));
-        settle(cx);
-        assert!(dialog_open(cx));
+        assert!(panel_open(cx, &shell));
         keys(cx, "escape");
-        assert!(!dialog_open(cx), "Escape reaches the dialog, not the plot");
+        assert!(
+            !panel_open(cx, &shell),
+            "Escape reaches the panel, not the plot"
+        );
         assert_eq!(selected(cx, &shell), Selection::default());
     }
 
     #[gpui_kit::test]
-    fn another_document_opened_under_the_dialog_closes_it(cx: &mut TestAppContext) {
+    fn with_nothing_selected_a_typed_value_selects_its_axis(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        toggle(cx, &shell);
+        assert_eq!(selected(cx, &shell), Selection::default());
+        keys(cx, "secondary-a 2 0 0 enter");
+        assert_eq!(
+            selected(cx, &shell).time,
+            span(200, 10_000),
+            "the visible end kept"
+        );
+        assert_eq!(selected(cx, &shell).band, None);
+    }
+
+    #[gpui_kit::test]
+    fn choosing_a_file_closes_the_panel_keeping_what_it_applied(cx: &mut TestAppContext) {
         let (shell, cx) = open(cx);
         shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
-        open_dialog(cx, &shell);
+        toggle(cx, &shell);
+        keys(cx, "5 0 tab");
+        shell.update_in(cx, |shell, window, cx| shell.choose_file(window, cx));
+        settle(cx);
+        assert!(!panel_open(cx, &shell));
+        assert_eq!(selected(cx, &shell).time, span(50, 200));
+    }
+
+    #[gpui_kit::test]
+    fn another_document_opened_under_the_panel_closes_it(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        toggle(cx, &shell);
         keys(cx, "5 0");
         shell.update_in(cx, |shell, window, cx| {
             shell.open(Origin::new(PathBuf::from("/captures/b.iqw")), window, cx);
         });
         settle(cx);
-        assert!(!dialog_open(cx));
+        assert!(!panel_open(cx, &shell));
         assert_eq!(
             selected(cx, &shell),
             Selection::default(),

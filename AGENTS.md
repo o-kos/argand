@@ -512,27 +512,33 @@ painted. Enter applies it as `PlotIntent::Select` or marks the text it refuses i
 colour, Escape (the `BadgeEntry` context, since the input passes it on) and blur close it
 unchanged, unchanged text applies nothing, and a selection changed elsewhere closes it.
 
-Edit → Selection… (`EditSelection`, Ctrl+E or Cmd+E in the `Plot` context, enabled while a
-capture is described) opens `SelectionDialog` (`selection_dialog.rs`) in the stock `Dialog`
-through `Root`: standard `Button`s in a `ButtonGroup` choosing Time, Band or Both (each button
-takes its own click, since the group's handler hears the mouse only), and a drawing of the
-selection as the badges show it, as the owner asked, with the six `Input`s placed around it,
-the start and end under it, the length on a dimension line above, the low and high edges at its
-left and the width on a dimension line at its right (`paint_dimension`), each line naming its
-unit past its end. An axis not chosen is not selected, its line is muted and its disabled fields
-hold the visible range. Up and Down step the focused field, here and in the badge input, by one
-of the last digit it shows, ten with Shift, and a sample index by one sample
-(`Scale::time_step`, `Scale::band_step`); a changed text is read first. The dialog does not
-move, but opens where it covers least of the selection, at the top, the bottom, the left or the
-right (`Shell::away_from_selection`), in the toolkit's frame coordinates. Its title, segments
-and buttons are in the app's small type. It applies live
-through `Shell::select`: a field whose text changed is read on Enter or blur, a check box at
-once, and every other field is written again from the result. OK and Enter read the changed
-fields and stay open while one is refused; Cancel and Escape restore the selection it opened
-on. Ctrl+O closes it keeping what it applied (`Shell::close_selection_dialog`), and it selects
-only in the document it opened on, closing when another one opens. A badge input that loses the
-keyboard to nothing, as when the window is left, hands it back to the plot. A typed selection
-is an ordinary selection, never an edit.
+The selection panel (`selection_panel.rs`), which replaced a modal dialog at the owner's
+request, is a `PinnedHint` hanging under three title-bar segments right of Grid, Time, Band and
+Both (`app_menu_ui::selection_segments`, toolbar-styled `Button`s in a `ButtonGroup` with the
+Lucide `move-horizontal`, `move-vertical` and `square-dashed` artwork, the arrows running along
+the axis they select as the plot turns). The segment of the kind selected is lit; a segment of
+another kind selects it, taking a missing axis from the visible range, and opens the panel, and
+the lit one toggles the panel (`Shell::choose_selection_kind`). Each segment takes its own click,
+since a `ButtonGroup`'s handler hears the mouse only. Ctrl+E (Cmd+E, `EditSelection`, in the
+`Plot` context) and Edit → Selection panel toggle it too. `hints::pinned` takes the trigger and
+the anchor, so the panel hangs below its trigger where the analysis hint stands above its own.
+
+The panel draws the selection as the badges show it, with the six `Input`s placed around it, the
+start and end under it, the length on a dimension line above, the low and high edges at its left
+and the width on a dimension line at its right (`paint_dimension`), each line naming its unit
+past its end, in the hint's own look and type. An axis not selected shows the visible range
+muted, and a value typed there selects it. It applies live through `Shell::select`: a field whose
+text changed is read on Enter or blur, and every other field is written again from the result.
+Up and Down step the focused field, here and in the badge input, by one of the last digit it
+shows, ten with Shift, and a sample index by one sample (`Scale::time_step`,
+`Scale::band_step`); a changed text is read first. Unlike the analysis hint it puts no backdrop
+over the plot, which stays live: a selection made or reshaped there shows in the panel
+(`SelectionPanel::follow`). Enter keeps the values and closes it once every changed field reads,
+since the panel handles `Confirm` before the popover; Escape restores the selection it opened on
+(`Shell::selection_opening`). Ctrl+O closes it keeping the selection
+(`Shell::close_selection_hint`), and it selects only in the document it opened on, closing when
+another one opens. A badge input that loses the keyboard to nothing, as when the window is left,
+hands it back to the plot. A typed selection is an ordinary selection, never an edit.
 
 ## Band and rectangle selection (#202)
 

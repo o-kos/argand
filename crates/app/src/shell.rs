@@ -60,10 +60,10 @@ mod plot_view;
 mod replace_ui;
 #[path = "saving_ui.rs"]
 mod saving_ui;
-#[path = "selection_dialog.rs"]
-mod selection_dialog;
 #[path = "selection_gestures.rs"]
 mod selection_gestures;
+#[path = "selection_panel.rs"]
+mod selection_panel;
 #[path = "settings_ui.rs"]
 mod settings_ui;
 #[path = "suppression_ui.rs"]
@@ -108,7 +108,7 @@ struct OpenRecent {
 pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     editing_ui::init(cx);
     badge_entry::init(cx);
-    selection_dialog::init(cx);
+    selection_panel::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([
@@ -385,8 +385,10 @@ struct Shell {
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
     /// What the analysis hint opened with, which Escape restores.
     hint_opening: Option<HintOpening>,
-    /// Edit → Selection…, while it is open.
-    selection_dialog: Option<WeakEntity<selection_dialog::SelectionDialog>>,
+    /// The selection panel under the toolbar's selection segments.
+    selection_hint: gpui_kit::Entity<hints::PinnedHint>,
+    /// The selection the panel opened with, which Escape restores.
+    selection_opening: Option<argand_core::Selection>,
     ready_status_dismissed: bool,
     /// Whether the mouse has moved in the window since it last left it.
     pointer_in_window: bool,
@@ -474,6 +476,7 @@ struct Shell {
     _appearance: Subscription,
     _keystrokes: Subscription,
     _pinned: Subscription,
+    _selection_pinned: Subscription,
 }
 
 impl Shell {
@@ -516,6 +519,14 @@ impl Shell {
             )
         });
         let pinned = cx.subscribe(&analysis_hint, Self::analysis_hint_changed);
+        let panel_owner = cx.entity().downgrade();
+        let selection_hint = cx.new(|cx| {
+            hints::PinnedHint::new(
+                move |window, cx| selection_panel::selection_panel(panel_owner.clone(), window, cx),
+                cx,
+            )
+        });
+        let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
         let closing = cx.entity().downgrade();
         // A close with unsaved edits is refused here and carried out once the question is answered.
         window.on_window_should_close(cx, move |window, cx| {
@@ -529,7 +540,8 @@ impl Shell {
             settings,
             analysis_hint,
             hint_opening: None,
-            selection_dialog: None,
+            selection_hint,
+            selection_opening: None,
             ready_status_dismissed: false,
             pointer_in_window: false,
             settings_error: None,
@@ -577,6 +589,7 @@ impl Shell {
             _appearance: appearance,
             _keystrokes: keystrokes,
             _pinned: pinned,
+            _selection_pinned: selection_pinned,
         }
     }
 
@@ -1268,7 +1281,7 @@ impl Shell {
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
         self.close_analysis_hint(cx);
-        self.close_selection_dialog(window, cx);
+        self.close_selection_hint(cx);
         // The release happens over the dialog, so nothing held now may stay pressed.
         self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);

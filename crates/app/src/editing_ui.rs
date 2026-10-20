@@ -564,7 +564,7 @@ impl Shell {
                 shell.normalize(window, cx);
             }))
             .on_action(cx.listener(|shell, _: &EditSelection, window, cx| {
-                shell.open_selection_dialog(window, cx);
+                shell.toggle_selection_panel(window, cx);
             }))
     }
 }
