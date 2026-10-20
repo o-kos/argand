@@ -158,6 +158,12 @@ impl Shell {
         self.save();
     }
 
+    /// Close the pinned hints, the analysis settings and the selection panel, keeping their values.
+    pub(super) fn close_hints(&mut self, cx: &mut Context<Self>) {
+        self.close_analysis_hint(cx);
+        self.close_selection_hint(cx);
+    }
+
     /// Close the analysis hint, keeping what was changed while it was open.
     pub(super) fn close_analysis_hint(&mut self, cx: &mut Context<Self>) {
         self.analysis_hint

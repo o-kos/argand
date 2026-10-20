@@ -389,6 +389,8 @@ struct Shell {
     selection_hint: gpui_kit::Entity<hints::PinnedHint>,
     /// The selection the panel opened with, which Escape restores.
     selection_opening: Option<argand_core::Selection>,
+    /// The press on the title bar under way closed the selection panel.
+    press_closed_selection: bool,
     ready_status_dismissed: bool,
     /// Whether the mouse has moved in the window since it last left it.
     pointer_in_window: bool,
@@ -542,6 +544,7 @@ impl Shell {
             hint_opening: None,
             selection_hint,
             selection_opening: None,
+            press_closed_selection: false,
             ready_status_dismissed: false,
             pointer_in_window: false,
             settings_error: None,
@@ -657,7 +660,7 @@ impl Shell {
     fn edge_pressed(shell: WeakEntity<Self>) -> impl Fn(&mut Window, &mut gpui_kit::App) {
         move |window, cx| {
             let _ = shell.update(cx, |shell, cx| {
-                shell.close_analysis_hint(cx);
+                shell.close_hints(cx);
                 shell.dismiss_application_menu(window, cx);
             });
         }
@@ -716,7 +719,7 @@ impl Shell {
             return;
         }
         self.dismiss_application_menu(window, cx);
-        self.close_analysis_hint(cx);
+        self.close_hints(cx);
         // The old plot goes with its document, so focus must not stay on it.
         window.focus(&self.focus, cx);
         self.settings.dynamic_range = self.config.dynamic_range;
@@ -1280,8 +1283,7 @@ impl Shell {
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
-        self.close_analysis_hint(cx);
-        self.close_selection_hint(cx);
+        self.close_hints(cx);
         // The release happens over the dialog, so nothing held now may stay pressed.
         self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);
@@ -1421,7 +1423,11 @@ impl Shell {
         // A press on the title bar closes the settings hint and still reaches the control there.
         div()
             .flex_shrink_0()
-            .capture_any_mouse_down(cx.listener(|shell, _, _, cx| shell.close_analysis_hint(cx)))
+            .capture_any_mouse_down(cx.listener(|shell, _, _, cx| {
+                // The press reaches a selection segment after this, which must not open the panel again.
+                shell.press_closed_selection = shell.selection_hint.read(cx).is_open();
+                shell.close_hints(cx);
+            }))
             .child(bar)
     }
 
@@ -1790,6 +1796,7 @@ impl Render for Shell {
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
             .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
+            .children(hints::backdrop(&self.selection_hint, hint_area, cx))
             .children(Root::render_dialog_layer(window, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))

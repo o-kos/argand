@@ -468,9 +468,9 @@ them, and the badge stands beside the selection away from the other axis's exten
 frequency running right, and on the other side without room there. A hidden edge has no badge;
 badges stay inside the plot, painted over the grid and under the zoom pairs and the Alt guides,
 and take only a left press (see "Typing a selection (#219)"). Each edge's badge stands a little
-farther from the selection (`EDGE_GAP`) and points at its edge with a small triangle in its own
-ink, one side running along the edge to the selection's corner (`selection_badges::pointer`),
-as the owner chose. The status bar shows no selection.
+farther from the selection (`EDGE_GAP`) and points at its edge with a small symmetric triangle in
+its own ink, its base on the badge centred on the edge and its tip on the selection
+(`selection_badges::pointer`), as the owner chose. The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
@@ -520,7 +520,9 @@ the axis they select as the plot turns). The segment of the kind selected is lit
 another kind selects it, taking a missing axis from the visible range, and opens the panel, and
 the lit one toggles the panel (`Shell::choose_selection_kind`). Each segment takes its own click,
 since a `ButtonGroup`'s handler hears the mouse only. Ctrl+E (Cmd+E, `EditSelection`, in the
-`Plot` context) and Edit → Selection panel toggle it too. `hints::pinned` takes the trigger and
+`Plot` context) and Edit → Selection panel toggle it too; with nothing selected they open it on
+time and band, both from the visible range. The lit segment is `selected`, as the orientation
+segment in force is, so both groups light alike. `hints::pinned` takes the trigger and
 the anchor, so the panel hangs below its trigger where the analysis hint stands above its own.
 
 The panel draws the selection as the badges show it, with the six `Input`s placed around it, the
@@ -531,11 +533,14 @@ muted, and a value typed there selects it. It applies live through `Shell::selec
 text changed is read on Enter or blur, and every other field is written again from the result.
 Up and Down step the focused field, here and in the badge input, by one of the last digit it
 shows, ten with Shift, and a sample index by one sample (`Scale::time_step`,
-`Scale::band_step`); a changed text is read first. Unlike the analysis hint it puts no backdrop
-over the plot, which stays live: a selection made or reshaped there shows in the panel
-(`SelectionPanel::follow`). Enter keeps the values and closes it once every changed field reads,
-since the panel handles `Confirm` before the popover; Escape restores the selection it opened on
-(`Shell::selection_opening`). Ctrl+O closes it keeping the selection
+`Scale::band_step`); a changed text is read first. It closes as the analysis hint does, which the
+owner chose over a live plot: its backdrop freezes the plot and a press outside closes it keeping
+the selection, and so do the title bar, the frame's edges and the application menu
+(`Shell::close_hints`). A press on the title bar that closed it does not reopen it from the lit
+segment (`Shell::press_closed_selection`). `SelectionPanel::follow` still takes up a selection
+changed while it is open. Enter keeps the values and closes it once every changed field reads,
+since the panel handles `Confirm` before the popover; Escape restores the selection as it stood before the
+panel or its segment changed it (`Shell::selection_opening`). Ctrl+O closes it keeping the selection
 (`Shell::close_selection_hint`), and it selects only in the document it opened on, closing when
 another one opens. A badge input that loses the keyboard to nothing, as when the window is left,
 hands it back to the plot. A typed selection is an ordinary selection, never an edit.

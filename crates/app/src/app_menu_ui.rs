@@ -336,7 +336,7 @@ impl Shell {
         if self.application_menu.is_some() {
             return;
         }
-        self.close_analysis_hint(cx);
+        self.close_hints(cx);
         self.interrupt_plot(cx);
         self.recent_files.refresh(&self.session.recent);
         let focus = self.focus_target(cx);
@@ -654,6 +654,7 @@ impl Shell {
                     let mut segment = Button::new(id)
                         .tab_stop(false)
                         .custom(toolbar_style(state, cx))
+                        .selected(kind == current)
                         .rounded(ButtonRounded::Size(px(FRAME_RADIUS - 1.)))
                         .small()
                         .w(px(SEGMENT))

@@ -11,8 +11,8 @@ use crate::selection_entry::Field;
 const MARGIN: f32 = 4.;
 /// How far an edge's badge stands from the selection, room for the pointer reaching it.
 const EDGE_GAP: f32 = MARGIN + 6.;
-/// How wide a pointer is where it leaves its badge.
-const POINTER_WIDTH: f32 = 7.;
+/// Half the width of a pointer's base at its badge.
+const POINTER_HALF: f32 = 4.;
 /// The least gap the far edge's badge keeps from the near edge's badge it is pushed past.
 const GAP: f32 = 2.;
 /// The badge's corner radius, as the Alt badges have it.
@@ -243,10 +243,10 @@ pub(crate) fn dimension(
     }
 }
 
-/// A triangle from an edge's badge to the selection's corner on that edge, in panel coordinates.
+/// A triangle between an edge's badge and the selection, its tip on that edge, in panel coordinates.
 ///
-/// One side runs along the edge from the badge to the selection, so it points
-/// at the edge the badge names. A badge pressed over the selection has none.
+/// Its base stands on the badge, centred on the edge, so it points at the edge
+/// the badge names. A badge pressed over the selection has none.
 pub(crate) fn pointer(
     plot: Rect,
     layout: Layout,
@@ -258,15 +258,9 @@ pub(crate) fn pointer(
         true => (plot.x, plot.width, plot.y, plot.height),
         false => (plot.y, plot.height, plot.x, plot.width),
     };
-    let ((start, end), (from, to)) = match layout.across {
-        true => (
-            (badge.y, badge.y + badge.height),
-            (badge.x, badge.x + badge.width),
-        ),
-        false => (
-            (badge.x, badge.x + badge.width),
-            (badge.y, badge.y + badge.height),
-        ),
+    let (start, end) = match layout.across {
+        true => (badge.y, badge.y + badge.height),
+        false => (badge.x, badge.x + badge.width),
     };
     let near = depth_origin + around.0 as f32 * depth;
     let far = depth_origin + around.1 as f32 * depth;
@@ -278,16 +272,15 @@ pub(crate) fn pointer(
         return None;
     };
     let at = along + edge as f32 * length;
-    // The triangle widens into the badge, which runs from its edge towards the other.
-    let inward = match (from + to) / 2. >= at {
-        true => POINTER_WIDTH,
-        false => -POINTER_WIDTH,
-    };
     let point = |along: f32, depth: f32| match layout.across {
         true => (along, depth),
         false => (depth, along),
     };
-    Some([point(at, tip), point(at, side), point(at + inward, side)])
+    Some([
+        point(at, tip),
+        point(at - POINTER_HALF, side),
+        point(at + POINTER_HALF, side),
+    ])
 }
 
 /// Paint a pointer in the badge's ink inside a ring of its paper.
@@ -633,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pointer_runs_along_the_edge_from_its_badge_to_the_selection() {
+    fn a_pointer_stands_on_its_badge_with_its_tip_on_the_edge() {
         let rectangle = Extent {
             around: (0.25, 0.5),
             ..spanning(0.25, 0.75)
@@ -650,16 +643,13 @@ mod tests {
             tip,
             [
                 (110., 120.),
-                (110., start.y),
-                (110. + POINTER_WIDTH, start.y)
-            ]
+                (110. - POINTER_HALF, start.y),
+                (110. + POINTER_HALF, start.y)
+            ],
+            "a triangle centred on the edge, its tip on the selection"
         );
         let tip = pointer(PLOT, Layout::time(false), 0.75, rectangle.around, end).unwrap();
-        assert_eq!(
-            tip[2],
-            (310. - POINTER_WIDTH, end.y),
-            "into the end's badge, which runs back"
-        );
+        assert_eq!(tip[0], (310., 120.), "the end's own edge");
         let over = Rect { y: 80., ..start };
         assert_eq!(
             pointer(PLOT, Layout::time(false), 0.25, rectangle.around, over),

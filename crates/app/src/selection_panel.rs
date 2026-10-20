@@ -537,6 +537,11 @@ impl Shell {
             hint.update(cx, |hint, cx| hint.close(false, cx));
             return;
         }
+        // With nothing selected the panel opens on time and band, both from the visible range.
+        if self.selection_kind() == [false, false] {
+            self.remember_opening();
+            self.select_visible([true, true], cx);
+        }
         // The panel reads the shell as it is built, so it waits until this update ends.
         window.defer(cx, move |window, cx| {
             hint.update(cx, |hint, cx| hint.open(window, cx));
@@ -551,8 +556,32 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         if kind == self.selection_kind() {
+            // The press on the title bar has just closed the panel, which is all it asked.
+            if std::mem::take(&mut self.press_closed_selection) {
+                return;
+            }
             return self.toggle_selection_panel(window, cx);
         }
+        if !self.selection_hint.read(cx).is_open() {
+            self.remember_opening();
+        }
+        self.select_visible(kind, cx);
+        if !self.selection_hint.read(cx).is_open() {
+            self.toggle_selection_panel(window, cx);
+        }
+    }
+
+    /// Keep the selection as it stands before the panel changes it, for Escape to restore.
+    fn remember_opening(&mut self) {
+        let current = Selection {
+            time: self.selection,
+            band: self.band,
+        };
+        self.selection_opening.get_or_insert(current);
+    }
+
+    /// Select `kind`, keeping an axis already selected and taking a missing one from the visible range.
+    fn select_visible(&mut self, kind: [bool; 2], cx: &mut Context<Self>) {
         let Some(view) = self.view else { return };
         let visible_time = argand_core::SampleSpan::between(view.start, view.start + view.len);
         let visible_band = self.extents().and_then(|extents| {
@@ -564,9 +593,6 @@ impl Shell {
             band: kind[1].then(|| self.band.or(visible_band)).flatten(),
         };
         self.select(selection, cx);
-        if !self.selection_hint.read(cx).is_open() {
-            self.toggle_selection_panel(window, cx);
-        }
     }
 
     /// What the panel opening and closing means for the selection.
@@ -578,10 +604,9 @@ impl Shell {
     ) {
         match *event {
             hints::Pinned::Opened => {
-                self.selection_opening = Some(Selection {
-                    time: self.selection,
-                    band: self.band,
-                });
+                // The panel freezes the plot as the analysis hint does.
+                self.interrupt_plot(cx);
+                self.remember_opening();
             }
             hints::Pinned::Closed { revert } => {
                 let opening = self.selection_opening.take();
@@ -834,17 +859,43 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn with_nothing_selected_a_typed_value_selects_its_axis(cx: &mut TestAppContext) {
+    fn with_nothing_selected_the_panel_opens_on_time_and_band(cx: &mut TestAppContext) {
         let (shell, cx) = open(cx);
         toggle(cx, &shell);
-        assert_eq!(selected(cx, &shell), Selection::default());
+        let opened = selected(cx, &shell);
+        assert_eq!(opened.time, span(0, 10_000), "the visible time");
+        let band = opened.band.expect("the visible band");
+        assert_eq!((band.low(), band.high()), (-500., 500.));
+        keys(cx, "escape");
+        assert_eq!(
+            selected(cx, &shell),
+            Selection::default(),
+            "Escape restores nothing selected"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_value_typed_for_an_axis_not_selected_selects_it(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, window, cx| {
+            shell.choose_selection_kind([false, true], window, cx)
+        });
+        settle(cx);
+        assert_eq!(selected(cx, &shell).time, None);
+        shell.update_in(cx, |shell, window, cx| {
+            let view = shell.selection_hint.read(cx).view().expect("open");
+            let panel = view
+                .downcast::<SelectionPanel>()
+                .expect("a selection panel");
+            panel.update(cx, |panel, cx| panel.focus_field(0, window, cx));
+        });
         keys(cx, "secondary-a 2 0 0 enter");
         assert_eq!(
             selected(cx, &shell).time,
             span(200, 10_000),
             "the visible end kept"
         );
-        assert_eq!(selected(cx, &shell).band, None);
+        assert!(selected(cx, &shell).band.is_some());
     }
 
     #[gpui_kit::test]

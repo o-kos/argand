@@ -99,7 +99,7 @@ impl Shell {
             return;
         }
         self.dismiss_application_menu(window, cx);
-        self.close_analysis_hint(cx);
+        self.close_hints(cx);
         // The release happens over the dialog, so nothing held now may stay pressed.
         self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);

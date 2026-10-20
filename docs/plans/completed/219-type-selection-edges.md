@@ -36,6 +36,12 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
   one toggles it; the plot stays live under the panel, which follows it. With no check boxes and
   no segments in the panel, a value typed for an axis not selected selects it, which also keeps
   the panel usable from the keyboard alone.
+- Next round (2026-10-20): it was unclear when the panel goes away, so it now closes as the
+  analysis hint does, the plot frozen under it. Ctrl+E with nothing selected opens it on time and
+  band from the visible range. The lit segment was dimmer than the orientation's, because only
+  that one was marked `selected`. The pointers became symmetric triangles rather than a
+  tooltip's tail. The selection tint does not show on a bright spectrogram; four variants were
+  drawn on a real screenshot for the owner to choose from.
 
 ## Review
 
