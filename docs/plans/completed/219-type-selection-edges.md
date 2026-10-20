@@ -17,6 +17,11 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
 - The badge input's text fell below its frame, which was the badge's height while the input
   keeps a taller line of its own. The input is extra small and keeps its own height, centred on
   the badge, and the frame holds it.
+- The dialog's fields were see-through, so the dimension lines crossed their text, and a refused
+  value was not marked while its field held the keyboard, because the focus ring covered the
+  border. The fields stand on the dialog's background with their text centred, and a refused
+  field turns its focus ring off (`focus_bordered(false)`) to show the danger border. Checked by
+  running the release build on a second monitor.
 
 ## Review
 

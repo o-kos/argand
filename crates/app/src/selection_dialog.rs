@@ -228,9 +228,13 @@ impl SelectionDialog {
         let input = Input::new(&self.inputs[slot])
             .small()
             .w_full()
+            .text_align(gpui_kit::TextAlign::Center)
             .disabled(!self.checked[slot / 3])
+            // The focus ring would hide the refusal on the very field that holds the keyboard.
             .when(self.marked(slot, cx), |input| {
-                input.border_color(cx.theme().danger)
+                input
+                    .focus_bordered(false)
+                    .border_color(cx.theme().danger)
             });
         div()
             .absolute()
@@ -240,6 +244,9 @@ impl SelectionDialog {
             .h(px(FIELD.1))
             .flex()
             .items_center()
+            // The dimension lines run under the fields, so a field must hide the line it stands on.
+            .bg(cx.theme().background)
+            .rounded(cx.theme().radius)
             .child(input)
     }
 }
