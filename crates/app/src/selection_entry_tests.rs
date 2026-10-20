@@ -222,3 +222,27 @@ fn indexes_beyond_f64_stay_exact_and_inside_the_capture() {
         None
     );
 }
+
+#[test]
+fn a_step_moves_one_field_by_the_last_digit_it_shows() {
+    let selected = span(1_000, 2_000);
+    let seconds = scale(Mode::Seconds);
+    let step = |field, text, steps| seconds.time_step_in(&en(), selected, field, text, steps);
+    assert_eq!(step(Field::TimeStart, "1.000 s", 1), Some(span(1_001, 2_000)));
+    assert_eq!(step(Field::TimeStart, "1.00 s", -1), Some(span(990, 2_000)));
+    assert_eq!(step(Field::TimeEnd, "2.0 s", 10), Some(span(1_000, 3_000)));
+    assert_eq!(step(Field::TimeLength, "1 s", 1), Some(span(1_000, 3_000)));
+    assert_eq!(step(Field::TimeStart, "#1,000", 1), Some(span(1_001, 2_000)));
+    assert_eq!(step(Field::TimeStart, "1 s", 1), None, "a step onto the other edge is refused");
+    assert_eq!(
+        step(Field::TimeEnd, "2.000 s", 100_000),
+        None,
+        "a step past the capture is refused"
+    );
+    let band_scale = scale(Mode::Clock);
+    let selected = band(-100., 100.);
+    let step = |field, text, steps| band_scale.band_step_in(&en(), selected, field, text, steps);
+    assert_eq!(step(Field::BandLow, "-0.100", 1), Some(band(-99., 100.)));
+    assert_eq!(step(Field::BandWidth, "0.20", -1), Some(band(-100., 90.)));
+    assert_eq!(step(Field::BandHigh, "0.1", 5), None);
+}

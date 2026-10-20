@@ -494,6 +494,8 @@ mod tests {
         scale_ui: bool,
         /// Stands in for a hint or a menu lying on the plot.
         cover: Option<Bounds<Pixels>>,
+        /// Takes the selections the plot reports into its snapshot, as the shell does.
+        follow_selection: bool,
         _intents: Option<Subscription>,
     }
 
@@ -522,6 +524,13 @@ mod tests {
                             .occlude(),
                     )
                 })
+        }
+    }
+
+    /// Take a reported selection into the plot's snapshot, as the shell's next frame would.
+    fn follow(plot: &mut PlotView, selection: argand_core::Selection) {
+        if let Some(snapshot) = plot.snapshot.as_mut() {
+            snapshot.selected = selection;
         }
     }
 
@@ -587,8 +596,15 @@ mod tests {
                 plot.snapshot = Some(snapshot());
                 plot
             });
-            let intents = cx.subscribe(&plot, |harness: &mut Harness, _, intent, _| {
-                harness.intents.push(*intent)
+            let intents = cx.subscribe(&plot, |harness: &mut Harness, plot, intent, cx| {
+                harness.intents.push(*intent);
+                let PlotIntent::Select(selection) = intent else {
+                    return;
+                };
+                let selection = selection.unwrap_or_default();
+                if harness.follow_selection {
+                    plot.update(cx, |plot, _| follow(plot, selection));
+                }
             });
             let focus = plot.read(cx).focus.clone();
             window.focus(&focus, cx);
@@ -599,6 +615,7 @@ mod tests {
                 grid: 0,
                 scale_ui: false,
                 cover: None,
+                follow_selection: false,
                 _intents: Some(intents),
             }
         });
@@ -775,6 +792,7 @@ mod tests {
                 grid: 0,
                 scale_ui: false,
                 cover: None,
+                follow_selection: false,
                 _intents: None,
             }
         });
@@ -2027,6 +2045,28 @@ mod tests {
         frame(cx, handle);
         assert_eq!(typing(cx, handle), None);
         assert!(plot_focused(cx, handle), "the plot takes the keyboard back");
+    }
+
+    #[gpui_kit::test]
+    fn up_and_down_step_a_badge_input_and_keep_it_open(cx: &mut TestAppContext) {
+        use crate::selection_entry::Field;
+        let handle = open(cx);
+        cx.update(badge_entry::init);
+        handle
+            .update(cx, |harness, _, _| harness.follow_selection = true)
+            .unwrap();
+        show_badges(cx, handle, 400_000, 600_000);
+        let start = badge(cx, handle, Field::TimeStart);
+        click(cx, handle, start.center(), 2);
+        type_text(cx, handle, "up");
+        assert_eq!(selections(cx, handle), [span(401_000, 600_000)]);
+        assert_eq!(typing(cx, handle), Some(("0.401 s".into(), false)));
+        type_text(cx, handle, "shift-down");
+        assert_eq!(
+            selections(cx, handle),
+            [span(391_000, 600_000)],
+            "ten with Shift"
+        );
     }
 
     #[gpui_kit::test]

@@ -78,6 +78,78 @@ impl Scale {
         self.band_in(crate::numbers::current(), band, field, text)
     }
 
+    /// `span` with the time `field` moved by `steps` of the last digit `text` shows, none past the other edge.
+    pub fn time_step(
+        &self,
+        span: SampleSpan,
+        field: Field,
+        text: &str,
+        steps: i64,
+    ) -> Option<SampleSpan> {
+        self.time_step_in(crate::numbers::current(), span, field, text, steps)
+    }
+
+    /// `band` with the frequency `field` moved by `steps` of the last digit `text` shows, none past the other edge.
+    pub fn band_step(
+        &self,
+        band: FrequencyBand,
+        field: Field,
+        text: &str,
+        steps: i64,
+    ) -> Option<FrequencyBand> {
+        self.band_step_in(crate::numbers::current(), band, field, text, steps)
+    }
+
+    fn time_step_in(
+        &self,
+        numbers: &Numbers,
+        span: SampleSpan,
+        field: Field,
+        text: &str,
+        steps: i64,
+    ) -> Option<SampleSpan> {
+        let text = text.trim();
+        let index = text.starts_with('#') || self.mode.writes_samples(self.rate, self.total);
+        let delta = match index {
+            true => i128::from(steps),
+            false => {
+                let seconds = steps as f64 * 10_f64.powi(-(decimals(numbers, text) as i32));
+                whole(seconds * self.rate)?.abs().max(1) * i128::from(steps.signum())
+            }
+        };
+        let (start, end, total) = (
+            i128::from(span.start()),
+            i128::from(span.end()),
+            i128::from(self.total),
+        );
+        let (start, end) = match field {
+            Field::TimeStart => (start + delta, end),
+            Field::TimeEnd | Field::TimeLength => (start, end + delta),
+            _ => return None,
+        };
+        let inside = 0 <= start && start < end && end <= total;
+        inside.then(|| SampleSpan::between(start as u64, end as u64))?
+    }
+
+    fn band_step_in(
+        &self,
+        numbers: &Numbers,
+        band: FrequencyBand,
+        field: Field,
+        text: &str,
+        steps: i64,
+    ) -> Option<FrequencyBand> {
+        let unit = steps as f64 * 10_f64.powi(-(decimals(numbers, text) as i32)) * self.divisor;
+        let (low, high) = match field {
+            Field::BandLow => (band.low() + unit, band.high()),
+            Field::BandHigh | Field::BandWidth => (band.low(), band.high() + unit),
+            _ => return None,
+        };
+        let (floor, ceiling) = self.band;
+        let inside = floor <= low && low < high && high <= ceiling;
+        inside.then(|| FrequencyBand::between(low, high))?
+    }
+
     fn time_in(
         &self,
         numbers: &Numbers,
@@ -178,6 +250,17 @@ impl Scale {
             _ => None,
         }
     }
+}
+
+/// How many digits `text` shows after its decimal mark, none without one.
+fn decimals(numbers: &Numbers, text: &str) -> usize {
+    text.rsplit_once(numbers.decimal())
+        .map_or(0, |(_, fraction)| {
+            fraction
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || numbers.digits().contains(c))
+                .count()
+        })
 }
 
 /// `samples` rounded to a whole count, saturating far beyond any capture.

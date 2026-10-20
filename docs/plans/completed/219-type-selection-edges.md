@@ -22,6 +22,12 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
   border. The fields stand on the dialog's background with their text centred, and a refused
   field turns its focus ring off (`focus_bordered(false)`) to show the danger border. Checked by
   running the release build on a second monitor.
+- Round of owner requests (2026-10-20). The dialog cannot be dragged with the stock `Dialog`;
+  instead, as the owner chose, it opens where it covers least of the selection. Up and Down step
+  a field by its last shown digit, ten with Shift. The check boxes became segments, Time, Band and
+  Both, on stock buttons. Edge badges on the plot did not show which edge they name, so each gets
+  an extension line along its edge. The dialog's type follows the app's small type. Checked in the
+  release build on a second monitor with keyboard input sent to the window.
 
 ## Review
 

@@ -111,7 +111,7 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
 gpui_kit::actions!(chrome, [CloseWindow]);
 
 pub struct Frame {
-    padding: Edges<Pixels>,
+    pub padding: Edges<Pixels>,
     pub corners: Corners<Pixels>,
     regions: Vec<(ResizeEdge, Bounds<Pixels>)>,
     /// What the resize regions leave of the window, where an overlay may take the pointer.

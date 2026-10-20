@@ -585,7 +585,7 @@ impl Shell {
     }
 
     /// The selection as fractions of the visible picture, none where none of it shows.
-    fn selected(&self) -> Option<waveform::Selected> {
+    pub(super) fn selected(&self) -> Option<waveform::Selected> {
         let view = self.view?;
         let time = match self.selection {
             Some(span) => view.fractions_of(span)?,

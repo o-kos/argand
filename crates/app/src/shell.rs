@@ -108,6 +108,7 @@ struct OpenRecent {
 pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     editing_ui::init(cx);
     badge_entry::init(cx);
+    selection_dialog::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([

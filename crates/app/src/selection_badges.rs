@@ -117,6 +117,14 @@ impl SelectionBadges {
                 height,
             );
             let places = settle(places, &mut taken, layout, frame.plot);
+            let edges = [badges.first, badges.second];
+            for (edge, rect) in edges.into_iter().zip(places).take(2) {
+                if let (Some(edge), Some(rect)) = (edge, rect) {
+                    placed
+                        .lines
+                        .extend(extension(frame.plot, layout, edge, badges.around, rect));
+                }
+            }
             if let Some(extent) = places[2] {
                 let ends = [badges.first.is_some(), badges.second.is_some()];
                 placed
@@ -224,6 +232,42 @@ pub(crate) fn dimension(
         segments,
         arrows,
     }
+}
+
+/// The line a drawing extends an edge with, from the selection to the far side of the badge naming it.
+///
+/// It runs along the edge, across the other axis, and is left out where the
+/// badge was pressed into the selection and stands over it.
+pub(crate) fn extension(
+    plot: Rect,
+    layout: Layout,
+    edge: f64,
+    around: (f64, f64),
+    badge: Rect,
+) -> Option<Dimension> {
+    let (along, length, depth_origin, depth) = match layout.across {
+        true => (plot.x, plot.width, plot.y, plot.height),
+        false => (plot.y, plot.height, plot.x, plot.width),
+    };
+    let (start, end) = match layout.across {
+        true => (badge.y, badge.y + badge.height),
+        false => (badge.x, badge.x + badge.width),
+    };
+    let near = depth_origin + around.0 as f32 * depth;
+    let far = depth_origin + around.1 as f32 * depth;
+    let segment = if start >= far {
+        (far, end)
+    } else if end <= near {
+        (start, near)
+    } else {
+        return None;
+    };
+    Some(Dimension {
+        across: !layout.across,
+        at: along + edge as f32 * length,
+        segments: vec![segment],
+        arrows: Vec::new(),
+    })
 }
 
 impl Dimension {
@@ -546,6 +590,27 @@ mod tests {
         assert_eq!((start.x, start.y), (110., 200.));
         assert_eq!((end.x + end.width, end.y), (310., 200.));
         assert_eq!((length.x, length.y), (190., 24.));
+    }
+
+    #[test]
+    fn an_extension_line_runs_from_the_selection_to_the_far_side_of_its_badge() {
+        let rectangle = Extent {
+            around: (0.25, 0.5),
+            ..spanning(0.25, 0.75)
+        };
+        let [start, _, _] = places(PLOT, Layout::time(false), rectangle, WIDTHS, 16.);
+        let start = start.unwrap();
+        let line = extension(PLOT, Layout::time(false), 0.25, rectangle.around, start).unwrap();
+        assert!(!line.across, "time's edge is extended downwards");
+        assert_eq!(line.at, 110.);
+        assert_eq!(line.segments, [(120., start.y + start.height)]);
+        assert!(line.arrows.is_empty());
+        let over = Rect { y: 80., ..start };
+        assert_eq!(
+            extension(PLOT, Layout::time(false), 0.25, rectangle.around, over),
+            None,
+            "a badge over the selection needs no line"
+        );
     }
 
     #[test]

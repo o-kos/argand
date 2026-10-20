@@ -6,7 +6,16 @@ use crate::selection_entry::Field;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{AnyElement, Focusable as _};
 
-actions!(badge_entry, [CancelBadgeEntry]);
+actions!(
+    badge_entry,
+    [
+        CancelBadgeEntry,
+        StepUp,
+        StepDown,
+        StepUpTenfold,
+        StepDownTenfold
+    ]
+);
 
 /// The input's surroundings, which take the Escape the input passes on.
 const CONTEXT: &str = "BadgeEntry";
@@ -16,6 +25,33 @@ const CARET_ROOM: f32 = 4.;
 
 pub(super) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys([KeyBinding::new("escape", CancelBadgeEntry, Some(CONTEXT))]);
+    step_keys(CONTEXT, cx);
+}
+
+/// Up and Down step a typed value by its last digit, ten of them with Shift, in `context`.
+pub(super) fn step_keys(context: &str, cx: &mut gpui_kit::App) {
+    cx.bind_keys([
+        KeyBinding::new("up", StepUp, Some(context)),
+        KeyBinding::new("down", StepDown, Some(context)),
+        KeyBinding::new("shift-up", StepUpTenfold, Some(context)),
+        KeyBinding::new("shift-down", StepDownTenfold, Some(context)),
+    ]);
+}
+
+/// The listeners turning those keys into a number of steps.
+pub(super) fn on_steps<T: 'static>(
+    element: gpui_kit::Stateful<gpui_kit::Div>,
+    step: impl Fn(&mut T, i64, &mut Window, &mut Context<T>) + Clone + 'static,
+    cx: &mut Context<T>,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
+    let (a, b, c, d) = (step.clone(), step.clone(), step.clone(), step);
+    element
+        .on_action(cx.listener(move |this, _: &StepUp, window, cx| a(this, 1, window, cx)))
+        .on_action(cx.listener(move |this, _: &StepDown, window, cx| b(this, -1, window, cx)))
+        .on_action(cx.listener(move |this, _: &StepUpTenfold, window, cx| c(this, 10, window, cx)))
+        .on_action(
+            cx.listener(move |this, _: &StepDownTenfold, window, cx| d(this, -10, window, cx)),
+        )
 }
 
 /// A standard input standing over one badge.
@@ -139,6 +175,51 @@ impl PlotView {
         }
     }
 
+    /// Step the value by its last digit and show it at once, reading a changed text first as Enter does.
+    fn step_badge(&mut self, steps: i64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(entry) = &mut self.typing else {
+            return;
+        };
+        let text = entry.input.read(cx).value().to_string();
+        let base = match text == entry.opened {
+            true => Some(entry.selection),
+            false => typed(&entry.scale, entry.selection, entry.field, &text),
+        };
+        let Some(mut selection) = base else {
+            entry.refused = Some(text);
+            cx.notify();
+            return;
+        };
+        let (scale, field) = (entry.scale, entry.field);
+        let shown = match field.is_time() {
+            true => {
+                let span = selection
+                    .time
+                    .and_then(|span| scale.time_step(span, field, &text, steps));
+                selection.time = span.or(selection.time);
+                selection.time.map(|span| scale.time_texts(span))
+            }
+            false => {
+                let band = selection
+                    .band
+                    .and_then(|band| scale.band_step(band, field, &text, steps));
+                selection.band = band.or(selection.band);
+                selection.band.map(|band| scale.band_texts(band))
+            }
+        };
+        let Some(shown) = shown.and_then(|texts| texts.into_iter().nth(field.index())) else {
+            return;
+        };
+        entry.selection = selection;
+        entry.opened = shown.clone();
+        entry.refused = None;
+        entry
+            .input
+            .update(cx, |input, cx| input.set_value(shown, window, cx));
+        cx.emit(PlotIntent::Select(Some(selection)));
+        cx.notify();
+    }
+
     /// Close the input unchanged, handing the keyboard back to the plot where a window is given.
     pub(super) fn close_entry(&mut self, window: Option<&mut Window>, cx: &mut Context<Self>) {
         if self.typing.take().is_none() {
@@ -193,8 +274,7 @@ impl PlotView {
             .px(px(axes::BADGE_PAD))
             .w_full();
         Some(
-            div()
-                .id("badge-entry")
+            on_steps(div().id("badge-entry"), Self::step_badge, cx)
                 .key_context(CONTEXT)
                 .on_action(cx.listener(|plot, _: &CancelBadgeEntry, window, cx| {
                     plot.close_entry(Some(window), cx)

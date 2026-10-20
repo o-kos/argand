@@ -1,11 +1,13 @@
 //! Edit → Selection…, every value of the selection typed in a dialog and shown on the plot at once.
 
+use super::badge_entry::on_steps;
 use super::*;
 use crate::selection_entry::{Field, Scale};
 use argand_core::{FrequencyBand, SampleSpan, Selection};
-use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::Focusable as _;
+use gpui_kit::component::button::ButtonGroup;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{Selectable as _, WindowExt as _, h_flex};
 
 /// The fields in the order they are laid out and kept, time's first.
 const FIELDS: [Field; 6] = [
@@ -17,7 +19,14 @@ const FIELDS: [Field; 6] = [
     Field::BandWidth,
 ];
 
-/// Every value of the selection, each axis selected by its check box.
+/// What the dialog selects, in the order of its segments.
+const KINDS: [(&str, &str, [bool; 2]); 3] = [
+    ("select-time", "Time", [true, false]),
+    ("select-band", "Band", [false, true]),
+    ("select-both", "Both", [true, true]),
+];
+
+/// Every value of the selection, the axes it selects chosen by a segment.
 pub(super) struct SelectionDialog {
     shell: WeakEntity<Shell>,
     /// The document it was opened on, which alone it selects in.
@@ -169,13 +178,45 @@ impl SelectionDialog {
         });
     }
 
-    fn check(&mut self, axis: usize, checked: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.checked[axis] = checked;
-        if checked {
+    /// Select the axes a segment names, putting the keyboard in the first field it adds.
+    fn choose(&mut self, checked: [bool; 2], window: &mut Window, cx: &mut Context<Self>) {
+        let added = (0..2).find(|&axis| checked[axis] && !self.checked[axis]);
+        self.checked = checked;
+        if let Some(axis) = added {
             self.focus_field(axis * 3, window, cx);
         }
         self.apply(cx);
         cx.notify();
+    }
+
+    /// Step the field holding the keyboard by its last digit, reading a changed text first.
+    fn step(&mut self, steps: i64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(slot) = self
+            .inputs
+            .iter()
+            .position(|input| input.focus_handle(cx).is_focused(window))
+        else {
+            return;
+        };
+        let field = FIELDS[slot];
+        if !self.commit(field, window, cx) {
+            return;
+        }
+        let text = self.shown[slot].clone();
+        let stepped = match field.is_time() {
+            true => self
+                .scale
+                .time_step(self.time, field, &text, steps)
+                .map(|time| self.time = time),
+            false => self
+                .scale
+                .band_step(self.band, field, &text, steps)
+                .map(|band| self.band = band),
+        };
+        if stepped.is_some() {
+            self.refresh(window, cx);
+            self.apply(cx);
+        }
     }
 
     /// Read every changed field of the checked axes, answering whether all of them were usable.
@@ -209,18 +250,46 @@ impl SelectionDialog {
         });
     }
 
-    /// One axis's check box, named with the unit its fields are written in.
-    fn check_box(&self, axis: usize, cx: &mut Context<Self>) -> Checkbox {
-        let (id, title, unit) = match axis {
-            0 => ("time-axis", "Time", self.scale.mode.caption()),
-            _ => ("band-axis", "Band", self.scale.unit),
-        };
-        Checkbox::new(id)
-            .label(format!("{title}, {unit}"))
-            .checked(self.checked[axis])
-            .on_click(cx.listener(move |dialog, checked: &bool, window, cx| {
-                dialog.check(axis, *checked, window, cx)
-            }))
+    /// The segments choosing time, the band or both, standard buttons in one group.
+    ///
+    /// Each button takes its own click, since the group's handler hears the
+    /// mouse only and a segment chosen from the keyboard would never reach it.
+    fn kinds(&self, cx: &mut Context<Self>) -> ButtonGroup {
+        let current = self.checked;
+        KINDS.iter().fold(
+            ButtonGroup::new("selection-kind").small(),
+            |group, &(id, label, kind)| {
+                group.child(
+                    Button::new(id)
+                        .label(label)
+                        .selected(kind == current)
+                        .on_click(cx.listener(move |dialog, _, window, cx| {
+                            dialog.choose(kind, window, cx)
+                        })),
+                )
+            },
+        )
+    }
+
+    /// A unit caption in the rulers' muted type, centred on `(x, y)`.
+    fn unit(
+        &self,
+        text: &'static str,
+        (x, y): (f32, f32),
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::Div {
+        div()
+            .absolute()
+            .left(px(x - FIELD.0 / 2.))
+            .top(px(y - FIELD.1 / 2.))
+            .w(px(FIELD.0))
+            .h(px(FIELD.1))
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_xs()
+            .text_color(cx.theme().muted_foreground)
+            .child(text)
     }
 
     /// The field of `slot` with its left edge at `x`, centred on `y`.
@@ -247,6 +316,20 @@ impl SelectionDialog {
             .rounded(cx.theme().radius)
             .child(input)
     }
+}
+
+/// The dialog's width, its drawing and the padding either side.
+const WIDTH: f32 = DRAWING.0 + 32.;
+/// About how much the dialog adds to its drawing's height, its title, segments, buttons and padding.
+const CHROME_HEIGHT: f32 = 140.;
+/// The room the dialog keeps from the window's edges where it stands beside the selection.
+const EDGE: f32 = 16.;
+
+/// The dialog's surroundings, where Up and Down step the focused field.
+const CONTEXT: &str = "SelectionDialog";
+
+pub(super) fn init(cx: &mut gpui_kit::App) {
+    super::badge_entry::step_keys(CONTEXT, cx);
 }
 
 /// A field's width and the height it is centred in.
@@ -328,15 +411,21 @@ impl Render for SelectionDialog {
                     .into_iter()
                     .enumerate()
                     .map(|(slot, place)| self.field(slot, place, cx)),
-            );
-        v_flex()
-            .gap_3()
-            .child(
-                h_flex()
-                    .gap_6()
-                    .child(self.check_box(0, cx))
-                    .child(self.check_box(1, cx)),
             )
+            // Each line names its unit where a ruler would, past its end.
+            .child(self.unit(
+                self.scale.mode.caption(),
+                (right + FIELD_GAP + 12., above),
+                cx,
+            ))
+            .child(self.unit(self.scale.unit, (beside, top - FIELD.1 / 2. - 4.), cx));
+        on_steps(div().id("selection-dialog"), Self::step, cx)
+            .key_context(CONTEXT)
+            .text_sm()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(self.kinds(cx))
             .child(drawing)
     }
 }
@@ -387,6 +476,58 @@ fn texts(scale: &Scale, time: SampleSpan, band: FrequencyBand) -> [String; 6] {
 }
 
 impl Shell {
+    /// Where the dialog covers least of the selection, as a shift from its centred place and its top.
+    ///
+    /// It stands at the top as the toolkit puts it, or at the bottom, the left
+    /// or the right, whichever covers the least of the selection shown.
+    fn away_from_selection(&self, window: &mut Window, cx: &gpui_kit::App) -> (Pixels, Pixels) {
+        // The toolkit places a dialog inside the window's frame and keeps its spacing below it.
+        let padding = chrome::Frame::for_window(window).padding;
+        let viewport = window.viewport_size();
+        let view = gpui_kit::size(
+            viewport.width - padding.left - padding.right,
+            viewport.height - padding.top - padding.bottom,
+        );
+        let below = cx.theme().spacing_tokens().lg;
+        let size = gpui_kit::size(px(WIDTH).min(view.width), px(DRAWING.1 + CHROME_HEIGHT));
+        let centred = (view.width - size.width) / 2.;
+        let middle = ((view.height - size.height) / 2.).max(px(0.));
+        let places = [
+            (centred, view.height / 10.),
+            (centred, (view.height - size.height - below).max(px(0.))),
+            (px(EDGE), middle),
+            ((view.width - size.width - px(EDGE)).max(px(0.)), middle),
+        ];
+        let origin = gpui_kit::point(padding.left, padding.top);
+        let selection = self
+            .selected()
+            .zip(self.plot_view())
+            .and_then(|(selected, plot)| {
+                let geometry = plot.read(cx).geometry?;
+                Some(waveform::selected_rect(
+                    geometry.spectrum,
+                    geometry.orientation,
+                    selected,
+                    geometry.scale,
+                ))
+            });
+        let covered = |&(left, top): &(Pixels, Pixels)| {
+            selection.map_or(0., |selection| {
+                let dialog = Bounds::new(origin + gpui_kit::point(left, top), size);
+                let common = dialog.intersect(&selection);
+                f32::from(common.size.width.max(px(0.))) * f32::from(common.size.height.max(px(0.)))
+            })
+        };
+        // The first of equally covering places wins, so with nothing in the way it stays where the toolkit puts it.
+        let (left, top) = places.iter().fold(places[0], |best, place| {
+            match covered(place) < covered(&best) {
+                true => *place,
+                false => best,
+            }
+        });
+        (left - centred, top)
+    }
+
     /// Close Edit → Selection… keeping what it applied, as choosing a file closes the analysis hint.
     pub(super) fn close_selection_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(dialog) = self
@@ -435,6 +576,7 @@ impl Shell {
         if let Some(plot) = self.plot_view() {
             plot.update(cx, |plot, cx| plot.interrupt(cx));
         }
+        let (offset, top) = self.away_from_selection(window, cx);
         let shell = cx.entity();
         let dialog = cx.new(|cx| {
             SelectionDialog::new(&shell, document, scale, opened, (time, band), window, cx)
@@ -446,8 +588,16 @@ impl Shell {
             let cancel = dialog.clone();
             let escape = dialog.clone();
             modal
-                .title("Selection")
-                .w(px(DRAWING.0 + 32.))
+                // The app's surfaces title themselves in its small type, made bold.
+                .title(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .child("Selection"),
+                )
+                .w(px(WIDTH))
+                .margin_top(top)
+                .ml(offset)
                 .close_button(false)
                 .overlay_closable(false)
                 .child(dialog.clone())
@@ -456,13 +606,13 @@ impl Shell {
                         .w_full()
                         .justify_end()
                         .gap_2()
-                        .child(Button::new("cancel").label("Cancel").on_click(
+                        .child(Button::new("cancel").small().label("Cancel").on_click(
                             move |_, window, cx| {
                                 cancel.update(cx, |dialog, cx| dialog.cancel(cx));
                                 window.close_dialog(cx);
                             },
                         ))
-                        .child(Button::new("ok").primary().label("OK").on_click(
+                        .child(Button::new("ok").small().primary().label("OK").on_click(
                             move |_, window, cx| {
                                 if ok.update(cx, |dialog, cx| dialog.confirm(window, cx)) {
                                     window.close_dialog(cx);
@@ -599,6 +749,23 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn up_and_down_step_the_focused_field_by_its_last_digit(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        open_dialog(cx, &shell);
+        keys(cx, "up");
+        assert_eq!(selected(cx, &shell).time, span(101, 200));
+        keys(cx, "shift-down");
+        assert_eq!(selected(cx, &shell).time, span(91, 200), "ten with Shift");
+        keys(cx, "secondary-a 1 2 0 up");
+        assert_eq!(
+            selected(cx, &shell).time,
+            span(121, 200),
+            "a changed text is read before the step"
+        );
+    }
+
+    #[gpui_kit::test]
     fn escape_restores_the_selection_the_dialog_opened_on(cx: &mut TestAppContext) {
         let (shell, cx) = open(cx);
         shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
@@ -628,7 +795,7 @@ mod tests {
         let (shell, cx) = open(cx);
         open_dialog(cx, &shell);
         assert_eq!(selected(cx, &shell), Selection::default());
-        cx.update(|window, cx| window.click("band-axis", cx));
+        cx.update(|window, cx| window.click("select-band", cx));
         settle(cx);
         let band = selected(cx, &shell).band.expect("a band");
         assert_eq!(

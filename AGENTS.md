@@ -467,7 +467,9 @@ them, and the badge stands beside the selection away from the other axis's exten
 (`Layout::narrow_before`): time's before its start, a band's below it, or before it with
 frequency running right, and on the other side without room there. A hidden edge has no badge;
 badges stay inside the plot, painted over the grid and under the zoom pairs and the Alt guides,
-and take only a left press (see "Typing a selection (#219)"). The status bar shows no selection.
+and take only a left press (see "Typing a selection (#219)"). Each edge's badge is tied to its
+edge by an extension line along it, from the selection to the badge's far side
+(`selection_badges::extension`). The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
@@ -511,11 +513,18 @@ unchanged, unchanged text applies nothing, and a selection changed elsewhere clo
 
 Edit → Selection… (`EditSelection`, Ctrl+E or Cmd+E in the `Plot` context, enabled while a
 capture is described) opens `SelectionDialog` (`selection_dialog.rs`) in the stock `Dialog`
-through `Root`: a `Checkbox` per axis named with its unit, and a drawing of the selection as the
-badges show it, as the owner asked, with the six `Input`s placed around it, the start and end
-under it, the length on a dimension line above, the low and high edges at its left and the
-width on a dimension line at its right (`paint_dimension`). An unchecked axis is not selected,
-its line is muted and its disabled fields hold the visible range. It applies live
+through `Root`: standard `Button`s in a `ButtonGroup` choosing Time, Band or Both (each button
+takes its own click, since the group's handler hears the mouse only), and a drawing of the
+selection as the badges show it, as the owner asked, with the six `Input`s placed around it,
+the start and end under it, the length on a dimension line above, the low and high edges at its
+left and the width on a dimension line at its right (`paint_dimension`), each line naming its
+unit past its end. An axis not chosen is not selected, its line is muted and its disabled fields
+hold the visible range. Up and Down step the focused field, here and in the badge input, by one
+of the last digit it shows, ten with Shift, and a sample index by one sample
+(`Scale::time_step`, `Scale::band_step`); a changed text is read first. The dialog does not
+move, but opens where it covers least of the selection, at the top, the bottom, the left or the
+right (`Shell::away_from_selection`), in the toolkit's frame coordinates. Its title, segments
+and buttons are in the app's small type. It applies live
 through `Shell::select`: a field whose text changed is read on Enter or blur, a check box at
 once, and every other field is written again from the result. OK and Enter read the changed
 fields and stay open while one is refused; Cancel and Escape restore the selection it opened
