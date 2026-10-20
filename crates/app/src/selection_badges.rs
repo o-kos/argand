@@ -243,10 +243,11 @@ pub(crate) fn dimension(
     }
 }
 
-/// A triangle between an edge's badge and the selection, its tip on that edge, in panel coordinates.
+/// A triangle between an edge's badge and the selection, in panel coordinates.
 ///
-/// Its base stands on the badge, centred on the edge, so it points at the edge
-/// the badge names. A badge pressed over the selection has none.
+/// Its base stands on the badge, starting at the edge and running into the
+/// badge, so the pointers of two edges meeting at a corner stay apart. A badge
+/// pressed over the selection has none.
 pub(crate) fn pointer(
     plot: Rect,
     layout: Layout,
@@ -258,9 +259,15 @@ pub(crate) fn pointer(
         true => (plot.x, plot.width, plot.y, plot.height),
         false => (plot.y, plot.height, plot.x, plot.width),
     };
-    let (start, end) = match layout.across {
-        true => (badge.y, badge.y + badge.height),
-        false => (badge.x, badge.x + badge.width),
+    let ((start, end), (from, to)) = match layout.across {
+        true => (
+            (badge.y, badge.y + badge.height),
+            (badge.x, badge.x + badge.width),
+        ),
+        false => (
+            (badge.x, badge.x + badge.width),
+            (badge.y, badge.y + badge.height),
+        ),
     };
     let near = depth_origin + around.0 as f32 * depth;
     let far = depth_origin + around.1 as f32 * depth;
@@ -271,35 +278,35 @@ pub(crate) fn pointer(
     } else {
         return None;
     };
-    let at = along + edge as f32 * length;
+    let edge = along + edge as f32 * length;
+    // The badge runs from its edge towards the other, and so does the triangle's base.
+    let middle = match (from + to) / 2. >= edge {
+        true => edge + POINTER_HALF,
+        false => edge - POINTER_HALF,
+    };
     let point = |along: f32, depth: f32| match layout.across {
         true => (along, depth),
         false => (depth, along),
     };
     Some([
-        point(at, tip),
-        point(at - POINTER_HALF, side),
-        point(at + POINTER_HALF, side),
+        point(middle, tip),
+        point(middle - POINTER_HALF, side),
+        point(middle + POINTER_HALF, side),
     ])
 }
 
-/// Paint a pointer in the badge's ink inside a ring of its paper.
+/// Paint a pointer, a plain triangle in the badge's ink.
 fn paint_pointer(
     points: &[(f32, f32); 3],
     panel: Point<Pixels>,
-    [ink, paper]: [Hsla; 2],
+    [ink, _]: [Hsla; 2],
     window: &mut Window,
 ) {
     let screen = |(x, y): (f32, f32)| panel + point(px(x), px(y));
-    for (color, width) in [(paper, 2.), (ink, 0.)] {
-        let mut path = gpui_kit::PathBuilder::stroke(px(width));
-        if width == 0. {
-            path = gpui_kit::PathBuilder::fill();
-        }
-        path.add_polygon(&points.map(screen), true);
-        if let Ok(path) = path.build() {
-            window.paint_path(path, color);
-        }
+    let mut path = gpui_kit::PathBuilder::fill();
+    path.add_polygon(&points.map(screen), true);
+    if let Ok(path) = path.build() {
+        window.paint_path(path, ink);
     }
 }
 
@@ -641,15 +648,15 @@ mod tests {
         let tip = pointer(PLOT, Layout::time(false), 0.25, rectangle.around, start).unwrap();
         assert_eq!(
             tip,
-            [
-                (110., 120.),
-                (110. - POINTER_HALF, start.y),
-                (110. + POINTER_HALF, start.y)
-            ],
-            "a triangle centred on the edge, its tip on the selection"
+            [(114., 120.), (110., start.y), (118., start.y)],
+            "a plain triangle from the edge into the start's badge, its tip on the selection"
         );
         let tip = pointer(PLOT, Layout::time(false), 0.75, rectangle.around, end).unwrap();
-        assert_eq!(tip[0], (310., 120.), "the end's own edge");
+        assert_eq!(
+            tip[2],
+            (310., end.y),
+            "into the end's badge, which runs back from its edge"
+        );
         let over = Rect { y: 80., ..start };
         assert_eq!(
             pointer(PLOT, Layout::time(false), 0.25, rectangle.around, over),

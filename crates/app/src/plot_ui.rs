@@ -623,7 +623,7 @@ impl Marks {
         window: &mut Window,
         cx: &mut gpui_kit::App,
     ) {
-        paint_selection(frame, panel.origin, self.selection, window);
+        paint_selection(frame, panel.origin, self.selection, window, cx);
         axes::paint(frame, panel.origin, labels, self.colors, window, cx);
         badges.paint(frame, panel.origin, labels, self.badge_colors, window, cx);
         if let Some(guides) = &self.guides {
@@ -632,15 +632,15 @@ impl Marks {
     }
 }
 
-/// Dim the picture outside the selection, given as fractions of the visible picture, under the grid.
+/// Dim the picture outside the selection and tint it inside, given as fractions of the visible picture, under the grid.
 ///
-/// The selection keeps the picture's own colours, which a tint over it would
-/// not show on a bright picture.
+/// The dimming shows the selection on a bright picture, the tint on a dark one.
 fn paint_selection(
     frame: &axes::Frame,
     spectrum_origin: gpui_kit::Point<Pixels>,
     selection: Option<waveform::Selected>,
     window: &mut Window,
+    cx: &gpui_kit::App,
 ) {
     let Some(selected) = selection else {
         return;
@@ -650,6 +650,7 @@ fn paint_selection(
     for part in waveform::outside(rect, plot) {
         window.paint_quad(gpui_kit::fill(part, OUTSIDE_SELECTION));
     }
+    window.paint_quad(gpui_kit::fill(rect, selection_fill(cx)));
 }
 
 /// The shade over the picture outside a selection, dark because the owner chose dimming over tinting.
@@ -660,7 +661,7 @@ const OUTSIDE_SELECTION: gpui_kit::Hsla = gpui_kit::Hsla {
     a: 0.55,
 };
 
-/// The tint laid over the selected time on the minimap, light because the picture under it is dark in either theme.
+/// The tint laid over the selection, light because the picture under it is dark in either theme.
 fn selection_fill(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     cx.theme().blue_light.opacity(0.3)
 }

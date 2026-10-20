@@ -433,9 +433,9 @@ forgotten on blur and in `end_gestures`; while it is held the spectrum shows an
 open hand, and a selection in progress keeps the crosshair. Shell keeps `selection`, clears it when a
 file opens and never persists it; navigation and orientation changes keep it.
 The snapshot carries it as view fractions (`View::fractions_of`); the spectrum
-dims the picture outside it under the grid, black at 0.55, leaving the selection in its own
-colours (`waveform::outside`, #219, the owner's variant C, since a tint did not show on a bright
-picture), and the minimap tints it with `blue_light` at 0.3 (`waveform::time_band`, at least one
+dims the picture outside it under the grid, black at 0.55 (`waveform::outside`, #219, the
+owner's variant C), which shows it on a bright picture, and tints it with `blue_light` at 0.3,
+which shows it on a dark one; the minimap only tints it (`waveform::time_band`, at least one
 device pixel wide).
 
 ## Selection on the plot (#183)
@@ -470,9 +470,10 @@ them, and the badge stands beside the selection away from the other axis's exten
 frequency running right, and on the other side without room there. A hidden edge has no badge;
 badges stay inside the plot, painted over the grid and under the zoom pairs and the Alt guides,
 and take only a left press (see "Typing a selection (#219)"). Each edge's badge stands a little
-farther from the selection (`EDGE_GAP`) and points at its edge with a small symmetric triangle in
-its own ink, its base on the badge centred on the edge and its tip on the selection
-(`selection_badges::pointer`), as the owner chose. The status bar shows no selection.
+farther from the selection (`EDGE_GAP`) and points at its edge with a plain triangle in its own
+ink, its base on the badge from the edge into the badge and its tip on the selection, so two
+edges meeting at a corner keep their triangles apart (`selection_badges::pointer`), as the owner
+chose. The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical

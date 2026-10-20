@@ -42,7 +42,9 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
   that one was marked `selected`. The pointers became symmetric triangles rather than a
   tooltip's tail. The selection tint does not show on a bright spectrogram; four variants were
   drawn on a real screenshot for the owner to choose from. The owner first chose D, an outline over a white veil, then C: the
-  picture outside the selection is dimmed and the selection keeps its own colours.
+  picture outside the selection is dimmed. Dimming alone left a selection on a dark picture
+  unseen, so the tint inside stays as well. The pointers of two edges meeting at a corner merged
+  into one odd shape, so each is now a plain triangle running from its edge into its badge.
 
 ## Review
 
