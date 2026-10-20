@@ -467,9 +467,10 @@ them, and the badge stands beside the selection away from the other axis's exten
 (`Layout::narrow_before`): time's before its start, a band's below it, or before it with
 frequency running right, and on the other side without room there. A hidden edge has no badge;
 badges stay inside the plot, painted over the grid and under the zoom pairs and the Alt guides,
-and take only a left press (see "Typing a selection (#219)"). Each edge's badge is tied to its
-edge by an extension line along it, from the selection to the badge's far side
-(`selection_badges::extension`). The status bar shows no selection.
+and take only a left press (see "Typing a selection (#219)"). Each edge's badge stands a little
+farther from the selection (`EDGE_GAP`) and points at its edge with a small triangle in its own
+ink, one side running along the edge to the selection's corner (`selection_badges::pointer`),
+as the owner chose. The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
