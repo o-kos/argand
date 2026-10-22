@@ -45,6 +45,15 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
   picture outside the selection is dimmed. Dimming alone left a selection on a dark picture
   unseen, so the tint inside stays as well. The pointers of two edges meeting at a corner merged
   into one odd shape, so each is now a plain triangle running from its edge into its badge.
+- Next round (2026-10-22): the triangles were a separate shape cut from their badge by its paper
+  ring, so each badge and its tail are now one shape in one ring, one side of the tail running
+  along the edge from the badge's squared corner and the ring's tip ending on the selection. A
+  badge input stood taller than its badge and touched the selection, so a badge pressed against
+  the selection stands one logical pixel beyond the input's reach. At the owner's request the
+  selection panel's edge fields point at their edges with the same tails, the fields framed by
+  the panel in the input's own colours, made opaque over the panel so the frame and tail do not
+  show twice where they overlap. The panel did not follow the orientation, so with the plot
+  turned it sides its values as the turned plot's badges.
 
 ## Review
 

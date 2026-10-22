@@ -470,10 +470,12 @@ them, and the badge stands beside the selection away from the other axis's exten
 frequency running right, and on the other side without room there. A hidden edge has no badge;
 badges stay inside the plot, painted over the grid and under the zoom pairs and the Alt guides,
 and take only a left press (see "Typing a selection (#219)"). Each edge's badge stands a little
-farther from the selection (`EDGE_GAP`) and points at its edge with a plain triangle in its own
-ink, its base on the badge from the edge into the badge and its tip on the selection, so two
-edges meeting at a corner keep their triangles apart (`selection_badges::pointer`), as the owner
-chose. The status bar shows no selection.
+farther from the selection (`EDGE_GAP`) and points at its edge with a tail drawn as one shape with
+it, inside one paper ring: one side of the tail runs along the edge from the badge's corner there,
+squared, to the selection, its base runs from the edge into the badge, and the ring's tip ends on
+the selection, so two edges meeting at a corner keep their tails apart (`selection_badges::pointer`). A badge pressed against the
+selection stands far enough from it that the badge input opened over it keeps one logical pixel
+clear (`Extent::clear`, from `badge_entry::entry_size`). The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
@@ -531,7 +533,12 @@ the anchor, so the panel hangs below its trigger where the analysis hint stands 
 The panel draws the selection as the badges show it, with the six `Input`s placed around it, the
 start and end under it, the length on a dimension line above, the low and high edges at its left
 and the width on a dimension line at its right (`paint_dimension`), each line naming its unit
-past its end, in the hint's own look and type. An axis not selected shows the visible range
+past its end, in the hint's own look and type. With the plot turned (`Drawing::vertical`) it sides them as the turned plot's
+badges: the start and end left of it, the length on a dimension line at its right with the time
+unit above, the low and high edges above it and the width on a dimension line below. Each field is the standard `Input` with `appearance(false)` in a frame
+the drawing paints (`axes::callout`), so the four edge fields point at their edges with the
+plot badges' tails, the frame in the input's own colours, the ring colour while it holds the
+keyboard and the danger colour while it is refused. An axis not selected shows the visible range
 muted, and a value typed there selects it. It applies live through `Shell::select`: a field whose
 text changed is read on Enter or blur, and every other field is written again from the result,
 except one holding the keyboard that is already typed in, since a field's blur arrives after the

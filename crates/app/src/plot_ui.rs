@@ -205,7 +205,9 @@ impl PlotView {
                 {
                     defer_layout(view.clone(), bounds, measured, geometry, frame.gutter, cx);
                 }
-                let placed = badges.place(&frame, &labels, bounds.origin + point(dx, dy), cx);
+                let entry = badge_entry::entry_size(f32::from(window.rem_size()));
+                let placed =
+                    badges.place(&frame, &labels, entry, bounds.origin + point(dx, dy), cx);
                 Some((frame, labels, height, placed))
             },
             move |bounds, prepainted, window, cx| {
@@ -1044,13 +1046,14 @@ impl BadgeLayout {
         &self,
         frame: &axes::Frame,
         labels: &axes::Labels,
+        entry: (f32, f32),
         panel: gpui_kit::Point<Pixels>,
         cx: &mut gpui_kit::App,
     ) -> axes::PlacedBadges {
         let mut placed = self
             .badges
             .as_ref()
-            .map(|badges| badges.place(frame, labels))
+            .map(|badges| badges.place(frame, labels, entry))
             .unwrap_or_default();
         let rects: Vec<_> = placed
             .badges

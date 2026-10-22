@@ -26,6 +26,7 @@ pub use cursor_guides::{BadgeMetrics, CursorGuides, frequency_unit};
 #[path = "selection_badges.rs"]
 mod selection_badges;
 pub use selection_badges::{AxisBadges, PlacedBadges, SelectionBadges};
+pub(crate) use selection_badges::{RING as CALLOUT_RING, callout, tail};
 
 /// Room between a label and whatever it labels.
 const LABEL_PAD: f32 = 9.0;

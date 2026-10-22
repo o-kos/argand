@@ -23,6 +23,13 @@ const CONTEXT: &str = "BadgeEntry";
 /// Room past the badge's text for the caret after its last character.
 const CARET_ROOM: f32 = 4.;
 
+/// The width the input adds to its badge and its height, which the badges keep clear of the selection.
+///
+/// The stock extra-small input is 1.25 rem high, and its frame adds a pixel on each side.
+pub(super) fn entry_size(rem: f32) -> (f32, f32) {
+    (CARET_ROOM, 1.25 * rem + 2.)
+}
+
 pub(super) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys([KeyBinding::new("escape", CancelBadgeEntry, Some(CONTEXT))]);
     step_keys(CONTEXT, cx);

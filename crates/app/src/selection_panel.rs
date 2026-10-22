@@ -271,36 +271,45 @@ impl SelectionPanel {
     }
 
     /// The selection drawn with its fields around it and its dimension lines.
-    fn drawing(&self, cx: &mut Context<Self>) -> gpui_kit::Div {
-        let (left, top, width, height) = AREA;
-        let (right, bottom) = (left + width, top + height);
-        let above = top - LINE_GAP;
-        // The width's line runs through its field, which stands clear right of the area.
-        let beside = right + FIELD_GAP + FIELD.0 / 2.;
+    fn drawing(&self, window: &Window, cx: &mut Context<Self>) -> gpui_kit::Div {
+        let vertical = self
+            .shell
+            .upgrade()
+            .is_some_and(|shell| shell.read(cx).session.orientation.vertical());
+        let drawing = Drawing::new(vertical);
+        let (left, top, width, height) = drawing.area;
         let ink = |checked: bool| match checked {
             true => cx.theme().foreground,
             false => cx.theme().muted_foreground.opacity(0.5),
         };
-        let lines = [
-            ((left, above), (right, above), ink(self.checked[0])),
-            ((beside, top), (beside, bottom), ink(self.checked[1])),
-        ];
-        let below = bottom + FIELD_GAP + FIELD.1 / 2.;
-        let beside_area = left - FIELD_GAP - FIELD.0;
-        let places = [
-            // Start and end under the area's edges, the length on its line above.
-            (left, below),
-            (right - FIELD.0, below),
-            ((left + right - FIELD.0) / 2., above),
-            // Low and high beside the area's bottom and top, the width on its line at the right.
-            (beside_area, bottom - FIELD.1 / 2.),
-            (beside_area, top + FIELD.1 / 2.),
-            (beside - FIELD.0 / 2., (top + bottom) / 2.),
-        ];
+        let lines = [0, 1].map(|axis| {
+            let (from, to) = drawing.lines[axis];
+            (from, to, ink(self.checked[axis]))
+        });
+        let radius = (f32::from(cx.theme().radius) - RING).max(0.);
+        let frames: Vec<_> = drawing
+            .places
+            .iter()
+            .zip(drawing.tails)
+            .enumerate()
+            .map(|(slot, (&(x, y), tail))| {
+                let rect = axes::Rect {
+                    x: x + RING,
+                    y: y - FIELD.1 / 2. + RING,
+                    width: FIELD.0 - 2. * RING,
+                    height: FIELD.1 - 2. * RING,
+                };
+                let tail = tail.map(|tail| {
+                    let base = tail.edge + tail.towards * TAIL_BASE;
+                    axes::tail(tail.across, tail.edge, tail.side, tail.tip, base, radius)
+                });
+                (rect, tail, self.frame_colors(slot, window, cx))
+            })
+            .collect();
         div()
             .relative()
-            .w(px(DRAWING.0))
-            .h(px(DRAWING.1))
+            .w(px(drawing.size.0))
+            .h(px(drawing.size.1))
             .child(
                 div()
                     .absolute()
@@ -317,24 +326,31 @@ impl SelectionPanel {
                         for (from, to, color) in lines {
                             paint_dimension(bounds.origin, from, to, color, window);
                         }
+                        // The frames cover the lines they stand on.
+                        for (rect, tail, colors) in &frames {
+                            axes::callout(
+                                *rect,
+                                radius,
+                                tail.as_ref(),
+                                bounds.origin,
+                                *colors,
+                                window,
+                            );
+                        }
                     },
                 )
                 .absolute()
                 .size_full(),
             )
             .children(
-                places
+                drawing
+                    .places
                     .into_iter()
                     .enumerate()
                     .map(|(slot, place)| self.field(slot, place, cx)),
             )
-            // Each line names its unit where a ruler would, past its end.
-            .child(self.unit(
-                self.scale.mode.caption(),
-                (right + FIELD_GAP + 12., above),
-                cx,
-            ))
-            .child(self.unit(self.scale.unit, (beside, top - FIELD.1 / 2. - 4.), cx))
+            .child(self.unit(self.scale.mode.caption(), drawing.units[0], cx))
+            .child(self.unit(self.scale.unit, drawing.units[1], cx))
     }
 
     /// A unit caption in the rulers' muted type, centred on `(x, y)`.
@@ -358,19 +374,39 @@ impl SelectionPanel {
             .child(text)
     }
 
+    /// The fill and the frame of the field of `slot`, the input's own, in the danger colour while it is refused.
+    fn frame_colors(
+        &self,
+        slot: usize,
+        window: &Window,
+        cx: &gpui_kit::App,
+    ) -> [gpui_kit::Hsla; 2] {
+        let frame = if self.marked(slot, cx) {
+            cx.theme().danger
+        } else if self.inputs[slot].focus_handle(cx).is_focused(window) {
+            cx.theme().ring
+        } else {
+            cx.theme().input
+        };
+        // Laid over the panel's own surface, since the frame and its tail overlap and a translucent colour would show it twice.
+        let sheet = crate::theme::sheet(cx);
+        [
+            sheet.blend(cx.theme().input_background()),
+            sheet.blend(frame),
+        ]
+    }
+
     /// The field of `slot` with its left edge at `x`, centred on `y`.
     fn field(&self, slot: usize, (x, y): (f32, f32), cx: &mut Context<Self>) -> gpui_kit::Div {
+        // The drawing frames it, so that the frame and the tail are one shape.
         let input = Input::new(&self.inputs[slot])
             .small()
+            .appearance(false)
             .w_full()
             .text_align(gpui_kit::TextAlign::Center)
             // An axis not selected shows the visible range muted, and a value typed there selects it.
             .when(!self.checked[slot / 3], |input| {
                 input.text_color(cx.theme().muted_foreground)
-            })
-            // The focus ring would hide the refusal on the very field that holds the keyboard.
-            .when(self.marked(slot, cx), |input| {
-                input.focus_bordered(false).border_color(cx.theme().danger)
             });
         div()
             .absolute()
@@ -380,9 +416,6 @@ impl SelectionPanel {
             .h(px(FIELD.1))
             .flex()
             .items_center()
-            // The dimension lines run under the fields, so a field must hide the line it stands on.
-            .bg(crate::theme::sheet(cx))
-            .rounded(cx.theme().radius)
             .child(input)
     }
 }
@@ -403,17 +436,151 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
 
 /// A field's width and the height it is centred in.
 const FIELD: (f32, f32) = (104., 24.);
-/// The selection drawn in the panel, as left, top, width and height.
-const AREA: (f32, f32, f32, f32) = (124., 44., 220., 104.);
-/// How far the length's line stands above the area.
+/// The width of an edge field's tail where it leaves the field.
+const TAIL_BASE: f32 = 8.;
+/// The width of a field's frame.
+const RING: f32 = axes::CALLOUT_RING;
+/// The size of the selection drawn in the panel, as width and height.
+const AREA: (f32, f32) = (220., 104.);
+/// Room left of the area for the fields beside it.
+const LEFT: f32 = FIELD.0 + FIELD_GAP + 12.;
+/// How far a dimension line stands from the area.
 const LINE_GAP: f32 = 24.;
 /// Room between the area and the fields beside and under it.
 const FIELD_GAP: f32 = 8.;
-/// The drawing's whole size.
-const DRAWING: (f32, f32) = (
-    AREA.0 + AREA.2 + FIELD_GAP + FIELD.0,
-    AREA.1 + AREA.3 + FIELD_GAP + FIELD.1,
-);
+
+/// Where the panel draws the selection, its fields, their tails, the dimension lines and the units.
+///
+/// It sides the values as the plot's badges are sided: time's edges below
+/// the selection and its length above, a band's edges left and its width
+/// right, or with the plot turned, time's edges left and its length right, a
+/// band's edges above and its width below.
+#[derive(Debug, Clone, PartialEq)]
+struct Drawing {
+    /// The selection as left, top, width and height.
+    area: (f32, f32, f32, f32),
+    size: (f32, f32),
+    /// Each field's left edge and the height it is centred on, in `FIELDS` order.
+    places: [(f32, f32); 6],
+    tails: [Option<TailPlace>; 6],
+    /// The length's and the width's dimension lines.
+    lines: [((f32, f32), (f32, f32)); 2],
+    /// Where the time and the frequency units are centred.
+    units: [(f32, f32); 2],
+}
+
+/// An edge field's tail as `axes::tail` takes it, with the way its base runs from the edge.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TailPlace {
+    across: bool,
+    edge: f32,
+    side: f32,
+    tip: f32,
+    towards: f32,
+}
+
+fn tail_place(across: bool, edge: f32, side: f32, tip: f32, towards: f32) -> Option<TailPlace> {
+    Some(TailPlace {
+        across,
+        edge,
+        side,
+        tip,
+        towards,
+    })
+}
+
+impl Drawing {
+    fn new(vertical: bool) -> Self {
+        match vertical {
+            false => Self::horizontal(),
+            true => Self::vertical(),
+        }
+    }
+
+    fn horizontal() -> Self {
+        let (left, top) = (LEFT, LINE_GAP + FIELD.1 - 4.);
+        let (right, bottom) = (left + AREA.0, top + AREA.1);
+        let above = top - LINE_GAP;
+        // The width's line runs through its field, which stands clear right of the area.
+        let beside = right + FIELD_GAP + FIELD.0 / 2.;
+        let below = bottom + FIELD_GAP + FIELD.1 / 2.;
+        let beside_area = left - FIELD_GAP - FIELD.0;
+        let (under, past_left) = (bottom + FIELD_GAP + RING, left - FIELD_GAP - RING);
+        Self {
+            area: (left, top, AREA.0, AREA.1),
+            size: (right + FIELD_GAP + FIELD.0, bottom + FIELD_GAP + FIELD.1),
+            places: [
+                // Start and end under the area's edges, the length on its line above.
+                (left, below),
+                (right - FIELD.0, below),
+                ((left + right - FIELD.0) / 2., above),
+                // Low and high beside the area's bottom and top, the width on its line at the right.
+                (beside_area, bottom - FIELD.1 / 2.),
+                (beside_area, top + FIELD.1 / 2.),
+                (beside - FIELD.0 / 2., (top + bottom) / 2.),
+            ],
+            tails: [
+                tail_place(true, left + RING, under, bottom, 1.),
+                tail_place(true, right - RING, under, bottom, -1.),
+                None,
+                tail_place(false, bottom - RING, past_left, left, -1.),
+                tail_place(false, top + RING, past_left, left, 1.),
+                None,
+            ],
+            lines: [
+                ((left, above), (right, above)),
+                ((beside, top), (beside, bottom)),
+            ],
+            // Each line names its unit where a ruler would, past its end.
+            units: [
+                (right + FIELD_GAP + 12., above),
+                (beside, top - FIELD.1 / 2. - 4.),
+            ],
+        }
+    }
+
+    fn vertical() -> Self {
+        let (left, top) = (LEFT, FIELD.1 + FIELD_GAP + 4.);
+        let (right, bottom) = (left + AREA.0, top + AREA.1);
+        // The length's line runs through its field, which stands clear right of the area.
+        let beside = right + FIELD_GAP + FIELD.0 / 2.;
+        let below = bottom + LINE_GAP;
+        let beside_area = left - FIELD_GAP - FIELD.0;
+        let above = top - FIELD_GAP - FIELD.1 / 2.;
+        let (over, past_left) = (top - FIELD_GAP - RING, left - FIELD_GAP - RING);
+        Self {
+            area: (left, top, AREA.0, AREA.1),
+            size: (right + FIELD_GAP + FIELD.0, below + FIELD.1 / 2. + 4.),
+            places: [
+                // Start and end beside the area's top and bottom, the length on its line at the right.
+                (beside_area, top + FIELD.1 / 2.),
+                (beside_area, bottom - FIELD.1 / 2.),
+                (beside - FIELD.0 / 2., (top + bottom) / 2.),
+                // Low and high over the area's left and right edges, the width on its line below.
+                (left, above),
+                (right - FIELD.0, above),
+                ((left + right - FIELD.0) / 2., below),
+            ],
+            tails: [
+                tail_place(false, top + RING, past_left, left, 1.),
+                tail_place(false, bottom - RING, past_left, left, -1.),
+                None,
+                tail_place(true, left + RING, over, top, 1.),
+                tail_place(true, right - RING, over, top, -1.),
+                None,
+            ],
+            lines: [
+                ((beside, top), (beside, bottom)),
+                ((left, below), (right, below)),
+            ],
+            // Time's unit stands at the top, as on the turned plot's ruler, frequency's past the width's end.
+            units: [
+                (beside, top - FIELD.1 / 2. - 4.),
+                (right + FIELD_GAP + 12., below),
+            ],
+        }
+    }
+}
 
 impl Render for SelectionPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -425,7 +592,7 @@ impl Render for SelectionPanel {
                 dialog.update(cx, |dialog, cx| dialog.focus_first(window, cx))
             });
         }
-        let drawing = self.drawing(cx);
+        let drawing = self.drawing(window, cx);
         // Enter keeps the values and closes the panel, but only once every changed field reads.
         let confirm = cx.listener(|panel: &mut Self, _: &Confirm, window, cx| {
             if panel.confirm(window, cx) {
@@ -659,6 +826,50 @@ mod tests {
     use gpui_kit::TestAppContext;
     use gpui_kit::test::TestWindowExt;
     use std::path::PathBuf;
+
+    #[test]
+    fn the_panel_sides_its_values_as_the_plot_does_in_either_orientation() {
+        for vertical in [false, true] {
+            let drawing = Drawing::new(vertical);
+            let (left, top, width, height) = drawing.area;
+            let (right, bottom) = (left + width, top + height);
+            let [start, end, length, low, high, band] = drawing.places;
+            let centre = |(x, _): (f32, f32)| x + FIELD.0 / 2.;
+            match vertical {
+                false => {
+                    assert!(start.1 > bottom && end.1 > bottom, "time's edges below");
+                    assert!(length.1 < top, "its length above");
+                    assert!(
+                        centre(low) < left && centre(high) < left,
+                        "the band's edges left"
+                    );
+                    assert!(band.0 > right, "its width right");
+                }
+                true => {
+                    assert!(
+                        centre(start) < left && centre(end) < left,
+                        "time's edges left"
+                    );
+                    assert!(
+                        start.1 < end.1,
+                        "the start above the end, as time runs down"
+                    );
+                    assert!(length.0 > right, "its length right");
+                    assert!(low.1 < top && high.1 < top, "the band's edges above");
+                    assert!(low.0 < high.0, "low left of high, as frequency runs right");
+                    assert!(band.1 > bottom, "its width below");
+                }
+            }
+            for (slot, tail) in drawing.tails.iter().enumerate() {
+                assert_eq!(tail.is_some(), slot % 3 != 2, "only the edges have tails");
+            }
+            let (along, across) = drawing.size;
+            for &(x, y) in &drawing.places {
+                assert!(x >= 0. && x + FIELD.0 <= along, "inside the drawing");
+                assert!(y - FIELD.1 / 2. >= 0. && y + FIELD.1 / 2. <= across);
+            }
+        }
+    }
 
     /// A shell under the toolkit's root, which the popover layer needs, with a described capture.
     fn open(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
