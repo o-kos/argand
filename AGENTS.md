@@ -433,8 +433,10 @@ forgotten on blur and in `end_gestures`; while it is held the spectrum shows an
 open hand, and a selection in progress keeps the crosshair. Shell keeps `selection`, clears it when a
 file opens and never persists it; navigation and orientation changes keep it.
 The snapshot carries it as view fractions (`View::fractions_of`); the spectrum
-and the minimap tint it with `blue_light` at 0.3 under the grid
-(`waveform::time_band`, at least one device pixel wide).
+dims the picture outside it under the grid, black at 0.55 (`waveform::outside`, #219, the
+owner's variant C), which shows it on a bright picture, and tints it with `blue_light` at 0.3,
+which shows it on a dark one; the minimap only tints it (`waveform::time_band`, at least one
+device pixel wide).
 
 ## Selection on the plot (#183)
 
@@ -466,8 +468,14 @@ not fit between the edges, the arrowheads stand outside them pointing in, the li
 them, and the badge stands beside the selection away from the other axis's extent
 (`Layout::narrow_before`): time's before its start, a band's below it, or before it with
 frequency running right, and on the other side without room there. A hidden edge has no badge;
-badges stay inside the plot and take no input, painted over the grid and under the zoom pairs
-and the Alt guides. The status bar shows no selection.
+badges stay inside the plot, painted over the grid and under the zoom pairs and the Alt guides,
+and take only a left press (see "Typing a selection (#219)"). Each edge's badge stands a little
+farther from the selection (`EDGE_GAP`) and points at its edge with a tail drawn as one shape with
+it, inside one paper ring: one side of the tail runs along the edge from the badge's corner there,
+squared, to the selection, its base runs from the edge into the badge, and the ring's tip ends on
+the selection, so two edges meeting at a corner keep their tails apart (`selection_badges::pointer`). A badge pressed against the
+selection stands far enough from it that the badge input opened over it keeps one logical pixel
+clear (`Extent::clear`, from `badge_entry::entry_size`). The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
@@ -483,6 +491,73 @@ pointer and keeps dragging it. The pointer shows the resize cursor across the gr
 a diagonal at a corner, an open hand inside and a closed hand while moving
 (`selection_gestures::grab_cursor`, `PlotView::hover_cursor`). Space and the middle button
 still pan everywhere.
+
+## Typing a selection (#219)
+
+`selection_entry.rs` (toolkit-neutral) writes and reads a selection's six values
+(`Field::{TimeStart, TimeEnd, TimeLength, BandLow, BandHigh, BandWidth}`) against a `Scale`
+the shell gives (`Shell::entry_scale`), which the badges' own texts come from too, so the badges,
+the badge input and the dialog show one value alike: time in the ruler's mode to one pixel of the
+visible time, frequency in the ruler's unit to one row, numbers through the numeric locale. A
+text left unchanged is never read again, so its rounding moves no edge. A clock
+takes one to three colon fields, seconds an optional `s`, frequency an optional unit name, and
+a leading `#` is a sample index in every mode, the end naming the last sample; where the mode
+writes indexes (`Mode::writes_samples`) a plain number is one. Times round to whole samples,
+values are held to the capture, edges swap like a drag past each other, a length or width moves
+the end or high edge, and an equal edge or a text that does not parse gives nothing.
+
+The badge layout is `SelectionBadges::place`, run in the canvas's prepaint; each badge carries
+its `Field` and `BadgeLayout` hands the rectangles to `PlotView::place_badges`. A left press on a
+badge (`PlotView::badge_at`) starts no gesture and the pointer is an arrow there; a double click
+opens a `BadgeEntry` (`badge_entry.rs`), an extra-small stock `Input` with `appearance(false)` in
+the badge's type and padding, keeping its own height centred on the badge in a frame as wide as
+the badge with room for the caret, a sibling of the plot
+surface so no `Plot` binding matches while it holds the keyboard, and the badge under it is not
+painted. Enter applies it as `PlotIntent::Select` or marks the text it refuses in the danger
+colour, Escape (the `BadgeEntry` context, since the input passes it on) and blur close it
+unchanged, unchanged text applies nothing, and a selection changed elsewhere closes it.
+
+The selection panel (`selection_panel.rs`), which replaced a modal dialog at the owner's
+request, is a `PinnedHint` hanging under three title-bar segments right of Grid, Time, Band and
+Both (`app_menu_ui::selection_segments`, toolbar-styled `Button`s in a `ButtonGroup` with the
+Lucide `move-horizontal`, `move-vertical` and `square-dashed` artwork, the arrows running along
+the axis they select as the plot turns). The segment of the kind selected is lit; a segment of
+another kind selects it, taking a missing axis from the visible range, and opens the panel, and
+the lit one toggles the panel (`Shell::choose_selection_kind`). Each segment takes its own click,
+since a `ButtonGroup`'s handler hears the mouse only. Ctrl+E (Cmd+E, `EditSelection`, in the
+`Plot` context and in the panel's own, where it closes the panel as Enter does) and Edit → Selection panel toggle it too; with nothing selected they open it on
+time and band, both from the visible range. The lit segment is `selected`, as the orientation
+segment in force is, so both groups light alike. `hints::pinned` takes the trigger and
+the anchor, so the panel hangs below its trigger where the analysis hint stands above its own.
+
+The panel draws the selection as the badges show it, with the six `Input`s placed around it, the
+start and end under it, the length on a dimension line above, the low and high edges at its left
+and the width on a dimension line at its right (`paint_dimension`), each line naming its unit
+past its end, in the hint's own look and type. With the plot turned (`Drawing::vertical`) it sides them as the turned plot's
+badges: the start and end left of it, the length on a dimension line at its right with the time
+unit above, the low and high edges above it and the width on a dimension line below. Each field is the standard `Input` with `appearance(false)` in a frame
+the drawing paints (`axes::callout`), so the four edge fields point at their edges with the
+plot badges' tails, the frame in the input's own colours, the ring colour while it holds the
+keyboard and the danger colour while it is refused. An axis not selected shows the visible range
+muted, and a value typed there selects it. It applies live through `Shell::select`: a field whose
+text changed is read on Enter or blur, and every other field is written again from the result,
+except one holding the keyboard that is already typed in, since a field's blur arrives after the
+next one took the keyboard. Tab and Shift+Tab go round its six fields, bound in its own context
+(`NextField`, `PreviousField`) because the window's Tab would walk out of it.
+Up and Down step the focused field, here and in the badge input, by one of the last digit it
+shows, ten with Shift, and a sample index by one sample (`Scale::time_step`,
+`Scale::band_step`); a changed text is read first. It closes as the analysis hint does, which the
+owner chose over a live plot: its backdrop freezes the plot and a press outside closes it keeping
+the selection, and so do the title bar, the frame's edges and the application menu
+(`Shell::close_hints`). Opening it closes the analysis hint and opening that closes it, keeping the values, so only one
+frozen backdrop stands at a time. A press on the title bar that closed it does not reopen it from the lit
+segment (`Shell::press_closed_selection`). `SelectionPanel::follow` still takes up a selection
+changed while it is open. Enter keeps the values and closes it once every changed field reads,
+since the panel handles `Confirm` before the popover; Escape restores the selection as it stood before the
+panel or its segment changed it (`Shell::selection_opening`). Ctrl+O closes it keeping the selection
+(`Shell::close_selection_hint`), and it selects only in the document it opened on, closing when
+another one opens. A badge input that loses the keyboard to nothing, as when the window is left,
+hands it back to the plot. A typed selection is an ordinary selection, never an edit.
 
 ## Band and rectangle selection (#202)
 

@@ -173,6 +173,25 @@ pub fn selected_rect(
     }
 }
 
+/// The parts of `plot` outside a selected `rect`, the bands above and below it and the sides beside it.
+pub fn outside(rect: Bounds<Pixels>, plot: Bounds<Pixels>) -> Vec<Bounds<Pixels>> {
+    let (left, right) = (rect.left().max(plot.left()), rect.right().min(plot.right()));
+    let (top, bottom) = (rect.top().max(plot.top()), rect.bottom().min(plot.bottom()));
+    let parts = [
+        Bounds::from_corners(plot.origin, point(plot.right(), top)),
+        Bounds::from_corners(
+            point(plot.left(), bottom),
+            point(plot.right(), plot.bottom()),
+        ),
+        Bounds::from_corners(point(plot.left(), top), point(left, bottom)),
+        Bounds::from_corners(point(right, top), point(plot.right(), bottom)),
+    ];
+    parts
+        .into_iter()
+        .filter(|part| part.size.width > px(0.) && part.size.height > px(0.))
+        .collect()
+}
+
 #[derive(Clone)]
 pub struct Panel {
     pub waveform: Option<Arc<Waveform>>,
@@ -226,6 +245,31 @@ impl Panel {
 mod tests {
     use super::*;
     use crate::orientation::Mode;
+
+    #[test]
+    fn everything_outside_the_selection_is_dimmed_once() {
+        let plot = Bounds::new(point(px(0.), px(0.)), size(px(100.), px(50.)));
+        let band = Bounds::new(point(px(0.), px(10.)), size(px(100.), px(20.)));
+        assert_eq!(
+            outside(band, plot),
+            [
+                Bounds::new(point(px(0.), px(0.)), size(px(100.), px(10.))),
+                Bounds::new(point(px(0.), px(30.)), size(px(100.), px(20.)))
+            ],
+            "a band across the whole view leaves the rows above and below"
+        );
+        let inside = Bounds::new(point(px(10.), px(10.)), size(px(20.), px(20.)));
+        let parts = outside(inside, plot);
+        let area: f32 = parts
+            .iter()
+            .map(|part| f32::from(part.size.width) * f32::from(part.size.height))
+            .sum();
+        assert_eq!(
+            area,
+            100. * 50. - 20. * 20.,
+            "the parts tile the rest of the plot"
+        );
+    }
 
     #[test]
     fn a_rectangle_covers_its_time_and_its_band_in_both_orientations() {

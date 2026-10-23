@@ -5,9 +5,20 @@
 //! visible selection on the other side.
 
 use super::*;
+use crate::selection_entry::Field;
 
 /// Room between a badge and the plot's edge it stands on.
 const MARGIN: f32 = 4.;
+/// How far an edge's badge stands from the selection, room for the pointer reaching it.
+const EDGE_GAP: f32 = MARGIN + 6.;
+/// The width of a pointer's base at its badge.
+const POINTER_BASE: f32 = 8.;
+/// The shortest tail worth drawing, from the badge to the tip.
+const SHORTEST_TAIL: f32 = 2.;
+/// The paper ring around a badge and its pointer.
+pub(crate) const RING: f32 = 1.;
+/// The gap an input typed over a badge keeps from the selection.
+const ENTRY_GAP: f32 = 1.;
 /// The least gap the far edge's badge keeps from the near edge's badge it is pushed past.
 const GAP: f32 = 2.;
 /// The badge's corner radius, as the Alt badges have it.
@@ -37,6 +48,8 @@ pub struct SelectionBadges {
 pub struct AxisBadges {
     /// The first edge, the second edge and the extent.
     pub texts: [String; 3],
+    /// The values those texts show.
+    pub fields: [Field; 3],
     /// The first edge, none when it is not shown.
     pub first: Option<f64>,
     pub second: Option<f64>,
@@ -79,21 +92,26 @@ impl Layout {
     }
 }
 
+/// Where a selection's badges and dimension lines go, in panel coordinates.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PlacedBadges {
+    /// Each shown badge with the value it holds.
+    pub badges: Vec<(Field, String, Rect)>,
+    lines: Vec<Dimension>,
+    /// The tails by which edge badges point at the edges they name, with the badge each belongs to.
+    pointers: Vec<(Field, [(f32, f32); 4])>,
+}
+
 impl SelectionBadges {
-    pub fn paint(
-        &self,
-        frame: &Frame,
-        panel: Point<Pixels>,
-        labels: &Labels,
-        colors: [Hsla; 2],
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    /// Settle every badge in the plot, time's first, and the dimension lines through the extents.
+    ///
+    /// `entry` is the width an input typed over a badge adds to it and the
+    /// input's own height, which a badge pressed against the selection keeps clear of it.
+    pub fn place(&self, frame: &Frame, labels: &Labels, entry: (f32, f32)) -> PlacedBadges {
         let height = labels.digit_height(LABEL_SIZE) + 2. * BADGE_PAD;
         let width = |text: &String| labels.width(text, LABEL_SIZE).ceil() + 2. * BADGE_PAD;
         let vertical = frame.orientation.vertical();
-        let mut shown: Vec<(&str, Rect)> = Vec::new();
-        let mut lines: Vec<Dimension> = Vec::new();
+        let mut placed = PlacedBadges::default();
         let mut taken: Vec<Rect> = Vec::new();
         let axes = [
             (&self.time, Layout::time(vertical)),
@@ -109,33 +127,66 @@ impl SelectionBadges {
                     visible: badges.visible,
                     around: badges.around,
                     alone: badges.alone,
+                    clear: clearance(layout, entry, height),
                 },
                 badges.texts.each_ref().map(width),
                 height,
             );
             let places = settle(places, &mut taken, layout, frame.plot);
+            let edges = [badges.first, badges.second];
+            for ((edge, rect), field) in edges.into_iter().zip(places).zip(badges.fields) {
+                if let (Some(edge), Some(rect)) = (edge, rect) {
+                    placed.pointers.extend(
+                        pointer(frame.plot, layout, edge, badges.around, rect)
+                            .map(|tail| (field, tail)),
+                    );
+                }
+            }
             if let Some(extent) = places[2] {
                 let ends = [badges.first.is_some(), badges.second.is_some()];
-                lines.push(dimension(frame.plot, layout, badges.visible, ends, extent));
+                placed
+                    .lines
+                    .push(dimension(frame.plot, layout, badges.visible, ends, extent));
             }
-            shown.extend(
+            placed.badges.extend(
                 badges
-                    .texts
-                    .iter()
+                    .fields
+                    .into_iter()
+                    .zip(badges.texts.iter().cloned())
                     .zip(places)
-                    .filter_map(|(text, rect)| Some((text.as_str(), rect?))),
+                    .filter_map(|((field, text), rect)| Some((field, text, rect?))),
             );
         }
+        placed
+    }
+}
+
+impl PlacedBadges {
+    /// Paint the lines and the badges.
+    pub fn paint(
+        &self,
+        frame: &Frame,
+        panel: Point<Pixels>,
+        labels: &Labels,
+        colors: [Hsla; 2],
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let clip = Bounds::new(
             panel + point(px(frame.plot.x), px(frame.plot.y)),
             size(px(frame.plot.width), px(frame.plot.height)),
         );
         window.with_content_mask(Some(gpui_kit::ContentMask { bounds: clip }), |window| {
-            for line in &lines {
+            for line in &self.lines {
                 line.paint(panel, colors, window);
             }
-            for (text, rect) in &shown {
-                badge(text, *rect, panel, labels, colors, window, cx);
+            for (field, text, rect) in &self.badges {
+                let tail = self
+                    .pointers
+                    .iter()
+                    .find(|(of, _)| of == field)
+                    .map(|(_, tail)| tail);
+                badge(text, (*rect, tail), panel, labels, colors, window, cx);
             }
         });
     }
@@ -205,6 +256,185 @@ pub(crate) fn dimension(
     }
 }
 
+/// The tail by which an edge's badge points at its edge, in panel coordinates.
+///
+/// One side runs along the edge itself from the badge to the selection, and
+/// the base runs from the edge into the badge, so the pointers of two edges
+/// meeting at a corner stay apart. The tail reaches back over the badge's
+/// corner at the edge, squaring it, and its tip stands back from the selection
+/// by as much as the paper ring around it reaches past it. A badge pressed over
+/// the selection has none.
+pub(crate) fn pointer(
+    plot: Rect,
+    layout: Layout,
+    edge: f64,
+    around: (f64, f64),
+    badge: Rect,
+) -> Option<[(f32, f32); 4]> {
+    let (along, length, depth_origin, depth) = match layout.across {
+        true => (plot.x, plot.width, plot.y, plot.height),
+        false => (plot.y, plot.height, plot.x, plot.width),
+    };
+    let ((start, end), (from, to)) = match layout.across {
+        true => (
+            (badge.y, badge.y + badge.height),
+            (badge.x, badge.x + badge.width),
+        ),
+        false => (
+            (badge.x, badge.x + badge.width),
+            (badge.y, badge.y + badge.height),
+        ),
+    };
+    let near = depth_origin + around.0 as f32 * depth;
+    let far = depth_origin + around.1 as f32 * depth;
+    let (side, tip) = if start >= far {
+        (start, far)
+    } else if end <= near {
+        (end, near)
+    } else {
+        return None;
+    };
+    let edge = along + edge as f32 * length;
+    // The badge runs from its edge towards the other, and so does the base.
+    let base = match (from + to) / 2. >= edge {
+        true => edge + POINTER_BASE,
+        false => edge - POINTER_BASE,
+    };
+    tail(layout.across, edge, side, tip, base, RADIUS)
+}
+
+/// A tail from a shape's side at `side` to `tip`, one side running along `edge` and the base to `base`.
+///
+/// Coordinates are along and across the edge, which runs across the screen
+/// when `across` holds. The tail reaches back over the shape's corner of
+/// `radius` at the edge, squaring it, and its tip stands back by as much as
+/// the ring around it reaches past it.
+/// None where the room is too short for a tail to show.
+pub(crate) fn tail(
+    across: bool,
+    edge: f32,
+    side: f32,
+    tip: f32,
+    base: f32,
+    radius: f32,
+) -> Option<[(f32, f32); 4]> {
+    let reach = (tip - side).abs();
+    let inset = tip_inset(reach, (base - edge).abs());
+    let length = reach - inset;
+    // A reach so short that the inset comes out negative or not at all leaves none.
+    if length.is_nan() || length < SHORTEST_TAIL {
+        return None;
+    }
+    let towards = (tip - side).signum();
+    let tip = tip - towards * inset;
+    let corner = side - towards * radius;
+    let point = |along: f32, depth: f32| match across {
+        true => (along, depth),
+        false => (depth, along),
+    };
+    Some([
+        point(edge, corner),
+        point(edge, tip),
+        point(base, side),
+        point(base, corner),
+    ])
+}
+
+/// How far a tail `reach` long on a base `base` wide stands back so that the ring around its tip ends where it points.
+fn tip_inset(reach: f32, base: f32) -> f32 {
+    // The ring's tip lies RING / tan(half the tip's angle) beyond the tail's own.
+    (0..4).fold(0., |inset: f32, _| {
+        let half = (base / (reach - inset)).atan() / 2.;
+        RING / half.tan()
+    })
+}
+
+/// A convex polygon with every side moved `by` outward.
+fn grown(points: &[(f32, f32)], by: f32) -> Vec<(f32, f32)> {
+    // A corner of no radius leaves two points in one place, which make no side.
+    let mut points: Vec<(f32, f32)> = points.to_vec();
+    points.dedup();
+    if points.len() > 1 && points.first() == points.last() {
+        points.pop();
+    }
+    let count = points.len();
+    if count < 3 {
+        return points;
+    }
+    let n = count as f32;
+    let centre = points
+        .iter()
+        .fold((0., 0.), |(x, y), p| (x + p.0 / n, y + p.1 / n));
+    // Each side as a point on it and its direction, moved outward.
+    let sides: Vec<((f32, f32), (f32, f32))> = (0..count)
+        .map(|index| {
+            let (a, b) = (points[index], points[(index + 1) % count]);
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let length = dx.hypot(dy);
+            let (ux, uy) = (dx / length, dy / length);
+            let outward = match uy * (centre.0 - a.0) - ux * (centre.1 - a.1) > 0. {
+                true => -1.,
+                false => 1.,
+            };
+            ((a.0 + uy * by * outward, a.1 - ux * by * outward), (ux, uy))
+        })
+        .collect();
+    let cross = |a: (f32, f32), b: (f32, f32)| a.0 * b.1 - a.1 * b.0;
+    (0..count)
+        .map(|index| {
+            let (p, u) = sides[(index + count - 1) % count];
+            let (q, v) = sides[index];
+            let t = cross((q.0 - p.0, q.1 - p.1), v) / cross(u, v);
+            (p.0 + t * u.0, p.1 + t * u.1)
+        })
+        .collect()
+}
+
+/// Fill `rect` of corner `radius` and its `tail` with `fill` inside a ring of `ring` around both.
+///
+/// The ring goes under the whole shape first, so none falls between the badge and its tail.
+pub(crate) fn callout(
+    rect: Rect,
+    radius: f32,
+    tail: Option<&[(f32, f32); 4]>,
+    panel: Point<Pixels>,
+    [fill_color, ring]: [Hsla; 2],
+    window: &mut Window,
+) {
+    let origin = panel + point(px(rect.x), px(rect.y));
+    let outer = Bounds::new(
+        origin - point(px(RING), px(RING)),
+        size(px(rect.width + 2. * RING), px(rect.height + 2. * RING)),
+    );
+    window.paint_quad(fill(outer, ring).corner_radii(px(radius + RING)));
+    if let Some(tail) = tail {
+        fill_polygon(&grown(tail, RING), panel, ring, window);
+    }
+    window.paint_quad(
+        fill(
+            Bounds::new(origin, size(px(rect.width), px(rect.height))),
+            fill_color,
+        )
+        .corner_radii(px(radius)),
+    );
+    if let Some(tail) = tail {
+        fill_polygon(tail, panel, fill_color, window);
+    }
+}
+
+/// Fill a polygon given in panel coordinates.
+fn fill_polygon(points: &[(f32, f32)], panel: Point<Pixels>, color: Hsla, window: &mut Window) {
+    let screen: Vec<_> = points
+        .iter()
+        .map(|&(x, y)| panel + point(px(x), px(y)))
+        .collect();
+    let mut path = gpui_kit::PathBuilder::fill();
+    path.add_polygon(&screen, true);
+    if let Ok(path) = path.build() {
+        window.paint_path(path, color);
+    }
+}
+
 impl Dimension {
     /// A paper stroke around an ink core, as the Alt guides are drawn, and filled arrowheads.
     fn paint(&self, panel: Point<Pixels>, [ink, paper]: [Hsla; 2], window: &mut Window) {
@@ -240,9 +470,10 @@ impl Dimension {
     }
 }
 
+/// A badge and its tail as one shape.
 fn badge(
     text: &str,
-    rect: Rect,
+    (rect, tail): (Rect, Option<&[(f32, f32); 4]>),
     panel: Point<Pixels>,
     labels: &Labels,
     [ink, paper]: [Hsla; 2],
@@ -250,18 +481,7 @@ fn badge(
     cx: &mut App,
 ) {
     let origin = panel + point(px(rect.x), px(rect.y));
-    let ring = Bounds::new(
-        origin - point(px(1.), px(1.)),
-        size(px(rect.width + 2.), px(rect.height + 2.)),
-    );
-    window.paint_quad(fill(ring, paper).corner_radii(px(RADIUS + 1.)));
-    window.paint_quad(
-        fill(
-            Bounds::new(origin, size(px(rect.width), px(rect.height))),
-            ink,
-        )
-        .corner_radii(px(RADIUS)),
-    );
+    callout(rect, RADIUS, tail, panel, [ink, paper], window);
     let shaped = labels.shape(text, paper);
     let top = labels.line_top(rect.height / 2., &shaped);
     let left = (px(rect.width) - shaped.width) / 2.;
@@ -286,6 +506,19 @@ pub(crate) struct Extent {
     pub around: (f64, f64),
     /// Whether no other axis is selected, so crowded edge badges turn outward rather than give way.
     pub alone: bool,
+    /// How far a badge pressed against the selection stands from it.
+    pub clear: f32,
+}
+
+/// How far a badge `height` high stands from the selection along `layout` so the input `entry` over it keeps clear.
+///
+/// The input is centred on its badge, wider by `entry.0` and `entry.1` high.
+fn clearance(layout: Layout, (wider, high): (f32, f32), height: f32) -> f32 {
+    let past = match layout.across {
+        true => (high - height) / 2.,
+        false => wider / 2.,
+    };
+    (past + ENTRY_GAP).max(MARGIN)
 }
 
 /// Edge badges past their edges, the first before it and the second after it, kept apart and inside `length`.
@@ -366,6 +599,18 @@ pub(crate) fn clear_of(rect: Rect, taken: &[Rect], layout: Layout, plot: Rect) -
         })
 }
 
+/// Where a badge `thick` deep stands beyond the selection on its far side or its near one, across the axis.
+///
+/// It is pressed back inside the plot as far from its edge as from the
+/// selection, so the input typed over it stays inside too.
+fn beyond_selection(extent: Extent, depth: f32, thick: f32, far: bool) -> f32 {
+    let (from, to) = (extent.clear, depth - extent.clear - thick);
+    match far {
+        true => (extent.around.1 as f32 * depth + extent.clear).min(to),
+        false => (extent.around.0 as f32 * depth - extent.clear - thick).max(from),
+    }
+}
+
 /// Whether an extent badge `badge` long and its arrowheads fit between edges `length` apart.
 fn fits_between(length: f32, badge: f32) -> bool {
     length >= badge + 2. * (ARROW_LENGTH + LINE_GAP)
@@ -433,15 +678,12 @@ pub(crate) fn places(
     };
     let middle = fits(2).then(|| clamp(middle, 2));
     // Beyond the selection on the far side or the near one, pressed back inside the plot.
-    let beyond = |index: usize, far: bool| match far {
-        true => (extent.around.1 as f32 * depth + MARGIN).min(depth - MARGIN - thick(index)),
-        false => (extent.around.0 as f32 * depth - MARGIN - thick(index)).max(MARGIN),
-    };
+    let beyond = |index: usize, far: bool| beyond_selection(extent, depth, thick(index), far);
     let extent_at = beyond(2, !layout.edges_far);
     let edge_at = |index: usize| -> (f32, bool) {
         let wanted = match layout.edges_far {
-            true => extent.around.1 as f32 * depth + MARGIN,
-            false => extent.around.0 as f32 * depth - MARGIN - thick(index),
+            true => extent.around.1 as f32 * depth + EDGE_GAP,
+            false => extent.around.0 as f32 * depth - EDGE_GAP - thick(index),
         };
         if (MARGIN..=depth - MARGIN - thick(index)).contains(&wanted) {
             return (wanted, false);
@@ -514,7 +756,71 @@ mod tests {
             visible: (from, to),
             around: (0., 1.),
             alone: false,
+            clear: MARGIN,
         }
+    }
+
+    #[test]
+    fn a_badge_pressed_against_the_plot_s_edge_keeps_its_input_inside() {
+        let clear = clearance(Layout::time(false), (4., 22.), 14.);
+        let whole = Extent {
+            clear,
+            ..spanning(0.25, 0.75)
+        };
+        let [_, _, length] = places(PLOT, Layout::time(false), whole, WIDTHS, 14.);
+        let length = length.unwrap();
+        assert_eq!(
+            length.y,
+            20. + clear,
+            "as far from the plot's top as from a selection"
+        );
+        let input_top = length.y - (22. - 14.) / 2.;
+        assert_eq!(input_top, 20. + ENTRY_GAP, "the input a pixel inside");
+    }
+
+    #[test]
+    fn a_tail_without_room_is_left_out_and_a_square_corner_grows_cleanly() {
+        assert_eq!(
+            tail(true, 10., 20.5, 20., 18., RADIUS),
+            None,
+            "half a pixel of room"
+        );
+        assert_eq!(
+            tail(true, 10., 22., 20., 18., RADIUS),
+            None,
+            "less than its ring needs"
+        );
+        let square = tail(true, 10., 30., 20., 18., 0.).unwrap();
+        let ring = grown(&square, RING);
+        assert_eq!(ring.len(), 3, "a corner of no radius leaves a triangle");
+        assert!(
+            ring.iter().all(|(x, y)| x.is_finite() && y.is_finite()),
+            "{ring:?}"
+        );
+        assert!((ring.iter().map(|p| p.1).fold(f32::MAX, f32::min) - 20.).abs() < 0.05);
+    }
+
+    #[test]
+    fn a_badge_against_the_selection_keeps_its_input_a_pixel_clear() {
+        let across = clearance(Layout::time(false), (4., 22.), 14.);
+        assert_eq!(
+            across,
+            4. + ENTRY_GAP,
+            "half the input's extra height and a pixel"
+        );
+        let beside = clearance(Layout::time(true), (4., 22.), 14.);
+        assert_eq!(beside, MARGIN, "the caret's room is within the margin");
+        let rectangle = Extent {
+            around: (0.25, 0.5),
+            clear: across,
+            ..spanning(0.25, 0.75)
+        };
+        let [_, _, length] = places(PLOT, Layout::time(false), rectangle, WIDTHS, 14.);
+        assert_eq!(
+            length.unwrap().y + 14. + 4.,
+            20. + 50. - ENTRY_GAP,
+            "above it"
+        );
     }
 
     #[test]
@@ -525,6 +831,55 @@ mod tests {
         assert_eq!((start.x, start.y), (110., 200.));
         assert_eq!((end.x + end.width, end.y), (310., 200.));
         assert_eq!((length.x, length.y), (190., 24.));
+    }
+
+    #[test]
+    fn a_pointer_stands_on_its_badge_with_its_tip_on_the_edge() {
+        let rectangle = Extent {
+            around: (0.25, 0.5),
+            ..spanning(0.25, 0.75)
+        };
+        let [start, end, _] = places(PLOT, Layout::time(false), rectangle, WIDTHS, 16.);
+        let (start, end) = (start.unwrap(), end.unwrap());
+        assert_eq!(
+            start.y,
+            20. + 100. + EDGE_GAP,
+            "room for the pointer below the selection"
+        );
+        let tail = pointer(PLOT, Layout::time(false), 0.25, rectangle.around, start).unwrap();
+        let inset = tip_inset(EDGE_GAP, POINTER_BASE);
+        assert_eq!(
+            tail,
+            [
+                (110., start.y + RADIUS),
+                (110., 120. + inset),
+                (118., start.y),
+                (118., start.y + RADIUS)
+            ],
+            "along the edge from the badge's squared corner to the selection, its base into the badge"
+        );
+        let ring = grown(&tail, RING);
+        assert!(
+            (ring[1].0 - (110. - RING)).abs() < 1e-3 && (ring[1].1 - 120.).abs() < 0.05,
+            "the ring follows the edge one pixel out and its tip ends on the selection: {:?}",
+            ring[1]
+        );
+        assert!(
+            (ring[0].0 - (110. - RING)).abs() < 1e-3,
+            "the ring's square corner meets the badge's ring"
+        );
+        let tail = pointer(PLOT, Layout::time(false), 0.75, rectangle.around, end).unwrap();
+        assert_eq!(
+            tail[2],
+            (302., end.y),
+            "into the end's badge, which runs back from its edge"
+        );
+        let over = Rect { y: 80., ..start };
+        assert_eq!(
+            pointer(PLOT, Layout::time(false), 0.25, rectangle.around, over),
+            None,
+            "a badge over the selection points at nothing"
+        );
     }
 
     #[test]
@@ -678,12 +1033,12 @@ mod tests {
         let [start, _, length] = places(PLOT, Layout::time(false), extent, WIDTHS, 16.);
         assert_eq!(
             start.unwrap().y,
-            20. + 150. + MARGIN,
-            "just under the rectangle"
+            20. + 150. + EDGE_GAP,
+            "under the rectangle, with room for its pointer"
         );
         assert_eq!(length.unwrap().y, 20. + 50. - MARGIN - 16., "just over it");
         let [high, _, width] = places(PLOT, Layout::band(false), extent, WIDTHS, 16.);
-        assert_eq!(high.unwrap().x, 10. + 100. - MARGIN - 60., "left of it");
+        assert_eq!(high.unwrap().x, 10. + 100. - EDGE_GAP - 60., "left of it");
         assert_eq!(width.unwrap().x, 10. + 300. + MARGIN, "right of it");
     }
 

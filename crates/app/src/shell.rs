@@ -39,6 +39,8 @@ mod shortcuts;
 
 #[path = "backdrop.rs"]
 mod backdrop;
+#[path = "badge_entry.rs"]
+mod badge_entry;
 
 #[path = "disk_change_ui.rs"]
 mod disk_change_ui;
@@ -60,6 +62,8 @@ mod replace_ui;
 mod saving_ui;
 #[path = "selection_gestures.rs"]
 mod selection_gestures;
+#[path = "selection_panel.rs"]
+mod selection_panel;
 #[path = "settings_ui.rs"]
 mod settings_ui;
 #[path = "suppression_ui.rs"]
@@ -103,6 +107,8 @@ struct OpenRecent {
 /// The window's own keys, which a headless test registers as the window does.
 pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     editing_ui::init(cx);
+    badge_entry::init(cx);
+    selection_panel::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([
@@ -379,6 +385,12 @@ struct Shell {
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
     /// What the analysis hint opened with, which Escape restores.
     hint_opening: Option<HintOpening>,
+    /// The selection panel under the toolbar's selection segments.
+    selection_hint: gpui_kit::Entity<hints::PinnedHint>,
+    /// The selection the panel opened with, which Escape restores.
+    selection_opening: Option<argand_core::Selection>,
+    /// The press on the title bar under way closed the selection panel.
+    press_closed_selection: bool,
     ready_status_dismissed: bool,
     /// Whether the mouse has moved in the window since it last left it.
     pointer_in_window: bool,
@@ -466,6 +478,7 @@ struct Shell {
     _appearance: Subscription,
     _keystrokes: Subscription,
     _pinned: Subscription,
+    _selection_pinned: Subscription,
 }
 
 impl Shell {
@@ -508,6 +521,14 @@ impl Shell {
             )
         });
         let pinned = cx.subscribe(&analysis_hint, Self::analysis_hint_changed);
+        let panel_owner = cx.entity().downgrade();
+        let selection_hint = cx.new(|cx| {
+            hints::PinnedHint::new(
+                move |window, cx| selection_panel::selection_panel(panel_owner.clone(), window, cx),
+                cx,
+            )
+        });
+        let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
         let closing = cx.entity().downgrade();
         // A close with unsaved edits is refused here and carried out once the question is answered.
         window.on_window_should_close(cx, move |window, cx| {
@@ -521,6 +542,9 @@ impl Shell {
             settings,
             analysis_hint,
             hint_opening: None,
+            selection_hint,
+            selection_opening: None,
+            press_closed_selection: false,
             ready_status_dismissed: false,
             pointer_in_window: false,
             settings_error: None,
@@ -568,6 +592,7 @@ impl Shell {
             _appearance: appearance,
             _keystrokes: keystrokes,
             _pinned: pinned,
+            _selection_pinned: selection_pinned,
         }
     }
 
@@ -635,7 +660,7 @@ impl Shell {
     fn edge_pressed(shell: WeakEntity<Self>) -> impl Fn(&mut Window, &mut gpui_kit::App) {
         move |window, cx| {
             let _ = shell.update(cx, |shell, cx| {
-                shell.close_analysis_hint(cx);
+                shell.close_hints(cx);
                 shell.dismiss_application_menu(window, cx);
             });
         }
@@ -694,7 +719,7 @@ impl Shell {
             return;
         }
         self.dismiss_application_menu(window, cx);
-        self.close_analysis_hint(cx);
+        self.close_hints(cx);
         // The old plot goes with its document, so focus must not stay on it.
         window.focus(&self.focus, cx);
         self.settings.dynamic_range = self.config.dynamic_range;
@@ -1258,7 +1283,7 @@ impl Shell {
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dismiss_application_menu(window, cx);
-        self.close_analysis_hint(cx);
+        self.close_hints(cx);
         // The release happens over the dialog, so nothing held now may stay pressed.
         self.interrupt_plot(cx);
         window.focus(&self.focus_target(cx), cx);
@@ -1398,7 +1423,11 @@ impl Shell {
         // A press on the title bar closes the settings hint and still reaches the control there.
         div()
             .flex_shrink_0()
-            .capture_any_mouse_down(cx.listener(|shell, _, _, cx| shell.close_analysis_hint(cx)))
+            .capture_any_mouse_down(cx.listener(|shell, _, _, cx| {
+                // The press reaches a selection segment after this, which must not open the panel again.
+                shell.press_closed_selection = shell.selection_hint.read(cx).is_open();
+                shell.close_hints(cx);
+            }))
             .child(bar)
     }
 
@@ -1767,6 +1796,7 @@ impl Render for Shell {
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
             .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
+            .children(hints::backdrop(&self.selection_hint, hint_area, cx))
             .children(Root::render_dialog_layer(window, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))

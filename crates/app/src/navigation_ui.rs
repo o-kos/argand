@@ -553,21 +553,25 @@ impl Shell {
         }
     }
 
-    /// A band's low edge, high edge and width in the frequency ruler's unit, which the ruler names.
-    pub(super) fn band_texts(&self, band: argand_core::FrequencyBand) -> Option<[String; 3]> {
-        let (number, _) = self.hertz_format()?;
-        Some([band.low(), band.high(), band.high() - band.low()].map(number))
-    }
-
-    /// How a frequency is written in the ruler's unit, to the precision of one row.
-    fn hertz_format(&self) -> Option<(impl Fn(f64) -> String, &'static str)> {
+    /// What a selection's values are written and read against, as its badges show them.
+    pub(super) fn entry_scale(&self) -> Option<crate::selection_entry::Scale> {
+        let meta = self.file.as_ref()?.state.document.meta()?;
+        let view = self.view?;
         let (low, high) = self.extents()?.hertz;
         let (unit, divisor) = axes::frequency_unit((low, high));
-        let rows = self.plot.map_or(1, |plot| plot.height.max(1));
-        let precision = crate::navigation::time_precision((high - low) / rows as f64 / divisor);
-        let number =
-            move |hertz: f64| crate::numbers::text(&format!("{:.*}", precision, hertz / divisor));
-        Some((number, unit))
+        let plot = self.plot;
+        let columns = plot.map_or(1, |plot| plot.width.max(1));
+        let rows = plot.map_or(1, |plot| plot.height.max(1));
+        Some(crate::selection_entry::Scale {
+            mode: self.session.time_ruler,
+            rate: meta.sample_rate,
+            total: meta.len_samples,
+            seconds_per_pixel: view.len as f64 / meta.sample_rate / columns as f64,
+            unit,
+            divisor,
+            decimals: crate::navigation::time_precision((high - low) / rows as f64 / divisor),
+            band: self.capture_band()?,
+        })
     }
 
     pub(super) fn cursor_readout(&self, cx: &gpui_kit::App) -> Option<(String, Option<String>)> {
@@ -893,6 +897,17 @@ impl plot_view::PlotView {
         self.pan = None;
         self.frequency_pan = None;
         self.selecting = None;
+        // A badge takes its own left presses, a double click turning it into an input.
+        if event.button == MouseButton::Left
+            && !self.space
+            && let Some(field) = self.badge_at(event.position)
+        {
+            if event.click_count >= 2 {
+                self.open_entry(field, window, cx);
+            }
+            cx.notify();
+            return;
+        }
         let on_spectrum = geometry.selects_at(event.position);
         let on_ruler = geometry.frequency_ruler.contains(&event.position);
         let grabbed = (event.button == MouseButton::Left && !self.space)
