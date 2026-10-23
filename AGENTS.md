@@ -525,7 +525,7 @@ the axis they select as the plot turns). The segment of the kind selected is lit
 another kind selects it, taking a missing axis from the visible range, and opens the panel, and
 the lit one toggles the panel (`Shell::choose_selection_kind`). Each segment takes its own click,
 since a `ButtonGroup`'s handler hears the mouse only. Ctrl+E (Cmd+E, `EditSelection`, in the
-`Plot` context) and Edit → Selection panel toggle it too; with nothing selected they open it on
+`Plot` context and in the panel's own, where it closes the panel as Enter does) and Edit → Selection panel toggle it too; with nothing selected they open it on
 time and band, both from the visible range. The lit segment is `selected`, as the orientation
 segment in force is, so both groups light alike. `hints::pinned` takes the trigger and
 the anchor, so the panel hangs below its trigger where the analysis hint stands above its own.
@@ -549,7 +549,8 @@ shows, ten with Shift, and a sample index by one sample (`Scale::time_step`,
 `Scale::band_step`); a changed text is read first. It closes as the analysis hint does, which the
 owner chose over a live plot: its backdrop freezes the plot and a press outside closes it keeping
 the selection, and so do the title bar, the frame's edges and the application menu
-(`Shell::close_hints`). A press on the title bar that closed it does not reopen it from the lit
+(`Shell::close_hints`). Opening it closes the analysis hint and opening that closes it, keeping the values, so only one
+frozen backdrop stands at a time. A press on the title bar that closed it does not reopen it from the lit
 segment (`Shell::press_closed_selection`). `SelectionPanel::follow` still takes up a selection
 changed while it is open. Enter keeps the values and closes it once every changed field reads,
 since the panel handles `Confirm` before the popover; Escape restores the selection as it stood before the

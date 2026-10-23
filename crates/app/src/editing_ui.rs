@@ -45,6 +45,8 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         KeyBinding::new(&command("shift-i"), InvertSpectrum, Some("Plot")),
         KeyBinding::new(&command("shift-n"), NormalizeLevel, Some("Plot")),
         KeyBinding::new(&command("e"), EditSelection, Some("Plot")),
+        // The panel holds the keyboard while it is open, and the same keys close it.
+        KeyBinding::new(&command("e"), EditSelection, Some("SelectionPanel")),
     ];
     if cfg!(target_os = "windows") {
         keys.push(KeyBinding::new("ctrl-y", Redo, Some("Plot")));

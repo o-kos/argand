@@ -76,6 +76,20 @@ chosen by the owner. Reviewer: `gpt-6.1-sol` high, agreed with the owner.
   dismissal arrives after its action and focuses the plot, so Escape reached the plot. The
   dialog now dismisses the menu before it opens, as Settings does, with a regression test that
   goes through the menu. No findings declined, and nothing else substantive remained.
+- Round 4 (2026-10-22), agreed by the owner past the three-round limit because the selection
+  panel, the dimming and the badges' tails came after round 3; it covered `743ef2f..749cdb1`
+  only. Seven findings, all accepted. P2: after a typed value an arrow key left the field showing
+  the typed text, so the next step started from it again and Enter undid the step; the field just
+  read is now always written back. Ctrl+E did not close the panel, whose fields hold the keyboard
+  outside the `Plot` context; it is bound in the panel's context too and closes it as Enter does.
+  The panel and the analysis hint could stand open together under two backdrops; opening either
+  closes the other keeping its values. A badge pressed against the plot's edge rather than the
+  selection let its input reach the edge; it is now held back from the edge as from the
+  selection. A theme radius of 0 made two tail points coincide and the ring `NaN`; repeated
+  points are dropped before the ring is grown. P3: a tail with less than two pixels of room
+  pushed its ring across the selection; such a tail is left out. The plan and the panel's module
+  comment still said the plot stays live under the panel; both describe the frozen plot now. Each
+  code finding has a regression test, and each of the state findings' tests fails without its fix.
 
 ## Overview
 
@@ -158,12 +172,15 @@ The result is an ordinary selection, the same as one dragged out, never an edit.
   elsewhere, a gesture or a file opening closes it. The plot emits the parsed result as
   `PlotIntent::Select`, so it takes the shell's ordinary path.
 - **The panel.** `selection_panel.rs` holds a `SelectionPanel` shown in a `PinnedHint` under
-  the title bar's Time, Band and Both segments, without the analysis hint's backdrop, so the
-  plot stays live and the panel follows it. It applies each read value at once; Enter keeps the
-  values and closes once every changed field reads, Escape restores the opening selection.
-  (It replaced a modal dialog, see "Owner feedback".)
-- **Menu and key.** `EditSelection` is bound to Ctrl+E (Cmd+E) in the `Plot` context and sits in
-  the Edit menu as Selection panel; both toggle the panel.
+  the title bar's Time, Band and Both segments. It closes as the analysis hint does, the plot
+  frozen under its backdrop and a press outside closing it keeping the selection, and only one of
+  the two pinned hints stands at a time. It applies each read value at once and still takes up a
+  selection changed while it is open; Enter keeps the values and closes once every changed field
+  reads, Escape restores the opening selection. (It replaced a modal dialog, see "Owner
+  feedback".)
+- **Menu and key.** `EditSelection` is bound to Ctrl+E (Cmd+E) in the `Plot` context and in the
+  panel's own, and sits in the Edit menu as Selection panel; each toggles the panel, the keys in
+  the panel closing it as Enter does.
 
 ## Rejected alternatives
 

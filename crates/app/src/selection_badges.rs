@@ -13,6 +13,8 @@ const MARGIN: f32 = 4.;
 const EDGE_GAP: f32 = MARGIN + 6.;
 /// The width of a pointer's base at its badge.
 const POINTER_BASE: f32 = 8.;
+/// The shortest tail worth drawing, from the badge to the tip.
+const SHORTEST_TAIL: f32 = 2.;
 /// The paper ring around a badge and its pointer.
 pub(crate) const RING: f32 = 1.;
 /// The gap an input typed over a badge keeps from the selection.
@@ -298,7 +300,7 @@ pub(crate) fn pointer(
         true => edge + POINTER_BASE,
         false => edge - POINTER_BASE,
     };
-    Some(tail(layout.across, edge, side, tip, base, RADIUS))
+    tail(layout.across, edge, side, tip, base, RADIUS)
 }
 
 /// A tail from a shape's side at `side` to `tip`, one side running along `edge` and the base to `base`.
@@ -307,6 +309,7 @@ pub(crate) fn pointer(
 /// when `across` holds. The tail reaches back over the shape's corner of
 /// `radius` at the edge, squaring it, and its tip stands back by as much as
 /// the ring around it reaches past it.
+/// None where the room is too short for a tail to show.
 pub(crate) fn tail(
     across: bool,
     edge: f32,
@@ -314,20 +317,27 @@ pub(crate) fn tail(
     tip: f32,
     base: f32,
     radius: f32,
-) -> [(f32, f32); 4] {
+) -> Option<[(f32, f32); 4]> {
+    let reach = (tip - side).abs();
+    let inset = tip_inset(reach, (base - edge).abs());
+    let length = reach - inset;
+    // A reach so short that the inset comes out negative or not at all leaves none.
+    if length.is_nan() || length < SHORTEST_TAIL {
+        return None;
+    }
     let towards = (tip - side).signum();
-    let tip = tip - towards * tip_inset((tip - side).abs(), (base - edge).abs());
+    let tip = tip - towards * inset;
     let corner = side - towards * radius;
     let point = |along: f32, depth: f32| match across {
         true => (along, depth),
         false => (depth, along),
     };
-    [
+    Some([
         point(edge, corner),
         point(edge, tip),
         point(base, side),
         point(base, corner),
-    ]
+    ])
 }
 
 /// How far a tail `reach` long on a base `base` wide stands back so that the ring around its tip ends where it points.
@@ -340,30 +350,44 @@ fn tip_inset(reach: f32, base: f32) -> f32 {
 }
 
 /// A convex polygon with every side moved `by` outward.
-fn grown<const N: usize>(points: &[(f32, f32); N], by: f32) -> [(f32, f32); N] {
-    let n = N as f32;
+fn grown(points: &[(f32, f32)], by: f32) -> Vec<(f32, f32)> {
+    // A corner of no radius leaves two points in one place, which make no side.
+    let mut points: Vec<(f32, f32)> = points.to_vec();
+    points.dedup();
+    if points.len() > 1 && points.first() == points.last() {
+        points.pop();
+    }
+    let count = points.len();
+    if count < 3 {
+        return points;
+    }
+    let n = count as f32;
     let centre = points
         .iter()
         .fold((0., 0.), |(x, y), p| (x + p.0 / n, y + p.1 / n));
     // Each side as a point on it and its direction, moved outward.
-    let sides: [((f32, f32), (f32, f32)); N] = std::array::from_fn(|index| {
-        let (a, b) = (points[index], points[(index + 1) % N]);
-        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-        let length = dx.hypot(dy);
-        let (ux, uy) = (dx / length, dy / length);
-        let outward = match uy * (centre.0 - a.0) - ux * (centre.1 - a.1) > 0. {
-            true => -1.,
-            false => 1.,
-        };
-        ((a.0 + uy * by * outward, a.1 - ux * by * outward), (ux, uy))
-    });
+    let sides: Vec<((f32, f32), (f32, f32))> = (0..count)
+        .map(|index| {
+            let (a, b) = (points[index], points[(index + 1) % count]);
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let length = dx.hypot(dy);
+            let (ux, uy) = (dx / length, dy / length);
+            let outward = match uy * (centre.0 - a.0) - ux * (centre.1 - a.1) > 0. {
+                true => -1.,
+                false => 1.,
+            };
+            ((a.0 + uy * by * outward, a.1 - ux * by * outward), (ux, uy))
+        })
+        .collect();
     let cross = |a: (f32, f32), b: (f32, f32)| a.0 * b.1 - a.1 * b.0;
-    std::array::from_fn(|index| {
-        let (p, u) = sides[(index + N - 1) % N];
-        let (q, v) = sides[index];
-        let t = cross((q.0 - p.0, q.1 - p.1), v) / cross(u, v);
-        (p.0 + t * u.0, p.1 + t * u.1)
-    })
+    (0..count)
+        .map(|index| {
+            let (p, u) = sides[(index + count - 1) % count];
+            let (q, v) = sides[index];
+            let t = cross((q.0 - p.0, q.1 - p.1), v) / cross(u, v);
+            (p.0 + t * u.0, p.1 + t * u.1)
+        })
+        .collect()
 }
 
 /// Fill `rect` of corner `radius` and its `tail` with `fill` inside a ring of `ring` around both.
@@ -575,6 +599,18 @@ pub(crate) fn clear_of(rect: Rect, taken: &[Rect], layout: Layout, plot: Rect) -
         })
 }
 
+/// Where a badge `thick` deep stands beyond the selection on its far side or its near one, across the axis.
+///
+/// It is pressed back inside the plot as far from its edge as from the
+/// selection, so the input typed over it stays inside too.
+fn beyond_selection(extent: Extent, depth: f32, thick: f32, far: bool) -> f32 {
+    let (from, to) = (extent.clear, depth - extent.clear - thick);
+    match far {
+        true => (extent.around.1 as f32 * depth + extent.clear).min(to),
+        false => (extent.around.0 as f32 * depth - extent.clear - thick).max(from),
+    }
+}
+
 /// Whether an extent badge `badge` long and its arrowheads fit between edges `length` apart.
 fn fits_between(length: f32, badge: f32) -> bool {
     length >= badge + 2. * (ARROW_LENGTH + LINE_GAP)
@@ -642,10 +678,7 @@ pub(crate) fn places(
     };
     let middle = fits(2).then(|| clamp(middle, 2));
     // Beyond the selection on the far side or the near one, pressed back inside the plot.
-    let beyond = |index: usize, far: bool| match far {
-        true => (extent.around.1 as f32 * depth + extent.clear).min(depth - MARGIN - thick(index)),
-        false => (extent.around.0 as f32 * depth - extent.clear - thick(index)).max(MARGIN),
-    };
+    let beyond = |index: usize, far: bool| beyond_selection(extent, depth, thick(index), far);
     let extent_at = beyond(2, !layout.edges_far);
     let edge_at = |index: usize| -> (f32, bool) {
         let wanted = match layout.edges_far {
@@ -725,6 +758,46 @@ mod tests {
             alone: false,
             clear: MARGIN,
         }
+    }
+
+    #[test]
+    fn a_badge_pressed_against_the_plot_s_edge_keeps_its_input_inside() {
+        let clear = clearance(Layout::time(false), (4., 22.), 14.);
+        let whole = Extent {
+            clear,
+            ..spanning(0.25, 0.75)
+        };
+        let [_, _, length] = places(PLOT, Layout::time(false), whole, WIDTHS, 14.);
+        let length = length.unwrap();
+        assert_eq!(
+            length.y,
+            20. + clear,
+            "as far from the plot's top as from a selection"
+        );
+        let input_top = length.y - (22. - 14.) / 2.;
+        assert_eq!(input_top, 20. + ENTRY_GAP, "the input a pixel inside");
+    }
+
+    #[test]
+    fn a_tail_without_room_is_left_out_and_a_square_corner_grows_cleanly() {
+        assert_eq!(
+            tail(true, 10., 20.5, 20., 18., RADIUS),
+            None,
+            "half a pixel of room"
+        );
+        assert_eq!(
+            tail(true, 10., 22., 20., 18., RADIUS),
+            None,
+            "less than its ring needs"
+        );
+        let square = tail(true, 10., 30., 20., 18., 0.).unwrap();
+        let ring = grown(&square, RING);
+        assert_eq!(ring.len(), 3, "a corner of no radius leaves a triangle");
+        assert!(
+            ring.iter().all(|(x, y)| x.is_finite() && y.is_finite()),
+            "{ring:?}"
+        );
+        assert!((ring.iter().map(|p| p.1).fold(f32::MAX, f32::min) - 20.).abs() < 0.05);
     }
 
     #[test]

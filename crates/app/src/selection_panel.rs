@@ -1,7 +1,7 @@
 //! The selection panel, every value of the selection typed in a pinned hint under the toolbar.
 //!
-//! It applies each value at once and follows the selection made on the plot
-//! while it is open, since the plot stays live under it.
+//! It applies each value at once and takes up a selection changed while it is
+//! open. It freezes the plot under it as the analysis hint does.
 
 use super::badge_entry::on_steps;
 use super::*;
@@ -125,17 +125,20 @@ impl SelectionPanel {
         self.refused[slot] = None;
         // A value typed for an axis not selected selects it.
         self.checked[usize::from(!field.is_time())] = true;
-        self.refresh(window, cx);
+        self.refresh(Some(slot), window, cx);
         self.apply(cx);
         true
     }
 
     /// Write every field from the values, except one still holding a refused text.
-    fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    ///
+    /// The field `read` was just read, so it is written even while it holds the keyboard.
+    fn refresh(&mut self, read: Option<usize>, window: &mut Window, cx: &mut Context<Self>) {
         let texts = texts(&self.scale, self.time, self.band);
         for (slot, text) in texts.into_iter().enumerate() {
             // A field leaving focus is read after the next one took it, which may already be typed in.
-            let typing = self.inputs[slot].focus_handle(cx).is_focused(window)
+            let typing = read != Some(slot)
+                && self.inputs[slot].focus_handle(cx).is_focused(window)
                 && *self.inputs[slot].read(cx).value() != *self.shown[slot];
             if self.marked(slot, cx) || typing {
                 continue;
@@ -190,7 +193,7 @@ impl SelectionPanel {
         self.checked = [selected.time.is_some(), selected.band.is_some()];
         self.time = selected.time.unwrap_or(self.time);
         self.band = selected.band.unwrap_or(self.band);
-        self.refresh(window, cx);
+        self.refresh(None, window, cx);
     }
 
     /// Select in the document the panel was opened on, and nowhere else.
@@ -228,7 +231,7 @@ impl SelectionPanel {
                 .map(|band| self.band = band),
         };
         if stepped.is_some() {
-            self.refresh(window, cx);
+            self.refresh(Some(slot), window, cx);
             self.apply(cx);
         }
     }
@@ -299,7 +302,7 @@ impl SelectionPanel {
                     width: FIELD.0 - 2. * RING,
                     height: FIELD.1 - 2. * RING,
                 };
-                let tail = tail.map(|tail| {
+                let tail = tail.and_then(|tail| {
                     let base = tail.edge + tail.towards * TAIL_BASE;
                     axes::tail(tail.across, tail.edge, tail.side, tail.tip, base, radius)
                 });
@@ -609,6 +612,19 @@ impl Render for SelectionPanel {
             .on_action(cx.listener(|panel, _: &PreviousField, window, cx| {
                 panel.traverse(FIELDS.len() - 1, window, cx)
             }))
+            // Ctrl+E again closes it as Enter does, once every changed field reads.
+            .on_action(
+                cx.listener(|panel, _: &super::editing_ui::EditSelection, window, cx| {
+                    if !panel.confirm(window, cx) {
+                        return;
+                    }
+                    let shell = panel.shell.clone();
+                    window.defer(cx, move |window, cx| {
+                        let _ =
+                            shell.update(cx, |shell, cx| shell.toggle_selection_panel(window, cx));
+                    });
+                }),
+            )
             .font_family(cx.theme().font_family.clone())
             .bg(crate::theme::sheet(cx))
             .text_color(cx.theme().popover_foreground)
@@ -736,6 +752,8 @@ impl Shell {
             hint.update(cx, |hint, cx| hint.close(false, cx));
             return;
         }
+        // One pinned hint at a time, since each freezes the plot under a backdrop of its own.
+        self.close_analysis_hint(cx);
         // With nothing selected the panel opens on time and band, both from the visible range.
         if self.selection_kind() == [false, false] {
             self.remember_opening();
@@ -1040,6 +1058,37 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn the_panel_s_own_keys_close_it_keeping_the_selection(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        toggle(cx, &shell);
+        assert!(panel_open(cx, &shell));
+        keys(cx, "secondary-a 1 2 0 secondary-e");
+        assert!(!panel_open(cx, &shell), "the keys that opened it close it");
+        assert_eq!(
+            selected(cx, &shell).time,
+            span(120, 200),
+            "keeping what was typed"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_panel_and_the_analysis_hint_never_stand_together(cx: &mut TestAppContext) {
+        let (shell, cx) = open(cx);
+        shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
+        let analysis = |cx: &mut gpui_kit::VisualTestContext| {
+            shell.read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
+        };
+        toggle(cx, &shell);
+        keys(cx, "secondary-,");
+        assert!(analysis(cx), "the settings open from the panel");
+        assert!(!panel_open(cx, &shell), "and close it");
+        toggle(cx, &shell);
+        assert!(panel_open(cx, &shell), "the panel opens from the settings");
+        assert!(!analysis(cx), "and closes them");
+    }
+
+    #[gpui_kit::test]
     fn escape_restores_the_selection_the_panel_opened_on(cx: &mut TestAppContext) {
         let (shell, cx) = open(cx);
         shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
@@ -1078,6 +1127,18 @@ mod tests {
             selected(cx, &shell).time,
             span(121, 200),
             "a changed text is read before the step"
+        );
+        keys(cx, "up");
+        assert_eq!(
+            selected(cx, &shell).time,
+            span(122, 200),
+            "the stepped field shows its step, so the next one goes on from it"
+        );
+        keys(cx, "enter");
+        assert_eq!(
+            selected(cx, &shell).time,
+            span(122, 200),
+            "and Enter keeps it"
         );
     }
 

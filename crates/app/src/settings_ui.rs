@@ -508,6 +508,8 @@ impl Shell {
             hint.update(cx, |hint, cx| hint.close(false, cx));
             return;
         }
+        // One pinned hint at a time, since each freezes the plot under a backdrop of its own.
+        self.close_selection_hint(cx);
         // The editor reads the shell as it is built, so it waits until this update ends.
         window.defer(cx, move |window, cx| {
             hint.update(cx, |hint, cx| hint.open(window, cx));
