@@ -195,9 +195,20 @@ The result is an ordinary selection, the same as one dragged out, never an edit.
 
 ## Custom control audit
 
-No new custom control. The in-place editor and the dialog fields are the stock `Input`,
-the boxes the stock `Checkbox`, the dialog the stock `Dialog`. Positioning an `Input` over
-a domain canvas is composition, as the zoom pairs over the spectrogram are.
+No new custom control. The in-place editor and the panel's fields are the stock `Input`, the
+segments stock `Button`s in a `ButtonGroup`, the panel a `PinnedHint` over the stock `Popover`.
+Positioning an `Input` over a domain canvas is composition, as the zoom pairs over the
+spectrogram are.
+
+Both inputs are drawn with `appearance(false)` inside a frame of the app's own, as the analysis
+settings' inputs are. The stock frame is a rounded box the input paints itself and cannot reach
+past, and the owner asked for the edge fields to point at their edges with the badges' tails, so
+the frame and the tail are painted as one shape around the stock input (`axes::callout`). The
+input keeps its own text editing, caret, selection, focus, Tab order and keys; the frame takes
+the input's colours, the ring colour while it holds the keyboard and the danger colour while it
+is refused. The stock focus halo is not drawn, because it would go round the box and not the
+tail. Covered by the panel's headless tests (typing, stepping, Tab, Enter, Escape, Ctrl+E) and
+the badge geometry tests.
 
 ## Implementation steps
 
@@ -208,7 +219,7 @@ a domain canvas is composition, as the zoom pairs over the spectrogram are.
       rectangles to the `PlotView`; left press on a badge starts nothing, arrow cursor.
 - [x] In-place `BadgeEntry` on double click with Enter, Escape and blur, and headless tests.
 - [x] `SelectionDialog` with live preview, OK and Cancel, Edit → Selection… and Ctrl+E, and
-      headless tests.
+      headless tests, later replaced by the selection panel at the owner's request.
 - [x] Update `AGENTS.md` and `CHANGELOG.md`.
 - [x] Complete validation.
 - [x] Move this plan to `docs/plans/completed/` before final review.
@@ -220,8 +231,9 @@ a domain canvas is composition, as the zoom pairs over the spectrogram are.
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
 - [ ] Owner check in the release binary: edit each badge in both orientations and the three
-      ruler modes, make a time, band and rectangle selection from the dialog with nothing
-      selected, Cancel restores, a bad value is marked.
+      ruler modes, make a time, band and rectangle selection from the panel's segments with
+      nothing selected, Escape restores, a bad value is marked, the tails and the panel's layout
+      in both orientations.
 
 ## Post-completion
 
