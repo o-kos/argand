@@ -235,6 +235,10 @@ the badge geometry tests.
       nothing selected, Escape restores, a bad value is marked, the tails and the panel's layout
       in both orientations.
 
+The owner accepted the current result on 2026-11-05 and authorized continuing the
+Pull Request. Execution of the individual manual scenarios above was not recorded;
+the unchecked item is not a claim that those scenarios were tested.
+
 ## Post-completion
 
 None.
