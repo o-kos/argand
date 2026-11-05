@@ -157,7 +157,7 @@ mod tests {
     fn a_recent_row_carries_the_capture_it_names() {
         let rows = file_items(vec![("capture0".to_owned(), 7u8)]);
         assert_eq!(
-            rows[5],
+            rows[6],
             Row::Recent {
                 number: Some(1),
                 label: "capture0".to_owned(),
