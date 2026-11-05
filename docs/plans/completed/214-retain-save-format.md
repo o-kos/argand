@@ -55,29 +55,33 @@ or reads required by real sample dependencies.
 
 ## Implementation steps
 
-- [ ] Capture an immutable output format from the existing checked description reader.
-- [ ] Retain document format and pass it independently of remapped sample sources.
-- [ ] Resolve writer output and compatibility checks from that format.
-- [ ] Cover computed-only saves, actual dependencies, corruption and replacement.
-- [ ] Update architecture documentation and changelog.
+- [x] Capture an immutable output format from the existing checked description reader.
+- [x] Retain document format and pass it independently of remapped sample sources.
+- [x] Resolve writer output and compatibility checks from that format.
+- [x] Cover computed-only saves, actual dependencies, corruption and replacement.
+- [x] Update architecture documentation and changelog.
 - [ ] Complete validation and rebuild the release executable.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
 The initial plan-only commit and Draft PR use diff/link checks; no code changes
 exist at that point, so the code gate is deferred until implementation.
 
-- [ ] Fully computed captures save after the original is moved, removed or replaced,
+- [x] Fully computed captures save after the original is moved, removed or replaced,
   preserving output metadata, format and sample data.
-- [ ] Non-contiguous source IDs remap correctly; missing actual sample sources and
+- [x] Non-contiguous source IDs remap correctly; missing actual sample sources and
   corrupt scratch sources fail without changing the target or discarding edits.
-- [ ] Linear/raw/FLAC outputs retain their encoding rules; Save as needs no raw
+- [x] Linear/raw/FLAC outputs retain their encoding rules; Save as needs no raw
   preamble while intentional replacement and nonzero preambles remain checked.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after all checks pass
+
+The local gate passed with 1,073 tests. The coordinator identified an inherited source-remap fallback that could silently
+select source zero. The save request now refuses an impossible remap instead.
+
 - [ ] Independent review of the exact final revision and diff.
 
 ## Post-completion

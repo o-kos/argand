@@ -25,6 +25,124 @@ fn run(request: &SaveRequest) -> Result<Saved, WriteError> {
     save(request, &mut |_, _| {}, &AtomicBool::new(false))
 }
 
+#[test]
+fn retained_formats_save_computed_samples_without_the_original_file() {
+    for container in ["wav", "raw", "flac"] {
+        for unavailable in ["removed", "moved", "replaced"] {
+            let dir = TempDir::new("write-retained-format");
+            let original = dir.join(&format!("original.{container}"));
+            let sample_type: SampleType = "iq_i16".parse().unwrap();
+            let mut hints = OpenHints::default();
+            match container {
+                "flac" => { write_flac_fixture(&original, 2, 16, 3000); }
+                "raw" => {
+                    let mut bytes = b"PREAMBLE".to_vec();
+                    bytes.extend(encode(SampleFormat::I16, &signal(sample_type, 100)));
+                    fs::write(&original, bytes).unwrap();
+                    hints.raw = Some(RawSpec { sample_type, sample_rate: Some(48_000.0) });
+                    hints.byte_offset = 8;
+                }
+                _ => { write_wav(&original, sample_type, 48_000, &signal(sample_type, 100), 1.0); }
+            }
+            let source = source_file(&original, hints.clone());
+            let retained = format(&source).unwrap();
+            let mut scratch = computed_with(&dir.join("scratch.wav"), &original, &hints, Domain::Iq, &COMPUTED);
+            scratch.meta.sample_rate = source.meta.sample_rate;
+            let mut request = SaveRequest::span(scratch, None, dir.join("baseline"));
+            request.meta = source.meta;
+            request.meta.center_freq = 14_074_000.25;
+            request.format = Some(retained);
+            run(&request).unwrap();
+            let baseline = fs::read(&request.target).unwrap();
+            match unavailable {
+                "removed" => fs::remove_file(&original).unwrap(),
+                "moved" => fs::rename(&original, dir.join("archive")).unwrap(),
+                _ => fs::write(&original, b"different recording").unwrap(),
+            }
+            request.target = dir.join("saved");
+            let saved = run(&request).unwrap();
+            assert_eq!(saved.samples, 4);
+            assert_eq!(saved.container, if container == "flac" { "flac" } else { "wav" });
+            assert_eq!(fs::read(&request.target).unwrap(), baseline, "{container}: {unavailable}");
+            let reopened = open(&request.target, &OpenHints::default()).unwrap();
+            assert_eq!(reopened.meta().sample_rate, request.meta.sample_rate);
+            assert_eq!(reopened.meta().center_freq, request.meta.center_freq);
+            assert_eq!(reopened.meta().channels(), 2);
+            let expected: Vec<f32> = COMPUTED.iter().map(|&v| {
+                ((f64::from(v) * 32768.0).round().clamp(-32768.0, 32767.0) / 32768.0) as f32
+            }).collect();
+            assert_eq!(read_all(&request.target, &OpenHints::default()), expected);
+        }
+    }
+}
+
+#[test]
+fn computed_only_raw_replacement_keeps_checked_preamble_and_target() {
+    let dir = TempDir::new("write-retained-replacement");
+    let original = dir.join("original.raw");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let mut bytes = b"PREAMBLE".to_vec();
+    bytes.extend(encode(SampleFormat::I16, &signal(sample_type, 100)));
+    fs::write(&original, &bytes).unwrap();
+    let hints = OpenHints {
+        raw: Some(RawSpec { sample_type, sample_rate: Some(48_000.0) }),
+        byte_offset: 8,
+        ..Default::default()
+    };
+    let source = source_file(&original, hints.clone());
+    let retained = format(&source).unwrap();
+    let scratch = computed_with(&dir.join("scratch.wav"), &original, &hints, Domain::Iq, &COMPUTED);
+    let mut request = SaveRequest::span(scratch, None, original.clone());
+    request.meta = source.meta;
+    request.format = Some(retained);
+    request.replacing = replacing(&original);
+    request.output = Output::Headerless { preamble: 8 };
+    let staged = stage(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+    fs::write(&original, b"another file").unwrap();
+    let refused = staged.commit().unwrap_err();
+    assert!(matches!(refused.error, WriteError::SourceChanged { .. }));
+    drop(refused);
+    assert_eq!(fs::read(&original).unwrap(), b"another file");
+    fs::write(&original, &bytes).unwrap();
+    request.replacing = replacing(&original);
+    assert_eq!(run(&request).unwrap().container, "raw");
+    let mut expected = b"PREAMBLE".to_vec();
+    for value in COMPUTED {
+        expected.extend_from_slice(&((f64::from(value) * 32768.0).round().clamp(-32768.0, 32767.0) as i16).to_le_bytes());
+    }
+    assert_eq!(fs::read(&original).unwrap(), expected);
+}
+
+#[test]
+fn a_retained_format_does_not_excuse_missing_or_changed_sample_sources() {
+    let dir = TempDir::new("write-retained-dependencies");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let original = write_wav(&dir.join("original.wav"), sample_type, 48_000, &signal(sample_type, 100), 1.0);
+    let source = source_file(&original, OpenHints::default());
+    let retained = format(&source).unwrap();
+    let scratch_path = dir.join("scratch.wav");
+    let scratch = computed(&scratch_path, &original, Domain::Iq, &COMPUTED);
+    let target = dir.join("saved.wav");
+    fs::write(&target, b"keep target").unwrap();
+    let mut mixed = suppressed(source.clone(), scratch.clone(), target.clone());
+    mixed.format = Some(retained.clone());
+    fs::rename(&original, dir.join("archive.wav")).unwrap();
+    assert!(matches!(run(&mixed), Err(WriteError::Read { .. })));
+    assert_eq!(fs::read(&target).unwrap(), b"keep target");
+    let mut computed_only = SaveRequest::span(scratch, None, target.clone());
+    computed_only.meta = source.meta;
+    computed_only.format = Some(retained);
+    computed_only.meta.sample_rate *= 2.0;
+    assert!(matches!(run(&computed_only), Err(WriteError::Unsupported { .. })));
+    computed_only.meta.sample_rate /= 2.0;
+    computed_only.meta.sample_type = SampleType::new(Domain::Real, SampleFormat::I16);
+    assert!(matches!(run(&computed_only), Err(WriteError::Unsupported { .. })));
+    computed_only.meta.sample_type = sample_type;
+    fs::write(&scratch_path, b"damaged scratch").unwrap();
+    assert!(matches!(run(&computed_only), Err(WriteError::SourceChanged { .. })));
+    assert_eq!(fs::read(&target).unwrap(), b"keep target");
+}
+
 /// The stored bytes of a WAVE file's samples.
 fn data_bytes(path: &Path) -> Vec<u8> {
     let bytes = fs::read(path).expect("read output");

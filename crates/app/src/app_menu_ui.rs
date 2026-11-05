@@ -2005,8 +2005,14 @@ mod tests {
     /// Give the open capture the description its file would have reported, from a real file.
     fn describe(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
         let fixture =
-            std::env::temp_dir().join(format!("argand-describe-{}.iqw", std::process::id()));
-        std::fs::write(&fixture, [0u8; 16]).unwrap();
+            std::env::temp_dir().join(format!("argand-describe-{}.wav", std::process::id()));
+        argand_io::testutil::write_wav(
+            &fixture,
+            SampleType::new(Domain::Iq, SampleFormat::I16),
+            24_000,
+            &vec![0.0; 96_000],
+            1.0,
+        );
         shell.update_in(cx, |shell, _, cx| {
             let Some(file) = shell.file.as_mut() else {
                 panic!("the capture never opened");
@@ -2017,7 +2023,7 @@ mod tests {
                     center_freq: 0.0,
                     sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
                     len_samples: 48_000,
-                    container: "raw",
+                    container: "wav",
                     divisor: 32_768.0,
                     source: fixture.clone(),
                 },

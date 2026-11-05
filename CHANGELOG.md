@@ -43,6 +43,8 @@ promise applies to.
 
 ### Fixed
 
+- Save as of a fully computed capture keeps its original encoding when the original file has moved, disappeared or changed (#214).
+
 - A save fails, leaving no file behind, when one of the files it reads changes size or modification time while the save copies it, instead of writing a mix of old and new samples (#206).
 - Initialize the Linux pointer to an arrow before opening the window, so a stationary Wayland entry can replace a resize cursor left by the previous instance (#152).
 
