@@ -64,7 +64,7 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
       preserve level and two-pass peak normalization; exact output metadata.
 - [x] Add standard conversion dialog, File command, progress/cancel and successful-result opening.
 - [x] Add regression coverage and update architecture/user-facing documentation.
-- [ ] Complete local validation and build the current release binary.
+- [x] Complete local validation and build the current release binary.
 - [x] Move this plan to `docs/plans/completed/` before final external review.
 
 ## Validation
@@ -86,11 +86,11 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
 - Headless and native UI checks where available: unchanged Fs/reference when
   domain changes, validation, narrowing summary, focus, Enter/Escape, lists,
   busy states, cancellation, and opening only a successfully published result.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked` after the checks pass
-- [ ] Independent review with findings and dispositions recorded in the PR
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked` after the checks pass
+- [x] Independent review with findings and dispositions recorded in the PR
 
 ## Implementation evidence and limits
 
@@ -108,8 +108,8 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
   uses the ordinary unsaved-document transition; Cancel retains the created file
   and original document, with the result path in the status bar.
 - DSP release benchmark, one million input frames per case: IQ 1 MHz to 50 kHz
-  417 ms (133 ms preparation); equal-rate IQ reference shift 554 ms; equal-rate
-  real-to-IQ 392 ms. This excludes file IO and UI. Process high-water RSS 20,092 KiB
+  73 ms (21 ms preparation); equal-rate IQ reference shift 420 ms; equal-rate
+  real-to-IQ 354 ms. This excludes file IO and UI. Process high-water RSS 10,828 KiB
   across the three cases. This is measured typical-case memory, not a universal cap.
 - Review corrections: encoded odd-byte real u8 payloads have a physical RIFF pad
   (also checked against RF64 ds64 sizes); already-validated physical intersections
@@ -145,7 +145,9 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
   the oscillator uses (extract centre - reference delta) / target rate. Tests cover
   both output domains, fractional/native/full-width spans at large references,
   nonzero reference delta and phase at three hours and sample index 2^40 without
-  processing a long capture. No findings were rejected. Round 3 remains pending.
+  processing a long capture. No findings were rejected. Round 3 examined the final diff and numerical
+  boundary arithmetic independently and returned no substantive findings. It did
+  not run the Rust suite or native UI; those validation boundaries remain explicit.
 - The pre-existing FFT summary spacing defect is tracked separately in #225.
 
 ## Post-completion
