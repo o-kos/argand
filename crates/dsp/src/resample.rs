@@ -58,6 +58,28 @@ impl Plan {
         })
     }
 
+    /// Reconstruct conversion output already filtered to the target physical band.
+    /// The extractor owns target-rate anti-aliasing; this kernel only rejects
+    /// intermediate sampling images, retaining native real DC/Nyquist endpoints.
+    pub(crate) fn bandlimited(
+        input_rate: f64,
+        output_rate: f64,
+        width: f64,
+    ) -> Result<Self, ExtractError> {
+        if !output_rate.is_finite() || output_rate <= 0.0 {
+            return Err(ExtractError::BadRate(output_rate));
+        }
+        if width > output_rate {
+            return Err(ExtractError::OutsideCapture {
+                low: 0.0,
+                high: width,
+            });
+        }
+        let mut plan = Self::new(input_rate, input_rate, width)?;
+        plan.output_rate = output_rate;
+        Ok(plan)
+    }
+
     /// Input samples needed on either side of an output coordinate.
     pub fn margin(&self) -> u64 {
         self.half as u64 + 1

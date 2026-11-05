@@ -111,6 +111,17 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
   417 ms (133 ms preparation); equal-rate IQ reference shift 554 ms; equal-rate
   real-to-IQ 392 ms. This excludes file IO and UI. Process high-water RSS 20,092 KiB
   across the three cases. This is measured typical-case memory, not a universal cap.
+- Review corrections: encoded odd-byte real u8 payloads have a physical RIFF pad
+  (also checked against RF64 ds64 sizes); already-validated physical intersections
+  are clamped to the native local span after reference subtraction to avoid rounding
+  a fractional-rate edge outside its own source.
+- Conversion uses a private already-bandlimited reconstruction factory. The
+  extractor owns target-rate anti-aliasing; sinc reconstruction rejects intermediate
+  sampling images only, preserving native real endpoints even for 8000 Hz real to
+  4001 Hz IQ at reference 2000 Hz. Individual DC/Nyquist tones and their sum are
+  checked; at exactly 4000 Hz their output Nyquist endpoints coincide modulo Fs,
+  so independent boundary components cannot be promised. Cropped-band rejection
+  is rechecked at integer, fractional and strong downsampling ratios.
 - Memory is independent of capture length: 4096-frame source/output blocks plus
   bounded FFT overlap-save and reconstruction state. Transitions narrower than
   Fs/131072 (including the 1% guard) are refused before run; the existing filter
@@ -120,6 +131,12 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
   the environment exposes no supported keyboard/pointer automation, and an existing
   owner's older application process was left untouched. Native UI acceptance must
   not be inferred from headless tests or a release build.
+- Independent review round 1 accepted four substantive findings: propagated Select
+  confirmation, odd u8 chunk padding, fractional-rate local bounds and native-endpoint
+  reconstruction. Each has a focused regression. No findings were rejected. A further
+  lifecycle concern was addressed by moving scratch Arc ownership into the worker
+  closure itself, so dropping UI/job state during filter preparation cannot delete
+  computed sources before the worker exits. Round 2 remains pending.
 - The pre-existing FFT summary spacing defect is tracked separately in #225.
 
 ## Post-completion

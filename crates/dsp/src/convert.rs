@@ -56,12 +56,9 @@ impl ConversionPlan {
             && input.center_freq == output.center_freq
             && input.is_iq() == output.is_iq();
         if !identity {
-            ExtractPlan::check_conversion(
-                input.sample_rate,
-                band.0 - input.center_freq,
-                band.1 - input.center_freq,
-                !input.is_iq(),
-            )?;
+            let (low, high) =
+                local_band(input.sample_rate, input.center_freq, !input.is_iq(), band);
+            ExtractPlan::check_conversion(input.sample_rate, low, high, !input.is_iq())?;
         }
         Ok(Self {
             input_rate: input.sample_rate,
@@ -90,15 +87,16 @@ impl ConversionPlan {
 
     /// Build filters on the worker thread, never while rendering the dialog.
     pub fn stream(&self, input_samples: u64) -> Result<ConversionStream, ExtractError> {
-        let extract = ExtractPlan::for_conversion(
+        let (low, high) = local_band(
             self.input_rate,
-            self.band.0 - self.input_reference,
-            self.band.1 - self.input_reference,
+            self.input_reference,
             self.input_real,
-        )?;
-        // A fully occupied target Nyquist band needs a finite guard for its reconstruction filter.
-        let width = (self.band.1 - self.band.0).min(self.output_rate * 0.99);
-        let reconstruction = resample::Plan::new(extract.output_rate(), self.output_rate, width)?;
+            self.band,
+        );
+        let extract = ExtractPlan::for_conversion(self.input_rate, low, high, self.input_real)?;
+        let width = self.band.1 - self.band.0;
+        let reconstruction =
+            resample::Plan::bandlimited(extract.output_rate(), self.output_rate, width)?;
         let centre = extract.centre() + self.input_reference;
         let margin = extract.margin();
         let mut extractor = Extractor::new(extract, input_samples)?;
@@ -120,6 +118,16 @@ impl ConversionPlan {
             given: 0,
         })
     }
+}
+
+fn local_band(rate: f64, reference: f64, real: bool, band: (f64, f64)) -> (f64, f64) {
+    let low = if real { 0.0 } else { -rate / 2.0 };
+    let high = rate / 2.0;
+    // The physical intersection is already checked; subtraction may round past a native edge.
+    (
+        (band.0 - reference).clamp(low, high),
+        (band.1 - reference).clamp(low, high),
+    )
 }
 
 /// Bounded FFT extraction and fractional reconstruction, followed by physical translation.

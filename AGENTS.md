@@ -1230,8 +1230,11 @@ rewrites. `argand_dsp::convert::ConversionPlan` validates the physical-band inte
 and output count; `ExtractPlan::for_conversion` uses bounded overlap-save filtering,
 integer decimation and 2x interpolation with transitions inside the intersection (1% of
 its width per edge), except native real DC/Nyquist half-gain endpoints. The fractional
-reconstructor and final oscillator keep physical frequencies under the requested
-reference. Identity domain/rate/reference skips filtering; eligible unchanged WAVE
+reconstructor removes intermediate sampling images; conversion's extractor alone owns
+output-rate anti-aliasing. It must not apply a second target-Nyquist low-pass that
+would discard native real endpoints. The final oscillator preserves the requested
+reference. Exactly coincident IQ Nyquist endpoints cannot represent independent tones.
+Identity domain/rate/reference skips filtering; eligible unchanged WAVE
 captures copy bytes through the existing writer, preserving i32 low bits.
 
 Preserve converts each source's read values back to nominal full-scale units, computed

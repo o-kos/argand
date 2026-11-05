@@ -215,3 +215,88 @@ fn conversion_cost_for_one_million_input_frames() {
         }
     }
 }
+
+#[test]
+fn fractional_native_edges_survive_physical_reference_subtraction() {
+    for rate in [8000.1, 44100.123] {
+        for reference in [100_000.0, 1_000_000_000.0] {
+            let input = meta(true, rate, reference);
+            let output = meta(false, rate, reference);
+            let plan = ConversionPlan::new(&input, &output).unwrap();
+            assert_eq!(plan.band, output.frequency_span());
+            plan.stream(input.len_samples).unwrap();
+            let outside = meta(false, rate, input.frequency_span().1 + 0.001);
+            assert!(ConversionPlan::new(&input, &outside).is_err());
+        }
+    }
+}
+
+#[test]
+fn native_real_endpoints_and_their_sum_survive_a_tight_fractional_iq_band() {
+    let mut input = meta(false, 8000.0, 0.0);
+    input.len_samples = 65_536;
+    let output = meta(true, 4001.0, 2000.0);
+    for frequencies in [&[0.0][..], &[4000.0][..], &[0.0, 4000.0][..]] {
+        let plan = ConversionPlan::new(&input, &output).unwrap();
+        let mut stream = plan.stream(input.len_samples).unwrap();
+        let mut values = Vec::new();
+        let mut sink = |block: &[[f32; 2]]| -> Result<(), ()> {
+            values.extend_from_slice(block);
+            Ok(())
+        };
+        for start in (0..input.len_samples).step_by(4096) {
+            let samples: Vec<f32> = (start..(start + 4096).min(input.len_samples))
+                .map(|n| {
+                    frequencies
+                        .iter()
+                        .map(|frequency| {
+                            0.5 * (std::f64::consts::TAU * frequency * n as f64 / input.sample_rate)
+                                .cos()
+                        })
+                        .sum::<f64>() as f32
+                })
+                .collect();
+            stream.push(&samples, 1, &mut sink).unwrap();
+        }
+        stream.finish(&mut sink).unwrap();
+        for (n, &[i, q]) in values
+            .iter()
+            .enumerate()
+            .skip(3000)
+            .take(values.len() - 6000)
+        {
+            let expected = frequencies.iter().fold([0.0, 0.0], |mut sum, frequency| {
+                let phase = std::f64::consts::TAU * (frequency - output.center_freq) * n as f64
+                    / output.sample_rate;
+                sum[0] += 0.5 * phase.cos();
+                sum[1] += 0.5 * phase.sin();
+                sum
+            });
+            assert!(
+                (f64::from(i) - expected[0]).abs() < 0.01,
+                "{frequencies:?} n={n} i={i} expected={expected:?}"
+            );
+            assert!(
+                (f64::from(q) - expected[1]).abs() < 0.01,
+                "{frequencies:?} n={n} q={q} expected={expected:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn conversion_extractor_rejects_cropped_bands_across_downsampling_ratios() {
+    let mut input = meta(true, 8000.0, 100_000.0);
+    input.len_samples = 65_536;
+    for rate in [2000.0, 2000.125, 333.3] {
+        let output = meta(true, rate, input.center_freq);
+        for sign in [-1.0, 1.0] {
+            let values = convert(&input, &output, sign * rate * 0.6, 4096);
+            let peak = values[500..values.len() - 500]
+                .iter()
+                .map(|v| v[0].hypot(v[1]))
+                .fold(0.0, f32::max);
+            assert!(peak < 0.0005, "rate={rate} sign={sign} peak={peak}");
+        }
+    }
+}

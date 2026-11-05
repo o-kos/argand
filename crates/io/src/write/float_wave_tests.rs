@@ -258,3 +258,47 @@ fn encoded_nonfinite_and_cancel_leave_the_target_untouched() {
     assert_eq!(std::fs::read(&target).unwrap(), b"kept");
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
 }
+
+#[test]
+fn odd_u8_data_has_a_physical_pad_in_riff_and_rf64() {
+    for limit in [RIFF_LIMIT, 1] {
+        let dir = TempDir::new("odd-u8");
+        let target = dir.join("odd.wav");
+        let mut request = request(3, target.clone());
+        request.meta.sample_type = "rl_u8".parse().unwrap();
+        let mut writer = FloatWave::encoded(request, limit, SampleFormat::U8).unwrap();
+        writer
+            .write(&[[0.0, 0.0], [0.5, 0.0], [-0.5, 0.0]])
+            .unwrap();
+        writer.finish(&AtomicBool::new(false)).unwrap();
+        let bytes = std::fs::read(target).unwrap();
+        let expected_data_field = if limit == 1 { u32::MAX as usize } else { 3 };
+        let mut at = 12;
+        loop {
+            let id = &bytes[at..at + 4];
+            let len = u32::from_le_bytes(bytes[at + 4..at + 8].try_into().unwrap()) as usize;
+            if id == b"ds64" {
+                assert_eq!(
+                    u64::from_le_bytes(bytes[at + 8..at + 16].try_into().unwrap()),
+                    bytes.len() as u64 - 8
+                );
+                assert_eq!(
+                    u64::from_le_bytes(bytes[at + 16..at + 24].try_into().unwrap()),
+                    3
+                );
+            }
+            if id == b"data" {
+                assert_eq!(len, expected_data_field);
+                assert_eq!(&bytes[at + 8..], &[128, 192, 64, 0]);
+                break;
+            }
+            at += 8 + len + len % 2;
+        }
+        if limit != 1 {
+            assert_eq!(
+                u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize,
+                bytes.len() - 8
+            );
+        }
+    }
+}

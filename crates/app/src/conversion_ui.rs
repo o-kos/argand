@@ -19,7 +19,6 @@ pub(super) struct State {
 pub(super) struct Converting {
     job: crate::saving::Job,
     progress: Option<(u64, u64)>,
-    _scratch: Vec<Arc<crate::scratch::Scratch>>,
 }
 
 struct Editor {
@@ -272,6 +271,7 @@ impl Shell {
         let (job, updates) = crate::saving::spawn(
             "argand-convert",
             move |progress, cancel| {
+                let _scratch = scratch;
                 crate::saving::ended(
                     crate::conversion::run(&request, progress, cancel),
                     "conversion",
@@ -294,7 +294,6 @@ impl Shell {
         self.conversion.running = Some(Converting {
             job,
             progress: None,
-            _scratch: scratch,
         });
         self.save_notice = None;
         cx.notify();

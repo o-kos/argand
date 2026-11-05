@@ -30,6 +30,7 @@ pub struct FloatWave {
     container: &'static str,
     format: SampleFormat,
     clipped: u64,
+    pad: bool,
 }
 
 impl FloatWave {
@@ -88,6 +89,7 @@ impl FloatWave {
             container,
             format,
             clipped: 0,
+            pad: data_len % 2 == 1,
         })
     }
 
@@ -116,6 +118,9 @@ impl FloatWave {
     pub fn finish(mut self, cancel: &AtomicBool) -> Result<Saved, WriteError> {
         if self.written != self.samples {
             return Err(WriteError::OutOfRange);
+        }
+        if self.pad {
+            self.partial.write(&[0])?;
         }
         self.partial.sync()?;
         // Syncing can take long, and a save cancelled meanwhile must leave the target alone.

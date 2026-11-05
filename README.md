@@ -704,7 +704,9 @@ with the input and the filter's passband interior. Frequencies outside the targe
 band are filtered out rather than folded into it. Real input is made analytic;
 real output takes the real component after translation to the requested reference.
 Finite filter transitions occupy 1% of the retained width at each edge; native
-real DC/Nyquist use a half-gain endpoint convention. An empty intersection, a band
+real DC/Nyquist use a half-gain endpoint convention. When both edges map exactly
+onto the IQ Nyquist endpoints, they coincide modulo the output rate and cannot
+represent two independent boundary components. An empty intersection, a band
 too narrow for the bounded filters or a rate outside WAVE header limits is refused.
 
 **Preserve level** keeps the stored signal's amplitude relative to full scale,
