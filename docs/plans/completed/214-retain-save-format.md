@@ -60,7 +60,7 @@ or reads required by real sample dependencies.
 - [x] Resolve writer output and compatibility checks from that format.
 - [x] Cover computed-only saves, actual dependencies, corruption and replacement.
 - [x] Update architecture documentation and changelog.
-- [ ] Complete validation and rebuild the release executable.
+- [x] Complete validation and rebuild the release executable.
 - [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
@@ -77,12 +77,17 @@ exist at that point, so the code gate is deferred until implementation.
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after all checks pass
+- [x] `cargo build --release --locked`, after all checks pass
 
-The local gate passed with 1,073 tests. The coordinator identified an inherited source-remap fallback that could silently
-select source zero. The save request now refuses an impossible remap instead.
+The local gate passed with 1,073 tests. The coordinator identified an inherited
+source-remap fallback that could silently select source zero. The save request now refuses an impossible remap instead.
 
-- [ ] Independent review of the exact final revision and diff.
+- [x] Independent review of the exact final revision and diff.
+
+One independent review round returned no substantive findings. The coordinator
+accepted the format, source-dependency and replacement invariants. Linux local
+validation passed; Windows and macOS were not run locally. The release executable
+was rebuilt from the validated source after the full local gate.
 
 ## Post-completion
 
