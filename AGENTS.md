@@ -659,8 +659,11 @@ it again, until #192 reads 24-bit natively. A WAVE output whose RIFF size
 would exceed `u32` is RF64. Stored values are written, never normalized ones. A `SaveRequest` names
 `SourceFile`s and `Segment`s of them, written in order; every source must share one
 `Storage` (`write::storage`: linear `fmt ` layout, or FLAC depth) and the request's sample
-rate, and the first sets the output format, while `SaveRequest::meta` sets the rate and
-reference frequency the file states and `SaveRequest::protected` names files that must not
+rate. An immutable `write::Format`, captured by the existing checked description reader,
+retains the bounded linear `fmt ` body or FLAC storage independently of sample files (#214).
+Document saves pass it explicitly; pure convenience constructors derive it from their first
+checked non-computed source. `SaveRequest::meta` supplies the matching rate and channels and
+the reference frequency the file states and `SaveRequest::protected` names files that must not
 be written over though nothing is read from them (the open file), recognised by path and by
 their stamp's identity, so a renamed one is still refused (on Unix only until #199 gives
 Windows a file ID). Each `SourceFile::stamp`, a `SourceStamp` (length,
@@ -859,16 +862,17 @@ only the picture changes, once its analysis lands. `Editing::repicture` keeps th
 samples computed in place, or brought back by undo, until the new analysis lands, so a
 suppression over the whole capture never blanks the spectrogram.
 
-A save encodes computed samples into the format of its first source without an `Encoding`,
-which `Editing::save_request` makes the opened file whenever a computed source is read, even
-when none of the file is left. The encoding is `value * factor + offset` from the saving
+A save encodes computed samples into the document's retained output `Format` (#214).
+`Editing::save_request` lists only the sample sources its segments read, remapping their IDs;
+a fully computed capture no longer needs the original file solely to describe its format.
+The encoding is `value * factor + offset` from the saving
 document's own `original_sample_units` (`Editing::describe_units`), so computed samples pasted
 into another capture are stored on its scale. Integers are rounded and clamped without a
 warning (8-bit offset binary, and 16, 24 and 32 bits whose value fills its container, so an
 extensible header with fewer valid bits is refused), floats are written as `f32` or `f64`, and FLAC gets integers clamped to its
 depth. Computed samples of another kind than the capture are refused. Untouched samples are
-still copied byte for byte. The opened file must still be its stamped self to give the format,
-even when none of it is left. A computed source pastes into any
+still copied byte for byte. Actual sample sources must still be their stamped selves.
+A computed source pastes into any
 capture of the same rate and kind, and a paste checks only the sources its clip reads.
 
 ## Inverting and normalizing (#188, #190)

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use argand_core::{Adjustment, SampleSpan, Selection, SignalMeta};
 use argand_edit::{Capture, Clip, History, Piece, SourceId};
 use argand_io::OpenHints;
-use argand_io::write::{Encoding, SaveRequest, Segment, SourceFile, SourceStamp, Storage};
+use argand_io::write::{Encoding, Format, SaveRequest, Segment, SourceFile, SourceStamp, Storage};
 
 use crate::analysis::EditState;
 use crate::minimap::Snapshot;
@@ -260,6 +260,7 @@ pub struct Editing {
     pictured: Capture,
     /// How the opened file's read values map back to stored ones, which computed samples are saved by.
     encoding: Option<Encoding>,
+    format: Option<Format>,
 }
 
 impl Editing {
@@ -273,6 +274,7 @@ impl Editing {
             building: vec![true],
             pictured: capture,
             encoding: None,
+            format: None,
         }
     }
 
@@ -306,9 +308,17 @@ impl Editing {
     }
 
     /// Record what was learned about the opened file off the window's thread.
+    #[cfg(test)]
     pub fn describe_file(&mut self, stamp: Option<SourceStamp>, storage: Option<Storage>) {
         self.sources[0].stamp = stamp;
         self.sources[0].storage = storage;
+    }
+
+    /// Record the checked output description independently of the sample sources.
+    pub fn describe_format(&mut self, stamp: Option<SourceStamp>, format: Option<Format>) {
+        self.sources[0].stamp = stamp;
+        self.sources[0].storage = format.as_ref().map(Format::storage);
+        self.format = format;
     }
 
     /// Record how the opened file's reader maps read values back to stored ones.
@@ -530,10 +540,12 @@ impl Editing {
 
     /// Whether every file the current version reads has been checked, which a save needs.
     pub fn is_described(&self) -> bool {
-        self.capture()
-            .sources()
-            .iter()
-            .all(|id| self.sources[id.0 as usize].stamp.is_some())
+        self.format.is_some()
+            && self
+                .capture()
+                .sources()
+                .iter()
+                .all(|id| self.sources[id.0 as usize].stamp.is_some())
     }
 
     /// What the analysis worker reads the current version from.
@@ -679,30 +691,27 @@ impl Editing {
             return None;
         }
         let mut used: Vec<SourceId> = pieces.iter().map(|piece| piece.source).collect();
-        // Computed samples take the opened file's format, so it comes first even when none of it is left.
-        let computed = used
-            .iter()
-            .any(|id| self.sources[id.0 as usize].computed.is_some());
-        if computed {
-            used.push(SourceId(0));
-        }
         used.sort_unstable();
         used.dedup();
+        let segments = pieces
+            .into_iter()
+            .map(|piece| {
+                Some(Segment {
+                    source: used.binary_search(&piece.source).ok()?,
+                    start: piece.start,
+                    len: piece.len,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
         let file = self.file();
         Some(SaveRequest {
             meta: file.meta.clone(),
+            format: Some(self.format.clone()?),
             sources: used
                 .iter()
                 .map(|id| self.sources[id.0 as usize].saved_from(self.encoding))
                 .collect(),
-            segments: pieces
-                .into_iter()
-                .map(|piece| Segment {
-                    source: used.binary_search(&piece.source).unwrap_or(0),
-                    start: piece.start,
-                    len: piece.len,
-                })
-                .collect(),
+            segments,
             target,
             protected: self.protected(),
             replacing: None,

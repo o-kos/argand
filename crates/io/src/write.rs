@@ -65,14 +65,16 @@ pub struct Segment {
 /// What to save and where.
 ///
 /// The segments are written in order. Every source must store its samples the
-/// same way ([`storage`]) at the rate `meta` states, and the first sets the
-/// output format, while `meta` sets the rate and reference frequency written.
-/// A computed source (one with an [`Encoding`]) is encoded into that format
-/// instead, its own storage never compared, so the first source must not be one.
+/// same way ([`storage`]) at the rate `meta` states. `format` retains the output
+/// description, while `meta` sets the reference frequency written. Without an
+/// explicit format, the first checked source supplies it and must not be computed.
+/// A computed source (one with an [`Encoding`]) is encoded into the output format.
 #[derive(Debug, Clone)]
 pub struct SaveRequest {
     /// What the saved file states about itself, its sample rate and reference frequency.
     pub meta: SignalMeta,
+    /// Retained output format; convenience constructors derive it from the first checked source.
+    pub format: Option<Format>,
     pub sources: Vec<SourceFile>,
     pub segments: Vec<Segment>,
     pub target: PathBuf,
@@ -119,6 +121,7 @@ impl SaveRequest {
         };
         Self {
             meta: source.meta.clone(),
+            format: None,
             sources: vec![source],
             segments: vec![segment],
             target,
@@ -138,6 +141,7 @@ impl SaveRequest {
         let meta = sources.first()?.meta.clone();
         Some(Self {
             meta,
+            format: None,
             sources,
             segments,
             target,
@@ -159,6 +163,39 @@ pub struct Protected {
     pub path: PathBuf,
     /// Recognises the file under another name, after a rename.
     pub stamp: Option<SourceStamp>,
+}
+
+/// The immutable output format, independent of the files holding a capture's samples.
+#[derive(Debug, Clone)]
+pub struct Format {
+    storage: Storage,
+    fmt: Option<Vec<u8>>,
+    sample_rate: f64,
+}
+
+impl Format {
+    pub fn storage(&self) -> Storage {
+        self.storage
+    }
+
+    fn of(reader: &Reader, sample_rate: f64) -> Self {
+        Self {
+            storage: reader.storage(),
+            sample_rate,
+            fmt: match reader {
+                Reader::Copy { layout, .. } => Some(layout.fmt.clone()),
+                Reader::Decode(_) => None,
+            },
+        }
+    }
+}
+
+/// Describe the output from the same checked handle that reads the source's layout.
+pub fn format(source: &SourceFile) -> Result<Format, WriteError> {
+    let opened = Opened::open(source)?;
+    let format = Format::of(&opened.reader, source.meta.sample_rate);
+    opened.unchanged()?;
+    Ok(format)
 }
 
 /// How a source stores its samples, which decides whether two can share one file.
@@ -193,7 +230,7 @@ impl Storage {
 
 /// How `source` stores its samples, read from the file as it is now.
 pub fn storage(source: &SourceFile) -> Result<Storage, WriteError> {
-    Ok(Opened::open(source)?.reader.storage())
+    Ok(format(source)?.storage())
 }
 
 /// What tells one version of a file from another without reading it.
@@ -475,16 +512,18 @@ fn stage_with_limit(
         .iter()
         .map(Opened::open)
         .collect::<Result<Vec<_>, _>>()?;
-    let first = common_storage(request, &opened)?;
+    let format = resolve_format(request, &opened)?;
+    check_storage(request, &opened, &format)?;
 
     let meta = &request.meta;
     let total = request.total();
     let mut partial = Partial::create(target)?;
-    let container = match (first, request.output) {
+    let container = match (format.storage(), request.output) {
         (Storage::Linear { .. }, Output::Headerless { preamble }) => {
             write_headerless(
                 &mut partial,
                 request,
+                &format,
                 preamble,
                 &mut opened,
                 progress,
@@ -501,6 +540,7 @@ fn stage_with_limit(
         (Storage::Linear { .. }, Output::Native) => write_wave(
             &mut partial,
             request,
+            &format,
             &mut opened,
             riff_limit,
             progress,
@@ -554,6 +594,24 @@ fn stage_with_limit(
         samples: total,
         container,
     })
+}
+
+fn resolve_format(request: &SaveRequest, opened: &[Opened]) -> Result<Format, WriteError> {
+    let format = match &request.format {
+        Some(format) => format.clone(),
+        None => {
+            let first = request.sources.first().ok_or(WriteError::OutOfRange)?;
+            if first.encoding.is_some() {
+                return Err(WriteError::Unsupported {
+                    path: first.meta.source.clone(),
+                    reason: "computed samples cannot set the format of the file they are saved in"
+                        .into(),
+                });
+            }
+            Format::of(&opened[0].reader, first.meta.sample_rate)
+        }
+    };
+    Ok(format)
 }
 
 /// The protected file the target now is, recognised by its stamp's identity.
@@ -617,17 +675,24 @@ fn check_segments(request: &SaveRequest) -> Result<(), WriteError> {
 }
 
 /// The storage every source shares, refusing one stored differently or at another rate.
-fn common_storage(request: &SaveRequest, opened: &[Opened]) -> Result<Storage, WriteError> {
-    let first = &request.sources[0];
-    if first.encoding.is_some() {
-        return Err(WriteError::Unsupported {
-            path: first.meta.source.clone(),
-            reason: "computed samples cannot set the format of the file they are saved in".into(),
-        });
-    }
-    let storage = opened[0].reader.storage();
+fn check_storage(
+    request: &SaveRequest,
+    opened: &[Opened],
+    format: &Format,
+) -> Result<(), WriteError> {
+    let storage = format.storage();
     let rate = request.meta.sample_rate;
     let channels = request.meta.channels();
+    let stored_channels = match storage {
+        Storage::Linear { channels, .. } => usize::from(channels),
+        Storage::Flac { channels, .. } => channels,
+    };
+    if format.sample_rate != rate || stored_channels != channels {
+        return Err(WriteError::Unsupported {
+            path: request.meta.source.clone(),
+            reason: "the output format has another sample rate or channel count".into(),
+        });
+    }
     let odd = request.sources.iter().zip(opened).find(|(source, open)| {
         let stored = match source.encoding {
             Some(_) => open.reader.is_computed_layout(channels),
@@ -640,7 +705,7 @@ fn common_storage(request: &SaveRequest, opened: &[Opened]) -> Result<Storage, W
             path: odd.meta.source.clone(),
             reason: "its samples are stored differently from the capture it is saved with".into(),
         }),
-        None => Ok(storage),
+        None => Ok(()),
     }
 }
 
@@ -971,37 +1036,38 @@ pub fn writes_as_wave(meta: &SignalMeta, hints: &OpenHints) -> bool {
 fn write_wave(
     partial: &mut Partial,
     request: &SaveRequest,
+    format: &Format,
     opened: &mut [Opened],
     riff_limit: u64,
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<&'static str, WriteError> {
     let total = request.total();
-    let (fmt, block) = match &opened[0].reader {
-        Reader::Copy { layout, .. } => (layout.fmt.clone(), layout.block),
-        Reader::Decode(_) => return Err(WriteError::OutOfRange),
+    let fmt = format.fmt.as_deref().ok_or(WriteError::OutOfRange)?;
+    let Storage::Linear { block, .. } = format.storage() else {
+        return Err(WriteError::OutOfRange);
     };
+    let block = u64::from(block);
     let data_len = total.checked_mul(block).ok_or(WriteError::OutOfRange)?;
     let meta = &request.meta;
-    let container = write_wave_header(partial, meta, &fmt, data_len, total, riff_limit)?;
-    write_linear_segments(partial, request, opened, progress, cancel)?;
+    let container = write_wave_header(partial, meta, fmt, data_len, total, riff_limit)?;
+    write_linear_segments(partial, request, format, opened, progress, cancel)?;
     if data_len % 2 == 1 {
         partial.write(&[0])?;
     }
     Ok(container)
 }
 
-/// Every segment in order, copied byte for byte or, when computed, encoded in the first source's linear storage.
+/// Every segment in order, copied byte for byte or encoded in the retained linear format.
 fn write_linear_segments(
     partial: &mut Partial,
     request: &SaveRequest,
+    format: &Format,
     opened: &mut [Opened],
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<(), WriteError> {
-    let Reader::Copy { layout, .. } = &opened[0].reader else {
-        return Err(WriteError::OutOfRange);
-    };
+    let fmt = format.fmt.as_deref().ok_or(WriteError::OutOfRange)?;
     // Only computed or adjusted samples need the format to be encodable, copied ones go as they are.
     let adjusted = !request.adjustment.is_identity();
     let computed = request
@@ -1009,7 +1075,7 @@ fn write_linear_segments(
         .iter()
         .any(|source| source.encoding.is_some());
     let target = match computed || adjusted {
-        true => Some(Linear::of(layout, &request.meta.source)?),
+        true => Some(Linear::of(fmt, format.storage(), &request.meta.source)?),
         false => None,
     };
     let total = request.total();
@@ -1052,6 +1118,7 @@ fn write_linear_segments(
 fn write_headerless(
     partial: &mut Partial,
     request: &SaveRequest,
+    format: &Format,
     preamble: u64,
     opened: &mut [Opened],
     progress: &mut dyn FnMut(u64, u64),
@@ -1064,7 +1131,7 @@ fn write_headerless(
         });
     };
     copy_preamble(partial, replacing, preamble)?;
-    write_linear_segments(partial, request, opened, progress, cancel)
+    write_linear_segments(partial, request, format, opened, progress, cancel)
 }
 
 /// Copy the bytes before the samples of the replaced file, checking it is the file that was opened.
@@ -1279,22 +1346,21 @@ enum Linear {
 
 impl Linear {
     /// The encoding of `layout`, refused for one whose stored integers do not fill their container.
-    fn of(layout: &CopyLayout, path: &Path) -> Result<Self, WriteError> {
+    fn of(fmt: &[u8], storage: Storage, path: &Path) -> Result<Self, WriteError> {
         let Storage::Linear {
             format_tag,
             bits,
             channels,
             block,
             unscaled_float,
-        } = layout.storage()
+        } = storage
         else {
             return Err(WriteError::OutOfRange);
         };
         let width = usize::from(block) / usize::from(channels.max(1));
         // An extensible header states the bits that carry the value apart from the container's.
-        let extensible =
-            u16::from_le_bytes([layout.fmt[0], layout.fmt[1]]) == riff::WAVE_FORMAT_EXTENSIBLE;
-        let valid = match layout.fmt.get(18..20) {
+        let extensible = u16::from_le_bytes([fmt[0], fmt[1]]) == riff::WAVE_FORMAT_EXTENSIBLE;
+        let valid = match fmt.get(18..20) {
             Some(word) if extensible => u16::from_le_bytes([word[0], word[1]]),
             _ => bits,
         };
@@ -1583,7 +1649,7 @@ impl Decoding<'_> {
         cancel: &AtomicBool,
         sink: &mut dyn FnMut(&[i32]) -> Result<(), WriteError>,
     ) -> Result<(), WriteError> {
-        let channels = self.request.sources[0].meta.channels();
+        let channels = self.request.meta.channels();
         let mut values = vec![0.0f32; block * channels];
         let mut ints: Vec<i32> = Vec::with_capacity(block * channels);
         let total = self.request.total();

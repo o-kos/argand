@@ -164,13 +164,13 @@ impl Shell {
         );
         let name = file_name(&request.target);
         let target = request.target.clone();
-        let output = &request.sources[0];
-        let as_wave = (output.meta.container == "flac"
-            && argand_io::write::writes_as_wave(&output.meta, &output.hints))
+        let output = &request.meta;
+        let as_wave = (output.container == "flac"
+            && argand_io::write::writes_as_wave(output, &argand_io::OpenHints::default()))
         .then(|| {
             format!(
                 "as WAV, the FLAC encoder cannot write {} Hz",
-                crate::numbers::number(output.meta.sample_rate)
+                crate::numbers::number(output.sample_rate)
             )
         });
         let (job, updates) = saving::start(request, of.over);

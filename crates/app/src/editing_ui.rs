@@ -140,17 +140,17 @@ impl Shell {
             clipboard.adopt(&editing_source(&source));
         }
         let mut editing = Editing::new(meta, hints);
-        editing.describe_file(stamp, None);
+        editing.describe_format(stamp, None);
         editing.describe_units(file.state.document.sample_units());
         file.editing = Some(editing);
         let document = file.id;
         let opened = editing_source(&source);
         // Reading the header may touch a network mount, so it happens away from the window.
-        let storage = cx.background_spawn(async move { argand_io::write::storage(&source).ok() });
+        let format = cx.background_spawn(async move { argand_io::write::format(&source).ok() });
         cx.spawn(async move |shell, cx| {
-            let storage = storage.await;
+            let format = format.await;
             let _ = shell.update(cx, |shell, cx| {
-                shell.file_stored(document, &opened, storage, cx);
+                shell.file_stored(document, &opened, format, cx);
             });
         })
         .detach();
@@ -161,12 +161,15 @@ impl Shell {
         &mut self,
         document: u64,
         opened: &crate::editing::Source,
-        storage: Option<argand_io::write::Storage>,
+        format: Option<argand_io::write::Format>,
         cx: &mut Context<Self>,
     ) {
         // A clipboard copied from the file outlives its document, so it learns either way.
         if let Some(clipboard) = &mut self.clipboard {
-            clipboard.describe(opened, storage);
+            clipboard.describe(
+                opened,
+                format.as_ref().map(argand_io::write::Format::storage),
+            );
         }
         if let Some(editing) = self
             .file
@@ -179,7 +182,7 @@ impl Shell {
                     && editing.file().stamp == opened.stamp
             })
         {
-            editing.describe_file(opened.stamp, storage);
+            editing.describe_format(opened.stamp, format);
         }
         cx.notify();
     }

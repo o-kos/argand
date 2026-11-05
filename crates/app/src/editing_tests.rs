@@ -25,7 +25,15 @@ const LINEAR: Storage = Storage::Linear {
 
 fn editing(path: &str, len: u64, rate: f64) -> Editing {
     let mut editing = Editing::new(meta(path, len, rate), OpenHints::default());
-    editing.describe_file(None, Some(LINEAR));
+    let dir = argand_io::testutil::TempDir::new("editing-format");
+    let path = argand_io::testutil::write_wav(
+        &dir.join("format.wav"), editing.file().meta.sample_type, rate as u32, &[0.0, 0.0], 1.0,
+    );
+    let source = argand_io::open(&path, &OpenHints::default()).unwrap();
+    let format = argand_io::write::format(&SourceFile {
+        meta: source.meta().clone(), hints: OpenHints::default(), stamp: None, encoding: None,
+    }).unwrap();
+    editing.describe_format(None, Some(format));
     editing
 }
 
@@ -352,25 +360,49 @@ fn the_picture_stays_over_samples_computed_in_place_and_brought_back() {
 }
 
 #[test]
-fn a_save_of_computed_samples_reads_the_opened_file_first_and_encodes_them() {
+fn a_save_of_computed_samples_retains_the_format_without_reading_the_opened_file() {
     let dir = scratch_dir("save");
     let mut document = editing("/a.wav", 100, 1000.0);
     document.describe_units(Some((32768.0, 0.0)));
     document.replace_computed(span(0, 100), computed(&dir.join("1.wav"), 100, 1000.0), 0, Selection::default());
     let request = document.save_request(None, PathBuf::from("/b.wav")).unwrap();
-    assert_eq!(request.sources.len(), 2);
-    assert_eq!(request.sources[0].meta.source, PathBuf::from("/a.wav"));
-    assert_eq!(request.sources[0].encoding, None);
+    assert_eq!(request.sources.len(), 1);
+    assert_eq!(request.format.as_ref().unwrap().storage(), LINEAR);
+    assert_eq!(request.sources[0].meta.source, dir.join("1.wav"));
     assert_eq!(
-        request.sources[1].encoding,
+        request.sources[0].encoding,
         Some(argand_io::write::Encoding {
             factor: 32768.0,
             offset: 0.0
         })
     );
     assert_eq!(request.segments.len(), 1);
-    assert_eq!(request.segments[0].source, 1);
+    assert_eq!(request.segments[0].source, 0);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn saving_remaps_non_contiguous_computed_source_ids() {
+    let dir = scratch_dir("save-remap");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.describe_units(Some((32768.0, 0.0)));
+    for (name, selected) in [("unused.wav", span(0, 100)), ("first.wav", span(0, 50)), ("last.wav", span(50, 100))] {
+        document.replace_computed(selected, computed(&dir.join(name), selected.count(), 1000.0), 0, Selection::default());
+    }
+    assert_eq!(document.capture().sources(), [SourceId(2), SourceId(3)]);
+    let request = document.save_request(None, PathBuf::from("/b.wav")).unwrap();
+    assert_eq!(request.sources.len(), 2);
+    assert_eq!(request.sources[0].meta.source, dir.join("first.wav"));
+    assert_eq!(request.sources[1].meta.source, dir.join("last.wav"));
+    assert_eq!(request.segments.iter().map(|segment| segment.source).collect::<Vec<_>>(), [0, 1]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_document_without_a_checked_output_format_cannot_save() {
+    let document = Editing::new(meta("/missing.wav", 100, 1000.0), OpenHints::default());
+    assert!(!document.is_described());
+    assert!(document.save_request(None, PathBuf::from("/b.wav")).is_none());
 }
 
 #[test]
