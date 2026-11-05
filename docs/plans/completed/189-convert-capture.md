@@ -43,7 +43,10 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
 - Keep one immutable source/version snapshot, source stamps and scratch ownership
   until completion. Cancellation/errors leave source and existing target alone.
 - Use stock Dialog, Input, Select and Button, as already composed in
-  `editing_ui.rs` and `settings_editor.rs`; no custom ordinary controls.
+  `editing_ui.rs` and `settings_editor.rs`; no custom ordinary controls. The form
+  consumes propagated Confirm while either stock Select owns focus, so its Enter
+  opens/confirms the list without also submitting the parent Dialog. The locked
+  base Select explicitly propagates Confirm; this is supported parent composition.
 
 ## Rejected alternatives
 

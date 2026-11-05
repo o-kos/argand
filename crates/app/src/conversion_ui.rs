@@ -3,6 +3,7 @@
 use super::*;
 use crate::conversion::{Converted, Level, Request};
 use crate::saving::{Ended, Update};
+use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{IconName, WindowExt as _};
@@ -134,6 +135,15 @@ impl Render for Editor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let summary = self.summary(cx);
         div()
+            .on_action(cx.listener(|editor, _: &Confirm, window, cx| {
+                // The stock Select propagates Confirm after opening or choosing an item.
+                let selecting = [&editor.kind, &editor.level]
+                    .into_iter()
+                    .any(|select| select.read(cx).focus_handle(cx).is_focused(window));
+                if !selecting {
+                    cx.propagate();
+                }
+            }))
             .flex()
             .flex_col()
             .gap_3()
