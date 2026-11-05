@@ -23,7 +23,7 @@ use crate::{OpenHints, RiffError};
 
 mod float_wave;
 
-pub use float_wave::{FloatWave, FloatWaveRequest};
+pub use float_wave::{EncodedWave, FloatWave, FloatWaveRequest};
 
 /// Bytes moved per read and write, rounded down to whole samples.
 const COPY_BYTES: usize = 4 << 20;

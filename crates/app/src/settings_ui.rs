@@ -348,6 +348,7 @@ impl Shell {
             .children(self.suppress_item(cx))
             .children(self.level_item(cx))
             .children(self.save_item(cx))
+            .children(self.conversion_item(cx))
     }
 
     fn range_control(

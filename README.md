@@ -688,3 +688,37 @@ the complete capture peak. Initial completion can refine the preview and its
 scale once; later zoom, pan, palette and FFT changes do not rebuild it. Resizing
 conservatively rebins cached extrema. Closing or replacing the file cancels the
 reader without waiting on the UI thread.
+
+### Converting a capture
+
+**File → Convert capture…** writes the whole current edited capture to a new
+WAVE file (RF64 for large outputs), then offers to open it through the normal
+unsaved-document prompt. A selection does not limit conversion. The original
+file and its edit history stay unchanged; cancelling the transition to the new
+file leaves the successfully written result on disk.
+
+Choose the output sample rate and reference frequency explicitly in hertz, and
+one of the ten real/IQ sample types. Changing the type never changes either
+frequency field. The dialog shows the requested physical band, its intersection
+with the input and the filter's passband interior. Frequencies outside the target
+band are filtered out rather than folded into it. Real input is made analytic;
+real output takes the real component after translation to the requested reference.
+Finite filter transitions occupy 1% of the retained width at each edge; native
+real DC/Nyquist use a half-gain endpoint convention. An empty intersection, a band
+too narrow for the bounded filters or a rate outside WAVE header limits is refused.
+
+**Preserve level** keeps the stored signal's amplitude relative to full scale,
+including current inversion and gain, independently of read normalization.
+Arbitrary-scale `f16x8` values keep their original units. **Normalize peak** makes
+two bounded passes and puts the transformed peak at −0.1 dBFS using one gain for
+both I and Q. Silence stays silent. Integer output uses nearest rounding (ties
+away from zero), saturation and no dither. The result reports the gain and the
+number of clipped scalar values, counting I and Q separately. Floats can retain
+finite values beyond unity; nonfinite data is refused. DSP calculations use f32,
+so transforming i32 data may lose low bits. An unchanged WAVE identity conversion
+copies sample bytes without filtering or quantization.
+
+Conversion runs in the background with progress and cancellation. A failure or
+cancellation before publication leaves an existing target alone. Multi-hour
+captures are streamed with bounded memory; elapsed time still depends on their
+sample count, conversion ratio and filter length.

@@ -35,7 +35,9 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
   bits. A byte-preserving unchanged capture uses the existing save path when
   type/rate/reference and level mode are unchanged.
 - Finite FIR transitions and zero padding at capture ends are unavoidable. Use
-  existing 80 dB extraction/reconstruction filters and compensate their delay.
+  1% transitions inside cropped band edges and compensate filter delay. The
+  filter design parameter is 80 dB; measured acceptance is the 60 dB tone floor.
+  Native real DC/Nyquist boundaries retain their analytic half-gain convention.
   Refuse unsupported narrow transitions/rates before publishing, never silently
   change the requested rate, reference or type.
 - Keep one immutable source/version snapshot, source stamps and scratch ownership
@@ -53,14 +55,14 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
 
 ## Implementation steps
 
-- [ ] Add validated physical-band conversion planning and bounded DSP streaming.
-- [ ] Add streaming encoded WAVE/RF64 output with clipping statistics and safe publication.
-- [ ] Add cancellable conversion orchestration over the complete edited capture;
+- [x] Add validated physical-band conversion planning and bounded DSP streaming.
+- [x] Add streaming encoded WAVE/RF64 output with clipping statistics and safe publication.
+- [x] Add cancellable conversion orchestration over the complete edited capture;
       preserve level and two-pass peak normalization; exact output metadata.
-- [ ] Add standard conversion dialog, File command, progress/cancel and successful-result opening.
-- [ ] Add regression coverage and update architecture/user-facing documentation.
+- [x] Add standard conversion dialog, File command, progress/cancel and successful-result opening.
+- [x] Add regression coverage and update architecture/user-facing documentation.
 - [ ] Complete local validation and build the current release binary.
-- [ ] Move this plan to `docs/plans/completed/` before final external review.
+- [x] Move this plan to `docs/plans/completed/` before final external review.
 
 ## Validation
 
@@ -86,6 +88,36 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
 - [ ] `cargo test --locked`
 - [ ] `cargo build --release --locked` after the checks pass
 - [ ] Independent review with findings and dispositions recorded in the PR
+
+## Implementation evidence and limits
+
+- Preserve restores the decoded original scale through each file's affine factor,
+  divided by that storage's full scale. It deliberately excludes u8's neutral DC
+  offset. Computed pieces use their retained Encoding and the capture's full scale;
+  Capture gain/inversion is applied once by EditedSource. Tests cover auto-normalized
+  real/IQ sources in all ten types and mixed computed pieces.
+- Peak normalization uses the existing Normalize command's IQ hypot/real absolute
+  peak and -0.1 dBFS target, measured after all DSP in the first bounded pass.
+- Full-band identity skips filtering. Compatible WAVE identity preserves raw bytes,
+  including i32 low bits; storage depth must match the selected output type.
+- Source stamps are checked on opening, after each pass and again after output sync
+  before atomic publication. Cancellation drops the staged file. Successful opening
+  uses the ordinary unsaved-document transition; Cancel retains the created file
+  and original document, with the result path in the status bar.
+- DSP release benchmark, one million input frames per case: IQ 1 MHz to 50 kHz
+  417 ms (133 ms preparation); equal-rate IQ reference shift 554 ms; equal-rate
+  real-to-IQ 392 ms. This excludes file IO and UI. Process high-water RSS 20,092 KiB
+  across the three cases. This is measured typical-case memory, not a universal cap.
+- Memory is independent of capture length: 4096-frame source/output blocks plus
+  bounded FFT overlap-save and reconstruction state. Transitions narrower than
+  Fs/131072 (including the 1% guard) are refused before run; the existing filter
+  FFT and phase-bank limits bound worst-case storage. No full-capture allocation.
+- Actual toolkit headless tests exercise editable rate, type changes, invalid bands,
+  focus and dialog/list Escape. Native interactive coverage remains unavailable:
+  the environment exposes no supported keyboard/pointer automation, and an existing
+  owner's older application process was left untouched. Native UI acceptance must
+  not be inferred from headless tests or a release build.
+- The pre-existing FFT summary spacing defect is tracked separately in #225.
 
 ## Post-completion
 

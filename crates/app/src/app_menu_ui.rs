@@ -122,6 +122,10 @@ impl Shell {
             Row::SaveAs => {
                 action_row("Save as...", Box::new(SaveAs), false, focus).disabled(!enabled.save)
             }
+            Row::Convert => {
+                action_row("Convert capture...", Box::new(ConvertCapture), false, focus)
+                    .disabled(!enabled.save)
+            }
             Row::SaveSelectionAs => action_row(
                 "Save selection as...",
                 Box::new(SaveSelectionAs),

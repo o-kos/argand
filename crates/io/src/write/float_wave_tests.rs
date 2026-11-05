@@ -138,3 +138,63 @@ fn a_capture_cancelled_while_it_is_finished_leaves_the_target_alone() {
     assert_eq!(std::fs::read(&target).unwrap(), b"kept");
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1, "no temporary file is left");
 }
+
+#[test]
+fn encoded_wave_roundtrips_all_ten_types_and_reports_scalar_clipping() {
+    for token in argand_core::SAMPLE_TYPE_TOKENS {
+        let dir = TempDir::new(token);
+        let target = dir.join("converted.wav");
+        let mut request = request(7, target.clone());
+        request.meta.sample_type = token.parse().unwrap();
+        let format = request.meta.sample_type.format;
+        let channels = request.meta.channels();
+        let values = [[-2.0, 2.0], [-1.0, -1.0], [-0.5, 0.5], [0.0, 0.0],
+            [0.5, -0.5], [1.0, 1.0], [2.0, -2.0]];
+        let mut writer = EncodedWave::create(request).unwrap();
+        writer.write(&values).unwrap();
+        assert_eq!(writer.clipped(), if format.is_integer() { (3 * channels) as u64 } else { 0 });
+        writer.finish(&AtomicBool::new(false)).unwrap();
+        let hints = OpenHints { normalize: Some(crate::Normalize::None), ..OpenHints::default() };
+        let mut source = crate::open(&target,&hints).unwrap();
+        assert_eq!(source.meta().sample_type.to_string(), token);
+        let mut actual=vec![0.0;7*channels];
+        assert_eq!(source.read(&mut actual).unwrap(),actual.len());
+        assert_eq!(actual[3*channels],0.0);
+        if format.is_integer() {
+            assert_eq!(actual[0],-1.0);
+            assert_eq!(actual[2*channels],-0.5);
+        } else {
+            assert_eq!(actual,values.iter().flat_map(|v|v[..channels].iter().copied()).collect::<Vec<_>>());
+        }
+    }
+}
+
+#[test]
+fn integer_rounding_ties_are_away_from_zero_and_u8_silence_is_128() {
+    let mut bytes=Vec::new();
+    assert!(!encode(SampleFormat::U8,0.0,&mut bytes));
+    assert!(!encode(SampleFormat::U8,0.5/128.0,&mut bytes));
+    assert!(!encode(SampleFormat::U8,-0.5/128.0,&mut bytes));
+    assert_eq!(bytes,[128,129,127]);
+    bytes.clear();
+    encode(SampleFormat::I16,0.5/32768.0,&mut bytes);
+    encode(SampleFormat::I16,-0.5/32768.0,&mut bytes);
+    assert_eq!(bytes,[1,0,255,255]);
+}
+
+#[test]
+fn encoded_nonfinite_and_cancel_leave_the_target_untouched() {
+    let dir=TempDir::new("encoded-cancel");
+    let target=dir.join("kept.wav");
+    std::fs::write(&target,b"kept").unwrap();
+    for value in [f32::NAN,f32::INFINITY,f32::NEG_INFINITY] {
+        let mut writer=EncodedWave::create(request(1,target.clone())).unwrap();
+        assert!(writer.write(&[[value,0.0]]).is_err());
+        drop(writer);
+    }
+    let mut writer=EncodedWave::create(request(1,target.clone())).unwrap();
+    writer.write(&[[0.0,0.0]]).unwrap();
+    assert!(matches!(writer.finish(&AtomicBool::new(true)),Err(WriteError::Cancelled)));
+    assert_eq!(std::fs::read(&target).unwrap(),b"kept");
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(),1);
+}

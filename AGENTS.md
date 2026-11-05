@@ -1220,3 +1220,30 @@ dispositions are recorded in the inventory table of
 `docs/plans/completed/124-standard-ui-architecture.md`, one line per control, with the
 audit itself, every render and input entry point and each retained row's
 verified limitation in the locked 0.6.6 sources in `docs/ui/124-inventory.md`.
+
+## Capture conversion (#189)
+
+`conversion.rs` converts a whole immutable edited-capture snapshot into a new WAVE/RF64;
+selection is ignored. `conversion_ui.rs` composes a standard Dialog, Input, Select and
+Button, with explicit output sample rate/reference fields which a domain change never
+rewrites. `argand_dsp::convert::ConversionPlan` validates the physical-band intersection
+and output count; `ExtractPlan::for_conversion` uses bounded overlap-save filtering,
+integer decimation and 2x interpolation with transitions inside the intersection (1% of
+its width per edge), except native real DC/Nyquist half-gain endpoints. The fractional
+reconstructor and final oscillator keep physical frequencies under the requested
+reference. Identity domain/rate/reference skips filtering; eligible unchanged WAVE
+captures copy bytes through the existing writer, preserving i32 low bits.
+
+Preserve converts each source's read values back to nominal full-scale units, computed
+sources through their document Encoding, and applies the Capture adjustment once.
+Normalize measures the transformed output peak first, then repeats the bounded stream
+with the same -0.1 dBFS/common IQ-magnitude gain as `levelling`. `write::EncodedWave`
+shares FloatWave's safe staging/publication and writes all ten supported types, rounding
+integers to nearest with ties away from zero, saturating without dither and counting
+clipped scalar values. Floats keep finite overscale values; nonfinite data fails.
+Sources are stamped before/after reads and after final sync, before publication.
+Successful conversion does not mark the input saved; opening the result uses the
+ordinary unsaved-document prompt, and cancelling that transition retains both the
+current document and the created file. The result reopens with normalization disabled
+so f16x8 arbitrary units are not automatically rescaled. Scratch ownership lasts until
+the job ends; opening another capture cancels conversion.

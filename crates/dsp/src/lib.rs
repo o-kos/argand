@@ -6,6 +6,7 @@
 //!
 //! [`SampleSource`]: argand_core::SampleSource
 
+pub mod convert;
 pub mod extract;
 pub mod resample;
 pub mod stft;

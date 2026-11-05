@@ -111,6 +111,61 @@ impl ExtractPlan {
         Ok(plan)
     }
 
+    /// Conversion filters transition inside the requested band, except at a real
+    /// source's own DC/Nyquist edge, whose half gain keeps that endpoint whole.
+    pub fn for_conversion(
+        rate: f64,
+        low: f64,
+        high: f64,
+        real: bool,
+    ) -> Result<Self, ExtractError> {
+        Self::check_conversion(rate, low, high, real)?;
+        let width = high - low;
+        let transition = width * 0.01;
+        let lower = if real && low == 0.0 {
+            low
+        } else {
+            low + transition / 2.0
+        };
+        let upper = if real && high == rate / 2.0 {
+            high
+        } else {
+            high - transition / 2.0
+        };
+        let cutoff = (upper - lower) / 2.0;
+        Ok(Self {
+            rate,
+            centre: (lower + upper) / 2.0,
+            decimation: ((rate / (TRANSITION * width)).floor() as u64).max(1),
+            interpolation: 2,
+            whole_export: false,
+            taps: low_pass(
+                rate,
+                cutoff - transition / 2.0,
+                cutoff + transition / 2.0,
+                if real { 2.0 } else { 1.0 },
+            ),
+            real,
+        })
+    }
+
+    /// Check the bounded 1% conversion transition without allocating the filter.
+    pub fn check_conversion(
+        rate: f64,
+        low: f64,
+        high: f64,
+        real: bool,
+    ) -> Result<(), ExtractError> {
+        Self::check(rate, low, high, real)?;
+        if (high - low) * 0.01 < rate * NARROWEST_TRANSITION {
+            return Err(ExtractError::TooNarrow {
+                width: high - low,
+                narrowest: rate * NARROWEST_TRANSITION / 0.01,
+            });
+        }
+        Ok(())
+    }
+
     /// The intermediate coordinate of an input sample offset.
     pub fn coordinate(&self, input: u64) -> f64 {
         input as f64 * self.interpolation as f64 / self.decimation as f64

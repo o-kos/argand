@@ -11,6 +11,7 @@ pub enum Row<T> {
     SaveAs,
     /// Saves the time selection as a new file.
     SaveSelectionAs,
+    Convert,
     /// A capture from the recent list, with the digit its row promises.
     Recent {
         number: Option<u8>,
@@ -44,6 +45,7 @@ pub fn file_items<T>(recent: Vec<(String, T)>) -> Vec<Row<T>> {
         Row::Save,
         Row::SaveAs,
         Row::SaveSelectionAs,
+        Row::Convert,
         Row::Separator,
     ];
     if !recent.is_empty() {
@@ -75,6 +77,7 @@ mod tests {
                 Row::Save => "save over".to_owned(),
                 Row::SaveAs => "save".to_owned(),
                 Row::SaveSelectionAs => "save selection".to_owned(),
+                Row::Convert => "convert".to_owned(),
                 Row::Settings => "settings".to_owned(),
                 Row::Separator => "separator".to_owned(),
                 Row::Recent { number, label, .. } => format!("{number:?}:{label}"),
@@ -97,6 +100,7 @@ mod tests {
                 "save over",
                 "save",
                 "save selection",
+                "convert",
                 "separator",
                 "settings"
             ]
@@ -112,6 +116,7 @@ mod tests {
                 "save over",
                 "save",
                 "save selection",
+                "convert",
                 "separator",
                 "Some(1):capture0",
                 "Some(2):capture1",

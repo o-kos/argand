@@ -23,10 +23,13 @@ pub struct FloatWave {
     target: PathBuf,
     protected: Vec<Protected>,
     read: Vec<Option<(u64, u64)>>,
+    sources: Vec<SourceFile>,
     samples: u64,
     channels: usize,
     written: u64,
     container: &'static str,
+    format: SampleFormat,
+    clipped: u64,
 }
 
 impl FloatWave {
@@ -38,6 +41,14 @@ impl FloatWave {
     pub(crate) fn create_with_limit(
         request: FloatWaveRequest,
         riff_limit: u64,
+    ) -> Result<Self, WriteError> {
+        Self::encoded(request, riff_limit, SampleFormat::F32)
+    }
+
+    fn encoded(
+        request: FloatWaveRequest,
+        riff_limit: u64,
+        format: SampleFormat,
     ) -> Result<Self, WriteError> {
         let FloatWaveRequest {
             mut meta,
@@ -53,11 +64,11 @@ impl FloatWave {
         } else {
             argand_core::Domain::Real
         };
-        meta.sample_type = argand_core::SampleType::new(domain, SampleFormat::F32);
+        meta.sample_type = argand_core::SampleType::new(domain, format);
         let channels = meta.channels();
         let fmt = synthesized_fmt(&meta)?;
         let data_len = samples
-            .checked_mul(channels as u64 * 4)
+            .checked_mul(channels as u64 * format.bytes() as u64)
             .ok_or(WriteError::OutOfRange)?;
         let mut partial = Partial::create(&target)?;
         let container =
@@ -70,10 +81,13 @@ impl FloatWave {
                 .iter()
                 .map(|source| source.stamp.and_then(|stamp| stamp.identity))
                 .collect(),
+            sources,
             samples,
             channels,
             written: 0,
             container,
+            format,
+            clipped: 0,
         })
     }
 
@@ -85,7 +99,13 @@ impl FloatWave {
         }
         let mut bytes = Vec::with_capacity(samples.len() * self.channels * 4);
         for value in samples.iter().flat_map(|sample| &sample[..self.channels]) {
-            bytes.extend_from_slice(&value.to_le_bytes());
+            if !value.is_finite() {
+                return Err(WriteError::Unsupported {
+                    path: self.target.clone(),
+                    reason: "the computed signal contains a nonfinite sample".into(),
+                });
+            }
+            self.clipped += u64::from(encode(self.format, *value, &mut bytes));
         }
         self.partial.write(&bytes)?;
         self.written += count;
@@ -102,6 +122,13 @@ impl FloatWave {
         if cancel.load(Ordering::Relaxed) {
             return Err(WriteError::Cancelled);
         }
+        for source in &self.sources {
+            if source.stamp.is_none() || SourceStamp::of(&source.meta.source).ok() != source.stamp {
+                return Err(WriteError::SourceChanged {
+                    path: source.meta.source.clone(),
+                });
+            }
+        }
         let staged = Staged {
             partial: self.partial,
             target: self.target,
@@ -113,6 +140,60 @@ impl FloatWave {
         };
         staged.commit().map_err(|refused| refused.error)
     }
+}
+
+/// A computed signal encoded directly into any supported scalar WAVE format.
+pub struct EncodedWave(FloatWave);
+
+impl EncodedWave {
+    /// Validate header limits without creating any output file.
+    pub fn check(meta: &SignalMeta, samples: u64) -> Result<(), WriteError> {
+        synthesized_fmt(meta)?;
+        samples
+            .checked_mul(meta.sample_type.bytes_per_sample() as u64)
+            .ok_or(WriteError::OutOfRange)?;
+        Ok(())
+    }
+
+    pub fn create(request: FloatWaveRequest) -> Result<Self, WriteError> {
+        let format = request.meta.sample_type.format;
+        Self::check(&request.meta, request.samples)?;
+        FloatWave::encoded(request, RIFF_LIMIT, format).map(Self)
+    }
+
+    pub fn write(&mut self, samples: &[[f32; 2]]) -> Result<(), WriteError> {
+        self.0.write(samples)
+    }
+
+    /// Saturated scalar values, counting I and Q separately.
+    pub fn clipped(&self) -> u64 {
+        self.0.clipped
+    }
+
+    pub fn finish(self, cancel: &AtomicBool) -> Result<Saved, WriteError> {
+        self.0.finish(cancel)
+    }
+}
+
+fn encode(format: SampleFormat, value: f32, out: &mut Vec<u8>) -> bool {
+    let (scale, low, high) = match format {
+        SampleFormat::U8 => (128.0, -128.0, 127.0),
+        SampleFormat::I16 => (32768.0, -32768.0, 32767.0),
+        SampleFormat::I32 => (2147483648.0, -2147483648.0, 2147483647.0),
+        SampleFormat::F32 | SampleFormat::F16x8 => {
+            out.extend_from_slice(&value.to_le_bytes());
+            return false;
+        }
+    };
+    let rounded = (f64::from(value) * scale).round();
+    let stored = rounded.clamp(low, high);
+    match format {
+        SampleFormat::U8 => out.push((stored + 128.0) as u8),
+        SampleFormat::I16 => out.extend_from_slice(&(stored as i16).to_le_bytes()),
+        SampleFormat::I32 => out.extend_from_slice(&(stored as i32).to_le_bytes()),
+        SampleFormat::F32 | SampleFormat::F16x8 => unreachable!(),
+    }
+    rounded != stored
 }
 
 #[cfg(test)]

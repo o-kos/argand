@@ -42,6 +42,8 @@ mod backdrop;
 #[path = "badge_entry.rs"]
 mod badge_entry;
 
+#[path = "conversion_ui.rs"]
+mod conversion_ui;
 #[path = "disk_change_ui.rs"]
 mod disk_change_ui;
 #[path = "editing_ui.rs"]
@@ -58,6 +60,7 @@ mod plot_ui;
 mod plot_view;
 #[path = "replace_ui.rs"]
 mod replace_ui;
+
 #[path = "saving_ui.rs"]
 mod saving_ui;
 #[path = "selection_gestures.rs"]
@@ -93,6 +96,7 @@ actions!(
         Save,
         SaveAs,
         SaveSelectionAs,
+        ConvertCapture,
         EditAnalysis,
         UseRecommendedRange
     ]
@@ -435,6 +439,7 @@ struct Shell {
     saving: Option<saving_ui::Saving>,
     save_notice: Option<saving_ui::Notice>,
     save_updates: Option<Task<()>>,
+    conversion: conversion_ui::State,
     suppressing: Option<suppression_ui::Suppressing>,
     suppress_updates: Option<Task<()>>,
     levelling: Option<levelling_ui::Levelling>,
@@ -482,6 +487,18 @@ struct Shell {
 }
 
 impl Shell {
+    fn observe_close(window: &mut Window, cx: &mut Context<Self>) {
+        let closing = cx.entity().downgrade();
+        // A close with unsaved edits is refused here and carried out once the question is answered.
+        window.on_window_should_close(cx, move |window, cx| {
+            closing
+                .update(cx, |shell, cx| {
+                    shell.settle_unsaved(editing_ui::Pending::Close, window, cx)
+                })
+                .unwrap_or(true)
+        });
+    }
+
     fn new(
         config: Config,
         writer: Option<Saver>,
@@ -529,15 +546,7 @@ impl Shell {
             )
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
-        let closing = cx.entity().downgrade();
-        // A close with unsaved edits is refused here and carried out once the question is answered.
-        window.on_window_should_close(cx, move |window, cx| {
-            closing
-                .update(cx, |shell, cx| {
-                    shell.settle_unsaved(editing_ui::Pending::Close, window, cx)
-                })
-                .unwrap_or(true)
-        });
+        Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
@@ -561,6 +570,7 @@ impl Shell {
             saving: None,
             save_notice: None,
             save_updates: None,
+            conversion: conversion_ui::State::default(),
             suppressing: None,
             suppress_updates: None,
             levelling: None,
@@ -738,6 +748,8 @@ impl Shell {
         self.selection = None;
         self.band = None;
         // A band computed for the previous file has nowhere to go.
+        self.conversion.running = None;
+        self.conversion.updates = None;
         self.suppressing = None;
         self.suppress_updates = None;
         self.levelling = None;
@@ -1242,6 +1254,16 @@ impl Shell {
                 cx.defer(move |cx| {
                     let _ =
                         shell.update_in(cx, |shell, window, cx| shell.save_as(false, window, cx));
+                });
+            }
+        });
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &ConvertCapture, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ =
+                        shell.update_in(cx, |shell, window, cx| shell.convert_dialog(window, cx));
                 });
             }
         });

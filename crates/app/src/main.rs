@@ -16,6 +16,7 @@ mod axes;
 mod chrome;
 mod cli;
 mod config;
+mod conversion;
 mod cpu;
 mod disk_change;
 mod document;
