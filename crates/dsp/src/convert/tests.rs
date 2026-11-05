@@ -227,25 +227,29 @@ fn fractional_native_edges_survive_physical_reference_subtraction() {
     for rate in [8000.1, 16000.0, 44100.123] {
         for reference in [100_000.0, 1_000_000_000.0] {
             for input_iq in [false, true] {
-                let input = meta(input_iq, rate, reference);
-                for output_iq in [false, true] {
-                    for output_rate in [rate, rate / 2.0, 8000.1] {
-                        let output_reference = if !input_iq && output_iq {
-                            reference + output_rate / 4.0
-                        } else {
-                            reference
-                        };
-                        let output = meta(output_iq, output_rate, output_reference);
-                        let plan = ConversionPlan::new(&input, &output).unwrap();
-                        assert!(plan.width <= output_rate / if output_iq { 1.0 } else { 2.0 });
-                        plan.stream(input.len_samples).unwrap();
-                    }
-                }
-                let outside = meta(false, rate, input.frequency_span().1 + 0.001);
-                assert!(ConversionPlan::new(&input, &outside).is_err());
+                check_fractional_edges(rate, reference, input_iq);
             }
         }
     }
+}
+
+fn check_fractional_edges(rate: f64, reference: f64, input_iq: bool) {
+    let input = meta(input_iq, rate, reference);
+    for output_iq in [false, true] {
+        for output_rate in [rate, rate / 2.0, 8000.1] {
+            let output_reference = if !input_iq && output_iq {
+                reference + output_rate / 4.0
+            } else {
+                reference
+            };
+            let output = meta(output_iq, output_rate, output_reference);
+            let plan = ConversionPlan::new(&input, &output).unwrap();
+            assert!(plan.width <= output_rate / if output_iq { 1.0 } else { 2.0 });
+            plan.stream(input.len_samples).unwrap();
+        }
+    }
+    let outside = meta(false, rate, input.frequency_span().1 + 0.001);
+    assert!(ConversionPlan::new(&input, &outside).is_err());
 }
 
 #[test]
