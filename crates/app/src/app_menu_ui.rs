@@ -2003,9 +2003,12 @@ mod tests {
     }
 
     /// Give the open capture the description its file would have reported, from a real file.
-    fn describe(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
-        let fixture =
-            std::env::temp_dir().join(format!("argand-describe-{}.wav", std::process::id()));
+    fn describe(
+        cx: &mut gpui_kit::VisualTestContext,
+        shell: &Entity<Shell>,
+    ) -> argand_io::testutil::TempDir {
+        let dir = argand_io::testutil::TempDir::new("app-menu-describe");
+        let fixture = dir.join("capture.wav");
         argand_io::testutil::write_wav(
             &fixture,
             SampleType::new(Domain::Iq, SampleFormat::I16),
@@ -2036,6 +2039,7 @@ mod tests {
             cx.notify();
         });
         draw(cx);
+        dir
     }
 
     fn can_save(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> (bool, bool) {
@@ -2048,7 +2052,7 @@ mod tests {
         assert_eq!(can_save(cx, &shell), (false, false));
         open_capture(cx, &shell);
         assert_eq!(can_save(cx, &shell), (false, false), "not described yet");
-        describe(cx, &shell);
+        let _fixture = describe(cx, &shell);
         assert_eq!(can_save(cx, &shell), (true, false));
         shell.update_in(cx, |shell, _, cx| {
             shell.selection = argand_core::SampleSpan::between(100, 200);

@@ -84,11 +84,28 @@ source-remap fallback that could silently select source zero. The save request n
 
 - [x] Independent review of the exact final revision and diff.
 
-One independent review round returned no substantive findings. The coordinator
+Two independent review rounds returned no substantive findings; the second
+covered the fixture-lifetime cleanup. No findings were rejected. The coordinator
 accepted the format, source-dependency and replacement invariants. Linux local
 validation passed; Windows and macOS were not run locally. The release executable
 was rebuilt from the validated source after the full local gate.
 
 ## Post-completion
 
-Ready status, merge and branch cleanup require the owner's subsequent instruction.
+The owner authorized final preparation and Ready status to request full CI. Merge
+and branch cleanup still require the owner's subsequent instruction.
+
+## Final preparation follow-up
+
+The GUI save-availability fixture retained an inherited PID-only temporary filename
+without cleanup. Reuse the existing test `TempDir` and return its guard to the
+calling test so the file survives asynchronous description and all assertions.
+Test-file organization and naming remain in #222.
+
+- [x] Replace the manual fixture pathname with a per-call temporary directory and caller-owned guard.
+- [x] Repeat the full local gate and rebuild the release executable after it passes.
+- [x] Complete a second independent review round on the final change.
+
+Ready preparation will push the validated change while Draft, then request full CI
+on that exact revision. Remote matrix results are tracked in the Pull Request;
+merge remains subject to explicit owner instruction.
