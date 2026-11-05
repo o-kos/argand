@@ -127,28 +127,34 @@ fn invalid_bands_and_rates_are_refused_and_identity_is_unfiltered() {
 
 #[test]
 fn native_real_dc_and_nyquist_are_kept_when_making_an_analytic_signal() {
-    let input = meta(false, 8000.0, 100_000.0);
-    let output = meta(true, 10000.0, 102_000.0);
-    for frequency in [0.0, 4000.0] {
-        let values = convert(&input, &output, frequency, 4096);
-        for (n, &[i, q]) in values
-            .iter()
-            .enumerate()
-            .skip(2000)
-            .take(values.len() - 4000)
-        {
-            let phase = std::f64::consts::TAU
-                * (input.center_freq + frequency - output.center_freq)
-                * n as f64
-                / output.sample_rate;
-            assert!(
-                (f64::from(i) - 0.5 * phase.cos()).abs() < 0.01,
-                "f={frequency} n={n} i={i}"
-            );
-            assert!(
-                (f64::from(q) - 0.5 * phase.sin()).abs() < 0.01,
-                "f={frequency} n={n} q={q}"
-            );
+    for (rate, reference, output_reference) in [
+        (8000.0, 100_000.0, 102_000.0),
+        (8000.1, 1_000_000_000.0, 1_000_002_000.0),
+        (8000.15, 10_000_000_000.0, 10_000_000_000.0),
+    ] {
+        let input = meta(false, rate, reference);
+        let output = meta(true, 10000.0, output_reference);
+        for frequency in [0.0, rate / 2.0] {
+            let values = convert(&input, &output, frequency, 4096);
+            for (n, &[i, q]) in values
+                .iter()
+                .enumerate()
+                .skip(2000)
+                .take(values.len() - 4000)
+            {
+                let phase = std::f64::consts::TAU
+                    * (frequency - (output.center_freq - input.center_freq))
+                    * n as f64
+                    / output.sample_rate;
+                assert!(
+                    (f64::from(i) - 0.5 * phase.cos()).abs() < 0.01,
+                    "f={frequency} n={n} i={i}"
+                );
+                assert!(
+                    (f64::from(q) - 0.5 * phase.sin()).abs() < 0.01,
+                    "f={frequency} n={n} q={q}"
+                );
+            }
         }
     }
 }
@@ -218,15 +224,26 @@ fn conversion_cost_for_one_million_input_frames() {
 
 #[test]
 fn fractional_native_edges_survive_physical_reference_subtraction() {
-    for rate in [8000.1, 44100.123] {
+    for rate in [8000.1, 16000.0, 44100.123] {
         for reference in [100_000.0, 1_000_000_000.0] {
-            let input = meta(true, rate, reference);
-            let output = meta(false, rate, reference);
-            let plan = ConversionPlan::new(&input, &output).unwrap();
-            assert_eq!(plan.band, output.frequency_span());
-            plan.stream(input.len_samples).unwrap();
-            let outside = meta(false, rate, input.frequency_span().1 + 0.001);
-            assert!(ConversionPlan::new(&input, &outside).is_err());
+            for input_iq in [false, true] {
+                let input = meta(input_iq, rate, reference);
+                for output_iq in [false, true] {
+                    for output_rate in [rate, rate / 2.0, 8000.1] {
+                        let output_reference = if !input_iq && output_iq {
+                            reference + output_rate / 4.0
+                        } else {
+                            reference
+                        };
+                        let output = meta(output_iq, output_rate, output_reference);
+                        let plan = ConversionPlan::new(&input, &output).unwrap();
+                        assert!(plan.width <= output_rate / if output_iq { 1.0 } else { 2.0 });
+                        plan.stream(input.len_samples).unwrap();
+                    }
+                }
+                let outside = meta(false, rate, input.frequency_span().1 + 0.001);
+                assert!(ConversionPlan::new(&input, &outside).is_err());
+            }
         }
     }
 }
@@ -298,5 +315,32 @@ fn conversion_extractor_rejects_cropped_bands_across_downsampling_ratios() {
                 .fold(0.0, f32::max);
             assert!(peak < 0.0005, "rate={rate} sign={sign} peak={peak}");
         }
+    }
+}
+
+#[test]
+fn local_reference_math_keeps_long_capture_phase_and_fractional_shift_width() {
+    let input = meta(true, 1_000_000.0, 0.0);
+    let output = meta(true, 1000.1, 100_000.0);
+    ConversionPlan::new(&input, &output)
+        .unwrap()
+        .stream(input.len_samples)
+        .unwrap();
+    let input = meta(false, 8000.15, 10_000_000_000.0);
+    let output = meta(true, 10000.0, input.center_freq);
+    let plan = ConversionPlan::new(&input, &output).unwrap();
+    let mut stream = plan.stream(input.len_samples).unwrap();
+    let shift = input.sample_rate / 4.0;
+    assert_eq!(stream.step, shift / output.sample_rate);
+    for n in [0, 108_000_000, 1u64 << 40] {
+        stream.given = n;
+        let mut value = [[1.0, 0.0]];
+        stream.translate(&mut value);
+        let cycles = (n as f64 * shift / output.sample_rate).rem_euclid(1.0);
+        let phase = std::f64::consts::TAU * cycles;
+        let actual = f64::from(value[0][1]).atan2(f64::from(value[0][0]));
+        let error = (actual - phase + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
+            - std::f64::consts::PI;
+        assert!(error.abs() < 0.002, "n={n} phase error={error}");
     }
 }

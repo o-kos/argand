@@ -113,8 +113,10 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
   across the three cases. This is measured typical-case memory, not a universal cap.
 - Review corrections: encoded odd-byte real u8 payloads have a physical RIFF pad
   (also checked against RF64 ds64 sizes); already-validated physical intersections
-  are clamped to the native local span after reference subtraction to avoid rounding
-  a fractional-rate edge outside its own source.
+  use input-local coordinates from the outset. Intersect the exact native input
+  span with the output span shifted by (output reference - input reference), then
+  bound the reconstruction width by both declared domain bandwidths. Physical
+  coordinates are formed only for reporting, avoiding native edge over/undershoot.
 - Conversion uses a private already-bandlimited reconstruction factory. The
   extractor owns target-rate anti-aliasing; sinc reconstruction rejects intermediate
   sampling images only, preserving native real endpoints even for 8000 Hz real to
@@ -136,7 +138,14 @@ There is no selection mode and no conversion Undo. PCM24 remains #192.
   reconstruction. Each has a focused regression. No findings were rejected. A further
   lifecycle concern was addressed by moving scratch Arc ownership into the worker
   closure itself, so dropping UI/job state during filter preparation cannot delete
-  computed sources before the worker exits. Round 2 remains pending.
+  computed sources before the worker exits.
+- Round 2 accepted three further boundary findings: fractional IQ target width,
+  native real Nyquist undershoot and high-reference long-capture oscillator drift.
+  The unified input-local calculation above fixes all three without epsilon rules;
+  the oscillator uses (extract centre - reference delta) / target rate. Tests cover
+  both output domains, fractional/native/full-width spans at large references,
+  nonzero reference delta and phase at three hours and sample index 2^40 without
+  processing a long capture. No findings were rejected. Round 3 remains pending.
 - The pre-existing FFT summary spacing defect is tracked separately in #225.
 
 ## Post-completion

@@ -8,10 +8,11 @@ use crate::{ExtractError, ExtractPlan, Extractor, resample};
 #[derive(Debug, Clone)]
 pub struct ConversionPlan {
     input_rate: f64,
-    input_reference: f64,
+    reference_delta: f64,
     input_real: bool,
+    local_band: (f64, f64),
+    width: f64,
     output_rate: f64,
-    output_reference: f64,
     output_real: bool,
     /// Retained physical edges, before finite filter transitions.
     pub band: (f64, f64),
@@ -33,11 +34,31 @@ impl ConversionPlan {
         }
         let a = input.frequency_span();
         let b = output.frequency_span();
-        let band = (a.0.max(b.0), a.1.min(b.1));
-        if ![input.center_freq, output.center_freq, a.0, a.1, b.0, b.1]
-            .into_iter()
-            .all(f64::is_finite)
-            || band.0 >= band.1
+        let delta = output.center_freq - input.center_freq;
+        let native = relative_span(input);
+        let target = relative_span(output);
+        let local_band = (
+            native.0.max(delta + target.0),
+            native.1.min(delta + target.1),
+        );
+        let band = (
+            input.center_freq + local_band.0,
+            input.center_freq + local_band.1,
+        );
+        if ![
+            input.center_freq,
+            output.center_freq,
+            delta,
+            a.0,
+            a.1,
+            b.0,
+            b.1,
+        ]
+        .into_iter()
+        .all(f64::is_finite)
+            || a.0 >= a.1
+            || b.0 >= b.1
+            || local_band.0 >= local_band.1
         {
             return Err(ExtractError::OutsideCapture {
                 low: band.0,
@@ -55,17 +76,27 @@ impl ConversionPlan {
         let identity = input.sample_rate == output.sample_rate
             && input.center_freq == output.center_freq
             && input.is_iq() == output.is_iq();
+        let input_width = input.sample_rate / if input.is_iq() { 1.0 } else { 2.0 };
+        let output_width = output.sample_rate / if output.is_iq() { 1.0 } else { 2.0 };
+        // Subtracting large physical references must not enlarge a declared Nyquist span.
+        let width = (local_band.1 - local_band.0)
+            .min(input_width)
+            .min(output_width);
         if !identity {
-            let (low, high) =
-                local_band(input.sample_rate, input.center_freq, !input.is_iq(), band);
-            ExtractPlan::check_conversion(input.sample_rate, low, high, !input.is_iq())?;
+            ExtractPlan::check_conversion(
+                input.sample_rate,
+                local_band.0,
+                local_band.1,
+                !input.is_iq(),
+            )?;
         }
         Ok(Self {
             input_rate: input.sample_rate,
-            input_reference: input.center_freq,
+            reference_delta: delta,
             input_real: !input.is_iq(),
+            local_band,
+            width,
             output_rate: output.sample_rate,
-            output_reference: output.center_freq,
             output_real: !output.is_iq(),
             band,
             input_band: a,
@@ -87,17 +118,11 @@ impl ConversionPlan {
 
     /// Build filters on the worker thread, never while rendering the dialog.
     pub fn stream(&self, input_samples: u64) -> Result<ConversionStream, ExtractError> {
-        let (low, high) = local_band(
-            self.input_rate,
-            self.input_reference,
-            self.input_real,
-            self.band,
-        );
+        let (low, high) = self.local_band;
         let extract = ExtractPlan::for_conversion(self.input_rate, low, high, self.input_real)?;
-        let width = self.band.1 - self.band.0;
         let reconstruction =
-            resample::Plan::bandlimited(extract.output_rate(), self.output_rate, width)?;
-        let centre = extract.centre() + self.input_reference;
+            resample::Plan::bandlimited(extract.output_rate(), self.output_rate, self.width)?;
+        let centre = extract.centre();
         let margin = extract.margin();
         let mut extractor = Extractor::new(extract, input_samples)?;
         let mut intermediate = Vec::new();
@@ -113,21 +138,16 @@ impl ConversionPlan {
             extractor,
             reconstruction: stream,
             intermediate,
-            step: (centre - self.output_reference) / self.output_rate,
+            step: (centre - self.reference_delta) / self.output_rate,
             real: self.output_real,
             given: 0,
         })
     }
 }
 
-fn local_band(rate: f64, reference: f64, real: bool, band: (f64, f64)) -> (f64, f64) {
-    let low = if real { 0.0 } else { -rate / 2.0 };
-    let high = rate / 2.0;
-    // The physical intersection is already checked; subtraction may round past a native edge.
-    (
-        (band.0 - reference).clamp(low, high),
-        (band.1 - reference).clamp(low, high),
-    )
+fn relative_span(meta: &SignalMeta) -> (f64, f64) {
+    let half = meta.sample_rate / 2.0;
+    (if meta.is_iq() { -half } else { 0.0 }, half)
 }
 
 /// Bounded FFT extraction and fractional reconstruction, followed by physical translation.

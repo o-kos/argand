@@ -1226,8 +1226,11 @@ verified limitation in the locked 0.6.6 sources in `docs/ui/124-inventory.md`.
 `conversion.rs` converts a whole immutable edited-capture snapshot into a new WAVE/RF64;
 selection is ignored. `conversion_ui.rs` composes a standard Dialog, Input, Select and
 Button, with explicit output sample rate/reference fields which a domain change never
-rewrites. `argand_dsp::convert::ConversionPlan` validates the physical-band intersection
-and output count; `ExtractPlan::for_conversion` uses bounded overlap-save filtering,
+rewrites. `argand_dsp::convert::ConversionPlan` intersects native input-local bounds
+with output bounds shifted by the reference difference, preserving exact native
+endpoints at large physical references. Reconstruction width is bounded by both
+declared domain bandwidths; the final oscillator subtracts that same reference delta.
+Physical edges are for metadata/reporting. The plan validates the output count; `ExtractPlan::for_conversion` uses bounded overlap-save filtering,
 integer decimation and 2x interpolation with transitions inside the intersection (1% of
 its width per edge), except native real DC/Nyquist half-gain endpoints. The fractional
 reconstructor removes intermediate sampling images; conversion's extractor alone owns
