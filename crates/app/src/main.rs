@@ -35,6 +35,7 @@ mod recent;
 mod release;
 mod saving;
 mod scratch;
+mod selection_entry;
 mod session;
 mod settings;
 mod shell;

@@ -55,6 +55,7 @@ impl Shell {
             },
             capture_band: self.capture_band(),
             badges: self.selection_badges(),
+            entry: self.entry_scale(),
             notice: match &self.save_notice {
                 Some(saving_ui::Notice::Saved(name)) => Some(format!("Saved {name}").into()),
                 _ => None,
@@ -171,13 +172,14 @@ impl PlotView {
         let known_bounds = self.panel_bounds;
         let known = self.measured;
         let known_geometry = self.geometry;
+        let badges = self.badge_layout(badges, cx);
         let held = axes::Held {
             time: time_scheme,
             frequency: frequency_scheme,
             gutter: self.gutter_floor,
         };
         let view = cx.entity().downgrade();
-        let marks = self.marks(selection, badges, extents, show_grid, cx);
+        let marks = self.marks(selection, extents, show_grid, cx);
 
         canvas(
             move |bounds, window, cx| {
@@ -203,10 +205,13 @@ impl PlotView {
                 {
                     defer_layout(view.clone(), bounds, measured, geometry, frame.gutter, cx);
                 }
-                Some((frame, labels, height))
+                let entry = badge_entry::entry_size(f32::from(window.rem_size()));
+                let placed =
+                    badges.place(&frame, &labels, entry, bounds.origin + point(dx, dy), cx);
+                Some((frame, labels, height, placed))
             },
             move |bounds, prepainted, window, cx| {
-                let Some((frame, labels, height)) = prepainted else {
+                let Some((frame, labels, height, placed)) = prepainted else {
                     return;
                 };
                 let (dx, dy) = orientation.axes(px(0.), px(height));
@@ -243,23 +248,34 @@ impl PlotView {
                     spectrum_origin,
                     size(bounds.size.width - dx, bounds.size.height - dy),
                 );
-                marks.paint(&frame, panel, &labels, window, cx);
+                marks.paint(&frame, panel, &labels, &placed, window, cx);
             },
         )
         .size_full()
     }
 
+    fn badge_layout(
+        &self,
+        badges: Option<axes::SelectionBadges>,
+        cx: &Context<Self>,
+    ) -> BadgeLayout {
+        BadgeLayout {
+            badges,
+            known: self.badges.clone(),
+            typing: self.typing.as_ref().map(|typing| typing.field),
+            view: cx.entity().downgrade(),
+        }
+    }
+
     fn marks(
         &self,
         selection: Option<waveform::Selected>,
-        badges: Option<axes::SelectionBadges>,
         extents: axes::Extents,
         show_grid: bool,
         cx: &Context<Self>,
     ) -> Marks {
         Marks {
             selection,
-            badges,
             badge_colors: [cx.theme().foreground, cx.theme().background],
             colors: axis_colors(cx, show_grid),
             guides: self.cursor_guides(extents, cx),
@@ -498,22 +514,15 @@ impl Shell {
     fn time_badges(&self) -> Option<axes::AxisBadges> {
         let view = self.view?;
         let span = self.selection?;
-        let meta = self.file.as_ref()?.state.document.meta()?;
         let visible = view.fractions_of(span)?;
-        let columns = self.plot.map_or(1, |plot| plot.width.max(1));
-        let per_pixel = view.len as f64 / meta.sample_rate / columns as f64;
         let edge = |sample: u64| {
             (view.start..=view.start + view.len)
                 .contains(&sample)
                 .then(|| (sample - view.start) as f64 / view.len as f64)
         };
         Some(axes::AxisBadges {
-            texts: self.session.time_ruler.counters(
-                span,
-                meta.sample_rate,
-                meta.len_samples,
-                per_pixel,
-            ),
+            fields: crate::selection_entry::Field::TIME,
+            texts: self.entry_scale()?.time_texts(span),
             first: edge(span.start()),
             second: edge(span.end()),
             visible,
@@ -538,7 +547,7 @@ impl Shell {
     fn band_badge(&self) -> Option<axes::AxisBadges> {
         let band = self.band?;
         let (low, high) = self.extents()?.hertz;
-        let [low_text, high_text, width] = self.band_texts(band)?;
+        let [low_text, high_text, width] = self.entry_scale()?.band_texts(band);
         // Down from the top of the visible band, or to the right where frequency runs right.
         let vertical = self.session.orientation.vertical();
         let along = |hertz: f64| {
@@ -551,12 +560,24 @@ impl Shell {
             true => (1. - to, 1. - from),
             false => (from, to),
         };
-        let (first, second, texts) = match vertical {
-            true => (band.low(), band.high(), [low_text, high_text, width]),
-            false => (band.high(), band.low(), [high_text, low_text, width]),
+        use crate::selection_entry::Field;
+        let (first, second, texts, fields) = match vertical {
+            true => (
+                band.low(),
+                band.high(),
+                [low_text, high_text, width],
+                Field::BAND,
+            ),
+            false => (
+                band.high(),
+                band.low(),
+                [high_text, low_text, width],
+                [Field::BandHigh, Field::BandLow, Field::BandWidth],
+            ),
         };
         Some(axes::AxisBadges {
             texts,
+            fields,
             first: shown(first),
             second: shown(second),
             visible,
@@ -566,7 +587,7 @@ impl Shell {
     }
 
     /// The selection as fractions of the visible picture, none where none of it shows.
-    fn selected(&self) -> Option<waveform::Selected> {
+    pub(super) fn selected(&self) -> Option<waveform::Selected> {
         let view = self.view?;
         let time = match self.selection {
             Some(span) => view.fractions_of(span)?,
@@ -589,7 +610,6 @@ impl Shell {
 /// What is painted over the picture, in order from the selection's tint to the Alt guides.
 struct Marks {
     selection: Option<waveform::Selected>,
-    badges: Option<axes::SelectionBadges>,
     badge_colors: [gpui_kit::Hsla; 2],
     colors: axes::Colors,
     guides: Option<axes::CursorGuides>,
@@ -601,21 +621,22 @@ impl Marks {
         frame: &axes::Frame,
         panel: Bounds<Pixels>,
         labels: &axes::Labels,
+        badges: &axes::PlacedBadges,
         window: &mut Window,
         cx: &mut gpui_kit::App,
     ) {
         paint_selection(frame, panel.origin, self.selection, window, cx);
         axes::paint(frame, panel.origin, labels, self.colors, window, cx);
-        if let Some(badges) = &self.badges {
-            badges.paint(frame, panel.origin, labels, self.badge_colors, window, cx);
-        }
+        badges.paint(frame, panel.origin, labels, self.badge_colors, window, cx);
         if let Some(guides) = &self.guides {
             guides.paint(frame, panel, labels, window, cx);
         }
     }
 }
 
-/// Tint the selection, given as fractions of the visible picture, under the grid.
+/// Dim the picture outside the selection and tint it inside, given as fractions of the visible picture, under the grid.
+///
+/// The dimming shows the selection on a bright picture, the tint on a dark one.
 fn paint_selection(
     frame: &axes::Frame,
     spectrum_origin: gpui_kit::Point<Pixels>,
@@ -628,10 +649,21 @@ fn paint_selection(
     };
     let plot = plot_bounds(frame, spectrum_origin);
     let rect = waveform::selected_rect(plot, frame.orientation, selected, window.scale_factor());
+    for part in waveform::outside(rect, plot) {
+        window.paint_quad(gpui_kit::fill(part, OUTSIDE_SELECTION));
+    }
     window.paint_quad(gpui_kit::fill(rect, selection_fill(cx)));
 }
 
-/// The tint laid over the selected time, light because the picture under it is dark in either theme.
+/// The shade over the picture outside a selection, dark because the owner chose dimming over tinting.
+const OUTSIDE_SELECTION: gpui_kit::Hsla = gpui_kit::Hsla {
+    h: 0.,
+    s: 0.,
+    l: 0.,
+    a: 0.55,
+};
+
+/// The tint laid over the selection, light because the picture under it is dark in either theme.
 fn selection_fill(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     cx.theme().blue_light.opacity(0.3)
 }
@@ -998,6 +1030,53 @@ fn frequency_mapping(held: (f64, f64), shown: (f64, f64)) -> (f32, f32) {
         ((shown.1 - held.1) / span) as f32,
         ((held.1 - held.0) / span) as f32,
     )
+}
+
+/// The selection's badges, where the plot last saw them and the one an input stands over.
+struct BadgeLayout {
+    badges: Option<axes::SelectionBadges>,
+    known: Vec<(crate::selection_entry::Field, Bounds<Pixels>)>,
+    typing: Option<crate::selection_entry::Field>,
+    view: WeakEntity<PlotView>,
+}
+
+impl BadgeLayout {
+    /// Settle the badges, hand the plot where they are, and leave out the one an input stands over.
+    fn place(
+        &self,
+        frame: &axes::Frame,
+        labels: &axes::Labels,
+        entry: (f32, f32),
+        panel: gpui_kit::Point<Pixels>,
+        cx: &mut gpui_kit::App,
+    ) -> axes::PlacedBadges {
+        let mut placed = self
+            .badges
+            .as_ref()
+            .map(|badges| badges.place(frame, labels, entry))
+            .unwrap_or_default();
+        let rects: Vec<_> = placed
+            .badges
+            .iter()
+            .map(|(field, _, rect)| {
+                let origin = panel + point(px(rect.x), px(rect.y));
+                (
+                    *field,
+                    Bounds::new(origin, size(px(rect.width), px(rect.height))),
+                )
+            })
+            .collect();
+        if rects != self.known {
+            let view = self.view.clone();
+            cx.defer(move |cx| {
+                let _ = view.update(cx, |plot, cx| plot.place_badges(rects, cx));
+            });
+        }
+        placed
+            .badges
+            .retain(|(field, ..)| Some(*field) != self.typing);
+        placed
+    }
 }
 
 fn defer_layout(

@@ -1,10 +1,38 @@
 # Contributing to Argand
 
-Argand uses an issue-driven workflow with versioned implementation plans. Repository content and all GitHub communication must be in English.
+Argand uses an issue-driven workflow with versioned implementation plans for code
+changes. Repository content and all GitHub communication must be in English.
+
+## Roles and workflow scope
+
+[Agent roles and model selection](AGENTS.md#agent-roles-and-model-selection) is the
+source of truth: the coordinator is `gpt-6-astra` medium, the executor is
+`gpt-6.1-sol` medium, and the reviewer is `gpt-6.1-sol` high in a separate agent and
+context. These defaults are owner-approved and need no repeated per-Issue approval.
+The coordinator discusses analysis, architecture, plans, acceptance and disagreements
+with the owner and assesses the result; the executor performs repository
+investigation, edits, Git/GitHub operations, tests and builds. The reviewer reads
+the assigned material without changing it. Changes to product behaviour, UX or
+acceptance criteria require the owner's decision.
+
+For work without code changes, the coordinator decides whether an Issue, Pull
+Request, new branch, formal plan, external review, tests or the full local gate is
+needed, based on scope and risk. Record the decision and reason in the response or
+an existing artifact. A wording correction may need only a diff and link check;
+CI, configuration, release-policy or security edits can affect behaviour and need
+proportionate scrutiny and validation. No code does not mean no risk.
+
+This decision scopes the otherwise mandatory workflow, review and local validation
+requirements in this document, including the plan and Pull Request templates.
+Code changes follow the complete process. Protected `main`, required remote checks,
+release authority, lint-suppression approval and owner decisions about product or
+acceptance changes remain binding. A merge into `main` still requires a Pull Request
+and the full required checks; omitting a Pull Request never permits a direct push.
+Preserve unrelated work and leave completed historical plans unchanged.
 
 ## Before implementation
 
-Open-ended ideas may begin in a GitHub Discussion. Before implementation starts, create or select a GitHub Issue that states:
+Open-ended ideas may begin in a GitHub Discussion. Under the workflow scope above, before implementation starts, create or select a GitHub Issue that states:
 
 1. the problem;
 2. the proposed solution or desired outcome;
@@ -22,7 +50,7 @@ Use the repository's main working directory by default. Create an additional
 worktree outside it only when the project owner explicitly asks for one; do not
 infer that request from parallel work, isolation, or convenience.
 
-Create `docs/plans/<issue>-<short-description>.md` from `docs/plans/TEMPLATE.md` and commit it before implementation. The plan must link to the Issue and describe the implementation tasks and validation strategy.
+Create `docs/plans/<issue>-<short-description>.md` from `docs/plans/TEMPLATE.md` and commit it before implementation. The plan must link to the Issue and describe the implementation tasks and validation strategy. Record its risk class and the approved role assignments before execution; classes describe scrutiny, not reviewer-model selection.
 
 ## Pull Request lifecycle
 
@@ -106,7 +134,7 @@ Update the plan as reality changes:
 
 The branch commit history provides detail during review. The completed plan is the durable task-level record after squash merge.
 
-Run relevant tests throughout implementation. Before requesting final review, run at least:
+Run relevant tests throughout implementation. For code changes, before requesting final review, run at least:
 
 ```sh
 cargo fmt --all -- --check
@@ -120,7 +148,7 @@ The release build comes last, after every other check has passed, so that
 demonstrate, measure, or diagnose behaviour with a binary left over from
 earlier code.
 
-Document any additional validation or explain why a standard check does not apply.
+Document any additional validation or explain why a standard check does not apply. For work without code, use the coordinator's scoped validation decision above; do not claim an unrun gate passed.
 
 Clippy warnings are errors. That is set in `[workspace.lints]` and inherited by every crate, so a plain `cargo clippy` is as strict on your machine as it is in CI. There is no `-D warnings` flag to remember and no way to get a laxer result by forgetting one.
 
@@ -130,11 +158,14 @@ The first three checks also run as a `pre-push` hook. Install it once per clone:
 git config core.hooksPath .githooks
 ```
 
-`git push --no-verify` skips it. If you use that, say why in the Pull Request.
+`git push --no-verify` skips it. Code changes still require the full local gate
+before every push. A scoped decision for work without code does not alter the hook;
+if it justifies skipping the hook, record why in the Pull Request or task response.
+Required remote checks are unaffected.
 
 ## Remote CI tiers
 
-The local pre-push gate is unchanged. Remote CI is a separate feedback schedule:
+The hook and remote CI are unchanged by scoped local-validation decisions. Remote CI is a separate feedback schedule:
 
 | Trigger | GitHub validation | Aggregate status |
 | --- | --- | --- |
@@ -209,37 +240,38 @@ The exact toolchain comes from `rust-toolchain.toml`; the workspace's minimum Ru
 
 ## External review
 
-The implementer for an Issue is chosen with the owner and recorded in its plan, together
-with the complexity class. The reviewer is agreed with the owner before the first round:
-the class proposes one and the actual diff may argue for another. "Agent roles and model
-selection" in `AGENTS.md` holds the table; it is the single place that decides, and this
-section does not repeat it. The reviewer never shares the implementer's model, and the
-same model and reasoning effort serve every round of one Pull Request.
+Use the owner-approved reviewer assignment in
+[AGENTS.md](AGENTS.md#agent-roles-and-model-selection): `gpt-6.1-sol` high, separate
+from the `gpt-6.1-sol` medium executor. The same model with different effort is
+explicitly allowed; it does not mean the models are different. A separate agent and
+context provide the separation. No per-Issue model approval is needed unless changing
+the defaults. Keep the assignment for every round of a Pull Request.
 
-Before presenting implementation results for owner review, including Draft feedback,
-the Pull Request goes through a review by a second
-agent. Run it read-only so that the changes stay deliberate and this repository's own
-rules -- in particular that suppressions need the owner's agreement -- are not bypassed
-by an agent that has not read them.
+Before presenting code implementation results for owner review, including Draft
+feedback, the Pull Request goes through external review. For work without code,
+apply the coordinator's scoped decision above. Run the reviewer read-only so it
+cannot bypass deliberate edits or the owner's approval requirements.
 
-For a codex reviewer, set `review_model` and `review_effort` to the agreed pair, then run:
+Give the reviewer the task, agreed plan when present, exact diff and revision, and
+repository rules, without the executor's discussion or self-assessment. The executor
+prepares the prompt and runs a fresh review context, for example:
 
 ```sh
-codex exec -s read-only --model "${review_model:?Set the agreed reviewer model}" \
-  -c "model_reasoning_effort=\"${review_effort:?Set the agreed reasoning effort}\"" \
-  -C "$(git rev-parse --show-toplevel)" "$(cat review-prompt.md)" < /dev/null
+codex exec -s read-only --model gpt-6.1-sol \
+  -c 'model_reasoning_effort="high"' \
+  -C "$(git rev-parse --show-toplevel)" "$(cat /tmp/argand-review-prompt.md)" < /dev/null
 ```
 
-Closing stdin is required; without it the command waits for input forever. Note that
+Keep temporary review prompts and reports outside the visible worktree. Closing
+stdin is required; without it the command waits for input forever. Note that
 `codex review --base <branch>` cannot be combined with a custom prompt, which is why
-`codex exec` is used with the diff range named in the prompt itself.
-
-For a Claude reviewer, give the same prompt to a subagent of the agreed model, with no
-file-editing tools and an instruction not to change the working tree.
+`codex exec` is used with the exact diff named in the prompt itself. For uncommitted
+changes, provide the actual patch as well as the base revision so the review covers
+the submitted state.
 
 Write the prompt for this repository rather than asking for a general review:
 
-- name the exact diff under review, and the Issues the Pull Request closes;
+- name the task, exact diff and revision under review, the agreed plan when present, and any Issues the Pull Request closes;
 - tell it to read `AGENTS.md` and `CONTRIBUTING.md` first, since a change may both extend
   those rules and have to obey them;
 - rank what matters. Rarely-executed code that fails expensively -- workflows, release
@@ -252,7 +284,21 @@ Write the prompt for this repository rather than asking for a general review:
 
 Act on the findings, then run another round naming what was fixed and what was declined,
 and ask it to challenge the reasoning behind the declines. Repeat until a round returns
-nothing substantive.
+nothing substantive, with a maximum of three rounds. If substantive findings remain
+after the third, the coordinator reconsiders the task and plan instead of starting a
+fourth. Later prompts may include findings and their dispositions, but must still
+exclude the executor's discussion and self-assessment. Only the owner can waive a
+required round; record that waiver in the Pull Request.
+
+The coordinator arbitrates technical disagreements using the evidence; product, UX
+or acceptance changes go to the owner. The executor records the decisions. Before
+presenting the result, the coordinator assesses the exact diff, review findings and
+validation evidence against the current revision, including local changes. Refresh
+evidence affected by later changes and identify its limits. For DSP, concurrency
+or data safety, the coordinator additionally examines the critical invariants and
+the evidence for them. A clean review does not replace this assessment. Confirm
+through the executor that any demonstrated release binary was built from the current
+code after the required checks passed.
 
 Then tell the owner which model reviewed, what was accepted and how it was addressed,
 what was rejected and why, and whether the final round was clean. A reviewer without the
@@ -262,7 +308,7 @@ are the ones that correct a claim in the Pull Request description or the plan.
 
 ## Completing the plan
 
-Before marking the Pull Request ready for final review:
+Apply the workflow scope above for work without code. For code changes, before marking the Pull Request ready for final review:
 
 1. complete every in-scope plan task and validation item;
 2. rebuild the release binary so it matches the final state of the branch;
@@ -273,7 +319,7 @@ Before marking the Pull Request ready for final review:
 Earlier UI feedback stays in Draft after local validation and external review;
 it does not require waiting for the remote matrix.
 
-After `ci/full` passes on the current revision and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the accepted Pull Request branch both remotely and locally, regardless of its type. First verify that its tip still matches the accepted Pull Request head, every worktree using it is clean, and it has no unpushed commits; preserve any data, then switch or remove those worktrees. Delete the remote ref conditionally with a lease bound to the accepted Pull Request head. Delete the local ref conditionally with that same head as its expected old value, because a squash merge does not make the branch commits ancestors of `main`. Abort cleanup if either ref moved. The linked Issue closes through the Pull Request keyword.
+After `ci/full` passes on the current revision and all review conversations are resolved, squash-merge the Pull Request into `main`. Delete the accepted Pull Request branch both remotely and locally, regardless of its type. First verify that its tip still matches the accepted Pull Request head, every worktree using it is clean, and it has no unpushed commits; preserve any data, then switch or remove those worktrees. Delete the remote ref conditionally with a lease bound to the accepted Pull Request head. Delete the local ref conditionally with that same head as its expected old value, because a squash merge does not make the branch commits ancestors of `main`. Abort cleanup if either ref moved. When there is a linked Issue, it closes through the Pull Request keyword.
 
 Actions that can only happen after merge belong in the plan's `Post-completion` section and are not represented as unfinished implementation checkboxes.
 

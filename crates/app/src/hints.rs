@@ -14,7 +14,7 @@
 use std::time::{Duration, Instant};
 
 use gpui_kit::base::actions::Cancel;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::Selectable;
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
@@ -137,11 +137,12 @@ impl Render for PinnedHint {
     }
 }
 
-/// The trigger with its pinned hint anchored above it.
+/// The trigger with its pinned hint anchored to it at `anchor`.
 pub(super) fn pinned(
     id: &'static str,
     hint: &Entity<PinnedHint>,
-    trigger: Button,
+    trigger: impl Selectable + IntoElement + 'static,
+    anchor: Anchor,
     cx: &App,
 ) -> AnyElement {
     let state = hint.read(cx);
@@ -150,7 +151,7 @@ pub(super) fn pinned(
     let changed = hint.downgrade();
     let cancelled = hint.downgrade();
     Popover::new(id)
-        .anchor(Anchor::BottomLeft)
+        .anchor(anchor)
         .appearance(false)
         // The backdrop closes the hint, so a part of it drawn outside its panel is not outside it.
         .overlay_closable(false)
@@ -213,6 +214,7 @@ pub(super) fn backdrop(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui_kit::component::button::Button;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{
         Bounds, Modifiers, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement, Subscription,
@@ -265,13 +267,13 @@ mod tests {
                         )
                         .on_scroll_wheel(cx.listener(|harness, _, _, _| harness.wheels += 1)),
                 )
-                .child(
-                    div()
-                        .absolute()
-                        .left(px(20.))
-                        .top(px(260.))
-                        .child(pinned("hint", &self.hint, trigger, cx)),
-                )
+                .child(div().absolute().left(px(20.)).top(px(260.)).child(pinned(
+                    "hint",
+                    &self.hint,
+                    trigger,
+                    Anchor::BottomLeft,
+                    cx,
+                )))
                 .children(backdrop(
                     &self.hint,
                     Bounds::new(

@@ -73,9 +73,9 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
   This rule used to name `gpui` and `gpui-component` separately on crates.io, and before that, fixed Git revisions. The separate selections drifted out of compatibility, which is the mistake `gpui-kit` exists to prevent. Do not go back to naming the layers, and do not `[patch]` the registry source without a reason that names what is only available at tip.
 - Commit the complete dependency graph in `Cargo.lock`; do not commit `vendor/`. Run `cargo fetch --locked` before an offline build, then use `cargo build --frozen`.
-- Run rustfmt and Clippy for every change: `cargo fmt --all -- --check` and `cargo clippy --all-targets --locked`.
+- For code changes, run rustfmt and Clippy: `cargo fmt --all -- --check` and `cargo clippy --all-targets --locked`.
 - Clippy warnings are errors, and that is a property of the repository, not of the command line. `[workspace.lints]` sets `warnings = "deny"`, so a plain `cargo clippy` fails locally exactly as it fails in CI. Never rely on a `-D warnings` flag to make a check strict; a check that is strict only when someone remembers a flag is not a check.
-- Run the full local gate before every push, not only before a Pull Request: `cargo fmt --all -- --check`, `cargo clippy --all-targets --locked`, `cargo test --locked`. Install the repository hook once with `git config core.hooksPath .githooks` and it runs for you.
+- For code changes, run the full local gate before every push, not only before a Pull Request: `cargo fmt --all -- --check`, `cargo clippy --all-targets --locked`, `cargo test --locked`. Install the repository hook once with `git config core.hooksPath .githooks` and it runs for you. For changes without code, the coordinator chooses validation under the scoped workflow below; this does not change the hook or required remote checks.
 - A real GPU is required. Software rendering and some virtual machines may degrade performance.
 
 ## Engineering conventions
@@ -126,64 +126,86 @@ This boundary keeps the toolkit replaceable. If GPUI proves too restrictive for 
 
 ## Agent roles and model selection
 
-Claude plans and arbitrates. The implementer and the reviewer are chosen for each
-piece of work and never share a model, so a review is never the implementer agreeing
-with itself.
+The owner has approved these defaults; do not ask for model approval again for
+each Issue. A different role assignment requires the owner's agreement.
 
-- Claude owns the plan in `docs/plans/`, the Issue and Pull Request text, the
-  architecture and the acceptance reasoning, and talks to the owner. It runs the
-  local gate itself and reads the diff before showing anything to the owner.
-- The owner chooses the implementer for each Issue before the work is handed over:
-  Claude in the session, the `codex` CLI with a named model and reasoning effort, or
-  another agent the owner names. The plan records the choice. An external implementer
-  commits code, tests and the plan checkboxes its own work completes.
-- Before the first review round Claude proposes a reviewer from the table below,
-  adjusted for the diff actually under review, and the owner confirms or replaces it.
-  The agreed model and reasoning effort stay for every round of that Pull Request.
-- Only the owner waives a review round; the Pull Request says so.
-- Claude arbitrates a technical disagreement between implementer and reviewer and
-  records the decision in the Pull Request. Anything that changes product behaviour,
-  UX or an Issue's acceptance criteria goes to the owner instead.
-- Three review rounds are the limit. Substantive findings still standing after the
-  third mean the task was stated badly, so Claude rewrites the plan rather than
-  starting a fourth round.
-
-Declare the class in the plan before the implementer is given the task, never after
-seeing the result.
-
-| Class | Applies to | Proposed reviewer |
+| Role | Model and reasoning effort | Responsibility |
 | --- | --- | --- |
-| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 code files | `gpt-6.1-sol` high |
-| B | A feature or fix in one or two GUI modules with local, known invariants and concrete acceptance criteria | `gpt-6-sol` medium |
-| C | Documentation, README, configuration, renames, single-file changes with no behavioural consequence | `gpt-6-luna` medium |
+| Coordinator | `gpt-6-astra` medium | Discuss analysis, architecture, plans, acceptance and disagreements directly with the owner; assess the final result. |
+| Executor | `gpt-6.1-sol` medium | Perform repository investigation and operations, code and documentation edits, Git/GitHub operations, tests and builds. |
+| Reviewer | `gpt-6.1-sol` high | Review read-only in a separate agent and context. |
 
-A change that touches no code -- documentation, a plan, configuration, release notes
--- is reviewed as class C. Reserve the stronger reviewers for code.
+The coordinator delegates repository work to the executor, including collecting
+framework evidence before a plan relies on it, inspecting diffs and running checks.
+The coordinator remains accountable for the plan, Issue and Pull Request text,
+architecture, acceptance reasoning and final assessment; the executor writes and
+updates the repository and GitHub artifacts that express those decisions. The
+executor updates completed plan checkboxes with the corresponding work.
 
-A Claude subagent can take the reviewer's place in any class, as long as its model is
-not the implementer's; `claude-sonnet-5` is the usual choice. When the proposed codex
-reviewer is the implementer's own model, propose a different one instead.
+The reviewer receives the task, the agreed plan when one exists, the exact diff
+and revision under review, and applicable repository rules. Do not pass the
+executor's discussion or self-assessment as review context. Later rounds may
+include findings and explicit dispositions so the reviewer can challenge rejected
+findings. The executor and reviewer intentionally use the same model with different
+reasoning efforts; independence comes from separate agents and contexts, not from
+a claim that they are different models. Keep the reviewer assignment for all
+rounds of one Pull Request unless the owner agrees to change it.
 
-`gpt-6-astra` is not scheduled by class. Ask the owner for it, with the reason, and
-use it only once agreed. Measured over this repository's own codex runs up to
-September 2026, a review costs a median of roughly 1.4M tokens with `gpt-6-sol` high
-and 0.7M with `gpt-6-sol` medium, and an implementation roughly 1.7M with
-`gpt-6-astra` high and 2.3M with `gpt-5.6-sol` high. Cached input makes up most of
-every figure. The model is not what decides most outcomes: a run wasted on a mistaken
-plan costs the same as a useful one.
+The coordinator arbitrates technical disagreements using the evidence and records
+the decision through the executor. Changes to product behaviour, UX or acceptance
+criteria go to the owner. Only the owner waives a required review round; record the
+waiver in the Pull Request. Review discretion for work without code is defined
+below and is not a waiver of a required code review. Three review rounds are the
+limit: if substantive findings remain after the third, reconsider the task and
+plan instead of starting a fourth round.
 
-Any of class A's signals puts the Issue in class A. The file count considers code
-only: the plan, `CHANGELOG.md` and `AGENTS.md` change in nearly every Pull Request
-and say nothing about how hard the work is.
+Record the class and role assignments in a required plan before execution begins.
+The class describes risk and the required scrutiny, not a different reviewer model:
 
-The cheapest saving is not the model. Read the parts of a framework a plan depends on
-before writing it, so an implementer does not spend a full run discovering the plan
-was wrong, and do not open a review round on a change with nothing to review.
+| Class | Applies to |
+| --- | --- |
+| A | Concurrency and work scheduling, analysis generations, retention, caches, GPU texture lifetime, DSP correctness, public `argand-core` / `argand-dsp` API, security or data safety; or an expected diff above roughly 400 lines or 5 code files. |
+| B | A feature or fix in one or two GUI modules with local, known invariants and concrete acceptance criteria. |
+| C | Documentation, README, configuration, renames or single-file changes with no behavioural consequence. |
+
+Any class A signal makes the work class A. File counts consider code only. A
+configuration, CI or security-policy edit can affect behaviour without changing
+code; classify its actual risk rather than assuming class C from its extension.
+
+Before presenting a result, the coordinator assesses the exact diff and the
+executor's validation evidence against the current revision, including local
+changes; evidence from an earlier revision must be identified and refreshed when
+the change affects it. The coordinator verifies through the executor that any
+release binary demonstrated was built from the current code after the required
+checks passed. For DSP, concurrency or data-safety changes, the coordinator also
+examines the critical invariants and their evidence; a clean reviewer report does
+not replace that assessment. Report what was verified and what remains uncertain.
+
+## Workflow scope for changes without code
+
+Code changes follow the complete Issue, focused branch, versioned plan, Draft Pull
+Request, external review and validation workflow below and in `CONTRIBUTING.md`.
+When no code changes, the coordinator decides whether an Issue, Pull Request, new
+branch, formal plan, external review, tests or the full local gate is warranted by
+the scope and risk. Record the decision and its reason in the task response or the
+existing work artifact; do not create an artifact merely to justify omitting one.
+For example, a wording correction can use a diff and link check, while an edit to
+CI, configuration, release policy or security rules needs scrutiny and validation
+of the behaviour it can change. Absence of code is not a blanket exemption.
+
+This scoped decision takes precedence over the otherwise mandatory workflow and
+local validation wording below and in `CONTRIBUTING.md` for work without code.
+It does not relax protected `main`, required remote checks, release authority,
+lint-suppression approval or owner approval for product/acceptance changes. Any
+merge into `main` still uses a Pull Request, squash merge and the required checks;
+a decision not to open a Pull Request cannot authorize a direct push to `main`.
+Preserve unrelated work and do not rewrite completed plans to apply new rules
+retroactively.
 
 ## Git workflow
 
 - Follow the complete process in `CONTRIBUTING.md`.
-- Every implementation must have a GitHub Issue, a focused branch, and a versioned plan in `docs/plans/`.
+- Subject to the scoped decision for work without code, every implementation must have a GitHub Issue, a focused branch, and a versioned plan in `docs/plans/`.
 - Open a Draft Pull Request early and link it to the Issue with a closing keyword. Keep it Draft during iterative owner feedback, including small UI changes; present locally validated work without waiting for remote CI. Ready requests the final full gate, and every subsequent push to a Ready PR repeats it. Return to Draft before another iteration.
 - Linux CI uses Ubuntu 24.04 and installs GPUI dependencies through `.github/scripts/install-ubuntu-packages.sh`, using only the runner's `ubuntu.sources`, fresh indexes and a private package archive cache. Signature/hash checks remain enabled; any required-source update error is fatal. Signed local-repository regression tests run before installation.
 - Draft CI runs Linux formatting and Clippy plus CI-policy tests, publishing `ci/quick`. Ready PRs, main pushes and manual runs run the full three-platform matrix. Require `ci/full` on the current PR revision before merge; it must reflect explicit success from Linux, Windows and macOS, never skipped jobs. Preserve strict up-to-date branch protection.
@@ -191,7 +213,7 @@ was wrong, and do not open a review round on a change with nothing to review.
 - Route findings discovered during implementation or review in this order, as detailed in `CONTRIBUTING.md`: first keep branch regressions and anything required by the active Issue in the current work; otherwise raise material or urgent unrelated problems as normal Issues; only otherwise create a separate Issue labelled `backlog` for a minor-impact, pre-existing, non-urgent problem that is unrelated to the active objective and does not affect current functionality or acceptance criteria. Link the source Issue or Pull Request, and never use backlog to defer security, correctness, or data-safety work.
 - Move a finished plan to `docs/plans/completed/` before final review.
 - Before the owner is asked to review a Pull Request, put it through an external review by the agreed reviewer and act on the findings. Iterate until a round returns nothing substantive. When asking the owner to review the Pull Request, always provide a brief summary of the automatic review: the findings, which were accepted and how they were addressed, which were rejected and why, and whether the final round was clean. A second reviewer that never disagrees is worth nothing: ask it to challenge the reasoning behind anything you decline, rather than to confirm it.
-- Record the Issue's class and implementer in its plan, and agree the reviewer with the owner before the first round, as "Agent roles and model selection" describes.
+- Record the Issue's class and role assignments in its required plan using the owner-approved defaults in "Agent roles and model selection"; ask only when changing those defaults.
 - Rebuild the release binary once the standard checks pass and before the owner is asked to accept the Pull Request. Any behaviour shown to the owner must come from a binary built from the current code, never from a stale `target/release/`.
 - `main` is protected. Merge only through a Pull Request using squash merge after all checks pass and all review conversations are resolved.
 
@@ -433,8 +455,10 @@ forgotten on blur and in `end_gestures`; while it is held the spectrum shows an
 open hand, and a selection in progress keeps the crosshair. Shell keeps `selection`, clears it when a
 file opens and never persists it; navigation and orientation changes keep it.
 The snapshot carries it as view fractions (`View::fractions_of`); the spectrum
-and the minimap tint it with `blue_light` at 0.3 under the grid
-(`waveform::time_band`, at least one device pixel wide).
+dims the picture outside it under the grid, black at 0.55 (`waveform::outside`, #219, the
+owner's variant C), which shows it on a bright picture, and tints it with `blue_light` at 0.3,
+which shows it on a dark one; the minimap only tints it (`waveform::time_band`, at least one
+device pixel wide).
 
 ## Selection on the plot (#183)
 
@@ -466,8 +490,14 @@ not fit between the edges, the arrowheads stand outside them pointing in, the li
 them, and the badge stands beside the selection away from the other axis's extent
 (`Layout::narrow_before`): time's before its start, a band's below it, or before it with
 frequency running right, and on the other side without room there. A hidden edge has no badge;
-badges stay inside the plot and take no input, painted over the grid and under the zoom pairs
-and the Alt guides. The status bar shows no selection.
+badges stay inside the plot, painted over the grid and under the zoom pairs and the Alt guides,
+and take only a left press (see "Typing a selection (#219)"). Each edge's badge stands a little
+farther from the selection (`EDGE_GAP`) and points at its edge with a tail drawn as one shape with
+it, inside one paper ring: one side of the tail runs along the edge from the badge's corner there,
+squared, to the selection, its base runs from the edge into the badge, and the ring's tip ends on
+the selection, so two edges meeting at a corner keep their tails apart (`selection_badges::pointer`). A badge pressed against the
+selection stands far enough from it that the badge input opened over it keeps one logical pixel
+clear (`Extent::clear`, from `badge_entry::entry_size`). The status bar shows no selection.
 
 `selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
@@ -483,6 +513,73 @@ pointer and keeps dragging it. The pointer shows the resize cursor across the gr
 a diagonal at a corner, an open hand inside and a closed hand while moving
 (`selection_gestures::grab_cursor`, `PlotView::hover_cursor`). Space and the middle button
 still pan everywhere.
+
+## Typing a selection (#219)
+
+`selection_entry.rs` (toolkit-neutral) writes and reads a selection's six values
+(`Field::{TimeStart, TimeEnd, TimeLength, BandLow, BandHigh, BandWidth}`) against a `Scale`
+the shell gives (`Shell::entry_scale`), which the badges' own texts come from too, so the badges,
+the badge input and the dialog show one value alike: time in the ruler's mode to one pixel of the
+visible time, frequency in the ruler's unit to one row, numbers through the numeric locale. A
+text left unchanged is never read again, so its rounding moves no edge. A clock
+takes one to three colon fields, seconds an optional `s`, frequency an optional unit name, and
+a leading `#` is a sample index in every mode, the end naming the last sample; where the mode
+writes indexes (`Mode::writes_samples`) a plain number is one. Times round to whole samples,
+values are held to the capture, edges swap like a drag past each other, a length or width moves
+the end or high edge, and an equal edge or a text that does not parse gives nothing.
+
+The badge layout is `SelectionBadges::place`, run in the canvas's prepaint; each badge carries
+its `Field` and `BadgeLayout` hands the rectangles to `PlotView::place_badges`. A left press on a
+badge (`PlotView::badge_at`) starts no gesture and the pointer is an arrow there; a double click
+opens a `BadgeEntry` (`badge_entry.rs`), an extra-small stock `Input` with `appearance(false)` in
+the badge's type and padding, keeping its own height centred on the badge in a frame as wide as
+the badge with room for the caret, a sibling of the plot
+surface so no `Plot` binding matches while it holds the keyboard, and the badge under it is not
+painted. Enter applies it as `PlotIntent::Select` or marks the text it refuses in the danger
+colour, Escape (the `BadgeEntry` context, since the input passes it on) and blur close it
+unchanged, unchanged text applies nothing, and a selection changed elsewhere closes it.
+
+The selection panel (`selection_panel.rs`), which replaced a modal dialog at the owner's
+request, is a `PinnedHint` hanging under three title-bar segments right of Grid, Time, Band and
+Both (`app_menu_ui::selection_segments`, toolbar-styled `Button`s in a `ButtonGroup` with the
+Lucide `move-horizontal`, `move-vertical` and `square-dashed` artwork, the arrows running along
+the axis they select as the plot turns). The segment of the kind selected is lit; a segment of
+another kind selects it, taking a missing axis from the visible range, and opens the panel, and
+the lit one toggles the panel (`Shell::choose_selection_kind`). Each segment takes its own click,
+since a `ButtonGroup`'s handler hears the mouse only. Ctrl+E (Cmd+E, `EditSelection`, in the
+`Plot` context and in the panel's own, where it closes the panel as Enter does) and Edit → Selection panel toggle it too; with nothing selected they open it on
+time and band, both from the visible range. The lit segment is `selected`, as the orientation
+segment in force is, so both groups light alike. `hints::pinned` takes the trigger and
+the anchor, so the panel hangs below its trigger where the analysis hint stands above its own.
+
+The panel draws the selection as the badges show it, with the six `Input`s placed around it, the
+start and end under it, the length on a dimension line above, the low and high edges at its left
+and the width on a dimension line at its right (`paint_dimension`), each line naming its unit
+past its end, in the hint's own look and type. With the plot turned (`Drawing::vertical`) it sides them as the turned plot's
+badges: the start and end left of it, the length on a dimension line at its right with the time
+unit above, the low and high edges above it and the width on a dimension line below. Each field is the standard `Input` with `appearance(false)` in a frame
+the drawing paints (`axes::callout`), so the four edge fields point at their edges with the
+plot badges' tails, the frame in the input's own colours, the ring colour while it holds the
+keyboard and the danger colour while it is refused. An axis not selected shows the visible range
+muted, and a value typed there selects it. It applies live through `Shell::select`: a field whose
+text changed is read on Enter or blur, and every other field is written again from the result,
+except one holding the keyboard that is already typed in, since a field's blur arrives after the
+next one took the keyboard. Tab and Shift+Tab go round its six fields, bound in its own context
+(`NextField`, `PreviousField`) because the window's Tab would walk out of it.
+Up and Down step the focused field, here and in the badge input, by one of the last digit it
+shows, ten with Shift, and a sample index by one sample (`Scale::time_step`,
+`Scale::band_step`); a changed text is read first. It closes as the analysis hint does, which the
+owner chose over a live plot: its backdrop freezes the plot and a press outside closes it keeping
+the selection, and so do the title bar, the frame's edges and the application menu
+(`Shell::close_hints`). Opening it closes the analysis hint and opening that closes it, keeping the values, so only one
+frozen backdrop stands at a time. A press on the title bar that closed it does not reopen it from the lit
+segment (`Shell::press_closed_selection`). `SelectionPanel::follow` still takes up a selection
+changed while it is open. Enter keeps the values and closes it once every changed field reads,
+since the panel handles `Confirm` before the popover; Escape restores the selection as it stood before the
+panel or its segment changed it (`Shell::selection_opening`). Ctrl+O closes it keeping the selection
+(`Shell::close_selection_hint`), and it selects only in the document it opened on, closing when
+another one opens. A badge input that loses the keyboard to nothing, as when the window is left,
+hands it back to the plot. A typed selection is an ordinary selection, never an edit.
 
 ## Band and rectangle selection (#202)
 

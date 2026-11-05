@@ -158,6 +158,12 @@ impl Shell {
         self.save();
     }
 
+    /// Close the pinned hints, the analysis settings and the selection panel, keeping their values.
+    pub(super) fn close_hints(&mut self, cx: &mut Context<Self>) {
+        self.close_analysis_hint(cx);
+        self.close_selection_hint(cx);
+    }
+
     /// Close the analysis hint, keeping what was changed while it was open.
     pub(super) fn close_analysis_hint(&mut self, cx: &mut Context<Self>) {
         self.analysis_hint
@@ -473,7 +479,13 @@ impl Shell {
                     .border_color(cx.theme().border)
                     .child(super::app_menu_ui::keeps_focus(
                         "fft-summary-keeps-focus",
-                        hints::pinned("analysis-hint", &self.analysis_hint, summary, cx),
+                        hints::pinned(
+                            "analysis-hint",
+                            &self.analysis_hint,
+                            summary,
+                            gpui_kit::Anchor::BottomLeft,
+                            cx,
+                        ),
                     )),
             )
             .child(self.range_control(displayed, cx))
@@ -496,6 +508,8 @@ impl Shell {
             hint.update(cx, |hint, cx| hint.close(false, cx));
             return;
         }
+        // One pinned hint at a time, since each freezes the plot under a backdrop of its own.
+        self.close_selection_hint(cx);
         // The editor reads the shell as it is built, so it waits until this update ends.
         window.defer(cx, move |window, cx| {
             hint.update(cx, |hint, cx| hint.open(window, cx));

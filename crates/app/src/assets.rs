@@ -4,8 +4,11 @@ use gpui_kit::assets::icon_assets;
 use gpui_kit::{AssetSource, SharedString};
 use std::borrow::Cow;
 
-// The Lucide strip above the plot, which the default component bundle omits.
-icon_assets!(SegmentIcons, [PanelTop]);
+// The Lucide toolbar artwork the default component bundle omits.
+icon_assets!(
+    SegmentIcons,
+    [PanelTop, MoveHorizontal, MoveVertical, SquareDashed]
+);
 
 pub struct Assets;
 

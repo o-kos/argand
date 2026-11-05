@@ -8,7 +8,7 @@
 
 ## Plan
 
-<!-- Link the active or completed plan under docs/plans/. -->
+<!-- Link the active or completed plan under docs/plans/, or explain the coordinator's scoped decision for work without code. -->
 
 ## Validation
 
@@ -16,10 +16,13 @@
 
 ## Checklist
 
+<!-- For work without code, mark non-applicable workflow items with the coordinator's
+risk-based reason under CONTRIBUTING.md. Required checks and protected main still apply. -->
+
 - [ ] The Pull Request addresses one Issue and includes `Closes #N` below.
 - [ ] The implementation plan reflects the final scope and completed work.
 - [ ] The plan has been moved to `docs/plans/completed/` before final review.
 - [ ] Formatting, linting, and relevant tests pass.
 - [ ] Documentation is updated where required.
 
-Closes #N
+<!-- When an Issue applies: Closes #N -->

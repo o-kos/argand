@@ -214,6 +214,9 @@ impl PlotView {
         if self.space || self.dragging() {
             return None;
         }
+        if self.badge_at(position).is_some() {
+            return Some(CursorStyle::Arrow);
+        }
         grab(snapshot, geometry, position).map(|grab| grab_cursor(grab, geometry.orientation))
     }
 
