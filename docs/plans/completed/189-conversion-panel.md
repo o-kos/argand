@@ -41,8 +41,9 @@ references as required.
 - [x] Route Edit > Convert to... and F11 to that panel; remove old File row/dialog.
 - [x] Cover dirty result, first Save, repeat conversion, scratch retention,
       unchanged source, cancel/error and draft/frequency invariants.
-- [ ] Complete fmt, Clippy, workspace tests, current release build and independent
-      review; update active architecture documentation.
+- [x] Complete fmt, Clippy, workspace tests, independent review and active
+      architecture documentation.
+- [x] Rebuild the current release workspace after the local gate.
 
 ## Acceptance and evidence
 
@@ -86,3 +87,20 @@ The first review found three substantive lifecycle defects; all were accepted:
 Compact aligned property rows and inherited foreground styling were checked
 against the existing analysis editor; the rendering uses supported Input/Select
 appearance styling and standard Button controls.
+
+## Final validation
+
+Formatting, all-targets Clippy and the complete locked workspace test suite pass:
+1,109 tests, zero failures, one ignored manual benchmark. The locked release
+workspace build then completed successfully. The conversion DSP is
+unchanged by this panel/document iteration. The independent second review returned
+no substantive findings after all three accepted lifecycle findings were fixed;
+the final button-builder extraction and menu-test-position delta was also clean.
+No findings were rejected.
+
+An isolated diagnostic launcher rendered the unchanged final panel on the second
+monitor. The actual window capture shows aligned compact rows, readable values,
+all target fields and the Convert button. Only a startup open hook and inactive
+window option differed; no desktop input emulation or RemoteDesktop was used.
+This verifies rendering, not native Wayland pointer/hover interaction. Headless
+framework tests cover input, focus, Select and Escape behavior.
