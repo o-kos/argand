@@ -93,6 +93,10 @@ fn extract_flac(
     let folder = crate::scratch::folder().ok_or(WriteError::OutOfRange)?;
     let target = request.target.clone();
     let sample_type = request.meta.sample_type;
+    let mut output = request.output_meta()?;
+    output.sample_type = sample_type;
+    Container::Flac.check(&output, output.len_samples)?;
+    let original_sources = request.sources.clone();
     let mut protected = request.protected.clone();
     protected.extend(request.sources.iter().flatten().map(|source| Protected {
         path: source.meta.source.clone(),
@@ -158,11 +162,16 @@ fn extract_flac(
     let mut save_request = SaveRequest::span(source, None, target);
     save_request.output = Output::Container(Container::Flac);
     save_request.protected = protected;
-    let saved = save(
+    let staged = stage(
         &save_request,
         &mut |done, total| phase_progress(progress, 2, done, total),
         cancel,
     )?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err(WriteError::Cancelled);
+    }
+    crate::extraction::unchanged(&original_sources)?;
+    let saved = staged.commit().map_err(|refused| refused.error)?;
     Ok((saved, converted.clipped))
 }
 
@@ -275,9 +284,12 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// The nearest existing folder above the source, suitable for a native chooser.
+/// The suggested source folder; resolve its availability away from the UI thread.
 pub fn directory(source: &Path) -> PathBuf {
-    existing_directory(source.parent().unwrap_or_else(|| Path::new(".")))
+    source
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf()
 }
 
 pub fn existing_directory(path: &Path) -> PathBuf {

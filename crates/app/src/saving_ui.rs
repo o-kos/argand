@@ -70,11 +70,22 @@ impl Shell {
             Some(unsaved) => {
                 display.source = unsaved.name.clone().into();
                 display.container = unsaved.container.extension();
-                saving::existing_directory(std::path::Path::new("."))
+                std::path::PathBuf::from(".")
             }
             None => saving::directory(&meta.source),
         };
         (display, directory)
+    }
+
+    fn save_matches(&self, of: &SaveOf) -> bool {
+        self.saving.is_none()
+            && self.file.as_ref().is_some_and(|file| {
+                file.id == of.document
+                    && file
+                        .editing
+                        .as_ref()
+                        .is_some_and(|editing| editing.version() == of.version)
+            })
     }
 
     /// Whether a save of the capture, or of its time selection, can start now.
@@ -152,8 +163,18 @@ impl Shell {
             over: false,
             _scratch: editing.scratches(),
         };
-        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
+            let directory = cx
+                .background_executor()
+                .spawn(async move { saving::existing_directory(&directory) })
+                .await;
+            let Ok(Some(chosen)) = shell.update_in(cx, |shell, _, cx| {
+                shell
+                    .save_matches(&of)
+                    .then(|| cx.prompt_for_new_path(&directory, Some(&name)))
+            }) else {
+                return;
+            };
             // A cancelled dialog, a platform without one, and a failed dialog all mean no target.
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
@@ -222,7 +243,11 @@ impl Shell {
             return;
         };
         let (display, directory) = self.save_presentation(&meta);
-        let container = file.unsaved.as_ref().map(|unsaved| unsaved.container);
+        let container = file
+            .unsaved
+            .as_ref()
+            .map(|unsaved| unsaved.container)
+            .or_else(|| (meta.container == "flac").then_some(argand_io::write::Container::Flac));
         let mut name = saving::suggested_band_name(&display, self.selection, band);
         if container == Some(argand_io::write::Container::Flac) {
             name = std::path::Path::new(&name)
@@ -248,20 +273,6 @@ impl Shell {
             cx.notify();
             return;
         }
-        if let Some(container) = container {
-            let valid = request.output_meta().and_then(|mut output| {
-                output.sample_type = request.meta.sample_type;
-                container.check(&output, output.len_samples)
-            });
-            if let Err(error) = valid {
-                self.save_notice = Some(Notice::Failed(
-                    "Cannot save the band",
-                    saving::message(&error),
-                ));
-                cx.notify();
-                return;
-            }
-        }
         let of = SaveOf {
             document: file.id,
             version: editing.version(),
@@ -271,8 +282,18 @@ impl Shell {
             over: false,
             _scratch: editing.scratches(),
         };
-        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
+            let directory = cx
+                .background_executor()
+                .spawn(async move { saving::existing_directory(&directory) })
+                .await;
+            let Ok(Some(chosen)) = shell.update_in(cx, |shell, _, cx| {
+                shell
+                    .save_matches(&of)
+                    .then(|| cx.prompt_for_new_path(&directory, Some(&name)))
+            }) else {
+                return;
+            };
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
             };

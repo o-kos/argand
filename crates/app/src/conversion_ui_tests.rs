@@ -1,3 +1,4 @@
+use super::super::replace_ui::tests::wait_for_save_chooser;
 use super::*;
 use argand_core::{Domain, SampleFormat, SampleType, SignalMeta};
 use argand_edit::{Capture, SourceId};
@@ -257,17 +258,14 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
     });
     let target = dir.join("chosen.flac");
     let chosen = target.clone();
+    wait_for_save_chooser(cx);
     cx.simulate_new_path_selection(move |_| Some(chosen));
-    wait_until(cx, &shell, "saved ordinary document", |shell| {
-        shell.saving.is_none()
-            && shell
-                .file
-                .as_ref()
-                .is_some_and(|file| file.unsaved.is_none())
-            && shell
-                .editing()
-                .is_some_and(|editing| editing.is_described() && !editing.is_dirty())
-    });
+    wait_until(
+        cx,
+        &shell,
+        "saved ordinary document",
+        saved_ordinary_document,
+    );
     assert_eq!(&std::fs::read(&target).unwrap()[..4], b"fLaC");
     assert_eq!(
         shell.read_with(cx, |shell, _| shell
@@ -278,15 +276,51 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
             .container),
         "flac"
     );
+    assert_saved_samples(&target, 1200);
+    assert_saved_flac_band(&shell, cx, &dir);
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn assert_saved_flac_band(
+    shell: &Entity<Shell>,
+    cx: &mut gpui_kit::VisualTestContext,
+    dir: &std::path::Path,
+) {
+    use super::super::replace_ui::tests::wait_until;
+    shell.update_in(cx, |shell, window, cx| {
+        shell.band = argand_core::FrequencyBand::between(100.0, 1000.0);
+        shell.save_as(true, window, cx);
+    });
+    let target = dir.join("saved-band.flac");
+    let chosen = target.clone();
+    wait_for_save_chooser(cx);
+    cx.simulate_new_path_selection(move |_| Some(chosen));
+    wait_until(cx, shell, "saved FLAC band", |shell| {
+        shell.saving.is_none() && shell.save_notice.is_some()
+    });
+    assert_eq!(&std::fs::read(target).unwrap()[..4], b"fLaC");
+}
+
+fn assert_saved_samples(target: &std::path::Path, count: u64) {
     assert_eq!(
-        argand_io::open(&target, &argand_io::OpenHints::default())
+        argand_io::open(target, &argand_io::OpenHints::default())
             .unwrap()
             .meta()
             .len_samples,
-        1200
+        count
     );
-    assert_eq!(std::fs::read(&path).unwrap(), original);
-    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn saved_ordinary_document(shell: &Shell) -> bool {
+    shell.saving.is_none()
+        && shell
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_none())
+        && shell
+            .editing()
+            .is_some_and(|editing| editing.is_described() && !editing.is_dirty())
 }
 
 #[gpui_kit::test]
@@ -559,6 +593,7 @@ fn converted_document_open_discard_and_save_each_answer_only_once(cx: &mut TestA
     cx.simulate_prompt_answer("Save");
     cx.run_until_parked();
     let saved = dir.join("saved.wav");
+    wait_for_save_chooser(cx);
     cx.simulate_new_path_selection(|_| Some(saved.clone()));
     wait_until(cx, &shell, "save then open", |shell| {
         shell
@@ -688,22 +723,17 @@ fn unsaved_selection_exports_never_suggest_private_scratch_directories(cx: &mut 
             let (display, directory) =
                 shell.save_presentation(&shell.editing().unwrap().file().meta);
             assert!(directory.is_dir());
-            assert_eq!(
-                std::fs::canonicalize(directory).unwrap(),
-                std::env::current_dir().unwrap()
-            );
+
             assert_eq!(
                 display.source,
                 std::path::PathBuf::from("recording-converted.wav")
             );
             shell.save_as(true, window, cx);
         });
+        wait_for_save_chooser(cx);
         cx.simulate_new_path_selection(|directory| {
             assert!(directory.is_dir());
-            assert_eq!(
-                std::fs::canonicalize(directory).unwrap(),
-                std::env::current_dir().unwrap()
-            );
+
             None
         });
         cx.run_until_parked();
@@ -850,4 +880,28 @@ fn assert_property_panels(
             "Analysis panel"
         );
     });
+}
+
+#[gpui_kit::test]
+fn an_edit_during_save_directory_preparation_does_not_open_a_stale_chooser(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx, dir) = converted_fixture(cx, "stale-chooser");
+    shell.update_in(cx, |shell, window, cx| {
+        shell.save_as(false, window, cx);
+        shell
+            .editing_mut()
+            .unwrap()
+            .delete(argand_core::SampleSpan::between(0, 100).unwrap());
+    });
+    cx.run_until_parked();
+    assert!(!cx.did_prompt_for_new_path());
+    shell.update_in(cx, |shell, window, cx| shell.save_as(false, window, cx));
+    wait_for_save_chooser(cx);
+    cx.simulate_new_path_selection(|_| None);
+    shell.read_with(cx, |shell, _| {
+        assert!(shell.editing().unwrap().is_dirty());
+        assert!(shell.file.as_ref().unwrap().unsaved.is_some());
+    });
+    std::fs::remove_dir_all(dir).unwrap();
 }

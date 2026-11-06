@@ -33,9 +33,9 @@ fn the_whole_capture_keeps_its_name_and_a_headerless_one_becomes_wave() {
 fn the_dialog_uses_the_nearest_existing_source_folder() {
     let dir = std::env::temp_dir().join(format!("argand-chooser-directory-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("existing")).unwrap();
-    assert_eq!(directory(&dir.join("existing/pass.wav")), dir.join("existing"));
-    assert_eq!(directory(&dir.join("existing/deleted/nested/pass.wav")), dir.join("existing"));
-    assert!(directory(Path::new("pass.wav")).is_dir());
+    assert_eq!(existing_directory(&directory(&dir.join("existing/pass.wav"))), dir.join("existing"));
+    assert_eq!(existing_directory(&directory(&dir.join("existing/deleted/nested/pass.wav"))), dir.join("existing"));
+    assert!(existing_directory(&directory(Path::new("pass.wav"))).is_dir());
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -154,4 +154,76 @@ fn flac_band_and_rectangle_exports_are_encoded_before_publication() {
         assert_eq!(std::fs::read(&target).unwrap(), bytes);
     }
     assert_eq!(std::fs::read(path).unwrap(), original);
+}
+
+#[test]
+fn flac_export_checks_original_stamps_after_final_encoding() {
+    use argand_core::{Domain, FrequencyBand, SampleFormat, SampleType};
+    use argand_edit::{Capture, SourceId};
+    use argand_io::testutil::{TempDir, iq_tone, write_wav};
+    use argand_io::write::SourceFile;
+    let dir = TempDir::new("flac-band-stamp");
+    let path = write_wav(&dir.join("capture.wav"), SampleType::new(Domain::Iq, SampleFormat::I16),
+        8000, &iq_tone(8000, 8000.0, 300.0, 0.5), 1.0);
+    let hints = argand_io::OpenHints::default();
+    let (source, stamp) = argand_io::open_stamped(&path, &hints).unwrap();
+    let meta = source.meta().clone();
+    let target = dir.join("band.flac");
+    std::fs::write(&target, b"existing output").unwrap();
+    let request = crate::extraction::ExtractRequest {
+        capture: Capture::whole(SourceId(0), 8000),
+        sources: vec![Some(SourceFile { meta: meta.clone(), hints, stamp, encoding: None })],
+        meta, span: SampleSpan::between(0, 8000).unwrap(),
+        band: FrequencyBand::between(-1000.0, 1000.0).unwrap(), target: target.clone(), protected: Vec::new(),
+    };
+    let mut changed = false;
+    let result = extract_flac(request, &mut |done, _| {
+        if done >= 2_000_000 && !changed {
+            changed = true;
+            std::fs::write(&path, b"changed after extraction").unwrap();
+        }
+    }, &AtomicBool::new(false));
+    assert!(changed);
+    assert!(matches!(result, Err(WriteError::SourceChanged { .. })));
+    assert_eq!(std::fs::read(target).unwrap(), b"existing output");
+}
+
+#[test]
+fn save_as_explicit_extension_overrides_only_known_containers() {
+    use argand_io::write::Container;
+    assert_eq!(target_container(Container::Wave, Path::new("a.FLAC")), Container::Flac);
+    assert_eq!(target_container(Container::Flac, Path::new("a.wav")), Container::Wave);
+    assert_eq!(target_container(Container::Flac, Path::new("a.custom")), Container::Flac);
+}
+
+#[test]
+fn wave_override_can_export_a_band_beyond_flac_rate_limits() {
+    use argand_core::{Domain, FrequencyBand, SampleFormat, SampleType};
+    use argand_edit::{Capture, SourceId};
+    use argand_io::testutil::{TempDir, write_wav};
+    use argand_io::write::{Container, SourceFile};
+    let dir = TempDir::new("flac-band-wave-override");
+    let path = write_wav(&dir.join("capture.wav"), SampleType::new(Domain::Iq, SampleFormat::I16), 96000, &[0.0; 8192], 1.0);
+    let hints = argand_io::OpenHints::default();
+    let (source, stamp) = argand_io::open_stamped(&path, &hints).unwrap();
+    let meta = source.meta().clone();
+    let target = dir.join("band.wav");
+    let request = crate::extraction::ExtractRequest {
+        capture: Capture::whole(SourceId(0), 4096),
+        sources: vec![Some(SourceFile { meta: meta.clone(), hints, stamp, encoding: None })],
+        meta, span: SampleSpan::between(0, 4096).unwrap(),
+        band: FrequencyBand::between(-40000.0, 40000.0).unwrap(), target: target.clone(), protected: Vec::new(),
+    };
+    assert!(matches!(extract_flac(request.clone(), &mut |_, _| {}, &AtomicBool::new(false)), Err(WriteError::Unsupported { .. })));
+    assert!(!target.exists());
+    let container = target_container(Container::Flac, &target);
+    let (_job, updates) = start_extraction(request, Some(container));
+    let mut result = None;
+    while let Ok(update) = updates.recv_blocking() {
+        if let Update::Finished(outcome) = update { result = Some(outcome); }
+    }
+    assert!(matches!(result, Some(Outcome::Saved(_))));
+    let output = argand_io::open(&target, &argand_io::OpenHints::default()).unwrap();
+    assert_eq!(output.meta().container, "wav");
+    assert_eq!(output.meta().sample_rate, 100000.0);
 }

@@ -501,6 +501,16 @@ pub(super) mod tests {
     }
 
     /// Draw and let the real threads work until `done` holds, or fail after a while.
+    pub(in crate::shell) fn wait_for_save_chooser(cx: &mut gpui_kit::VisualTestContext) {
+        for _ in 0..1000 {
+            cx.run_until_parked();
+            if cx.did_prompt_for_new_path() {
+                return;
+            }
+        }
+        panic!("save chooser did not open");
+    }
+
     pub(in crate::shell) fn wait_until(
         cx: &mut gpui_kit::VisualTestContext,
         shell: &Entity<Shell>,
@@ -676,6 +686,7 @@ pub(super) mod tests {
         });
         let target = dir.join("band.wav");
         let chosen = target.clone();
+        wait_for_save_chooser(cx);
         cx.simulate_new_path_selection(move |_| Some(chosen));
         wait_until(cx, &shell, "the band to be saved", |shell| {
             shell.saving.is_none() && matches!(shell.save_notice, Some(saving_ui::Notice::Saved(_)))

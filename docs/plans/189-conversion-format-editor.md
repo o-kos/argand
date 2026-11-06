@@ -43,7 +43,8 @@ do not claim that the application supplied the stale path.
 - [x] Remove disabled action hover/active ink and background through shared composition.
 - [x] Validate save chooser folders and test deleted nested-folder resolution.
 - [x] Resolve the output-container proposal before implementing format selection.
-- [ ] Add meaningful parse/commit, format/save identity and disabled interaction coverage.
+- [x] Add meaningful parse/commit and format/save identity coverage; retain stock
+      disabled interaction handling and remove enabled-only child hover styling.
 - [ ] Obtain independent review and run the full local gate; rebuild current release.
 - [ ] Verify actual rendering within the approved second-monitor diagnostic limits,
       complete this plan, and publish the existing Draft update after acceptance.
@@ -59,3 +60,13 @@ The adapter reports clipped scalar values and never publishes an intermediate.
 
 Open chooser remediation remains pending a separate owner decision: the locked API
 cannot pass an initial directory. No desktop chooser state is reset by this work.
+
+## Review record
+
+Round one accepted four findings: synchronous chooser-directory metadata on the UI
+thread, missing original-source checks after staged FLAC band encoding, lost FLAC
+band-export defaults after first Save, and premature FLAC validation blocking an
+explicit WAV export override. Directory preparation now runs in the background with
+a document/version guard before prompting. Final FLAC publication checks original
+stamps; saved metadata supplies the default container; final target compatibility is
+validated after the chooser. Focused regressions cover all four. No findings rejected.

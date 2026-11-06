@@ -1289,7 +1289,7 @@ pub(in crate::shell) fn numeric_events<T: 'static>(
             if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur)
                 && commit(editor, window, cx)
             {
-                commit_numeric_input(&state, window, cx);
+                commit_numeric_input(state, window, cx);
             }
             cx.notify();
         },
