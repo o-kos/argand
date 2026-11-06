@@ -607,6 +607,34 @@ impl Editing {
         }
     }
 
+    pub fn statistics_request(&self) -> Option<crate::sample_statistics::Request> {
+        let sources = self.source_files();
+        let indices: Option<Vec<_>> = sources
+            .iter()
+            .enumerate()
+            .map(|(id, source)| match source {
+                None => Some(None),
+                Some(_) => self
+                    .envelopes
+                    .get(id)?
+                    .as_ref()?
+                    .statistics
+                    .clone()
+                    .map(Some),
+            })
+            .collect();
+        Some(crate::sample_statistics::Request {
+            capture: self.capture().clone(),
+            sources,
+            indices: indices?,
+            adjustment: self.adjustment(),
+        })
+    }
+
+    pub fn retained_sources(&self) -> Vec<Source> {
+        self.sources.clone()
+    }
+
     /// Whether every file the current version reads stores its samples as `meta` says, so a picture of it is one of `meta`.
     pub fn scaled_as(&self, meta: &SignalMeta) -> bool {
         self.capture().sources().iter().all(|id| {

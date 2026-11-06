@@ -20,6 +20,7 @@ pub struct Snapshot {
     pub complete: bool,
     /// Samples of the capture the envelope spans.
     pub samples: u64,
+    pub statistics: Option<Arc<crate::sample_statistics::Index>>,
 }
 
 pub fn start(
@@ -86,6 +87,8 @@ fn build(
             return Ok(());
         }
     }
+    let factor = source.original_sample_units().map(|(factor, _)| factor);
+    let mut statistics = crate::sample_statistics::Index::new(total, channels, factor);
     source.access_pattern(AccessPattern::Sequential);
     source.seek(0)?;
     let mut first = 0;
@@ -95,10 +98,13 @@ fn build(
         }
         let count = (total - first).min((BLOCK_VALUES / channels) as u64) as usize * channels;
         fold(source, &mut envelope, &mut buffer[..count], first)?;
+        statistics.fold(&buffer[..count], first);
         first += (count / channels) as u64;
     }
     if active() {
-        publish(snapshot(envelope, duration, true));
+        let mut complete = snapshot(envelope, duration, true);
+        complete.statistics = Some(Arc::new(statistics.finish()));
+        publish(complete);
     }
     Ok(())
 }
@@ -137,6 +143,7 @@ fn finished(envelope: WaveformEnvelope, complete: bool, samples: u64) -> Snapsho
         full_scale,
         complete,
         samples,
+        statistics: None,
     }
 }
 

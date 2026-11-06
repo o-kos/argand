@@ -71,6 +71,8 @@ mod selection_gestures;
 mod selection_panel;
 #[path = "settings_ui.rs"]
 mod settings_ui;
+#[path = "statistics_ui.rs"]
+mod statistics_ui;
 #[path = "suppression_ui.rs"]
 mod suppression_ui;
 
@@ -454,6 +456,7 @@ struct Shell {
     save_notice: Option<saving_ui::Notice>,
     save_updates: Option<Task<()>>,
     conversion: conversion_ui::State,
+    statistics: statistics_ui::State,
     suppressing: Option<suppression_ui::Suppressing>,
     suppress_updates: Option<Task<()>>,
     levelling: Option<levelling_ui::Levelling>,
@@ -589,6 +592,7 @@ impl Shell {
             save_notice: None,
             save_updates: None,
             conversion: conversion_ui::State::new(cx),
+            statistics: statistics_ui::State::default(),
             suppressing: None,
             suppress_updates: None,
             levelling: None,
@@ -1809,6 +1813,7 @@ enum Showing {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.prepare_statistics(window, cx);
         if self.upload_pending {
             self.upload_pending = false;
             self.upload(window, cx);

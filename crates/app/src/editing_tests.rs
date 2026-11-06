@@ -136,7 +136,7 @@ fn the_minimap_waits_for_the_file_envelope() {
     let envelope = argand_core::WaveformEnvelope::new(10, 2);
     document.set_envelope(
         SourceId(0),
-        Arc::new(Snapshot {
+        Arc::new(Snapshot { statistics: None,
             envelope,
             full_scale: 1.0,
             complete: true,
@@ -489,4 +489,20 @@ fn encoded_unsaved_backing_is_not_reencoded_as_computed_float_and_survives_copy(
     drop(copied);
     assert!(!path.exists());
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn source_statistics_completion_after_an_edit_is_retained_and_resolves_pending_capture() {
+    let mut document = editing("/a.wav", 100, 1000.);
+    assert!(document.statistics_request().is_none());
+    document.delete(span(10, 20));
+    let index = crate::sample_statistics::Index::new(100, 2, Some(1.)).finish();
+    document.set_envelope(SourceId(0), Arc::new(Snapshot {
+        envelope: argand_core::WaveformEnvelope::new(100, 2), full_scale: 1., complete: true,
+        samples: 100, statistics: Some(Arc::new(index)),
+    }));
+    let current = document.statistics_request().expect("source completion is independent of capture edit version");
+    assert_eq!(current.capture.len(), 90);
+    assert!(current.indices[0].is_some());
+    assert!(document.statistics_request().is_some());
 }

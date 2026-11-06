@@ -116,6 +116,7 @@ struct Editor {
     rate_editor: Entity<NumericEditor>,
     reference: Entity<InputState>,
     reference_editor: Entity<NumericEditor>,
+    reference_iq: bool,
     container: Entity<SelectState<Vec<Name>>>,
     container_widths: Vec<Pixels>,
     kind: Entity<SelectState<Vec<Name>>>,
@@ -163,6 +164,9 @@ impl Editor {
                 cx,
             )
         });
+        reference_editor.update(cx, |editor, cx| {
+            editor.set_disabled(request.output.is_iq() == request.input.is_iq(), cx)
+        });
         let rate = rate_editor.read(cx).input.clone();
         let reference = reference_editor.read(cx).input.clone();
         let kinds: Vec<String> = argand_core::SAMPLE_TYPE_TOKENS
@@ -204,9 +208,17 @@ impl Editor {
             cx.subscribe(&container, |_, _, _: &SelectEvent<Vec<Name>>, cx| {
                 cx.notify()
             }),
-            cx.subscribe(&kind, |_, _, _: &SelectEvent<Vec<Name>>, cx| cx.notify()),
+            cx.subscribe_in(
+                &kind,
+                window,
+                |editor, _, _: &SelectEvent<Vec<Name>>, window, cx| {
+                    editor.sync_reference(window, cx);
+                    cx.notify();
+                },
+            ),
         ];
         Self {
+            reference_iq: request.output.is_iq(),
             request,
             container,
             container_widths,
@@ -226,13 +238,34 @@ impl Editor {
         }
     }
 
+    fn sync_reference(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let iq = self
+            .kind
+            .read(cx)
+            .selected_value()
+            .is_some_and(|value| value.starts_with("I/Q"));
+        if iq == self.reference_iq {
+            return;
+        }
+        self.reference_iq = iq;
+        let locked = iq == self.request.input.is_iq();
+        if locked {
+            self.reference.update(cx, |input, cx| {
+                input.set_value(
+                    crate::numbers::number(self.request.input.center_freq),
+                    window,
+                    cx,
+                )
+            });
+        }
+        self.reference_editor
+            .update(cx, |editor, cx| editor.set_disabled(locked, cx));
+    }
+
     fn request(&self, cx: &gpui_kit::App) -> Result<Request, String> {
         let mut request = self.request.clone();
         request.output.sample_rate = crate::numbers::parse(self.rate.read(cx).value().as_ref())
             .map_err(|_| "Enter a positive finite sample rate in Hz".to_string())?;
-        request.output.center_freq =
-            crate::numbers::parse(self.reference.read(cx).value().as_ref())
-                .map_err(|_| "Enter a finite reference frequency in Hz".to_string())?;
         let selected = self
             .kind
             .read(cx)
@@ -244,6 +277,12 @@ impl Editor {
             .ok_or("Choose a supported sample type")?
             .parse()
             .map_err(|_| "Choose a supported sample type")?;
+        request.output.center_freq = if request.output.is_iq() == request.input.is_iq() {
+            request.input.center_freq
+        } else {
+            crate::numbers::parse(self.reference.read(cx).value().as_ref())
+                .map_err(|_| "Enter a finite reference frequency in Hz".to_string())?
+        };
         request.container = match self.container.read(cx).selected_value().map(String::as_str) {
             Some("WAV") => argand_io::write::Container::Wave,
             Some("FLAC") => argand_io::write::Container::Flac,
@@ -306,6 +345,26 @@ impl Render for Editor {
             let focus = self.rate.read(cx).focus_handle(cx);
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
+        if let Some(owner) = &self.owner {
+            if let Ok(Some(rows)) = owner.read_with(cx, |shell, _| {
+                let file = shell.file.as_ref()?;
+                (Some(file.id) == self.document)
+                    .then(|| {
+                        file.state
+                            .document
+                            .file_summary()
+                            .map(|summary| summary.hint.rows)
+                    })
+                    .flatten()
+            }) {
+                self.details
+                    .retain(|(label, _)| label != "Peak" && label != "RMS");
+                self.details.extend(
+                    rows.into_iter()
+                        .filter(|(label, _)| label == "Peak" || label == "RMS"),
+                );
+            }
+        }
         let summary = self.summary(cx);
         let request = self
             .request(cx)
@@ -316,11 +375,25 @@ impl Render for Editor {
             .key_context("FileInformation")
             .track_focus(&self.scope)
             .on_action(cx.listener(|editor, _: &FocusNext, window, cx| {
-                numeric_editor::traverse(&editor.scope, 7, true, window, cx);
+                numeric_editor::traverse(
+                    &editor.scope,
+                    &[editor.rate_editor.clone(), editor.reference_editor.clone()],
+                    7,
+                    true,
+                    window,
+                    cx,
+                );
                 cx.notify();
             }))
             .on_action(cx.listener(|editor, _: &FocusPrevious, window, cx| {
-                numeric_editor::traverse(&editor.scope, 7, false, window, cx);
+                numeric_editor::traverse(
+                    &editor.scope,
+                    &[editor.rate_editor.clone(), editor.reference_editor.clone()],
+                    7,
+                    false,
+                    window,
+                    cx,
+                );
                 cx.notify();
             }))
             .on_action(|_: &Confirm, _, _| {})
@@ -433,6 +506,11 @@ fn panel(
     };
     cx.new(|cx| {
         let mut editor = Editor::new(request, window, cx);
+        if let Some(shell) = owner.upgrade() {
+            editor
+                ._subscriptions
+                .push(cx.observe(&shell, |_, _, cx| cx.notify()));
+        }
         editor.owner = Some(owner);
         editor.document = Some(document);
         editor.version = version;
@@ -774,4 +852,4 @@ impl Shell {
 
 #[cfg(test)]
 #[path = "conversion_ui_tests.rs"]
-mod tests;
+pub(super) mod tests;

@@ -539,7 +539,14 @@ impl Editor {
 
     /// Moves the keyboard to the window's next or previous stop that lies in the hint.
     fn traverse(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
-        numeric_editor::traverse(&self.scope, self.stops().len() + 2, forward, window, cx);
+        numeric_editor::traverse(
+            &self.scope,
+            &[self.overlap_editor.clone(), self.range_editor.clone()],
+            self.stops().len() + 2,
+            forward,
+            window,
+            cx,
+        );
         cx.notify();
     }
 
@@ -830,6 +837,7 @@ pub(in crate::shell) fn number_control(
     width: Pixels,
     unit: &'static str,
     focused: bool,
+    disabled: bool,
     cx: &gpui_kit::App,
 ) -> impl IntoElement {
     div()
@@ -842,6 +850,7 @@ pub(in crate::shell) fn number_control(
                 .map(|line| mark(line, focused, cx))
                 .child(
                     Input::new(state)
+                        .disabled(disabled)
                         .appearance(false)
                         .small()
                         .w(width)

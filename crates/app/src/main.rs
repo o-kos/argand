@@ -34,6 +34,7 @@ mod panels;
 mod profiling;
 mod recent;
 mod release;
+mod sample_statistics;
 mod saving;
 mod scratch;
 mod selection_entry;

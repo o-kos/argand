@@ -2,7 +2,7 @@
 
 use super::*;
 use gpui_kit::component::input::{InputEvent, InputState, StepAction};
-use gpui_kit::component::{Icon, IconName};
+use gpui_kit::component::{Disableable, Icon, IconName};
 use gpui_kit::{EventEmitter, Focusable};
 use std::time::Duration;
 
@@ -21,6 +21,7 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
 /// Tab visits values once, while the non-tab-stop steppers remain pointer controls.
 pub(super) fn traverse(
     scope: &FocusHandle,
+    numbers: &[Entity<NumericEditor>],
     attempts: usize,
     forward: bool,
     window: &mut Window,
@@ -32,7 +33,11 @@ pub(super) fn traverse(
         } else {
             window.focus_prev(cx);
         }
-        if scope.contains_focused(window, cx) {
+        let disabled = numbers.iter().any(|number| {
+            let number = number.read(cx);
+            number.disabled && number.input.read(cx).focus_handle(cx).is_focused(window)
+        });
+        if !disabled && scope.contains_focused(window, cx) {
             break;
         }
     }
@@ -70,6 +75,7 @@ pub(super) struct NumericEditor {
     pub input: Entity<InputState>,
     config: Config,
     repeat: Option<Task<()>>,
+    disabled: bool,
     _subscription: Subscription,
 }
 
@@ -87,6 +93,9 @@ impl NumericEditor {
             &input,
             window,
             |editor: &mut Self, _, event: &InputEvent, window, cx| {
+                if editor.disabled {
+                    return;
+                }
                 let committed = matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur);
                 if committed {
                     editor.format(window, cx);
@@ -99,8 +108,17 @@ impl NumericEditor {
             input,
             config,
             repeat: None,
+            disabled: false,
             _subscription: subscription,
         }
+    }
+
+    pub(super) fn set_disabled(&mut self, disabled: bool, cx: &mut Context<Self>) {
+        self.disabled = disabled;
+        if disabled {
+            self.stop_repeat();
+        }
+        cx.notify();
     }
 
     fn format(&self, window: &mut Window, cx: &mut Context<Self>) {
@@ -118,6 +136,9 @@ impl NumericEditor {
     }
 
     fn step(&mut self, step: StepAction, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.disabled {
+            return false;
+        }
         let Ok(value) = crate::numbers::parse::<f64>(self.input.read(cx).value().as_ref()) else {
             return false;
         };
@@ -174,6 +195,7 @@ impl NumericEditor {
             .active(ink.opacity(0.18));
         Button::new(id)
             .custom(style)
+            .disabled(self.disabled)
             .group(id)
             .xsmall()
             .child(settings_ui::editor::pointer_ink(id, cx).child(Icon::new(icon).xsmall()))
@@ -226,6 +248,7 @@ impl Render for NumericEditor {
                 width,
                 self.config.unit,
                 focused,
+                self.disabled,
                 cx,
             ))
             .child(self.button(self.config.up, IconName::Plus, StepAction::Increment, cx))

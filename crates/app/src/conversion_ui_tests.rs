@@ -45,7 +45,8 @@ fn changing_kind_keeps_both_explicit_frequencies_and_revalidates_the_band(cx: &m
         .update(cx, |_, window, cx| {
             let kind = editor.read(cx).kind.clone();
             kind.update(cx, |kind, cx| {
-                kind.set_selected_value(&kind_label("rl_i16"), window, cx)
+                kind.set_selected_value(&kind_label("rl_i16"), window, cx);
+                cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
             });
             let converted = editor.read(cx).request(cx).unwrap();
             assert_eq!(converted.output.sample_rate, 8000.0);
@@ -61,11 +62,32 @@ fn changing_kind_keeps_both_explicit_frequencies_and_revalidates_the_band(cx: &m
             let reference = editor.read(cx).reference.clone();
             reference.update(cx, |state, cx| state.set_value("200000", window, cx));
             assert!(editor.read(cx).request(cx).is_err());
+            kind.update(cx, |kind, cx| {
+                kind.set_selected_value(&kind_label("iq_i16"), window, cx);
+                cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
+            });
+            // The application request enforces the lock even before the select event is delivered.
+            assert_eq!(
+                editor.read(cx).request(cx).unwrap().output.center_freq,
+                100_000.
+            );
             let rate = editor.read(cx).rate.clone();
             rate.update(cx, |state, cx| state.set_value("NaN", window, cx));
             assert!(editor.read(cx).request(cx).is_err());
         })
         .unwrap();
+    cx.run_until_parked();
+    editor.read_with(cx, |editor, cx| {
+        assert_eq!(
+            editor.reference.read(cx).value().as_ref(),
+            crate::numbers::number(100_000.)
+        );
+        assert_eq!(
+            editor.rate.read(cx).value().as_ref(),
+            "NaN",
+            "domain changes preserve the sample-rate draft"
+        );
+    });
 }
 
 #[test]
@@ -464,6 +486,13 @@ fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut Te
     wait_until(cx, &shell, "source", |shell| {
         shell.editing().is_some_and(Editing::is_described)
     });
+    wait_until(cx, &shell, "initial amplitude statistics", |shell| {
+        shell
+            .file
+            .as_ref()
+            .and_then(|file| file.state.document.file_summary())
+            .is_some_and(|summary| !summary.hint.value.contains("Calculating…"))
+    });
     cx.simulate_keystrokes("f11");
     frame(cx);
     let editor = shell.read_with(cx, |shell, cx| {
@@ -481,7 +510,7 @@ fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut Te
     editor.update_in(cx, |editor, window, cx| {
         assert!(
             editor
-                .reference
+                .container
                 .read(cx)
                 .focus_handle(cx)
                 .is_focused(window)
@@ -496,6 +525,30 @@ fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut Te
         editor
             .rate
             .update(cx, |rate, cx| rate.set_value("12000", window, cx))
+    });
+    shell.update_in(cx, |shell, _, cx| {
+        shell
+            .file
+            .as_mut()
+            .unwrap()
+            .state
+            .document
+            .set_statistics(Some(Ok(crate::sample_statistics::Metrics {
+                peak: 5.,
+                rms: 3.,
+            })));
+        cx.notify();
+    });
+    frame(cx);
+    editor.update_in(cx, |editor, window, cx| {
+        assert_eq!(editor.rate.read(cx).value().as_ref(), "12000");
+        assert!(editor.rate.read(cx).focus_handle(cx).is_focused(window));
+        assert!(
+            editor
+                .details
+                .iter()
+                .any(|(label, value)| label == "RMS" && value == "3")
+        );
     });
     frame(cx);
     cx.simulate_mouse_move(
@@ -558,7 +611,9 @@ fn frame(cx: &mut gpui_kit::VisualTestContext) {
     cx.run_until_parked();
 }
 
-fn panel_window(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
+pub(in crate::shell) fn panel_window(
+    cx: &mut TestAppContext,
+) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
         gpui_kit::init(cx);
@@ -985,6 +1040,14 @@ fn shared_frequency_editor_steps_drafts_and_tab_visits_each_value_once(cx: &mut 
             .downcast::<Editor>()
             .unwrap()
     });
+    cx.update(|window, cx| {
+        let kind = editor.read(cx).kind.clone();
+        kind.update(cx, |kind, cx| {
+            kind.set_selected_value(&kind_label("rl_f32"), window, cx);
+            cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
+        });
+    });
+    frame(cx);
     cx.simulate_keystrokes("up");
     frame(cx);
     editor.read_with(cx, |editor, cx| {
