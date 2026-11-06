@@ -708,6 +708,14 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
     cx.simulate_keystrokes("f11");
     frame(cx);
     assert_property_panels(cx, &shell, true, false);
+    newer_open_supersedes_queued_file_command(cx, &shell);
+    std::fs::remove_file(path).unwrap();
+}
+
+fn newer_open_supersedes_queued_file_command(
+    cx: &mut gpui_kit::VisualTestContext,
+    shell: &Entity<Shell>,
+) {
     cx.update(|window, cx| {
         shell
             .read(cx)
@@ -720,8 +728,7 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
         analysis.update(cx, |hint, cx| hint.open(window, cx));
     });
     frame(cx);
-    assert_property_panels(cx, &shell, false, true);
-    std::fs::remove_file(path).unwrap();
+    assert_property_panels(cx, shell, false, true);
 }
 
 fn assert_property_panels(
