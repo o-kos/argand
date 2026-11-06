@@ -32,13 +32,13 @@ PinnedHint hover, focus and Select handling; do not introduce another overlay fr
 - [x] Verify both actual panels in the same window/theme/scale using the isolated
       diagnostic launcher on the second monitor, without input emulation or portals.
 - [x] Retain focused input/Select/Escape regression coverage.
-- [ ] Verify exclusive ownership in both directions through hover and keyboard paths,
+- [x] Verify exclusive ownership in both directions through hover and keyboard paths,
       including draft discard, focused Select, stale close notifications and actual rendering.
-- [ ] Complete independent review of the bounded numeric-width follow-up.
-- [ ] Pass formatting, all-targets Clippy and the complete locked workspace suite.
-- [ ] Rebuild the current release workspace after the gate.
-- [ ] Move this plan to completed before final review; obtain coordinator visual
-      acceptance before publishing the existing Draft PR update.
+- [x] Complete independent review of numeric width, shared ownership and deferred request ordering.
+- [x] Pass formatting, all-targets Clippy and the complete locked workspace suite.
+- [x] Rebuild the current release workspace after the gate.
+- [x] Move this plan to completed before final review; obtain coordinator visual
+      acceptance of the shared presentation and document diagnostic capture limits.
 
 Only rendering is demonstrated by the diagnostic launcher. Native Wayland hover
 interaction is not claimed. Temporary hooks open the existing surfaces without
@@ -63,3 +63,26 @@ window, theme and scale. Numeric Input widths are capped by the shared property
 column geometry; long finite or invalid drafts remain inside the panel. Conversion
 uses the stock Button's keyboard focus ring; the Analysis reset action additionally
 retains its existing externally managed focus border.
+
+## Final validation and review
+
+Formatting, all-targets Clippy and the complete locked workspace suite pass:
+1,110 tests, zero failures, one ignored manual DSP benchmark. The current release
+workspace was rebuilt after this gate. The focused ownership regression covers
+both hover directions, F11/Ctrl+, draft discard with an open Select, stale Closed
+notifications and an actual opening superseding an older deferred command.
+
+Independent review accepted the deferred-request ordering finding; actual Opened
+now invalidates older requests. The correction and final runtime review were clean.
+No findings were rejected. Keyboard focus was verified against the locked standard
+Button implementation; numeric drafts are bounded to the shared value column.
+
+Paired actual rendering established the shared presentation. A diagnostic transition
+from File to Analysis displayed only Analysis. For the reverse transition, production
+Shell and File editor render callbacks ran with File as sole owner before any forced
+refresh; native X11 window captures retained an old image even after a diagnostic
+refresh. A resize of only the diagnostic window refreshed its native backbuffer;
+the resulting reverse capture displayed File alone. Neither diagnostic rendering
+nor this capture workaround establishes native Wayland pointer acceptance.
+No desktop input emulation or RemoteDesktop requests were used. Diagnostic processes
+were terminated after capture. Conversion and document lifecycle remain unchanged.
