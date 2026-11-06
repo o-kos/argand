@@ -260,6 +260,7 @@ pub struct Editing {
     envelopes: Vec<Option<Arc<Snapshot>>>,
     /// Sources whose envelope is being built, so a second edit does not start another scan.
     building: Vec<bool>,
+    failed_statistics: Vec<bool>,
     /// The version whose samples the picture on screen shows.
     pictured: Capture,
     /// How the opened file's read values map back to stored ones, which computed samples are saved by.
@@ -286,6 +287,7 @@ impl Editing {
             history: History::new(capture.clone(), Selection::default()),
             envelopes: vec![None],
             building: vec![true],
+            failed_statistics: vec![false],
             pictured: capture,
             encoding: None,
             format: None,
@@ -411,6 +413,7 @@ impl Editing {
         self.sources.push(computed);
         self.envelopes.push(None);
         self.building.push(false);
+        self.failed_statistics.push(false);
         self.history.set_state(selection);
         self.history.apply(capture, selection);
         true
@@ -499,6 +502,8 @@ impl Editing {
         self.envelopes
             .resize(self.sources.len() + added.len(), None);
         self.building
+            .resize(self.sources.len() + added.len(), false);
+        self.failed_statistics
             .resize(self.sources.len() + added.len(), false);
         self.sources.extend(added);
         self.history.apply(capture, Selection::time(pasted));
@@ -620,8 +625,26 @@ impl Editing {
 
     pub fn set_envelope(&mut self, id: SourceId, snapshot: Arc<Snapshot>) {
         if let Some(slot) = self.envelopes.get_mut(id.0 as usize) {
+            if snapshot.statistics.is_some() && self.failed_statistics[id.0 as usize] {
+                self.failed_statistics[id.0 as usize] = false;
+                self.statistics_revision = next_statistics_revision();
+            }
             *slot = Some(snapshot);
         }
+    }
+
+    pub fn fail_statistics(&mut self, id: SourceId) {
+        if let Some(failed) = self.failed_statistics.get_mut(id.0 as usize) {
+            *failed = true;
+            self.statistics_revision = next_statistics_revision();
+        }
+    }
+
+    pub fn statistics_failed(&self) -> bool {
+        self.capture()
+            .sources()
+            .iter()
+            .any(|id| self.failed_statistics[id.0 as usize])
     }
 
     pub fn statistics_request(&self) -> Option<crate::sample_statistics::Request> {

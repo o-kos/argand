@@ -96,5 +96,13 @@ Arbitrarily fragmented edits may collectively read their whole selected content.
 Read-only amplitude presentation uses seven significant figures and scientific
 notation for extremes; editable frequencies retain full precision.
 
-Full local gate, follow-up review, release rebuild and actual current panel render
-remain pending before delivery.
+Round 2 accepted a terminal scan-failure lifecycle gap: resetting a capture query
+could lose Unavailable while a retained source could never deliver an index. Index
+failure is now retained per source, survives capture and source-description changes,
+and only affects captures still using that source. Removing it recovers; undo
+restores the terminal state. A successful new complete index clears that failure.
+Root and pasted-source regressions cover retention, removal, and scheduler status.
+
+The full local gate passed before the final failure-lifecycle correction (1127 tests,
+one manual benchmark ignored). Final follow-up review, refreshed gate, release
+rebuild and actual current panel render remain pending before delivery.

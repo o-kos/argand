@@ -63,6 +63,15 @@ impl Shell {
         let Some(editing) = &file.editing else {
             return;
         };
+        if editing.statistics_failed() {
+            self.statistics.finished = true;
+            if let Some(file) = &mut self.file {
+                file.state
+                    .document
+                    .set_statistics(Some(Err("Unavailable".into())));
+            }
+            return;
+        }
         let Some(request) = editing.statistics_request() else {
             return;
         };
@@ -120,6 +129,42 @@ impl Shell {
 mod tests {
     use super::*;
     use gpui_kit::TestAppContext;
+    #[gpui_kit::test]
+    fn failed_source_remains_unavailable_after_capture_and_description_changes(
+        cx: &mut TestAppContext,
+    ) {
+        use super::super::conversion_ui::tests::panel_window;
+        use super::super::replace_ui::tests::{wait_until, write_wave};
+        let (shell, cx) = panel_window(cx);
+        let dir = argand_io::testutil::TempDir::new("statistics-failed");
+        let path = dir.join("source.wav");
+        write_wave(&path, 2400);
+        shell.update_in(cx, |shell, window, cx| {
+            shell.open(Origin::new(path), window, cx)
+        });
+        wait_until(cx, &shell, "source statistics", |shell| {
+            shell.statistics.finished
+        });
+        shell.update_in(cx, |shell, window, cx| {
+            let editing = shell.editing_mut().unwrap();
+            editing.fail_statistics(argand_edit::SourceId(0));
+            editing.delete(argand_core::SampleSpan::between(100, 200).unwrap());
+            editing.describe_units(Some((32768., 0.)));
+            shell.prepare_statistics(window, cx);
+            assert!(shell.statistics.finished);
+            assert!(shell.statistics.task.is_none());
+            let summary = shell
+                .file
+                .as_ref()
+                .unwrap()
+                .state
+                .document
+                .file_summary()
+                .unwrap();
+            assert!(summary.hint.value.contains("Peak: Unavailable"));
+            assert!(!summary.hint.value.contains("Calculating"));
+        });
+    }
     #[gpui_kit::test]
     fn stale_capture_metrics_are_rejected_and_view_changes_keep_the_same_query(
         cx: &mut TestAppContext,

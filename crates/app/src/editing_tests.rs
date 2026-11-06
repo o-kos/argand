@@ -506,3 +506,23 @@ fn source_statistics_completion_after_an_edit_is_retained_and_resolves_pending_c
     assert!(current.indices[0].is_some());
     assert!(document.statistics_request().is_some());
 }
+
+#[test]
+fn failed_statistics_follow_retained_sources_across_edits_and_descriptions() {
+    let other = editing("/b.wav", 20, 1000.0);
+    for (failed, retained, removed) in [
+        (SourceId(0), span(0, 10), span(0, 90)),
+        (SourceId(1), span(100, 110), span(100, 110)),
+    ] {
+        let mut capture = editing("/a.wav", 100, 1000.0);
+        capture.paste(&other.copy(span(0, 20)), Placement::At(100)).unwrap();
+        capture.fail_statistics(failed);
+        capture.delete(retained);
+        capture.describe_units(Some((32768., 0.)));
+        assert!(capture.statistics_failed(), "retaining a failed source stays terminal");
+        capture.delete(removed);
+        assert!(!capture.statistics_failed(), "removing a failed source recovers");
+        assert!(capture.undo());
+        assert!(capture.statistics_failed(), "undo restores the failed source");
+    }
+}

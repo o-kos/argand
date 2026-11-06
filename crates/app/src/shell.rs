@@ -1107,6 +1107,11 @@ impl Shell {
         if file.state.document.is_changed() {
             return;
         }
+        if update.is_err() {
+            if let Some(editing) = &mut file.editing {
+                editing.fail_statistics(argand_edit::SourceId(0));
+            }
+        }
         // The opened file can be edited out of the capture, and then its scan says nothing about it.
         let read = file
             .editing

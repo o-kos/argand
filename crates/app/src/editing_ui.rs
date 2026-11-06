@@ -351,6 +351,15 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let Some(file) = &mut self.file else { return };
+        if let Some(editing) = &mut file.editing {
+            if editing
+                .retained_sources()
+                .get(id.0 as usize)
+                .is_some_and(|source| source.stamp == stamp)
+            {
+                editing.fail_statistics(id);
+            }
+        }
         let read = file.editing.as_ref().is_some_and(|editing| {
             editing
                 .source_files()
