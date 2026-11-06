@@ -194,6 +194,26 @@ impl AnalysisSnapshot {
     }
 }
 
+/// Seven significant figures for measurements; editable frequencies keep full precision.
+fn amplitude(value: f64) -> String {
+    let magnitude = value.abs();
+    if magnitude >= 1e7 || (magnitude > 0. && magnitude < 1e-4) {
+        return numbers::number(format!("{value:.6e}"));
+    }
+    let decimals = if magnitude == 0. {
+        0
+    } else {
+        (6. - magnitude.log10().floor()).max(0.) as usize
+    };
+    let value = format!("{value:.decimals$}");
+    let value = if value.contains('.') {
+        value.trim_end_matches('0').trim_end_matches('.')
+    } else {
+        &value
+    };
+    numbers::number(value)
+}
+
 /// One open file.
 pub struct Document {
     origin: Origin,
@@ -414,6 +434,7 @@ impl Document {
 
     pub fn minimap_failed(&mut self, error: String) {
         self.minimap_error = Some(error);
+        self.set_statistics(Some(Err("Unavailable".into())));
     }
 
     pub fn file_summary(&self) -> Option<MetadataField> {
@@ -455,7 +476,7 @@ impl Document {
                 .map_or_else(|| "Unavailable".into(), file_size),
         ));
         let values = match &self.statistics {
-            Some(Ok(metrics)) => (numbers::number(metrics.peak), numbers::number(metrics.rms)),
+            Some(Ok(metrics)) => (amplitude(metrics.peak), amplitude(metrics.rms)),
             Some(Err(error)) => (error.clone(), error.clone()),
             None => ("Calculating…".into(), "Calculating…".into()),
         };

@@ -42,9 +42,9 @@ independent reviewer: gpt-6.1-sol high.
 - [x] Implement reference enable/reset and application request enforcement.
 - [x] Build sequential-only bounded source aggregates and background piece queries.
 - [x] Publish guarded current metrics and live File information rows.
-- [ ] Verify independent expected metrics across chunks, partial cut/paste, mixed
+- [x] Verify independent expected metrics across chunks, partial cut/paste, mixed
       source scaling, gain/inversion, nonfinite/empty input and boundary IO budget.
-- [ ] Verify reference domain toggles, encoding-only changes, disabled interaction
+- [x] Verify reference domain toggles, encoding-only changes, disabled interaction
       and explicit sample-rate preservation.
 - [ ] Independent review; full format/Clippy/test gate; current release rebuild;
       actual diagnostic panel render on second monitor without input emulation.
@@ -68,3 +68,33 @@ Analytical gain statistics agree with per-component f32 adjusted samples within
 units for presentation). Component maxima detect f32 overflow before applying
 stored-unit factors. Nonfinite flags are local to cells; excluded invalid samples
 must not poison an otherwise valid edited capture. Empty RMS is unavailable.
+
+Scheduling compares only document/capture versions, adjustment, changed status and
+an Editing source-description revision. Creating/rebinding Editing gives a new
+revision; source stamp/format/unit descriptions advance it. Completed renders,
+FFT/viewport changes and draft typing do not walk or clone the piece/source table.
+
+## Review record and validation
+
+Round 1 accepted two substantive findings: a saved-source rebind reused a complete
+waveform without building the new source statistics index; and the overflow
+check rejected a value just beyond f32::MAX that rounds to a finite f32. Rebinding
+now scans the new source independently of envelope reuse; overflow checks the
+actual f32 cast. Both have independent regression tests. None were rejected.
+
+The render-path performance observation was accepted: scheduling now compares a
+fixed-size source-description/capture key, without source_files or piece sorting.
+A discovered scan-failure gap reports Unavailable instead of permanent pending.
+Reference fixtures deliver distinct domain transitions; the live panel regression
+preserves draft text and focus when metrics update.
+
+Focused metric regressions pass for all ten native types with initial normalization,
+current gain/inversion, duplicate partial pieces and current computed encoding,
+cached source mutation, source completion after editing, and same-format save/rebind.
+Boundary counts measure requested decoded frames; codec seeks may decode extra packets.
+Arbitrarily fragmented edits may collectively read their whole selected content.
+Read-only amplitude presentation uses seven significant figures and scientific
+notation for extremes; editable frequencies retain full precision.
+
+Full local gate, follow-up review, release rebuild and actual current panel render
+remain pending before delivery.

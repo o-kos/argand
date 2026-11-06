@@ -265,9 +265,19 @@ pub struct Editing {
     /// How the opened file's read values map back to stored ones, which computed samples are saved by.
     encoding: Option<Encoding>,
     format: Option<Format>,
+    statistics_revision: u64,
+}
+
+fn next_statistics_revision() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Editing {
+    pub fn statistics_revision(&self) -> u64 {
+        self.statistics_revision
+    }
+
     /// The file as it was opened, with nothing edited.
     pub fn new(meta: SignalMeta, hints: OpenHints) -> Self {
         let capture = Capture::whole(SourceId(0), meta.len_samples);
@@ -279,6 +289,7 @@ impl Editing {
             pictured: capture,
             encoding: None,
             format: None,
+            statistics_revision: next_statistics_revision(),
         }
     }
 
@@ -324,18 +335,22 @@ impl Editing {
     pub fn describe_file(&mut self, stamp: Option<SourceStamp>, storage: Option<Storage>) {
         self.sources[0].stamp = stamp;
         self.sources[0].storage = storage;
+        self.statistics_revision = next_statistics_revision();
     }
 
     /// Record the checked output description independently of the sample sources.
     pub fn describe_format(&mut self, stamp: Option<SourceStamp>, format: Option<Format>) {
-        self.sources[0].stamp = stamp;
-        self.sources[0].storage = format.as_ref().map(Format::storage);
+        self.describe_file(stamp, format.as_ref().map(Format::storage));
         self.format = format;
     }
 
     /// Record how the opened file's reader maps read values back to stored ones.
     pub fn describe_units(&mut self, units: Option<(f64, f64)>) {
-        self.encoding = units.map(|(factor, offset)| Encoding { factor, offset });
+        let encoding = units.map(|(factor, offset)| Encoding { factor, offset });
+        if self.encoding != encoding {
+            self.encoding = encoding;
+            self.statistics_revision = next_statistics_revision();
+        }
     }
 
     /// The scratch files the current version reads, for work that must outlive the document.

@@ -402,13 +402,11 @@ impl Shell {
                     .and_then(|file| file.state.document.meta())
                     .is_some_and(|meta| previous.scaled_as(meta));
                 let envelope = previous.minimap().filter(|_| same).map(Arc::new);
-                let complete = envelope.as_ref().is_some_and(|envelope| envelope.complete);
                 if let (Some(editing), Some(envelope)) = (self.editing_mut(), envelope) {
                     editing.set_envelope(argand_edit::SourceId(0), envelope);
                 }
-                if !complete {
-                    self.start_minimap(true, window, cx);
-                }
+                // A reused envelope does not index the newly encoded saved source.
+                self.start_minimap(true, window, cx);
                 // Samples stored on another scale make another picture, drawn before it replaces this one.
                 if !same {
                     self.ask_for_a_picture();

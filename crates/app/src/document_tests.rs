@@ -401,6 +401,7 @@ fn minimap_failure_is_reported_separately_from_amplitude_statistics() {
     let hint = document.file_summary().unwrap().hint.value;
     assert!(hint.contains("Waveform unavailable: test read failure"), "{hint}");
     assert!(!hint.contains("available after"), "{hint}");
+    assert!(hint.contains("Peak: Unavailable"), "{hint}");
 }
 
 impl Document {

@@ -191,3 +191,89 @@ fn source_mutation_is_detected_even_when_every_summary_was_cached() {
     assert!(measure(&request, &cache, &|| true).is_err());
     assert_eq!(cache.1.load(Ordering::Relaxed), 0);
 }
+
+#[test]
+fn gain_overflow_uses_actual_f32_rounding_at_the_maximum_boundary() {
+    let dir = TempDir::new("statistics-rounding");
+    let (file, index, _) = indexed(&dir, "source.wav", false, &[0.25], 1);
+    let mut request = Request {
+        capture: Capture::whole(SourceId(0), 1),
+        sources: vec![Some(file)],
+        indices: vec![Some(index)],
+        adjustment: Adjustment::new(false, 4. * f64::from(f32::MAX) * (1. + 2f64.powi(-26)))
+            .unwrap(),
+    };
+    let cache = Cache::default();
+    near(
+        measure(&request, &cache, &|| true).unwrap(),
+        Metrics {
+            peak: f64::from(f32::MAX),
+            rms: f64::from(f32::MAX),
+        },
+    );
+    request.adjustment =
+        Adjustment::new(false, 4. * f64::from(f32::MAX) * (1. + 2f64.powi(-22))).unwrap();
+    assert!(measure(&request, &cache, &|| true).is_err());
+}
+
+#[test]
+fn native_units_survive_initial_normalization_and_capture_gain_for_all_formats() {
+    use argand_io::Normalize;
+    let dir = TempDir::new("statistics-native-units");
+    for kind in argand_io::testutil::all_sample_types() {
+        let channels = kind.channels();
+        let arbitrary = kind.format == SampleFormat::F16x8;
+        let stored_scale = if arbitrary {
+            16.
+        } else {
+            kind.format.full_scale()
+        };
+        let values = [0., 0., 0.25, -0.5, 0., 0., 0.125, -0.25];
+        let path = write_wav(
+            &dir.join(&format!("{kind}.wav")),
+            kind,
+            48000,
+            &values,
+            if arbitrary { 16. } else { 1. },
+        );
+        let hints = OpenHints {
+            normalize: Some(if arbitrary {
+                Normalize::Auto
+            } else {
+                Normalize::Factor(7.)
+            }),
+            gain_db: 6.,
+            ..OpenHints::default()
+        };
+        let (mut source, stamp) = argand_io::open_stamped(&path, &hints).unwrap();
+        let file = SourceFile {
+            meta: source.meta().clone(),
+            hints,
+            stamp,
+            encoding: None,
+        };
+        let mut decoded = [0.; 8];
+        assert_eq!(source.read(&mut decoded).unwrap(), 8);
+        let mut index = Index::new(
+            file.meta.len_samples,
+            channels,
+            source.original_sample_units().map(|(factor, _)| factor),
+        );
+        index.fold(&decoded, 0);
+        let mut request = Request {
+            capture: Capture::whole(SourceId(0), file.meta.len_samples),
+            sources: vec![Some(file)],
+            indices: vec![Some(Arc::new(index.finish()))],
+            adjustment: Adjustment::new(true, 1.37).unwrap(),
+        };
+        near(
+            measure(&request, &Default::default(), &|| true).unwrap(),
+            expected(&values, channels, f64::from(stored_scale), 1.37),
+        );
+        request.capture = Capture::whole(SourceId(0), 2 / channels as u64);
+        near(
+            measure(&request, &Default::default(), &|| true).unwrap(),
+            Metrics { peak: 0., rms: 0. },
+        );
+    }
+}

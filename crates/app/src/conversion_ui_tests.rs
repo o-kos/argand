@@ -31,7 +31,9 @@ fn request() -> Request {
 }
 
 #[gpui_kit::test]
-fn changing_kind_keeps_both_explicit_frequencies_and_revalidates_the_band(cx: &mut TestAppContext) {
+fn reference_unlocks_only_across_domains_and_restores_without_changing_rate(
+    cx: &mut TestAppContext,
+) {
     cx.update(gpui_kit::init);
     let mut editor = None;
     let window = cx.add_window(|window, cx| {
@@ -39,41 +41,67 @@ fn changing_kind_keeps_both_explicit_frequencies_and_revalidates_the_band(cx: &m
         editor = Some(form.clone());
         Root::new(form, window, cx)
     });
-    cx.run_until_parked();
     let editor = editor.unwrap();
     window
         .update(cx, |_, window, cx| {
-            let kind = editor.read(cx).kind.clone();
-            kind.update(cx, |kind, cx| {
-                kind.set_selected_value(&kind_label("rl_i16"), window, cx);
-                cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
+            let form = editor.read(cx);
+            let rate = form.rate.clone();
+            let reference = form.reference.clone();
+            let kind = form.kind.clone();
+            rate.update(cx, |input, cx| input.set_value("12345", window, cx));
+            reference.update(cx, |input, cx| {
+                input.set_value("not a frequency", window, cx)
             });
-            let converted = editor.read(cx).request(cx).unwrap();
-            assert_eq!(converted.output.sample_rate, 8000.0);
-            assert_eq!(converted.output.center_freq, 100_000.0);
-            assert_eq!(converted.output.sample_type.to_string(), "rl_i16");
-            assert!(
-                editor
-                    .read(cx)
-                    .summary(cx)
-                    .unwrap()
-                    .contains("will be discarded")
-            );
-            let reference = editor.read(cx).reference.clone();
-            reference.update(cx, |state, cx| state.set_value("200000", window, cx));
-            assert!(editor.read(cx).request(cx).is_err());
             kind.update(cx, |kind, cx| {
                 kind.set_selected_value(&kind_label("iq_i16"), window, cx);
                 cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
             });
-            // The application request enforces the lock even before the select event is delivered.
             assert_eq!(
                 editor.read(cx).request(cx).unwrap().output.center_freq,
-                100_000.
+                100_000.,
+                "request guard also ignores a hidden invalid draft"
             );
-            let rate = editor.read(cx).rate.clone();
-            rate.update(cx, |state, cx| state.set_value("NaN", window, cx));
-            assert!(editor.read(cx).request(cx).is_err());
+        })
+        .unwrap();
+    cx.run_until_parked();
+    window
+        .update(cx, |_, window, cx| {
+            editor.read(cx).kind.clone().update(cx, |kind, cx| {
+                kind.set_selected_value(&kind_label("rl_i16"), window, cx);
+                cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
+            });
+        })
+        .unwrap();
+    cx.run_until_parked();
+    window
+        .update(cx, |_, window, cx| {
+            editor
+                .read(cx)
+                .reference
+                .clone()
+                .update(cx, |input, cx| input.set_value("100001", window, cx));
+            assert_eq!(
+                editor.read(cx).request(cx).unwrap().output.center_freq,
+                100_001.
+            );
+            editor.read(cx).kind.clone().update(cx, |kind, cx| {
+                kind.set_selected_value(&kind_label("rl_f32"), window, cx);
+                cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
+            });
+        })
+        .unwrap();
+    cx.run_until_parked();
+    window
+        .update(cx, |_, window, cx| {
+            assert_eq!(
+                editor.read(cx).reference.read(cx).value().as_ref(),
+                "100001",
+                "encoding-only changes preserve the active draft"
+            );
+            editor.read(cx).kind.clone().update(cx, |kind, cx| {
+                kind.set_selected_value(&kind_label("iq_f32"), window, cx);
+                cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
+            });
         })
         .unwrap();
     cx.run_until_parked();
@@ -82,11 +110,8 @@ fn changing_kind_keeps_both_explicit_frequencies_and_revalidates_the_band(cx: &m
             editor.reference.read(cx).value().as_ref(),
             crate::numbers::number(100_000.)
         );
-        assert_eq!(
-            editor.rate.read(cx).value().as_ref(),
-            "NaN",
-            "domain changes preserve the sample-rate draft"
-        );
+        assert_eq!(editor.request(cx).unwrap().output.center_freq, 100_000.);
+        assert_eq!(editor.rate.read(cx).value().as_ref(), "12345");
     });
 }
 

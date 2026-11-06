@@ -360,6 +360,9 @@ impl Shell {
         });
         if read {
             file.state.document.note_failure(error);
+            file.state
+                .document
+                .set_statistics(Some(Err("Unavailable".into())));
             cx.notify();
         }
     }

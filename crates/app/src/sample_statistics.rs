@@ -207,7 +207,7 @@ pub fn measure(request: &Request, cache: &Cache, active: &dyn Fn() -> bool) -> R
             value.add(boundary(file, index, tail, end, cache, active)?);
         }
         ensure!(
-            !value.invalid && value.scalar * gain <= f64::from(f32::MAX),
+            !value.invalid && ((value.scalar * gain) as f32).is_finite(),
             "nonfinite adjusted samples"
         );
         let scale = factor * gain;
