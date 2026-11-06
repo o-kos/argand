@@ -37,19 +37,37 @@ do not change either until their contracts are agreed.
 - [x] Remove zero-clipping success reports and use common small status typography.
 - [x] Fix adjacent-trigger hover through the actual backdrop/hit-testing path;
       verify both directions and continued panel interaction/plot protection.
-- [ ] Replace parallel numeric behavior with one configured editor; preserve
+- [x] Replace parallel numeric behavior with one configured editor; preserve
       grouped f64 roundtrips, invalid drafts, keyboard/hold/Tab contracts, and
       Analysis preview versus conversion draft isolation.
 - [x] Remove the unsaved row and use Total samples for real and I/Q counts.
 - [x] Report accurate Peak/RMS accumulation feasibility and Reference-policy
       questions to the coordinator without implementing unapproved semantics.
-- [ ] Obtain independent review, complete the full local gate, rebuild current
+- [x] Obtain independent review, complete the full local gate, rebuild current
       release, and verify actual panel rendering within the second-monitor-only
       diagnostic limits. No input emulation or RemoteDesktop requests.
 
 ## Review record
 
-Pending.
+Independent review of the shared editor, hover routing and bounded unused-output
+cleanup was clean, with no substantive findings or rejected findings. The coordinator
+also assessed the numeric event/repeat logic and the distinct preview/draft callbacks.
+
+The full local gate passed: formatting, all-targets Clippy, and 1,121 locked workspace
+tests with zero failures and one ignored manual DSP benchmark. Existing numeric
+hold/keyboard/preview tests and the new File draft Up/Down/Tab regression pass.
+The release workspace rebuilt successfully after the gate.
+
+Paired actual-size images of both panels used an isolated diagnostic executable on
+the second monitor, with the production rendering unchanged and explicit ru-RU number
+formatting. The coordinator accepted the common controls and visible fields. The
+only temporary hooks opened the existing panels without desktop input emulation;
+only the diagnostic process was terminated. Native Wayland pointer interaction is
+not claimed; adjacent hover routing is verified through GPUI pointer hit-testing.
+
+Approved items 1, 2, 3, 5, 7 and 8 are complete. Reference policy (item 4), whole-sample
+Peak/RMS statistics (item 6), and the previously documented Open chooser limitation
+remain discussions outside this completed iteration; none is represented as fixed.
 
 The actual pointer test passes File → Analysis → File using rendered trigger bounds,
 and verifies the closing plot press does not create a selection. The existing
