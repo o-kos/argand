@@ -5,7 +5,8 @@ Draft PR: https://github.com/o-kos/argand/pull/224
 
 ## Roles and risk
 
-Class B: local GUI presentation, preserving conversion and document semantics.
+Class A: cumulative GUI refactoring exceeds roughly 400 changed lines and shares
+property-panel ownership and deferred event routing; conversion/document semantics remain unchanged.
 Coordinator: gpt-6-astra medium; executor: gpt-6.1-sol medium;
 independent reviewer: gpt-6.1-sol high.
 
@@ -19,12 +20,20 @@ controls standard toolkit components and retain the approved conversion lifecycl
 Numeric drafts use existing locale-aware input formatting; units remain separate
 muted labels. No unrelated FFT summary spacing change is included.
 
+The two status editors share one explicit `StatusPanel` owner, common status button /
+popover composition and one opening/closing route for hover, click and keyboard commands.
+Choose a new owner before closing its predecessor; stale Closed events cannot clear it.
+Keep Analysis preview/commit and File draft-discard callbacks separate. Reuse existing
+PinnedHint hover, focus and Select handling; do not introduce another overlay framework.
+
 ## Implementation and validation
 
 - [x] Share existing Analysis presentation builders and use them for File information.
 - [x] Verify both actual panels in the same window/theme/scale using the isolated
       diagnostic launcher on the second monitor, without input emulation or portals.
 - [x] Retain focused input/Select/Escape regression coverage.
+- [ ] Verify exclusive ownership in both directions through hover and keyboard paths,
+      including draft discard, focused Select, stale close notifications and actual rendering.
 - [ ] Complete independent review of the bounded numeric-width follow-up.
 - [ ] Pass formatting, all-targets Clippy and the complete locked workspace suite.
 - [ ] Rebuild the current release workspace after the gate.
@@ -44,8 +53,10 @@ frameless numeric Input/unit composition, measured right-aligned Selects and com
 outlined action Buttons. These builders derive colors and typeface from Theme;
 they do not replace toolkit controls or alter global component defaults.
 
-The ten existing conversion/panel semantic regressions pass after the refactor.
-No tests were added to restate visual constants; actual paired rendering is required.
+The eleven conversion/panel semantic regressions pass after the refactor, including
+both-direction hover/keyboard switching, focused Select draft discard and stale close events.
+No tests restate visual constants; actual paired rendering is required. One behavior
+regression covers shared ownership across both hover and keyboard directions.
 
 The coordinator accepted paired actual File/Analysis captures from the same inactive
 window, theme and scale. Numeric Input widths are capped by the shared property

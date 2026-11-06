@@ -396,6 +396,8 @@ struct Shell {
     settings: Settings,
     /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
+    status_panel: Option<settings_ui::StatusPanel>,
+    status_panel_request: u64,
     /// What the analysis hint opened with, which Escape restores.
     hint_opening: Option<HintOpening>,
     /// The selection panel under the toolbar's selection segments.
@@ -546,7 +548,9 @@ impl Shell {
                 cx,
             )
         });
-        let pinned = cx.subscribe(&analysis_hint, Self::analysis_hint_changed);
+        let pinned = cx.subscribe(&analysis_hint, |shell, _, event, cx| {
+            shell.status_panel_changed(settings_ui::StatusPanel::Analysis, *event, cx);
+        });
         let panel_owner = cx.entity().downgrade();
         let selection_hint = cx.new(|cx| {
             hints::PinnedHint::new(
@@ -559,6 +563,8 @@ impl Shell {
         Self {
             settings,
             analysis_hint,
+            status_panel: None,
+            status_panel_request: 0,
             hint_opening: None,
             selection_hint,
             selection_opening: None,
@@ -1874,8 +1880,7 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
-            .children(hints::backdrop(&self.conversion.hint, hint_area, cx))
-            .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
+            .children(self.status_panel_backdrop(hint_area, cx))
             .children(hints::backdrop(&self.selection_hint, hint_area, cx))
             .children(Root::render_dialog_layer(window, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))

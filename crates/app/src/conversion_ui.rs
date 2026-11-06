@@ -30,11 +30,7 @@ impl State {
             hints::PinnedHint::new(move |window, cx| panel(owner.clone(), window, cx), cx)
         });
         let subscription = cx.subscribe(&hint, |shell, _, event, cx| {
-            if matches!(event, hints::Pinned::Opened) {
-                shell.close_analysis_hint(cx);
-                shell.close_selection_hint(cx);
-            }
-            cx.notify();
+            shell.status_panel_changed(settings_ui::StatusPanel::File, *event, cx);
         });
         Self {
             running: None,
@@ -392,7 +388,7 @@ fn panel(
 }
 
 impl Shell {
-    fn conversion_request(&self) -> Option<Request> {
+    pub(super) fn conversion_request(&self) -> Option<Request> {
         if !self.can_save(false) || self.capture_changed() {
             return None;
         }
@@ -413,36 +409,11 @@ impl Shell {
     }
 
     pub(super) fn file_control(&self, value: String, cx: &mut Context<Self>) -> impl IntoElement {
-        let hint = self.conversion.hint.clone();
-        let hover = hint.clone();
-        let lit = hint.read(cx).is_open();
-        let button =
-            settings_ui::status_control("file-information", "file-summary-hover", value, lit, cx)
-                .disabled(self.conversion_request().is_none())
-                .on_hover(move |hovered, window, cx| {
-                    hover.update(cx, |hint, cx| hint.hover(*hovered, window, cx));
-                })
-                .on_click(cx.listener(|shell, _, window, cx| shell.convert_dialog(window, cx)));
-        hints::pinned(
-            "file-information-hint",
-            &hint,
-            button,
-            gpui_kit::Anchor::BottomLeft,
-            cx,
-        )
+        self.status_panel_control(settings_ui::StatusPanel::File, value, cx)
     }
 
     pub(super) fn convert_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.conversion_request().is_none() {
-            return;
-        }
-        self.dismiss_application_menu(window, cx);
-        self.close_analysis_hint(cx);
-        self.close_selection_hint(cx);
-        let hint = self.conversion.hint.clone();
-        window.defer(cx, move |window, cx| {
-            hint.update(cx, |hint, cx| hint.open(window, cx));
-        });
+        self.open_status_panel(settings_ui::StatusPanel::File, false, window, cx);
     }
 
     fn convert_draft(

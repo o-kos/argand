@@ -1228,7 +1228,9 @@ selection is ignored. `conversion_ui.rs` composes the file information status Bu
 PinnedHint panel, Input, Select and Convert Button. Edit > Convert to... and F11 open
 the same panel. File and Analysis summaries share `settings_ui::status_control`;
 both property editors share `settings_editor` row, numeric, Select and outlined-action
-presentation over standard controls. Explicit output sample rate/reference draft fields are never rewritten
+presentation over standard controls. One `StatusPanel` owner and shared trigger/popover
+composition route both editors through the same opening/closing lifecycle; choosing
+a new owner closes the previous panel, and stale close events cannot clear it. Explicit output sample rate/reference draft fields are never rewritten
 by a domain change. Drafts do not mutate the current document; Escape discards them. `argand_dsp::convert::ConversionPlan` intersects native input-local bounds
 with output bounds shifted by the reference difference, preserving exact native
 endpoints at large physical references. Reconstruction width is bounded by both

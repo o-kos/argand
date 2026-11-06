@@ -616,3 +616,121 @@ fn unsaved_selection_exports_never_suggest_private_scratch_directories(cx: &mut 
     });
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[gpui_kit::test]
+fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let path = std::env::temp_dir().join(format!("argand-panel-switch-{}.wav", std::process::id()));
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path.clone()), window, cx)
+    });
+    wait_until(cx, &shell, "switching source", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described())
+    });
+    cx.simulate_keystrokes("f11");
+    frame(cx);
+    {
+        let editor = shell.read_with(cx, |shell, cx| {
+            shell
+                .conversion
+                .hint
+                .read(cx)
+                .view()
+                .unwrap()
+                .downcast::<Editor>()
+                .unwrap()
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor
+                .rate
+                .update(cx, |rate, cx| rate.set_value("12000", window, cx));
+            window.focus(&editor.kind.read(cx).focus_handle(cx), cx);
+        });
+        frame(cx);
+        cx.simulate_keystrokes("enter");
+        frame(cx);
+    }
+    shell.update_in(cx, |shell, window, cx| {
+        shell
+            .analysis_hint
+            .update(cx, |hint, cx| hint.hover(true, window, cx))
+    });
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    frame(cx);
+    assert_property_panels(cx, &shell, false, true);
+    shell.update(cx, |shell, cx| {
+        shell.status_panel_changed(
+            super::super::settings_ui::StatusPanel::File,
+            hints::Pinned::Closed { revert: false },
+            cx,
+        );
+    });
+    assert_property_panels(cx, &shell, false, true);
+    std::thread::sleep(std::time::Duration::from_millis(450));
+    shell.update_in(cx, |shell, window, cx| {
+        shell
+            .conversion
+            .hint
+            .update(cx, |hint, cx| hint.hover(true, window, cx))
+    });
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    frame(cx);
+    assert_property_panels(cx, &shell, true, false);
+    shell.read_with(cx, |shell, cx| {
+        let editor = shell
+            .conversion
+            .hint
+            .read(cx)
+            .view()
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap();
+        assert_eq!(
+            editor.read(cx).request(cx).unwrap().output.sample_rate,
+            24_000.
+        );
+        assert_eq!(shell.editing().unwrap().file().meta.sample_rate, 24_000.);
+        assert!(shell.conversion.running.is_none());
+    });
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-,"
+    } else {
+        "ctrl-,"
+    });
+    frame(cx);
+    assert_property_panels(cx, &shell, false, true);
+    cx.simulate_keystrokes("f11");
+    frame(cx);
+    assert_property_panels(cx, &shell, true, false);
+    std::fs::remove_file(path).unwrap();
+}
+
+fn assert_property_panels(
+    cx: &gpui_kit::VisualTestContext,
+    shell: &Entity<Shell>,
+    file: bool,
+    analysis: bool,
+) {
+    shell.read_with(cx, |shell, cx| {
+        let owner = if file {
+            Some(super::super::settings_ui::StatusPanel::File)
+        } else if analysis {
+            Some(super::super::settings_ui::StatusPanel::Analysis)
+        } else {
+            None
+        };
+        assert_eq!(shell.status_panel, owner, "property panel owner");
+        assert_eq!(shell.conversion.hint.read(cx).is_open(), file, "File panel");
+        assert_eq!(
+            shell.analysis_hint.read(cx).is_open(),
+            analysis,
+            "Analysis panel"
+        );
+    });
+}

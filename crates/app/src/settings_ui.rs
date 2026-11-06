@@ -3,6 +3,8 @@
 use super::*;
 use crate::settings::{DisplayedRange, RangeState};
 use argand_dsp::DynamicRange;
+use gpui_kit::AnyElement;
+use gpui_kit::component::Disableable;
 #[path = "settings_editor.rs"]
 pub(super) mod editor;
 
@@ -98,6 +100,13 @@ pub(super) fn status_control(
         )
 }
 
+/// The two property editors anchored in the status bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum StatusPanel {
+    File,
+    Analysis,
+}
+
 /// The hover group each status control publishes for its own text.
 const SUMMARY_HOVER: &str = "analysis-summary-hover";
 const RANGE_HOVER: &str = "analysis-range-hover";
@@ -143,6 +152,140 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
 }
 
 impl Shell {
+    fn status_hint(&self, panel: StatusPanel) -> Entity<hints::PinnedHint> {
+        match panel {
+            StatusPanel::File => self.conversion.hint.clone(),
+            StatusPanel::Analysis => self.analysis_hint.clone(),
+        }
+    }
+
+    fn status_panel_available(&self, panel: StatusPanel) -> bool {
+        match panel {
+            StatusPanel::File => self.conversion_request().is_some(),
+            StatusPanel::Analysis => self.file.is_some(),
+        }
+    }
+
+    pub(super) fn status_panel_changed(
+        &mut self,
+        panel: StatusPanel,
+        event: hints::Pinned,
+        cx: &mut Context<Self>,
+    ) {
+        let open = self.status_hint(panel).read(cx).is_open();
+        match event {
+            hints::Pinned::Opened if open => {
+                // Choose the new owner before closing the old editor and emitting its Closed event.
+                self.status_panel = Some(panel);
+                let other = match panel {
+                    StatusPanel::File => StatusPanel::Analysis,
+                    StatusPanel::Analysis => StatusPanel::File,
+                };
+                self.status_hint(other)
+                    .update(cx, |hint, cx| hint.close(false, cx));
+                self.close_selection_hint(cx);
+            }
+            hints::Pinned::Closed { .. } if !open => {
+                if self.status_panel == Some(panel) {
+                    self.status_panel = None;
+                }
+            }
+            _ => return,
+        }
+        if panel == StatusPanel::Analysis {
+            self.analysis_panel_changed(event, cx);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn open_status_panel(
+        &mut self,
+        panel: StatusPanel,
+        toggle: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.status_panel_available(panel) {
+            return;
+        }
+        self.dismiss_application_menu(window, cx);
+        self.status_panel_request += 1;
+        let request = self.status_panel_request;
+        let hint = self.status_hint(panel);
+        if toggle && hint.read(cx).is_open() {
+            hint.update(cx, |hint, cx| hint.close(false, cx));
+            return;
+        }
+        let other = match panel {
+            StatusPanel::File => StatusPanel::Analysis,
+            StatusPanel::Analysis => StatusPanel::File,
+        };
+        self.status_hint(other)
+            .update(cx, |hint, cx| hint.close(false, cx));
+        self.close_selection_hint(cx);
+        let owner = cx.entity().downgrade();
+        window.defer(cx, move |window, cx| {
+            let current = owner.upgrade().is_some_and(|owner| {
+                let shell = owner.read(cx);
+                shell.status_panel_request == request && shell.status_panel_available(panel)
+            });
+            if current {
+                hint.update(cx, |hint, cx| hint.open(window, cx));
+            }
+        });
+    }
+
+    pub(super) fn status_panel_control(
+        &self,
+        panel: StatusPanel,
+        text: String,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let (id, group, popover, focus) = match panel {
+            StatusPanel::File => (
+                "file-information",
+                "file-summary-hover",
+                "file-information-hint",
+                "file-summary-keeps-focus",
+            ),
+            StatusPanel::Analysis => (
+                "analysis-settings",
+                SUMMARY_HOVER,
+                "analysis-hint",
+                "fft-summary-keeps-focus",
+            ),
+        };
+        let hint = self.status_hint(panel);
+        let lit = self.status_panel == Some(panel) && hint.read(cx).is_open();
+        let button = status_control(id, group, text, lit, cx)
+            .disabled(!self.status_panel_available(panel))
+            .on_hover(cx.listener(move |shell, hovered, window, cx| {
+                shell
+                    .status_hint(panel)
+                    .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
+            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |shell, _, window, cx| {
+                    shell.open_status_panel(panel, panel == StatusPanel::Analysis, window, cx);
+                }),
+            );
+        super::app_menu_ui::keeps_focus(
+            focus,
+            hints::pinned(popover, &hint, button, gpui_kit::Anchor::BottomLeft, cx),
+        )
+        .into_any_element()
+    }
+
+    pub(super) fn status_panel_backdrop(
+        &self,
+        area: gpui_kit::Bounds<Pixels>,
+        cx: &gpui_kit::App,
+    ) -> Option<AnyElement> {
+        self.status_panel
+            .and_then(|panel| hints::backdrop(&self.status_hint(panel), area, cx))
+    }
+
     fn set_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
         let samples = self
             .file
@@ -186,6 +329,7 @@ impl Shell {
 
     /// Close the pinned hints, the analysis settings and the selection panel, keeping their values.
     pub(super) fn close_hints(&mut self, cx: &mut Context<Self>) {
+        self.status_panel_request += 1;
         self.close_analysis_hint(cx);
         self.close_selection_hint(cx);
         self.conversion
@@ -199,13 +343,8 @@ impl Shell {
             .update(cx, |hint, cx| hint.close(false, cx));
     }
 
-    pub(super) fn analysis_hint_changed(
-        &mut self,
-        _: gpui_kit::Entity<hints::PinnedHint>,
-        event: &hints::Pinned,
-        cx: &mut Context<Self>,
-    ) {
-        match *event {
+    fn analysis_panel_changed(&mut self, event: hints::Pinned, cx: &mut Context<Self>) {
+        match event {
             hints::Pinned::Opened => {
                 self.interrupt_plot(cx);
                 self.hint_opening = Some(HintOpening {
@@ -452,28 +591,14 @@ impl Shell {
             .as_ref()
             .and_then(|file| file.state.displayed_settings().cloned());
         let visible = displayed.unwrap_or(self.settings);
-        // The hint's backdrop keeps the pointer off the window, so the summary stays lit.
-        let lit = self.analysis_hint.read(cx).is_open();
-        let summary = status_control(
-            "analysis-settings",
-            SUMMARY_HOVER,
+        let summary = self.status_panel_control(
+            StatusPanel::Analysis,
             format!(
                 "{} · {}",
                 crate::numbers::number(visible.fft_size),
                 editor::display_name(&visible.window.to_string())
             ),
-            lit,
             cx,
-        )
-        .on_hover(cx.listener(|shell, hovered, window, cx| {
-            shell
-                .analysis_hint
-                .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
-        }))
-        // A press, not a click, so the press that closes an open hint cannot reopen it.
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
         );
         div()
             .flex()
@@ -484,16 +609,7 @@ impl Shell {
                     .id("analysis-summary")
                     .border_l_1()
                     .border_color(cx.theme().border)
-                    .child(super::app_menu_ui::keeps_focus(
-                        "fft-summary-keeps-focus",
-                        hints::pinned(
-                            "analysis-hint",
-                            &self.analysis_hint,
-                            summary,
-                            gpui_kit::Anchor::BottomLeft,
-                            cx,
-                        ),
-                    )),
+                    .child(summary),
             )
             .child(self.range_control(displayed, cx))
     }
@@ -505,25 +621,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.dismiss_application_menu(window, cx);
-        // Without a document there is no summary to anchor the hint to.
-        if self.file.is_none() {
-            return;
-        }
-        self.conversion
-            .hint
-            .update(cx, |hint, cx| hint.close(false, cx));
-        let hint = self.analysis_hint.clone();
-        if hint.read(cx).is_open() {
-            hint.update(cx, |hint, cx| hint.close(false, cx));
-            return;
-        }
-        // One pinned hint at a time, since each freezes the plot under a backdrop of its own.
-        self.close_selection_hint(cx);
-        // The editor reads the shell as it is built, so it waits until this update ends.
-        window.defer(cx, move |window, cx| {
-            hint.update(cx, |hint, cx| hint.open(window, cx));
-        });
+        self.open_status_panel(StatusPanel::Analysis, true, window, cx);
     }
 }
 
