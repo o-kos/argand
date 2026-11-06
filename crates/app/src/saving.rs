@@ -175,16 +175,21 @@ fn extract_flac(
     Ok((saved, converted.clipped))
 }
 
-pub fn target_container(
-    container: argand_io::write::Container,
+pub fn target_output(
+    output: argand_io::write::Output,
+    current: &str,
     target: &Path,
-) -> argand_io::write::Container {
-    use argand_io::write::Container;
-    match target.extension().and_then(|extension| extension.to_str()) {
+) -> argand_io::write::Output {
+    use argand_io::write::{Container, Output};
+    let container = match target.extension().and_then(|extension| extension.to_str()) {
         Some(extension) if extension.eq_ignore_ascii_case("wav") => Container::Wave,
         Some(extension) if extension.eq_ignore_ascii_case("flac") => Container::Flac,
-        _ => container,
+        _ => return output,
+    };
+    if output == Output::Native && container.extension() == current {
+        return output;
     }
+    Output::Container(container)
 }
 
 fn phase_progress(progress: &mut dyn FnMut(u64, u64), phase: u64, done: u64, total: u64) {

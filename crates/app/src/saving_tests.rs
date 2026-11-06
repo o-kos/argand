@@ -189,11 +189,14 @@ fn flac_export_checks_original_stamps_after_final_encoding() {
 }
 
 #[test]
-fn save_as_explicit_extension_overrides_only_known_containers() {
-    use argand_io::write::Container;
-    assert_eq!(target_container(Container::Wave, Path::new("a.FLAC")), Container::Flac);
-    assert_eq!(target_container(Container::Flac, Path::new("a.wav")), Container::Wave);
-    assert_eq!(target_container(Container::Flac, Path::new("a.custom")), Container::Flac);
+fn save_as_explicit_extension_overrides_saved_and_unsaved_containers() {
+    use argand_io::write::{Container, Output};
+    for output in [Output::Native, Output::Container(Container::Wave), Output::Container(Container::Flac)] {
+        assert_eq!(target_output(output, "wav", Path::new("a.FLAC")), Output::Container(Container::Flac));
+        assert_eq!(target_output(output, "flac", Path::new("a.wav")), Output::Container(Container::Wave));
+        assert_eq!(target_output(output, "flac", Path::new("a.custom")), output);
+    }
+    assert_eq!(target_output(Output::Native, "flac", Path::new("a.flac")), Output::Native);
 }
 
 #[test]
@@ -216,7 +219,7 @@ fn wave_override_can_export_a_band_beyond_flac_rate_limits() {
     };
     assert!(matches!(extract_flac(request.clone(), &mut |_, _| {}, &AtomicBool::new(false)), Err(WriteError::Unsupported { .. })));
     assert!(!target.exists());
-    let container = target_container(Container::Flac, &target);
+    let argand_io::write::Output::Container(container) = target_output(argand_io::write::Output::Container(Container::Flac), "flac", &target) else { panic!("expected explicit WAV") };
     let (_job, updates) = start_extraction(request, Some(container));
     let mut result = None;
     while let Ok(update) = updates.recv_blocking() {

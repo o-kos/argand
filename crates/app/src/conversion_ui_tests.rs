@@ -300,6 +300,65 @@ fn assert_saved_flac_band(
         shell.saving.is_none() && shell.save_notice.is_some()
     });
     assert_eq!(&std::fs::read(target).unwrap()[..4], b"fLaC");
+    assert_saved_container_overrides(shell, cx, dir);
+}
+
+fn assert_saved_container_overrides(
+    shell: &Entity<Shell>,
+    cx: &mut gpui_kit::VisualTestContext,
+    dir: &std::path::Path,
+) {
+    use super::super::replace_ui::tests::wait_until;
+    shell.update_in(cx, |shell, window, cx| {
+        shell
+            .editing_mut()
+            .unwrap()
+            .delete(argand_core::SampleSpan::between(0, 100).unwrap());
+        shell.save_as(false, window, cx);
+    });
+    let wave = dir.join("override.wav");
+    let chosen = wave.clone();
+    wait_for_save_chooser(cx);
+    cx.simulate_new_path_selection(move |_| Some(chosen));
+    wait_until(cx, shell, "FLAC to WAV Save as", saved_ordinary_document);
+    assert_eq!(&std::fs::read(&wave).unwrap()[..4], b"RIFF");
+    assert_eq!(
+        shell.read_with(cx, |shell, _| shell
+            .editing()
+            .unwrap()
+            .file()
+            .meta
+            .container),
+        "wav"
+    );
+    for band in [false, true] {
+        shell.update_in(cx, |shell, window, cx| {
+            shell.selection = argand_core::SampleSpan::between(50, 200);
+            shell.band = band.then(|| argand_core::FrequencyBand::between(100.0, 1000.0).unwrap());
+            shell.save_as(true, window, cx);
+        });
+        let target = dir.join(if band {
+            "wave-band.flac"
+        } else {
+            "wave-time.flac"
+        });
+        let chosen = target.clone();
+        wait_for_save_chooser(cx);
+        cx.simulate_new_path_selection(move |_| Some(chosen));
+        wait_until(cx, shell, "WAV selection to FLAC Save as", |shell| {
+            shell.saving.is_none() && target.exists()
+        });
+        assert_eq!(&std::fs::read(target).unwrap()[..4], b"fLaC");
+        assert_eq!(
+            shell.read_with(cx, |shell, _| shell
+                .editing()
+                .unwrap()
+                .file()
+                .meta
+                .container),
+            "wav"
+        );
+    }
 }
 
 fn assert_saved_samples(target: &std::path::Path, count: u64) {

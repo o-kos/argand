@@ -70,3 +70,10 @@ explicit WAV export override. Directory preparation now runs in the background w
 a document/version guard before prompting. Final FLAC publication checks original
 stamps; saved metadata supplies the default container; final target compatibility is
 validated after the chooser. Focused regressions cover all four. No findings rejected.
+
+Round two accepted a further explicit-extension finding: native saved documents and
+WAV band exports bypassed the unsaved-only resolver. One shared output resolver now
+applies recognized WAV/FLAC overrides to whole/time/band exports. Unknown extensions
+retain native behavior, and an unchanged native FLAC extension retains existing codec
+capabilities. Bidirectional saved-document and selection regressions cover the fix.
+Grouped numeric presentation is checked for bit-exact f64 roundtrips in four locales.

@@ -179,11 +179,7 @@ impl Shell {
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
             };
-            if let argand_io::write::Output::Container(container) = request.output {
-                request.output = argand_io::write::Output::Container(saving::target_container(
-                    container, &target,
-                ));
-            }
+            request.output = saving::target_output(request.output, request.meta.container, &target);
             request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
                 shell.start_save(request, of, window, cx)
@@ -297,7 +293,14 @@ impl Shell {
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
             };
-            let container = container.map(|container| saving::target_container(container, &target));
+            let output = container.map_or(
+                argand_io::write::Output::Native,
+                argand_io::write::Output::Container,
+            );
+            let container = match saving::target_output(output, request.meta.container, &target) {
+                argand_io::write::Output::Container(container) => Some(container),
+                _ => container,
+            };
             request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
                 if shell.saving.is_some() {

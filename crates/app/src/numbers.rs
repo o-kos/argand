@@ -286,6 +286,17 @@ mod tests {
             assert_eq!(numbers.canonical(expected), Ok("1234567.50".into()));
             let large = u64::MAX.to_string();
             assert_eq!(numbers.canonical(&numbers.format(&large, true)), Ok(large));
+            for value in [
+                8000.123456789012_f64,
+                1.2345678901234567e10,
+                -1.2345678901234567e-12,
+                f64::MAX,
+                f64::MIN_POSITIVE,
+            ] {
+                let formatted = numbers.format(&value.to_string(), true);
+                let parsed: f64 = numbers.canonical(&formatted).unwrap().parse().unwrap();
+                assert_eq!(parsed.to_bits(), value.to_bits(), "{locale}: {formatted}");
+            }
         }
     }
 
