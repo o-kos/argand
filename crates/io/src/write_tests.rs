@@ -1707,3 +1707,52 @@ fn an_adjustment_is_refused_where_the_value_does_not_fill_its_container() {
     assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
     assert_eq!(names(&dir), ["partial.wav"]);
 }
+
+#[test]
+fn explicit_flac_preserves_wave_integer_units_and_exact_metadata() {
+    let dir = TempDir::new("explicit-flac");
+    for kind in ["rl_u8", "iq_u8", "rl_i16", "iq_i16"] {
+        let ty: SampleType = kind.parse().unwrap();
+        let values: Vec<f32> = (0..1200 * ty.channels())
+            .map(|n| match n % 5 { 0 => 0.0, 1 => -1.0, 2 => 0.5, 3 => -0.5, _ => 0.25 })
+            .collect();
+        let path = write_wav(&dir.join(&format!("{kind}.wav")), ty, 8000, &values, 1.0);
+        let original = fs::read(&path).unwrap();
+        let mut request = request(&path, OpenHints::default(), None, dir.join(&format!("{kind}.flac")));
+        
+        request.meta.center_freq = 10_000_000.25;
+        request.output = Output::Container(Container::Flac);
+        let saved = run(&request).unwrap();
+        assert_eq!(saved.container, "flac");
+        assert_eq!(&fs::read(&request.target).unwrap()[..4], b"fLaC");
+        let reopened = open(&request.target, &OpenHints::default()).unwrap();
+        assert_eq!(reopened.meta().sample_rate, 8000.0);
+        assert_eq!(reopened.meta().center_freq, 10_000_000.25);
+        assert_eq!(reopened.meta().sample_type, ty);
+        let bits = if ty.format == SampleFormat::U8 { 8 } else { 16 };
+        let scale = (1u32 << (bits - 1)) as f32;
+        let expected: Vec<i32> = values.iter().map(|v| (v * scale).round() as i32).collect();
+        assert_eq!(flac_ints(&request.target, bits), expected, "{kind}");
+        assert_eq!(fs::read(&path).unwrap(), original);
+        let mut wave = request.clone();
+        wave.sources = vec![source_file(&request.target, OpenHints::default())];
+        wave.format = None;
+        wave.output = Output::Container(Container::Wave);
+        wave.target = dir.join(&format!("{kind}-again.wav"));
+        run(&wave).unwrap();
+        assert_eq!(read_all(&wave.target, &OpenHints { normalize: Some(crate::Normalize::None), ..Default::default() }), values);
+    }
+}
+
+#[test]
+fn explicit_flac_refuses_unsupported_encodings_without_publishing() {
+    let dir = TempDir::new("explicit-flac-invalid");
+    for kind in ["rl_i32", "iq_f32", "rl_f16x8"] {
+        let ty = kind.parse().unwrap();
+        let path = write_wav(&dir.join(&format!("{kind}.wav")), ty, 8000, &[0.0; 100], 1.0);
+        let mut request = request(&path, OpenHints::default(), None, dir.join(&format!("{kind}.flac")));
+        request.output = Output::Container(Container::Flac);
+        assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
+        assert!(!request.target.exists());
+    }
+}

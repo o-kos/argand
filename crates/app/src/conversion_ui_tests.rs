@@ -1,6 +1,7 @@
 use super::*;
 use argand_core::{Domain, SampleFormat, SampleType, SignalMeta};
 use argand_edit::{Capture, SourceId};
+use gpui_kit::component::input::InputEvent;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, TestAppContext};
 
@@ -21,6 +22,7 @@ fn request() -> Request {
         output: meta,
         target: "output.wav".into(),
         protected: Vec::new(),
+        container: argand_io::write::Container::Wave,
         level: Level::Preserve,
         full_scale: 1.0,
         copy: None,
@@ -67,19 +69,25 @@ fn changing_kind_keeps_both_explicit_frequencies_and_revalidates_the_band(cx: &m
 
 #[test]
 fn repeated_conversion_names_do_not_accumulate_suffixes() {
-    assert_eq!(converted_name("recording.wav"), "recording-converted.wav");
     assert_eq!(
-        converted_name("recording-converted.wav"),
+        converted_name("recording.wav", argand_io::write::Container::Wave),
         "recording-converted.wav"
     );
     assert_eq!(
-        converted_name("recording-converted-converted.wav"),
+        converted_name("recording-converted.wav", argand_io::write::Container::Wave),
+        "recording-converted.wav"
+    );
+    assert_eq!(
+        converted_name(
+            "recording-converted-converted.wav",
+            argand_io::write::Container::Wave
+        ),
         "recording-converted.wav"
     );
 }
 
 #[gpui_kit::test]
-fn only_valid_changed_targets_or_normalization_enable_conversion(cx: &mut TestAppContext) {
+fn only_valid_changed_targets_enable_conversion(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);
     let mut form = None;
     let window = cx.add_window(|window, cx| {
@@ -92,16 +100,80 @@ fn only_valid_changed_targets_or_normalization_enable_conversion(cx: &mut TestAp
         .update(cx, |_, window, cx| {
             form.update(cx, |editor, cx| {
                 assert!(!editor.changed(&editor.request(cx).unwrap()));
-                let level = editor.level.clone();
-                level.update(cx, |level, cx| {
-                    level.set_selected_value(&"Normalize peak".into(), window, cx)
-                });
-                assert!(editor.changed(&editor.request(cx).unwrap()));
+                assert_eq!(editor.request(cx).unwrap().level, Level::Preserve);
                 let rate = editor.rate.clone();
                 rate.update(cx, |rate, cx| rate.set_value("0", window, cx));
                 assert!(editor.request(cx).is_err());
                 assert_eq!(editor.request.input.sample_rate, 8000.0);
             });
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
+fn numeric_commit_groups_drafts_and_container_validation_never_changes_type(
+    cx: &mut TestAppContext,
+) {
+    cx.update(gpui_kit::init);
+    let mut form = None;
+    let window = cx.add_window(|window, cx| {
+        let editor = cx.new(|cx| Editor::new(request(), window, cx));
+        form = Some(editor.clone());
+        Root::new(editor, window, cx)
+    });
+    let form = form.unwrap();
+    window
+        .update(cx, |_, window, cx| {
+            let editor = form.read(cx);
+            let rate = editor.rate.clone();
+            assert_eq!(
+                rate.read(cx).value().as_ref(),
+                crate::numbers::number(8000.0)
+            );
+            rate.update(cx, |state, cx| state.set_value("12345.5", window, cx));
+            assert_eq!(rate.read(cx).value().as_ref(), "12345.5");
+            rate.update(cx, |_, cx| {
+                cx.emit(InputEvent::PressEnter {
+                    secondary: false,
+                    shift: false,
+                })
+            });
+        })
+        .unwrap();
+    cx.run_until_parked();
+    window
+        .update(cx, |_, window, cx| {
+            let editor = form.read(cx);
+            let rate = editor.rate.clone();
+            let container = editor.container.clone();
+            let kind = editor.kind.clone();
+            assert_eq!(
+                rate.read(cx).value().as_ref(),
+                crate::numbers::number(12345.5)
+            );
+            container.update(cx, |state, cx| {
+                state.set_selected_value(&"FLAC".to_owned(), window, cx)
+            });
+            assert!(
+                form.read(cx)
+                    .request(cx)
+                    .err()
+                    .unwrap()
+                    .contains("8-bit or 16-bit")
+            );
+            assert_eq!(
+                kind.read(cx).selected_value().unwrap(),
+                &kind_label("iq_f32")
+            );
+            kind.update(cx, |state, cx| {
+                state.set_selected_value(&kind_label("iq_i16"), window, cx)
+            });
+            let request = form.read(cx).request(cx).unwrap();
+            assert_eq!(request.output.sample_rate, 12345.5);
+            assert_eq!(request.output.center_freq, 100000.0);
+            assert_eq!(request.input.sample_rate, 8000.0);
+            assert_eq!(request.container, argand_io::write::Container::Flac);
+            assert_eq!(request.level, Level::Preserve);
         })
         .unwrap();
 }
@@ -161,6 +233,7 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
     shell.update_in(cx, |shell, window, cx| {
         let mut request = shell.conversion_request().unwrap();
         request.output.sample_type = SampleType::new(Domain::Iq, SampleFormat::I16);
+        request.container = argand_io::write::Container::Flac;
         shell.start_conversion(request, window, cx);
         assert!(first_backing.exists());
     });
@@ -172,12 +245,17 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
             })
     });
     shell.update_in(cx, |shell, window, cx| {
-        assert!(shell.file_name().contains("recording-converted.wav"));
+        assert!(shell.file_name().contains("recording-converted.flac"));
+        assert_eq!(
+            shell.conversion_request().unwrap().container,
+            argand_io::write::Container::Flac
+        );
+        assert_eq!(shell.editing().unwrap().file().meta.container, "wav");
         assert!(!shell.file_name().contains("converted-converted"));
         assert!(shell.editing().unwrap().is_dirty());
         shell.save_over(window, cx);
     });
-    let target = dir.join("chosen.wav");
+    let target = dir.join("chosen.flac");
     let chosen = target.clone();
     cx.simulate_new_path_selection(move |_| Some(chosen));
     wait_until(cx, &shell, "saved ordinary document", |shell| {
@@ -190,6 +268,16 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
                 .editing()
                 .is_some_and(|editing| editing.is_described() && !editing.is_dirty())
     });
+    assert_eq!(&std::fs::read(&target).unwrap()[..4], b"fLaC");
+    assert_eq!(
+        shell.read_with(cx, |shell, _| shell
+            .editing()
+            .unwrap()
+            .file()
+            .meta
+            .container),
+        "flac"
+    );
     assert_eq!(
         argand_io::open(&target, &argand_io::OpenHints::default())
             .unwrap()
@@ -540,6 +628,7 @@ fn stage_reader(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>)
         document: file.id,
         version: shell.editing().unwrap().version(),
         name: "staged-converted.wav".into(),
+        container: argand_io::write::Container::Wave,
         backing: Arc::new(crate::scratch::Scratch::new(path.clone())),
     };
     shell.prepare_conversion_reader(job, Origin::new(path), window, cx);
@@ -598,7 +687,11 @@ fn unsaved_selection_exports_never_suggest_private_scratch_directories(cx: &mut 
             shell.band = band.then(|| argand_core::FrequencyBand::between(1000., 3000.).unwrap());
             let (display, directory) =
                 shell.save_presentation(&shell.editing().unwrap().file().meta);
-            assert!(directory.as_os_str().is_empty());
+            assert!(directory.is_dir());
+            assert_eq!(
+                std::fs::canonicalize(directory).unwrap(),
+                std::env::current_dir().unwrap()
+            );
             assert_eq!(
                 display.source,
                 std::path::PathBuf::from("recording-converted.wav")
@@ -606,7 +699,11 @@ fn unsaved_selection_exports_never_suggest_private_scratch_directories(cx: &mut 
             shell.save_as(true, window, cx);
         });
         cx.simulate_new_path_selection(|directory| {
-            assert!(directory.as_os_str().is_empty());
+            assert!(directory.is_dir());
+            assert_eq!(
+                std::fs::canonicalize(directory).unwrap(),
+                std::env::current_dir().unwrap()
+            );
             None
         });
         cx.run_until_parked();

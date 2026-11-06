@@ -224,7 +224,7 @@ impl Editor {
             .map(|state| state.read(cx).focus_handle(cx));
         let overlap = number(
             Number::Overlap,
-            crate::numbers::input(settings.overlap),
+            crate::numbers::number(settings.overlap),
             window,
             cx,
             &mut subscriptions,
@@ -235,7 +235,7 @@ impl Editor {
         };
         let range = number(
             Number::Range,
-            crate::numbers::input(db),
+            crate::numbers::number(db),
             window,
             cx,
             &mut subscriptions,
@@ -413,7 +413,7 @@ impl Editor {
         let Some(range) = range else {
             return;
         };
-        let value = crate::numbers::input(range.effective_db);
+        let value = crate::numbers::number(range.effective_db);
         if self.range.read(cx).value().as_ref() != value {
             self.range
                 .update(cx, |s, cx| s.set_value(value, window, cx));
@@ -425,7 +425,7 @@ impl Editor {
         self.error = None;
         self.sync_choices(window, cx);
         self.overlap.update(cx, |s, cx| {
-            s.set_value(crate::numbers::input(settings.overlap), window, cx)
+            s.set_value(crate::numbers::number(settings.overlap), window, cx)
         });
         let db = match settings.dynamic_range {
             DynamicRange::Fixed(db) => db,
@@ -436,7 +436,7 @@ impl Editor {
                 .map_or(110.0, |r| r.effective_db),
         };
         self.range.update(cx, |s, cx| {
-            s.set_value(crate::numbers::input(db), window, cx)
+            s.set_value(crate::numbers::number(db), window, cx)
         });
     }
 
@@ -596,6 +596,7 @@ impl Editor {
                     DEFAULTS,
                     "Reset to defaults",
                     focused,
+                    true,
                     cx,
                 )
                 .tab_stop(false)
@@ -1050,6 +1051,7 @@ pub(in crate::shell) fn outlined_button(
     group: &'static str,
     label: &'static str,
     focused: bool,
+    enabled: bool,
     cx: &gpui_kit::App,
 ) -> Button {
     let frame = if focused {
@@ -1064,12 +1066,24 @@ pub(in crate::shell) fn outlined_button(
                 .hover(cx.theme().accent)
                 .active(cx.theme().border),
         )
+        .disabled(!enabled)
         .group(group)
         .when(focused, |button| button.border_2())
         .when(!focused, |button| button.border_1())
         .border_color(frame)
         .small()
-        .child(pointer_ink(group, cx).child(label))
+        .child(
+            div()
+                .id(group)
+                .text_color(cx.theme().muted_foreground)
+                .when(enabled, |ink| {
+                    ink.group_hover(group, |style| style.text_color(cx.theme().foreground))
+                        .group_active(group, |style| {
+                            style.text_color(cx.theme().muted_foreground.opacity(0.6))
+                        })
+                })
+                .child(label),
+        )
 }
 
 /// A label and its value, in the metadata hint's layout.
@@ -1237,6 +1251,51 @@ pub(in crate::shell) fn shown_widths(
         .collect()
 }
 
+pub(in crate::shell) fn numeric_input(
+    value: String,
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) -> Entity<InputState> {
+    cx.new(|cx| InputState::new(window, cx).default_value(value))
+}
+
+pub(in crate::shell) fn commit_numeric_input(
+    state: &Entity<InputState>,
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) {
+    let Ok(value) = crate::numbers::parse::<f64>(state.read(cx).value().as_ref()) else {
+        return;
+    };
+    if !value.is_finite() {
+        return;
+    }
+    let shown = crate::numbers::number(value);
+    if state.read(cx).value().as_ref() != shown {
+        state.update(cx, |state, cx| state.set_value(shown, window, cx));
+    }
+}
+
+pub(in crate::shell) fn numeric_events<T: 'static>(
+    state: &Entity<InputState>,
+    window: &mut Window,
+    cx: &mut Context<T>,
+    mut commit: impl FnMut(&mut T, &mut Window, &mut Context<T>) -> bool + 'static,
+) -> Subscription {
+    cx.subscribe_in(
+        state,
+        window,
+        move |editor, state, event: &InputEvent, window, cx| {
+            if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur)
+                && commit(editor, window, cx)
+            {
+                commit_numeric_input(&state, window, cx);
+            }
+            cx.notify();
+        },
+    )
+}
+
 fn number(
     field: Number,
     value: String,
@@ -1244,19 +1303,13 @@ fn number(
     cx: &mut Context<Editor>,
     subscriptions: &mut Vec<Subscription>,
 ) -> Entity<InputState> {
-    let state = cx.new(|cx| InputState::new(window, cx).default_value(value));
-    subscriptions.push(
-        cx.subscribe_in(
-            &state,
-            window,
-            move |editor, _, event, window, cx| match event {
-                InputEvent::PressEnter { .. } | InputEvent::Blur => {
-                    editor.edit_number(field, None, window, cx);
-                }
-                _ => {}
-            },
-        ),
-    );
+    let state = numeric_input(value, window, cx);
+    subscriptions.push(numeric_events(
+        &state,
+        window,
+        cx,
+        move |editor, window, cx| editor.edit_number(field, None, window, cx),
+    ));
     state
 }
 

@@ -331,6 +331,7 @@ fn to_bounds(geometry: Geometry) -> Bounds<Pixels> {
 /// rather than three that have to happen in the right order.
 pub(super) struct UnsavedDocument {
     name: String,
+    container: argand_io::write::Container,
     backing: Arc<crate::scratch::Scratch>,
 }
 

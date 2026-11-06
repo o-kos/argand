@@ -69,7 +69,8 @@ impl Shell {
         let directory = match self.file.as_ref().and_then(|file| file.unsaved.as_ref()) {
             Some(unsaved) => {
                 display.source = unsaved.name.clone().into();
-                std::path::PathBuf::new()
+                display.container = unsaved.container.extension();
+                saving::existing_directory(std::path::Path::new("."))
             }
             None => saving::directory(&meta.source),
         };
@@ -136,6 +137,9 @@ impl Shell {
         let Some(mut request) = editing.save_request(span, std::path::PathBuf::new()) else {
             return;
         };
+        if let Some(unsaved) = &file.unsaved {
+            request.output = argand_io::write::Output::Container(unsaved.container);
+        }
         let whole = !selection_only;
         let edited = editing.is_dirty() || !editing.is_untouched();
         let of = SaveOf {
@@ -154,6 +158,11 @@ impl Shell {
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
             };
+            if let argand_io::write::Output::Container(container) = request.output {
+                request.output = argand_io::write::Output::Container(saving::target_container(
+                    container, &target,
+                ));
+            }
             request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
                 shell.start_save(request, of, window, cx)
@@ -213,7 +222,14 @@ impl Shell {
             return;
         };
         let (display, directory) = self.save_presentation(&meta);
-        let name = saving::suggested_band_name(&display, self.selection, band);
+        let container = file.unsaved.as_ref().map(|unsaved| unsaved.container);
+        let mut name = saving::suggested_band_name(&display, self.selection, band);
+        if container == Some(argand_io::write::Container::Flac) {
+            name = std::path::Path::new(&name)
+                .with_extension("flac")
+                .to_string_lossy()
+                .into_owned();
+        }
         let mut request = crate::extraction::ExtractRequest {
             capture: editing.capture().clone(),
             sources: editing.source_files(),
@@ -232,6 +248,20 @@ impl Shell {
             cx.notify();
             return;
         }
+        if let Some(container) = container {
+            let valid = request.output_meta().and_then(|mut output| {
+                output.sample_type = request.meta.sample_type;
+                container.check(&output, output.len_samples)
+            });
+            if let Err(error) = valid {
+                self.save_notice = Some(Notice::Failed(
+                    "Cannot save the band",
+                    saving::message(&error),
+                ));
+                cx.notify();
+                return;
+            }
+        }
         let of = SaveOf {
             document: file.id,
             version: editing.version(),
@@ -246,6 +276,7 @@ impl Shell {
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
             };
+            let container = container.map(|container| saving::target_container(container, &target));
             request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
                 if shell.saving.is_some() {
@@ -260,7 +291,7 @@ impl Shell {
                 );
                 let name = file_name(&request.target);
                 let target = request.target.clone();
-                let (job, updates) = saving::start_extraction(request);
+                let (job, updates) = saving::start_extraction(request, container);
                 shell.watch_save(job, updates, (name, target, None), of, window, cx);
             });
         })
@@ -318,6 +349,15 @@ impl Shell {
                         self.save_notice = Some(Notice::Saved(match &finished.as_wave {
                             Some(reason) => format!("{} {reason}", file_name(&saved.path)),
                             None => file_name(&saved.path),
+                        }));
+                        self.saved(saved.path, finished.of, window, cx);
+                    }
+                    Outcome::Encoded { saved, clipped } => {
+                        let name = file_name(&saved.path);
+                        self.save_notice = Some(Notice::Saved(if clipped == 0 {
+                            name
+                        } else {
+                            format!("{name} — {clipped} clipped scalar values")
                         }));
                         self.saved(saved.path, finished.of, window, cx);
                     }

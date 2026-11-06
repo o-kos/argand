@@ -20,6 +20,7 @@ fn request(dir: &TempDir, sample_type: SampleType, values: &[f32], hints: OpenHi
         input,
         target: dir.join("output.wav"),
         protected: Vec::new(),
+        container: argand_io::write::Container::Wave,
         level: Level::Preserve,
         full_scale: f64::from(sample_type.full_scale()),
         copy: None,

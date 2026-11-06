@@ -5,9 +5,8 @@ use super::*;
 use crate::conversion::{Converted, Level, Request};
 use crate::saving::{Ended, Update};
 use gpui_kit::base::actions::Confirm;
-use gpui_kit::component::Disableable;
 use gpui_kit::component::IconName;
-use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::input::InputState;
 use gpui_kit::component::select::{SelectEvent, SelectState};
 use gpui_kit::{AnyElement, Focusable};
 
@@ -65,6 +64,7 @@ pub(super) struct Converting {
     document: u64,
     version: u64,
     name: String,
+    container: argand_io::write::Container,
     backing: Arc<crate::scratch::Scratch>,
 }
 
@@ -82,22 +82,26 @@ fn kind_label(token: &str) -> String {
     format!("{domain} · {format}")
 }
 
-fn converted_name(name: &str) -> String {
+fn converted_name(name: &str, container: argand_io::write::Container) -> String {
     let stem = std::path::Path::new(name)
         .file_stem()
         .unwrap_or_default()
         .to_string_lossy();
-    format!("{}-converted.wav", stem.trim_end_matches("-converted"))
+    format!(
+        "{}-converted.{}",
+        stem.trim_end_matches("-converted"),
+        container.extension()
+    )
 }
 
 struct Editor {
     request: Request,
     rate: Entity<InputState>,
     reference: Entity<InputState>,
+    container: Entity<SelectState<Vec<Name>>>,
+    container_widths: Vec<Pixels>,
     kind: Entity<SelectState<Vec<Name>>>,
-    level: Entity<SelectState<Vec<Name>>>,
     kind_widths: Vec<Pixels>,
-    level_widths: Vec<Pixels>,
     _subscriptions: Vec<Subscription>,
     owner: Option<WeakEntity<Shell>>,
     document: Option<u64>,
@@ -108,14 +112,16 @@ struct Editor {
 
 impl Editor {
     fn new(request: Request, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let rate = cx.new(|cx| {
-            InputState::new(window, cx)
-                .default_value(crate::numbers::input(request.output.sample_rate))
-        });
-        let reference = cx.new(|cx| {
-            InputState::new(window, cx)
-                .default_value(crate::numbers::input(request.output.center_freq))
-        });
+        let rate = presentation::numeric_input(
+            crate::numbers::number(request.output.sample_rate),
+            window,
+            cx,
+        );
+        let reference = presentation::numeric_input(
+            crate::numbers::number(request.output.center_freq),
+            window,
+            cx,
+        );
         let kinds: Vec<String> = argand_core::SAMPLE_TYPE_TOKENS
             .iter()
             .map(|s| kind_label(s))
@@ -133,30 +139,33 @@ impl Editor {
                 cx,
             )
         });
-        let levels = vec!["Preserve level".into(), "Normalize peak".into()];
-        let level_widths = presentation::shown_widths(&levels, window, cx);
-        let level = cx.new(|cx| {
+        let containers = vec!["WAV".to_owned(), "FLAC".to_owned()];
+        let container_widths = presentation::shown_widths(&containers, window, cx);
+        let selected = usize::from(request.container == argand_io::write::Container::Flac);
+        let container = cx.new(|cx| {
             SelectState::new(
-                levels.into_iter().map(Name).collect::<Vec<_>>(),
-                Some(gpui_kit::component::IndexPath::new(0)),
+                containers.into_iter().map(Name).collect::<Vec<_>>(),
+                Some(gpui_kit::component::IndexPath::new(selected)),
                 window,
                 cx,
             )
         });
         let subscriptions = vec![
-            cx.subscribe(&rate, |_, _, _: &InputEvent, cx| cx.notify()),
-            cx.subscribe(&reference, |_, _, _: &InputEvent, cx| cx.notify()),
+            presentation::numeric_events(&rate, window, cx, |_, _, _| true),
+            presentation::numeric_events(&reference, window, cx, |_, _, _| true),
+            cx.subscribe(&container, |_, _, _: &SelectEvent<Vec<Name>>, cx| {
+                cx.notify()
+            }),
             cx.subscribe(&kind, |_, _, _: &SelectEvent<Vec<Name>>, cx| cx.notify()),
-            cx.subscribe(&level, |_, _, _: &SelectEvent<Vec<Name>>, cx| cx.notify()),
         ];
         Self {
             request,
+            container,
+            container_widths,
             rate,
             reference,
             kind,
-            level,
             kind_widths,
-            level_widths,
             _subscriptions: subscriptions,
             owner: None,
             document: None,
@@ -184,44 +193,46 @@ impl Editor {
             .ok_or("Choose a supported sample type")?
             .parse()
             .map_err(|_| "Choose a supported sample type")?;
-        request.level = if self
-            .level
-            .read(cx)
-            .selected_value()
-            .is_some_and(|s| s == "Normalize peak")
-        {
-            Level::Normalize
-        } else {
-            Level::Preserve
+        request.container = match self.container.read(cx).selected_value().map(String::as_str) {
+            Some("WAV") => argand_io::write::Container::Wave,
+            Some("FLAC") => argand_io::write::Container::Flac,
+            _ => return Err("Choose a file type".into()),
         };
+        request.level = Level::Preserve;
         request.plan().map_err(|error| error.to_string())?;
         Ok(request)
     }
 
     fn changed(&self, request: &Request) -> bool {
-        request.output.sample_rate != request.input.sample_rate
+        request.container != self.request.container
+            || request.output.sample_rate != request.input.sample_rate
             || request.output.center_freq != request.input.center_freq
             || request.output.sample_type != request.input.sample_type
-            || request.level == Level::Normalize
     }
 
     fn convert_button(&self, request: Option<Request>, cx: &mut Context<Self>) -> Button {
-        presentation::outlined_button("convert-capture", "conversion-action", "Convert", false, cx)
-            .disabled(request.is_none())
-            .when(request.is_none(), |button| button.opacity(0.5))
-            .on_click(cx.listener(move |editor, _, window, cx| {
-                let Some(request) = request.clone() else {
-                    return;
-                };
-                let Some(owner) = &editor.owner else {
-                    return;
-                };
-                let document = editor.document;
-                let version = editor.version;
-                let _ = owner.update(cx, |shell, cx| {
-                    shell.convert_draft(request, document, version, window, cx)
-                });
-            }))
+        presentation::outlined_button(
+            "convert-capture",
+            "conversion-action",
+            "Convert",
+            false,
+            request.is_some(),
+            cx,
+        )
+        .when(request.is_none(), |button| button.opacity(0.5))
+        .on_click(cx.listener(move |editor, _, window, cx| {
+            let Some(request) = request.clone() else {
+                return;
+            };
+            let Some(owner) = &editor.owner else {
+                return;
+            };
+            let document = editor.document;
+            let version = editor.version;
+            let _ = owner.update(cx, |shell, cx| {
+                shell.convert_draft(request, document, version, window, cx)
+            });
+        }))
     }
 
     fn summary(&self, cx: &gpui_kit::App) -> Result<String, String> {
@@ -306,22 +317,22 @@ impl Render for Editor {
                 cx,
             ))
             .child(presentation::row(
-                "Sample format",
+                "File type",
                 presentation::choice_control(
-                    "conversion-kind",
-                    &self.kind,
-                    &self.kind_widths,
+                    "conversion-container",
+                    &self.container,
+                    &self.container_widths,
                     window,
                     cx,
                 ),
                 cx,
             ))
             .child(presentation::row(
-                "Level",
+                "Sample format",
                 presentation::choice_control(
-                    "conversion-level",
-                    &self.level,
-                    &self.level_widths,
+                    "conversion-kind",
+                    &self.kind,
+                    &self.kind_widths,
                     window,
                     cx,
                 ),
@@ -395,6 +406,16 @@ impl Shell {
         let editing = self.editing()?;
         let mut input = editing.file().meta.clone();
         input.len_samples = editing.len();
+        let container = self.file.as_ref()?.unsaved.as_ref().map_or_else(
+            || {
+                if input.container == "flac" {
+                    argand_io::write::Container::Flac
+                } else {
+                    argand_io::write::Container::Wave
+                }
+            },
+            |unsaved| unsaved.container,
+        );
         Some(Request {
             capture: editing.capture().clone(),
             sources: editing.source_files(),
@@ -402,6 +423,7 @@ impl Shell {
             input,
             target: std::path::PathBuf::new(),
             protected: editing.protected(),
+            container,
             level: Level::Preserve,
             full_scale: editing.full_scale().unwrap_or(0.0),
             copy: editing.save_request(None, std::path::PathBuf::new()),
@@ -456,10 +478,14 @@ impl Shell {
         };
         let document = file.id;
         let version = editing.version();
-        let name = converted_name(&file.unsaved.as_ref().map_or_else(
-            || file.state.document.origin().name(),
-            |unsaved| unsaved.name.clone(),
-        ));
+        let container = request.container;
+        let name = converted_name(
+            &file.unsaved.as_ref().map_or_else(
+                || file.state.document.origin().name(),
+                |unsaved| unsaved.name.clone(),
+            ),
+            container,
+        );
         request.target = folder.new_path("wav");
         let backing = Arc::new(crate::scratch::Scratch::new(request.target.clone()));
         let retained = backing.clone();
@@ -493,6 +519,7 @@ impl Shell {
             document,
             version,
             name,
+            container,
             backing,
         });
         self.save_notice = None;
@@ -622,6 +649,7 @@ impl Shell {
             pending.origin,
             Some(UnsavedDocument {
                 name: pending.job.name,
+                container: pending.job.container,
                 backing: pending.job.backing,
             }),
             Some(pending.readers),

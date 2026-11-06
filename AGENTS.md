@@ -1228,7 +1228,8 @@ selection is ignored. `conversion_ui.rs` composes the file information status Bu
 PinnedHint panel, Input, Select and Convert Button. Edit > Convert to... and F11 open
 the same panel. File and Analysis summaries share `settings_ui::status_control`;
 both property editors share `settings_editor` row, numeric, Select and outlined-action
-presentation over standard controls. One `StatusPanel` owner and shared trigger/popover
+presentation over standard controls. Numeric initialization and Enter/blur formatting share
+one event handler, while each editor keeps its own preview/draft transaction. One `StatusPanel` owner and shared trigger/popover
 composition route both editors through the same opening/closing lifecycle; choosing
 a new owner closes the previous panel, and stale close events cannot clear it. Explicit output sample rate/reference draft fields are never rewritten
 by a domain change. Drafts do not mutate the current document; Escape discards them. `argand_dsp::convert::ConversionPlan` intersects native input-local bounds
@@ -1247,8 +1248,9 @@ captures copy bytes through the existing writer, preserving i32 low bits.
 
 Preserve converts each source's read values back to nominal full-scale units, computed
 sources through their document Encoding, and applies the Capture adjustment once.
-Normalize measures the transformed output peak first, then repeats the bounded stream
-with the same -0.1 dBFS/common IQ-magnitude gain as `levelling`. `write::EncodedWave`
+The File information panel offers no normalization; it preserves adjustments already
+applied. The internal Normalize mode measures the transformed output peak first, then
+repeats the bounded stream with the same -0.1 dBFS/common IQ-magnitude gain as `levelling`. `write::EncodedWave`
 shares FloatWave's safe staging/publication and writes all ten supported types, rounding
 integers to nearest with ties away from zero, saturating without dither and counting
 clipped scalar values. Floats keep finite overscale values; nonfinite data fails.
@@ -1257,7 +1259,11 @@ Conversion writes only to private temporary storage and asks for no user destina
 The result reader is prepared while the current document remains intact; only its
 Opened delivery adopts those same readers, without an unsaved-input prompt or Undo.
 Failed, cancelled and stale preparation never replaces or stops the current reader. `OpenFile::unsaved` holds the generated display
-name separately from the backing path; `History::unsaved` starts dirty without an Undo
+name and requested WAV/FLAC container separately from the private encoded-WAVE backing
+path. WAV supports all ten sample types; FLAC supports U8/I16 with the existing codec
+rate limits and exact-rate/reference comments. Unsupported pairs fail validation without
+coercion. First Save and selection export use the requested container; an explicit
+WAV/FLAC Save as extension overrides it. `History::unsaved` starts dirty without an Undo
 version. The first Save asks for a destination, then successful rebind clears unsaved
 identity. Temporary paths never enter Recent. `Source::backing` retains encoded
 scratch separately from computed FloatWave samples, including clipboard references,

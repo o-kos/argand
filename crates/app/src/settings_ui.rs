@@ -421,10 +421,13 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let has_file = self.file.is_some();
-        let file = self
-            .file
-            .as_ref()
-            .and_then(|file| file.state.document.file_summary());
+        let file = self.file.as_ref().and_then(|file| {
+            file.state.document.file_summary_for_container(
+                file.unsaved
+                    .as_ref()
+                    .map(|unsaved| unsaved.container.extension()),
+            )
+        });
         let status = self.file.as_ref().and_then(|file| {
             file.state
                 .document

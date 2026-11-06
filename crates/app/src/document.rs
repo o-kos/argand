@@ -456,10 +456,14 @@ impl Document {
     }
 
     pub fn file_summary(&self) -> Option<MetadataField> {
+        self.file_summary_for_container(None)
+    }
+
+    pub fn file_summary_for_container(&self, container: Option<&str>) -> Option<MetadataField> {
         let meta = self.meta()?;
         let value = format!(
             "{} · {} {} · {} · {}",
-            meta.container,
+            container.unwrap_or(meta.container),
             if meta.is_iq() { "iq" } else { "real" },
             meta.sample_type.format.as_str(),
             format_hz(meta.sample_rate),

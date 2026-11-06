@@ -22,6 +22,7 @@ pub struct Request {
     pub sources: Vec<Option<SourceFile>>,
     pub input: SignalMeta,
     pub output: SignalMeta,
+    pub container: argand_io::write::Container,
     pub target: PathBuf,
     pub protected: Vec<Protected>,
     pub level: Level,
@@ -44,6 +45,7 @@ impl Request {
         let plan = ConversionPlan::new(&input, &self.output)
             .map_err(|error| self.refused(error.to_string()))?;
         EncodedWave::check(&self.output, plan.samples)?;
+        self.container.check(&self.output, plan.samples)?;
         if !self.full_scale.is_finite() || self.full_scale <= 0.0 {
             return Err(self.refused("the stored sample scale is unknown".into()));
         }

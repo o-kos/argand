@@ -21,7 +21,7 @@ independent reviewer: gpt-6.1-sol high.
 - Resolve save chooser directories to an existing ancestor. Do not reset desktop
   chooser state or replace a supported native chooser without an explicit decision.
 
-## Container proposal pending architecture assessment
+## Approved container architecture
 
 Keep private encoded-WAVE backing independent of the unsaved document's requested
 user container. First Save must use the explicit container and extension. WAV supports
@@ -37,13 +37,25 @@ do not claim that the application supplied the stale path.
 
 ## Work and acceptance
 
-- [ ] Share numeric input initialization/commit formatting without changing each
+- [x] Share numeric input initialization/commit formatting without changing each
       editor's apply/draft transaction.
-- [ ] Remove normalization from the panel and keep Preserve for adjusted samples.
-- [ ] Remove disabled action hover/active ink and background through shared composition.
-- [ ] Validate save chooser folders and test deleted nested-folder resolution.
-- [ ] Resolve the output-container proposal before implementing format selection.
+- [x] Remove normalization from the panel and keep Preserve for adjusted samples.
+- [x] Remove disabled action hover/active ink and background through shared composition.
+- [x] Validate save chooser folders and test deleted nested-folder resolution.
+- [x] Resolve the output-container proposal before implementing format selection.
 - [ ] Add meaningful parse/commit, format/save identity and disabled interaction coverage.
 - [ ] Obtain independent review and run the full local gate; rebuild current release.
 - [ ] Verify actual rendering within the approved second-monitor diagnostic limits,
       complete this plan, and publish the existing Draft update after acceptance.
+
+## Implementation contract
+
+The unsaved document retains its target container independently of the encoded WAV
+backing. First Save and all selection exports use it. An explicit .wav/.flac extension
+in Save as overrides that container; other extensions retain the explicit selection.
+Band/rectangle FLAC export stages extraction and integer encoding privately before
+atomic FLAC publication, retaining existing extraction rate/reference semantics.
+The adapter reports clipped scalar values and never publishes an intermediate.
+
+Open chooser remediation remains pending a separate owner decision: the locked API
+cannot pass an initial directory. No desktop chooser state is reset by this work.
