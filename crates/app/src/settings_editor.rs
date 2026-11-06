@@ -919,7 +919,7 @@ impl Render for Editor {
                     cx.propagate();
                 }
             }))
-            .w(px(WIDTH).min(window.viewport_size().width - px(48.)))
+            .w(property_width(window))
             .font_family(cx.theme().font_family.clone())
             .bg(crate::theme::sheet(cx))
             .text_color(cx.theme().popover_foreground)
@@ -998,6 +998,14 @@ pub(in crate::shell) fn number_control(
                 ),
         )
         .child(div().text_color(cx.theme().muted_foreground).child(unit))
+}
+
+pub(in crate::shell) fn property_width(window: &Window) -> Pixels {
+    px(WIDTH).min((window.viewport_size().width - px(48.)).max(px(0.)))
+}
+
+pub(in crate::shell) fn value_column_width(window: &Window) -> Pixels {
+    (property_width(window) - px(24. + LABEL + 16.)).max(px(0.))
 }
 
 pub(in crate::shell) fn number_width(value: &str, window: &Window, cx: &gpui_kit::App) -> Pixels {

@@ -22,10 +22,10 @@ muted labels. No unrelated FFT summary spacing change is included.
 ## Implementation and validation
 
 - [x] Share existing Analysis presentation builders and use them for File information.
-- [ ] Verify both actual panels in the same window/theme/scale using the isolated
+- [x] Verify both actual panels in the same window/theme/scale using the isolated
       diagnostic launcher on the second monitor, without input emulation or portals.
-- [ ] Retain focused input/Select/Escape regression coverage and obtain independent
-      review of the exact focused diff.
+- [x] Retain focused input/Select/Escape regression coverage.
+- [ ] Complete independent review of the bounded numeric-width follow-up.
 - [ ] Pass formatting, all-targets Clippy and the complete locked workspace suite.
 - [ ] Rebuild the current release workspace after the gate.
 - [ ] Move this plan to completed before final review; obtain coordinator visual
@@ -46,3 +46,9 @@ they do not replace toolkit controls or alter global component defaults.
 
 The ten existing conversion/panel semantic regressions pass after the refactor.
 No tests were added to restate visual constants; actual paired rendering is required.
+
+The coordinator accepted paired actual File/Analysis captures from the same inactive
+window, theme and scale. Numeric Input widths are capped by the shared property
+column geometry; long finite or invalid drafts remain inside the panel. Conversion
+uses the stock Button's keyboard focus ring; the Analysis reset action additionally
+retains its existing externally managed focus border.

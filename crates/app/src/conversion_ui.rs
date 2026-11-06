@@ -248,7 +248,10 @@ fn frequency_control(
     cx: &gpui_kit::App,
 ) -> impl IntoElement {
     let focused = state.read(cx).focus_handle(cx).is_focused(window);
-    let width = presentation::number_width(state.read(cx).value().as_ref(), window, cx);
+    let unit = presentation::number_width("Hz", window, cx);
+    let available = (presentation::value_column_width(window) - unit - px(4.)).max(px(0.));
+    let width =
+        presentation::number_width(state.read(cx).value().as_ref(), window, cx).min(available);
     presentation::number_control(state, width, "Hz", focused, cx)
 }
 
@@ -272,7 +275,7 @@ impl Render for Editor {
             .flex()
             .flex_col()
             .gap_1()
-            .w(px(370.).min(window.viewport_size().width - px(48.)))
+            .w(presentation::property_width(window))
             .px_3()
             .py_2()
             .text_sm()
