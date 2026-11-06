@@ -46,9 +46,9 @@ independent reviewer: gpt-6.1-sol high.
       source scaling, gain/inversion, nonfinite/empty input and boundary IO budget.
 - [x] Verify reference domain toggles, encoding-only changes, disabled interaction
       and explicit sample-rate preservation.
-- [ ] Independent review; full format/Clippy/test gate; current release rebuild;
+- [x] Independent review; full format/Clippy/test gate; current release rebuild;
       actual diagnostic panel render on second monitor without input emulation.
-- [ ] Complete this plan before final review and keep PR Draft.
+- [x] Complete this plan before final review and keep PR Draft.
 
 ## Toolkit and numerical evidence
 
@@ -103,6 +103,16 @@ and only affects captures still using that source. Removing it recovers; undo
 restores the terminal state. A successful new complete index clears that failure.
 Root and pasted-source regressions cover retention, removal, and scheduler status.
 
-The full local gate passed before the final failure-lifecycle correction (1127 tests,
-one manual benchmark ignored). Final follow-up review, refreshed gate, release
-rebuild and actual current panel render remain pending before delivery.
+All three substantive findings were accepted and addressed; none were rejected.
+The render-path performance observation was also accepted. The third independent
+review was clean, including the final branch-flattening delta.
+
+The final full local gate passed: formatting, all-targets Clippy and 1129 workspace
+tests, with no failures and one ignored manual benchmark. Paired actual diagnostic
+renders on the second monitor show compact Peak/RMS values and a muted same-domain
+Reference alongside the shared Analysis controls. The diagnostic uses unchanged
+production rendering with an isolated startup hook and explicit ru-RU formatting;
+no input emulation was used. Native Wayland pointer interaction is not claimed.
+
+The production release rebuilt successfully after the final gate. The plan was
+completed before delivery; the existing Pull Request remains Draft.
