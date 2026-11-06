@@ -34,7 +34,6 @@ pub struct Request {
 
 pub struct Converted {
     pub saved: Saved,
-    pub gain: f64,
     pub clipped: u64,
 }
 
@@ -69,11 +68,7 @@ pub fn run(
     if let Some(copy) = identity_copy(request, &plan) {
         render(request, &plan, progress, cancel, &mut |_| Ok(()))?;
         let saved = argand_io::write::save(&copy, progress, cancel)?;
-        return Ok(Converted {
-            saved,
-            gain: 1.0,
-            clipped: 0,
-        });
+        return Ok(Converted { saved, clipped: 0 });
     }
     let total = request.capture.len()
         * if request.level == Level::Normalize {
@@ -123,11 +118,7 @@ pub fn run(
     let clipped = file.clipped();
     crate::extraction::unchanged(&request.sources)?;
     let saved = file.finish(cancel)?;
-    Ok(Converted {
-        saved,
-        gain,
-        clipped,
-    })
+    Ok(Converted { saved, clipped })
 }
 
 fn identity_copy(

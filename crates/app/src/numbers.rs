@@ -35,10 +35,6 @@ pub fn number(value: impl Display) -> String {
     current().format(&value.to_string(), true)
 }
 
-pub fn input(value: impl Display) -> String {
-    current().format(&value.to_string(), false)
-}
-
 pub fn parse<T: FromStr>(value: &str) -> Result<T, ()> {
     current().canonical(value)?.parse().map_err(|_| ())
 }

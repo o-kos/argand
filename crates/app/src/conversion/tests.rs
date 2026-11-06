@@ -64,8 +64,7 @@ fn preserve_removes_reader_normalization_once_and_keeps_capture_adjustments_for_
         request.output.sample_type = SampleType::new(sample_type.domain, SampleFormat::F32);
         let adjustment = Adjustment::new(true, 0.5).unwrap();
         request.capture = request.capture.with_adjustment(adjustment);
-        let result = run(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
-        assert_eq!(result.gain, 1.0);
+        run(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
         let (_, actual) = read(&request);
         let mut expected = values[..4 * channels].to_vec();
         adjustment.apply(&mut expected, channels, 0);
@@ -110,7 +109,8 @@ fn normalize_measures_output_magnitude_with_one_iq_gain_and_preserves_silence() 
             10f64.powf(crate::levelling::TARGET / 20.0)
         };
         assert!((f64::from(actual[0]).hypot(f64::from(actual[1])) - target).abs() < 1e-6);
-        assert!((f64::from(actual[0]) - f64::from(values[0]) * result.gain).abs() < 1e-6);
+        let expected_gain = if target == 0.0 { 1.0 } else { target / 0.5 };
+        assert!((f64::from(actual[0]) - f64::from(values[0]) * expected_gain).abs() < 1e-6);
         assert_eq!(result.clipped, 0);
     }
 }

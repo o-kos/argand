@@ -1905,7 +1905,7 @@ mod hint_tests {
         let overlap = settings(cx, &w).overlap;
         assert_eq!(
             text,
-            crate::numbers::input(overlap),
+            crate::numbers::number(overlap),
             "the field shows the value in force"
         );
         assert!(error.is_none());
