@@ -1719,7 +1719,7 @@ fn explicit_flac_preserves_wave_integer_units_and_exact_metadata() {
         let path = write_wav(&dir.join(&format!("{kind}.wav")), ty, 8000, &values, 1.0);
         let original = fs::read(&path).unwrap();
         let mut request = request(&path, OpenHints::default(), None, dir.join(&format!("{kind}.flac")));
-        
+
         request.meta.center_freq = 10_000_000.25;
         request.output = Output::Container(Container::Flac);
         let saved = run(&request).unwrap();
