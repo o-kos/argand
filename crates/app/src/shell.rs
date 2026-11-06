@@ -737,7 +737,7 @@ impl Shell {
         if !self.settle_unsaved(editing_ui::Pending::Open(origin.clone()), window, cx) {
             return;
         }
-        self.open_document(origin, None, window, cx);
+        self.open_document(origin, None, None, window, cx);
     }
 
     /// Adopt a fully written document; conversion bypasses the old document's save prompt.
@@ -745,6 +745,7 @@ impl Shell {
         &mut self,
         origin: Origin,
         unsaved: Option<UnsavedDocument>,
+        prepared: Option<replace_ui::Readers>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -769,6 +770,7 @@ impl Shell {
         self.band = None;
         // A band computed for the previous file has nowhere to go.
         self.conversion.running = None;
+        self.conversion.pending = None;
         self.conversion.updates = None;
         self.suppressing = None;
         self.suppress_updates = None;
@@ -778,16 +780,19 @@ impl Shell {
         self.time_scheme = None;
         self.tick_pan = None;
 
+        let ready = prepared.is_some();
         let replace_ui::Readers {
             analyst,
             pump,
             start,
             lease,
             released,
-        } = self.readers(&origin, window, cx);
-        window.on_next_frame(move |window, _| {
-            window.on_next_frame(move |_, _| start.start());
-        });
+        } = prepared.unwrap_or_else(|| self.readers(&origin, window, cx));
+        if !ready {
+            window.on_next_frame(move |window, _| {
+                window.on_next_frame(move |_, _| start.start());
+            });
+        }
 
         // Replacing the previous file drops both ends of its queue, which is
         // what stops its thread: a transform nobody will look at should not go
@@ -984,7 +989,22 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> replace_ui::Readers {
+        self.preparing_readers(origin, None, None, window, cx)
+    }
+
+    fn preparing_readers(
+        &self,
+        origin: &Origin,
+        pending: Option<conversion_ui::ReaderRoute>,
+        backing: Option<Arc<crate::scratch::Scratch>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> replace_ui::Readers {
         let (lease, released) = crate::release::lease();
+        let lease = match backing {
+            Some(backing) => lease.retaining(backing),
+            None => lease,
+        };
         let (analyst, updates, start) = crate::analysis::prepare(
             origin.path.clone(),
             origin.hints.clone(),
@@ -1003,7 +1023,12 @@ impl Shell {
                 tracing::trace!(target: "argand::ui_latency",
                     age_us = update.prepared_at.elapsed().as_micros(), "analysis delivery received");
                 if shell
-                    .update_in(cx, |shell, window, cx| shell.receive(update, window, cx))
+                    .update_in(cx, |shell, window, cx| {
+                        match &pending {
+                            Some(route) => shell.receive_conversion_reader(route, update, window, cx),
+                            None => shell.receive(update, window, cx),
+                        }
+                    })
                     .is_err()
                 {
                     // The window has gone; so has anything to tell.

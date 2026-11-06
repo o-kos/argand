@@ -171,6 +171,7 @@ pub fn prepare(
 }
 
 /// Release file opening only after the window has painted its initial frame.
+#[derive(Clone)]
 pub struct Start(async_channel::Sender<()>);
 
 impl Start {

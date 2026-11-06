@@ -260,25 +260,7 @@ fn conversion_failure_and_cancel_preserve_current_unsaved_edits(cx: &mut TestApp
 fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut TestAppContext) {
     use super::super::replace_ui::tests::{wait_until, write_wave};
     use crate::editing::Editing;
-    cx.executor().allow_parking();
-    cx.update(|cx| {
-        gpui_kit::init(cx);
-        settings_ui::init(cx);
-        navigation_ui::init(cx);
-        hints::init(cx);
-        app_menu_ui::init(cx);
-        window_keys(cx);
-        crate::theme::install(ThemeMode::Dark, cx);
-    });
-    let mut shell = None;
-    let (_, cx) = cx.add_window_view(|window, cx| {
-        let view = cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
-        Shell::bind_choose_file(view.downgrade(), cx);
-        shell = Some(view.clone());
-        Root::new(view, window, cx)
-    });
-    let shell = shell.unwrap();
-    cx.simulate_resize(size(px(1000.), px(900.)));
+    let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!("argand-panel-{}.wav", std::process::id()));
     write_wave(&path, 2400);
     shell.update_in(cx, |shell, window, cx| {
@@ -379,4 +361,258 @@ fn frame(cx: &mut gpui_kit::VisualTestContext) {
     cx.run_until_parked();
     cx.update(|window, cx| window.render_frame(cx));
     cx.run_until_parked();
+}
+
+fn panel_window(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        settings_ui::init(cx);
+        navigation_ui::init(cx);
+        hints::init(cx);
+        app_menu_ui::init(cx);
+        window_keys(cx);
+        crate::theme::install(ThemeMode::Dark, cx);
+    });
+    let mut shell = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
+        Shell::bind_choose_file(view.downgrade(), cx);
+        shell = Some(view.clone());
+        Root::new(view, window, cx)
+    });
+    let shell = shell.unwrap();
+    cx.simulate_resize(size(px(1000.), px(900.)));
+    (shell, cx)
+}
+
+fn converted_fixture<'a>(
+    cx: &'a mut TestAppContext,
+    tag: &str,
+) -> (
+    Entity<Shell>,
+    &'a mut gpui_kit::VisualTestContext,
+    std::path::PathBuf,
+) {
+    use super::super::replace_ui::tests::{open_window, wait_until, write_wave};
+    use crate::editing::Editing;
+    let (shell, cx) = open_window(cx);
+    let dir = std::env::temp_dir().join(format!("argand-converted-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("recording.wav");
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path), window, cx)
+    });
+    wait_until(cx, &shell, "described input", |shell| {
+        shell.editing().is_some_and(Editing::is_described)
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        let mut request = shell.conversion_request().unwrap();
+        request.output.sample_type.format = SampleFormat::F32;
+        shell.start_conversion(request, window, cx);
+    });
+    wait_until(
+        cx,
+        &shell,
+        "adopted reader delivers complete analysis",
+        |shell| {
+            shell.file.as_ref().is_some_and(|file| {
+                file.unsaved.is_some()
+                    && matches!(
+                        file.state.document.status(),
+                        crate::document::Status::Ready { .. }
+                    )
+            }) && shell.editing().is_some_and(Editing::is_described)
+        },
+    );
+    (shell, cx, dir)
+}
+
+#[gpui_kit::test]
+fn converted_document_open_discard_and_save_each_answer_only_once(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx, dir) = converted_fixture(cx, "open");
+    let second = dir.join("second.wav");
+    write_wave(&second, 4800);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(second.clone()), window, cx)
+    });
+    assert!(cx.has_pending_prompt());
+    cx.simulate_prompt_answer("Discard");
+    wait_until(cx, &shell, "discard then open", |shell| {
+        shell
+            .file
+            .as_ref()
+            .is_some_and(|file| file.state.document.origin().path == second)
+            && shell
+                .editing()
+                .is_some_and(|editing| editing.is_described())
+    });
+    assert!(!cx.has_pending_prompt());
+    shell.update_in(cx, |shell, window, cx| {
+        let mut request = shell.conversion_request().unwrap();
+        request.output.sample_type.format = SampleFormat::F32;
+        shell.start_conversion(request, window, cx);
+    });
+    wait_until(cx, &shell, "second converted document", |shell| {
+        shell
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+            && shell
+                .editing()
+                .is_some_and(|editing| editing.is_described())
+    });
+    let first = dir.join("recording.wav");
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(first.clone()), window, cx)
+    });
+    cx.simulate_prompt_answer("Save");
+    cx.run_until_parked();
+    let saved = dir.join("saved.wav");
+    cx.simulate_new_path_selection(|_| Some(saved.clone()));
+    wait_until(cx, &shell, "save then open", |shell| {
+        shell
+            .file
+            .as_ref()
+            .is_some_and(|file| file.state.document.origin().path == first)
+    });
+    assert!(!cx.has_pending_prompt());
+    assert!(saved.exists());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[gpui_kit::test]
+fn published_result_reader_failure_preserves_dirty_capture(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::wait_until;
+    let (shell, cx, dir) = converted_fixture(cx, "reader-failure");
+    let before = shell.update_in(cx, |shell, window, cx| {
+        shell
+            .editing_mut()
+            .unwrap()
+            .delete(argand_core::SampleSpan::between(0, 100).unwrap());
+        let before = (
+            shell.file.as_ref().unwrap().id,
+            shell.editing().unwrap().version(),
+            shell.editing().unwrap().capture().clone(),
+        );
+        shell.conversion.fail_reader_open = true;
+        let mut request = shell.conversion_request().unwrap();
+        request.output.sample_type.format = SampleFormat::I16;
+        shell.start_conversion(request, window, cx);
+        before
+    });
+    wait_until(
+        cx,
+        &shell,
+        "reader open failure after publication",
+        |shell| {
+            shell.conversion.running.is_none()
+                && shell.conversion.pending.is_none()
+                && matches!(
+                    shell.save_notice,
+                    Some(saving_ui::Notice::Failed("Conversion failed", _))
+                )
+        },
+    );
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.file.as_ref().unwrap().id, before.0);
+        let editing = shell.editing().unwrap();
+        assert_eq!(editing.version(), before.1);
+        assert_eq!(editing.capture(), &before.2);
+        assert!(editing.is_dirty());
+        assert!(shell.file.as_ref().unwrap().unsaved.is_some());
+    });
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn stage_reader(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) {
+    use super::super::replace_ui::tests::write_wave;
+    let folder = crate::scratch::folder().unwrap();
+    let path = folder.new_path("wav");
+    write_wave(&path, 1200);
+    let (job, _) = crate::saving::spawn("prepared-conversion-test", |_, _| (), |_| ());
+    let file = shell.file.as_ref().unwrap();
+    let job = Converting {
+        job,
+        progress: None,
+        document: file.id,
+        version: shell.editing().unwrap().version(),
+        name: "staged-converted.wav".into(),
+        backing: Arc::new(crate::scratch::Scratch::new(path.clone())),
+    };
+    shell.prepare_conversion_reader(job, Origin::new(path), window, cx);
+}
+
+#[gpui_kit::test]
+fn cancelled_and_stale_prepared_readers_cannot_replace_or_stop_current_reader(
+    cx: &mut TestAppContext,
+) {
+    use super::super::replace_ui::tests::wait_until;
+    let (shell, cx, dir) = converted_fixture(cx, "reader-routing");
+    let document = shell.read_with(cx, |shell, _| shell.file.as_ref().unwrap().id);
+    for stale in [false, true] {
+        shell.update_in(cx, |shell, window, cx| {
+            stage_reader(shell, window, cx);
+            if stale {
+                shell
+                    .file
+                    .as_mut()
+                    .unwrap()
+                    .editing
+                    .as_mut()
+                    .unwrap()
+                    .delete(argand_core::SampleSpan::between(0, 100).unwrap());
+            } else {
+                shell.conversion.pending = None;
+            }
+            shell.settings.fft_size = if stale { 512 } else { 256 };
+            shell.ask_for_a_picture();
+        });
+        wait_until(
+            cx,
+            &shell,
+            "current reader still delivers after rejected preparation",
+            |shell| {
+                shell.conversion.pending.is_none()
+                    && shell.file.as_ref().is_some_and(|file| {
+                        file.id == document
+                            && file.state.document.analysis().is_some_and(|analysis| {
+                                analysis.psd.db.len() == if stale { 512 } else { 256 }
+                            })
+                    })
+            },
+        );
+        shell.read_with(cx, |shell, _| assert!(shell.editing().unwrap().is_dirty()));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[gpui_kit::test]
+fn unsaved_selection_exports_never_suggest_private_scratch_directories(cx: &mut TestAppContext) {
+    let (shell, cx, dir) = converted_fixture(cx, "export");
+    for (time, band) in [(true, false), (false, true), (true, true)] {
+        shell.update_in(cx, |shell, window, cx| {
+            shell.selection = time.then(|| argand_core::SampleSpan::between(100, 1000).unwrap());
+            shell.band = band.then(|| argand_core::FrequencyBand::between(1000., 3000.).unwrap());
+            let (display, directory) =
+                shell.save_presentation(&shell.editing().unwrap().file().meta);
+            assert!(directory.as_os_str().is_empty());
+            assert_eq!(
+                display.source,
+                std::path::PathBuf::from("recording-converted.wav")
+            );
+            shell.save_as(true, window, cx);
+        });
+        cx.simulate_new_path_selection(|directory| {
+            assert!(directory.as_os_str().is_empty());
+            None
+        });
+        cx.run_until_parked();
+    }
+    shell.read_with(cx, |shell, _| {
+        assert!(shell.file.as_ref().unwrap().unsaved.is_some())
+    });
+    std::fs::remove_dir_all(dir).unwrap();
 }

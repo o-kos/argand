@@ -13,6 +13,10 @@ use gpui_kit::{AnyElement, Focusable};
 pub(super) struct State {
     pub(super) running: Option<Converting>,
     pub(super) updates: Option<Task<()>>,
+    pub(super) pending: Option<PendingConversion>,
+    next_reader: u64,
+    #[cfg(test)]
+    fail_reader_open: bool,
     pub(super) hint: Entity<hints::PinnedHint>,
     _subscription: Subscription,
     result: Option<String>,
@@ -34,11 +38,28 @@ impl State {
         Self {
             running: None,
             updates: None,
+            pending: None,
+            next_reader: 0,
+            #[cfg(test)]
+            fail_reader_open: false,
             hint,
             _subscription: subscription,
             result: None,
         }
     }
+}
+
+pub(super) struct ReaderRoute {
+    token: u64,
+    adopted: Arc<std::sync::atomic::AtomicU64>,
+}
+
+pub(super) struct PendingConversion {
+    token: u64,
+    job: Converting,
+    origin: Origin,
+    readers: replace_ui::Readers,
+    adopted: Arc<std::sync::atomic::AtomicU64>,
 }
 
 pub(super) struct Converting {
@@ -187,13 +208,21 @@ impl Editor {
     }
 }
 
-fn field(label: &'static str, control: impl IntoElement) -> impl IntoElement {
+fn field(label: &'static str, control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
     div()
         .flex()
-        .flex_col()
-        .gap_1()
-        .child(div().text_xs().child(label))
-        .child(control)
+        .items_center()
+        .gap_4()
+        .w_full()
+        .min_h_7()
+        .child(
+            div()
+                .w(px(100.))
+                .flex_shrink_0()
+                .text_color(cx.theme().muted_foreground)
+                .child(label),
+        )
+        .child(div().flex_1().min_w_0().flex().justify_end().child(control))
 }
 
 impl Render for Editor {
@@ -215,9 +244,14 @@ impl Render for Editor {
             .on_action(|_: &Confirm, _, _| {})
             .flex()
             .flex_col()
-            .gap_3()
+            .gap_1()
             .w(px(360.).min(window.viewport_size().width - px(48.)))
-            .p_3()
+            .px_3()
+            .py_2()
+            .text_sm()
+            .text_color(cx.theme().popover_foreground)
+            .max_h(window.viewport_size().height - px(48.))
+            .overflow_y_scroll()
             .bg(crate::theme::sheet(cx))
             .border_1()
             .border_color(cx.theme().border)
@@ -234,18 +268,41 @@ impl Render for Editor {
                 }),
             )
             .child(div().border_t_1().border_color(cx.theme().border))
-            .child(field("Sample rate (Hz)", Input::new(&self.rate).small()))
             .child(field(
-                "Reference frequency (Hz)",
-                Input::new(&self.reference).small(),
+                "Sample rate",
+                Input::new(&self.rate)
+                    .appearance(false)
+                    .small()
+                    .text_align(gpui_kit::TextAlign::Right)
+                    .suffix("Hz"),
+                cx,
+            ))
+            .child(field(
+                "Reference",
+                Input::new(&self.reference)
+                    .appearance(false)
+                    .small()
+                    .text_align(gpui_kit::TextAlign::Right)
+                    .suffix("Hz"),
+                cx,
             ))
             .child(field(
                 "Sample format",
-                Select::new(&self.kind).id("conversion-kind").small(),
+                Select::new(&self.kind)
+                    .id("conversion-kind")
+                    .appearance(false)
+                    .small()
+                    .w_full(),
+                cx,
             ))
             .child(field(
                 "Level",
-                Select::new(&self.level).id("conversion-level").small(),
+                Select::new(&self.level)
+                    .id("conversion-level")
+                    .appearance(false)
+                    .small()
+                    .w_full(),
+                cx,
             ))
             .when(
                 summary.as_ref().map_or(true, |warning| !warning.is_empty()),
@@ -496,16 +553,7 @@ impl Shell {
                         ));
                         let mut origin = Origin::new(result.saved.path);
                         origin.hints.normalize = Some(argand_io::Normalize::None);
-                        self.open_document(
-                            origin,
-                            Some(UnsavedDocument {
-                                name: job.name,
-                                backing: job.backing,
-                            }),
-                            window,
-                            cx,
-                        );
-                        self.refresh_titles(window);
+                        self.prepare_conversion_reader(job, origin, window, cx);
                     }
                     Ended::Cancelled => {}
                     Ended::Failed(error) => {
@@ -518,6 +566,99 @@ impl Shell {
         cx.notify();
     }
 
+    fn prepare_conversion_reader(
+        &mut self,
+        job: Converting,
+        origin: Origin,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        #[cfg(test)]
+        if std::mem::take(&mut self.conversion.fail_reader_open) {
+            std::fs::remove_file(&origin.path)
+                .expect("remove published scratch before reader preparation");
+        }
+        self.conversion.next_reader += 1;
+        let token = self.conversion.next_reader;
+        let adopted = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let route = ReaderRoute {
+            token,
+            adopted: adopted.clone(),
+        };
+        let readers =
+            self.preparing_readers(&origin, Some(route), Some(job.backing.clone()), window, cx);
+        let start = readers.start.clone();
+        self.conversion.pending = Some(PendingConversion {
+            token,
+            job,
+            origin,
+            readers,
+            adopted,
+        });
+        start.start();
+    }
+
+    pub(super) fn receive_conversion_reader(
+        &mut self,
+        route: &ReaderRoute,
+        delivery: Delivery,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let adopted = route.adopted.load(Ordering::Acquire);
+        if adopted != 0 {
+            if self.file.as_ref().map(|file| file.id) == Some(adopted) {
+                self.receive(delivery, window, cx);
+            }
+            return;
+        }
+        if !self
+            .conversion
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.token == route.token)
+        {
+            return;
+        }
+        match &delivery.update {
+            crate::analysis::Update::Opened(_, _) => {}
+            crate::analysis::Update::Failed(error) => {
+                self.conversion.pending = None;
+                self.conversion.result = None;
+                self.save_notice = Some(saving_ui::Notice::Failed(
+                    "Conversion failed",
+                    error.to_string(),
+                ));
+                cx.notify();
+                return;
+            }
+            _ => return,
+        }
+        let Some(pending) = self.conversion.pending.take() else {
+            return;
+        };
+        if self.file.as_ref().map(|file| file.id) != Some(pending.job.document)
+            || self.editing().map(|editing| editing.version()) != Some(pending.job.version)
+        {
+            return;
+        }
+        self.open_document(
+            pending.origin,
+            Some(UnsavedDocument {
+                name: pending.job.name,
+                backing: pending.job.backing,
+            }),
+            Some(pending.readers),
+            window,
+            cx,
+        );
+        if let Some(file) = &self.file {
+            pending.adopted.store(file.id, Ordering::Release);
+        }
+        self.receive(delivery, window, cx);
+        self.refresh_titles(window);
+    }
+
     pub(super) fn conversion_item(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let text = if let Some(job) = &self.conversion.running {
             let percent = job
@@ -527,6 +668,8 @@ impl Shell {
                     (100.0 * done as f64 / total as f64) as u32
                 });
             format!("Converting capture… {percent}%")
+        } else if self.conversion.pending.is_some() {
+            "Opening converted capture…".into()
         } else {
             self.conversion.result.clone()?
         };
@@ -568,7 +711,9 @@ impl Shell {
                         .icon(IconName::Close)
                         .tab_stop(false)
                         .on_click(cx.listener(|shell, _, _, cx| {
-                            if let Some(job) = &shell.conversion.running {
+                            if shell.conversion.pending.take().is_some() {
+                                shell.conversion.result = None;
+                            } else if let Some(job) = &shell.conversion.running {
                                 job.job.cancel();
                             } else {
                                 shell.conversion.result = None;

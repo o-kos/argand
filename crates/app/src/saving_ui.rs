@@ -60,6 +60,22 @@ pub(super) enum Notice {
 }
 
 impl Shell {
+    /// User-facing naming is independent of temporary sample backing for every export.
+    pub(super) fn save_presentation(
+        &self,
+        meta: &argand_core::SignalMeta,
+    ) -> (argand_core::SignalMeta, std::path::PathBuf) {
+        let mut display = meta.clone();
+        let directory = match self.file.as_ref().and_then(|file| file.unsaved.as_ref()) {
+            Some(unsaved) => {
+                display.source = unsaved.name.clone().into();
+                std::path::PathBuf::new()
+            }
+            None => saving::directory(&meta.source),
+        };
+        (display, directory)
+    }
+
     /// Whether a save of the capture, or of its time selection, can start now.
     pub(super) fn can_save(&self, selection_only: bool) -> bool {
         self.saving.is_none()
@@ -115,19 +131,8 @@ impl Shell {
         let span = if selection_only { self.selection } else { None };
         let output = editing.file();
         let as_wave = argand_io::write::writes_as_wave(&output.meta, &output.hints);
-        let name = file
-            .unsaved
-            .as_ref()
-            .filter(|_| !selection_only)
-            .map_or_else(
-                || saving::suggested_name(&output.meta, as_wave, span),
-                |unsaved| unsaved.name.clone(),
-            );
-        let directory = if file.unsaved.is_some() {
-            std::path::PathBuf::new()
-        } else {
-            saving::directory(&output.meta.source)
-        };
+        let (display, directory) = self.save_presentation(&output.meta);
+        let name = saving::suggested_name(&display, as_wave, span);
         let Some(mut request) = editing.save_request(span, std::path::PathBuf::new()) else {
             return;
         };
@@ -207,8 +212,8 @@ impl Shell {
         else {
             return;
         };
-        let name = saving::suggested_band_name(&meta, self.selection, band);
-        let directory = saving::directory(&meta.source);
+        let (display, directory) = self.save_presentation(&meta);
+        let name = saving::suggested_band_name(&display, self.selection, band);
         let mut request = crate::extraction::ExtractRequest {
             capture: editing.capture().clone(),
             sources: editing.source_files(),

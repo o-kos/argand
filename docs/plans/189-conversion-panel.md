@@ -62,8 +62,27 @@ release/native interaction acceptance. No unrelated FFT spacing fix is included.
 
 ## Focused validation
 
-Six focused conversion/panel tests pass: explicit frequencies and band validation,
-changed/Normalize enable state, repeat naming, edited capture -> unsaved -> repeat ->
-first Save lifecycle, cancelled/failed worker preservation, and standard Root/Popover
-F11/Input/Select Escape ordering with draft isolation. Additional history and encoded
-backing clipboard-retention regressions accompany the full local gate.
+Ten focused conversion/panel tests pass. They cover explicit frequencies, valid
+changed/Normalize enable state, repeat names, current edited capture conversion,
+first Save, worker cancellation/failure, reader-open failure after publication,
+prepared-reader cancellation/stale version rejection, continued analysis after
+adoption, one-prompt Save/Discard -> Open transitions, safe time/band/rectangle
+export presentation and standard Root/Popover Escape ordering. These are headless
+framework events, not a claim of native interaction validation.
+
+## Review dispositions
+
+The first review found three substantive lifecycle defects; all were accepted:
+
+- Clear unsaved identity only when a pending Save/Discard transition commits,
+  avoiding repeated prompts when continuing to Open.
+- Preserve the current document until the published result's actual readers open.
+  Transfer those same readers at adoption, route later deliveries by adopted
+  document identity, and retain scratch backing in reader leases. Failed, cancelled
+  and stale preparation never replaces or stops the current document.
+- Share user-facing save/export naming and directory selection across whole,
+  time, band and rectangle saves; never suggest a private scratch directory.
+
+Compact aligned property rows and inherited foreground styling were checked
+against the existing analysis editor; the rendering uses supported Input/Select
+appearance styling and standard Button controls.

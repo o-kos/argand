@@ -536,8 +536,11 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         // Not `editing_mut`: edits on a changed file are discarded this way too.
-        if let Some(editing) = self.file.as_mut().and_then(|file| file.editing.as_mut()) {
-            editing.mark_saved();
+        if let Some(file) = self.file.as_mut() {
+            if let Some(editing) = file.editing.as_mut() {
+                editing.mark_saved();
+            }
+            file.unsaved = None;
         }
         match pending {
             Pending::Open(origin) => self.open(origin, window, cx),
