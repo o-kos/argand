@@ -194,6 +194,26 @@ impl Editor {
             || request.level == Level::Normalize
     }
 
+    fn convert_button(&self, request: Option<Request>, cx: &mut Context<Self>) -> Button {
+        Button::new("convert-capture")
+            .primary()
+            .label("Convert")
+            .disabled(request.is_none())
+            .on_click(cx.listener(move |editor, _, window, cx| {
+                let Some(request) = request.clone() else {
+                    return;
+                };
+                let Some(owner) = &editor.owner else {
+                    return;
+                };
+                let document = editor.document;
+                let version = editor.version;
+                let _ = owner.update(cx, |shell, cx| {
+                    shell.convert_draft(request, document, version, window, cx)
+                });
+            }))
+    }
+
     fn summary(&self, cx: &gpui_kit::App) -> Result<String, String> {
         let request = self.request(cx)?;
         let plan = request.plan().map_err(|error| error.to_string())?;
@@ -315,25 +335,7 @@ impl Render for Editor {
                     )
                 },
             )
-            .child(
-                Button::new("convert-capture")
-                    .primary()
-                    .label("Convert")
-                    .disabled(request.is_none())
-                    .on_click(cx.listener(move |editor, _, window, cx| {
-                        let Some(request) = request.clone() else {
-                            return;
-                        };
-                        let Some(owner) = &editor.owner else {
-                            return;
-                        };
-                        let document = editor.document;
-                        let version = editor.version;
-                        let _ = owner.update(cx, |shell, cx| {
-                            shell.convert_draft(request, document, version, window, cx)
-                        });
-                    })),
-            )
+            .child(self.convert_button(request, cx))
     }
 }
 

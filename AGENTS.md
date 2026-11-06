@@ -1250,12 +1250,14 @@ integers to nearest with ties away from zero, saturating without dither and coun
 clipped scalar values. Floats keep finite overscale values; nonfinite data fails.
 Sources are stamped before/after reads and after final sync, before publication.
 Conversion writes only to private temporary storage and asks for no user destination.
-Success replaces the current edited capture without an unsaved-input prompt or Undo;
-error/cancellation leaves it intact. `OpenFile::unsaved` holds the generated display
+The result reader is prepared while the current document remains intact; only its
+Opened delivery adopts those same readers, without an unsaved-input prompt or Undo.
+Failed, cancelled and stale preparation never replaces or stops the current reader. `OpenFile::unsaved` holds the generated display
 name separately from the backing path; `History::unsaved` starts dirty without an Undo
 version. The first Save asks for a destination, then successful rebind clears unsaved
 identity. Temporary paths never enter Recent. `Source::backing` retains encoded
 scratch separately from computed FloatWave samples, including clipboard references,
 so it is never encoded twice. Input/output scratch ownership lasts until the job ends;
-opening another capture cancels conversion. The result opens with normalization
+reader leases retain backing through termination, and opening another capture cancels
+conversion. The result opens with normalization
 disabled so f16x8 arbitrary units are not automatically rescaled.
