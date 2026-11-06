@@ -340,7 +340,9 @@ impl Editing {
 
     /// Record the checked output description independently of the sample sources.
     pub fn describe_format(&mut self, stamp: Option<SourceStamp>, format: Option<Format>) {
-        self.describe_file(stamp, format.as_ref().map(Format::storage));
+        self.sources[0].stamp = stamp;
+        self.sources[0].storage = format.as_ref().map(Format::storage);
+        self.statistics_revision = next_statistics_revision();
         self.format = format;
     }
 

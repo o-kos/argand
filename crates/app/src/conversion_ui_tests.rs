@@ -511,13 +511,7 @@ fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut Te
     wait_until(cx, &shell, "source", |shell| {
         shell.editing().is_some_and(Editing::is_described)
     });
-    wait_until(cx, &shell, "initial amplitude statistics", |shell| {
-        shell
-            .file
-            .as_ref()
-            .and_then(|file| file.state.document.file_summary())
-            .is_some_and(|summary| !summary.hint.value.contains("Calculating…"))
-    });
+    wait_for_metrics(&shell, cx);
     cx.simulate_keystrokes("f11");
     frame(cx);
     let editor = shell.read_with(cx, |shell, cx| {
@@ -551,30 +545,7 @@ fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut Te
             .rate
             .update(cx, |rate, cx| rate.set_value("12000", window, cx))
     });
-    shell.update_in(cx, |shell, _, cx| {
-        shell
-            .file
-            .as_mut()
-            .unwrap()
-            .state
-            .document
-            .set_statistics(Some(Ok(crate::sample_statistics::Metrics {
-                peak: 5.,
-                rms: 3.,
-            })));
-        cx.notify();
-    });
-    frame(cx);
-    editor.update_in(cx, |editor, window, cx| {
-        assert_eq!(editor.rate.read(cx).value().as_ref(), "12000");
-        assert!(editor.rate.read(cx).focus_handle(cx).is_focused(window));
-        assert!(
-            editor
-                .details
-                .iter()
-                .any(|(label, value)| label == "RMS" && value == "3")
-        );
-    });
+    assert_live_metrics_preserve_draft(&shell, &editor, cx);
     frame(cx);
     cx.simulate_mouse_move(
         point(px(900.), px(100.)),
@@ -628,6 +599,52 @@ fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut Te
         24_000.
     );
     std::fs::remove_file(path).unwrap();
+}
+
+fn wait_for_metrics(shell: &Entity<Shell>, cx: &mut gpui_kit::VisualTestContext) {
+    super::super::replace_ui::tests::wait_until(
+        cx,
+        shell,
+        "initial amplitude statistics",
+        |shell| {
+            shell
+                .file
+                .as_ref()
+                .and_then(|file| file.state.document.file_summary())
+                .is_some_and(|summary| !summary.hint.value.contains("Calculating…"))
+        },
+    );
+}
+
+fn assert_live_metrics_preserve_draft(
+    shell: &Entity<Shell>,
+    editor: &Entity<Editor>,
+    cx: &mut gpui_kit::VisualTestContext,
+) {
+    shell.update_in(cx, |shell, _, cx| {
+        shell
+            .file
+            .as_mut()
+            .unwrap()
+            .state
+            .document
+            .set_statistics(Some(Ok(crate::sample_statistics::Metrics {
+                peak: 5.,
+                rms: 3.,
+            })));
+        cx.notify();
+    });
+    frame(cx);
+    editor.update_in(cx, |editor, window, cx| {
+        assert_eq!(editor.rate.read(cx).value().as_ref(), "12000");
+        assert!(editor.rate.read(cx).focus_handle(cx).is_focused(window));
+        assert!(
+            editor
+                .details
+                .iter()
+                .any(|(label, value)| label == "RMS" && value == "3")
+        );
+    });
 }
 
 fn frame(cx: &mut gpui_kit::VisualTestContext) {

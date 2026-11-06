@@ -130,40 +130,47 @@ struct Editor {
     scope: FocusHandle,
 }
 
+fn frequency_editor(
+    value: f64,
+    positive: bool,
+    ids: (&'static str, &'static str),
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) -> Entity<NumericEditor> {
+    cx.new(|cx| {
+        NumericEditor::new(
+            crate::numbers::number(value),
+            numeric_editor::Config {
+                unit: "Hz",
+                step: 1.,
+                minimum: if positive { 0. } else { -f64::MAX },
+                maximum: f64::MAX,
+                minimum_inclusive: !positive,
+                down: ids.0,
+                up: ids.1,
+            },
+            window,
+            cx,
+        )
+    })
+}
+
 impl Editor {
     fn new(request: Request, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let rate_editor = cx.new(|cx| {
-            NumericEditor::new(
-                crate::numbers::number(request.output.sample_rate),
-                numeric_editor::Config {
-                    unit: "Hz",
-                    step: 1.0,
-                    minimum: 0.0,
-                    maximum: f64::MAX,
-                    minimum_inclusive: false,
-                    down: "rate-down",
-                    up: "rate-up",
-                },
-                window,
-                cx,
-            )
-        });
-        let reference_editor = cx.new(|cx| {
-            NumericEditor::new(
-                crate::numbers::number(request.output.center_freq),
-                numeric_editor::Config {
-                    unit: "Hz",
-                    step: 1.0,
-                    minimum: -f64::MAX,
-                    maximum: f64::MAX,
-                    minimum_inclusive: true,
-                    down: "reference-down",
-                    up: "reference-up",
-                },
-                window,
-                cx,
-            )
-        });
+        let rate_editor = frequency_editor(
+            request.output.sample_rate,
+            true,
+            ("rate-down", "rate-up"),
+            window,
+            cx,
+        );
+        let reference_editor = frequency_editor(
+            request.output.center_freq,
+            false,
+            ("reference-down", "reference-up"),
+            window,
+            cx,
+        );
         reference_editor.update(cx, |editor, cx| {
             editor.set_disabled(request.output.is_iq() == request.input.is_iq(), cx)
         });
@@ -235,6 +242,45 @@ impl Editor {
             details: Vec::new(),
             focus_on_open: true,
             scope: cx.focus_handle(),
+        }
+    }
+
+    fn traverse(&self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        numeric_editor::traverse(
+            &self.scope,
+            &[self.rate_editor.clone(), self.reference_editor.clone()],
+            7,
+            forward,
+            window,
+            cx,
+        );
+        cx.notify();
+    }
+
+    fn prepare(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if std::mem::take(&mut self.focus_on_open) {
+            let focus = self.rate.read(cx).focus_handle(cx);
+            window.defer(cx, move |window, cx| window.focus(&focus, cx));
+        }
+        if let Some(owner) = &self.owner
+            && let Ok(Some(rows)) = owner.read_with(cx, |shell, _| {
+                let file = shell.file.as_ref()?;
+                (Some(file.id) == self.document)
+                    .then(|| {
+                        file.state
+                            .document
+                            .file_summary()
+                            .map(|summary| summary.hint.rows)
+                    })
+                    .flatten()
+            })
+        {
+            self.details
+                .retain(|(label, _)| label != "Peak" && label != "RMS");
+            self.details.extend(
+                rows.into_iter()
+                    .filter(|(label, _)| label == "Peak" || label == "RMS"),
+            );
         }
     }
 
@@ -341,30 +387,7 @@ impl Editor {
 
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if std::mem::take(&mut self.focus_on_open) {
-            let focus = self.rate.read(cx).focus_handle(cx);
-            window.defer(cx, move |window, cx| window.focus(&focus, cx));
-        }
-        if let Some(owner) = &self.owner {
-            if let Ok(Some(rows)) = owner.read_with(cx, |shell, _| {
-                let file = shell.file.as_ref()?;
-                (Some(file.id) == self.document)
-                    .then(|| {
-                        file.state
-                            .document
-                            .file_summary()
-                            .map(|summary| summary.hint.rows)
-                    })
-                    .flatten()
-            }) {
-                self.details
-                    .retain(|(label, _)| label != "Peak" && label != "RMS");
-                self.details.extend(
-                    rows.into_iter()
-                        .filter(|(label, _)| label == "Peak" || label == "RMS"),
-                );
-            }
-        }
+        self.prepare(window, cx);
         let summary = self.summary(cx);
         let request = self
             .request(cx)
@@ -375,26 +398,10 @@ impl Render for Editor {
             .key_context("FileInformation")
             .track_focus(&self.scope)
             .on_action(cx.listener(|editor, _: &FocusNext, window, cx| {
-                numeric_editor::traverse(
-                    &editor.scope,
-                    &[editor.rate_editor.clone(), editor.reference_editor.clone()],
-                    7,
-                    true,
-                    window,
-                    cx,
-                );
-                cx.notify();
+                editor.traverse(true, window, cx);
             }))
             .on_action(cx.listener(|editor, _: &FocusPrevious, window, cx| {
-                numeric_editor::traverse(
-                    &editor.scope,
-                    &[editor.rate_editor.clone(), editor.reference_editor.clone()],
-                    7,
-                    false,
-                    window,
-                    cx,
-                );
-                cx.notify();
+                editor.traverse(false, window, cx);
             }))
             .on_action(|_: &Confirm, _, _| {})
             .flex()
