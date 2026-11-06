@@ -484,7 +484,7 @@ impl Document {
             })
             .collect::<Vec<_>>();
         rows.push((
-            if meta.is_iq() { "I/Q pairs" } else { "Samples" }.into(),
+            "Total samples".into(),
             group_integer(&meta.len_samples.to_string()),
         ));
         rows.push((

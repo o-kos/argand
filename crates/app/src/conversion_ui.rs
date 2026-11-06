@@ -1,5 +1,6 @@
 //! File information, conversion draft, and the lifetime of unsaved conversion results.
 
+use super::numeric_editor::{self, NumericEditor};
 use super::settings_ui::editor::{self as presentation, Name};
 use super::*;
 use crate::conversion::{Converted, Level, Request};
@@ -64,6 +65,7 @@ pub(super) struct Converting {
     document: u64,
     version: u64,
     name: String,
+    output_is_iq: bool,
     container: argand_io::write::Container,
     backing: Arc<crate::scratch::Scratch>,
 }
@@ -82,6 +84,20 @@ fn kind_label(token: &str) -> String {
     format!("{domain} · {format}")
 }
 
+fn clipping_notice(count: u64, iq: bool) -> Option<String> {
+    (count > 0).then(|| {
+        let counted = if iq {
+            "I/Q component values (I and Q counted separately)"
+        } else {
+            "samples"
+        };
+        format!(
+            "Conversion clipped {} {counted}",
+            crate::numbers::number(count)
+        )
+    })
+}
+
 fn converted_name(name: &str, container: argand_io::write::Container) -> String {
     let stem = std::path::Path::new(name)
         .file_stem()
@@ -97,7 +113,9 @@ fn converted_name(name: &str, container: argand_io::write::Container) -> String 
 struct Editor {
     request: Request,
     rate: Entity<InputState>,
+    rate_editor: Entity<NumericEditor>,
     reference: Entity<InputState>,
+    reference_editor: Entity<NumericEditor>,
     container: Entity<SelectState<Vec<Name>>>,
     container_widths: Vec<Pixels>,
     kind: Entity<SelectState<Vec<Name>>>,
@@ -108,20 +126,45 @@ struct Editor {
     version: u64,
     details: Vec<(String, String)>,
     focus_on_open: bool,
+    scope: FocusHandle,
 }
 
 impl Editor {
     fn new(request: Request, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let rate = presentation::numeric_input(
-            crate::numbers::number(request.output.sample_rate),
-            window,
-            cx,
-        );
-        let reference = presentation::numeric_input(
-            crate::numbers::number(request.output.center_freq),
-            window,
-            cx,
-        );
+        let rate_editor = cx.new(|cx| {
+            NumericEditor::new(
+                crate::numbers::number(request.output.sample_rate),
+                numeric_editor::Config {
+                    unit: "Hz",
+                    step: 1.0,
+                    minimum: 0.0,
+                    maximum: f64::MAX,
+                    minimum_inclusive: false,
+                    down: "rate-down",
+                    up: "rate-up",
+                },
+                window,
+                cx,
+            )
+        });
+        let reference_editor = cx.new(|cx| {
+            NumericEditor::new(
+                crate::numbers::number(request.output.center_freq),
+                numeric_editor::Config {
+                    unit: "Hz",
+                    step: 1.0,
+                    minimum: -f64::MAX,
+                    maximum: f64::MAX,
+                    minimum_inclusive: true,
+                    down: "reference-down",
+                    up: "reference-up",
+                },
+                window,
+                cx,
+            )
+        });
+        let rate = rate_editor.read(cx).input.clone();
+        let reference = reference_editor.read(cx).input.clone();
         let kinds: Vec<String> = argand_core::SAMPLE_TYPE_TOKENS
             .iter()
             .map(|s| kind_label(s))
@@ -151,8 +194,13 @@ impl Editor {
             )
         });
         let subscriptions = vec![
-            presentation::numeric_events(&rate, window, cx, |_, _, _| true),
-            presentation::numeric_events(&reference, window, cx, |_, _, _| true),
+            cx.subscribe(&rate_editor, |_, _, _: &numeric_editor::Changed, cx| {
+                cx.notify()
+            }),
+            cx.subscribe(
+                &reference_editor,
+                |_, _, _: &numeric_editor::Changed, cx| cx.notify(),
+            ),
             cx.subscribe(&container, |_, _, _: &SelectEvent<Vec<Name>>, cx| {
                 cx.notify()
             }),
@@ -163,7 +211,9 @@ impl Editor {
             container,
             container_widths,
             rate,
+            rate_editor,
             reference,
+            reference_editor,
             kind,
             kind_widths,
             _subscriptions: subscriptions,
@@ -172,6 +222,7 @@ impl Editor {
             version: 0,
             details: Vec::new(),
             focus_on_open: true,
+            scope: cx.focus_handle(),
         }
     }
 
@@ -249,19 +300,6 @@ impl Editor {
     }
 }
 
-fn frequency_control(
-    state: &Entity<InputState>,
-    window: &Window,
-    cx: &gpui_kit::App,
-) -> impl IntoElement {
-    let focused = state.read(cx).focus_handle(cx).is_focused(window);
-    let unit = presentation::number_width("Hz", window, cx);
-    let available = (presentation::value_column_width(window) - unit - px(4.)).max(px(0.));
-    let width =
-        presentation::number_width(state.read(cx).value().as_ref(), window, cx).min(available);
-    presentation::number_control(state, width, "Hz", focused, cx)
-}
-
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if std::mem::take(&mut self.focus_on_open) {
@@ -276,8 +314,15 @@ impl Render for Editor {
         div()
             .id("file-information-panel")
             .key_context("FileInformation")
-            .on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
-            .on_action(|_: &FocusPrevious, window, cx| window.focus_prev(cx))
+            .track_focus(&self.scope)
+            .on_action(cx.listener(|editor, _: &FocusNext, window, cx| {
+                numeric_editor::traverse(&editor.scope, 7, true, window, cx);
+                cx.notify();
+            }))
+            .on_action(cx.listener(|editor, _: &FocusPrevious, window, cx| {
+                numeric_editor::traverse(&editor.scope, 7, false, window, cx);
+                cx.notify();
+            }))
             .on_action(|_: &Confirm, _, _| {})
             .flex()
             .flex_col()
@@ -308,12 +353,12 @@ impl Render for Editor {
             .child(div().border_t_1().border_color(cx.theme().border))
             .child(presentation::row(
                 "Sample rate",
-                frequency_control(&self.rate, window, cx),
+                self.rate_editor.clone(),
                 cx,
             ))
             .child(presentation::row(
                 "Reference",
-                frequency_control(&self.reference, window, cx),
+                self.reference_editor.clone(),
                 cx,
             ))
             .child(presentation::row(
@@ -378,7 +423,6 @@ fn panel(
             });
             if file.unsaved.is_some() {
                 details.retain(|(label, _)| label != "File size");
-                details.insert(0, ("Document".into(), "Unsaved".into()));
             }
             Some((request, file.id, file.editing.as_ref()?.version(), details))
         })
@@ -479,6 +523,7 @@ impl Shell {
         let document = file.id;
         let version = editing.version();
         let container = request.container;
+        let output_is_iq = request.output.is_iq();
         let name = converted_name(
             &file.unsaved.as_ref().map_or_else(
                 || file.state.document.origin().name(),
@@ -519,6 +564,7 @@ impl Shell {
             document,
             version,
             name,
+            output_is_iq,
             container,
             backing,
         });
@@ -549,11 +595,7 @@ impl Shell {
                         {
                             return;
                         }
-                        self.conversion.result = Some(format!(
-                            "Converted — gain {:.3} dB, {} clipped scalar values",
-                            20.0 * result.gain.log10(),
-                            result.clipped
-                        ));
+                        self.conversion.result = clipping_notice(result.clipped, job.output_is_iq);
                         let mut origin = Origin::new(result.saved.path);
                         origin.hints.normalize = Some(argand_io::Normalize::None);
                         self.prepare_conversion_reader(job, origin, window, cx);
@@ -683,7 +725,7 @@ impl Shell {
                 .flex()
                 .items_center()
                 .gap_1()
-                .text_sm()
+                .text_xs()
                 .min_w_0()
                 .max_w(px(420.))
                 .tooltip({

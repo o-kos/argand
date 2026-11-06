@@ -61,6 +61,8 @@ mod plot_view;
 #[path = "replace_ui.rs"]
 mod replace_ui;
 
+#[path = "numeric_editor.rs"]
+mod numeric_editor;
 #[path = "saving_ui.rs"]
 mod saving_ui;
 #[path = "selection_gestures.rs"]
@@ -1881,7 +1883,16 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
-            .children(self.status_panel_backdrop(hint_area, cx))
+            .children(self.status_panel_backdrop(
+                gpui_kit::Bounds::new(
+                    hint_area.origin,
+                    gpui_kit::size(
+                        hint_area.size.width,
+                        (hint_area.size.height - window.rem_size() * 1.5).max(px(0.)),
+                    ),
+                ),
+                cx,
+            ))
             .children(hints::backdrop(&self.selection_hint, hint_area, cx))
             .children(Root::render_dialog_layer(window, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))

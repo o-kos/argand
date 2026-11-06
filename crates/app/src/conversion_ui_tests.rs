@@ -87,6 +87,20 @@ fn repeated_conversion_names_do_not_accumulate_suffixes() {
     );
 }
 
+#[test]
+fn conversion_only_reports_actual_clipping_with_channel_count_semantics() {
+    assert_eq!(clipping_notice(0, false), None);
+    assert_eq!(clipping_notice(0, true), None);
+    assert_eq!(
+        clipping_notice(2, false).as_deref(),
+        Some("Conversion clipped 2 samples")
+    );
+    assert_eq!(
+        clipping_notice(2, true).as_deref(),
+        Some("Conversion clipped 2 I/Q component values (I and Q counted separately)")
+    );
+}
+
 #[gpui_kit::test]
 fn only_valid_changed_targets_enable_conversion(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);
@@ -722,6 +736,7 @@ fn stage_reader(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>)
         document: file.id,
         version: shell.editing().unwrap().version(),
         name: "staged-converted.wav".into(),
+        output_is_iq: false,
         container: argand_io::write::Container::Wave,
         backing: Arc::new(crate::scratch::Scratch::new(path.clone())),
     };
@@ -895,6 +910,120 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
     frame(cx);
     assert_property_panels(cx, &shell, true, false);
     newer_open_supersedes_queued_file_command(cx, &shell);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[gpui_kit::test]
+fn pointer_hover_crosses_adjacent_status_triggers_above_the_plot_backdrop(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let path = std::env::temp_dir().join(format!("argand-panel-hover-{}.wav", std::process::id()));
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path.clone()), window, cx)
+    });
+    wait_until(cx, &shell, "hover source", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described())
+    });
+    frame(cx);
+    let file = cx.update(|window, _| window.find("file-information").bounds().center());
+    let analysis = cx.update(|window, _| window.find("analysis-settings").bounds().center());
+    for (point, file_open, analysis_open) in [
+        (file, true, false),
+        (analysis, false, true),
+        (file, true, false),
+    ] {
+        // The production rehover guard uses wall time, whereas the hover timer uses the executor.
+        std::thread::sleep(std::time::Duration::from_millis(450));
+        cx.simulate_mouse_move(point, None, gpui_kit::Modifiers::default());
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        frame(cx);
+        assert_property_panels(cx, &shell, file_open, analysis_open);
+    }
+    let plot = point(px(500.), px(400.));
+    cx.simulate_mouse_down(plot, MouseButton::Left, gpui_kit::Modifiers::default());
+    cx.simulate_mouse_up(plot, MouseButton::Left, gpui_kit::Modifiers::default());
+    frame(cx);
+    assert_property_panels(cx, &shell, false, false);
+    shell.read_with(cx, |shell, _| {
+        assert!(
+            shell.selection.is_none(),
+            "the backdrop consumed the plot click"
+        )
+    });
+    std::fs::remove_file(path).unwrap();
+}
+
+#[gpui_kit::test]
+fn shared_frequency_editor_steps_drafts_and_tab_visits_each_value_once(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let path =
+        std::env::temp_dir().join(format!("argand-numeric-draft-{}.wav", std::process::id()));
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path.clone()), window, cx)
+    });
+    wait_until(cx, &shell, "numeric source", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described())
+    });
+    cx.update(|window, _| window.activate_window());
+    cx.simulate_keystrokes("f11");
+    frame(cx);
+    let editor = shell.read_with(cx, |shell, cx| {
+        shell
+            .conversion
+            .hint
+            .read(cx)
+            .view()
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap()
+    });
+    cx.simulate_keystrokes("up");
+    frame(cx);
+    editor.read_with(cx, |editor, cx| {
+        assert_eq!(editor.request(cx).unwrap().output.sample_rate, 24_001.)
+    });
+    cx.simulate_keystrokes("tab");
+    frame(cx);
+    cx.update(|window, cx| {
+        assert!(
+            editor
+                .read(cx)
+                .reference
+                .read(cx)
+                .focus_handle(cx)
+                .is_focused(window)
+        )
+    });
+    cx.simulate_keystrokes("down");
+    frame(cx);
+    editor.read_with(cx, |editor, cx| {
+        assert_eq!(editor.request(cx).unwrap().output.center_freq, -1.)
+    });
+    cx.simulate_keystrokes("shift-tab");
+    frame(cx);
+    cx.update(|window, cx| {
+        assert!(
+            editor
+                .read(cx)
+                .rate
+                .read(cx)
+                .focus_handle(cx)
+                .is_focused(window)
+        )
+    });
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.editing().unwrap().file().meta.sample_rate, 24_000.);
+        assert_eq!(shell.editing().unwrap().file().meta.center_freq, 0.);
+        assert!(shell.conversion.running.is_none());
+    });
     std::fs::remove_file(path).unwrap();
 }
 

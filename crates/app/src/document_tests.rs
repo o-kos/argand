@@ -403,7 +403,7 @@ fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
     document.apply(Update::Opened(meta(), FileInfo { bytes: Some(192044), sample_units: Some((3276.8, 0.0)), stamp: None }));
     let field = document.file_summary().unwrap();
     assert_eq!(field.value, "wav · iq i16 · 24 kHz · 2s");
-    assert!(field.hint.value.contains("I/Q pairs: 48,000"));
+    assert!(field.hint.value.contains("Total samples: 48,000"));
     assert!(field.hint.value.contains("File size: 187.54 KiB · 192,044 B"));
     assert!(field.hint.value.contains("available after full-capture waveform scan"));
     let mut result = analysis(2);
