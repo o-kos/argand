@@ -1224,9 +1224,10 @@ verified limitation in the locked 0.6.6 sources in `docs/ui/124-inventory.md`.
 ## Capture conversion (#189)
 
 `conversion.rs` converts a whole immutable edited-capture snapshot into a new WAVE/RF64;
-selection is ignored. `conversion_ui.rs` composes a standard Dialog, Input, Select and
-Button, with explicit output sample rate/reference fields which a domain change never
-rewrites. `argand_dsp::convert::ConversionPlan` intersects native input-local bounds
+selection is ignored. `conversion_ui.rs` composes the file information status Button,
+PinnedHint panel, Input, Select and Convert Button. Edit > Convert to... and F11 open
+the same panel; explicit output sample rate/reference draft fields are never rewritten
+by a domain change. Drafts do not mutate the current document; Escape discards them. `argand_dsp::convert::ConversionPlan` intersects native input-local bounds
 with output bounds shifted by the reference difference, preserving exact native
 endpoints at large physical references. Reconstruction width is bounded by both
 declared domain bandwidths; the final oscillator subtracts that same reference delta.
@@ -1248,8 +1249,13 @@ shares FloatWave's safe staging/publication and writes all ten supported types, 
 integers to nearest with ties away from zero, saturating without dither and counting
 clipped scalar values. Floats keep finite overscale values; nonfinite data fails.
 Sources are stamped before/after reads and after final sync, before publication.
-Successful conversion does not mark the input saved; opening the result uses the
-ordinary unsaved-document prompt, and cancelling that transition retains both the
-current document and the created file. The result reopens with normalization disabled
-so f16x8 arbitrary units are not automatically rescaled. Scratch ownership lasts until
-the job ends; opening another capture cancels conversion.
+Conversion writes only to private temporary storage and asks for no user destination.
+Success replaces the current edited capture without an unsaved-input prompt or Undo;
+error/cancellation leaves it intact. `OpenFile::unsaved` holds the generated display
+name separately from the backing path; `History::unsaved` starts dirty without an Undo
+version. The first Save asks for a destination, then successful rebind clears unsaved
+identity. Temporary paths never enter Recent. `Source::backing` retains encoded
+scratch separately from computed FloatWave samples, including clipboard references,
+so it is never encoded twice. Input/output scratch ownership lasts until the job ends;
+opening another capture cancels conversion. The result opens with normalization
+disabled so f16x8 arbitrary units are not automatically rescaled.

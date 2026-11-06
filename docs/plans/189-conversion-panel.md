@@ -33,13 +33,13 @@ references as required.
 
 ## Implementation
 
-- [ ] Separate unsaved document identity/display name/save destination from backing.
-- [ ] Adopt conversion scratch result atomically after successful preparation;
+- [x] Separate unsaved document identity/display name/save destination from backing.
+- [x] Adopt conversion scratch result atomically after successful preparation;
       preserve input on cancellation, failure and stale completion.
-- [ ] Compose the standard file information button/panel and existing inputs,
+- [x] Compose the standard file information button/panel and existing inputs,
       selects and button; support hover, retained edits and Escape/list ordering.
-- [ ] Route Edit > Convert to... and F11 to that panel; remove old File row/dialog.
-- [ ] Cover dirty result, first Save, repeat conversion, scratch retention,
+- [x] Route Edit > Convert to... and F11 to that panel; remove old File row/dialog.
+- [x] Cover dirty result, first Save, repeat conversion, scratch retention,
       unchanged source, cancel/error and draft/frequency invariants.
 - [ ] Complete fmt, Clippy, workspace tests, current release build and independent
       review; update active architecture documentation.
@@ -59,3 +59,11 @@ Native input emulation, XTest/libei and RemoteDesktop portals are prohibited.
 Any visual inspection uses a temporary diagnostic launcher with unchanged panel
 rendering on the second monitor and window-only capture; distinguish this from
 release/native interaction acceptance. No unrelated FFT spacing fix is included.
+
+## Focused validation
+
+Six focused conversion/panel tests pass: explicit frequencies and band validation,
+changed/Normalize enable state, repeat naming, edited capture -> unsaved -> repeat ->
+first Save lifecycle, cancelled/failed worker preservation, and standard Root/Popover
+F11/Input/Select Escape ordering with draft isolation. Additional history and encoded
+backing clipboard-retention regressions accompany the full local gate.

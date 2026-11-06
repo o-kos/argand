@@ -115,8 +115,19 @@ impl Shell {
         let span = if selection_only { self.selection } else { None };
         let output = editing.file();
         let as_wave = argand_io::write::writes_as_wave(&output.meta, &output.hints);
-        let name = saving::suggested_name(&output.meta, as_wave, span);
-        let directory = saving::directory(&output.meta.source);
+        let name = file
+            .unsaved
+            .as_ref()
+            .filter(|_| !selection_only)
+            .map_or_else(
+                || saving::suggested_name(&output.meta, as_wave, span),
+                |unsaved| unsaved.name.clone(),
+            );
+        let directory = if file.unsaved.is_some() {
+            std::path::PathBuf::new()
+        } else {
+            saving::directory(&output.meta.source)
+        };
         let Some(mut request) = editing.save_request(span, std::path::PathBuf::new()) else {
             return;
         };

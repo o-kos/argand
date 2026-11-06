@@ -117,6 +117,9 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([
         KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
+        KeyBinding::new("f11", ConvertCapture, None),
+        KeyBinding::new("tab", FocusNext, Some("FileInformation")),
+        KeyBinding::new("shift-tab", FocusPrevious, Some("FileInformation")),
         KeyBinding::new("tab", FocusNext, Some("Shell")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
         KeyBinding::new(
@@ -326,7 +329,13 @@ fn to_bounds(geometry: Geometry) -> Bounds<Pixels> {
 /// sender in [`Analyst`] and the update receiver inside the task are gone, so
 /// keeping them in one struct is what makes closing a document a single drop
 /// rather than three that have to happen in the right order.
+pub(super) struct UnsavedDocument {
+    name: String,
+    backing: Arc<crate::scratch::Scratch>,
+}
+
 struct OpenFile {
+    unsaved: Option<UnsavedDocument>,
     /// Which document this is among those the window has opened.
     id: u64,
     state: crate::open_file::OpenFileState,
@@ -570,7 +579,7 @@ impl Shell {
             saving: None,
             save_notice: None,
             save_updates: None,
-            conversion: conversion_ui::State::default(),
+            conversion: conversion_ui::State::new(cx),
             suppressing: None,
             suppress_updates: None,
             levelling: None,
@@ -728,6 +737,17 @@ impl Shell {
         if !self.settle_unsaved(editing_ui::Pending::Open(origin.clone()), window, cx) {
             return;
         }
+        self.open_document(origin, None, window, cx);
+    }
+
+    /// Adopt a fully written document; conversion bypasses the old document's save prompt.
+    fn open_document(
+        &mut self,
+        origin: Origin,
+        unsaved: Option<UnsavedDocument>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.dismiss_application_menu(window, cx);
         self.close_hints(cx);
         // The old plot goes with its document, so focus must not stay on it.
@@ -774,6 +794,7 @@ impl Shell {
         // on holding a mapped file and a core.
         self.opened_documents += 1;
         self.file = Some(OpenFile {
+            unsaved,
             id: self.opened_documents,
             state: crate::open_file::OpenFileState::new(Document::opening(origin), analyst),
             _updates: pump,
@@ -828,6 +849,13 @@ impl Shell {
 
     /// Put the opened file first in history, hide it from Recent, and save the session.
     pub(super) fn remember_file(&mut self, origin: &Origin) {
+        if self
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+        {
+            return;
+        }
         self.session.remember(&origin.path, &origin.hints);
         self.recent_files.set_current(&origin.path);
         self.recent_files.refresh(&self.session.recent);
@@ -1373,11 +1401,15 @@ impl Shell {
         let Some(file) = self.file.as_ref() else {
             return String::new();
         };
-        let name = file.state.document.origin().name();
-        if file
-            .editing
-            .as_ref()
-            .is_some_and(crate::editing::Editing::is_dirty)
+        let name = file.unsaved.as_ref().map_or_else(
+            || file.state.document.origin().name(),
+            |unsaved| unsaved.name.clone(),
+        );
+        if file.unsaved.is_some()
+            || file
+                .editing
+                .as_ref()
+                .is_some_and(crate::editing::Editing::is_dirty)
         {
             format!("• {name}")
         } else {
@@ -1817,6 +1849,7 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
+            .children(hints::backdrop(&self.conversion.hint, hint_area, cx))
             .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
             .children(hints::backdrop(&self.selection_hint, hint_area, cx))
             .children(Root::render_dialog_layer(window, cx))

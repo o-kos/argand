@@ -162,6 +162,9 @@ impl Shell {
     pub(super) fn close_hints(&mut self, cx: &mut Context<Self>) {
         self.close_analysis_hint(cx);
         self.close_selection_hint(cx);
+        self.conversion
+            .hint
+            .update(cx, |hint, cx| hint.close(false, cx));
     }
 
     /// Close the analysis hint, keeping what was changed while it was open.
@@ -277,21 +280,7 @@ impl Shell {
             .text_xs()
             .text_color(cx.theme().muted_foreground)
             .when_some(file, |bar, field| {
-                bar.child(
-                    div()
-                        .id("file-summary")
-                        .px_2()
-                        .min_w_0()
-                        .flex_shrink(1.)
-                        .tooltip(move |_, cx| metadata_tooltip(field.hint.clone(), cx))
-                        .child(
-                            div()
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .child(field.value),
-                        ),
-                )
+                bar.child(self.file_control(field.value, cx))
             })
             .when(!has_file, |bar| {
                 bar.child(div().px_2().whitespace_nowrap().child("No signal loaded"))
@@ -504,6 +493,9 @@ impl Shell {
         if self.file.is_none() {
             return;
         }
+        self.conversion
+            .hint
+            .update(cx, |hint, cx| hint.close(false, cx));
         let hint = self.analysis_hint.clone();
         if hint.read(cx).is_open() {
             hint.update(cx, |hint, cx| hint.close(false, cx));

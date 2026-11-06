@@ -139,7 +139,10 @@ impl Shell {
         if let Some(clipboard) = &mut self.clipboard {
             clipboard.adopt(&editing_source(&source));
         }
-        let mut editing = Editing::new(meta, hints);
+        let mut editing = match &file.unsaved {
+            Some(unsaved) => Editing::unsaved(meta, hints, unsaved.backing.clone()),
+            None => Editing::new(meta, hints),
+        };
         editing.describe_format(stamp, None);
         editing.describe_units(file.state.document.sample_units());
         file.editing = Some(editing);
@@ -394,13 +397,23 @@ impl Shell {
         if self.refuse_while_replacing(cx) {
             return false;
         }
-        if !self.editing().is_some_and(Editing::is_dirty) {
+        if !self
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+            && !self.editing().is_some_and(Editing::is_dirty)
+        {
             return true;
         }
         let name = self
             .file
             .as_ref()
-            .map(|file| file.state.document.origin().name())
+            .map(|file| {
+                file.unsaved.as_ref().map_or_else(
+                    || file.state.document.origin().name(),
+                    |unsaved| unsaved.name.clone(),
+                )
+            })
             .unwrap_or_default();
         // The writer refuses a changed source, so Save is not offered for one.
         let answer = Self::ask_unsaved(&name, !self.capture_changed(), window, cx);

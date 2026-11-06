@@ -82,6 +82,13 @@ impl Shell {
             return Err(Unsavable::Unchanged);
         };
         let file = editing.file();
+        if self
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+        {
+            return Err(Unsavable::Unchecked);
+        }
         if !editing.is_dirty() {
             Err(Unsavable::Unchanged)
         } else if self.saving.is_some() || self.computing() {
@@ -122,6 +129,14 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+        {
+            self.save_as_then(false, then, window, cx);
+            return;
+        }
         if let Err(why) = self.can_save_over() {
             self.save_notice = Some(saving_ui::Notice::Failed(
                 "Cannot save",
@@ -371,8 +386,16 @@ impl Shell {
                 // The samples now come from the saved file, not from the files that changed.
                 if let Some(file) = self.file.as_mut() {
                     file.state.document.clear_changed();
+                    file.unsaved = None;
                 }
                 self.start_editing(cx);
+                if let Some(origin) = self
+                    .file
+                    .as_ref()
+                    .map(|file| file.state.document.origin().clone())
+                {
+                    self.remember_file(&origin);
+                }
                 let same = self
                     .file
                     .as_ref()

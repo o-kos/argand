@@ -470,3 +470,23 @@ fn a_copy_under_a_real_inversion_cannot_follow_its_samples_to_the_other_parity()
     let written = document.written_source();
     assert!(odd.moved_onto(document.file(), document.capture(), &written).is_some());
 }
+
+#[test]
+fn encoded_unsaved_backing_is_not_reencoded_as_computed_float_and_survives_copy() {
+    let dir = scratch_dir("unsaved-backing");
+    let path = dir.join("encoded.wav");
+    std::fs::write(&path, b"encoded integer samples").unwrap();
+    let backing = Arc::new(Scratch::new(path.clone()));
+    let mut document = Editing::unsaved(meta(&path.to_string_lossy(), 10, 8000.), OpenHints::default(), backing);
+    document.describe_file(argand_io::write::SourceStamp::of(&path).ok(), None);
+    document.describe_units(Some((32768., 0.)));
+    assert!(document.is_dirty());
+    assert!(!document.can_undo());
+    assert!(document.source_files()[0].as_ref().unwrap().encoding.is_none());
+    let copied = document.copy(span(0, 10));
+    drop(document);
+    assert!(path.exists(), "clipboard retains encoded scratch backing");
+    drop(copied);
+    assert!(!path.exists());
+    std::fs::remove_dir_all(dir).unwrap();
+}

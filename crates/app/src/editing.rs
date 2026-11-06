@@ -26,6 +26,8 @@ pub struct Source {
     pub storage: Option<Storage>,
     /// The scratch file of computed samples this is, none for a file of the user's.
     pub computed: Option<Arc<Scratch>>,
+    /// Already encoded temporary backing, retained independently of computed float samples.
+    pub backing: Option<Arc<Scratch>>,
 }
 
 impl Source {
@@ -36,6 +38,7 @@ impl Source {
             stamp: None,
             storage: None,
             computed: None,
+            backing: None,
         }
     }
 
@@ -47,6 +50,7 @@ impl Source {
             stamp,
             storage: None,
             computed: Some(scratch),
+            backing: None,
         }
     }
 
@@ -278,6 +282,14 @@ impl Editing {
         }
     }
 
+    /// Start an unsaved document from an already encoded temporary file.
+    pub fn unsaved(meta: SignalMeta, hints: OpenHints, backing: Arc<Scratch>) -> Self {
+        let mut editing = Self::new(meta, hints);
+        editing.history = History::unsaved(editing.capture().clone(), Selection::default());
+        editing.sources[0].backing = Some(backing);
+        editing
+    }
+
     pub fn capture(&self) -> &Capture {
         self.history.capture()
     }
@@ -331,7 +343,10 @@ impl Editing {
         self.capture()
             .sources()
             .iter()
-            .filter_map(|id| self.sources[id.0 as usize].computed.clone())
+            .flat_map(|id| {
+                let source = &self.sources[id.0 as usize];
+                source.computed.iter().chain(source.backing.iter()).cloned()
+            })
             .collect()
     }
 
@@ -531,6 +546,7 @@ impl Editing {
             stamp: None,
             storage: file.storage,
             computed: None,
+            backing: None,
         }
     }
 
