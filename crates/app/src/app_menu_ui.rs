@@ -80,7 +80,12 @@ impl Shell {
         let recent = app_menu::file_items(self.recent_entries());
         let enabled = FileCommands {
             settings: self.file.is_some(),
-            save_over: self.can_save_over().is_ok(),
+            save_over: self.can_save_over().is_ok()
+                || (self
+                    .file
+                    .as_ref()
+                    .is_some_and(|file| file.unsaved.is_some())
+                    && self.can_save(false)),
             save: self.can_save(false),
             save_selection: self.can_save(true),
         };
@@ -160,11 +165,14 @@ impl Shell {
     ) -> Entity<PopupMenu> {
         let can = self.edit_commands_available();
         let select = self.entry_scale().is_some();
+        let convert = self.can_save(false) && !self.capture_changed();
         PopupMenu::build(window, cx, move |menu, _, _| {
             let row = |label: &str, action: Box<dyn Action>, enabled: bool| {
                 action_row(label, action, false, focus.clone()).disabled(!enabled)
             };
             menu.action_context(focus.clone())
+                .item(row("Convert to...", Box::new(ConvertCapture), convert))
+                .item(PopupMenuItem::separator())
                 .item(row("Undo", Box::new(editing_ui::Undo), can.undo))
                 .item(row("Redo", Box::new(editing_ui::Redo), can.redo))
                 .item(PopupMenuItem::separator())

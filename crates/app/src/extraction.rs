@@ -60,6 +60,20 @@ impl ExtractRequest {
             .map_err(|error| self.refused(&error))
     }
 
+    pub fn output_meta(&self) -> Result<SignalMeta, WriteError> {
+        let mut meta = self.meta.clone();
+        meta.sample_rate = output_rate(self);
+        meta.center_freq = 0.0;
+        let samples = (self.span.count() as f64 * meta.sample_rate / self.meta.sample_rate).ceil();
+        if !samples.is_finite() || samples >= (1u64 << 52) as f64 {
+            return Err(WriteError::OutOfRange);
+        }
+        meta.len_samples = samples as u64;
+        meta.sample_type.format = argand_core::SampleFormat::F32;
+        meta.container = "wav";
+        Ok(meta)
+    }
+
     /// The plan the band is extracted by, its filter built.
     pub fn plan(&self) -> Result<ExtractPlan, WriteError> {
         let (low, high) = self.edges();
@@ -171,12 +185,9 @@ impl Output {
         span: SampleSpan,
         leading: u64,
     ) -> Result<Self, WriteError> {
-        let rate = output_rate(request);
-        let samples = (request.span.count() as f64 * rate / request.meta.sample_rate).ceil();
-        if !samples.is_finite() || samples >= (1u64 << 52) as f64 {
-            return Err(WriteError::OutOfRange);
-        }
-        let samples = samples as u64;
+        let meta = request.output_meta()?;
+        let rate = meta.sample_rate;
+        let samples = meta.len_samples;
         let offset = request.span.start() - span.start() + leading;
         let stream = argand_dsp::resample::Stream::new(
             resampling,
@@ -186,9 +197,6 @@ impl Output {
             },
         )
         .map_err(|error| request.refused(&error))?;
-        let mut meta = request.meta.clone();
-        meta.sample_rate = rate;
-        meta.center_freq = 0.0;
         let file = FloatWave::create(FloatWaveRequest {
             meta,
             samples,

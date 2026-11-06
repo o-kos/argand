@@ -375,75 +375,33 @@ fn only_ready_updates_leave_the_document_ready() {
 }
 
 #[test]
-fn completed_minimap_extrema_survive_navigation_and_no_waveform_spectral_results() {
+fn current_metrics_survive_spectral_navigation_and_replace_pending_values() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()));
-    let mut envelope = argand_core::WaveformEnvelope::new(2, 2);
-    envelope.min = vec![-0.8, -0.5, -0.3, -0.4];
-    envelope.max = vec![0.7, 0.6, 0.2, 0.9];
-    let mut snapshot = crate::minimap::Snapshot { envelope, full_scale: 0.9, complete: false, samples: 2 };
-    document.minimap_ready(&snapshot);
-    assert!(document.sample_extrema.is_none());
-    snapshot.complete = true;
-    document.minimap_ready(&snapshot);
-    let extrema = Some(vec![(-0.8, 0.7), (-0.5, 0.9)]);
-    assert_eq!(document.sample_extrema, extrema);
-    for range in [argand_core::SampleRange::new(1000, 2048), argand_core::SampleRange::new(0, 48000)] {
-        document.requested_range(range);
-        document.apply(Update::Ready { analysis: analysis(32), elapsed: Duration::ZERO });
-        assert_eq!(document.sample_extrema, extrema);
-    }
-    assert!(opening().sample_extrema.is_none());
-}
-
-#[test]
-fn file_hint_combines_exact_counts_bytes_and_gain_corrected_iq_extrema() {
-    let mut document = opening();
-    document.origin.hints.gain_db = 20.0;
-    document.apply(Update::Opened(meta(), FileInfo { bytes: Some(192044), sample_units: Some((3276.8, 0.0)), stamp: None }));
-    let field = document.file_summary().unwrap();
-    assert_eq!(field.value, "wav · iq i16 · 24 kHz · 2s");
-    assert!(field.hint.value.contains("I/Q pairs: 48,000"));
-    assert!(field.hint.value.contains("File size: 187.54 KiB · 192,044 B"));
-    assert!(field.hint.value.contains("available after full-capture waveform scan"));
-    let mut result = analysis(2);
-    result.db.t1 = 2.0;
-    result.waveform = Some(argand_core::WaveformEnvelope { columns: 2, channels: 2,
-        min: vec![-5.0, -2.5, 0.0, 0.0], max: vec![1.25, 0.625, 0.0, 0.0], t0: 0.0, t1: 2.0 });
-    document.apply(Update::Ready { analysis: result, elapsed: Duration::from_secs(1) });
+    document.apply(Update::Opened(meta(), FileInfo { bytes: Some(192044), ..FileInfo::default() }));
+    let pending = document.file_summary().unwrap().hint.value;
+    assert!(pending.contains("Peak: Calculating…"));
+    assert!(pending.contains("Total samples: 48,000"));
+    document.set_statistics(Some(Ok(crate::sample_statistics::Metrics { peak: 5., rms: 3. })));
     let hint = document.file_summary().unwrap().hint.value;
-    assert!(hint.contains("I min / max: -16,384 / 4,096"), "{hint}");
-    assert!(hint.contains("Q min / max: -8,192 / 2,048"), "{hint}");
-    let mut zoomed = analysis(2);
-    zoomed.db.t0 = 0.5;
-    document.requested_range(argand_core::SampleRange::new(12_000, 12_000));
-    zoomed.waveform = Some(argand_core::WaveformEnvelope::new(2, 2));
-    document.apply(Update::Ready { analysis: zoomed, elapsed: Duration::from_secs(1) });
-    assert_eq!(document.file_summary().unwrap().hint.value, hint, "a zoom must not replace file-wide extrema");
-}
-
-
-#[test]
-fn file_wide_extrema_use_integer_range_provenance() {
-    let mut document = opening();
-    let total = (1_u64 << 54) + 1;
-    document.apply(Update::Opened(SignalMeta { len_samples: total, ..meta() }, FileInfo::default()));
-    document.requested_range(argand_core::SampleRange::new(0, total - 1));
-    let mut partial = analysis(2);
-    partial.db.t1 = total as f64 / meta().sample_rate;
-    partial.waveform = Some(argand_core::WaveformEnvelope::new(2, 2));
-    document.apply(Update::Ready { analysis: partial, elapsed: Duration::ZERO });
-    assert!(document.sample_extrema.is_none());
+    assert!(hint.contains("Peak: 5"));
+    assert!(hint.contains("RMS: 3"));
+    assert!(!hint.contains("min / max"));
+    document.requested_range(argand_core::SampleRange::new(1000, 2048));
+    document.apply(Update::Ready { analysis: analysis(32), elapsed: Duration::ZERO });
+    assert_eq!(document.file_summary().unwrap().hint.value, hint);
+    document.set_statistics(Some(Err("Unavailable".into())));
+    assert!(document.file_summary().unwrap().hint.value.contains("RMS: Unavailable"));
 }
 
 #[test]
-fn minimap_failure_replaces_pending_extrema_hint() {
+fn minimap_failure_is_reported_separately_from_amplitude_statistics() {
     let mut document = opening();
     document.apply(Update::Opened(meta(), FileInfo::default()));
     document.minimap_failed("test read failure".into());
     let hint = document.file_summary().unwrap().hint.value;
     assert!(hint.contains("Waveform unavailable: test read failure"), "{hint}");
     assert!(!hint.contains("available after"), "{hint}");
+    assert!(hint.contains("Peak: Unavailable"), "{hint}");
 }
 
 impl Document {

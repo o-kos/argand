@@ -42,6 +42,8 @@ mod backdrop;
 #[path = "badge_entry.rs"]
 mod badge_entry;
 
+#[path = "conversion_ui.rs"]
+mod conversion_ui;
 #[path = "disk_change_ui.rs"]
 mod disk_change_ui;
 #[path = "editing_ui.rs"]
@@ -58,6 +60,9 @@ mod plot_ui;
 mod plot_view;
 #[path = "replace_ui.rs"]
 mod replace_ui;
+
+#[path = "numeric_editor.rs"]
+mod numeric_editor;
 #[path = "saving_ui.rs"]
 mod saving_ui;
 #[path = "selection_gestures.rs"]
@@ -66,6 +71,8 @@ mod selection_gestures;
 mod selection_panel;
 #[path = "settings_ui.rs"]
 mod settings_ui;
+#[path = "statistics_ui.rs"]
+mod statistics_ui;
 #[path = "suppression_ui.rs"]
 mod suppression_ui;
 
@@ -93,6 +100,7 @@ actions!(
         Save,
         SaveAs,
         SaveSelectionAs,
+        ConvertCapture,
         EditAnalysis,
         UseRecommendedRange
     ]
@@ -113,6 +121,9 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([
         KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
+        KeyBinding::new("f11", ConvertCapture, None),
+        KeyBinding::new("tab", FocusNext, Some("FileInformation")),
+        KeyBinding::new("shift-tab", FocusPrevious, Some("FileInformation")),
         KeyBinding::new("tab", FocusNext, Some("Shell")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
         KeyBinding::new(
@@ -322,7 +333,14 @@ fn to_bounds(geometry: Geometry) -> Bounds<Pixels> {
 /// sender in [`Analyst`] and the update receiver inside the task are gone, so
 /// keeping them in one struct is what makes closing a document a single drop
 /// rather than three that have to happen in the right order.
+pub(super) struct UnsavedDocument {
+    name: String,
+    container: argand_io::write::Container,
+    backing: Arc<crate::scratch::Scratch>,
+}
+
 struct OpenFile {
+    unsaved: Option<UnsavedDocument>,
     /// Which document this is among those the window has opened.
     id: u64,
     state: crate::open_file::OpenFileState,
@@ -383,6 +401,8 @@ struct Shell {
     settings: Settings,
     /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
+    status_panel: Option<settings_ui::StatusPanel>,
+    status_panel_request: u64,
     /// What the analysis hint opened with, which Escape restores.
     hint_opening: Option<HintOpening>,
     /// The selection panel under the toolbar's selection segments.
@@ -435,6 +455,8 @@ struct Shell {
     saving: Option<saving_ui::Saving>,
     save_notice: Option<saving_ui::Notice>,
     save_updates: Option<Task<()>>,
+    conversion: conversion_ui::State,
+    statistics: statistics_ui::State,
     suppressing: Option<suppression_ui::Suppressing>,
     suppress_updates: Option<Task<()>>,
     levelling: Option<levelling_ui::Levelling>,
@@ -482,6 +504,18 @@ struct Shell {
 }
 
 impl Shell {
+    fn observe_close(window: &mut Window, cx: &mut Context<Self>) {
+        let closing = cx.entity().downgrade();
+        // A close with unsaved edits is refused here and carried out once the question is answered.
+        window.on_window_should_close(cx, move |window, cx| {
+            closing
+                .update(cx, |shell, cx| {
+                    shell.settle_unsaved(editing_ui::Pending::Close, window, cx)
+                })
+                .unwrap_or(true)
+        });
+    }
+
     fn new(
         config: Config,
         writer: Option<Saver>,
@@ -520,7 +554,9 @@ impl Shell {
                 cx,
             )
         });
-        let pinned = cx.subscribe(&analysis_hint, Self::analysis_hint_changed);
+        let pinned = cx.subscribe(&analysis_hint, |shell, _, event, cx| {
+            shell.status_panel_changed(settings_ui::StatusPanel::Analysis, *event, cx);
+        });
         let panel_owner = cx.entity().downgrade();
         let selection_hint = cx.new(|cx| {
             hints::PinnedHint::new(
@@ -529,18 +565,12 @@ impl Shell {
             )
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
-        let closing = cx.entity().downgrade();
-        // A close with unsaved edits is refused here and carried out once the question is answered.
-        window.on_window_should_close(cx, move |window, cx| {
-            closing
-                .update(cx, |shell, cx| {
-                    shell.settle_unsaved(editing_ui::Pending::Close, window, cx)
-                })
-                .unwrap_or(true)
-        });
+        Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
+            status_panel: None,
+            status_panel_request: 0,
             hint_opening: None,
             selection_hint,
             selection_opening: None,
@@ -561,6 +591,8 @@ impl Shell {
             saving: None,
             save_notice: None,
             save_updates: None,
+            conversion: conversion_ui::State::new(cx),
+            statistics: statistics_ui::State::default(),
             suppressing: None,
             suppress_updates: None,
             levelling: None,
@@ -718,6 +750,18 @@ impl Shell {
         if !self.settle_unsaved(editing_ui::Pending::Open(origin.clone()), window, cx) {
             return;
         }
+        self.open_document(origin, None, None, window, cx);
+    }
+
+    /// Adopt a fully written document; conversion bypasses the old document's save prompt.
+    fn open_document(
+        &mut self,
+        origin: Origin,
+        unsaved: Option<UnsavedDocument>,
+        prepared: Option<replace_ui::Readers>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.dismiss_application_menu(window, cx);
         self.close_hints(cx);
         // The old plot goes with its document, so focus must not stay on it.
@@ -738,6 +782,9 @@ impl Shell {
         self.selection = None;
         self.band = None;
         // A band computed for the previous file has nowhere to go.
+        self.conversion.running = None;
+        self.conversion.pending = None;
+        self.conversion.updates = None;
         self.suppressing = None;
         self.suppress_updates = None;
         self.levelling = None;
@@ -746,22 +793,26 @@ impl Shell {
         self.time_scheme = None;
         self.tick_pan = None;
 
+        let ready = prepared.is_some();
         let replace_ui::Readers {
             analyst,
             pump,
             start,
             lease,
             released,
-        } = self.readers(&origin, window, cx);
-        window.on_next_frame(move |window, _| {
-            window.on_next_frame(move |_, _| start.start());
-        });
+        } = prepared.unwrap_or_else(|| self.readers(&origin, window, cx));
+        if !ready {
+            window.on_next_frame(move |window, _| {
+                window.on_next_frame(move |_, _| start.start());
+            });
+        }
 
         // Replacing the previous file drops both ends of its queue, which is
         // what stops its thread: a transform nobody will look at should not go
         // on holding a mapped file and a core.
         self.opened_documents += 1;
         self.file = Some(OpenFile {
+            unsaved,
             id: self.opened_documents,
             state: crate::open_file::OpenFileState::new(Document::opening(origin), analyst),
             _updates: pump,
@@ -816,6 +867,13 @@ impl Shell {
 
     /// Put the opened file first in history, hide it from Recent, and save the session.
     pub(super) fn remember_file(&mut self, origin: &Origin) {
+        if self
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+        {
+            return;
+        }
         self.session.remember(&origin.path, &origin.hints);
         self.recent_files.set_current(&origin.path);
         self.recent_files.refresh(&self.session.recent);
@@ -944,7 +1002,22 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> replace_ui::Readers {
+        self.preparing_readers(origin, None, None, window, cx)
+    }
+
+    fn preparing_readers(
+        &self,
+        origin: &Origin,
+        pending: Option<conversion_ui::ReaderRoute>,
+        backing: Option<Arc<crate::scratch::Scratch>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> replace_ui::Readers {
         let (lease, released) = crate::release::lease();
+        let lease = match backing {
+            Some(backing) => lease.retaining(backing),
+            None => lease,
+        };
         let (analyst, updates, start) = crate::analysis::prepare(
             origin.path.clone(),
             origin.hints.clone(),
@@ -963,7 +1036,12 @@ impl Shell {
                 tracing::trace!(target: "argand::ui_latency",
                     age_us = update.prepared_at.elapsed().as_micros(), "analysis delivery received");
                 if shell
-                    .update_in(cx, |shell, window, cx| shell.receive(update, window, cx))
+                    .update_in(cx, |shell, window, cx| {
+                        match &pending {
+                            Some(route) => shell.receive_conversion_reader(route, update, window, cx),
+                            None => shell.receive(update, window, cx),
+                        }
+                    })
                     .is_err()
                 {
                     // The window has gone; so has anything to tell.
@@ -1028,6 +1106,11 @@ impl Shell {
         let Some(file) = &mut self.file else { return };
         if file.state.document.is_changed() {
             return;
+        }
+        if update.is_err()
+            && let Some(editing) = &mut file.editing
+        {
+            editing.fail_statistics(argand_edit::SourceId(0));
         }
         // The opened file can be edited out of the capture, and then its scan says nothing about it.
         let read = file
@@ -1247,6 +1330,16 @@ impl Shell {
         });
         cx.on_action({
             let shell = shell.clone();
+            move |_: &ConvertCapture, cx| {
+                let shell = shell.clone();
+                cx.defer(move |cx| {
+                    let _ =
+                        shell.update_in(cx, |shell, window, cx| shell.convert_dialog(window, cx));
+                });
+            }
+        });
+        cx.on_action({
+            let shell = shell.clone();
             move |_: &SaveSelectionAs, cx| {
                 let shell = shell.clone();
                 cx.defer(move |cx| {
@@ -1351,11 +1444,15 @@ impl Shell {
         let Some(file) = self.file.as_ref() else {
             return String::new();
         };
-        let name = file.state.document.origin().name();
-        if file
-            .editing
-            .as_ref()
-            .is_some_and(crate::editing::Editing::is_dirty)
+        let name = file.unsaved.as_ref().map_or_else(
+            || file.state.document.origin().name(),
+            |unsaved| unsaved.name.clone(),
+        );
+        if file.unsaved.is_some()
+            || file
+                .editing
+                .as_ref()
+                .is_some_and(crate::editing::Editing::is_dirty)
         {
             format!("• {name}")
         } else {
@@ -1721,6 +1818,7 @@ enum Showing {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.prepare_statistics(window, cx);
         if self.upload_pending {
             self.upload_pending = false;
             self.upload(window, cx);
@@ -1795,7 +1893,16 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
-            .children(hints::backdrop(&self.analysis_hint, hint_area, cx))
+            .children(self.status_panel_backdrop(
+                gpui_kit::Bounds::new(
+                    hint_area.origin,
+                    gpui_kit::size(
+                        hint_area.size.width,
+                        (hint_area.size.height - window.rem_size() * 1.5).max(px(0.)),
+                    ),
+                ),
+                cx,
+            ))
             .children(hints::backdrop(&self.selection_hint, hint_area, cx))
             .children(Root::render_dialog_layer(window, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))

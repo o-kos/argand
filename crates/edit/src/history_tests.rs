@@ -53,3 +53,12 @@ fn the_saved_version_decides_the_unsaved_state() {
     assert!(history.is_dirty());
     assert!(!history.can_redo(), "the saved version is gone and nothing returns to it");
 }
+
+#[test]
+fn a_new_unsaved_document_is_dirty_without_an_undo_version() {
+    let mut history = History::unsaved(Capture::whole(SourceId(0), 32), ());
+    assert!(history.is_dirty());
+    assert!(!history.can_undo());
+    history.mark_saved();
+    assert!(!history.is_dirty());
+}

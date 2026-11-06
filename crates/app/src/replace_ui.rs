@@ -82,6 +82,13 @@ impl Shell {
             return Err(Unsavable::Unchanged);
         };
         let file = editing.file();
+        if self
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+        {
+            return Err(Unsavable::Unchecked);
+        }
         if !editing.is_dirty() {
             Err(Unsavable::Unchanged)
         } else if self.saving.is_some() || self.computing() {
@@ -122,6 +129,14 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+        {
+            self.save_as_then(false, then, window, cx);
+            return;
+        }
         if let Err(why) = self.can_save_over() {
             self.save_notice = Some(saving_ui::Notice::Failed(
                 "Cannot save",
@@ -371,21 +386,27 @@ impl Shell {
                 // The samples now come from the saved file, not from the files that changed.
                 if let Some(file) = self.file.as_mut() {
                     file.state.document.clear_changed();
+                    file.unsaved = None;
                 }
                 self.start_editing(cx);
+                if let Some(origin) = self
+                    .file
+                    .as_ref()
+                    .map(|file| file.state.document.origin().clone())
+                {
+                    self.remember_file(&origin);
+                }
                 let same = self
                     .file
                     .as_ref()
                     .and_then(|file| file.state.document.meta())
                     .is_some_and(|meta| previous.scaled_as(meta));
                 let envelope = previous.minimap().filter(|_| same).map(Arc::new);
-                let complete = envelope.as_ref().is_some_and(|envelope| envelope.complete);
                 if let (Some(editing), Some(envelope)) = (self.editing_mut(), envelope) {
                     editing.set_envelope(argand_edit::SourceId(0), envelope);
                 }
-                if !complete {
-                    self.start_minimap(true, window, cx);
-                }
+                // A reused envelope does not index the newly encoded saved source.
+                self.start_minimap(true, window, cx);
                 // Samples stored on another scale make another picture, drawn before it replaces this one.
                 if !same {
                     self.ask_for_a_picture();
@@ -478,6 +499,16 @@ pub(super) mod tests {
     }
 
     /// Draw and let the real threads work until `done` holds, or fail after a while.
+    pub(in crate::shell) fn wait_for_save_chooser(cx: &mut gpui_kit::VisualTestContext) {
+        for _ in 0..1000 {
+            cx.run_until_parked();
+            if cx.did_prompt_for_new_path() {
+                return;
+            }
+        }
+        panic!("save chooser did not open");
+    }
+
     pub(in crate::shell) fn wait_until(
         cx: &mut gpui_kit::VisualTestContext,
         shell: &Entity<Shell>,
@@ -653,6 +684,7 @@ pub(super) mod tests {
         });
         let target = dir.join("band.wav");
         let chosen = target.clone();
+        wait_for_save_chooser(cx);
         cx.simulate_new_path_selection(move |_| Some(chosen));
         wait_until(cx, &shell, "the band to be saved", |shell| {
             shell.saving.is_none() && matches!(shell.save_notice, Some(saving_ui::Notice::Saved(_)))

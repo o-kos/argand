@@ -5,27 +5,22 @@
 //! a number on Enter, blur or a step, and the hint's own lifecycle decides
 //! whether the previewed settings are kept or restored.
 
+use super::super::numeric_editor::{self, NumericEditor};
 use super::*;
 use gpui_kit::base::actions::Confirm;
+use gpui_kit::component::IconName;
 use gpui_kit::component::button::ButtonCustomVariant;
-use gpui_kit::component::input::{Input, InputEvent, InputState, StepAction};
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
-use gpui_kit::component::{Icon, IconName};
 use gpui_kit::{Entity, Focusable, TestSupportExt};
 use std::cell::Cell;
 use std::rc::Rc;
-use std::time::Duration;
 
 /// The key context of the editor inside the hint.
 const CONTEXT: &str = "AnalysisEditor";
 
-gpui_kit::actions!(analysis_editor, [PreviousValue, NextValue]);
-
 pub(super) fn init(cx: &mut gpui_kit::App) {
-    cx.bind_keys([
-        KeyBinding::new("up", PreviousValue, Some(CONTEXT)),
-        KeyBinding::new("down", NextValue, Some(CONTEXT)),
-    ]);
+    numeric_editor::init(cx);
 }
 
 /// A value of the hint that holds the keyboard.
@@ -58,11 +53,8 @@ const BALLOON_MARGIN: f32 = 24.0;
 /// The width of the text in a number field, enough for any value it takes.
 const NUMBER: f32 = 44.0;
 
-/// How long a stepper is held before it starts repeating.
-const REPEAT_DELAY: Duration = Duration::from_millis(400);
-
-/// How often a held stepper repeats.
-const REPEAT_EVERY: Duration = Duration::from_millis(80);
+#[cfg(test)]
+use numeric_editor::{REPEAT_DELAY, REPEAT_EVERY};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Choice {
@@ -81,7 +73,7 @@ enum Number {
 
 /// A list item whose chosen name stands at the right of its list, beside the chevron.
 #[derive(Clone)]
-struct Name(String);
+pub(in crate::shell) struct Name(pub(in crate::shell) String);
 
 impl SelectItem for Name {
     type Value = String;
@@ -115,8 +107,8 @@ pub(super) struct Editor {
     overlap: Entity<InputState>,
     range: Entity<InputState>,
     error: Option<String>,
-    /// The repeating step of a held stepper, dropped when it is released.
-    repeat: Option<Task<()>>,
+    overlap_editor: Entity<NumericEditor>,
+    range_editor: Entity<NumericEditor>,
     /// Each list's handle while it is closed, which an open list no longer answers with.
     closed: [FocusHandle; 5],
     /// Where the last frame drew the hint and its Range value, which place the balloon.
@@ -222,9 +214,9 @@ impl Editor {
         let palette = select(Choice::Palette, cx);
         let closed = [&fft, &window_choice, &aggregation, &mode, &palette]
             .map(|state| state.read(cx).focus_handle(cx));
-        let overlap = number(
+        let (overlap_editor, overlap) = number(
             Number::Overlap,
-            crate::numbers::input(settings.overlap),
+            crate::numbers::number(settings.overlap),
             window,
             cx,
             &mut subscriptions,
@@ -233,9 +225,9 @@ impl Editor {
             DynamicRange::Fixed(db) => db,
             _ => effective_range,
         };
-        let range = number(
+        let (range_editor, range) = number(
             Number::Range,
-            crate::numbers::input(db),
+            crate::numbers::number(db),
             window,
             cx,
             &mut subscriptions,
@@ -263,7 +255,8 @@ impl Editor {
             overlap,
             range,
             error: None,
-            repeat: None,
+            overlap_editor,
+            range_editor,
             closed,
             drawn: Rc::default(),
             balloon_closed: false,
@@ -274,121 +267,15 @@ impl Editor {
         }
     }
 
-    /// Step once at the press, then keep stepping while the stepper stays held.
-    fn start_repeat(
-        &mut self,
-        field: Number,
-        step: StepAction,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.edit_number(field, Some(step), window, cx) {
-            return;
-        }
-        self.repeat = Some(cx.spawn_in(window, async move |editor, cx| {
-            cx.background_executor().timer(REPEAT_DELAY).await;
-            loop {
-                let stepped = editor.update_in(cx, |editor, window, cx| {
-                    editor.shows_stepper(field) && editor.edit_number(field, Some(step), window, cx)
-                });
-                if !matches!(stepped, Ok(true)) {
-                    break;
-                }
-                cx.background_executor().timer(REPEAT_EVERY).await;
-            }
-        }));
-    }
-
-    fn stop_repeat(&mut self) {
-        self.repeat = None;
-    }
-
-    /// Whether the steppers of a number are on screen, which a held repeat needs.
-    fn shows_stepper(&self, field: Number) -> bool {
-        match field {
-            Number::Overlap => true,
-            Number::Range => matches!(self.settings.dynamic_range, DynamicRange::Fixed(_)),
-        }
-    }
-
-    /// A number with its unit between two steppers that act on press and repeat while held.
-    fn stepper(
-        &self,
-        field: Number,
-        unit: &'static str,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> gpui_kit::AnyElement {
-        let state = self.number_state(field);
-        let focused = self.holds(Stop::Number(field), window, cx);
-        let (down, up) = match field {
-            Number::Overlap => ("overlap-down", "overlap-up"),
-            Number::Range => ("range-down", "range-up"),
-        };
-        div()
-            .flex()
-            .items_center()
-            .gap_1()
-            .child(self.step_button(down, IconName::Minus, field, StepAction::Decrement, cx))
-            .child(
-                div()
-                    .border_b_1()
-                    .map(|line| mark(line, focused, cx))
-                    .child(
-                        Input::new(state)
-                            .appearance(false)
-                            .small()
-                            .w(px(NUMBER))
-                            .text_align(gpui_kit::TextAlign::Right),
-                    ),
-            )
-            .child(div().text_color(cx.theme().muted_foreground).child(unit))
-            .child(self.step_button(up, IconName::Plus, field, StepAction::Increment, cx))
-            .into_any_element()
-    }
-
-    fn step_button(
-        &self,
-        id: &'static str,
-        icon: IconName,
-        field: Number,
-        step: StepAction,
-        cx: &mut Context<Self>,
-    ) -> Button {
-        let ink = cx.theme().foreground;
-        let style = ButtonCustomVariant::new(cx)
-            .color(cx.theme().transparent)
-            .hover(ink.opacity(0.10))
-            .active(ink.opacity(0.18));
-        Button::new(id)
-            .custom(style)
-            .group(id)
-            .xsmall()
-            .child(pointer_ink(id, cx).child(Icon::new(icon).xsmall()))
-            .tab_stop(false)
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |editor, _, window, cx| {
-                    editor.start_repeat(field, step, window, cx);
-                }),
-            )
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|editor, _, _, _| editor.stop_repeat()),
-            )
-            .on_mouse_up_out(
-                MouseButton::Left,
-                cx.listener(|editor, _, _, _| editor.stop_repeat()),
-            )
-            .on_hover(cx.listener(|editor, hovered: &bool, _, _| {
-                if !hovered {
-                    editor.stop_repeat();
-                }
-            }))
+    fn stop_repeat(&mut self, cx: &mut Context<Self>) {
+        self.overlap_editor
+            .update(cx, |editor, _| editor.stop_repeat());
+        self.range_editor
+            .update(cx, |editor, _| editor.stop_repeat());
     }
 
     fn toggle_range(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.stop_repeat();
+        self.stop_repeat(cx);
         let dynamic_range = self
             .owner
             .upgrade()
@@ -406,7 +293,7 @@ impl Editor {
     }
 
     fn reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.stop_repeat();
+        self.stop_repeat(cx);
         let Some(owner) = self.owner.upgrade() else {
             return;
         };
@@ -425,7 +312,7 @@ impl Editor {
         let Some(range) = range else {
             return;
         };
-        let value = crate::numbers::input(range.effective_db);
+        let value = crate::numbers::number(range.effective_db);
         if self.range.read(cx).value().as_ref() != value {
             self.range
                 .update(cx, |s, cx| s.set_value(value, window, cx));
@@ -433,11 +320,15 @@ impl Editor {
     }
 
     fn sync(&mut self, settings: Settings, window: &mut Window, cx: &mut Context<Self>) {
+        if !matches!(settings.dynamic_range, DynamicRange::Fixed(_)) {
+            self.range_editor
+                .update(cx, |editor, _| editor.stop_repeat());
+        }
         self.settings = settings;
         self.error = None;
         self.sync_choices(window, cx);
         self.overlap.update(cx, |s, cx| {
-            s.set_value(crate::numbers::input(settings.overlap), window, cx)
+            s.set_value(crate::numbers::number(settings.overlap), window, cx)
         });
         let db = match settings.dynamic_range {
             DynamicRange::Fixed(db) => db,
@@ -448,7 +339,7 @@ impl Editor {
                 .map_or(110.0, |r| r.effective_db),
         };
         self.range.update(cx, |s, cx| {
-            s.set_value(crate::numbers::input(db), window, cx)
+            s.set_value(crate::numbers::number(db), window, cx)
         });
     }
 
@@ -485,7 +376,7 @@ impl Editor {
 
     fn choose(&mut self, choice: Choice, value: &str, window: &mut Window, cx: &mut Context<Self>) {
         // A list can remove the stepper a repeat was started on.
-        self.stop_repeat();
+        self.stop_repeat(cx);
         let mut settings = self.settings;
         match choice {
             Choice::Fft => {
@@ -528,36 +419,13 @@ impl Editor {
     }
 
     /// Preview the number fields, reporting whether they hold usable values.
-    fn edit_number(
-        &mut self,
-        field: Number,
-        step: Option<StepAction>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
+    fn edit_number(&mut self, field: Number, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
         if matches!(field, Number::Range) && !fixed {
             return true;
         }
-        let mut overlap = self.overlap.read(cx).value().to_string();
-        let mut range = fixed.then(|| self.range.read(cx).value().to_string());
-        if let Some(step) = step {
-            let text = match field {
-                Number::Overlap => &mut overlap,
-                Number::Range => range.get_or_insert_with(String::new),
-            };
-            let Ok(value) = crate::numbers::parse::<f32>(text) else {
-                self.error = Some("Enter a number".into());
-                cx.notify();
-                return false;
-            };
-            let delta = if step == StepAction::Increment {
-                1.0
-            } else {
-                -1.0
-            };
-            *text = crate::numbers::input(value + delta);
-        }
+        let overlap = self.overlap.read(cx).value().to_string();
+        let range = fixed.then(|| self.range.read(cx).value().to_string());
         match self.settings.edited_numbers(&overlap, range.as_deref()) {
             Ok(settings) => {
                 self.apply(settings, window, cx);
@@ -597,32 +465,22 @@ impl Editor {
         // Enter on the focused button resets, where elsewhere it would close the hint.
         let enter = cx.listener(|editor, _: &Confirm, window, cx| editor.reset(window, cx));
         let focused = self.defaults_focus.is_focused(window);
-        let frame = if focused {
-            super::super::app_menu_ui::toolbar_accent(cx)
-        } else {
-            cx.theme().muted_foreground.opacity(0.45)
-        };
         div()
             .mt_1()
             .pt_1()
             .track_focus(&self.defaults_focus)
             .on_action(enter)
             .child(
-                Button::new("analysis-defaults")
-                    .custom(
-                        ButtonCustomVariant::new(cx)
-                            .color(cx.theme().popover)
-                            .hover(cx.theme().accent)
-                            .active(cx.theme().border),
-                    )
-                    .group(DEFAULTS)
-                    .tab_stop(false)
-                    .when(focused, |button| button.border_2())
-                    .when(!focused, |button| button.border_1())
-                    .border_color(frame)
-                    .small()
-                    .child(pointer_ink(DEFAULTS, cx).child("Reset to defaults"))
-                    .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
+                outlined_button(
+                    "analysis-defaults",
+                    DEFAULTS,
+                    "Reset to defaults",
+                    focused,
+                    true,
+                    cx,
+                )
+                .tab_stop(false)
+                .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
             )
     }
 
@@ -679,33 +537,16 @@ impl Editor {
             .find(|&stop| self.holds(stop, window, cx))
     }
 
-    /// Up or Down on a focused number steps it, which a plain input would not.
-    fn arrow(&mut self, up: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(Stop::Number(field)) = self.focused(window, cx) else {
-            cx.propagate();
-            return;
-        };
-        let step = if up {
-            StepAction::Increment
-        } else {
-            StepAction::Decrement
-        };
-        self.edit_number(field, Some(step), window, cx);
-    }
-
     /// Moves the keyboard to the window's next or previous stop that lies in the hint.
     fn traverse(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let stops = self.stops().len() + 2;
-        for _ in 0..stops {
-            if forward {
-                window.focus_next(cx);
-            } else {
-                window.focus_prev(cx);
-            }
-            if self.scope.contains_focused(window, cx) {
-                break;
-            }
-        }
+        numeric_editor::traverse(
+            &self.scope,
+            &[self.overlap_editor.clone(), self.range_editor.clone()],
+            self.stops().len() + 2,
+            forward,
+            window,
+            cx,
+        );
         cx.notify();
     }
 
@@ -721,12 +562,6 @@ impl Editor {
             .on_action(cx.listener(|editor, _: &FocusPrevious, window, cx| {
                 editor.traverse(false, window, cx)
             }))
-            .on_action(
-                cx.listener(|editor, _: &PreviousValue, window, cx| editor.arrow(true, window, cx)),
-            )
-            .on_action(
-                cx.listener(|editor, _: &NextValue, window, cx| editor.arrow(false, window, cx)),
-            )
     }
 
     /// Whether any list of the hint is open, which the balloon would cover.
@@ -892,30 +727,13 @@ impl Editor {
         window: &Window,
         cx: &gpui_kit::App,
     ) -> impl IntoElement {
-        let state = self.combo(choice);
-        let focused = self.holds(Stop::Choice(choice), window, cx);
-        let widths = &self.widths[choice as usize];
-        let widest = widths.iter().copied().fold(px(0.), Pixels::max);
-        // The list keeps its place while the keyboard walks it, and the value shown follows the walk.
-        let shown = state
-            .read(cx)
-            .selected_index(cx)
-            .and_then(|index| widths.get(index.row).copied())
-            .unwrap_or(widest);
-        let underline = div()
-            .absolute()
-            .bottom_0()
-            .right_0()
-            .w(shown)
-            .border_b_1()
-            .map(|line| mark(line, focused, cx));
-        let list = Select::new(state)
-            .id(id)
-            .appearance(false)
-            .small()
-            .w_full()
-            .menu_width(px(LIST));
-        div().relative().w(widest).child(list).child(underline)
+        choice_control(
+            id,
+            self.combo(choice),
+            &self.widths[choice as usize],
+            window,
+            cx,
+        )
     }
 }
 
@@ -929,9 +747,9 @@ impl Render for Editor {
             })
         });
         let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
-        let overlap = self.stepper(Number::Overlap, "%", window, cx);
+        let overlap = self.overlap_editor.clone().into_any_element();
         let range = if fixed {
-            self.stepper(Number::Range, "dB", window, cx)
+            self.range_editor.clone().into_any_element()
         } else {
             self.range_readout(window, cx)
         };
@@ -954,12 +772,12 @@ impl Render for Editor {
             }))
             // Enter belongs to a focused list or number, and elsewhere closes the hint on usable numbers.
             .on_action(cx.listener(|editor, _: &Confirm, window, cx| {
-                let usable = editor.edit_number(Number::Overlap, None, window, cx);
+                let usable = editor.edit_number(Number::Overlap, window, cx);
                 if usable && editor.focused(window, cx).is_none() {
                     cx.propagate();
                 }
             }))
-            .w(px(WIDTH).min(window.viewport_size().width - px(48.)))
+            .w(property_width(window))
             .font_family(cx.theme().font_family.clone())
             .bg(crate::theme::sheet(cx))
             .text_color(cx.theme().popover_foreground)
@@ -1013,8 +831,126 @@ fn mode_name(range: DynamicRange) -> &'static str {
     }
 }
 
+/// Frameless numeric input and unit, with the same editable mark as choices.
+pub(in crate::shell) fn number_control(
+    state: &Entity<InputState>,
+    width: Pixels,
+    unit: &'static str,
+    focused: bool,
+    disabled: bool,
+    cx: &gpui_kit::App,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(
+            div()
+                .border_b_1()
+                .map(|line| mark(line, focused, cx))
+                .child(
+                    Input::new(state)
+                        .disabled(disabled)
+                        .appearance(false)
+                        .small()
+                        .w(width)
+                        .text_align(gpui_kit::TextAlign::Right),
+                ),
+        )
+        .child(div().text_color(cx.theme().muted_foreground).child(unit))
+}
+
+pub(in crate::shell) fn property_width(window: &Window) -> Pixels {
+    px(WIDTH).min((window.viewport_size().width - px(48.)).max(px(0.)))
+}
+
+pub(in crate::shell) fn value_column_width(window: &Window) -> Pixels {
+    (property_width(window) - px(24. + LABEL + 16.)).max(px(0.))
+}
+
+pub(in crate::shell) fn number_width(value: &str, window: &Window, cx: &gpui_kit::App) -> Pixels {
+    let widths = shown_widths(&[value.to_owned()], window, cx);
+    // Reserve the small Input's horizontal text padding, without a Select chevron.
+    (widths[0] - px(CHEVRON) + px(16.)).max(px(NUMBER))
+}
+
+/// Existing frameless Select presentation shared by both property editors.
+pub(in crate::shell) fn choice_control(
+    id: &'static str,
+    state: &Entity<SelectState<Vec<Name>>>,
+    widths: &[Pixels],
+    window: &Window,
+    cx: &gpui_kit::App,
+) -> impl IntoElement {
+    let focused = state.read(cx).focus_handle(cx).is_focused(window);
+    let widest = widths.iter().copied().fold(px(0.), Pixels::max);
+    let shown = state
+        .read(cx)
+        .selected_index(cx)
+        .and_then(|index| widths.get(index.row).copied())
+        .unwrap_or(widest);
+    let underline = div()
+        .absolute()
+        .bottom_0()
+        .right_0()
+        .w(shown)
+        .border_b_1()
+        .map(|line| mark(line, focused, cx));
+    let list = Select::new(state)
+        .id(id)
+        .appearance(false)
+        .small()
+        .w_full()
+        .menu_width(px(LIST));
+    div().relative().w(widest).child(list).child(underline)
+}
+
+pub(in crate::shell) fn outlined_button(
+    id: &'static str,
+    group: &'static str,
+    label: &'static str,
+    focused: bool,
+    enabled: bool,
+    cx: &gpui_kit::App,
+) -> Button {
+    let frame = if focused {
+        super::super::app_menu_ui::toolbar_accent(cx)
+    } else {
+        cx.theme().muted_foreground.opacity(0.45)
+    };
+    Button::new(id)
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .color(cx.theme().popover)
+                .hover(cx.theme().accent)
+                .active(cx.theme().border),
+        )
+        .disabled(!enabled)
+        .group(group)
+        .when(focused, |button| button.border_2())
+        .when(!focused, |button| button.border_1())
+        .border_color(frame)
+        .small()
+        .child(
+            div()
+                .id(group)
+                .text_color(cx.theme().muted_foreground)
+                .when(enabled, |ink| {
+                    ink.group_hover(group, |style| style.text_color(cx.theme().foreground))
+                        .group_active(group, |style| {
+                            style.text_color(cx.theme().muted_foreground.opacity(0.6))
+                        })
+                })
+                .child(label),
+        )
+}
+
 /// A label and its value, in the metadata hint's layout.
-fn row(label: &'static str, value: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
+pub(in crate::shell) fn row(
+    label: &'static str,
+    value: impl IntoElement,
+    cx: &gpui_kit::App,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -1068,7 +1004,10 @@ fn balloon_pointer(
 const DEFAULTS: &str = "analysis-defaults";
 
 /// The ink of a button's sign or text, brighter under the pointer and dimmer while held.
-fn pointer_ink(group: &'static str, cx: &gpui_kit::App) -> gpui_kit::Stateful<gpui_kit::Div> {
+pub(in crate::shell) fn pointer_ink(
+    group: &'static str,
+    cx: &gpui_kit::App,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
     let rest = cx.theme().muted_foreground;
     let lit = cx.theme().foreground;
     div()
@@ -1079,7 +1018,11 @@ fn pointer_ink(group: &'static str, cx: &gpui_kit::App) -> gpui_kit::Stateful<gp
 }
 
 /// The underline of a value, dashed at rest and solid in the accent while it holds the keyboard.
-fn mark(line: gpui_kit::Div, focused: bool, cx: &gpui_kit::App) -> gpui_kit::Div {
+pub(in crate::shell) fn mark(
+    line: gpui_kit::Div,
+    focused: bool,
+    cx: &gpui_kit::App,
+) -> gpui_kit::Div {
     if focused {
         line.border_b_2()
             .border_color(super::super::app_menu_ui::toolbar_accent(cx))
@@ -1149,7 +1092,11 @@ fn combo(
 }
 
 /// The width a frameless select takes to show each of its items with the chevron.
-fn shown_widths(items: &[String], window: &Window, cx: &gpui_kit::App) -> Vec<Pixels> {
+pub(in crate::shell) fn shown_widths(
+    items: &[String],
+    window: &Window,
+    cx: &gpui_kit::App,
+) -> Vec<Pixels> {
     let style = gpui_kit::TextStyle {
         font_family: cx.theme().font_family.clone(),
         ..Default::default()
@@ -1172,21 +1119,39 @@ fn number(
     window: &mut Window,
     cx: &mut Context<Editor>,
     subscriptions: &mut Vec<Subscription>,
-) -> Entity<InputState> {
-    let state = cx.new(|cx| InputState::new(window, cx).default_value(value));
-    subscriptions.push(
-        cx.subscribe_in(
-            &state,
-            window,
-            move |editor, _, event, window, cx| match event {
-                InputEvent::PressEnter { .. } | InputEvent::Blur => {
-                    editor.edit_number(field, None, window, cx);
-                }
-                _ => {}
+) -> (Entity<NumericEditor>, Entity<InputState>) {
+    let (unit, minimum, maximum, minimum_inclusive, down, up) = match field {
+        Number::Overlap => ("%", 0.0, 95.0, true, "overlap-down", "overlap-up"),
+        Number::Range => ("dB", 0.0, f64::MAX, false, "range-down", "range-up"),
+    };
+    let numeric = cx.new(|cx| {
+        NumericEditor::new(
+            value,
+            numeric_editor::Config {
+                unit,
+                step: 1.0,
+                minimum,
+                maximum,
+                minimum_inclusive,
+                down,
+                up,
             },
-        ),
-    );
-    state
+            window,
+            cx,
+        )
+    });
+    let input = numeric.read(cx).input.clone();
+    subscriptions.push(cx.subscribe_in(
+        &numeric,
+        window,
+        move |editor, _, event: &numeric_editor::Changed, window, cx| {
+            if event.committed {
+                editor.edit_number(field, window, cx);
+            }
+            cx.notify();
+        },
+    ));
+    (numeric, input)
 }
 
 #[cfg(test)]
@@ -1949,7 +1914,7 @@ mod hint_tests {
         let overlap = settings(cx, &w).overlap;
         assert_eq!(
             text,
-            crate::numbers::input(overlap),
+            crate::numbers::number(overlap),
             "the field shows the value in force"
         );
         assert!(error.is_none());

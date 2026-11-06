@@ -136,7 +136,7 @@ fn the_minimap_waits_for_the_file_envelope() {
     let envelope = argand_core::WaveformEnvelope::new(10, 2);
     document.set_envelope(
         SourceId(0),
-        Arc::new(Snapshot {
+        Arc::new(Snapshot { statistics: None,
             envelope,
             full_scale: 1.0,
             complete: true,
@@ -469,4 +469,60 @@ fn a_copy_under_a_real_inversion_cannot_follow_its_samples_to_the_other_parity()
     document.delete(span(0, 2));
     let written = document.written_source();
     assert!(odd.moved_onto(document.file(), document.capture(), &written).is_some());
+}
+
+#[test]
+fn encoded_unsaved_backing_is_not_reencoded_as_computed_float_and_survives_copy() {
+    let dir = scratch_dir("unsaved-backing");
+    let path = dir.join("encoded.wav");
+    std::fs::write(&path, b"encoded integer samples").unwrap();
+    let backing = Arc::new(Scratch::new(path.clone()));
+    let mut document = Editing::unsaved(meta(&path.to_string_lossy(), 10, 8000.), OpenHints::default(), backing);
+    document.describe_file(argand_io::write::SourceStamp::of(&path).ok(), None);
+    document.describe_units(Some((32768., 0.)));
+    assert!(document.is_dirty());
+    assert!(!document.can_undo());
+    assert!(document.source_files()[0].as_ref().unwrap().encoding.is_none());
+    let copied = document.copy(span(0, 10));
+    drop(document);
+    assert!(path.exists(), "clipboard retains encoded scratch backing");
+    drop(copied);
+    assert!(!path.exists());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn source_statistics_completion_after_an_edit_is_retained_and_resolves_pending_capture() {
+    let mut document = editing("/a.wav", 100, 1000.);
+    assert!(document.statistics_request().is_none());
+    document.delete(span(10, 20));
+    let index = crate::sample_statistics::Index::new(100, 2, Some(1.)).finish();
+    document.set_envelope(SourceId(0), Arc::new(Snapshot {
+        envelope: argand_core::WaveformEnvelope::new(100, 2), full_scale: 1., complete: true,
+        samples: 100, statistics: Some(Arc::new(index)),
+    }));
+    let current = document.statistics_request().expect("source completion is independent of capture edit version");
+    assert_eq!(current.capture.len(), 90);
+    assert!(current.indices[0].is_some());
+    assert!(document.statistics_request().is_some());
+}
+
+#[test]
+fn failed_statistics_follow_retained_sources_across_edits_and_descriptions() {
+    let other = editing("/b.wav", 20, 1000.0);
+    for (failed, retained, removed) in [
+        (SourceId(0), span(0, 10), span(0, 90)),
+        (SourceId(1), span(100, 110), span(100, 110)),
+    ] {
+        let mut capture = editing("/a.wav", 100, 1000.0);
+        capture.paste(&other.copy(span(0, 20)), Placement::At(100)).unwrap();
+        capture.fail_statistics(failed);
+        capture.delete(retained);
+        capture.describe_units(Some((32768., 0.)));
+        assert!(capture.statistics_failed(), "retaining a failed source stays terminal");
+        capture.delete(removed);
+        assert!(!capture.statistics_failed(), "removing a failed source recovers");
+        assert!(capture.undo());
+        assert!(capture.statistics_failed(), "undo restores the failed source");
+    }
 }

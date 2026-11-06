@@ -60,6 +60,34 @@ pub(super) enum Notice {
 }
 
 impl Shell {
+    /// User-facing naming is independent of temporary sample backing for every export.
+    pub(super) fn save_presentation(
+        &self,
+        meta: &argand_core::SignalMeta,
+    ) -> (argand_core::SignalMeta, std::path::PathBuf) {
+        let mut display = meta.clone();
+        let directory = match self.file.as_ref().and_then(|file| file.unsaved.as_ref()) {
+            Some(unsaved) => {
+                display.source = unsaved.name.clone().into();
+                display.container = unsaved.container.extension();
+                std::path::PathBuf::from(".")
+            }
+            None => saving::directory(&meta.source),
+        };
+        (display, directory)
+    }
+
+    fn save_matches(&self, of: &SaveOf) -> bool {
+        self.saving.is_none()
+            && self.file.as_ref().is_some_and(|file| {
+                file.id == of.document
+                    && file
+                        .editing
+                        .as_ref()
+                        .is_some_and(|editing| editing.version() == of.version)
+            })
+    }
+
     /// Whether a save of the capture, or of its time selection, can start now.
     pub(super) fn can_save(&self, selection_only: bool) -> bool {
         self.saving.is_none()
@@ -115,11 +143,14 @@ impl Shell {
         let span = if selection_only { self.selection } else { None };
         let output = editing.file();
         let as_wave = argand_io::write::writes_as_wave(&output.meta, &output.hints);
-        let name = saving::suggested_name(&output.meta, as_wave, span);
-        let directory = saving::directory(&output.meta.source);
+        let (display, directory) = self.save_presentation(&output.meta);
+        let name = saving::suggested_name(&display, as_wave, span);
         let Some(mut request) = editing.save_request(span, std::path::PathBuf::new()) else {
             return;
         };
+        if let Some(unsaved) = &file.unsaved {
+            request.output = argand_io::write::Output::Container(unsaved.container);
+        }
         let whole = !selection_only;
         let edited = editing.is_dirty() || !editing.is_untouched();
         let of = SaveOf {
@@ -132,12 +163,23 @@ impl Shell {
             over: false,
             _scratch: editing.scratches(),
         };
-        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
+            let directory = cx
+                .background_executor()
+                .spawn(async move { saving::existing_directory(&directory) })
+                .await;
+            let Ok(Some(chosen)) = shell.update_in(cx, |shell, _, cx| {
+                shell
+                    .save_matches(&of)
+                    .then(|| cx.prompt_for_new_path(&directory, Some(&name)))
+            }) else {
+                return;
+            };
             // A cancelled dialog, a platform without one, and a failed dialog all mean no target.
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
             };
+            request.output = saving::target_output(request.output, request.meta.container, &target);
             request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
                 shell.start_save(request, of, window, cx)
@@ -196,8 +238,19 @@ impl Shell {
         else {
             return;
         };
-        let name = saving::suggested_band_name(&meta, self.selection, band);
-        let directory = saving::directory(&meta.source);
+        let (display, directory) = self.save_presentation(&meta);
+        let container = file
+            .unsaved
+            .as_ref()
+            .map(|unsaved| unsaved.container)
+            .or_else(|| (meta.container == "flac").then_some(argand_io::write::Container::Flac));
+        let mut name = saving::suggested_band_name(&display, self.selection, band);
+        if container == Some(argand_io::write::Container::Flac) {
+            name = std::path::Path::new(&name)
+                .with_extension("flac")
+                .to_string_lossy()
+                .into_owned();
+        }
         let mut request = crate::extraction::ExtractRequest {
             capture: editing.capture().clone(),
             sources: editing.source_files(),
@@ -225,10 +278,28 @@ impl Shell {
             over: false,
             _scratch: editing.scratches(),
         };
-        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
         cx.spawn_in(window, async move |shell, cx| {
+            let directory = cx
+                .background_executor()
+                .spawn(async move { saving::existing_directory(&directory) })
+                .await;
+            let Ok(Some(chosen)) = shell.update_in(cx, |shell, _, cx| {
+                shell
+                    .save_matches(&of)
+                    .then(|| cx.prompt_for_new_path(&directory, Some(&name)))
+            }) else {
+                return;
+            };
             let Ok(Ok(Some(target))) = chosen.await else {
                 return;
+            };
+            let output = container.map_or(
+                argand_io::write::Output::Native,
+                argand_io::write::Output::Container,
+            );
+            let container = match saving::target_output(output, request.meta.container, &target) {
+                argand_io::write::Output::Container(container) => Some(container),
+                _ => container,
             };
             request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
@@ -244,7 +315,7 @@ impl Shell {
                 );
                 let name = file_name(&request.target);
                 let target = request.target.clone();
-                let (job, updates) = saving::start_extraction(request);
+                let (job, updates) = saving::start_extraction(request, container);
                 shell.watch_save(job, updates, (name, target, None), of, window, cx);
             });
         })
@@ -302,6 +373,15 @@ impl Shell {
                         self.save_notice = Some(Notice::Saved(match &finished.as_wave {
                             Some(reason) => format!("{} {reason}", file_name(&saved.path)),
                             None => file_name(&saved.path),
+                        }));
+                        self.saved(saved.path, finished.of, window, cx);
+                    }
+                    Outcome::Encoded { saved, clipped } => {
+                        let name = file_name(&saved.path);
+                        self.save_notice = Some(Notice::Saved(if clipped == 0 {
+                            name
+                        } else {
+                            format!("{name} — {clipped} clipped scalar values")
                         }));
                         self.saved(saved.path, finished.of, window, cx);
                     }
