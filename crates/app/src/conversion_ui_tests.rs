@@ -708,6 +708,19 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
     cx.simulate_keystrokes("f11");
     frame(cx);
     assert_property_panels(cx, &shell, true, false);
+    cx.update(|window, cx| {
+        shell
+            .read(cx)
+            .conversion
+            .hint
+            .clone()
+            .update(cx, |hint, cx| hint.close(false, cx));
+        shell.update(cx, |shell, cx| shell.convert_dialog(window, cx));
+        let analysis = shell.read(cx).analysis_hint.clone();
+        analysis.update(cx, |hint, cx| hint.open(window, cx));
+    });
+    frame(cx);
+    assert_property_panels(cx, &shell, false, true);
     std::fs::remove_file(path).unwrap();
 }
 

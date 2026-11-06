@@ -176,6 +176,7 @@ impl Shell {
         match event {
             hints::Pinned::Opened if open => {
                 // Choose the new owner before closing the old editor and emitting its Closed event.
+                self.status_panel_request += 1;
                 self.status_panel = Some(panel);
                 let other = match panel {
                     StatusPanel::File => StatusPanel::Analysis,
