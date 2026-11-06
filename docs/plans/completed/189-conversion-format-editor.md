@@ -45,9 +45,11 @@ do not claim that the application supplied the stale path.
 - [x] Resolve the output-container proposal before implementing format selection.
 - [x] Add meaningful parse/commit and format/save identity coverage; retain stock
       disabled interaction handling and remove enabled-only child hover styling.
-- [ ] Obtain independent review and run the full local gate; rebuild current release.
-- [ ] Verify actual rendering within the approved second-monitor diagnostic limits,
-      complete this plan, and publish the existing Draft update after acceptance.
+- [x] Obtain independent review and run the full local gate; rebuild current release.
+- [x] Verify actual rendering within the approved second-monitor diagnostic limits,
+      with grouped input/read-only values, File type and Convert visible, and no Level
+      control. The isolated diagnostic used explicit ru-RU configuration; native
+      Wayland pointer/hover interaction was not claimed.
 
 ## Implementation contract
 
@@ -77,3 +79,14 @@ applies recognized WAV/FLAC overrides to whole/time/band exports. Unknown extens
 retain native behavior, and an unchanged native FLAC extension retains existing codec
 capabilities. Bidirectional saved-document and selection regressions cover the fix.
 Grouped numeric presentation is checked for bit-exact f64 roundtrips in four locales.
+
+The third review round was clean. All five substantive findings across this iteration
+were accepted and fixed; none were rejected. The full local gate passed 1,118 tests
+with zero failures and one ignored manual benchmark. The shared numeric handler keeps
+typed text until commit and roundtrips grouped f64 values without changing their bits.
+
+The Open chooser's remembered deleted location remains unimplemented pending an
+owner decision about upstream toolkit work. Only Save chooser directory resolution
+is changed here; no global/native chooser state or dependency patch is modified.
+
+The release workspace was rebuilt successfully after the final runtime gate.
