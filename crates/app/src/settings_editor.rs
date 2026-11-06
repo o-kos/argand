@@ -81,7 +81,7 @@ enum Number {
 
 /// A list item whose chosen name stands at the right of its list, beside the chevron.
 #[derive(Clone)]
-struct Name(String);
+pub(in crate::shell) struct Name(pub(in crate::shell) String);
 
 impl SelectItem for Name {
     type Value = String;
@@ -330,19 +330,7 @@ impl Editor {
             .items_center()
             .gap_1()
             .child(self.step_button(down, IconName::Minus, field, StepAction::Decrement, cx))
-            .child(
-                div()
-                    .border_b_1()
-                    .map(|line| mark(line, focused, cx))
-                    .child(
-                        Input::new(state)
-                            .appearance(false)
-                            .small()
-                            .w(px(NUMBER))
-                            .text_align(gpui_kit::TextAlign::Right),
-                    ),
-            )
-            .child(div().text_color(cx.theme().muted_foreground).child(unit))
+            .child(number_control(state, px(NUMBER), unit, focused, cx))
             .child(self.step_button(up, IconName::Plus, field, StepAction::Increment, cx))
             .into_any_element()
     }
@@ -597,32 +585,21 @@ impl Editor {
         // Enter on the focused button resets, where elsewhere it would close the hint.
         let enter = cx.listener(|editor, _: &Confirm, window, cx| editor.reset(window, cx));
         let focused = self.defaults_focus.is_focused(window);
-        let frame = if focused {
-            super::super::app_menu_ui::toolbar_accent(cx)
-        } else {
-            cx.theme().muted_foreground.opacity(0.45)
-        };
         div()
             .mt_1()
             .pt_1()
             .track_focus(&self.defaults_focus)
             .on_action(enter)
             .child(
-                Button::new("analysis-defaults")
-                    .custom(
-                        ButtonCustomVariant::new(cx)
-                            .color(cx.theme().popover)
-                            .hover(cx.theme().accent)
-                            .active(cx.theme().border),
-                    )
-                    .group(DEFAULTS)
-                    .tab_stop(false)
-                    .when(focused, |button| button.border_2())
-                    .when(!focused, |button| button.border_1())
-                    .border_color(frame)
-                    .small()
-                    .child(pointer_ink(DEFAULTS, cx).child("Reset to defaults"))
-                    .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
+                outlined_button(
+                    "analysis-defaults",
+                    DEFAULTS,
+                    "Reset to defaults",
+                    focused,
+                    cx,
+                )
+                .tab_stop(false)
+                .on_click(cx.listener(|editor, _, window, cx| editor.reset(window, cx))),
             )
     }
 
@@ -892,30 +869,13 @@ impl Editor {
         window: &Window,
         cx: &gpui_kit::App,
     ) -> impl IntoElement {
-        let state = self.combo(choice);
-        let focused = self.holds(Stop::Choice(choice), window, cx);
-        let widths = &self.widths[choice as usize];
-        let widest = widths.iter().copied().fold(px(0.), Pixels::max);
-        // The list keeps its place while the keyboard walks it, and the value shown follows the walk.
-        let shown = state
-            .read(cx)
-            .selected_index(cx)
-            .and_then(|index| widths.get(index.row).copied())
-            .unwrap_or(widest);
-        let underline = div()
-            .absolute()
-            .bottom_0()
-            .right_0()
-            .w(shown)
-            .border_b_1()
-            .map(|line| mark(line, focused, cx));
-        let list = Select::new(state)
-            .id(id)
-            .appearance(false)
-            .small()
-            .w_full()
-            .menu_width(px(LIST));
-        div().relative().w(widest).child(list).child(underline)
+        choice_control(
+            id,
+            self.combo(choice),
+            &self.widths[choice as usize],
+            window,
+            cx,
+        )
     }
 }
 
@@ -1013,8 +973,103 @@ fn mode_name(range: DynamicRange) -> &'static str {
     }
 }
 
+/// Frameless numeric input and unit, with the same editable mark as choices.
+pub(in crate::shell) fn number_control(
+    state: &Entity<InputState>,
+    width: Pixels,
+    unit: &'static str,
+    focused: bool,
+    cx: &gpui_kit::App,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(
+            div()
+                .border_b_1()
+                .map(|line| mark(line, focused, cx))
+                .child(
+                    Input::new(state)
+                        .appearance(false)
+                        .small()
+                        .w(width)
+                        .text_align(gpui_kit::TextAlign::Right),
+                ),
+        )
+        .child(div().text_color(cx.theme().muted_foreground).child(unit))
+}
+
+pub(in crate::shell) fn number_width(value: &str, window: &Window, cx: &gpui_kit::App) -> Pixels {
+    let widths = shown_widths(&[value.to_owned()], window, cx);
+    // Reserve the small Input's horizontal text padding, without a Select chevron.
+    (widths[0] - px(CHEVRON) + px(16.)).max(px(NUMBER))
+}
+
+/// Existing frameless Select presentation shared by both property editors.
+pub(in crate::shell) fn choice_control(
+    id: &'static str,
+    state: &Entity<SelectState<Vec<Name>>>,
+    widths: &[Pixels],
+    window: &Window,
+    cx: &gpui_kit::App,
+) -> impl IntoElement {
+    let focused = state.read(cx).focus_handle(cx).is_focused(window);
+    let widest = widths.iter().copied().fold(px(0.), Pixels::max);
+    let shown = state
+        .read(cx)
+        .selected_index(cx)
+        .and_then(|index| widths.get(index.row).copied())
+        .unwrap_or(widest);
+    let underline = div()
+        .absolute()
+        .bottom_0()
+        .right_0()
+        .w(shown)
+        .border_b_1()
+        .map(|line| mark(line, focused, cx));
+    let list = Select::new(state)
+        .id(id)
+        .appearance(false)
+        .small()
+        .w_full()
+        .menu_width(px(LIST));
+    div().relative().w(widest).child(list).child(underline)
+}
+
+pub(in crate::shell) fn outlined_button(
+    id: &'static str,
+    group: &'static str,
+    label: &'static str,
+    focused: bool,
+    cx: &gpui_kit::App,
+) -> Button {
+    let frame = if focused {
+        super::super::app_menu_ui::toolbar_accent(cx)
+    } else {
+        cx.theme().muted_foreground.opacity(0.45)
+    };
+    Button::new(id)
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .color(cx.theme().popover)
+                .hover(cx.theme().accent)
+                .active(cx.theme().border),
+        )
+        .group(group)
+        .when(focused, |button| button.border_2())
+        .when(!focused, |button| button.border_1())
+        .border_color(frame)
+        .small()
+        .child(pointer_ink(group, cx).child(label))
+}
+
 /// A label and its value, in the metadata hint's layout.
-fn row(label: &'static str, value: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
+pub(in crate::shell) fn row(
+    label: &'static str,
+    value: impl IntoElement,
+    cx: &gpui_kit::App,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -1079,7 +1134,11 @@ fn pointer_ink(group: &'static str, cx: &gpui_kit::App) -> gpui_kit::Stateful<gp
 }
 
 /// The underline of a value, dashed at rest and solid in the accent while it holds the keyboard.
-fn mark(line: gpui_kit::Div, focused: bool, cx: &gpui_kit::App) -> gpui_kit::Div {
+pub(in crate::shell) fn mark(
+    line: gpui_kit::Div,
+    focused: bool,
+    cx: &gpui_kit::App,
+) -> gpui_kit::Div {
     if focused {
         line.border_b_2()
             .border_color(super::super::app_menu_ui::toolbar_accent(cx))
@@ -1149,7 +1208,11 @@ fn combo(
 }
 
 /// The width a frameless select takes to show each of its items with the chevron.
-fn shown_widths(items: &[String], window: &Window, cx: &gpui_kit::App) -> Vec<Pixels> {
+pub(in crate::shell) fn shown_widths(
+    items: &[String],
+    window: &Window,
+    cx: &gpui_kit::App,
+) -> Vec<Pixels> {
     let style = gpui_kit::TextStyle {
         font_family: cx.theme().font_family.clone(),
         ..Default::default()

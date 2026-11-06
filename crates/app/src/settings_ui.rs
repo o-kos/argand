@@ -4,7 +4,7 @@ use super::*;
 use crate::settings::{DisplayedRange, RangeState};
 use argand_dsp::DynamicRange;
 #[path = "settings_editor.rs"]
-mod editor;
+pub(super) mod editor;
 
 fn low_signal_level_hint(db: f32) -> String {
     format!(
@@ -70,6 +70,32 @@ impl ControlForegrounds {
             .text_color(self.normal)
             .group_hover(group, |style| style.text_color(self.active))
     }
+}
+
+/// Shared typography, pointer ink and geometry for status summary buttons.
+pub(super) fn status_control(
+    id: &'static str,
+    group: &'static str,
+    text: String,
+    lit: bool,
+    cx: &gpui_kit::App,
+) -> Button {
+    let foregrounds =
+        ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground);
+    Button::new(id)
+        .tab_stop(false)
+        .group(group)
+        .custom(foregrounds.button_style(cx))
+        .small()
+        .h_5()
+        .px_2()
+        .when(lit, |button| button.bg(cx.theme().secondary_hover))
+        .child(
+            foregrounds
+                .text(group)
+                .when(lit, |text| text.text_color(foregrounds.active))
+                .child(text),
+        )
 }
 
 /// The hover group each status control publishes for its own text.
@@ -426,38 +452,29 @@ impl Shell {
             .as_ref()
             .and_then(|file| file.state.displayed_settings().cloned());
         let visible = displayed.unwrap_or(self.settings);
-        let foregrounds =
-            ControlForegrounds::between(cx.theme().muted_foreground, cx.theme().foreground);
         // The hint's backdrop keeps the pointer off the window, so the summary stays lit.
         let lit = self.analysis_hint.read(cx).is_open();
-        let summary = Button::new("analysis-settings")
-            .tab_stop(false)
-            .group(SUMMARY_HOVER)
-            .custom(foregrounds.button_style(cx))
-            .small()
-            .h_5()
-            .px_2()
-            .when(lit, |button| button.bg(cx.theme().secondary_hover))
-            .on_hover(cx.listener(|shell, hovered, window, cx| {
-                shell
-                    .analysis_hint
-                    .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
-            }))
-            // A press, not a click, so the press that closes an open hint cannot reopen it.
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
-            )
-            .child(
-                foregrounds
-                    .text(SUMMARY_HOVER)
-                    .when(lit, |text| text.text_color(foregrounds.active))
-                    .child(format!(
-                        "{} · {}",
-                        crate::numbers::number(visible.fft_size),
-                        editor::display_name(&visible.window.to_string())
-                    )),
-            );
+        let summary = status_control(
+            "analysis-settings",
+            SUMMARY_HOVER,
+            format!(
+                "{} · {}",
+                crate::numbers::number(visible.fft_size),
+                editor::display_name(&visible.window.to_string())
+            ),
+            lit,
+            cx,
+        )
+        .on_hover(cx.listener(|shell, hovered, window, cx| {
+            shell
+                .analysis_hint
+                .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
+        }))
+        // A press, not a click, so the press that closes an open hint cannot reopen it.
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|shell, _, window, cx| shell.edit_analysis(&EditAnalysis, window, cx)),
+        );
         div()
             .flex()
             .items_center()

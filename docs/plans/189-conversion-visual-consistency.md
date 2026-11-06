@@ -21,7 +21,7 @@ muted labels. No unrelated FFT summary spacing change is included.
 
 ## Implementation and validation
 
-- [ ] Share existing Analysis presentation builders and use them for File information.
+- [x] Share existing Analysis presentation builders and use them for File information.
 - [ ] Verify both actual panels in the same window/theme/scale using the isolated
       diagnostic launcher on the second monitor, without input emulation or portals.
 - [ ] Retain focused input/Select/Escape regression coverage and obtain independent
@@ -34,3 +34,15 @@ muted labels. No unrelated FFT summary spacing change is included.
 Only rendering is demonstrated by the diagnostic launcher. Native Wayland hover
 interaction is not claimed. Temporary hooks open the existing surfaces without
 changing their rendering; no user documents or processes are used.
+
+## Implementation evidence
+
+Both status summaries use `settings_ui::status_control`, preserving the existing
+Analysis XS text, muted resting ink, hover group and compact geometry. Both property
+editors use `settings_editor` builders for aligned rows, framed editable marks,
+frameless numeric Input/unit composition, measured right-aligned Selects and compact
+outlined action Buttons. These builders derive colors and typeface from Theme;
+they do not replace toolkit controls or alter global component defaults.
+
+The ten existing conversion/panel semantic regressions pass after the refactor.
+No tests were added to restate visual constants; actual paired rendering is required.

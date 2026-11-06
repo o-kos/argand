@@ -1,13 +1,14 @@
 //! File information, conversion draft, and the lifetime of unsaved conversion results.
 
+use super::settings_ui::editor::{self as presentation, Name};
 use super::*;
 use crate::conversion::{Converted, Level, Request};
 use crate::saving::{Ended, Update};
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::Disableable;
 use gpui_kit::component::IconName;
-use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::select::{Select, SelectEvent, SelectState};
+use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::select::{SelectEvent, SelectState};
 use gpui_kit::{AnyElement, Focusable};
 
 pub(super) struct State {
@@ -97,8 +98,10 @@ struct Editor {
     request: Request,
     rate: Entity<InputState>,
     reference: Entity<InputState>,
-    kind: Entity<SelectState<Vec<String>>>,
-    level: Entity<SelectState<Vec<String>>>,
+    kind: Entity<SelectState<Vec<Name>>>,
+    level: Entity<SelectState<Vec<Name>>>,
+    kind_widths: Vec<Pixels>,
+    level_widths: Vec<Pixels>,
     _subscriptions: Vec<Subscription>,
     owner: Option<WeakEntity<Shell>>,
     document: Option<u64>,
@@ -125,10 +128,20 @@ impl Editor {
             .iter()
             .position(|s| *s == kind_label(&request.output.sample_type.to_string()))
             .map(gpui_kit::component::IndexPath::new);
-        let kind = cx.new(|cx| SelectState::new(kinds, selected, window, cx));
+        let kind_widths = presentation::shown_widths(&kinds, window, cx);
+        let kind = cx.new(|cx| {
+            SelectState::new(
+                kinds.into_iter().map(Name).collect::<Vec<_>>(),
+                selected,
+                window,
+                cx,
+            )
+        });
+        let levels = vec!["Preserve level".into(), "Normalize peak".into()];
+        let level_widths = presentation::shown_widths(&levels, window, cx);
         let level = cx.new(|cx| {
             SelectState::new(
-                vec!["Preserve level".into(), "Normalize peak".into()],
+                levels.into_iter().map(Name).collect::<Vec<_>>(),
                 Some(gpui_kit::component::IndexPath::new(0)),
                 window,
                 cx,
@@ -137,8 +150,8 @@ impl Editor {
         let subscriptions = vec![
             cx.subscribe(&rate, |_, _, _: &InputEvent, cx| cx.notify()),
             cx.subscribe(&reference, |_, _, _: &InputEvent, cx| cx.notify()),
-            cx.subscribe(&kind, |_, _, _: &SelectEvent<Vec<String>>, cx| cx.notify()),
-            cx.subscribe(&level, |_, _, _: &SelectEvent<Vec<String>>, cx| cx.notify()),
+            cx.subscribe(&kind, |_, _, _: &SelectEvent<Vec<Name>>, cx| cx.notify()),
+            cx.subscribe(&level, |_, _, _: &SelectEvent<Vec<Name>>, cx| cx.notify()),
         ];
         Self {
             request,
@@ -146,6 +159,8 @@ impl Editor {
             reference,
             kind,
             level,
+            kind_widths,
+            level_widths,
             _subscriptions: subscriptions,
             owner: None,
             document: None,
@@ -195,10 +210,9 @@ impl Editor {
     }
 
     fn convert_button(&self, request: Option<Request>, cx: &mut Context<Self>) -> Button {
-        Button::new("convert-capture")
-            .primary()
-            .label("Convert")
+        presentation::outlined_button("convert-capture", "conversion-action", "Convert", false, cx)
             .disabled(request.is_none())
+            .when(request.is_none(), |button| button.opacity(0.5))
             .on_click(cx.listener(move |editor, _, window, cx| {
                 let Some(request) = request.clone() else {
                     return;
@@ -228,21 +242,14 @@ impl Editor {
     }
 }
 
-fn field(label: &'static str, control: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap_4()
-        .w_full()
-        .min_h_7()
-        .child(
-            div()
-                .w(px(100.))
-                .flex_shrink_0()
-                .text_color(cx.theme().muted_foreground)
-                .child(label),
-        )
-        .child(div().flex_1().min_w_0().flex().justify_end().child(control))
+fn frequency_control(
+    state: &Entity<InputState>,
+    window: &Window,
+    cx: &gpui_kit::App,
+) -> impl IntoElement {
+    let focused = state.read(cx).focus_handle(cx).is_focused(window);
+    let width = presentation::number_width(state.read(cx).value().as_ref(), window, cx);
+    presentation::number_control(state, width, "Hz", focused, cx)
 }
 
 impl Render for Editor {
@@ -265,10 +272,11 @@ impl Render for Editor {
             .flex()
             .flex_col()
             .gap_1()
-            .w(px(360.).min(window.viewport_size().width - px(48.)))
+            .w(px(370.).min(window.viewport_size().width - px(48.)))
             .px_3()
             .py_2()
             .text_sm()
+            .font_family(cx.theme().font_family.clone())
             .text_color(cx.theme().popover_foreground)
             .max_h(window.viewport_size().height - px(48.))
             .overflow_y_scroll()
@@ -276,7 +284,7 @@ impl Render for Editor {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            .shadow_lg()
+            .shadow_md()
             .child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
@@ -288,40 +296,36 @@ impl Render for Editor {
                 }),
             )
             .child(div().border_t_1().border_color(cx.theme().border))
-            .child(field(
+            .child(presentation::row(
                 "Sample rate",
-                Input::new(&self.rate)
-                    .appearance(false)
-                    .small()
-                    .text_align(gpui_kit::TextAlign::Right)
-                    .suffix("Hz"),
+                frequency_control(&self.rate, window, cx),
                 cx,
             ))
-            .child(field(
+            .child(presentation::row(
                 "Reference",
-                Input::new(&self.reference)
-                    .appearance(false)
-                    .small()
-                    .text_align(gpui_kit::TextAlign::Right)
-                    .suffix("Hz"),
+                frequency_control(&self.reference, window, cx),
                 cx,
             ))
-            .child(field(
+            .child(presentation::row(
                 "Sample format",
-                Select::new(&self.kind)
-                    .id("conversion-kind")
-                    .appearance(false)
-                    .small()
-                    .w_full(),
+                presentation::choice_control(
+                    "conversion-kind",
+                    &self.kind,
+                    &self.kind_widths,
+                    window,
+                    cx,
+                ),
                 cx,
             ))
-            .child(field(
+            .child(presentation::row(
                 "Level",
-                Select::new(&self.level)
-                    .id("conversion-level")
-                    .appearance(false)
-                    .small()
-                    .w_full(),
+                presentation::choice_control(
+                    "conversion-level",
+                    &self.level,
+                    &self.level_widths,
+                    window,
+                    cx,
+                ),
                 cx,
             ))
             .when(
@@ -335,7 +339,7 @@ impl Render for Editor {
                     )
                 },
             )
-            .child(self.convert_button(request, cx))
+            .child(div().mt_1().pt_1().child(self.convert_button(request, cx)))
     }
 }
 
@@ -408,18 +412,14 @@ impl Shell {
     pub(super) fn file_control(&self, value: String, cx: &mut Context<Self>) -> impl IntoElement {
         let hint = self.conversion.hint.clone();
         let hover = hint.clone();
-        let button = Button::new("file-information")
-            .small()
-            .h_5()
-            .px_2()
-            .tab_stop(false)
-            .ghost()
-            .disabled(self.conversion_request().is_none())
-            .label(value)
-            .on_hover(move |hovered, window, cx| {
-                hover.update(cx, |hint, cx| hint.hover(*hovered, window, cx));
-            })
-            .on_click(cx.listener(|shell, _, window, cx| shell.convert_dialog(window, cx)));
+        let lit = hint.read(cx).is_open();
+        let button =
+            settings_ui::status_control("file-information", "file-summary-hover", value, lit, cx)
+                .disabled(self.conversion_request().is_none())
+                .on_hover(move |hovered, window, cx| {
+                    hover.update(cx, |hint, cx| hint.hover(*hovered, window, cx));
+                })
+                .on_click(cx.listener(|shell, _, window, cx| shell.convert_dialog(window, cx)));
         hints::pinned(
             "file-information-hint",
             &hint,

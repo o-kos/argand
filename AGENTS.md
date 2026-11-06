@@ -1226,7 +1226,9 @@ verified limitation in the locked 0.6.6 sources in `docs/ui/124-inventory.md`.
 `conversion.rs` converts a whole immutable edited-capture snapshot into a new WAVE/RF64;
 selection is ignored. `conversion_ui.rs` composes the file information status Button,
 PinnedHint panel, Input, Select and Convert Button. Edit > Convert to... and F11 open
-the same panel; explicit output sample rate/reference draft fields are never rewritten
+the same panel. File and Analysis summaries share `settings_ui::status_control`;
+both property editors share `settings_editor` row, numeric, Select and outlined-action
+presentation over standard controls. Explicit output sample rate/reference draft fields are never rewritten
 by a domain change. Drafts do not mutate the current document; Escape discards them. `argand_dsp::convert::ConversionPlan` intersects native input-local bounds
 with output bounds shifted by the reference difference, preserving exact native
 endpoints at large physical references. Reconstruction width is bounded by both
