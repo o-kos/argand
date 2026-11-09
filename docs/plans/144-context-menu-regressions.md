@@ -52,24 +52,26 @@ No production behavior, controls, dependency graph or module hierarchy changes.
 
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
-| Ruler popup isolates plot and session keys | Real right-click; Ctrl+G, time/frequency zoom and Home; assert no intents or grid action | Pending | Headless input routing only |
-| Dismissal restores plot keyboard ownership | Escape, focus restoration, one grid action and one time-zoom intent | Pending | Native focus behavior not established |
-| Open time/spectrum menus do not outlive their windows | Capture live WeakEntity; remove window without dismissal; drain effects; assert upgrade fails while App lives | Pending | Entity lifetime, not RSS measurement |
-| Current inventory describes the locked graph and coverage | Inspect exact dependency sources and update R8/current audit row | Pending | Historical plans stay unchanged |
+| Ruler popup isolates plot and session keys | Real right-click; Ctrl+G, time/frequency zoom and Home; assert no intents or grid action | Passed | Headless input routing only |
+| Dismissal restores plot keyboard ownership | Escape, focus restoration, one grid action and one time-zoom intent | Passed | Native focus behavior not established |
+| Open time/spectrum menus do not outlive their windows | Capture live WeakEntity; remove window without dismissal; drain effects; assert upgrade fails while App lives | Passed for both entry paths | Entity lifetime, not RSS measurement |
+| Current inventory describes the locked graph and coverage | Inspect exact dependency sources and update R8/current audit row | Updated | Historical plans stay unchanged |
 
 ## Implementation steps
 
-- [ ] Add production ruler-menu keyboard isolation and recovery regression.
-- [ ] Add time/spectrum open-menu window-close lifetime regressions.
-- [ ] Correct the current inventory's obsolete cycle/testing restriction.
+- [x] Add production ruler-menu keyboard isolation and recovery regression.
+- [x] Add time/spectrum open-menu window-close lifetime regressions.
+- [x] Correct the current inventory's obsolete cycle/testing restriction.
 - [ ] Run focused regressions and the full local gate.
 - [ ] Complete independent review and coordinator assessment.
 - [ ] Move the plan to completed before Ready.
 
 ## Validation
 
-- [ ] Focused production context-menu regressions.
-- [ ] Additional enabled leak-detector run if practical; record whether actually enabled.
+- [x] `cargo test --locked context_menu_tests -- --nocapture`: all three new
+  regressions passed; the remaining workspace tests were filtered out.
+- Optional leak-detector rebuild omitted: direct WeakEntity destruction assertions
+  are active without it. No snapshot assertion or detector-success claim is used.
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --all-targets --locked`
 - [ ] `cargo test --locked`

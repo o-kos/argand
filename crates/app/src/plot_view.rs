@@ -477,6 +477,8 @@ fn symbol_shortcuts(
 
 #[cfg(test)]
 mod tests {
+    include!("plot_view_context_menu_test.rs");
+
     use super::*;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{Entity, TestAppContext, WindowHandle};
