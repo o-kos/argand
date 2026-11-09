@@ -71,9 +71,10 @@ the owner explicitly authorized a separate worktree after its branch changed.
 - [x] Compose the About panel and integrate toolbar/menu/lifecycle.
 - [x] Add meaningful metadata and production-path interaction coverage.
 - [x] Update architecture, control inventory and changelog.
-- [ ] Complete the local gate and record evidence/limits.
-- [ ] Prepare exact neutral independent review handoff and address findings.
-- [ ] Run full remote CI to success without merging.
+- [x] Complete the local gate and record evidence/limits.
+- [x] Prepare exact neutral independent review handoff; round 1 has no findings.
+- Full remote CI must succeed without merging; exact revision and results are
+  recorded in the Pull Request, keeping its CI evidence current.
 - [ ] Native acceptance and completed-plan move remain pending while unavailable.
 
 ## Validation
@@ -81,10 +82,12 @@ the owner explicitly authorized a separate worktree after its branch changed.
 - [x] `cargo fmt --all -- --check` (Rust 1.98.1 after upstream integration)
 - [x] `cargo clippy --all-targets --locked` (Rust 1.98.1 after upstream integration)
 - [x] `cargo test --locked` (Rust 1.98.1 after upstream integration)
-- [ ] `cargo build --release --locked`, after the checks above pass
+- [x] `cargo build --release --locked`, after the checks above pass
 - [x] Metadata tests, rendered pointer/keyboard/focus integration tests.
-- [ ] Independent current-revision review.
-- [ ] Full Linux/Windows/macOS remote CI.
+- Independent review: round 1 is clean; focused upstream-integration revalidation
+  and its exact snapshot/result are recorded in the Pull Request review handoff.
+- Full Linux/Windows/macOS remote CI: current-revision run/result is recorded in
+  the Pull Request. Native acceptance remains a separate pending requirement.
 
 Current automated evidence: the Rust 1.98.1 workspace gate passes 1,167 tests (one existing
 ignored test). Six About production-path UI scenarios cover both entry points,
@@ -94,14 +97,18 @@ The metadata module also passes four standalone tests without GPUI. A disposable
 Cargo project verifies actual rebuilds for same-ref commits, first tags, packed
 refs creation/removal and linked-worktree shared refs; missing Git returns explicit
 unavailable values without a panic. The full gate and source snapshot are retained
-in the external review packet. The release build follows the implementation commit
-so its embedded identity names the submitted source revision.
+in the external review packet. The Rust 1.98.1 release build passed in 9m24s.
+A final release rebuild follows this validation-record commit so its embedded
+identity names the submitted source revision; its artifact identity is retained
+in the external handoff.
 
 Independent review round 1 found no substantive metadata, lifecycle, UI-composition,
 architecture or validation-evidence findings. There were no accepted/rejected
 findings to carry forward. Upstream integration requires the full gate on the new
-Rust baseline (formatting, lint and tests now pass) and a focused current-snapshot
-review before the final CI result.
+Rust baseline (formatting, lint, tests and release now pass) and a focused
+current-snapshot review before the final CI result. Focused revalidation and
+remote CI outcomes are retained in the Pull Request without subsequent commits
+that would invalidate the checked revision.
 Native acceptance remains incomplete.
 
 ## Post-completion
