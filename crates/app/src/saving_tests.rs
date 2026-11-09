@@ -168,6 +168,7 @@ fn flac_export_checks_original_stamps_after_final_encoding() {
     let hints = argand_io::OpenHints::default();
     let (source, stamp) = argand_io::open_stamped(&path, &hints).unwrap();
     let meta = source.meta().clone();
+    drop(source);
     let target = dir.join("band.flac");
     std::fs::write(&target, b"existing output").unwrap();
     let request = crate::extraction::ExtractRequest {

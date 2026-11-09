@@ -29,17 +29,20 @@ actual platform contract.
 
 ## Implementation
 
-- [ ] Scope the custom-caption pointer regression to Linux.
-- [ ] Release the metadata-only reader before mutation.
+- [x] Scope the custom-caption pointer regression to Linux.
+- [x] Release the metadata-only reader before mutation.
 - [ ] Validate focused tests, normal compilation and the full local gate.
-- [ ] Move the finished plan before independent final review.
+- [x] Move the finished plan before independent final review.
 - [ ] Record review and three-platform CI results.
 
 ## Validation
 
-- [ ] `cargo check -p argand --locked`
+- [x] `cargo check -p argand --locked`
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --all-targets --locked`
 - [ ] `cargo test --locked`
-- [ ] Verify production diff is empty, retaining the existing current-code release.
+- [x] Verify production diff is empty, retaining the existing current-code release.
 - [ ] Ready full CI: Linux, Windows, macOS and `ci/full` all succeed.
+
+Focused Linux regressions both pass; normal application compilation passes. The
+production diff is empty, so the existing release remains the current runtime.

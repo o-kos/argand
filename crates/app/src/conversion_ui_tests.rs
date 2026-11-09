@@ -1351,6 +1351,7 @@ fn exact_carrier_defaults_do_not_warn_from_rounded_physical_references(cx: &mut 
     }
 }
 
+#[cfg(target_os = "linux")]
 #[gpui_kit::test]
 fn caption_close_with_open_sample_list_reaches_unsaved_workflow(cx: &mut TestAppContext) {
     use super::super::replace_ui::tests::{wait_until, write_wave};
