@@ -223,6 +223,9 @@ impl Advice {
         let state = self.hover.clone();
         cx.defer(move |cx| {
             let mut hover = state.get();
+            if !hover.enabled {
+                return;
+            }
             if hover.regions == 0 {
                 hover.mode = HoverMode::Ready;
             }
@@ -307,6 +310,7 @@ impl Advice {
         let pointer_hover = self.clone();
         let pointer = div()
             .id(content.pointer)
+            .test_support()
             .on_hover(move |inside, _, cx| {
                 pointer_hover.hovered(*inside, HoverRegion::Pointer, owner, cx)
             })
@@ -319,8 +323,8 @@ impl Advice {
             .absolute()
             .top_0()
             .bottom_0()
-            .when(left, |pointer| pointer.left_0())
-            .when(!left, |pointer| pointer.right_0())
+            .when(left, |pointer| pointer.left(px(BALLOON_GAP)))
+            .when(!left, |pointer| pointer.right(px(BALLOON_GAP)))
             .flex()
             .items_center()
             .child(balloon_pointer(cx.theme().tokens.popover, edge, left));

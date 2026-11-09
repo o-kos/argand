@@ -22,4 +22,10 @@ Use GPUI hover handlers and deferred state reconciliation over the existing meas
 - [x] Normal application check, formatting, all-targets Clippy and focused coverage.
 - [x] Move finished plan before final independent review.
 - [ ] Address independent review findings.
-- [ ] Full locked gate, fresh release and existing Draft PR publication.
+- [ ] Repeat the full locked gate on the final runtime.
+- [ ] Rebuild the release after the final runtime passes the gate.
+- [ ] Existing Draft PR publication after independent review.
+
+## Review corrections
+
+Accepted two narrow consistency/ownership observations: preserve the triangle's original absolute offset after extending the gap hit region, and stop deferred hover reconciliation when Select suppression has disabled it. Rendered pointer bounds verify the original three-pixel tip offset, one-pixel body overlap and unchanged geometry on reopening.

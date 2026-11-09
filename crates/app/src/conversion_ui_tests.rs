@@ -1844,9 +1844,13 @@ fn exercise_reopened_advice(
     anchor: gpui_kit::Point<gpui_kit::Pixels>,
 ) {
     let modifiers = gpui_kit::Modifiers::default();
-    let (close, geometry) = cx.update(|window, _| {
+    let (close, geometry, pointer_geometry) = cx.update(|window, _| {
         let balloon = window.find("conversion-format-balloon").bounds();
         assert!(balloon.right() <= window.viewport_size().width);
+        let pointer = window.find("conversion-format-balloon-pointer").bounds();
+        let trigger = window.find("conversion-format-advice").bounds();
+        assert_eq!(pointer.left(), trigger.right() + px(3.));
+        assert_eq!(balloon.left(), pointer.right() - px(1.));
         assert!(window.try_find("metadata-tooltip-content").is_none());
         (
             window
@@ -1854,6 +1858,7 @@ fn exercise_reopened_advice(
                 .bounds()
                 .center(),
             balloon,
+            pointer,
         )
     });
     cx.simulate_mouse_move(point(anchor.x + px(4.), anchor.y), None, modifiers);
@@ -1870,13 +1875,25 @@ fn exercise_reopened_advice(
     frame(cx);
     cx.simulate_mouse_move(anchor, None, modifiers);
     frame(cx);
-    cx.update(|window, _| assert_eq!(window.find("conversion-format-balloon").bounds(), geometry));
+    cx.update(|window, _| {
+        assert_eq!(window.find("conversion-format-balloon").bounds(), geometry);
+        assert_eq!(
+            window.find("conversion-format-balloon-pointer").bounds(),
+            pointer_geometry
+        );
+    });
     cx.simulate_mouse_move(point(px(10.), px(10.)), None, modifiers);
     frame(cx);
     cx.update(|window, _| assert!(window.try_find("conversion-format-balloon").is_none()));
     cx.simulate_mouse_move(anchor, None, modifiers);
     frame(cx);
-    cx.update(|window, _| assert_eq!(window.find("conversion-format-balloon").bounds(), geometry));
+    cx.update(|window, _| {
+        assert_eq!(window.find("conversion-format-balloon").bounds(), geometry);
+        assert_eq!(
+            window.find("conversion-format-balloon-pointer").bounds(),
+            pointer_geometry
+        );
+    });
 }
 
 #[gpui_kit::test]

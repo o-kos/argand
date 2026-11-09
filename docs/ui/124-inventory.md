@@ -311,14 +311,15 @@ recommendation and once its stepper is no longer shown.
 
 Range and sample-format warnings share `property_advice.rs`: measured side placement,
 a standard close Button, the retained triangular pointer drawing, and ordinary Tooltip
-fallback after dismissal or when neither side has a readable width. The format warning
+fallback only when neither side has a readable width. After dismissal, a fresh marker
+entry reopens the same anchored balloon when room permits. The format warning
 is informational; Range retains its recommendation action and shortcut. Both disappear
 while a property Select is open. This extracts existing approved composition rather than
 introducing a replacement tooltip, select, button or input. The standard Tooltip cannot
 supply the persistent adjacent callout and dismiss-to-marker lifecycle; the same existing
 composition supplies it to both property editors. Keyboard focus remains with standard
 controls; the close Button is not a Tab stop. The format-advice GPUI regression covers
-automatic display, Close, hover fallback, open-list suppression, explicit clearing and
+automatic display, Close, same-balloon hover reopening, open-list suppression, explicit clearing and
 constrained-viewport placement alongside the existing Range regressions.
 
 For the rest of the form the standard alternative is the same component, so no limitation is claimed. Composition
