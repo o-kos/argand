@@ -51,7 +51,7 @@ Symphonia 0.6.1 still accepts only RIFF WAVE, so this upgrade does not solve #19
 - [x] Update relevant current documentation and user-visible changelog if warranted.
 - [x] Complete local validation and build the current release binary.
 - [ ] Complete independent review and record dispositions.
-- [ ] Move this plan to `docs/plans/completed/` before Ready/final review.
+- [x] Move this plan to `docs/plans/completed/` before Ready/final review.
 
 ## Validation
 
