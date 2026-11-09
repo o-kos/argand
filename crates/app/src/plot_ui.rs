@@ -3,9 +3,9 @@
 use super::navigation_ui::*;
 use super::plot_view::{PlotIntent, PlotSnapshot, PlotView};
 use super::*;
-use gpui_kit::Div;
 use gpui_kit::component::button::ButtonRounded;
 use gpui_kit::component::{Disableable, Icon, IconName};
+use gpui_kit::{AvailableSpace, Div};
 
 impl Shell {
     /// The held picture view and the once-only first-paint marker, both
@@ -150,36 +150,21 @@ impl PlotView {
         snapshot: PlotSnapshot,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let PlotSnapshot {
-            extents,
-            texture,
-            deep,
-            backdrop,
-            held: held_view,
-            first_picture,
-            minimap,
-            minimap_size,
-            time_scheme,
-            frequency_scheme,
-            show_grid,
-            show_scale_ui: scale_ui_visible,
-            selection,
-            badges,
-            ..
-        } = snapshot;
+        let extents = snapshot.extents;
         let orientation = extents.orientation;
+        let overlays = self.overlays(&snapshot, cx);
         let rem = f32::from(cx.theme().font_size);
         let known_bounds = self.panel_bounds;
         let known = self.measured;
         let known_geometry = self.geometry;
-        let badges = self.badge_layout(badges, cx);
+        let badges = self.badge_layout(snapshot.badges, cx);
         let held = axes::Held {
-            time: time_scheme,
-            frequency: frequency_scheme,
+            time: snapshot.time_scheme,
+            frequency: snapshot.frequency_scheme,
             gutter: self.gutter_floor,
         };
         let view = cx.entity().downgrade();
-        let marks = self.marks(selection, extents, show_grid, cx);
+        let marks = self.marks(snapshot.selection, extents, snapshot.show_grid, cx);
 
         canvas(
             move |bounds, window, cx| {
@@ -188,7 +173,7 @@ impl PlotView {
                 let height = panels::waveform_height(
                     f32::from(orientation.axes(bounds.size.width, bounds.size.height).1),
                     rem,
-                    minimap_size,
+                    snapshot.minimap_size,
                     scale,
                 );
                 let (dx, dy) = orientation.axes(px(0.), px(height));
@@ -196,8 +181,14 @@ impl PlotView {
                 let frame =
                     axes::Frame::measure_view(spectrum_size, scale, extents, &labels, held)?;
                 let measured = oriented_device_size(frame.plot, scale, orientation);
-                let geometry =
-                    plot_geometry(bounds, &frame, &labels, height, scale, scale_ui_visible);
+                let geometry = plot_geometry(
+                    bounds,
+                    &frame,
+                    &labels,
+                    height,
+                    scale,
+                    snapshot.show_scale_ui,
+                );
                 if known != Some(measured)
                     || known_bounds != Some(bounds)
                     || known_geometry != Some(geometry)
@@ -208,37 +199,46 @@ impl PlotView {
                 let entry = badge_entry::entry_size(f32::from(window.rem_size()));
                 let placed =
                     badges.place(&frame, &labels, entry, bounds.origin + point(dx, dy), cx);
-                Some((frame, labels, height, placed))
+                let overlays = overlays.prepaint(
+                    bounds,
+                    plot_bounds(&frame, bounds.origin + point(dx, dy)),
+                    geometry.zoom_zones[0].is_some(),
+                    window,
+                    cx,
+                );
+                Some((frame, labels, height, placed, overlays))
             },
             move |bounds, prepainted, window, cx| {
-                let Some((frame, labels, height, placed)) = prepainted else {
+                let Some((frame, labels, height, placed, overlays)) = prepainted else {
                     return;
                 };
                 let (dx, dy) = orientation.axes(px(0.), px(height));
                 let spectrum_origin = bounds.origin + point(dx, dy);
-                if let Some(backdrop) = &backdrop {
+                if let Some(backdrop) = &snapshot.backdrop {
                     backdrop.paint(
                         &frame,
                         bounds.origin,
                         height,
                         extents.picture(),
-                        held_view,
+                        snapshot.held,
                         window,
                     );
                 }
-                minimap.paint(&frame, bounds.origin, height, window);
+                snapshot
+                    .minimap
+                    .paint(&frame, bounds.origin, height, window);
                 // The picture first, then the marks over it: a grid line is
                 // there to be read against the spectrogram, not under it.
-                if let Some(texture) = texture
-                    && let Some(held) = held_view
+                if let Some(texture) = snapshot.texture
+                    && let Some(held) = snapshot.held
                 {
                     let plot = plot_bounds(&frame, spectrum_origin);
-                    if let Some(deep) = deep {
+                    if let Some(deep) = snapshot.deep {
                         deep.paint(plot, extents.picture(), orientation, window);
                     } else {
                         paint_held(texture, plot, held, extents.picture(), orientation, window);
                     }
-                    if let Some((opened_at, painted)) = &first_picture
+                    if let Some((opened_at, painted)) = &snapshot.first_picture
                         && !painted.swap(true, Ordering::Relaxed)
                     {
                         tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
@@ -249,6 +249,7 @@ impl PlotView {
                     size(bounds.size.width - dx, bounds.size.height - dy),
                 );
                 marks.paint(&frame, panel, &labels, &placed, window, cx);
+                overlays.paint(window, cx);
             },
         )
         .size_full()
@@ -415,53 +416,53 @@ impl PlotView {
         Some(marker.into_any_element())
     }
 
-    pub(super) fn ruler_zoom_buttons(
-        &self,
-        snapshot: &PlotSnapshot,
-        cx: &mut Context<Self>,
-    ) -> Option<gpui_kit::AnyElement> {
-        if !snapshot.show_scale_ui {
-            return None;
+    fn overlays(&self, snapshot: &PlotSnapshot, cx: &mut Context<Self>) -> PlotOverlays {
+        PlotOverlays {
+            marker: self.paste_marker(snapshot, cx).map(|marker| {
+                div()
+                    .relative()
+                    .size_full()
+                    .child(marker)
+                    .into_any_element()
+            }),
+            controls: snapshot
+                .show_scale_ui
+                .then(|| self.ruler_zoom_buttons(snapshot.extents.orientation, cx)),
         }
-        let geometry = self.geometry?;
-        let origin = self.panel_bounds?.origin;
-        let enabled = true;
-        let [time, frequency] = geometry.zoom_zones;
-        Some(
-            div()
-                .id("ruler-zoom-buttons")
-                .absolute()
-                .inset_0()
-                .children(time.map(|zone| {
-                    zoom_pair(
-                        ZoomPair {
-                            zone,
-                            zoom_in: "Zoom in time",
-                            zoom_out: "Zoom out time",
-                        },
-                        ZoomIn,
-                        ZoomOut,
-                        enabled,
-                        origin,
-                        cx,
-                    )
-                }))
-                .children(frequency.map(|zone| {
-                    zoom_pair(
-                        ZoomPair {
-                            zone,
-                            zoom_in: "Zoom in frequency",
-                            zoom_out: "Zoom out frequency",
-                        },
-                        FrequencyZoomIn,
-                        FrequencyZoomOut,
-                        enabled,
-                        origin,
-                        cx,
-                    )
-                }))
-                .into_any_element(),
-        )
+    }
+
+    fn ruler_zoom_buttons(
+        &self,
+        orientation: crate::orientation::Mode,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        div()
+            .id("ruler-zoom-buttons")
+            .relative()
+            .size_full()
+            .child(zoom_pair(
+                ZoomPair {
+                    horizontal: !orientation.vertical(),
+                    zoom_in: "Zoom in time",
+                    zoom_out: "Zoom out time",
+                },
+                ZoomIn,
+                ZoomOut,
+                true,
+                cx,
+            ))
+            .child(zoom_pair(
+                ZoomPair {
+                    horizontal: orientation.vertical(),
+                    zoom_in: "Zoom in frequency",
+                    zoom_out: "Zoom out frequency",
+                },
+                FrequencyZoomIn,
+                FrequencyZoomOut,
+                true,
+                cx,
+            ))
+            .into_any_element()
     }
 
     /// Keep the measured layout and tell the shell what it changes.
@@ -607,6 +608,47 @@ impl Shell {
     }
 }
 
+struct PlotOverlays {
+    marker: Option<gpui_kit::AnyElement>,
+    controls: Option<gpui_kit::AnyElement>,
+}
+
+impl PlotOverlays {
+    fn prepaint(
+        mut self,
+        panel: Bounds<Pixels>,
+        plot: Bounds<Pixels>,
+        controls_visible: bool,
+        window: &mut Window,
+        cx: &mut gpui_kit::App,
+    ) -> Self {
+        if let Some(marker) = &mut self.marker {
+            marker.prepaint_as_root(
+                panel.origin,
+                panel.size.map(AvailableSpace::Definite),
+                window,
+                cx,
+            );
+        }
+        self.controls = self.controls.filter(|_| controls_visible);
+        if let Some(controls) = &mut self.controls {
+            controls.prepaint_as_root(
+                plot.origin,
+                plot.size.map(AvailableSpace::Definite),
+                window,
+                cx,
+            );
+        }
+        self
+    }
+
+    fn paint(mut self, window: &mut Window, cx: &mut gpui_kit::App) {
+        for element in [&mut self.marker, &mut self.controls].into_iter().flatten() {
+            element.paint(window, cx);
+        }
+    }
+}
+
 /// What is painted over the picture, in order from the selection's tint to the Alt guides.
 struct Marks {
     selection: Option<waveform::Selected>,
@@ -723,7 +765,7 @@ fn corner_zones(
 }
 
 struct ZoomPair {
-    zone: axes::Rect,
+    horizontal: bool,
     zoom_in: &'static str,
     zoom_out: &'static str,
 }
@@ -756,12 +798,11 @@ fn zoom_pair(
     in_action: impl Action,
     out_action: impl Action,
     enabled: bool,
-    origin: gpui_kit::Point<Pixels>,
     cx: &mut Context<PlotView>,
 ) -> Div {
     let frame = cx.theme().border.opacity(0.75);
     let paper = cx.theme().background.opacity(0.55);
-    let horizontal = pair.zone.width > pair.zone.height;
+    let horizontal = pair.horizontal;
     let zoom_in = half_button(
         IconName::Plus,
         pair.zoom_in,
@@ -805,10 +846,18 @@ fn zoom_pair(
     };
     div()
         .absolute()
-        .left(px(pair.zone.x) - origin.x)
-        .top(px(pair.zone.y) - origin.y)
-        .w(px(pair.zone.width))
-        .h(px(pair.zone.height))
+        .when(horizontal, |pair| {
+            pair.left(px(SCALE_INSET))
+                .bottom(px(SCALE_INSET))
+                .w(px(SCALE_PAIR))
+                .h(px(SCALE_BUTTON))
+        })
+        .when(!horizontal, |pair| {
+            pair.right(px(SCALE_INSET))
+                .top(px(SCALE_INSET))
+                .w(px(SCALE_BUTTON))
+                .h(px(SCALE_PAIR))
+        })
         .border_1()
         .border_color(frame)
         .bg(paper)

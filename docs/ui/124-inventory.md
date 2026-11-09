@@ -29,6 +29,21 @@ Source paths name the registry `gpui-component-0.9.1`, `gpui-base-0.9.1` and
 | R12 domain drawing | Retained domain canvases, not ordinary-control replacements. Toolkit axis primitives do not own RF semantics or the bounded render model. | Axis/navigation/render-model and texture-retirement regression tests. |
 | R13 abandoned custom editor | Remains absent. | No new text editing implementation. |
 
+Corner zoom pairs use standard div anchors in the current plot rectangle inside
+the existing domain canvas. Their Button behavior, identities and styling remain
+standard; no new widget or retained geometry owner is introduced. The plot's
+font-measured rectangle is only available in prepaint, so a panel-level anchor
+would include the minimap and axis gutters. Public AnyElement layout/prepaint/paint
+APIs host the controls there, as supported by GPUI `element.rs:694`, `:705`, `:689`
+and the component radar chart's element-label lifecycle (`chart/radar_chart.rs:469`,
+`:482`). Deferred gesture geometry keeps the same corner policy but no longer
+positions the controls. First-resize-frame regression compares actual painted
+plot bounds with rendered Button bounds, without waiting for deferred convergence.
+The existing Paste-here marker is prepared in the same frame-local overlay bundle
+and painted before the standard controls, preserving its previous stacking order.
+A render/input regression checks overlapping marker/control quads and click ownership;
+this composition adds no retained entity, custom Element or replacement control.
+
 ### Frame observer composition
 
 `FrameObserver` is a stateless Base RootPlugin, not a second root or a custom

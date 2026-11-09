@@ -90,11 +90,18 @@ Space remains intentionally inert in the application menu.
 | Custom-control inventory reflects selected graph | Each retained exception reviewed against exact locked source | Completed for the selected graph | Do not generalize tag evidence to a different registry version |
 | Theme, window chrome and multiwindow input work | Targeted automated tests and native scenarios where available | Automated geometry/theme/window-isolation tests passed | Native Linux and Windows/macOS runtime acceptance remain unperformed |
 | Texture retirement retains originating-window ownership and intervening-frame lifetime | Current texture-retirement and multiwindow regression tests | Existing snapshot-retirement and window-isolation tests passed; retirement code unchanged | Headless tests do not establish GPU completion or native multiwindow lifetime |
-| Current code passes required checks | Full local gate, then release build | Full gate and subsequent release build passed | Server CI and native acceptance reported separately |
-| Independent review and current-revision evidence | Separate reviewer using neutral exact snapshot | Rounds 1–2 completed; missing changelog finding accepted and addressed; round 2 found nothing substantive | Native acceptance remains pending; plan stays active |
+| Current code passes required checks | Full local gate, then release build | Passed: current full gate and subsequent release build | Server CI and native acceptance reported separately |
+| Independent review and current-revision evidence | Separate reviewer using neutral exact snapshot | Three rounds completed; missing changelog addressed; rounds 2 and 3 clean | Native acceptance remains pending; plan stays active |
 
 ## Implementation steps
 
+- [x] Resolve the owner-observed severe lag of corner zoom buttons during resize:
+      place the existing standard Button pairs from the current frame's measured
+      plot bounds, not deferred geometry. Use supported element lifecycle inside
+      the existing domain canvas; no new widget, entity, timer or redraw loop.
+      Verify rendered button bounds on the first resized frame in both
+      orientations, including width/height and minimap/axis gutters, and preserve
+      action, focus, disabled, tooltip and pointer behavior.
 - [x] Refresh main, preserve unrelated work and create a focused branch.
 - [x] Record Class A scope, roles, checkpoints and upstream-skill provenance.
 - [x] Open an early Draft Pull Request linked to #226.
@@ -106,7 +113,7 @@ Space remains intentionally inert in the application menu.
       fix in the inventory; native menu lifecycle and animation checks remain pending.
 - [x] Reassess every relevant inventory exception; remove superseded paths and
       update architecture/inventory documentation alongside the code.
-- [x] Complete local gate and build the current release binary.
+- [x] Complete local gate and build the current release binary after the resize correction.
 - [ ] Run permitted native acceptance scenarios and record actual limitations.
 - [x] Prepare neutral current-revision evidence for independent review.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
@@ -115,10 +122,10 @@ Space remains intentionally inert in the application menu.
 
 - [x] Installed upstream skill trees match the exact v0.9.1 archive byte-for-byte;
       bundled relative references were checked and source-only links documented.
-- [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --all-targets --locked`
-- [x] `cargo test --locked`
-- [x] `cargo build --release --locked`, after the full gate passes
+- [x] `cargo fmt --all -- --check`, after the resize correction
+- [x] `cargo clippy --all-targets --locked`, after the resize correction
+- [x] `cargo test --locked`, after the resize correction
+- [x] `cargo build --release --locked`, after the current full gate passes
 - [x] Focused automated Root, overlay, menu, input and multiwindow regressions.
 - [ ] Native animation and context-menu lifecycle checks; no dedicated current
       runtime observation has been made.
@@ -127,9 +134,9 @@ Space remains intentionally inert in the application menu.
       resize/maximize/restore, nested lists, panel transactions, keyboard focus,
       pointer/wheel isolation, numeric disabled/repeat states and theme switching.
       Record unavailable interaction capabilities and untested platforms explicitly.
-- [x] Independent review of the exact current diff and validation evidence:
-      round 1's missing changelog finding was accepted and addressed; round 2
-      returned no substantive findings.
+- [x] Final independent review of the resize correction and current evidence;
+      all three rounds completed. Round 1's missing changelog finding was accepted
+      and addressed; rounds 2 and 3 returned no substantive findings.
 
 ## Post-completion
 
@@ -137,6 +144,31 @@ Ready status, full three-platform CI, owner acceptance and squash merge follow t
 repository workflow. Migration completion does not authorize a release.
 
 ### Current implementation evidence
+
+Owner feedback on the production build found severe corner-button positioning
+lag during resize. This is an acceptance failure in #226; earlier validation does
+not establish the corrected behavior. The measured plot rectangle is available
+in canvas prepaint, while ordinary panel anchors include the minimap and axes.
+Prepare standard Button elements during render, then use the toolkit's supported
+layout/prepaint/paint lifecycle at that current rectangle in the existing canvas.
+Keep one shared corner-zone policy for controls and deferred gesture geometry.
+The third and final independent review round found no substantive findings in
+this correction. Current rustfmt, Clippy and full tests exited successfully: 1146
+tests passed, including 617 application tests, with one existing ignored manual
+release-mode conversion cost measurement. The subsequent release build exited
+successfully. Corrected native resize acceptance remains pending.
+The focused PlotView suite passed all 50 tests. The regression changes parent
+layout dimensions and renders one frame inside the same update, before deferred
+effects can converge. It compares rendered Button hitboxes to the actual painted
+plot quad in both orientations and four width/height combinations. It failed on
+the old placement (button y=988 versus current plot-derived y=528) and passed after
+the correction. Standard Button callbacks, disabled styling and tooltip code are
+unchanged; the production pairs remain enabled as before. A render/input regression
+places the Paste-here marker through a zoom half, verifies the marker paints below
+the control, and checks that the click emits exactly one zoom intent. Selection
+badges remain below the controls; unit hints occupy the axis gutters, while saved
+notices and entry overlays retain their later sibling order. Native resize acceptance
+must be repeated on the corrected production build.
 
 The automatic Root/frame integration is implemented with the approved radius and
 colors; captions retain their existing shared implementation. A stateless RootPlugin
@@ -153,12 +185,13 @@ An initial application suite exposed six Enter/focus regressions. Base 0.9.1
 PopoverContent deliberately binds Enter to NoAction instead of inheriting trigger
 activation. PinnedHint now explicitly binds and handles Confirm in its existing
 scope, preserving its Enter-close contract while descendant fields/lists/actions
-handle Confirm first. The current full application suite passed all 615 tests,
+handle Confirm first. Before the resize correction, the full application suite passed all 615 tests,
 including the Root borrowing regression. The full local gate exited successfully:
 rustfmt, Clippy and 1144 tests passed, with one existing ignored manual release-mode
 conversion cost measurement. The subsequent release build also exited successfully.
-Only documentation changed after that code snapshot; no runtime code changed.
-The current release's help/version commands exited successfully. A bounded launch
+Those earlier results predate the resize correction; the current gate and release
+results are recorded above. The previous release's help/version commands exited
+successfully. A bounded launch of that previous release
 with a disposable I/Q capture, portable default configuration and isolated XDG
 config/state/cache/data roots stayed alive for 12 seconds with no logged error,
 then received SIGTERM from the harness. This establishes startup smoke only;

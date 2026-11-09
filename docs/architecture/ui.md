@@ -233,6 +233,11 @@ so application switchers and window managers receive the same identity.
 
 ## Standard buttons (#130)
 
+The corner zoom pairs use standard div anchors in the current frame's measured
+plot rectangle. The existing canvas lays out and prepaints their standard elements
+before painting them above its marks; deferred gesture geometry never positions
+the buttons. Their visibility and gesture zones share the same corner constants.
+
 The corner zoom halves and the toolbar are gpui-component `Button`s, and each
 keeps the toolkit's own pressed, disabled and click behaviour. A control that
 lives over the picture or in the title bar is `tab_stop(false)` and carries a stable
