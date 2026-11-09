@@ -1756,3 +1756,16 @@ fn explicit_flac_refuses_unsupported_encodings_without_publishing() {
         assert!(!request.target.exists());
     }
 }
+
+#[test]
+fn a_truncated_final_flac_packet_never_publishes_a_save() {
+    let dir = TempDir::new("write-flac-truncated-final");
+    let source = dir.join("a.flac");
+    write_flac_fixture(&source, 2, 16, 5000);
+    let mut bytes = fs::read(&source).unwrap();
+    bytes.truncate(bytes.len() - 32);
+    fs::write(&source, bytes).unwrap();
+    let request = request(&source, OpenHints::default(), None, dir.join("b.flac"));
+    assert!(run(&request).is_err());
+    assert_eq!(names(&dir), ["a.flac"]);
+}

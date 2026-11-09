@@ -26,6 +26,10 @@ Symphonia 0.6.1 still accepts only RIFF WAVE, so this upgrade does not solve #19
   arithmetic, metadata and interleaved sample-copy APIs. Preserve gain, normalization,
   original units, immutable opened handles, source stamps and strict-save validation.
 - Reduced-valid-bit feature support remains explicitly deferred by the owner.
+- Only explicit `Ok(None)` ends packet reads normally. Unexpected EOF and a reset
+  request propagate as errors rather than masquerading as a finished capture. The
+  enabled RIFF/FLAC/PCM 0.6.1 sources contain no `ResetRequired` emission; unsupported
+  format resets must not silently shorten a capture.
 - No UI controls or application interaction contracts change. Native UI acceptance is
   not required for this decoder-only migration; production launch may be a smoke check.
 
@@ -33,19 +37,19 @@ Symphonia 0.6.1 still accepts only RIFF WAVE, so this upgrade does not solve #19
 
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
-| Existing codecs use compatible Symphonia 0.6.1 | Targeted lock update and dependency graph inspection | Pending | No unrelated broad update |
-| Decoded values, levels and metadata retain their meaning | Decoder WAVE/FLAC unit and existing I/O tests | Pending | No new formats |
-| Exact seek, reopen and source identity remain intact | Independent cursor, replacement/change and seek regressions | Pending | Platform-specific identity limits unchanged |
-| EOF and damaged frames preserve safe-save behavior | Full stream and strict corruption/timestamp tests | Pending | No weakening of damaged-input checks |
-| Current workspace passes required checks | fmt, Clippy, tests, then release build | Pending | Local checks do not establish remote CI |
+| Existing codecs use compatible Symphonia 0.6.1 | Targeted lock update and dependency graph inspection | Symphonia family at 0.6.1; only required new support crates | No unrelated broad update |
+| Decoded values, levels and metadata retain their meaning | Decoder WAVE/FLAC unit and existing I/O tests | Standard PCM/float cross-reader and FLAC fixture tests passed | No new formats |
+| Exact seek, reopen and source identity remain intact | Independent cursor, replacement/change and seek regressions | Seek/reopen/replacement and audio-track tests passed | Platform-specific identity limits unchanged |
+| EOF and damaged frames preserve safe-save behavior | Full stream and strict corruption/timestamp tests | Clean EOF, final-frame truncation and strict-save regressions passed | Declared-length FLAC truncation covered; private captures unavailable |
+| Current workspace passes required checks | fmt, Clippy, tests, then release build | All four checks passed; release build completed after tests | Local checks do not establish remote CI |
 | Independent review covers exact current snapshot | Neutral packet outside worktree and separate reviewer | Pending | Coordinator assesses findings |
 
 ## Implementation steps
 
-- [ ] Upgrade only the Symphonia dependency family and adapt decoder APIs.
-- [ ] Verify explicit EOF, timestamps, sample-copy, metadata and reopen contracts.
-- [ ] Update relevant current documentation and user-visible changelog if warranted.
-- [ ] Complete local validation and build the current release binary.
+- [x] Upgrade only the Symphonia dependency family and adapt decoder APIs.
+- [x] Verify explicit EOF, timestamps, sample-copy, metadata and reopen contracts.
+- [x] Update relevant current documentation and user-visible changelog if warranted.
+- [x] Complete local validation and build the current release binary.
 - [ ] Complete independent review and record dispositions.
 - [ ] Move this plan to `docs/plans/completed/` before Ready/final review.
 
@@ -54,12 +58,17 @@ Symphonia 0.6.1 still accepts only RIFF WAVE, so this upgrade does not solve #19
 Initial plan-only publication uses scoped diff/link checks and skips the code gate.
 Code pushes require the complete local gate. Preserve the production feature set.
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after checks pass
-- [ ] Targeted decoder and safe-save regression evidence.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after checks pass
+- [x] Targeted decoder and safe-save regression evidence.
 - [ ] Independent read-only review of the exact submitted state.
+
+Workspace tests passed: 1,148 tests; one manual release-mode conversion cost
+measurement is ignored. Tests use committed and synthetic FLAC/WAVE fixtures;
+optional private captures are not available in this worktree. Native app interaction
+and remote CI are not claimed by these automated results.
 
 ## Post-completion
 

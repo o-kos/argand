@@ -627,3 +627,47 @@ fn a_long_kiwi_recording_reads_again_after_pages_are_released() {
     source.seek(1_000).unwrap();
     assert_eq!(drain(source.as_mut()), first[2_000..]);
 }
+
+#[test]
+fn decoded_packets_replace_the_pending_buffer_and_end_cleanly() {
+    let dir = TempDir::new("decoded-packets-eof");
+    for st in all_sample_types().into_iter().filter(|st| st.format != SampleFormat::F16x8) {
+        let values: Vec<f32> = (0..5003 * st.channels())
+            .map(|n| ((n % 127) as f32 - 63.0) / 128.0)
+            .collect();
+        let path = write_wav(&dir.join(&format!("{st}.wav")), st, 2_400_000, &values, 1.0);
+        let mut expected = open(&path, &OpenHints {
+            normalize: Some(Normalize::None), ..OpenHints::default()
+        }).unwrap();
+        let mut decoded = DecodedSource::open(&path, "wav", None, None, None, Normalize::None, 0.0).unwrap();
+        let expected = drain(expected.as_mut());
+        assert_eq!(drain(&mut decoded), expected, "{st}");
+        let mut buf = [f32::NAN; 17];
+        assert_eq!(decoded.read(&mut buf).unwrap(), 0, "{st}");
+        assert_eq!(decoded.read(&mut buf).unwrap(), 0, "{st}");
+        for sample in [4097, 1, 5002] {
+            decoded.seek(sample).unwrap();
+            let count = decoded.read(&mut buf).unwrap();
+            assert_eq!(count % st.channels(), 0);
+            let start = sample as usize * st.channels();
+            assert_eq!(&buf[..count], &expected[start..start + count], "{st} at {sample}");
+        }
+    }
+}
+
+#[test]
+fn a_truncated_known_length_flac_is_an_error_instead_of_clean_eof() {
+    let dir = TempDir::new("decoded-truncated-eof");
+    let (path, mut bytes) = flac_fixture(&dir);
+    bytes.truncate(bytes.len() - 32);
+    std::fs::write(&path, bytes).unwrap();
+    let mut source = open(&path, &OpenHints::default()).unwrap();
+    let mut buf = [0.0; 513];
+    loop {
+        match source.read(&mut buf) {
+            Ok(0) => panic!("truncated FLAC was reported as clean EOF"),
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+}
