@@ -12,9 +12,10 @@ step 2, the owner authorized trying the project-local skill in step 3. After acc
 step 3, the owner approved the review-handoff skill and final consistency work in step 4.
 
 The initial owner-requested separate worktree used the then-current main. During
-steps 1–4, #189 conversion was unmerged and was deliberately not imported. After
-Draft publication, #224 merged that work; the owner authorized the integration
-phase below to preserve the now-upstream architecture while resolving conflicts.
+steps 1–4, #189 conversion was unmerged and was deliberately not imported. By
+Draft publication, #224 had merged that work; after publication the owner authorized
+the integration phase below to preserve the now-upstream architecture while resolving
+conflicts.
 Keep historical completed plans and the existing UI inventory unchanged. The coordinator defers commits, pushes and a Draft Pull Request until the
 after-step discussion; this does not waive the eventual delivery workflow.
 
@@ -265,9 +266,17 @@ need for further owner discussion. Native UI acceptance is not claimed.
 
 - [x] Verify clean local/remote PR identity and report upstream delta before edits.
 - [x] Preserve every newly merged guidance fragment with the mapping above.
-- [ ] Validate documentation, both skills and exact source equality with main.
-- [ ] Coordinator assessment of integration delta and validation evidence.
+- [x] Validate documentation, both skills and exact source equality with main.
+  Both validators passed; all 82 local links/anchors and whitespace checks passed.
+  All 18 current-status blocks and all nine new upstream fragments have destinations;
+  runtime source, upstream inventory and other completed plans match main exactly.
+- [x] Coordinator assessment of integration delta and validation evidence.
+  The exact semantic delta and fragment mapping preserve upstream text within the
+  approved documentation split; no product decision or runtime change is introduced.
+  The prior independent review remains historical. No fourth round is required for
+  this scoped verbatim documentation synchronization; this is not a code-review waiver.
 - [ ] Update the Draft with an explicit lease and report after integration.
+- [ ] Complete the after-integration discussion with the owner.
 
 ## Post-completion
 
