@@ -4,10 +4,10 @@ use super::{navigation_ui::*, *};
 use crate::app_menu::{self, Row};
 use crate::orientation::Mode;
 use gpui_kit::assets::IconName as Lucide;
-use gpui_kit::component::Selectable;
 use gpui_kit::component::button::{ButtonCustomVariant, ButtonGroup, ButtonRounded};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::popover::Popover;
+use gpui_kit::component::{Disableable, Selectable};
 use gpui_kit::{
     Anchor, AnyElement, App, CursorStyle, DismissEvent, Entity, Focusable, IntoElement, KeyBinding,
     Styled, deferred, img,
@@ -80,7 +80,12 @@ impl Shell {
         let recent = app_menu::file_items(self.recent_entries());
         let enabled = FileCommands {
             settings: self.file.is_some(),
-            save_over: self.can_save_over().is_ok(),
+            save_over: self.can_save_over().is_ok()
+                || (self
+                    .file
+                    .as_ref()
+                    .is_some_and(|file| file.unsaved.is_some())
+                    && self.can_save(false)),
             save: self.can_save(false),
             save_selection: self.can_save(true),
         };
@@ -160,6 +165,7 @@ impl Shell {
     ) -> Entity<PopupMenu> {
         let can = self.edit_commands_available();
         let select = self.entry_scale().is_some();
+        let convert = self.can_save(false) && !self.capture_changed();
         PopupMenu::build(window, cx, move |menu, _, _| {
             let row = |label: &str, action: Box<dyn Action>, enabled: bool| {
                 action_row(label, action, false, focus.clone()).disabled(!enabled)
@@ -207,6 +213,8 @@ impl Shell {
                     Box::new(editing_ui::NormalizeLevel),
                     can.normalize,
                 ))
+                .item(PopupMenuItem::separator())
+                .item(row("Convert to...", Box::new(ConvertCapture), convert))
         })
     }
 
@@ -333,7 +341,7 @@ impl Shell {
     /// The shell owns the entity, so the popover only draws it and one dismissal
     /// of any branch closes the menu along with its submenus.
     pub(super) fn open_application_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.application_menu.is_some() {
+        if self.conversion_active() || self.application_menu.is_some() {
             return;
         }
         self.close_hints(cx);
@@ -493,6 +501,7 @@ impl Shell {
         };
         // The popover owns the press, so the button needs no handler.
         let mut app = Button::new("application-menu-button")
+            .disabled(self.conversion_active())
             .tab_stop(false)
             .custom(toolbar_style(state, cx))
             .when_some(on_surface(state, cx), |button, surface| button.bg(surface))
@@ -679,6 +688,7 @@ impl Shell {
                     segment
                 });
         let group = ButtonGroup::new("selection-segments")
+            .disabled(self.conversion_active())
             .rounded(px(FRAME_RADIUS))
             .border_1()
             .border_color(frame_colour(cx))

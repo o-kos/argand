@@ -35,6 +35,14 @@ impl<S> History<S> {
         }
     }
 
+    /// A new document whose samples have not been saved to a user destination.
+    pub fn unsaved(capture: Capture, state: S) -> Self {
+        Self {
+            saved: None,
+            ..Self::new(capture, state)
+        }
+    }
+
     pub fn capture(&self) -> &Capture {
         &self.versions[self.current].capture
     }

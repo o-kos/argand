@@ -23,7 +23,7 @@ use crate::{OpenHints, RiffError};
 
 mod float_wave;
 
-pub use float_wave::{FloatWave, FloatWaveRequest};
+pub use float_wave::{EncodedWave, FloatWave, FloatWaveRequest};
 
 /// Bytes moved per read and write, rounded down to whole samples.
 const COPY_BYTES: usize = 4 << 20;
@@ -94,12 +94,55 @@ pub struct Replacing {
     pub stamp: SourceStamp,
 }
 
+/// An explicit user container, independent of the source's backing storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Container {
+    Wave,
+    Flac,
+}
+
+impl Container {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Wave => "wav",
+            Self::Flac => "flac",
+        }
+    }
+
+    pub fn check(self, meta: &SignalMeta, samples: u64) -> Result<(), WriteError> {
+        if self == Self::Wave {
+            return Ok(());
+        }
+        let reason = match meta.sample_type.format {
+            SampleFormat::U8 | SampleFormat::I16 => None,
+            _ => {
+                Some("FLAC supports only 8-bit or 16-bit integer samples in this build".to_owned())
+            }
+        }
+        .or_else(|| {
+            flac_header_rate(meta.sample_rate)
+                .is_none()
+                .then(|| "The FLAC encoder cannot represent this sample rate".to_owned())
+        })
+        .or_else(|| (samples >= 1 << 36).then(|| "The capture is too long for FLAC".to_owned()));
+        match reason {
+            Some(reason) => Err(WriteError::Unsupported {
+                path: meta.source.clone(),
+                reason,
+            }),
+            None => Ok(()),
+        }
+    }
+}
+
 /// What the saved file looks like around its samples.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Output {
     /// The sources' own container, as Save as writes it.
     #[default]
     Native,
+    /// Write the requested container rather than inheriting the backing source's.
+    Container(Container),
     /// Samples with no header, after the first `preamble` bytes of the replaced file.
     Headerless { preamble: u64 },
 }
@@ -515,68 +558,17 @@ fn stage_with_limit(
     let format = resolve_format(request, &opened)?;
     check_storage(request, &opened, &format)?;
 
-    let meta = &request.meta;
     let total = request.total();
     let mut partial = Partial::create(target)?;
-    let container = match (format.storage(), request.output) {
-        (Storage::Linear { .. }, Output::Headerless { preamble }) => {
-            write_headerless(
-                &mut partial,
-                request,
-                &format,
-                preamble,
-                &mut opened,
-                progress,
-                cancel,
-            )?;
-            "raw"
-        }
-        (Storage::Flac { .. }, Output::Headerless { .. }) => {
-            return Err(WriteError::Unsupported {
-                path: meta.source.clone(),
-                reason: "flac samples cannot be written without a container".into(),
-            });
-        }
-        (Storage::Linear { .. }, Output::Native) => write_wave(
-            &mut partial,
-            request,
-            &format,
-            &mut opened,
-            riff_limit,
-            progress,
-            cancel,
-        )?,
-        (Storage::Flac { bits, .. }, Output::Native) => {
-            let mut decoding = Decoding {
-                opened: &mut opened,
-                request,
-                bits,
-            };
-            match flac_header_rate(meta.sample_rate) {
-                Some(rate) => {
-                    write_flac(&mut partial, &mut decoding, rate, total, progress, cancel)?;
-                    "flac"
-                }
-                None if bits % 8 == 0 => write_decoded_wave(
-                    &mut partial,
-                    &mut decoding,
-                    total,
-                    riff_limit,
-                    progress,
-                    cancel,
-                )?,
-                None => {
-                    return Err(WriteError::Unsupported {
-                        path: meta.source.clone(),
-                        reason: format!(
-                            "{bits} bit flac at {} Hz can be written neither as flac nor as wav of the same depth",
-                            meta.sample_rate
-                        ),
-                    });
-                }
-            }
-        }
-    };
+    let container = write_container(
+        &mut partial,
+        request,
+        &format,
+        &mut opened,
+        riff_limit,
+        progress,
+        cancel,
+    )?;
     partial.sync()?;
     if cancel.load(Ordering::Relaxed) {
         return Err(WriteError::Cancelled);
@@ -594,6 +586,86 @@ fn stage_with_limit(
         samples: total,
         container,
     })
+}
+
+fn write_container(
+    partial: &mut Partial,
+    request: &SaveRequest,
+    format: &Format,
+    opened: &mut [Opened],
+    riff_limit: u64,
+    progress: &mut dyn FnMut(u64, u64),
+    cancel: &AtomicBool,
+) -> Result<&'static str, WriteError> {
+    let meta = &request.meta;
+    let total = request.total();
+    let container = match (format.storage(), request.output) {
+        (_, Output::Container(Container::Flac)) => {
+            Container::Flac.check(meta, total)?;
+            let bits = match meta.sample_type.format {
+                SampleFormat::U8 => 8,
+                SampleFormat::I16 => 16,
+                _ => return Err(WriteError::OutOfRange),
+            };
+            let rate = flac_header_rate(meta.sample_rate).ok_or(WriteError::OutOfRange)?;
+            let mut decoding = Decoding {
+                opened,
+                request,
+                bits,
+            };
+            write_flac(partial, &mut decoding, rate, total, progress, cancel)?;
+            "flac"
+        }
+        (Storage::Flac { bits, .. }, Output::Container(Container::Wave)) => {
+            let mut decoding = Decoding {
+                opened,
+                request,
+                bits,
+            };
+            write_decoded_wave(partial, &mut decoding, total, riff_limit, progress, cancel)?
+        }
+        (Storage::Linear { .. }, Output::Headerless { preamble }) => {
+            write_headerless(partial, request, format, preamble, opened, progress, cancel)?;
+            "raw"
+        }
+        (Storage::Flac { .. }, Output::Headerless { .. }) => {
+            return Err(WriteError::Unsupported {
+                path: meta.source.clone(),
+                reason: "flac samples cannot be written without a container".into(),
+            });
+        }
+        (Storage::Linear { .. }, Output::Native | Output::Container(Container::Wave)) => {
+            write_wave(
+                partial, request, format, opened, riff_limit, progress, cancel,
+            )?
+        }
+        (Storage::Flac { bits, .. }, Output::Native) => {
+            let mut decoding = Decoding {
+                opened,
+                request,
+                bits,
+            };
+            match flac_header_rate(meta.sample_rate) {
+                Some(rate) => {
+                    write_flac(partial, &mut decoding, rate, total, progress, cancel)?;
+                    "flac"
+                }
+                None if bits % 8 == 0 => {
+                    write_decoded_wave(partial, &mut decoding, total, riff_limit, progress, cancel)?
+                }
+                None => {
+                    return Err(WriteError::Unsupported {
+                        path: meta.source.clone(),
+                        reason: format!(
+                            "{bits} bit flac at {} Hz can be written neither as flac nor as wav of the same depth",
+                            meta.sample_rate
+                        ),
+                    });
+                }
+            }
+        }
+    };
+    Ok(container)
 }
 
 fn resolve_format(request: &SaveRequest, opened: &[Opened]) -> Result<Format, WriteError> {
@@ -626,6 +698,9 @@ fn protected_target<'a>(protected: &'a [Protected], target: &Path) -> Option<&'a
 
 /// Refuse a request that would write over one of its sources or read past one.
 fn check_request(request: &SaveRequest, replaces_target: bool) -> Result<(), WriteError> {
+    if let Output::Container(container) = request.output {
+        container.check(&request.meta, request.total())?;
+    }
     if replaces_target {
         return check_segments(request);
     }
@@ -1733,6 +1808,23 @@ fn integers(
                 ints.push(stored.round().clamp(-scale, scale - 1.0) as i32);
             }
         }
+        (Reader::Copy { input, layout }, None) => {
+            let linear = Linear::of(&layout.fmt, layout.storage(), path)?;
+            let zero = linear.zero();
+            let mut stored = Vec::new();
+            Stored {
+                input,
+                layout,
+                path,
+                encoding: None,
+                linear,
+            }
+            .read(at, count, &mut stored)?;
+            for (index, value) in stored.into_iter().enumerate() {
+                let value = adjusted.apply(value, index, zero) - zero;
+                ints.push(value.round().clamp(-scale, scale - 1.0) as i32);
+            }
+        }
         (Reader::Copy { input, layout }, Some(encoding)) => {
             let mut computed = Computed {
                 input,
@@ -1741,7 +1833,8 @@ fn integers(
             };
             computed.read(at, count, values)?;
             for (index, value) in values.iter().enumerate() {
-                let stored = adjusted.apply(encoding.apply(*value), index, 0.0);
+                let stored = adjusted.apply(encoding.apply(*value), index, encoding.offset)
+                    - encoding.offset;
                 ints.push(stored.round().clamp(-scale, scale - 1.0) as i32);
             }
         }

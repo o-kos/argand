@@ -26,6 +26,8 @@ pub struct Source {
     pub storage: Option<Storage>,
     /// The scratch file of computed samples this is, none for a file of the user's.
     pub computed: Option<Arc<Scratch>>,
+    /// Already encoded temporary backing, retained independently of computed float samples.
+    pub backing: Option<Arc<Scratch>>,
 }
 
 impl Source {
@@ -36,6 +38,7 @@ impl Source {
             stamp: None,
             storage: None,
             computed: None,
+            backing: None,
         }
     }
 
@@ -47,6 +50,7 @@ impl Source {
             stamp,
             storage: None,
             computed: Some(scratch),
+            backing: None,
         }
     }
 
@@ -256,14 +260,25 @@ pub struct Editing {
     envelopes: Vec<Option<Arc<Snapshot>>>,
     /// Sources whose envelope is being built, so a second edit does not start another scan.
     building: Vec<bool>,
+    failed_statistics: Vec<bool>,
     /// The version whose samples the picture on screen shows.
     pictured: Capture,
     /// How the opened file's read values map back to stored ones, which computed samples are saved by.
     encoding: Option<Encoding>,
     format: Option<Format>,
+    statistics_revision: u64,
+}
+
+fn next_statistics_revision() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Editing {
+    pub fn statistics_revision(&self) -> u64 {
+        self.statistics_revision
+    }
+
     /// The file as it was opened, with nothing edited.
     pub fn new(meta: SignalMeta, hints: OpenHints) -> Self {
         let capture = Capture::whole(SourceId(0), meta.len_samples);
@@ -272,10 +287,20 @@ impl Editing {
             history: History::new(capture.clone(), Selection::default()),
             envelopes: vec![None],
             building: vec![true],
+            failed_statistics: vec![false],
             pictured: capture,
             encoding: None,
             format: None,
+            statistics_revision: next_statistics_revision(),
         }
+    }
+
+    /// Start an unsaved document from an already encoded temporary file.
+    pub fn unsaved(meta: SignalMeta, hints: OpenHints, backing: Arc<Scratch>) -> Self {
+        let mut editing = Self::new(meta, hints);
+        editing.history = History::unsaved(editing.capture().clone(), Selection::default());
+        editing.sources[0].backing = Some(backing);
+        editing
     }
 
     pub fn capture(&self) -> &Capture {
@@ -312,18 +337,24 @@ impl Editing {
     pub fn describe_file(&mut self, stamp: Option<SourceStamp>, storage: Option<Storage>) {
         self.sources[0].stamp = stamp;
         self.sources[0].storage = storage;
+        self.statistics_revision = next_statistics_revision();
     }
 
     /// Record the checked output description independently of the sample sources.
     pub fn describe_format(&mut self, stamp: Option<SourceStamp>, format: Option<Format>) {
         self.sources[0].stamp = stamp;
         self.sources[0].storage = format.as_ref().map(Format::storage);
+        self.statistics_revision = next_statistics_revision();
         self.format = format;
     }
 
     /// Record how the opened file's reader maps read values back to stored ones.
     pub fn describe_units(&mut self, units: Option<(f64, f64)>) {
-        self.encoding = units.map(|(factor, offset)| Encoding { factor, offset });
+        let encoding = units.map(|(factor, offset)| Encoding { factor, offset });
+        if self.encoding != encoding {
+            self.encoding = encoding;
+            self.statistics_revision = next_statistics_revision();
+        }
     }
 
     /// The scratch files the current version reads, for work that must outlive the document.
@@ -331,7 +362,10 @@ impl Editing {
         self.capture()
             .sources()
             .iter()
-            .filter_map(|id| self.sources[id.0 as usize].computed.clone())
+            .flat_map(|id| {
+                let source = &self.sources[id.0 as usize];
+                source.computed.iter().chain(source.backing.iter()).cloned()
+            })
             .collect()
     }
 
@@ -379,6 +413,7 @@ impl Editing {
         self.sources.push(computed);
         self.envelopes.push(None);
         self.building.push(false);
+        self.failed_statistics.push(false);
         self.history.set_state(selection);
         self.history.apply(capture, selection);
         true
@@ -468,6 +503,8 @@ impl Editing {
             .resize(self.sources.len() + added.len(), None);
         self.building
             .resize(self.sources.len() + added.len(), false);
+        self.failed_statistics
+            .resize(self.sources.len() + added.len(), false);
         self.sources.extend(added);
         self.history.apply(capture, Selection::time(pasted));
         Ok(pasted)
@@ -531,6 +568,7 @@ impl Editing {
             stamp: None,
             storage: file.storage,
             computed: None,
+            backing: None,
         }
     }
 
@@ -587,8 +625,54 @@ impl Editing {
 
     pub fn set_envelope(&mut self, id: SourceId, snapshot: Arc<Snapshot>) {
         if let Some(slot) = self.envelopes.get_mut(id.0 as usize) {
+            if snapshot.statistics.is_some() && self.failed_statistics[id.0 as usize] {
+                self.failed_statistics[id.0 as usize] = false;
+                self.statistics_revision = next_statistics_revision();
+            }
             *slot = Some(snapshot);
         }
+    }
+
+    pub fn fail_statistics(&mut self, id: SourceId) {
+        if let Some(failed) = self.failed_statistics.get_mut(id.0 as usize) {
+            *failed = true;
+            self.statistics_revision = next_statistics_revision();
+        }
+    }
+
+    pub fn statistics_failed(&self) -> bool {
+        self.capture()
+            .sources()
+            .iter()
+            .any(|id| self.failed_statistics[id.0 as usize])
+    }
+
+    pub fn statistics_request(&self) -> Option<crate::sample_statistics::Request> {
+        let sources = self.source_files();
+        let indices: Option<Vec<_>> = sources
+            .iter()
+            .enumerate()
+            .map(|(id, source)| match source {
+                None => Some(None),
+                Some(_) => self
+                    .envelopes
+                    .get(id)?
+                    .as_ref()?
+                    .statistics
+                    .clone()
+                    .map(Some),
+            })
+            .collect();
+        Some(crate::sample_statistics::Request {
+            capture: self.capture().clone(),
+            sources,
+            indices: indices?,
+            adjustment: self.adjustment(),
+        })
+    }
+
+    pub fn retained_sources(&self) -> Vec<Source> {
+        self.sources.clone()
     }
 
     /// Whether every file the current version reads stores its samples as `meta` says, so a picture of it is one of `meta`.

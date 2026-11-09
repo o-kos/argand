@@ -85,6 +85,19 @@ fn full_capture_scan_is_bounded_and_keeps_every_real_or_iq_extremum() {
         assert_eq!(full.envelope.t0, 0.);
         assert_eq!(full.envelope.t1, source.meta.duration_seconds());
         let channels = source.meta.channels();
+        assert!(snapshots[0].statistics.is_none());
+        let index = full.statistics.as_ref().unwrap().clone();
+        let request = crate::sample_statistics::Request {
+            capture: argand_edit::Capture::whole(argand_edit::SourceId(0), source.meta.len_samples),
+            sources: vec![Some(argand_io::write::SourceFile {
+                meta: source.meta.clone(), hints: Default::default(), stamp: None,
+                encoding: Some(argand_io::write::Encoding { factor: 1., offset: 128. }),
+            })], indices: vec![Some(index)], adjustment: argand_core::Adjustment::IDENTITY,
+        };
+        let metrics = crate::sample_statistics::measure(&request, &Default::default(), &|| true).unwrap();
+        let squared: f64 = source.values.iter().map(|&value| f64::from(value).powi(2)).sum();
+        assert!((metrics.rms - (squared / source.meta.len_samples as f64).sqrt()).abs() < 1e-12,
+            "sparse preview must not be counted again: {metrics:?}");
         assert_eq!(source.values_read, source.values.len() + PREVIEW_BLOCKS as usize * PREVIEW_SAMPLES as usize * channels);
         for column in 0..COLUMNS {
             let first = (column * 150001).div_ceil(COLUMNS);

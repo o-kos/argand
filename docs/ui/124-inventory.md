@@ -205,6 +205,15 @@ Covering tests: `the_document_controls_join_the_toolbar`,
 against both the occluding container and a consumption-free wrapper.
 Native rows R3 and O1.
 
+When a status editor's stock Select is open, title-bar Capture dispatches the
+standard Cancel synchronously through its saved trigger before closing the hint.
+The locked Select's outside Capture handler otherwise consumes that first press
+(`select.rs:404`, `:625`). Closing the standard Select first lets the original
+press reach the existing caption control without replay or an alternate close
+path. `caption_close_with_open_sample_list_reaches_unsaved_workflow` covers
+one-click unsaved protection and press/release outside cancellation; removing the
+Cancel composition fails the one-click assertion.
+
 ### R3 Zoom halves and `pressed_zoom`
 
 **Replaced (#130).** Each half is a gpui-component `Button` in a shared frame
@@ -299,6 +308,19 @@ list choice. The standard alternative is `NumberInput`, whose steppers in the lo
 a hold-to-repeat; the steppers are not tab stops, the keyboard steps through the input's
 own arrows, and the repeat stops on an unusable value, on Reset to defaults, on the
 recommendation and once its stepper is no longer shown.
+
+Range and sample-format warnings share `property_advice.rs`: measured side placement,
+a standard close Button, the retained triangular pointer drawing, and ordinary Tooltip
+fallback only when neither side has a readable width. After dismissal, a fresh marker
+entry reopens the same anchored balloon when room permits. The format warning
+is informational; Range retains its recommendation action and shortcut. Both disappear
+while a property Select is open. This extracts existing approved composition rather than
+introducing a replacement tooltip, select, button or input. The standard Tooltip cannot
+supply the persistent adjacent callout and dismiss-to-marker lifecycle; the same existing
+composition supplies it to both property editors. Keyboard focus remains with standard
+controls; the close Button is not a Tab stop. The format-advice GPUI regression covers
+automatic display, Close, same-balloon hover reopening, open-list suppression, explicit clearing and
+constrained-viewport placement alongside the existing Range regressions.
 
 For the rest of the form the standard alternative is the same component, so no limitation is claimed. Composition
 would not help: the form's contract is a preview-and-keep transaction over a signal
@@ -467,3 +489,18 @@ is a module of the binary again. What replaces them is
 `settings_editor::standard_input_tests`, a headless window whose root is a standard `Root`
 and whose body is a standard `NumberInput` and `Select`. The evidence the fixture gathered
 stays in [126-compatibility](126-compatibility/) as history.
+
+Advice dismissal and hover now share the same anchored balloon when side space is
+available. Standard GPUI hover handlers cover the existing anchor, body, pointer,
+close Button and three-pixel connecting gap; deferred reconciliation combines
+those occluding hit regions without timers or input replay. Only a new anchor
+entry reopens dismissed advice. Transient advice hides after leaving the union,
+and open Selects clear transient state. Stock Tooltip fallback remains only where
+neither side can fit the balloon. Rendered pointer coverage asserts the balloon
+ID, unchanged geometry, usable Close Button, gap crossing and suppression.
+
+Editors explicitly deactivate advice while its warning/readout is absent, preserving
+dismissal but clearing transient hover and obsolete anchor bounds. Reactivation
+distinguishes an outside pointer from an anchor reappearing beneath it. The Range
+regression applies the reopened recommendation, leaves while fixed, restores the
+warned range with Ctrl+R and verifies that only a fresh entry reopens the balloon.

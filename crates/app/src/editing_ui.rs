@@ -139,7 +139,10 @@ impl Shell {
         if let Some(clipboard) = &mut self.clipboard {
             clipboard.adopt(&editing_source(&source));
         }
-        let mut editing = Editing::new(meta, hints);
+        let mut editing = match &file.unsaved {
+            Some(unsaved) => Editing::unsaved(meta, hints, unsaved.backing.clone()),
+            None => Editing::new(meta, hints),
+        };
         editing.describe_format(stamp, None);
         editing.describe_units(file.state.document.sample_units());
         file.editing = Some(editing);
@@ -348,6 +351,14 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let Some(file) = &mut self.file else { return };
+        if let Some(editing) = &mut file.editing
+            && editing
+                .retained_sources()
+                .get(id.0 as usize)
+                .is_some_and(|source| source.stamp == stamp)
+        {
+            editing.fail_statistics(id);
+        }
         let read = file.editing.as_ref().is_some_and(|editing| {
             editing
                 .source_files()
@@ -357,6 +368,9 @@ impl Shell {
         });
         if read {
             file.state.document.note_failure(error);
+            file.state
+                .document
+                .set_statistics(Some(Err("Unavailable".into())));
             cx.notify();
         }
     }
@@ -384,6 +398,12 @@ impl Shell {
         }
     }
 
+    pub(super) fn request_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.settle_unsaved(Pending::Close, window, cx) {
+            window.remove_window();
+        }
+    }
+
     /// Whether `pending` can go ahead now; otherwise ask about the unsaved edits first.
     pub(super) fn settle_unsaved(
         &mut self,
@@ -391,16 +411,29 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.refuse_while_replacing(cx) {
+        if matches!(pending, Pending::Close) && self.close_after_conversion(window, cx) {
             return false;
         }
-        if !self.editing().is_some_and(Editing::is_dirty) {
+        if self.conversion_active() || self.refuse_while_replacing(cx) {
+            return false;
+        }
+        if !self
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+            && !self.editing().is_some_and(Editing::is_dirty)
+        {
             return true;
         }
         let name = self
             .file
             .as_ref()
-            .map(|file| file.state.document.origin().name())
+            .map(|file| {
+                file.unsaved.as_ref().map_or_else(
+                    || file.state.document.origin().name(),
+                    |unsaved| unsaved.name.clone(),
+                )
+            })
             .unwrap_or_default();
         // The writer refuses a changed source, so Save is not offered for one.
         let answer = Self::ask_unsaved(&name, !self.capture_changed(), window, cx);
@@ -522,9 +555,15 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.conversion_active() {
+            return;
+        }
         // Not `editing_mut`: edits on a changed file are discarded this way too.
-        if let Some(editing) = self.file.as_mut().and_then(|file| file.editing.as_mut()) {
-            editing.mark_saved();
+        if let Some(file) = self.file.as_mut() {
+            if let Some(editing) = file.editing.as_mut() {
+                editing.mark_saved();
+            }
+            file.unsaved = None;
         }
         match pending {
             Pending::Open(origin) => self.open(origin, window, cx),
@@ -540,9 +579,7 @@ impl Shell {
     ) -> gpui_kit::Stateful<gpui_kit::Div> {
         content
             .on_action(cx.listener(|shell, _: &chrome::CloseWindow, window, cx| {
-                if shell.settle_unsaved(Pending::Close, window, cx) {
-                    window.remove_window();
-                }
+                shell.request_close(window, cx);
             }))
             .on_action(cx.listener(|shell, _: &Undo, window, cx| shell.undo(window, cx)))
             .on_action(cx.listener(|shell, _: &Redo, window, cx| shell.redo(window, cx)))

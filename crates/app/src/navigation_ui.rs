@@ -499,6 +499,9 @@ impl Shell {
             }
             PlotIntent::Select(selection) => self.select(selection.unwrap_or_default(), cx),
             PlotIntent::Pointer => {
+                if self.conversion_active() {
+                    return;
+                }
                 if !self.ready_status_dismissed && self.cursor_readout(cx).is_some() {
                     self.dismiss_ready_status(cx);
                 }
@@ -575,6 +578,9 @@ impl Shell {
     }
 
     pub(super) fn cursor_readout(&self, cx: &gpui_kit::App) -> Option<(String, Option<String>)> {
+        if self.conversion_active() {
+            return None;
+        }
         let (pointer, geometry) = self.plot_view()?.read(cx).hover()?;
         // The corner scale buttons are controls, not a place on the plot.
         if !geometry.navigation.contains(&pointer) || geometry.over_scale_buttons(Some(pointer)) {
@@ -791,6 +797,9 @@ impl Shell {
 impl Shell {
     /// Take a selection a gesture made, its band clamped to the capture's.
     pub(super) fn select(&mut self, selection: argand_core::Selection, cx: &mut Context<Self>) {
+        if self.conversion_active() {
+            return;
+        }
         let band = selection.band.map(|band| {
             let (low, high) = self.capture_band().unwrap_or((band.low(), band.high()));
             let (low, high) = (band.low().max(low), band.high().min(high));

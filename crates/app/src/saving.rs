@@ -28,6 +28,10 @@ pub enum Update<T = Outcome> {
 #[derive(Debug)]
 pub enum Outcome {
     Saved(Saved),
+    Encoded {
+        saved: Saved,
+        clipped: u64,
+    },
     /// Written to a temporary file that still has to replace its target.
     Staged(Box<Staged>),
     Cancelled,
@@ -69,10 +73,129 @@ pub fn start(request: SaveRequest, staged: bool) -> (Job, async_channel::Receive
 /// Start computing and writing a band of a capture, with the same updates as a save.
 pub fn start_extraction(
     request: crate::extraction::ExtractRequest,
+    container: Option<argand_io::write::Container>,
 ) -> (Job, async_channel::Receiver<Update>) {
     spawn_save(move |progress, cancel| {
+        if container == Some(argand_io::write::Container::Flac) {
+            return extract_flac(request, progress, cancel)
+                .map(|(saved, clipped)| Outcome::Encoded { saved, clipped });
+        }
         crate::extraction::run(&request, progress, cancel).map(Outcome::Saved)
     })
+}
+
+fn extract_flac(
+    mut request: crate::extraction::ExtractRequest,
+    progress: &mut dyn FnMut(u64, u64),
+    cancel: &AtomicBool,
+) -> Result<(Saved, u64), WriteError> {
+    use argand_io::write::{Container, Output, Protected, SourceFile};
+    let folder = crate::scratch::folder().ok_or(WriteError::OutOfRange)?;
+    let target = request.target.clone();
+    let sample_type = request.meta.sample_type;
+    let mut output = request.output_meta()?;
+    output.sample_type = sample_type;
+    Container::Flac.check(&output, output.len_samples)?;
+    let original_sources = request.sources.clone();
+    let mut protected = request.protected.clone();
+    protected.extend(request.sources.iter().flatten().map(|source| Protected {
+        path: source.meta.source.clone(),
+        stamp: source.stamp,
+    }));
+    let float_path = folder.new_path("wav");
+    let _float = crate::scratch::Scratch::new(float_path.clone());
+    let encoded_path = folder.new_path("wav");
+    let _encoded = crate::scratch::Scratch::new(encoded_path.clone());
+    request.target = float_path.clone();
+    crate::extraction::run(
+        &request,
+        &mut |done, total| phase_progress(progress, 0, done, total),
+        cancel,
+    )?;
+    let hints = argand_io::OpenHints {
+        normalize: Some(argand_io::Normalize::None),
+        ..Default::default()
+    };
+    let (source, stamp) =
+        argand_io::open_stamped(&float_path, &hints).map_err(|error| WriteError::Unsupported {
+            path: float_path.clone(),
+            reason: error.to_string(),
+        })?;
+    let input = source.meta().clone();
+    drop(source);
+    let mut output = input.clone();
+    output.sample_type = sample_type;
+    let request = crate::conversion::Request {
+        capture: argand_edit::Capture::whole(argand_edit::SourceId(0), input.len_samples),
+        sources: vec![Some(SourceFile {
+            meta: input.clone(),
+            hints: hints.clone(),
+            stamp,
+            encoding: None,
+        })],
+        input,
+        output,
+        carrier: None,
+        container: Container::Flac,
+        target: encoded_path.clone(),
+        protected: protected.clone(),
+        level: crate::conversion::Level::Preserve,
+        full_scale: 1.0,
+        copy: None,
+    };
+    let converted = crate::conversion::run(
+        &request,
+        &mut |done, total| phase_progress(progress, 1, done, total),
+        cancel,
+    )?;
+    let (source, stamp) = argand_io::open_stamped(&encoded_path, &hints).map_err(|error| {
+        WriteError::Unsupported {
+            path: encoded_path.clone(),
+            reason: error.to_string(),
+        }
+    })?;
+    let source = SourceFile {
+        meta: source.meta().clone(),
+        hints,
+        stamp,
+        encoding: None,
+    };
+    let mut save_request = SaveRequest::span(source, None, target);
+    save_request.output = Output::Container(Container::Flac);
+    save_request.protected = protected;
+    let staged = stage(
+        &save_request,
+        &mut |done, total| phase_progress(progress, 2, done, total),
+        cancel,
+    )?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err(WriteError::Cancelled);
+    }
+    crate::extraction::unchanged(&original_sources)?;
+    let saved = staged.commit().map_err(|refused| refused.error)?;
+    Ok((saved, converted.clipped))
+}
+
+pub fn target_output(
+    output: argand_io::write::Output,
+    current: &str,
+    target: &Path,
+) -> argand_io::write::Output {
+    use argand_io::write::{Container, Output};
+    let container = match target.extension().and_then(|extension| extension.to_str()) {
+        Some(extension) if extension.eq_ignore_ascii_case("wav") => Container::Wave,
+        Some(extension) if extension.eq_ignore_ascii_case("flac") => Container::Flac,
+        _ => return output,
+    };
+    if output == Output::Native && container.extension() == current {
+        return output;
+    }
+    Output::Container(container)
+}
+
+fn phase_progress(progress: &mut dyn FnMut(u64, u64), phase: u64, done: u64, total: u64) {
+    let within = (u128::from(done) * 1_000_000 / u128::from(total.max(1))) as u64;
+    progress(phase * 1_000_000 + within, 3_000_000);
 }
 
 /// How a write that ended in `result` is reported, a cancellation apart from a failure.
@@ -167,12 +290,19 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// The folder the dialog opens in, which is the source's own.
+/// The suggested source folder; resolve its availability away from the UI thread.
 pub fn directory(source: &Path) -> PathBuf {
     source
         .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf()
+}
+
+pub fn existing_directory(path: &Path) -> PathBuf {
+    path.ancestors().find(|parent| parent.is_dir()).map_or_else(
+        || std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        Path::to_path_buf,
+    )
 }
 
 /// The name the dialog proposes, with the selection's bounds in seconds.

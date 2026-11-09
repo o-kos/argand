@@ -87,8 +87,7 @@ impl PinnedHint {
         self.content.is_some()
     }
 
-    /// The view the open hint shows, for tests that drive it.
-    #[cfg(test)]
+    /// The view the open hint shows.
     pub(super) fn view(&self) -> Option<AnyView> {
         self.content.clone()
     }

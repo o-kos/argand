@@ -194,6 +194,26 @@ impl AnalysisSnapshot {
     }
 }
 
+/// Seven significant figures for measurements; editable frequencies keep full precision.
+fn amplitude(value: f64) -> String {
+    let magnitude = value.abs();
+    if magnitude >= 1e7 || (magnitude > 0. && magnitude < 1e-4) {
+        return numbers::number(format!("{value:.6e}"));
+    }
+    let decimals = if magnitude == 0. {
+        0
+    } else {
+        (6. - magnitude.log10().floor()).max(0.) as usize
+    };
+    let value = format!("{value:.decimals$}");
+    let value = if value.contains('.') {
+        value.trim_end_matches('0').trim_end_matches('.')
+    } else {
+        &value
+    };
+    numbers::number(value)
+}
+
 /// One open file.
 pub struct Document {
     origin: Origin,
@@ -205,7 +225,7 @@ pub struct Document {
     requested_range: Option<argand_core::SampleRange>,
     status: Status,
     file_info: FileInfo,
-    sample_extrema: Option<Vec<(f32, f32)>>,
+    statistics: Option<Result<crate::sample_statistics::Metrics, String>>,
     minimap_error: Option<String>,
     /// Set once a file the capture reads is no longer the one opened, naming it when known.
     changed: Option<Option<std::path::PathBuf>>,
@@ -222,7 +242,7 @@ impl Document {
             requested_range: None,
             status: Status::Opening,
             file_info: FileInfo::default(),
-            sample_extrema: None,
+            statistics: None,
             minimap_error: None,
             changed: None,
         }
@@ -394,7 +414,6 @@ impl Document {
                 Effect::Analysis
             }
             Update::Ready { analysis, elapsed } => {
-                self.remember_extrema(&analysis);
                 self.analysis = Some(AnalysisSnapshot::new(analysis));
                 self.status = Status::Ready { elapsed };
                 Effect::Analysis
@@ -409,57 +428,24 @@ impl Document {
         }
     }
 
-    fn remember_extrema(&mut self, analysis: &Analysis) {
-        if !self.meta.as_ref().is_some_and(|meta| {
-            self.requested_range == Some(argand_core::SampleRange::new(0, meta.len_samples))
-        }) {
-            return;
-        }
-        if let Some(waveform) = &analysis.waveform {
-            self.remember_waveform_extrema(waveform);
-        }
-    }
-
-    pub fn minimap_ready(&mut self, snapshot: &crate::minimap::Snapshot) {
+    pub fn minimap_ready(&mut self, _snapshot: &crate::minimap::Snapshot) {
         self.minimap_error = None;
-        if snapshot.complete {
-            self.remember_waveform_extrema(&snapshot.envelope);
-        }
     }
 
     pub fn minimap_failed(&mut self, error: String) {
         self.minimap_error = Some(error);
-    }
-
-    fn remember_waveform_extrema(&mut self, waveform: &argand_core::WaveformEnvelope) {
-        self.sample_extrema = Some(
-            (0..waveform.channels)
-                .map(|channel| {
-                    let low = waveform
-                        .min
-                        .iter()
-                        .skip(channel)
-                        .step_by(waveform.channels)
-                        .copied()
-                        .fold(f32::INFINITY, f32::min);
-                    let high = waveform
-                        .max
-                        .iter()
-                        .skip(channel)
-                        .step_by(waveform.channels)
-                        .copied()
-                        .fold(f32::NEG_INFINITY, f32::max);
-                    (low, high)
-                })
-                .collect(),
-        );
+        self.set_statistics(Some(Err("Unavailable".into())));
     }
 
     pub fn file_summary(&self) -> Option<MetadataField> {
+        self.file_summary_for_container(None)
+    }
+
+    pub fn file_summary_for_container(&self, container: Option<&str>) -> Option<MetadataField> {
         let meta = self.meta()?;
         let value = format!(
             "{} · {} {} · {} · {}",
-            meta.container,
+            container.unwrap_or(meta.container),
             if meta.is_iq() { "iq" } else { "real" },
             meta.sample_type.format.as_str(),
             format_hz(meta.sample_rate),
@@ -480,7 +466,7 @@ impl Document {
             })
             .collect::<Vec<_>>();
         rows.push((
-            if meta.is_iq() { "I/Q pairs" } else { "Samples" }.into(),
+            "Total samples".into(),
             group_integer(&meta.len_samples.to_string()),
         ));
         rows.push((
@@ -489,16 +475,13 @@ impl Document {
                 .bytes
                 .map_or_else(|| "Unavailable".into(), file_size),
         ));
-        rows.extend(self.extrema_details(meta).into_iter().filter_map(|line| {
-            let (label, value) = line.split_once(": ")?;
-            Some((
-                label
-                    .replace("Original sample minimum / maximum", "Min / max")
-                    .replace("Sample minimum / maximum", "Min / max")
-                    .replace("minimum / maximum", "min / max"),
-                value.to_owned(),
-            ))
-        }));
+        let values = match &self.statistics {
+            Some(Ok(metrics)) => (amplitude(metrics.peak), amplitude(metrics.rms)),
+            Some(Err(error)) => (error.clone(), error.clone()),
+            None => ("Calculating…".into(), "Calculating…".into()),
+        };
+        rows.push(("Peak".into(), values.0));
+        rows.push(("RMS".into(), values.1));
         if let Some(error) = &self.minimap_error {
             rows.push(("Waveform unavailable".into(), error.clone()));
         }
@@ -515,58 +498,22 @@ impl Document {
                     "File details",
                     value_text,
                     if meta.is_iq() {
-                        "Rate and count refer to I/Q pairs; min/max use decoded sample units"
+                        "Rate and count refer to I/Q pairs; Peak and RMS use centered stored amplitude"
                     } else {
-                        "Min/max use decoded sample units, before normalization and gain"
+                        "Peak and RMS include current capture gain in centered stored amplitude"
                     },
                 )
             },
         ))
     }
 
-    fn extrema_details(&self, meta: &SignalMeta) -> Vec<String> {
-        if self.minimap_error.is_some() {
-            return Vec::new();
-        }
-        let Some(extrema) = &self.sample_extrema else {
-            return vec![
-                "Sample minimum / maximum: available after full-capture waveform scan".into(),
-            ];
-        };
-        let Some((scale, offset)) = self.file_info.sample_units else {
-            return vec!["Original sample minimum / maximum: unavailable".into()];
-        };
-        let number = |value: f32| {
-            let value = f64::from(value) * scale + offset;
-            if !value.is_finite() {
-                return "unavailable".into();
-            }
-            match meta.sample_type.format {
-                SampleFormat::U8 | SampleFormat::I16 | SampleFormat::I32 => {
-                    group_integer(&format!("{value:.0}"))
-                }
-                _ => numbers::number(format!("{value:.7}")),
-            }
-        };
-        extrema
-            .iter()
-            .enumerate()
-            .map(|(channel, &(low, high))| {
-                let label = match (meta.is_iq(), channel) {
-                    (true, 0) => "I",
-                    (true, _) => "Q",
-                    _ => "Sample",
-                };
-                format!(
-                    "{label} minimum / maximum: {} / {}",
-                    number(low),
-                    number(high)
-                )
-            })
-            .collect()
+    pub fn set_statistics(
+        &mut self,
+        statistics: Option<Result<crate::sample_statistics::Metrics, String>>,
+    ) {
+        self.statistics = statistics;
     }
 
-    /// Detailed fields combined in the file hint.
     pub fn summary(&self) -> Option<Vec<MetadataField>> {
         let meta = self.meta.as_ref()?;
         let domain = if meta.is_iq() { "iq" } else { "real" };
