@@ -527,6 +527,7 @@ impl Editor {
             .upgrade()
             .and_then(|shell| shell.read(cx).range_warning());
         let Some((warning, actionable)) = warning else {
+            self.advice.deactivate();
             return div().child(text).into_any_element();
         };
         let edge = advice_color(cx);
@@ -591,6 +592,7 @@ impl Render for Editor {
         let fixed = matches!(self.settings.dynamic_range, DynamicRange::Fixed(_));
         let overlap = self.overlap_editor.clone().into_any_element();
         let range = if fixed {
+            self.advice.deactivate();
             self.range_editor.clone().into_any_element()
         } else {
             self.range_readout(window, cx)
@@ -1625,6 +1627,73 @@ mod hint_tests {
         assert!(!balloon_drawn(cx, &w), "the cross hides the balloon");
         assert_eq!(settings(cx, &w), opening, "without applying the range");
         assert!(is_open(cx, &w), "and keeps the hint");
+    }
+
+    fn acknowledge_range(cx: &mut TestAppContext, w: &Window_) {
+        w.shell.update(cx, |shell, cx| {
+            let settings = shell.settings;
+            let file = shell.file.as_mut().expect("the test document is open");
+            file.state.document.show_a_range(settings.dynamic_range);
+            file.state.record_for_test(&settings);
+            cx.notify();
+        });
+        frame(cx, w);
+    }
+
+    #[gpui_kit::test]
+    fn hidden_range_advice_does_not_retain_transient_hover(cx: &mut TestAppContext) {
+        let w = open(cx);
+        acknowledge_range(cx, &w);
+        open_hint(cx, &w);
+        frame(cx, &w);
+        cx.update_window(w.handle.into(), |_, window, cx| {
+            window.click("analysis-range-balloon-close", cx);
+        })
+        .expect("the window is open");
+        frame(cx, &w);
+        let anchor = cx
+            .update_window(w.handle.into(), |_, window, _| {
+                window.find("analysis-range-advice").bounds().center()
+            })
+            .expect("the window is open");
+        let mut input = gpui_kit::VisualTestContext::from_window(w.handle.into(), cx);
+        let modifiers = gpui_kit::Modifiers::default();
+        input.simulate_mouse_move(gpui_kit::point(px(5.), px(5.)), None, modifiers);
+        frame(&mut input, &w);
+        input.simulate_mouse_move(anchor, None, modifiers);
+        frame(&mut input, &w);
+        assert!(balloon_drawn(&mut input, &w));
+        input
+            .update_window(w.handle.into(), |_, window, cx| {
+                window.click("analysis-range-balloon", cx);
+            })
+            .expect("the window is open");
+        frame(&mut input, &w);
+        assert!(matches!(
+            settings(&mut input, &w).dynamic_range,
+            DynamicRange::Fixed(_)
+        ));
+        acknowledge_range(&mut input, &w);
+        assert!(!balloon_drawn(&mut input, &w));
+        input.simulate_mouse_move(gpui_kit::point(px(5.), px(5.)), None, modifiers);
+        frame(&mut input, &w);
+        press(&mut input, &w, "secondary-r");
+        assert_eq!(
+            settings(&mut input, &w).dynamic_range,
+            DynamicRange::Default
+        );
+        acknowledge_range(&mut input, &w);
+        frame(&mut input, &w);
+        assert!(
+            !balloon_drawn(&mut input, &w),
+            "hidden advice cannot retain its former hover"
+        );
+        input.simulate_mouse_move(anchor, None, modifiers);
+        frame(&mut input, &w);
+        assert!(
+            balloon_drawn(&mut input, &w),
+            "a fresh entry still reopens it"
+        );
     }
 
     #[gpui_kit::test]

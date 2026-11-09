@@ -564,6 +564,7 @@ impl Editor {
                 cx,
             )
         } else {
+            self.format_advice.deactivate();
             div()
                 .id("conversion-format-hint")
                 .when(tips, |control| {

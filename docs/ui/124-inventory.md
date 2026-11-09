@@ -498,3 +498,9 @@ entry reopens dismissed advice. Transient advice hides after leaving the union,
 and open Selects clear transient state. Stock Tooltip fallback remains only where
 neither side can fit the balloon. Rendered pointer coverage asserts the balloon
 ID, unchanged geometry, usable Close Button, gap crossing and suppression.
+
+Editors explicitly deactivate advice while its warning/readout is absent, preserving
+dismissal but clearing transient hover and obsolete anchor bounds. Reactivation
+distinguishes an outside pointer from an anchor reappearing beneath it. The Range
+regression applies the reopened recommendation, leaves while fixed, restores the
+warned range with Ctrl+R and verifies that only a fresh entry reopens the balloon.

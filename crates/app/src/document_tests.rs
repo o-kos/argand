@@ -407,9 +407,17 @@ fn minimap_failure_is_reported_separately_from_amplitude_statistics() {
 impl Document {
     /// Shows a picture whose spectral peak leaves the upper half of the full scale unused.
     pub(crate) fn show_a_warned_range(&mut self) {
+        self.show_a_range(DynamicRange::Default);
+    }
+
+    pub(crate) fn show_a_range(&mut self, range: DynamicRange) {
         self.apply(Update::Opened(meta(), FileInfo::default()));
         let mut warned = analysis(64);
         warned.db.values.fill(-60.0);
+        warned.dynamic_range.requested = range;
+        if let DynamicRange::Fixed(db) = range {
+            warned.dynamic_range.effective_db = db;
+        }
         self.apply(Update::Ready {
             analysis: warned,
             elapsed: Duration::ZERO,

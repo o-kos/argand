@@ -29,3 +29,5 @@ Use GPUI hover handlers and deferred state reconciliation over the existing meas
 ## Review corrections
 
 Accepted two narrow consistency/ownership observations: preserve the triangle's original absolute offset after extending the gap hit region, and stop deferred hover reconciliation when Select suppression has disabled it. Rendered pointer bounds verify the original three-pixel tip offset, one-pixel body overlap and unchanged geometry on reopening.
+
+Accepted the Range lifetime finding: applying the recommendation removes advice while a fixed numeric range is shown, so callbacks cannot clear its old hover. Callers now explicitly deactivate absent advice while retaining the user's dismissal. Reactivation arms a fresh entry only when the pointer is outside the measured anchor; an anchor reappearing under the pointer waits for a real leave. A deterministic pointer regression failed before the correction and passes through Close, hover reopening, clicking the recommendation, leaving while fixed, Ctrl+R restoration and fresh re-entry.

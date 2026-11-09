@@ -142,6 +142,13 @@ impl Advice {
         self.drawn.set(drawn);
     }
 
+    pub fn deactivate(&self) {
+        self.hover.set(HoverState::default());
+        let mut drawn = self.drawn.get();
+        drawn.readout = None;
+        self.drawn.set(drawn);
+    }
+
     pub fn sheet(&self, owner: EntityId) -> impl IntoElement {
         measure(self.drawn.clone(), owner, |drawn| &mut drawn.sheet)
     }
@@ -161,7 +168,18 @@ impl Advice {
             balloon_side(sheet, readout, window.viewport_size().width)
         });
         let mut hover = self.hover.get();
-        hover.enabled = !suppressed && side.is_some();
+        let enabled = !suppressed && side.is_some();
+        if enabled && !hover.enabled {
+            hover.mode = if drawn
+                .readout
+                .is_some_and(|bounds| bounds.contains(&window.mouse_position()))
+            {
+                HoverMode::WaitingForLeave
+            } else {
+                HoverMode::Ready
+            };
+        }
+        hover.enabled = enabled;
         if !hover.enabled {
             hover = HoverState::default();
         }
