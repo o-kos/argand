@@ -19,7 +19,9 @@ build commit identity. No keyboard shortcut or independent application window.
 
 ## Context
 
-The implementation starts from current main with locked GPUI Kit 0.6.6. The
+The implementation starts from current main with locked GPUI Kit 0.6.6.
+Upstream Rust 1.98.1 baseline work was merged before final validation; the
+toolkit lock and About implementation are unchanged by that integration. The
 independent GPUI Kit migration remains a separate Draft. Reuse `PinnedHint`,
 standard Popover, Button and the keyboard-accessible Base Link, with existing
 panel surface styling. The main working directory belongs to separate work;
@@ -76,15 +78,15 @@ the owner explicitly authorized a separate worktree after its branch changed.
 
 ## Validation
 
-- [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --all-targets --locked`
-- [x] `cargo test --locked`
+- [x] `cargo fmt --all -- --check` (Rust 1.98.1 after upstream integration)
+- [x] `cargo clippy --all-targets --locked` (Rust 1.98.1 after upstream integration)
+- [x] `cargo test --locked` (Rust 1.98.1 after upstream integration)
 - [ ] `cargo build --release --locked`, after the checks above pass
 - [x] Metadata tests, rendered pointer/keyboard/focus integration tests.
 - [ ] Independent current-revision review.
 - [ ] Full Linux/Windows/macOS remote CI.
 
-Current automated evidence: the workspace gate passes 1,165 tests (one existing
+Current automated evidence: the Rust 1.98.1 workspace gate passes 1,167 tests (one existing
 ignored test). Six About production-path UI scenarios cover both entry points,
 Escape, repeated opening, pointer/Enter/Space repository activation, focus
 subtree transitions, window activation, outside presses and light/dark layout.
@@ -94,6 +96,13 @@ refs creation/removal and linked-worktree shared refs; missing Git returns expli
 unavailable values without a panic. The full gate and source snapshot are retained
 in the external review packet. The release build follows the implementation commit
 so its embedded identity names the submitted source revision.
+
+Independent review round 1 found no substantive metadata, lifecycle, UI-composition,
+architecture or validation-evidence findings. There were no accepted/rejected
+findings to carry forward. Upstream integration requires the full gate on the new
+Rust baseline (formatting, lint and tests now pass) and a focused current-snapshot
+review before the final CI result.
+Native acceptance remains incomplete.
 
 ## Post-completion
 
