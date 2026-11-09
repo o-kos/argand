@@ -41,6 +41,8 @@ promise applies to.
 
 ### Changed
 
+- Upgrade to GPUI Kit 0.9.1 and its standard window frame, retaining Argand's colours and rounded corners. The Linux frame has a wider shadow inset, leaving 16 fewer logical pixels of content per axis at the same window size. Enter now opens application-menu submenus as Right does (#226).
+
 - `--center` now overrides a frequency stored in the file instead of always replacing it with 0 Hz when absent.
 
 ### Fixed

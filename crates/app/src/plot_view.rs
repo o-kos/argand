@@ -387,7 +387,7 @@ impl Render for PlotView {
         div()
             .id("time-plot")
             .cursor(cursor)
-            .on_scroll_wheel(cx.listener(Self::wheel))
+            .on_scroll(cx.listener(Self::wheel))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::press))
             .on_mouse_down(MouseButton::Middle, cx.listener(Self::press))
             .on_mouse_move(cx.listener(|plot, event, _, cx| plot.pointer_moved(event, cx)))
@@ -986,7 +986,7 @@ mod tests {
         let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
         let none = gpui_kit::Modifiers::default();
         input.simulate_mouse_move(covered, None, none);
-        input.simulate_event(gpui_kit::ScrollWheelEvent {
+        input.simulate_event(gpui_kit::ScrollEvent {
             position: covered,
             delta: gpui_kit::ScrollDelta::Pixels(point(px(0.), px(40.))),
             ..Default::default()

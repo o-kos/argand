@@ -841,7 +841,7 @@ impl Shell {
 impl plot_view::PlotView {
     pub(super) fn wheel(
         &mut self,
-        event: &gpui_kit::ScrollWheelEvent,
+        event: &gpui_kit::ScrollEvent,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {

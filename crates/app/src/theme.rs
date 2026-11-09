@@ -23,6 +23,7 @@ pub fn install(mode: ThemeMode, cx: &mut App) {
     theme.light_theme = Rc::new(light);
     theme.dark_theme = Rc::new(dark);
     Theme::change(mode, None, cx);
+    Theme::update(cx, |theme| theme.window_radius = gpui_kit::px(8.));
 }
 
 /// The surface of a sheet that stays open over the window, such as the settings hint.

@@ -1236,7 +1236,7 @@ mod hint_tests {
             let view =
                 cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
             shell = Some(view.clone());
-            Root::new(view, window, cx).bordered(false)
+            Root::new(view, window, cx)
         });
         let shell = shell.expect("the window built its shell");
         let window = Window_ { handle, shell };

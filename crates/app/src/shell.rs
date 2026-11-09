@@ -165,14 +165,15 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
             None,
         ),
     ]);
-    cx.bind_keys((0..crate::app_menu::DIGITS).filter_map(|index| {
-        let digit = crate::app_menu::digit(index)?;
-        Some(KeyBinding::new(
-            &format!("alt-{digit}"),
-            OpenRecent { index },
-            Some("StartPage"),
-        ))
-    }));
+    let recent_keys: [&str; crate::app_menu::DIGITS] = [
+        "alt-1", "alt-2", "alt-3", "alt-4", "alt-5", "alt-6", "alt-7", "alt-8", "alt-9", "alt-0",
+    ];
+    cx.bind_keys(
+        recent_keys
+            .into_iter()
+            .enumerate()
+            .map(|(index, key)| KeyBinding::new(key, OpenRecent { index }, Some("StartPage"))),
+    );
 }
 
 /// Open the window and run until it closes.
@@ -188,6 +189,7 @@ pub fn run(config: Config, saved: Session, writer: Option<Saver>, opening: Optio
         .with_assets(crate::assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
+            Root::register_plugin(cx, |_, _| FrameObserver);
             settings_ui::init(cx);
             hints::init(cx);
             navigation_ui::init(cx);
@@ -214,24 +216,9 @@ pub fn run(config: Config, saved: Session, writer: Option<Saver>, opening: Optio
                     "placing the window"
                 );
 
-                let opened = cx.open_window(options, move |window, cx| {
-                    tracing::debug!(
-                        decorations = ?window.window_decorations(),
-                        "the window is decorated by this side"
-                    );
-                    let shell = cx.new(|cx| Shell::new(config, writer, saved, window, cx));
-                    // After the entity exists, so the task draining its
-                    // updates has something to deliver them to.
-                    shell.update(cx, |shell, cx| shell.check_recent(window, cx));
-                    if let Some(origin) = opening {
-                        shell.update(cx, |shell, cx| shell.open(origin, window, cx));
-                    }
-                    // The frame paints its own shadow into the client inset: Root's full-window
-                    // theme background must not cover it with an opaque ring.
-                    cx.new(|cx| {
-                        Root::new(shell, window, cx)
-                            .bordered(false)
-                            .bg(gpui_kit::transparent_black())
+                let opened = cx.update(|cx| {
+                    gpui_kit::open_window(options, cx, move |window, cx| {
+                        build_shell(config, writer, saved, opening, window, cx)
                     })
                 });
 
@@ -239,7 +226,9 @@ pub fn run(config: Config, saved: Session, writer: Option<Saver>, opening: Optio
                 // whose error nobody reads would end it silently: there is nothing
                 // else this program does.
                 match &opened {
-                    Ok(handle) => cx.update(|cx| bind_window_choose_file(handle, cx)),
+                    Ok((_, shell)) => {
+                        cx.update(|cx| Shell::bind_choose_file(shell.downgrade(), cx))
+                    }
                     Err(error) => {
                         tracing::error!(%error, "cannot open a window");
                         cx.update(|cx| cx.quit());
@@ -251,14 +240,20 @@ pub fn run(config: Config, saved: Session, writer: Option<Saver>, opening: Optio
         });
 }
 
-/// Bind the shell's own actions once its window has opened.
-fn bind_window_choose_file(handle: &gpui_kit::WindowHandle<Root>, cx: &mut gpui_kit::App) {
-    let shell = handle
-        .read_with(cx, |root, _| root.view().clone())
-        .ok()
-        .and_then(|view| view.downcast::<Shell>().ok());
-    let Some(shell) = shell else { return };
-    Shell::bind_choose_file(shell.downgrade(), cx);
+fn build_shell(
+    config: Config,
+    writer: Option<Saver>,
+    saved: Session,
+    opening: Option<Origin>,
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) -> Entity<Shell> {
+    let shell = cx.new(|cx| Shell::new(config, writer, saved, window, cx));
+    shell.update(cx, |shell, cx| shell.check_recent(window, cx));
+    if let Some(origin) = opening {
+        shell.update(cx, |shell, cx| shell.open(origin, window, cx));
+    }
+    shell
 }
 
 /// Where and how the window opens.
@@ -691,14 +686,17 @@ impl Shell {
         .size_full()
     }
 
-    /// A press on a resize edge closes whatever overlay is open, keeping the hint's values.
-    fn edge_pressed(shell: WeakEntity<Self>) -> impl Fn(&mut Window, &mut gpui_kit::App) {
-        move |window, cx| {
-            let _ = shell.update(cx, |shell, cx| {
-                shell.close_hints(cx);
-                shell.dismiss_application_menu(window, cx);
-            });
-        }
+    fn dismiss_frame_overlays(window: &mut Window, cx: &mut gpui_kit::App) {
+        let Some(Some(root)) = window.root::<Root>() else {
+            return;
+        };
+        let Ok(shell) = root.read(cx).view().clone().downcast::<Shell>() else {
+            return;
+        };
+        shell.update(cx, |shell, cx| {
+            shell.close_hints(cx);
+            shell.dismiss_application_menu(window, cx);
+        });
     }
 
     fn pointer_moved(&mut self, cx: &mut Context<Self>) {
@@ -728,7 +726,7 @@ impl Shell {
                     }
                 });
                 let on_scroll = shell.clone();
-                window.on_mouse_event(move |_: &gpui_kit::ScrollWheelEvent, phase, _window, cx| {
+                window.on_mouse_event(move |_: &gpui_kit::ScrollEvent, phase, _window, cx| {
                     if phase == gpui_kit::DispatchPhase::Capture {
                         let _ = on_scroll.update(cx, Self::dismiss_ready_status);
                     }
@@ -1826,6 +1824,31 @@ enum Showing {
     Plot(axes::Extents),
 }
 
+/// Observe presses left to the standard frame without taking over resizing.
+struct FrameObserver;
+
+impl Render for FrameObserver {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+
+impl gpui_kit::base::RootPlugin for FrameObserver {
+    fn decorate(
+        &self,
+        surface: gpui_kit::AnyElement,
+        _: &Root,
+        _: &mut Window,
+        _: &mut gpui_kit::App,
+    ) -> impl IntoElement {
+        chrome::observe_frame(
+            surface,
+            chrome::overlay_window_area,
+            Shell::dismiss_frame_overlays,
+        )
+    }
+}
+
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.prepare_statistics(window, cx);
@@ -1840,12 +1863,10 @@ impl Render for Shell {
         if let Some(plot) = self.plot_view() {
             plot.update(cx, |plot, _| plot.snapshot = snapshot);
         }
-        window.set_rem_size(cx.theme().font_size);
-        let frame = chrome::Frame::for_window(window);
-        let corners = frame.corners;
-        let free = frame.free;
+        let corners = gpui_kit::component::window_corner_radii(window, cx);
+        let free = chrome::overlay_area(window);
         // The hint leaves the title bar live as well as the frame's edges.
-        let title = (frame.title_bottom() - free.origin.y).max(px(0.));
+        let title = (gpui_kit::component::TITLE_BAR_HEIGHT - free.origin.y).max(px(0.));
         let hint_area = gpui_kit::Bounds::new(
             free.origin + gpui_kit::point(px(0.), title),
             gpui_kit::size(free.size.width, (free.size.height - title).max(px(0.))),
@@ -1901,7 +1922,7 @@ impl Render for Shell {
         div()
             .relative()
             .size_full()
-            .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
+            .child(content)
             .children(menu_backdrop)
             .children(self.conversion_cover(gpui_kit::Bounds::new(
                 hint_area.origin,
@@ -1921,7 +1942,6 @@ impl Render for Shell {
                 cx,
             ))
             .children(hints::backdrop(&self.selection_hint, hint_area, cx))
-            .children(Root::render_dialog_layer(window, cx))
             .child(Self::ready_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))
     }
@@ -2302,5 +2322,44 @@ mod analysis_hint_tests {
     fn other_closes_keep_what_changed(cx: &mut TestAppContext) {
         let (_, closed) = change_and_close(cx, false);
         assert_eq!(closed.dynamic_range, DynamicRange::Fixed(42.));
+    }
+}
+
+#[cfg(test)]
+mod frame_observer_tests {
+    use super::*;
+    use gpui_kit::test::TestWindowExt;
+
+    #[gpui_kit::test]
+    fn frame_dismissal_updates_shell_through_root_without_reborrowing_it(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            Root::register_plugin(cx, |_, _| FrameObserver);
+            settings_ui::init(cx);
+            hints::init(cx);
+            window_keys(cx);
+        });
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let shell =
+                cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
+            Root::new(shell, window, cx)
+        });
+        let shell = cx.update(|_, cx| root.read(cx).view().clone().downcast::<Shell>().unwrap());
+        shell.update_in(cx, |shell, window, cx| {
+            shell.open(Origin::new("/captures/frame-test.iqw".into()), window, cx);
+        });
+        cx.run_until_parked();
+        shell.update_in(cx, |shell, window, cx| {
+            shell.edit_analysis(&EditAnalysis, window, cx)
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| window.render_frame(cx));
+        assert!(shell.read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open()));
+        cx.update(Shell::dismiss_frame_overlays);
+        cx.run_until_parked();
+        cx.update(|window, cx| window.render_frame(cx));
+        assert!(!shell.read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open()));
     }
 }
