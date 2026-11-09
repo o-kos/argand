@@ -384,8 +384,10 @@ mod tests {
         });
         let after = read(&path);
         for (n, (before, after)) in before
-            .chunks_exact(2)
-            .zip(after.chunks_exact(2))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .zip(after.as_chunks::<2>().0.iter())
             .enumerate()
         {
             assert_eq!(after[0], before[0], "I of sample {n}");
@@ -459,7 +461,9 @@ mod tests {
             shell.saving.is_none()
         });
         let peak = read(&target)
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|sample| f64::from(sample[0]).hypot(f64::from(sample[1])))
             .fold(0.0, f64::max);
         assert!(

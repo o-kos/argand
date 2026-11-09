@@ -1669,7 +1669,7 @@ impl Computed<'_> {
                         source: error,
                     },
                 })?;
-            for value in bytes.chunks_exact(4) {
+            for value in bytes.as_chunks::<4>().0.iter() {
                 values[filled] = f32::from_le_bytes([value[0], value[1], value[2], value[3]]);
                 filled += 1;
             }

@@ -148,7 +148,7 @@ fn flac_band_and_rectangle_exports_are_encoded_before_publication() {
         let mut at = 0;
         while at < samples.len() { at += output.read(&mut samples[at..]).unwrap(); }
         let middle = &samples[samples.len()/4..samples.len()*3/4];
-        assert!(middle.chunks_exact(2).all(|iq| (iq[0].hypot(iq[1]) - 0.5).abs() < 0.01));
+        assert!(middle.as_chunks::<2>().0.iter().all(|iq| (iq[0].hypot(iq[1]) - 0.5).abs() < 0.01));
         let bytes = std::fs::read(&target).unwrap();
         assert!(matches!(extract_flac(request, &mut |_, _| {}, &AtomicBool::new(true)), Err(WriteError::Cancelled)));
         assert_eq!(std::fs::read(&target).unwrap(), bytes);

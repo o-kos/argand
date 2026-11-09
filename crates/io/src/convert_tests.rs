@@ -100,3 +100,29 @@ fn packed_i24_sign_extension_byte_order_tails_and_raw_peak() {
     assert_eq!(convert(SampleFormat::I24, &bytes, &mut out[..2], 2.0), 2);
     assert_eq!(&out[..2], &[-16777216.0, -2.0]);
 }
+
+#[test]
+fn incomplete_scalar_tails_preserve_decoding_peak_and_output_bounds() {
+    let cases = [
+        (SampleFormat::I16, vec![0, 128, 0, 64], [-32768.0, 16384.0]),
+        (SampleFormat::I24, vec![0, 0, 128, 0, 0, 64], [-8388608.0, 4194304.0]),
+        (SampleFormat::I32, vec![0, 0, 0, 128, 0, 0, 0, 64], [-2147483648.0, 1073741824.0]),
+        (SampleFormat::F32, vec![0, 0, 0, 192, 0, 0, 128, 63], [-2.0, 1.0]),
+        (SampleFormat::F16x8, vec![0, 0, 0, 192, 0, 0, 128, 63], [-2.0, 1.0]),
+    ];
+    for (format, whole, expected) in cases {
+        for tail in 0..format.bytes() {
+            let mut bytes = whole.clone();
+            bytes.extend(std::iter::repeat_n(255, tail));
+            let mut out = [123.0; 3];
+            assert_eq!(convert(format, &bytes, &mut out, 0.5), 2);
+            assert_eq!(out, [expected[0] * 0.5, expected[1] * 0.5, 123.0]);
+            assert_eq!(peak_abs(format, &bytes), -expected[0]);
+            assert_eq!(convert(format, &bytes, &mut out[..1], 1.0), 1);
+            assert_eq!(out[0], expected[0]);
+            assert_eq!(out[1], expected[1] * 0.5);
+            assert_eq!(convert(format, &bytes[..tail], &mut out, 1.0), 0);
+            assert_eq!(peak_abs(format, &bytes[..tail]), 0.0);
+        }
+    }
+}

@@ -228,7 +228,7 @@ fn the_image_carries_the_extents_it_was_drawn_for() {
     assert!((img.t1 - 0.2).abs() < 1e-9, "4800 samples at 24 kHz is 200 ms");
     assert_eq!(img.db_max, 0.0, "full-scale reference puts 0 dB at the top");
     assert_eq!(img.db_min, -110.0);
-    assert!(img.rgba.chunks_exact(4).all(|p| p[3] == 255), "no gaps");
+    assert!(img.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 255), "no gaps");
 }
 
 #[test]
@@ -693,7 +693,7 @@ fn shading_a_grid_that_does_not_cover_its_shape_draws_nothing() {
     };
     let image = shade(&whole, shading);
     assert_eq!((image.width, image.height), (4, 4));
-    assert!(image.rgba.chunks_exact(4).all(|p| p[3] == 255));
+    assert!(image.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 255));
 }
 
 #[test]
@@ -718,7 +718,7 @@ fn shading_stops_rather_than_writing_pixels_an_image_cannot_hold() {
     let mut short = SpectrogramImage::new(3, 4);
     shade_columns(&grid, shading, &mut short, 0..grid.width);
     assert!(
-        short.rgba.chunks_exact(4).all(|p| p[3] == 0),
+        short.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 0),
         "an image that does not cover the grid keeps every pixel untouched"
     );
 
@@ -726,21 +726,21 @@ fn shading_stops_rather_than_writing_pixels_an_image_cannot_hold() {
     let mut squat = SpectrogramImage::new(4, 3);
     shade_columns(&grid, shading, &mut squat, 0..grid.width);
     assert!(
-        squat.rgba.chunks_exact(4).all(|p| p[3] == 0),
+        squat.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 0),
         "an image that does not cover the grid keeps every pixel untouched"
     );
 
     // An image larger than the grid still shades the part they share.
     let mut larger = SpectrogramImage::new(6, 5);
     shade_columns(&grid, shading, &mut larger, 0..grid.width);
-    let shaded = larger.rgba.chunks_exact(4).filter(|p| p[3] == 255).count();
+    let shaded = larger.rgba.as_chunks::<4>().0.iter().filter(|p| p[3] == 255).count();
     assert_eq!(shaded, grid.width * grid.height);
 
     // And a grid that does cover itself is unaffected, which is the case every
     // caller actually takes.
     let mut exact = SpectrogramImage::new(4, 4);
     shade_columns(&grid, shading, &mut exact, 0..grid.width);
-    assert!(exact.rgba.chunks_exact(4).all(|p| p[3] == 255));
+    assert!(exact.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 255));
 }
 
 #[test]
@@ -783,7 +783,7 @@ fn shading_skips_a_column_the_grid_does_not_hold() {
     let mut image = SpectrogramImage::new(8, 4);
     shade_columns(&broken, shading, &mut image, 0..broken.width);
     assert!(
-        image.rgba.chunks_exact(4).all(|p| p[3] == 0),
+        image.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 0),
         "a grid that does not cover its shape shades nothing"
     );
 }
@@ -801,4 +801,26 @@ fn range_advice_uses_the_shared_ten_decibel_threshold_and_is_absent_in_auto() {
     assert_eq!(suggested_range_db(false, 70.0, 60.0), Some(60.0));
     assert_eq!(suggested_range_db(true, 110.0, 60.0), None);
     assert_eq!(suggested_range_db(false, f32::NAN, 60.0), None);
+}
+
+#[test]
+fn iq_frame_discards_odd_tail_and_limits_pairs_to_the_window() {
+    let source = VecSource::new(Domain::Iq, [1.0, 0.0].repeat(4), 0.0);
+    let plan = Plan::new(&StftConfig::new(4, Window::Rect), &source.meta, 4, Reduce::Max);
+    for tail in [vec![], vec![0.25], vec![0.25, 0.5, 0.75]] {
+        let mut samples = source.data.clone();
+        samples.extend(tail);
+        let mut partial = plan.partial();
+        plan.frame(&samples, &mut partial, 0);
+        assert_eq!(partial.complex, vec![
+            Complex32::new(4.0, 0.0),
+            Complex32::new(0.0, 0.0),
+            Complex32::new(0.0, 0.0),
+            Complex32::new(0.0, 0.0),
+        ]);
+        assert_eq!(partial.mags, [0.0, 0.0, 1.0, 0.0]);
+        assert_eq!(partial.power, [0.0, 0.0, 1.0, 0.0]);
+        assert_eq!(partial.time_peak, 1.0);
+        assert_eq!(partial.frames, 1);
+    }
 }

@@ -249,7 +249,7 @@ fn half_band_interpolation_keeps_native_samples_and_input_chunking_exact() {
     plan.taps = half_sample_delay(1.0 / 1024.0);
     let input = span(100_000, 2, tone(23_900.0, 0.5));
     let out = extract(&plan, &input, 2, 4096);
-    for (n, sample) in input.chunks_exact(2).enumerate() {
+    for (n, sample) in input.as_chunks::<2>().0.iter().enumerate() {
         assert_eq!(out[2 * n].map(f32::to_bits), [sample[0].to_bits(), sample[1].to_bits()]);
     }
     for block in [1, 7, 17, 333] {
