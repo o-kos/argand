@@ -24,10 +24,13 @@ After automatic FLAC format fallback, show a yellow marker beside the selected s
 - [x] Update the retained UI inventory justification.
 - [x] Normal application check, formatting, all-targets Clippy and focused regressions.
 - [x] Move completed plan before final independent review.
-- [ ] Full locked suite, fresh release after the gate, existing Draft PR publication.
+- [x] Full locked suite: 1,143 passed, zero failures, one ignored manual benchmark.
+- [x] Fresh release built successfully after the gate; publication uses the existing Draft PR and mandatory pre-push gate.
 
 No native GUI launch, desktop input emulation or portal requests. Distinguish automated rendered-layout evidence from native validation.
 
 ## Review correction
 
 Accepted the consistency observation that the generic warning token need not equal the existing Range palette. The exact existing dark/light Range color resolver now lives in the shared advice module and is used by both panels; Range appearance is unchanged.
+
+The final independent review was clean after the accepted palette correction. No findings were rejected. Automated GPUI layout and lifecycle coverage passed; native GUI interaction was not run.
