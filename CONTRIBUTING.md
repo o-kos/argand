@@ -6,9 +6,8 @@ changes. Repository content and all GitHub communication must be in English.
 ## Roles and workflow scope
 
 [Agent roles and model selection](AGENTS.md#agent-roles-and-model-selection) is the
-source of truth: the coordinator is `gpt-6-astra` medium, the executor is
-`gpt-6.1-sol` medium, and the reviewer is `gpt-6.1-sol` high in a separate agent and
-context. These defaults are owner-approved and need no repeated per-Issue approval.
+source of truth for role assignments and risk classes. The approved defaults need
+no repeated per-Issue approval.
 The coordinator discusses analysis, architecture, plans, acceptance and disagreements
 with the owner and assesses the result; the executor performs repository
 investigation, edits, Git/GitHub operations, tests and builds. The reviewer reads
@@ -29,6 +28,52 @@ release authority, lint-suppression approval and owner decisions about product o
 acceptance changes remain binding. A merge into `main` still requires a Pull Request
 and the full required checks; omitting a Pull Request never permits a direct push.
 Preserve unrelated work and leave completed historical plans unchanged.
+
+## Engineering and dependency conventions
+
+- After the GUI scaffold exists, run it with `cargo run -p argand --locked`; build releases with `cargo build --release --locked`.
+- Take the GUI toolkit as one crates.io dependency, `gpui-kit`, with the version requirement in `Cargo.toml`, and let the committed `Cargo.lock` fix the exact graph. `gpui-kit` selects and re-exports the compatible GPUI 0.3.x family, gpui-component and the toolkit assets; do not add direct `gpui`, `gpui-component` or `gpui-component-assets` dependencies beside it, because a type from one copy of the graph is not that type from the other.
+
+  This rule used to name `gpui` and `gpui-component` separately on crates.io, and before that, fixed Git revisions. The separate selections drifted out of compatibility, which is the mistake `gpui-kit` exists to prevent. Do not go back to naming the layers, and do not `[patch]` the registry source without a reason that names what is only available at tip.
+
+- Commit the complete dependency graph in `Cargo.lock`; do not commit `vendor/`. Run `cargo fetch --locked` before an offline build, then use `cargo build --frozen`.
+- A real GPU is required. Software rendering and some virtual machines may degrade performance.
+
+- Use `thiserror` in libraries and `anyhow` in binaries. Non-test code must not use `unwrap` or `expect` on external data. Panics must not unwind across FFI boundaries.
+
+- Write code comments only when the intent is not evident from the code itself, and keep them concise.
+
+- Do not write nested, multi-level, opaque `if` chains. A reader must be able to tell what a branch does without holding three conditions and a later early return in their head at once. No lint catches this: it is a review obligation, and the two shapes below are the ones that keep appearing.
+  - **One flag tested twice in two different roles.** Here `args.quiet` gates stdout in the `else if`, then gates stderr as an early return three lines later, so it reads like a duplicate that has to be proven not to be one:
+
+    ```rust
+    if args.json {
+        println!("{}", report.to_json());
+    } else if !args.quiet && reporting.echo_paths {
+        if let Some(output) = &report.output {
+            println!("{}", output.path);
+        }
+    }
+    if args.quiet {
+        return;
+    }
+    ```
+
+    Decide once, in one place. Name the outcome — an enum, a `match`, or a single early return at the top — and let each branch do one thing.
+  - **A condition repeated inside its own `else`.** Here `reporting.batch` is tested in the `if` and again in the `else`, which forces the reader to work out that the second test is not the same question as the first:
+
+    ```rust
+    if reporting.batch && args.verbose == 0 {
+        report.write_compact(&mut stderr, index, reporting.total).ok();
+    } else {
+        if reporting.batch && index > 1 {
+            writeln!(stderr).ok();
+        }
+        report.write_human(&mut stderr).ok();
+    }
+    ```
+
+    Hoist the shared condition, or split the function so each half has one job.
 
 ## Before implementation
 
@@ -100,25 +145,59 @@ the label does not itself promise that an Issue is scheduled.
 
 ### UI component selection
 
-Prefer standard gpui-component controls and GPUI interaction mechanisms. Inspect the
-toolkit implementation and try its supported styling, composition and
-configuration before proposing a custom equivalent. Different colors, spacing or
-geometry are not by themselves a reason to replace standard interaction behavior.
+Use only standard gpui-component controls and GPUI interaction mechanisms, or
+already existing shared project UI elements. Before implementing a UI change,
+search the project for the corresponding behavior and presentation; inspect the
+locked toolkit implementation and the existing shared element's supported styling,
+composition and configuration. Reuse behavior and style together. Different colors,
+spacing or geometry do not justify replacing standard interaction behavior.
 
-For every proposed custom control, add a separate entry to the active plan naming:
+Every new nonstandard widget requires separate owner approval before implementation.
+For each proposed widget, add a separate entry to the active plan naming:
 
-- the standard alternative and the exact, verified limitation;
-- why supported composition or styling cannot meet the requirement;
+- the standard alternative and its exact, verified limitation in the locked version;
+- why existing project elements and supported composition or styling cannot meet
+  the requirement;
 - the behavior and maintenance cost the application would take over;
-- focus, keyboard, pointer, disabled-state and regression validation;
+- focus, keyboard, pointer, tooltip, disabled-state and regression validation;
 - the owner's decision before implementation.
 
-Apply the same audit to retained custom controls during UI reorganization. Domain
-canvases such as a spectrogram are valid custom drawing; distinguish them from
-ordinary controls embedded over the drawing. Do not hand-write text editing or
-ordinary button behavior to bypass an unresolved root, focus or styling problem.
-Reviewers must challenge unsupported exceptions and verify that replacements remove
-the obsolete implementation. Changes to established UX need a separate owner decision.
+Extending an existing shared element does not bypass this requirement when the
+extension creates a custom replacement or introduces new nonstandard widget
+behavior. Apply the same audit to retained custom controls during UI reorganization.
+Domain canvases such as spectrograms, waveforms, axes and minimaps remain valid custom
+drawing; ordinary controls embedded over them have no exemption. Do not hand-write
+text editing or ordinary button behavior to bypass an unresolved root, focus or
+styling problem. Reviewers must challenge unsupported exceptions and verify that
+replacements remove the obsolete implementation. Changes to established UX need a
+separate owner decision.
+
+When changing a shared UI element, check each affected consumer, including both
+panels when two panels share it. Verify relevant appearance, focus, keyboard and
+pointer behavior, tooltips and disabled states in those consumers rather than
+assuming that a local field's success establishes the shared contract.
+
+### UI acceptance
+
+For UI work, the coordinator includes acceptance in the plan, the executor reads
+and follows the repository-local [UI acceptance skill](.agents/skills/argand-ui-acceptance/SKILL.md)
+without waiting for the owner to invoke it by name, and the reviewer assesses the
+evidence. This section remains the canonical acceptance policy.
+
+UI acceptance requires running the current production application binary and
+exercising the actual affected scenario, checking appearance and interactions.
+Use the current-revision build and validation requirements below. Compare relevant
+shared or neighboring UI behavior and exercise the affected entry points and
+transitions, including focus, Select open/choose/dismiss, Enter/Escape, disabled or
+busy state and closing an overlay or window where the change can affect them.
+
+Code review, automated or headless tests and a static screenshot alone do not
+establish UI acceptance. Record what was exercised in the running application and
+separate that evidence from automated checks. If the application cannot be run or
+the required interactions cannot be exercised, acceptance remains incomplete:
+report the limitation, do not call the UI work complete or ready for acceptance,
+and do not move its Pull Request to Ready. Locally verified partial progress may
+still be shared in Draft with that limitation stated.
 
 ### Implementation and validation
 
@@ -133,6 +212,13 @@ Update the plan as reality changes:
 - do not write commit hashes into the plan because rebases and squash merges make them unstable.
 
 The branch commit history provides detail during review. The completed plan is the durable task-level record after squash merge.
+
+For a bug fix, inspect related cases that share the same root cause across formats,
+fields and action entry paths. Apply the correction to those affected cases and
+verify the common invariant; do not stop at the first reproducer. Keep agreed
+behavior and acceptance boundaries intact. A related case that requires a product
+or scope change needs the existing owner decision and triage process, not an
+unannounced expansion.
 
 Run relevant tests throughout implementation. For code changes, before requesting final review, run at least:
 
@@ -240,12 +326,14 @@ The exact toolchain comes from `rust-toolchain.toml`; the workspace's minimum Ru
 
 ## External review
 
-Use the owner-approved reviewer assignment in
-[AGENTS.md](AGENTS.md#agent-roles-and-model-selection): `gpt-6.1-sol` high, separate
-from the `gpt-6.1-sol` medium executor. The same model with different effort is
-explicitly allowed; it does not mean the models are different. A separate agent and
-context provide the separation. No per-Issue model approval is needed unless changing
-the defaults. Keep the assignment for every round of a Pull Request.
+For a required review, the coordinator directs the executor to prepare and update
+an exact, neutral handoff using the repository-local
+[review handoff skill](.agents/skills/argand-review-handoff/SKILL.md), without waiting
+for the owner to invoke it by name. This section remains the canonical review policy.
+
+Use the owner-approved [reviewer assignment](AGENTS.md#agent-roles-and-model-selection)
+in a separate agent and context. Keep that assignment for every round of a Pull Request;
+changing the defaults requires the owner's agreement.
 
 Before presenting code implementation results for owner review, including Draft
 feedback, the Pull Request goes through external review. For work without code,
