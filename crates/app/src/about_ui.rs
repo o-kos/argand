@@ -4,15 +4,24 @@ use super::*;
 use crate::about;
 use gpui_kit::base::Link;
 use gpui_kit::component::Icon;
-use gpui_kit::{Anchor, img};
+use gpui_kit::{Anchor, AnyElement, img};
 
 actions!(about_panel, [ShowAbout]);
+
+pub(super) fn init(cx: &mut gpui_kit::App) {
+    // Let the standard Link handle Enter on key-up instead of confirming the popover.
+    cx.bind_keys([KeyBinding::new(
+        "enter",
+        gpui_kit::NoAction,
+        Some("AboutRepository"),
+    )]);
+}
 
 pub(super) struct About {
     hint: WeakEntity<hints::PinnedHint>,
 }
 
-pub(super) fn hint(cx: &mut Context<hints::PinnedHint>) -> hints::PinnedHint {
+fn hint(cx: &mut Context<hints::PinnedHint>) -> hints::PinnedHint {
     let hint = cx.weak_entity();
     hints::PinnedHint::new(
         move |_, cx| cx.new(|_| About { hint: hint.clone() }).into(),
@@ -20,13 +29,37 @@ pub(super) fn hint(cx: &mut Context<hints::PinnedHint>) -> hints::PinnedHint {
     )
 }
 
+pub(super) struct State {
+    pub(super) hint: Entity<hints::PinnedHint>,
+    pub(super) request: u64,
+    _events: Subscription,
+    _focus: Subscription,
+}
+
+impl State {
+    pub(super) fn new(window: &mut Window, cx: &mut Context<Shell>) -> Self {
+        let hint = cx.new(hint);
+        let events = cx.subscribe_in(&hint, window, Shell::about_changed);
+        let focus = cx.on_focus_out(&hint.read(cx).focus_handle(), window, |shell, _, _, cx| {
+            shell.close_about(cx)
+        });
+        Self {
+            hint,
+            request: 0,
+            _events: events,
+            _focus: focus,
+        }
+    }
+}
+
 impl Render for About {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let clicked = self.hint.clone();
         let linked = self.hint.clone();
         let other_click = self.hint.clone();
-        let link = Link::new("about-repository")
+        let link = Link::new("repository-link")
             .accessibility_label("Argand repository")
+            .key_context("AboutRepository")
             .href(about::REPOSITORY)
             .open_with(|url, _, _, cx| cx.open_url(url))
             .on_activate(move |_, _, cx| close(&linked, cx))
@@ -41,6 +74,7 @@ impl Render for About {
             .child(about::REPOSITORY);
         div()
             .id("about-panel")
+            .map(gpui_kit::TestSupportExt::test_support)
             .w_96()
             .max_w((window.viewport_size().width - window.rem_size() * 3.).max(px(0.)))
             .px_3()
@@ -82,8 +116,22 @@ impl Render for About {
             .child(settings_ui::detail_row("Tag", about::TAG, cx))
             .child(settings_ui::detail_row("Commit", about::HASH, cx))
             .child(settings_ui::detail_row("Commit date", about::DATE, cx))
-            .child(link)
+            .child(
+                div()
+                    .id("about-repository")
+                    .map(gpui_kit::TestSupportExt::test_support)
+                    .child(link),
+            )
     }
+}
+
+fn tooltip_content(window: &mut Window, _: &mut gpui_kit::App) -> AnyElement {
+    div()
+        .w_80()
+        .max_w((window.viewport_size().width - window.rem_size() * 3.).max(px(0.)))
+        .whitespace_normal()
+        .child(about::tooltip())
+        .into_any_element()
 }
 
 fn close(hint: &WeakEntity<hints::PinnedHint>, cx: &mut gpui_kit::App) {
@@ -92,8 +140,8 @@ fn close(hint: &WeakEntity<hints::PinnedHint>, cx: &mut gpui_kit::App) {
 
 impl Shell {
     pub(super) fn close_about(&mut self, cx: &mut Context<Self>) {
-        self.about_request += 1;
-        self.about_hint.update(cx, |hint, cx| hint.close(false, cx));
+        self.about.request += 1;
+        self.about.hint.update(cx, |hint, cx| hint.close(false, cx));
     }
 
     pub(super) fn show_about(
@@ -102,19 +150,20 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.about_hint.read(cx).is_open() {
+        if self.about.hint.read(cx).is_open() {
             return;
         }
         self.close_hints(cx);
         self.dismiss_application_menu(window, cx);
         self.interrupt_plot(cx);
-        let request = self.about_request;
+        let request = self.about.request;
         let owner = cx.entity().downgrade();
         window.defer(cx, move |window, cx| {
             let _ = owner.update(cx, |shell, cx| {
-                if shell.about_request == request {
+                if shell.about.request == request {
                     shell
-                        .about_hint
+                        .about
+                        .hint
                         .update(cx, |hint, cx| hint.open(window, cx));
                 }
             });
@@ -139,7 +188,7 @@ impl Shell {
                 self.interrupt_plot(cx);
             }
             hints::Pinned::Closed { .. } => {
-                let focus = self.about_hint.read(cx).focus_handle();
+                let focus = self.about.hint.read(cx).focus_handle();
                 if focus.contains_focused(window, cx) {
                     window.focus(&self.focus_target(cx), cx);
                 }
@@ -149,7 +198,7 @@ impl Shell {
     }
 
     pub(super) fn about_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let open = self.about_hint.read(cx).is_open();
+        let open = self.about.hint.read(cx).is_open();
         let state = if open {
             app_menu_ui::ToolbarState::On
         } else {
@@ -167,12 +216,17 @@ impl Shell {
             })
             .child(Icon::new(gpui_kit::assets::IconName::Info).small())
             .on_click(cx.listener(|shell, _, window, cx| shell.show_about(&ShowAbout, window, cx)));
-        button
-            .interactivity()
-            .tooltip(|_, cx| hints::passive(cx, |_| Tooltip::new(about::tooltip())));
+        let hint = self.about.hint.downgrade();
+        button.interactivity().tooltip(move |_, cx| {
+            if hint.upgrade().is_some_and(|hint| hint.read(cx).is_open()) {
+                cx.new(|_| app_menu_ui::NoTooltip).into()
+            } else {
+                hints::passive(cx, |_| Tooltip::element(tooltip_content))
+            }
+        });
         hints::pinned(
             "about-popover",
-            &self.about_hint,
+            &self.about.hint,
             button,
             Anchor::TopLeft,
             cx,

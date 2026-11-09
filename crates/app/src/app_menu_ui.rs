@@ -1586,10 +1586,10 @@ mod tests {
             shell.read_with(cx, |shell, _| shell.title_drag_pending)
         };
 
-        // The pixels between the application button and the orientation group
+        // The pixels between the About button and the orientation group
         // hold a gap, the separator and its margins, all bare title-bar pixels.
         let gap = cx.update(|window, _| {
-            let first = window.find("application-menu-button").bounds();
+            let first = window.find("about-button").bounds();
             let second = window.find("orientation-horizontal").bounds();
             gpui_kit::point((first.right() + second.origin.x) / 2., first.center().y)
         });
@@ -1601,7 +1601,7 @@ mod tests {
         assert!(!pending(cx), "and releasing it clears the arming");
 
         // A press on a segment, on the group's own frame between the segments,
-        // on Grid and on the application button never arms the drag.
+        // on Grid, About and the application button never arms the drag.
         let frame = cx.update(|window, _| {
             let first = window.find("orientation-horizontal").bounds().center();
             let second = window.find("orientation-vertical").bounds().center();
@@ -1611,6 +1611,7 @@ mod tests {
             at(cx, "orientation-horizontal"),
             frame,
             at(cx, "toggle-grid"),
+            at(cx, "about-button"),
             at(cx, "application-menu-button"),
         ] {
             cx.simulate_mouse_down(at, gpui_kit::MouseButton::Left, none);

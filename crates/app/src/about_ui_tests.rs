@@ -1,6 +1,6 @@
 use super::*;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{TestAppContext, WindowHandle};
+use gpui_kit::{InputEvent, TestAppContext, WindowHandle};
 
 struct Harness {
     window: WindowHandle<Root>,
@@ -49,6 +49,13 @@ fn keys(cx: &mut TestAppContext, h: &Harness, keys: &str) {
     cx.update_window(h.window.into(), |_, window, cx| {
         for key in keys.split_whitespace() {
             window.press(key, cx);
+            window.dispatch_event(
+                gpui_kit::KeyUpEvent {
+                    keystroke: gpui_kit::Keystroke::parse(key).expect("key"),
+                }
+                .to_platform_input(),
+                cx,
+            );
         }
     })
     .expect("window");
@@ -68,7 +75,7 @@ fn toolbar_and_main_menu_open_one_panel_and_escape_restores_focus(cx: &mut TestA
     click(cx, &h, "about-button");
     assert!(shown(cx, &h));
     let first = h.shell.read_with(cx, |shell, cx| {
-        shell.about_hint.read(cx).view().expect("About").entity_id()
+        shell.about.hint.read(cx).view().expect("About").entity_id()
     });
     cx.update_window(h.window.into(), |_, window, cx| {
         h.shell
@@ -78,7 +85,8 @@ fn toolbar_and_main_menu_open_one_panel_and_escape_restores_focus(cx: &mut TestA
     frame(cx, &h);
     assert_eq!(
         h.shell.read_with(cx, |shell, cx| shell
-            .about_hint
+            .about
+            .hint
             .read(cx)
             .view()
             .expect("About")
@@ -121,12 +129,22 @@ fn panel_clicks_and_repository_activation_dismiss_without_reaching_the_workspace
 #[gpui_kit::test]
 fn focus_within_the_link_is_retained_and_keyboard_activation_dismisses(cx: &mut TestAppContext) {
     let h = open(cx);
-    click(cx, &h, "about-button");
-    keys(cx, &h, "tab");
-    assert!(shown(cx, &h), "Tab to the repository stays inside About");
-    keys(cx, &h, "enter");
-    assert_eq!(cx.opened_url().as_deref(), Some(about::REPOSITORY));
-    assert!(!shown(cx, &h));
+    for key in ["enter", "space"] {
+        click(cx, &h, "about-button");
+        keys(cx, &h, "tab");
+        assert!(shown(cx, &h), "Tab to the repository stays inside About");
+        keys(cx, &h, key);
+        assert_eq!(cx.opened_url().as_deref(), Some(about::REPOSITORY));
+        assert!(!shown(cx, &h));
+        assert!(
+            cx.update_window(h.window.into(), |_, window, cx| h
+                .shell
+                .read(cx)
+                .focus
+                .is_focused(window))
+                .expect("window")
+        );
+    }
 }
 
 #[gpui_kit::test]
@@ -196,10 +214,28 @@ fn an_outside_press_only_closes_the_panel(cx: &mut TestAppContext) {
     let h = open(cx);
     click(cx, &h, "about-button");
     cx.update_window(h.window.into(), |_, window, cx| {
-        let cover = window.find("pinned-hint-backdrop").bounds();
-        window.click_at(
-            "pinned-hint-backdrop",
-            gpui_kit::point(cover.size.width - px(8.), cover.size.height - px(8.)),
+        let position = gpui_kit::point(
+            window.viewport_size().width - px(8.),
+            window.viewport_size().height - px(8.),
+        );
+        window.dispatch_event(
+            gpui_kit::MouseDownEvent {
+                position,
+                button: MouseButton::Left,
+                click_count: 1,
+                ..Default::default()
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.dispatch_event(
+            gpui_kit::MouseUpEvent {
+                position,
+                button: MouseButton::Left,
+                click_count: 1,
+                ..Default::default()
+            }
+            .to_platform_input(),
             cx,
         );
     })

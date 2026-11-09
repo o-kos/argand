@@ -122,6 +122,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     editing_ui::init(cx);
     badge_entry::init(cx);
     selection_panel::init(cx);
+    about_ui::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([
@@ -407,10 +408,7 @@ struct Shell {
     settings: Settings,
     /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
-    about_hint: Entity<hints::PinnedHint>,
-    about_request: u64,
-    _about: Subscription,
-    _about_focus: Subscription,
+    about: about_ui::State,
     status_panel: Option<settings_ui::StatusPanel>,
     status_panel_request: u64,
     /// What the analysis hint opened with, which Escape restores.
@@ -539,19 +537,7 @@ impl Shell {
         window.focus(&focus, cx);
         window.set_window_title(TITLE);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
-        let activation = cx.observe_window_activation(window, |shell, window, cx| {
-            if window.is_window_active() {
-                shell.recent_files.refresh(&shell.session.recent);
-                shell.check_disk(window, cx);
-            } else {
-                shell.close_about(cx);
-                if let Some(plot) = shell.plot_entity() {
-                    // The release may happen in another window and never arrive here.
-                    plot.update(cx, |plot, cx| plot.end_gestures(cx));
-                }
-            }
-            cx.notify();
-        });
+        let activation = cx.observe_window_activation(window, Self::activation_changed);
         sync_theme(saved.theme.unwrap_or(config.theme), window, cx);
         let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
             sync_theme(shell.theme(), window, cx);
@@ -578,21 +564,12 @@ impl Shell {
             )
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
-        let about_hint = cx.new(about_ui::hint);
-        let about_events = cx.subscribe_in(&about_hint, window, Self::about_changed);
-        let about_focus = cx.on_focus_out(
-            &about_hint.read(cx).focus_handle(),
-            window,
-            |shell, _, _, cx| shell.close_about(cx),
-        );
+        let about = about_ui::State::new(window, cx);
         Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
-            about_hint,
-            about_request: 0,
-            _about: about_events,
-            _about_focus: about_focus,
+            about,
             status_panel: None,
             status_panel_request: 0,
             hint_opening: None,
@@ -650,6 +627,20 @@ impl Shell {
             _pinned: pinned,
             _selection_pinned: selection_pinned,
         }
+    }
+
+    fn activation_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if window.is_window_active() {
+            self.recent_files.refresh(&self.session.recent);
+            self.check_disk(window, cx);
+        } else {
+            self.close_about(cx);
+            if let Some(plot) = self.plot_entity() {
+                // The release may happen in another window and never arrive here.
+                plot.update(cx, |plot, cx| plot.end_gestures(cx));
+            }
+        }
+        cx.notify();
     }
 
     /// A finished save is announced until the next input, a mouse move included.
@@ -1925,7 +1916,7 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
-            .children(hints::backdrop(&self.about_hint, hint_area, cx))
+            .children(hints::backdrop(&self.about.hint, hint_area, cx))
             .children(self.conversion_cover(gpui_kit::Bounds::new(
                 hint_area.origin,
                 gpui_kit::size(

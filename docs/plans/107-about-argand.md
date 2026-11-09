@@ -54,13 +54,13 @@ the owner explicitly authorized a separate worktree after its branch changed.
 
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
-| Toolbar and main menu open the same compact panel | Production-path GPUI integration tests; native interaction | Pending | Native interaction unavailable |
-| Approved icon and complete Cargo/build information | Metadata tests and rendered content checks | Pending | Native appearance pending |
-| Tooltip gives exact tag, hash and commit date | Build metadata tests and tooltip text assertion | Pending | Native tooltip pending |
-| Repeated invocation never duplicates the panel | Integration test | Pending | Native pending |
-| Any surface click, repository activation and Escape dismiss | Pointer and keyboard integration tests | Pending | Native pending |
-| Focus leaving subtree and window deactivation dismiss | GPUI focus/activation integration tests | Pending | Native compositor pending |
-| System, light and dark follow existing application theme | Semantic tokens and rendered themed scenarios | Pending | Native visual acceptance pending |
+| Toolbar and main menu open the same compact panel | Production-path GPUI integration tests; native interaction | Headless passed | Native interaction unavailable |
+| Approved icon and complete Cargo/build information | Metadata tests and production composition inspection | Automated/static passed | Native appearance pending |
+| Tooltip gives exact tag, hash and commit date | Build metadata tests and tooltip text assertion | Passed | Native tooltip pending |
+| Repeated invocation never duplicates the panel | Integration test | Passed | Native pending |
+| Any surface click, repository activation and Escape dismiss | Pointer and keyboard integration tests | Passed | Native pending |
+| Focus leaving subtree and window deactivation dismiss | GPUI focus/activation integration tests | Passed | Native compositor pending |
+| System, light and dark follow existing application theme | Semantic tokens and rendered themed scenarios | Headless light/dark passed | Native visual acceptance pending |
 | Linux, Windows and macOS build and logic checks | Full remote CI on current branch | Pending | Native platform acceptance remains separate |
 
 ## Implementation steps
@@ -76,13 +76,24 @@ the owner explicitly authorized a separate worktree after its branch changed.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks above pass
-- [ ] Metadata tests, rendered pointer/keyboard/focus integration tests.
+- [x] Metadata tests, rendered pointer/keyboard/focus integration tests.
 - [ ] Independent current-revision review.
 - [ ] Full Linux/Windows/macOS remote CI.
+
+Current automated evidence: the workspace gate passes 1,165 tests (one existing
+ignored test). Six About production-path UI scenarios cover both entry points,
+Escape, repeated opening, pointer/Enter/Space repository activation, focus
+subtree transitions, window activation, outside presses and light/dark layout.
+The metadata module also passes four standalone tests without GPUI. A disposable
+Cargo project verifies actual rebuilds for same-ref commits, first tags, packed
+refs creation/removal and linked-worktree shared refs; missing Git returns explicit
+unavailable values without a panic. The full gate and source snapshot are retained
+in the external review packet. The release build follows the implementation commit
+so its embedded identity names the submitted source revision.
 
 ## Post-completion
 
