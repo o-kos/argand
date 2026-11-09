@@ -390,26 +390,7 @@ fn carrier_translation_preserves_two_sided_tones_amplitude_and_physical_metadata
                 "forward {n}: {actual} vs {expected}"
             );
         }
-        let (source, stamp) = argand_io::open_stamped(
-            &forward.target,
-            &OpenHints {
-                normalize: Some(Normalize::None),
-                ..OpenHints::default()
-            },
-        )
-        .unwrap();
-        let mut reverse = forward.clone();
-        reverse.input = source.meta().clone();
-        reverse.capture = Capture::whole(SourceId(0), reverse.input.len_samples);
-        reverse.sources = vec![Some(SourceFile {
-            meta: reverse.input.clone(),
-            hints: OpenHints {
-                normalize: Some(Normalize::None),
-                ..OpenHints::default()
-            },
-            stamp,
-            encoding: None,
-        })];
+        let mut reverse = carrier_reverse_source(&forward);
         reverse.output = reverse.input.clone();
         reverse.output.sample_type = "iq_f32".parse().unwrap();
         reverse.output.sample_rate = rate;
@@ -486,4 +467,28 @@ fn carrier_tone_amplitude(
         sum[1] += q * cos - i * sin;
     }
     sum[0].hypot(sum[1]) / count as f64 * if channels == 1 { 2. } else { 1. }
+}
+
+fn carrier_reverse_source(forward: &Request) -> Request {
+    let (source, stamp) = argand_io::open_stamped(
+        &forward.target,
+        &OpenHints {
+            normalize: Some(Normalize::None),
+            ..OpenHints::default()
+        },
+    )
+    .unwrap();
+    let mut reverse = forward.clone();
+    reverse.input = source.meta().clone();
+    reverse.capture = Capture::whole(SourceId(0), reverse.input.len_samples);
+    reverse.sources = vec![Some(SourceFile {
+        meta: reverse.input.clone(),
+        hints: OpenHints {
+            normalize: Some(Normalize::None),
+            ..OpenHints::default()
+        },
+        stamp,
+        encoding: None,
+    })];
+    reverse
 }
