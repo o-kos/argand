@@ -275,7 +275,8 @@ need for further owner discussion. Native UI acceptance is not claimed.
   approved documentation split; no product decision or runtime change is introduced.
   The prior independent review remains historical. No fourth round is required for
   this scoped verbatim documentation synchronization; this is not a code-review waiver.
-- [ ] Update the Draft with an explicit lease and report after integration.
+- [x] Update the Draft branch with an explicit lease after current full hook checks.
+  Report the integration and current review/validation boundaries in the Draft.
 - [ ] Complete the after-integration discussion with the owner.
 
 ## Post-completion
