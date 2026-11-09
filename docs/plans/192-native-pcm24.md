@@ -22,7 +22,10 @@ use RF64 and reopen them with their original sample type and integer units.
   bits retains the existing decoder fallback and unsupported RF64 save protection.
   Do not alter the existing adjusted/computed-save rejection for these layouts.
 - Reuse the native RF64/BW64 parser, mmap traversal, normalization and writer.
-  Symphonia 0.5.5 already decodes PCM24 but its WAVE reader only accepts RIFF.
+  Symphonia 0.6.1 already decodes PCM24 but its WAVE reader only accepts RIFF.
+  Dependency upgrade #230 is independently reviewed in Draft PR #231. This branch
+  is stacked on `chore/230-symphonia-06`; PR #229 targets that prerequisite until
+  it merges. Preserve the original PCM24 plan commit through the rebase.
   A new container library or dependency solely for scalar decoding is unnecessary;
   use standard fixed-byte integer conversion consistent with existing formats.
 - Existing standard sample-format Selects gain entries, without custom controls.
