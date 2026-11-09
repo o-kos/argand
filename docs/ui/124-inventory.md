@@ -205,6 +205,15 @@ Covering tests: `the_document_controls_join_the_toolbar`,
 against both the occluding container and a consumption-free wrapper.
 Native rows R3 and O1.
 
+When a status editor's stock Select is open, title-bar Capture dispatches the
+standard Cancel synchronously through its saved trigger before closing the hint.
+The locked Select's outside Capture handler otherwise consumes that first press
+(`select.rs:404`, `:625`). Closing the standard Select first lets the original
+press reach the existing caption control without replay or an alternate close
+path. `caption_close_with_open_sample_list_reaches_unsaved_workflow` covers
+one-click unsaved protection and press/release outside cancellation; removing the
+Cancel composition fails the one-click assertion.
+
 ### R3 Zoom halves and `pressed_zoom`
 
 **Replaced (#130).** Each half is a gpui-component `Button` in a shared frame

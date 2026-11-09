@@ -555,6 +555,9 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.conversion_active() {
+            return;
+        }
         // Not `editing_mut`: edits on a changed file are discarded this way too.
         if let Some(file) = self.file.as_mut() {
             if let Some(editing) = file.editing.as_mut() {

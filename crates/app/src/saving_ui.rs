@@ -196,7 +196,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.saving.is_some() {
+        if !self.save_matches(&of) {
             return;
         }
         tracing::info!(
@@ -304,7 +304,7 @@ impl Shell {
             };
             request.target = target;
             let _ = shell.update_in(cx, |shell, window, cx| {
-                if shell.saving.is_some() {
+                if !shell.save_matches(&of) {
                     return;
                 }
                 tracing::info!(

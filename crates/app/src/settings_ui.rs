@@ -350,8 +350,6 @@ impl Shell {
                 .ok()?;
             editor.read(cx).open_select_trigger(cx)
         });
-        #[cfg(test)]
-        eprintln!("caption trigger present: {}", trigger.is_some());
         if let Some(trigger) = trigger {
             // Close synchronously so the old frame's outside-click listener will propagate.
             trigger.dispatch_action(&gpui_kit::base::actions::Cancel, window, cx);

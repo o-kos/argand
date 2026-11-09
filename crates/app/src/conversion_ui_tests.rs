@@ -2,6 +2,7 @@ use super::super::replace_ui::tests::wait_for_save_chooser;
 use super::*;
 use argand_core::{Domain, SampleFormat, SampleType, SignalMeta};
 use argand_edit::{Capture, SourceId};
+use gpui_kit::component::WindowExt;
 use gpui_kit::component::input::InputEvent;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, TestAppContext};
@@ -1388,16 +1389,49 @@ fn caption_close_with_open_sample_list_reaches_unsaved_workflow(cx: &mut TestApp
         let half = gpui_kit::component::TITLE_BAR_HEIGHT / 2.;
         point(bounds.right() - half, bounds.top() + half)
     });
+    let outside = point(close.x - px(100.), close.y + px(80.));
+    cx.simulate_mouse_move(close, None, gpui_kit::Modifiers::default());
+    frame(cx);
+    cx.simulate_mouse_down(close, MouseButton::Left, gpui_kit::Modifiers::default());
+    cx.simulate_mouse_move(
+        outside,
+        Some(MouseButton::Left),
+        gpui_kit::Modifiers::default(),
+    );
+    cx.simulate_mouse_up(outside, MouseButton::Left, gpui_kit::Modifiers::default());
+    frame(cx);
+    assert!(!cx.update(|window, cx| window.has_active_dialog(cx)));
+    assert!(shell.read_with(cx, |shell, _| shell.editing().unwrap().is_dirty()));
+    shell.update_in(cx, |shell, window, cx| shell.convert_dialog(window, cx));
+    frame(cx);
+    let editor = shell.read_with(cx, |shell, cx| {
+        shell
+            .conversion
+            .hint
+            .read(cx)
+            .view()
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap()
+    });
+    let trigger = editor.read_with(cx, |editor, cx| editor.kind.read(cx).focus_handle(cx));
+    cx.update(|window, cx| window.focus(&trigger, cx));
+    cx.simulate_keystrokes("enter");
+    frame(cx);
+    assert_ne!(
+        editor.read_with(cx, |editor, cx| editor.kind.read(cx).focus_handle(cx)),
+        trigger
+    );
     cx.simulate_mouse_move(close, None, gpui_kit::Modifiers::default());
     frame(cx);
     cx.simulate_mouse_down(close, MouseButton::Left, gpui_kit::Modifiers::default());
     cx.simulate_mouse_up(close, MouseButton::Left, gpui_kit::Modifiers::default());
     frame(cx);
     assert!(
-        cx.has_pending_prompt(),
+        cx.update(|window, cx| window.has_active_dialog(cx)),
         "one caption click must ask about the unsaved capture"
     );
-    cx.simulate_prompt_answer("Cancel");
+    cx.simulate_keystrokes("escape");
     frame(cx);
     assert!(shell.read_with(cx, |shell, _| shell.editing().unwrap().is_dirty()));
 }

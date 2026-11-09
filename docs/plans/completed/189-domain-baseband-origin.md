@@ -72,7 +72,8 @@ unchanged.
   and async chooser continuations. Hide coordinate readouts while conversion runs.
 - Use the stock Select's grouped searchable delegate to distinguish Real and I/Q
   sections, retaining explicit domain in collapsed selection. Label arbitrary-scale
-  IEEE f32 as Float 32-bit (CoolEdit 16×8), not as a 16-bit scalar format.
+  IEEE f32 as Float 32-bit (arbitrary scale), with CoolEdit 16×8 explained in the
+  tooltip; distinguish nominal Float 32-bit (±1 scale) without changing decoding.
 - A click on the application caption close button with a Select open must enter
   the normal guarded close workflow once. Verify actual GPUI hit-tested pointer
   delivery and unsaved protection; no input replay or custom Select replacement.
@@ -83,13 +84,17 @@ Locked gpui-component 0.6.6 Select supports SearchableVec<SelectGroup<I>>; its
 standard section delegate supplies named list headers and normal grouped keyboard
 selection. f16x8 reads/writes IEEE f32 bytes with the CoolEdit WAVE marker, permits
 arbitrary amplitude units and has full_scale=1, rather than imposing a 16-bit scale.
-Existing Linux caption controls are a recorded exception; retain their behavior
-and inspect the title-bar capture dismissal before changing pointer delivery.
+Existing Linux caption controls remain a recorded exception. Select's outside
+Capture listener stops propagation while open. The title-bar capture synchronously
+dispatches the standard Cancel through the saved Select trigger before dismissing
+the panel; the old listener then propagates the original press. Caption click and
+release-outside behavior remain unchanged. The pointer regression fails without
+this composition and passes with it, including the normal unsaved dialog.
 
-- [ ] Retain and test source-parent save provenance through repeated conversion.
-- [ ] Move menu command; group sample types and clarify f16x8 label.
-- [ ] Cover busy action execution, chooser races, panel entry, coordinate hiding
+- [x] Retain and test source-parent save provenance through repeated conversion.
+- [x] Move menu command; group sample types and clarify f16x8 label.
+- [x] Cover busy action execution, chooser races, panel entry, coordinate hiding
       and safe cancellation/close behavior.
-- [ ] Reproduce and fix one-click caption close with Select open using supported
+- [x] Reproduce and fix one-click caption close with Select open using supported
       event composition; preserve normal unsaved workflow.
 - [ ] Complete follow-up, independent review, full gate and fresh release.
