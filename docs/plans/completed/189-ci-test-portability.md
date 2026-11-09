@@ -31,18 +31,23 @@ actual platform contract.
 
 - [x] Scope the custom-caption pointer regression to Linux.
 - [x] Release the metadata-only reader before mutation.
-- [ ] Validate focused tests, normal compilation and the full local gate.
+- [x] Validate focused tests, normal compilation and the full local gate.
 - [x] Move the finished plan before independent final review.
-- [ ] Record review and three-platform CI results.
+- [x] Record independent review; track the subsequent Ready CI result in PR #224.
 
 ## Validation
 
 - [x] `cargo check -p argand --locked`
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [x] Verify production diff is empty, retaining the existing current-code release.
-- [ ] Ready full CI: Linux, Windows, macOS and `ci/full` all succeed.
+Ready full CI is a post-completion external validation step: Linux, Windows,
+macOS and `ci/full` must all succeed before merge. Its result is recorded in PR #224.
 
 Focused Linux regressions both pass; normal application compilation passes. The
 production diff is empty, so the existing release remains the current runtime.
+
+Independent review returned no findings. Local fmt, Clippy and all 1144 tests
+pass (one manual benchmark ignored). The mandatory push hook repeats the full
+gate on the final documentation revision before Ready. No merge is authorized.
