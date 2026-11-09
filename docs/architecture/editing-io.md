@@ -38,9 +38,10 @@ exact one; a FLAC source with none (192 kHz, an SDR rate) is written as WAVE of 
 depth instead, as the owner chose, and `write::writes_as_wave` gives it a `.wav` name;
 an odd bit depth there is refused. A seek that lands after its sample fails, and a FLAC
 stream without a length is counted by the strict decoder. A WAVE output that needs RF64
-in a layout the native reader declines (24-bit) is refused, because Argand could not open
-it again, until #192 reads 24-bit natively. A WAVE output whose RIFF size
-would exceed `u32` is RF64. Stored values are written, never normalized ones. A `SaveRequest` names
+in a layout the native reader declines, including reduced-valid-bit PCM24, is refused
+because Argand could not reopen it. Full-valid packed PCM24 is native and can use
+RF64. A supported WAVE output whose RIFF size would exceed `u32` is RF64. Stored
+values are written, never normalized ones. A `SaveRequest` names
 `SourceFile`s and `Segment`s of them, written in order; every source must share one
 `Storage` (`write::storage`: linear `fmt ` layout, or FLAC depth) and the request's sample
 rate. An immutable `write::Format`, captured by the existing checked description reader,

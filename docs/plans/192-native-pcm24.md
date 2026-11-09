@@ -86,7 +86,10 @@ branch cleanup policy. This implementation stays Draft while acceptance is incom
 The frozen implementation passes fmt, Clippy and 1,155 workspace tests; one manual
 release-mode conversion-cost benchmark is ignored. The actual forced-small RF64
 save test also passes independently. Source/test content is frozen before the gate;
-no assertions are added during validation. The ordered production release build passed. Independent review is pending. Optional private captures are unavailable; committed/synthetic fixtures run.
+no assertions are added during validation. The ordered production release build
+passed. Round 1 independent review found no substantive code issues; one
+documentation finding was accepted and corrected. Round 2 review is pending.
+Optional private captures are unavailable; committed/synthetic fixtures run.
 
 The UI acceptance skill's native scenario remains unperformed: available tools have
 no native desktop input connector and the computer-use tool disables native apps.
@@ -94,3 +97,18 @@ No workaround was used. Pointer/keyboard choice, dismissal/commit and production
 appearance of the new Int 24-bit rows still need native acceptance. Automated Select
 and FLAC fallback results do not establish it. Keep this active plan unfinished and
 the PR Draft while native acceptance is incomplete; move to completed before Ready.
+
+## Independent review dispositions
+
+Round 1 identified a stale paragraph in the current Editing and I/O architecture
+that still described PCM24 as unsupported and RF64 support as future #192 work.
+Accepted: update that paragraph to distinguish supported full-valid PCM24 from
+unsupported layouts, including reduced-valid-bit PCM24. Neighboring copying,
+FLAC-depth and RF64 statements were inspected for the same stale claim. No code
+findings or rejected findings were reported.
+
+This correction changes documentation only. Scoped diff/link checks and exact
+Cargo/crates patch comparison preserve the existing fmt/Clippy/test/release evidence;
+no code gate or release rebuild is needed for unchanged source/tests. Retained
+reviewer round 2 is pending. Native UI acceptance remains incomplete, so this plan
+stays active and the Pull Request stays Draft.
