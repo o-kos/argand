@@ -122,13 +122,14 @@ any file failed.
 |---|---|---|
 | `rl_u8` / `iq_u8` | uint8 | offset binary, silence at 128 |
 | `rl_i16` / `iq_i16` | int16 LE | |
+| `rl_i24` / `iq_i24` | packed int24 LE | native RIFF/RF64/BW64; full valid width |
 | `rl_i32` / `iq_i32` | int32 LE | |
 | `rl_f32` / `iq_f32` | float32 | scaled to [-1, 1] |
 | `rl_f16x8` / `iq_f16x8` | float32 | arbitrary scale (CoolEdit "16x8") |
 
 `rl_` is a real signal (one channel), `iq_` is complex with I and Q
-interleaved (two channels). Containers: WAV for all ten, FLAC for the integer
-ones, and headerless files for all ten via `--raw <token>[@<rate>]`.
+interleaved (two channels). Containers: WAV for all twelve, FLAC for the integer
+ones, and headerless files for all twelve via `--raw <token>[@<rate>]`.
 
 Unnormalised float files are the odd one out. They are written with the
 integer PCM format tag and 32 bits per sample, so nothing distinguishes them
@@ -670,7 +671,7 @@ replaced.
 cargo test
 ```
 
-Fixtures for all ten sample types are generated at test time rather than
+Fixtures for all twelve sample types are generated at test time rather than
 committed. Tests that use real captures look for them in `tests/signals/` and,
 for the wider format matrix, in `../sgvr/cli/tests` or wherever
 `ARGAND_EXTRA_FIXTURES` points; they report and skip when those are absent.

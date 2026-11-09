@@ -184,6 +184,7 @@ fn encode(format: SampleFormat, value: f32, out: &mut Vec<u8>) -> bool {
     let (scale, low, high) = match format {
         SampleFormat::U8 => (128.0, -128.0, 127.0),
         SampleFormat::I16 => (32768.0, -32768.0, 32767.0),
+        SampleFormat::I24 => (8388608.0, -8388608.0, 8388607.0),
         SampleFormat::I32 => (2147483648.0, -2147483648.0, 2147483647.0),
         SampleFormat::F32 | SampleFormat::F16x8 => {
             out.extend_from_slice(&value.to_le_bytes());
@@ -195,6 +196,7 @@ fn encode(format: SampleFormat, value: f32, out: &mut Vec<u8>) -> bool {
     match format {
         SampleFormat::U8 => out.push((stored + 128.0) as u8),
         SampleFormat::I16 => out.extend_from_slice(&(stored as i16).to_le_bytes()),
+        SampleFormat::I24 => out.extend_from_slice(&(stored as i32).to_le_bytes()[..3]),
         SampleFormat::I32 => out.extend_from_slice(&(stored as i32).to_le_bytes()),
         SampleFormat::F32 | SampleFormat::F16x8 => unreachable!(),
     }

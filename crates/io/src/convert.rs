@@ -1,6 +1,6 @@
 //! Raw bytes to normalised `f32`.
 //!
-//! Every reader funnels through here so that the five sample formats behave
+//! Every reader funnels through here so that all sample formats behave
 //! identically no matter which container they arrived in.
 
 use argand_core::SampleFormat;
@@ -27,6 +27,11 @@ pub fn convert(format: SampleFormat, bytes: &[u8], out: &mut [f32], scale: f32) 
         SampleFormat::I16 => {
             for (dst, src) in out.iter_mut().zip(bytes.chunks_exact(2)) {
                 *dst = i16::from_le_bytes([src[0], src[1]]) as f32 * scale;
+            }
+        }
+        SampleFormat::I24 => {
+            for (dst, src) in out.iter_mut().zip(bytes.chunks_exact(3)) {
+                *dst = packed_i24(src) as f32 * scale;
             }
         }
         SampleFormat::I32 => {
@@ -57,6 +62,10 @@ pub fn peak_abs(format: SampleFormat, bytes: &[u8]) -> f32 {
             .chunks_exact(2)
             .map(|c| (i16::from_le_bytes([c[0], c[1]]) as f32).abs())
             .fold(0.0f32, f32::max),
+        SampleFormat::I24 => bytes
+            .chunks_exact(3)
+            .map(|c| (packed_i24(c) as f32).abs())
+            .fold(0.0f32, f32::max),
         SampleFormat::I32 => bytes
             .chunks_exact(4)
             .map(|c| (i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f32).abs())
@@ -66,6 +75,11 @@ pub fn peak_abs(format: SampleFormat, bytes: &[u8]) -> f32 {
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]).abs())
             .fold(0.0f32, f32::max),
     }
+}
+
+/// Sign-extend the most significant stored bit without depending on host endianness.
+fn packed_i24(bytes: &[u8]) -> i32 {
+    i32::from_le_bytes([0, bytes[0], bytes[1], bytes[2]]) >> 8
 }
 
 #[cfg(test)]

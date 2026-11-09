@@ -163,6 +163,7 @@ fn kind_label(token: &str) -> String {
     let format = match format {
         "u8" => "Int 8-bit",
         "i16" => "Int 16-bit",
+        "i24" => "Int 24-bit",
         "i32" => "Int 32-bit",
         "f32" => "Float 32-bit (normalized)",
         "f16x8" => "Float 32-bit (unscaled)",

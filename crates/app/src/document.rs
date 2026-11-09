@@ -615,6 +615,7 @@ impl MetadataHint {
         let storage = match sample_type.format {
             SampleFormat::U8 => "unsigned 8-bit integers, with zero stored as 128",
             SampleFormat::I16 => "signed 16-bit integers",
+            SampleFormat::I24 => "signed 24-bit integers",
             SampleFormat::I32 => "signed 32-bit integers",
             SampleFormat::F32 => "32-bit floating point with nominal full scale -1 to +1",
             SampleFormat::F16x8 => "32-bit floating point with arbitrary scale (CoolEdit 16x8)",

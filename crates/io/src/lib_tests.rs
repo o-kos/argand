@@ -355,6 +355,7 @@ fn original_units_recover_integer_values_through_both_readers_and_gain() {
     let dir = TempDir::new("original-units");
     for (format, expected) in [
         (SampleFormat::I16, [-16384.0, 8192.0, 4096.0]),
+        (SampleFormat::I24, [-4194304.0, 2097152.0, 1048576.0]),
         (SampleFormat::U8, [64.0, 160.0, 144.0]),
     ] {
         let path = write_wav(&dir.join(&format!("{format:?}.wav")),
@@ -371,7 +372,7 @@ fn original_units_recover_integer_values_through_both_readers_and_gain() {
 }
 
 #[test]
-fn decoder_original_units_use_the_true_24_bit_depth() {
+fn original_units_use_the_true_24_bit_depth() {
     let dir = TempDir::new("pcm24-units");
     let path = dir.join("pcm24.wav");
     let values = [-8_388_608i32, 8_388_607, 12345, -45678];
@@ -694,5 +695,81 @@ fn a_flac_without_a_complete_first_frame_is_not_clean_eof() {
         assert!(source.read(&mut buf).is_err(), "seek zero, corrupt={corrupt}");
         let auto = OpenHints { normalize: Some(Normalize::Auto), ..Default::default() };
         assert!(open(&path, &auto).is_err(), "normalization, corrupt={corrupt}");
+    }
+}
+
+#[test]
+fn packed_i24_raw_offsets_and_wave_runs_keep_whole_iq_pairs() {
+    let dir = TempDir::new("i24-runs");
+    let path = write_wav(&dir.join("a.wav"), "iq_i24".parse().unwrap(), 2_400_000, &[0.0; 2], 1.0);
+    let mut bytes = std::fs::read(&path).unwrap()[..36].to_vec();
+    for data in [vec![0, 0, 128, 255, 255, 127, 1, 2, 3], vec![255, 255, 255, 0, 0, 0, 1, 0, 0, 254, 255, 255]] {
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&data);
+        if data.len() % 2 != 0 { bytes.push(0); }
+    }
+    let size = (bytes.len() - 8) as u32;
+    bytes[4..8].copy_from_slice(&size.to_le_bytes());
+    std::fs::write(&path, bytes).unwrap();
+    let expected = [-1.0, 8388607.0 / 8388608.0, -1.0 / 8388608.0, 0.0, 1.0 / 8388608.0, -2.0 / 8388608.0];
+    let mut source = open(&path, &OpenHints::default()).unwrap();
+    assert_eq!(source.meta().sample_type.to_string(), "iq_i24");
+    assert_eq!(source.meta().len_samples, 3);
+    let mut odd = [f32::NAN; 3];
+    assert_eq!(source.read(&mut odd).unwrap(), 2);
+    assert_eq!(&odd[..2], &expected[..2]);
+    assert_eq!(drain(source.as_mut()), expected[2..]);
+    source.seek(1).unwrap();
+    assert_eq!(drain(source.as_mut()), expected[2..]);
+
+    let raw = dir.join("a.raw");
+    std::fs::write(&raw, [vec![42], vec![0, 0, 128, 255, 255, 127], vec![7; 5]].concat()).unwrap();
+    let hints = OpenHints { raw: Some("iq_i24@2.4M".parse().unwrap()), byte_offset: 1, center_freq: Some(100e6), ..Default::default() };
+    let mut source = open(&raw, &hints).unwrap();
+    assert_eq!(source.meta().len_samples, 1);
+    assert_eq!(source.meta().sample_rate, 2_400_000.0);
+    assert_eq!(source.meta().center_freq, 100e6);
+    assert_eq!(drain(source.as_mut()), expected[..2]);
+}
+
+#[cfg(all(unix, target_pointer_width = "64"))]
+#[test]
+fn sparse_pcm24_rf64_and_bw64_read_beyond_four_gib_without_a_full_scan() {
+    use std::io::{Seek, SeekFrom, Write};
+    let dir = TempDir::new("i24-sparse-rf64");
+    let frames = u64::from(u32::MAX) / 6 + 3;
+    let data_len = frames * 6;
+    for magic in [b"RF64", b"BW64"] {
+        let path = write_wav(&dir.join("large.wav"), "iq_i24".parse().unwrap(), 2_400_000, &[0.0; 2], 1.0);
+        let wave = std::fs::read(&path).unwrap();
+        let mut header = Vec::from(*magic);
+        header.extend_from_slice(&u32::MAX.to_le_bytes());
+        header.extend_from_slice(b"WAVEds64");
+        header.extend_from_slice(&28u32.to_le_bytes());
+        header.extend_from_slice(&(data_len + 72).to_le_bytes());
+        header.extend_from_slice(&data_len.to_le_bytes());
+        header.extend_from_slice(&frames.to_le_bytes());
+        header.extend_from_slice(&0u32.to_le_bytes());
+        header.extend_from_slice(&wave[12..40]);
+        header.extend_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(header.len(), 80);
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(&header).unwrap();
+        file.set_len(80 + data_len).unwrap();
+        file.seek(SeekFrom::End(-6)).unwrap();
+        file.write_all(&[0, 0, 128, 255, 255, 127]).unwrap();
+        drop(file);
+        let mut source = open(&path, &OpenHints::default()).unwrap();
+        assert_eq!(source.meta().sample_type.to_string(), "iq_i24");
+        assert_eq!(source.meta().len_samples, frames);
+        assert_eq!(source.meta().divisor, 8388608.0);
+        source.seek(frames - 1).unwrap();
+        let mut pair = [0.0; 2];
+        assert_eq!(source.read(&mut pair).unwrap(), 2);
+        assert_eq!(pair, [-1.0, 8388607.0 / 8388608.0]);
+        assert_eq!(source.read(&mut pair).unwrap(), 0);
+        drop(source);
+        std::fs::remove_file(path).unwrap();
     }
 }

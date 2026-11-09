@@ -10,6 +10,8 @@ pub enum SampleFormat {
     U8,
     /// Signed 16-bit little-endian.
     I16,
+    /// Signed packed 24-bit little-endian.
+    I24,
     /// Signed 32-bit little-endian.
     I32,
     /// IEEE float32 already scaled to [-1, 1].
@@ -24,6 +26,7 @@ impl SampleFormat {
         match self {
             SampleFormat::U8 => 1,
             SampleFormat::I16 => 2,
+            SampleFormat::I24 => 3,
             SampleFormat::I32 | SampleFormat::F32 | SampleFormat::F16x8 => 4,
         }
     }
@@ -34,6 +37,7 @@ impl SampleFormat {
         match self {
             SampleFormat::U8 => 128.0,
             SampleFormat::I16 => 32768.0,
+            SampleFormat::I24 => 8388608.0,
             SampleFormat::I32 => 2147483648.0,
             SampleFormat::F32 | SampleFormat::F16x8 => 1.0,
         }
@@ -43,7 +47,7 @@ impl SampleFormat {
     pub const fn is_integer(self) -> bool {
         matches!(
             self,
-            SampleFormat::U8 | SampleFormat::I16 | SampleFormat::I32
+            SampleFormat::U8 | SampleFormat::I16 | SampleFormat::I24 | SampleFormat::I32
         )
     }
 
@@ -51,6 +55,7 @@ impl SampleFormat {
         match self {
             SampleFormat::U8 => "u8",
             SampleFormat::I16 => "i16",
+            SampleFormat::I24 => "i24",
             SampleFormat::I32 => "i32",
             SampleFormat::F32 => "f32",
             SampleFormat::F16x8 => "f16x8",
@@ -91,9 +96,9 @@ pub struct SampleType {
 }
 
 /// Every accepted token, in the order shown by error messages and `--help`.
-pub const SAMPLE_TYPE_TOKENS: [&str; 10] = [
-    "rl_u8", "rl_i16", "rl_i32", "rl_f32", "rl_f16x8", "iq_u8", "iq_i16", "iq_i32", "iq_f32",
-    "iq_f16x8",
+pub const SAMPLE_TYPE_TOKENS: [&str; 12] = [
+    "rl_u8", "rl_i16", "rl_i24", "rl_i32", "rl_f32", "rl_f16x8", "iq_u8", "iq_i16", "iq_i24",
+    "iq_i32", "iq_f32", "iq_f16x8",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -144,6 +149,7 @@ impl std::str::FromStr for SampleType {
         let format = match rest {
             "u8" => SampleFormat::U8,
             "i16" => SampleFormat::I16,
+            "i24" => SampleFormat::I24,
             "i32" => SampleFormat::I32,
             "f32" => SampleFormat::F32,
             "f16x8" => SampleFormat::F16x8,

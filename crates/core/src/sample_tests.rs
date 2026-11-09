@@ -36,11 +36,13 @@ fn byte_sizes_match_the_wav_layouts() {
     let cases = [
         ("rl_u8", 1),
         ("rl_i16", 2),
+        ("rl_i24", 3),
         ("rl_i32", 4),
         ("rl_f32", 4),
         ("rl_f16x8", 4),
         ("iq_u8", 2),
         ("iq_i16", 4),
+        ("iq_i24", 6),
         ("iq_i32", 8),
         ("iq_f32", 8),
         ("iq_f16x8", 8),
@@ -58,6 +60,7 @@ fn byte_sizes_match_the_wav_layouts() {
 fn full_scale_matches_the_integer_ranges() {
     assert_eq!(SampleFormat::U8.full_scale(), 128.0);
     assert_eq!(SampleFormat::I16.full_scale(), 32768.0);
+    assert_eq!(SampleFormat::I24.full_scale(), 8388608.0);
     assert_eq!(SampleFormat::I32.full_scale(), 2147483648.0);
     assert_eq!(SampleFormat::F32.full_scale(), 1.0);
     assert_eq!(SampleFormat::F16x8.full_scale(), 1.0);
