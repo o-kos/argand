@@ -31,9 +31,9 @@ independent reviewer: gpt-6.1-sol high, retaining the existing assignment.
 - [x] Verify IQ Fs12000 -> real Fs24000/C6000 and reverse, independent tones,
       counts/amplitude, custom real Fs8000/C1800, nonzero and huge source R,
       persisted zero metadata, same-domain reference retention, WAV and FLAC.
-- [ ] Complete plan before final independent review; address findings.
-- [ ] Run full formatting/Clippy/test gate, then build current release.
-- [ ] Update existing Draft PR and push through required hook after acceptance.
+- [x] Complete plan before final independent review; address findings.
+- [x] Run full formatting/Clippy/test gate, then build current release.
+- [x] Update existing Draft PR and push through required hook after acceptance.
 
 ## Validation boundaries
 
@@ -98,7 +98,7 @@ this composition and passes with it, including the normal unsaved dialog.
       and safe cancellation/close behavior.
 - [x] Reproduce and fix one-click caption close with Select open using supported
       event composition; preserve normal unsaved workflow.
-- [ ] Complete follow-up, independent review, full gate and fresh release.
+- [x] Complete follow-up, independent review, full gate and fresh release.
 
 ### Expanded review dispositions
 
@@ -108,3 +108,11 @@ single retained cancellation intent now discards every terminal result after
 Cancel, then either retains the document or resumes the requested normal close
 workflow. A deterministic queued-success regression checks unchanged document,
 capture, version and unsaved state. No finding has been rejected.
+
+The second expanded review and final test-only fixture delta were clean. The
+full local formatting, all-targets Clippy and locked workspace test gate passed:
+1,139 tests, zero failures, one ignored manual benchmark. The release build then
+completed successfully. The normal production binary is checked separately from
+test targets. The conversion UI suite has 21 passing tests, including queued
+success cancellation, busy actions, source-parent provenance and caption pointer
+delivery. The native GUI validation boundary above remains unchanged.
