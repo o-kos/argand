@@ -168,11 +168,12 @@ Prepare standard Button elements during render, then use the toolkit's supported
 layout/prepaint/paint lifecycle at that current rectangle in the existing canvas.
 Keep one shared corner-zone policy for controls and deferred gesture geometry.
 The third and final independent review round found no substantive findings in
-this correction. Current rustfmt, Clippy and full tests exited successfully: 1146
-tests passed, including 617 application tests, with one existing ignored manual
-release-mode conversion cost measurement. The subsequent release build exited
-successfully. The owner subsequently confirmed normal resize behavior in a fresh build and
-approved the result; the evidence limitations below remain recorded.
+this correction. After integrating main, current rustfmt, Clippy and full tests
+exited successfully: 1152 tests passed, including 617 application and 176 I/O tests,
+with one existing ignored manual release-mode conversion cost measurement. The
+subsequent release build exited successfully. The owner confirmed normal resize
+behavior in a fresh build and approved the result; the evidence limitations below
+remain recorded.
 The focused PlotView suite passed all 50 tests. The regression changes parent
 layout dimensions and renders one frame inside the same update, before deferred
 effects can converge. It compares rendered Button hitboxes to the actual painted
