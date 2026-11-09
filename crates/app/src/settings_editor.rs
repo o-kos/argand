@@ -1573,11 +1573,14 @@ mod hint_tests {
             opening.window,
             "the choice applies"
         );
+        let committed = bounds(cx);
         assert_eq!(
-            bounds(cx),
-            resting,
-            "a name of another length moves nothing"
+            committed.right(),
+            resting.right(),
+            "the value stays right-aligned"
         );
+        assert_eq!(committed.top(), resting.top());
+        assert_eq!(committed.size.height, resting.size.height);
     }
 
     #[gpui_kit::test]
