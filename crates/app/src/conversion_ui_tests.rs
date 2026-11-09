@@ -2,7 +2,6 @@ use super::super::replace_ui::tests::wait_for_save_chooser;
 use super::*;
 use argand_core::{Domain, SampleFormat, SampleType, SignalMeta};
 use argand_edit::{Capture, SourceId};
-use gpui_kit::component::WindowExt;
 use gpui_kit::component::input::InputEvent;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, TestAppContext};
@@ -1355,6 +1354,7 @@ fn exact_carrier_defaults_do_not_warn_from_rounded_physical_references(cx: &mut 
 #[gpui_kit::test]
 fn caption_close_with_open_sample_list_reaches_unsaved_workflow(cx: &mut TestAppContext) {
     use super::super::replace_ui::tests::{wait_until, write_wave};
+    use gpui_kit::component::WindowExt;
     let (shell, cx) = panel_window(cx);
     let dir = argand_io::testutil::TempDir::new("caption-select-close");
     let path = dir.join("input.wav");

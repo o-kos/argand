@@ -51,3 +51,7 @@ production diff is empty, so the existing release remains the current runtime.
 Independent review returned no findings. Local fmt, Clippy and all 1144 tests
 pass (one manual benchmark ignored). The mandatory push hook repeats the full
 gate on the final documentation revision before Ready. No merge is authorized.
+
+The subsequent Ready run exposed an import used only by the Linux-scoped
+caption test. Move WindowExt into that test so non-Linux test compilation has no
+unused import. The file has no other platform-gated tests or gated imports.
