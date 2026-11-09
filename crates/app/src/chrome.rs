@@ -2,14 +2,10 @@
 
 use gpui_kit::component::{ActiveTheme, Icon, IconName, Sizable};
 use gpui_kit::{
-    App, Bounds, BoxShadow, Corners, CursorStyle, Decorations, Edges, Hsla, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Pixels, ResizeEdge, Size, StatefulInteractiveElement,
-    Styled, Tiling, Window, div, point, prelude::FluentBuilder, px, size,
+    App, Bounds, Decorations, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    Pixels, StatefulInteractiveElement, Styled, Window, div, point, prelude::FluentBuilder, px,
+    size,
 };
-
-const SHADOW: Pixels = px(12.0);
-const RESIZE_GRIP: Pixels = px(6.0);
-const RADIUS: Pixels = px(8.0);
 
 /// The title bar's colours, muted while the window is not the active one.
 #[derive(Clone, Copy)]
@@ -110,187 +106,89 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
 
 gpui_kit::actions!(chrome, [CloseWindow]);
 
-pub struct Frame {
-    padding: Edges<Pixels>,
-    pub corners: Corners<Pixels>,
-    regions: Vec<(ResizeEdge, Bounds<Pixels>)>,
-    /// What the resize regions leave of the window, where an overlay may take the pointer.
-    pub free: Bounds<Pixels>,
-    shadow: bool,
+/// The content area left to overlays by the toolkit frame's resize band.
+/// Coordinates are relative to Shell, inside the standard Root surface.
+pub fn overlay_area(window: &Window) -> Bounds<Pixels> {
+    let paddings = gpui_kit::component::window_paddings(window);
+    let viewport = window.viewport_size();
+    let client = matches!(window.window_decorations(), Decorations::Client { .. });
+    overlay_bounds(viewport, paddings, client).0
 }
 
-impl Frame {
-    /// Where the title bar ends, below the frame's top inset.
-    pub fn title_bottom(&self) -> Pixels {
-        self.padding.top + gpui_kit::component::TITLE_BAR_HEIGHT
-    }
+pub fn overlay_window_area(window: &Window) -> Bounds<Pixels> {
+    let paddings = gpui_kit::component::window_paddings(window);
+    let client = matches!(window.window_decorations(), Decorations::Client { .. });
+    overlay_bounds(window.viewport_size(), paddings, client).1
+}
 
-    pub fn for_window(window: &mut Window) -> Self {
-        let decorated = cfg!(target_os = "linux")
-            && matches!(window.window_decorations(), Decorations::Client { .. });
-        let tiling = match window.window_decorations() {
-            Decorations::Client { tiling } if decorated => Some(tiling),
-            _ => None,
-        };
-        window.set_client_inset(if decorated { SHADOW } else { px(0.0) });
-        Self::new(
-            window.viewport_size(),
-            tiling,
-            window.is_maximized() || window.is_fullscreen(),
-        )
-    }
-
-    fn new(viewport: Size<Pixels>, tiling: Option<Tiling>, expanded: bool) -> Self {
-        let Some(tiling) = tiling.filter(|_| !expanded) else {
-            return Self {
-                padding: Edges::default(),
-                corners: Corners::default(),
-                regions: Vec::new(),
-                free: Bounds::new(point(px(0.0), px(0.0)), viewport),
-                shadow: false,
-            };
-        };
-        let inset = |tiled| if tiled { px(0.0) } else { SHADOW };
-        let radius = |joined| if joined { px(0.0) } else { RADIUS };
-        let padding = Edges {
-            top: inset(tiling.top),
-            right: inset(tiling.right),
-            bottom: inset(tiling.bottom),
-            left: inset(tiling.left),
-        };
-        let grips = padding.map(|&inset| {
-            if inset > px(0.0) {
-                inset + RESIZE_GRIP
-            } else {
-                inset
-            }
-        });
-        Self {
-            padding,
-            corners: Corners {
-                top_left: radius(tiling.top || tiling.left),
-                top_right: radius(tiling.top || tiling.right),
-                bottom_left: radius(tiling.bottom || tiling.left),
-                bottom_right: radius(tiling.bottom || tiling.right),
-            },
-            // Some compositors exclude shadows from pointer input. Extend
-            // each grip into the visible edge instead of relying on the shadow.
-            regions: resize_regions(viewport, grips),
-            free: Bounds::new(
-                point(grips.left, grips.top),
-                size(
-                    viewport.width - grips.left - grips.right,
-                    viewport.height - grips.top - grips.bottom,
-                ),
-            ),
-            shadow: !tiling.is_tiled(),
+fn overlay_bounds(
+    viewport: gpui_kit::Size<Pixels>,
+    paddings: gpui_kit::Edges<Pixels>,
+    client: bool,
+) -> (Bounds<Pixels>, Bounds<Pixels>) {
+    // Locked WindowBorder uses a four-pixel inner hit band including its one-pixel border.
+    let inset = |padding: Pixels| {
+        if client && padding > px(0.) {
+            px(3.)
+        } else {
+            px(0.)
         }
-    }
-
-    /// The frame around `content`, whose resize edges call `on_edge` before they resize.
-    pub fn render(
-        self,
-        content: impl IntoElement,
-        on_edge: impl Fn(&mut Window, &mut App) + 'static,
-        cx: &App,
-    ) -> impl IntoElement {
-        let on_edge = std::rc::Rc::new(on_edge);
-        let border = |inset: Pixels| if inset > px(0.0) { px(1.0) } else { px(0.0) };
-        div()
-            .id("window-frame")
-            .relative()
-            .size_full()
-            .cursor(CursorStyle::Arrow)
-            .pt(self.padding.top)
-            .pr(self.padding.right)
-            .pb(self.padding.bottom)
-            .pl(self.padding.left)
-            .child(
-                div()
-                    .size_full()
-                    .rounded_tl(self.corners.top_left)
-                    .rounded_tr(self.corners.top_right)
-                    .rounded_bl(self.corners.bottom_left)
-                    .rounded_br(self.corners.bottom_right)
-                    .border_t(border(self.padding.top))
-                    .border_r(border(self.padding.right))
-                    .border_b(border(self.padding.bottom))
-                    .border_l(border(self.padding.left))
-                    .border_color(cx.theme().window_border)
-                    .bg(cx.theme().background)
-                    .when(self.shadow, |frame| {
-                        frame.shadow(vec![BoxShadow {
-                            color: gpui_kit::black().opacity(0.3),
-                            blur_radius: SHADOW / 2.0,
-                            spread_radius: px(0.0),
-                            offset: point(px(0.0), px(0.0)),
-                            inset: false,
-                        }])
-                    })
-                    .child(content),
-            )
-            .children(self.regions.into_iter().map(move |(edge, bounds)| {
-                let on_edge = on_edge.clone();
-                div()
-                    .absolute()
-                    .left(bounds.origin.x)
-                    .top(bounds.origin.y)
-                    .w(bounds.size.width)
-                    .h(bounds.size.height)
-                    .cursor(resize_cursor(edge))
-                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                        cx.stop_propagation();
-                        window.prevent_default();
-                        on_edge(window, cx);
-                        window.start_window_resize(edge);
-                    })
-            }))
-    }
-}
-
-fn resize_regions(
-    viewport: Size<Pixels>,
-    padding: Edges<Pixels>,
-) -> Vec<(ResizeEdge, Bounds<Pixels>)> {
-    let columns = [
-        (px(0.0), padding.left),
-        (padding.left, viewport.width - padding.left - padding.right),
-        (viewport.width - padding.right, padding.right),
-    ];
-    let rows = [
-        (px(0.0), padding.top),
-        (padding.top, viewport.height - padding.top - padding.bottom),
-        (viewport.height - padding.bottom, padding.bottom),
-    ];
-    let mut regions = Vec::with_capacity(8);
-    for (row, (y, height)) in rows.into_iter().enumerate() {
-        for (column, (x, width)) in columns.into_iter().enumerate() {
-            let edge = match (row, column) {
-                (0, 0) => ResizeEdge::TopLeft,
-                (0, 1) => ResizeEdge::Top,
-                (0, 2) => ResizeEdge::TopRight,
-                (1, 0) => ResizeEdge::Left,
-                (1, 2) => ResizeEdge::Right,
-                (2, 0) => ResizeEdge::BottomLeft,
-                (2, 1) => ResizeEdge::Bottom,
-                (2, 2) => ResizeEdge::BottomRight,
-                _ => continue,
-            };
-            if width > px(0.0) && height > px(0.0) {
-                regions.push((edge, Bounds::new(point(x, y), size(width, height))));
-            }
+    };
+    let left = inset(paddings.left);
+    let top = inset(paddings.top);
+    let right = inset(paddings.right);
+    let bottom = inset(paddings.bottom);
+    let border = |padding: Pixels| {
+        if client && padding > px(0.) {
+            px(1.)
+        } else {
+            px(0.)
         }
-    }
-    regions
+    };
+    let local = Bounds::new(
+        point(left, top),
+        size(
+            (viewport.width
+                - paddings.left
+                - paddings.right
+                - border(paddings.left)
+                - border(paddings.right)
+                - left
+                - right)
+                .max(px(0.)),
+            (viewport.height
+                - paddings.top
+                - paddings.bottom
+                - border(paddings.top)
+                - border(paddings.bottom)
+                - top
+                - bottom)
+                .max(px(0.)),
+        ),
+    );
+    let mut global = local;
+    global.origin += point(
+        paddings.left + border(paddings.left),
+        paddings.top + border(paddings.top),
+    );
+    (local, global)
 }
 
-fn resize_cursor(edge: ResizeEdge) -> CursorStyle {
-    match edge {
-        ResizeEdge::Top | ResizeEdge::Bottom => CursorStyle::ResizeUpDown,
-        ResizeEdge::Left | ResizeEdge::Right => CursorStyle::ResizeLeftRight,
-        ResizeEdge::TopLeft | ResizeEdge::BottomRight => CursorStyle::ResizeUpLeftDownRight,
-        ResizeEdge::TopRight | ResizeEdge::BottomLeft => CursorStyle::ResizeUpRightDownLeft,
-    }
+/// The wrapper observes bubbled presses; the toolkit frame owns resizing.
+pub fn observe_frame(
+    surface: impl IntoElement,
+    content: impl Fn(&Window) -> Bounds<Pixels> + 'static,
+    pressed: impl Fn(&mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    div()
+        .id("frame-input-observer")
+        .size_full()
+        .child(surface)
+        .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+            if !content(window).contains(&event.position) {
+                pressed(window, cx);
+            }
+        })
 }
 
 #[cfg(test)]

@@ -909,7 +909,7 @@ mod tests {
             let view =
                 cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
             shell = Some(view.clone());
-            gpui_kit::component::Root::new(view, window, cx).bordered(false)
+            gpui_kit::component::Root::new(view, window, cx)
         });
         let shell = shell.unwrap();
         let cx = gpui_kit::VisualTestContext::from_window(handle.into(), cx).into_mut();

@@ -439,7 +439,7 @@ fn ruler_gutter(right_ticks: &[Tick], caption: Option<&str>, measure: &dyn Label
 /// chosen for a user interface, which is why it is named here rather than
 /// solved.
 pub struct Labels {
-    text: std::sync::Arc<gpui_kit::WindowTextSystem>,
+    text: std::rc::Rc<gpui_kit::WindowTextSystem>,
     font: Font,
     font_id: FontId,
     /// The digit every other digit is measured as.

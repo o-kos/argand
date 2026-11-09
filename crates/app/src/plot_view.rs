@@ -387,7 +387,7 @@ impl Render for PlotView {
         div()
             .id("time-plot")
             .cursor(cursor)
-            .on_scroll_wheel(cx.listener(Self::wheel))
+            .on_scroll(cx.listener(Self::wheel))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::press))
             .on_mouse_down(MouseButton::Middle, cx.listener(Self::press))
             .on_mouse_move(cx.listener(|plot, event, _, cx| plot.pointer_moved(event, cx)))
@@ -409,13 +409,11 @@ impl Render for PlotView {
             .relative()
             .child(self.surface(&snapshot, cx))
             .children(self.spectrum_context_menu(&snapshot, cx))
-            .children(self.paste_marker(&snapshot, cx))
             .children(self.time_context_menu(&snapshot, cx))
             .children(
                 self.panel_bounds
                     .and_then(|bounds| self.unit_hint(1, bounds.origin, cx)),
             )
-            .children(self.ruler_zoom_buttons(&snapshot, cx))
             .children(self.saved_notice(&snapshot, cx))
             .children(entry)
             .when(self.dragging(), |plot| {
@@ -490,6 +488,7 @@ mod tests {
         other: FocusHandle,
         intents: Vec<PlotIntent>,
         grid: usize,
+        viewport: Option<gpui_kit::Size<Pixels>>,
         /// Stands in for the session's scale-controls choice.
         scale_ui: bool,
         /// Stands in for a hint or a menu lying on the plot.
@@ -503,6 +502,9 @@ mod tests {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             div()
                 .size_full()
+                .when_some(self.viewport, |view, viewport| {
+                    view.w(viewport.width).h(viewport.height)
+                })
                 .relative()
                 .flex()
                 .flex_col()
@@ -613,6 +615,7 @@ mod tests {
                 other: cx.focus_handle(),
                 intents: Vec::new(),
                 grid: 0,
+                viewport: None,
                 scale_ui: false,
                 cover: None,
                 follow_selection: false,
@@ -790,6 +793,7 @@ mod tests {
                 other: focus,
                 intents: Vec::new(),
                 grid: 0,
+                viewport: None,
                 scale_ui: false,
                 cover: None,
                 follow_selection: false,
@@ -986,7 +990,7 @@ mod tests {
         let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
         let none = gpui_kit::Modifiers::default();
         input.simulate_mouse_move(covered, None, none);
-        input.simulate_event(gpui_kit::ScrollWheelEvent {
+        input.simulate_event(gpui_kit::ScrollEvent {
             position: covered,
             delta: gpui_kit::ScrollDelta::Pixels(point(px(0.), px(40.))),
             ..Default::default()
@@ -1734,6 +1738,108 @@ mod tests {
             read(cx, zoom_out),
             zone(cx, handle, index),
         )
+    }
+
+    #[gpui_kit::test]
+    fn zoom_buttons_follow_the_painted_plot_in_the_first_resize_frame(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        for orientation in [
+            crate::orientation::Mode::Horizontal,
+            crate::orientation::Mode::Vertical,
+        ] {
+            handle
+                .update(cx, |harness, _, cx| {
+                    harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                        let snapshot = plot.snapshot.as_mut().unwrap();
+                        snapshot.extents.orientation = orientation;
+                        snapshot.show_scale_ui = true;
+                        snapshot.selection = Some(waveform::Selected {
+                            time: (0., 1.),
+                            frequency: (0., 1.),
+                        });
+                        plot.reorient(cx);
+                    });
+                })
+                .unwrap();
+            frame(cx, handle);
+            for (width, height) in [(900., 620.), (1200., 620.), (1200., 880.), (650., 480.)] {
+                cx.update_window(handle.into(), |_, window, cx| {
+                    window.root::<Harness>().unwrap().unwrap().update(cx, |harness, cx| {
+                        harness.viewport = Some(size(px(width), px(height)));
+                        cx.notify();
+                    });
+                    window.render_frame(cx);
+                    let tint: gpui_kit::Background = cx.theme().blue_light.opacity(0.3).into();
+                    let painted = window.painted_quads().into_iter()
+                        .find(|quad| quad.background == tint).expect("full selection paints the actual plot");
+                    let scale = window.scale_factor();
+                    let plot = Bounds::new(
+                        point(px(painted.bounds.origin.x.as_f32() / scale), px(painted.bounds.origin.y.as_f32() / scale)),
+                        size(px(painted.bounds.size.width.as_f32() / scale), px(painted.bounds.size.height.as_f32() / scale)),
+                    );
+                    for (time, horizontal) in [(true, !orientation.vertical()), (false, orientation.vertical())] {
+                        let (plus, minus) = if time { ("Zoom in time", "Zoom out time") } else { ("Zoom in frequency", "Zoom out frequency") };
+                        let halves = window.find(plus).bounds().union(&window.find(minus).bounds());
+                        let expected = if horizontal {
+                            Bounds::new(point(plot.left() + px(9.), plot.bottom() - px(29.)), size(px(43.), px(20.)))
+                        } else {
+                            Bounds::new(point(plot.right() - px(29.), plot.top() + px(9.)), size(px(20.), px(43.)))
+                        };
+                        assert_eq!(halves, expected, "{orientation:?} {width}x{height}: first frame, before deferred layout convergence");
+                    }
+                }).unwrap();
+            }
+        }
+    }
+
+    #[gpui_kit::test]
+    fn zoom_buttons_keep_paint_and_click_ownership_over_the_paste_marker(cx: &mut TestAppContext) {
+        let handle = open(cx);
+        toggle_pairs(cx, handle);
+        let button = halves(cx, handle, 0).0;
+        let at = boundary_at(spectrum(cx, handle), button.center().x);
+        let _menu = handle
+            .update(cx, |harness, window, cx| {
+                let menu = PopupMenu::build(window, cx, |menu, _, _| menu);
+                harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                    plot.open_menu = Some(menu.downgrade());
+                    plot.paste_point = Some(at);
+                    cx.notify();
+                });
+                menu
+            })
+            .unwrap();
+        frame(cx, handle);
+        cx.update_window(handle.into(), |_, window, cx| {
+            let scale = window.scale_factor();
+            let centre = button
+                .center()
+                .map(|value| gpui_kit::ScaledPixels(f32::from(value) * scale));
+            let quads = window.painted_quads();
+            let marker_ink: gpui_kit::Background = cx.theme().foreground.into();
+            let paper: gpui_kit::Background = cx.theme().background.opacity(0.55).into();
+            let marker = quads
+                .iter()
+                .find(|quad| quad.background == marker_ink && quad.bounds.contains(&centre))
+                .expect("the paste marker crosses the zoom button");
+            let control = quads
+                .iter()
+                .find(|quad| quad.background == paper && quad.bounds.contains(&centre))
+                .expect("the standard pair paints over the marker");
+            assert!(
+                marker.order < control.order,
+                "the marker stays below the buttons"
+            );
+            window.click("Zoom in time", cx);
+        })
+        .unwrap();
+        assert_eq!(
+            navigation(cx, handle),
+            vec![PlotIntent::Time(TimeIntent::Zoom {
+                factor: 0.5,
+                anchor: 0.5
+            })]
+        );
     }
 
     #[gpui_kit::test]

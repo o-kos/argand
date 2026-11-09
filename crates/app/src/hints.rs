@@ -13,7 +13,7 @@
 
 use std::time::{Duration, Instant};
 
-use gpui_kit::base::actions::Cancel;
+use gpui_kit::base::actions::{Cancel, Confirm};
 use gpui_kit::component::Selectable;
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::tooltip::Tooltip;
@@ -28,7 +28,10 @@ const CONTEXT: &str = "PinnedHint";
 
 pub(super) fn init(cx: &mut App) {
     // The popover confirms on Space as on Enter, which is not one of the ways a pinned hint closes.
-    cx.bind_keys([KeyBinding::new("space", NoAction, Some(CONTEXT))]);
+    cx.bind_keys([
+        KeyBinding::new("space", NoAction, Some(CONTEXT)),
+        KeyBinding::new("enter", Confirm { secondary: false }, Some(CONTEXT)),
+    ]);
 }
 
 /// How long the trigger must be hovered before a pinned hint opens, as for a tooltip.
@@ -153,6 +156,7 @@ pub(super) fn pinned(
     let focus = state.focus.clone();
     let changed = hint.downgrade();
     let cancelled = hint.downgrade();
+    let confirmed = hint.downgrade();
     Popover::new(id)
         .anchor(anchor)
         .appearance(false)
@@ -174,10 +178,14 @@ pub(super) fn pinned(
         .trigger(trigger)
         .content(move |_, _, _| {
             let cancelled = cancelled.clone();
+            let confirmed = confirmed.clone();
             div()
                 .track_focus(&focus)
                 .key_context(CONTEXT)
                 .cursor(CursorStyle::Arrow)
+                .on_action(move |_: &Confirm, _, cx| {
+                    let _ = confirmed.update(cx, |hint, cx| hint.close(false, cx));
+                })
                 .on_action(move |_: &Cancel, _, cx| {
                     let _ = cancelled.update(cx, |hint, cx| hint.close(true, cx));
                     // The popover's own Escape handling still closes it.
@@ -220,7 +228,7 @@ mod tests {
     use gpui_kit::component::button::Button;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{
-        Bounds, Modifiers, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement, Subscription,
+        Bounds, Modifiers, ScrollDelta, ScrollEvent, StatefulInteractiveElement, Subscription,
         TestAppContext, TestSupportExt, VisualTestContext, point, px, size,
     };
 
@@ -268,7 +276,7 @@ mod tests {
                             MouseButton::Left,
                             cx.listener(|harness, _, _, _| harness.presses += 1),
                         )
-                        .on_scroll_wheel(cx.listener(|harness, _, _, _| harness.wheels += 1)),
+                        .on_scroll(cx.listener(|harness, _, _, _| harness.wheels += 1)),
                 )
                 .child(div().absolute().left(px(20.)).top(px(260.)).child(pinned(
                     "hint",
@@ -385,7 +393,7 @@ mod tests {
     fn an_open_hint_keeps_the_plot_from_input(cx: &mut TestAppContext) {
         let (harness, cx) = open_and_leave(cx);
         assert_eq!(read(cx, &harness, |h, _| h.hovered), Some(false));
-        cx.simulate_event(ScrollWheelEvent {
+        cx.simulate_event(ScrollEvent {
             position: at(OUTSIDE),
             delta: ScrollDelta::Pixels(point(px(0.), px(40.))),
             ..Default::default()

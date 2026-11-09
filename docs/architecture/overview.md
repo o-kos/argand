@@ -9,7 +9,7 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 ## Technology stack
 
 - **Language:** stable Rust organized as a Cargo workspace.
-- **GUI:** GPUI Kit 0.6.x by Longbridge, the application facade over the GPUI 0.3.x family and gpui-component 0.6.x. All three are Apache-2.0 licensed.
+- **GUI:** GPUI Kit 0.9.1 by Longbridge, the application facade over the GPUI 0.3.x family and gpui-component 0.9.1. All three are Apache-2.0 licensed.
 - **Rendering:** wgpu, the GPUI 0.3.x graphics backend. Spectrograms are rendered as RGBA textures through image elements; waveforms use paths and quads. GPUI does not expose a public hook for a custom shader or wgpu pass within a frame; see [Rendering boundary](analysis-rendering.md#rendering-boundary).
 - **DSP:** rustfft and realfft.
 - **Configuration:** serde and TOML.
