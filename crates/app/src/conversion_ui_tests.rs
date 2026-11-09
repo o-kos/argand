@@ -1391,7 +1391,7 @@ fn caption_close_with_open_sample_list_reaches_unsaved_workflow(cx: &mut TestApp
         trigger
     );
     let close = cx.update(|window, _| {
-        let bounds = chrome::Frame::for_window(window).free;
+        let bounds = chrome::overlay_area(window);
         let half = gpui_kit::component::TITLE_BAR_HEIGHT / 2.;
         point(bounds.right() - half, bounds.top() + half)
     });

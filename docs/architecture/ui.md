@@ -4,9 +4,26 @@ Window composition, focus and overlay contracts. The [control inventory](../ui/1
 
 ## UI architecture and ownership
 
-Standard UI infrastructure (#124) is in place, and every control in it is either a toolkit component or a recorded exception. The graph runs on `gpui-kit` 0.6.x with GPUI 0.3.6. The production window root is `Root::bordered(false)` strongly owning `Shell` as its child, and a per-document `PlotView` owns plot focus and gestures (see [Plot ownership (#128)](ui.md#plot-ownership-128)). Overlays own the input they cover (see [Overlay surfaces (#129)](ui.md#overlay-surfaces-129)). The corner zoom pairs, the title-bar toolbar, the orientation segments and the grid toggle are standard `Button`s and one `ButtonGroup` (see [Standard buttons (#130)](ui.md#standard-buttons-130)). The application menu is a single stock `PopupMenu` drawn by a controlled `Popover`, and the minimap splitter is gone (see [Waveform and axis layout](navigation-selection.md#waveform-and-axis-layout)). What remains custom is the window frame and its Linux caption controls, the Linux title bar's gestures, the settings form's transaction over the standard inputs, the passive and pinned hint contracts, the ready-input observer canvas, the plot-scoped symbolic-key adapter, and the domain drawing; each one's standard alternative, verified limitation in the locked 0.6.6 sources, why composition cannot reach it and its covering tests are in [control inventory](../ui/124-inventory.md). The FFT hint is the analysis settings surface on that infrastructure (#108).
+Standard UI infrastructure (#124) is in place, and every control in it is either a toolkit component or a recorded exception. The graph runs on `gpui-kit` 0.9.1 with the default GPUI snapshot 0.3.12. `gpui_kit::open_window` installs the standard `Root`, strongly owning `Shell` as its child, and a per-document `PlotView` owns plot focus and gestures (see [Plot ownership (#128)](ui.md#plot-ownership-128)). Overlays own the input they cover (see [Overlay surfaces (#129)](ui.md#overlay-surfaces-129)). The corner zoom pairs, the title-bar toolbar, the orientation segments and the grid toggle are standard `Button`s and one `ButtonGroup` (see [Standard buttons (#130)](ui.md#standard-buttons-130)). The application menu is a single stock `PopupMenu` drawn by a controlled `Popover`, and the minimap splitter is gone (see [Waveform and axis layout](navigation-selection.md#waveform-and-axis-layout)). What remains custom is the Linux caption controls, the Linux title bar's gestures, the settings form's transaction over the standard inputs, the passive and pinned hint contracts, the ready-input observer canvas, the plot-scoped symbolic-key adapter, and the domain drawing; each one's standard alternative, verified limitation in the locked 0.9.1 sources, why composition cannot reach it and its covering tests are in [control inventory](../ui/124-inventory.md). The FFT hint is the analysis settings surface on that infrastructure (#108).
 
-Window composition: `Shell` owns theme font setup and Tab traversal. `chrome.rs` provides the single client frame: resize cursors belong to separate edge hitboxes measured against `Window::viewport_size()`, never the restore bounds in `window_bounds()`. Expanded windows have no resize hitboxes; free corners are rounded by 8 logical pixels. The window root is `Root::bordered(false)` strongly owning `Shell`; callbacks reach the shell through `WeakEntity<Shell>` (`WeakEntity::update_in`), and the pointer/wheel and keystroke observers that must resolve the shell of whichever window an event hit go through the root in a single centralized helper, since GPUI's `observe_keystrokes` and `intercept_keystrokes` both fire for every window rather than only the one that registered them. The retained `chrome.rs` frame stays the sole chrome; the analysis settings live in the main window's pinned FFT hint, whose standard select and input controls use the main window's `Root`.
+Window composition: standard `Root` owns theme font setup, the client frame and
+component overlay hosting. It retains `Shell`; `Shell` keeps its scoped Tab
+traversal. The owner approved the standard frame with Argand's window-border
+color and `window_radius = 8` logical pixels. Linux shadow padding is the toolkit's
+20 logical pixels rather than the former 12; at a fixed outer size the content is
+16 pixels smaller per axis. There is no application resize implementation or
+second frame. Linux caption controls and title gestures remain unchanged.
+
+`chrome::overlay_area` derives backdrop coordinates from the toolkit's public
+`window_paddings`, viewport size and the locked frame's one-pixel border and
+four-pixel resize band. The local coordinate transform is shared with the
+`FrameObserver` Root plugin. That plugin only observes bubbled left presses left
+to the standard frame and closes overlays; it neither consumes the event nor
+starts a resize. Popup handlers above an edge own their input before this wrapper.
+The observer resolves the current window's shell through the standard Root and
+captures no strong Shell entity. Global key/pointer observers use the same
+Root-to-Shell ownership boundary. Dialogs, sheets and notifications are hosted
+automatically by the toolkit plugin; Shell draws no manual dialog layer.
 
 Linux title-bar controls paint their own rounded hover/press backgrounds; Windows and macOS retain toolkit controls. File uses the same small text size as popup menus. The status bar has a combined file group and the analysis settings hint (#108), with compact duration units in the bar and h:mm:ss.mmm in the file hint. The worker reports file bytes and the reader's optional `original_sample_units` affine conversion (including gain and codec bit depth); whole-current-capture Peak and RMS use centered stored amplitude, including current capture gain (IQ RMS counts pairs). A per-source statistics tree of at most 8192 32-byte nodes is accumulated only by the sequential minimap scan, independently of edit versions. Background queries merge complete cells and read partial piece boundaries with a bounded cache; current SourceFile encoding resolves computed-source units. Source stamps, retained source scratches and document/capture signatures protect publication. Pending or invalid metrics never fall back to channel extrema. Settings and validation live in toolkit-neutral `settings.rs`; `settings_ui.rs` renders the status and hover hints; `settings_editor.rs` owns the editor the pinned FFT hint shows: standard selects and inputs drawn with `appearance(false)` in the hint's look. Ctrl+, (Cmd+, on macOS), File → Settings and a left click on the FFT summary open it pinned; Ctrl+, again closes it keeping the values. Tab/Shift+Tab traverse its values and Reset to defaults, Enter or the arrows open a focused list, the arrows step a focused number, and Escape closes an open list before reverting. Ctrl+R (Cmd+R on macOS) applies available range advice, restores the full range from an explicit range when no advice remains, and does nothing on the full or automatic range, from the main window or the hint. The shared `numeric_editor::NumericEditor` owns the standard `Input`, standard `Button` steppers, configured units/steps/bounds, locale commit formatting and Up/Down handling for both property panels. Unlike click-only `NumberInput` steppers, its steppers act at the press and repeat every 80 ms after 400 ms while held (the retained owner-approved press/repeat exception, `NumericEditor::start_repeat`). Numeric edits commit on Enter, blur or a step; Analysis previews the commit and File information retains a conversion draft. Enter in a number applies it and keeps the hint open, an unusable number shows its error, and Enter elsewhere closes the hint keeping the values, because the editor handles `Confirm` before the popover does. The editor observes its owner so recommendations, effective values and the pending state refresh while it remains open. `document.rs` supplies toolkit-neutral hint titles, current values and optional explanations; `shell.rs` preserves heading typography, renders aligned file-hint values with muted labels, and uses smaller muted explanations of one sentence without terminal periods. File hints use a viewport-bounded 330-pixel content width with aligned rows. Other metadata hints measure their definite width with GPUI using the rendered font sizes and weights; keep text blocks non-shrinking so wrapped text contributes its full height. The ready-state timing hint describes the latest analysis including sample reads, transforms and CPU image preparation, excluding file opening and window drawing; it is absent for other states. The whole ready status and its timing hint are transient and disappear on a mouse button press, a key press, a wheel event or the cursor readout appearing. Pointer motion outside the readout area, activation and focus changes do not dismiss them. Each accepted ready update resets dismissal without discarding the elapsed time. Window-level capture listeners observe mouse presses and wheel events, and a retained keystroke subscription covers bound actions with direct dismissal in the two existing key interceptors. Dismissal never consumes input. The cursor readout shows frequency before time and places the level in its own status-bar field. No status group is shown before a file is open. Cursor coordinates share the Alt badge formatter, following the time-ruler mode, frequency-axis unit and device-pixel precision. The minimap uses full-capture time and sample extents.
 
@@ -71,13 +88,13 @@ hover-based, so any blocking layer above it wins.
   F10, Ctrl+O and opening a file close it. `PinnedHint` holds any view; Shell opens
   it through `window.defer`, because the editor reads the shell as it is built. While it is open the plot is frozen: a transparent deferred
   backdrop (`hints::backdrop`) covers what the frame's resize regions leave of the
-  window (`chrome::Frame::free`, #170), below the title bar, so the plot gets no pointer,
+  window (`chrome::overlay_area`, #170, #226), below the title bar, so the plot gets no pointer,
   readout, Alt guides, clicks or wheel, and the popover holds keyboard focus,
   so `Plot` bindings do not match. Beyond that cover the title bar and the resize edges
   stay live and close the overlay themselves, so a press inside a hint, list or
   submenu lying over them is never taken for an outside press: the title bar closes
   the hint in its capture phase (only when its own hitbox is hit), and
-  `chrome::Frame::render` calls the shell's `edge_pressed` before a resize, which
+  the Root `FrameObserver` observes the standard frame's bubbled press, which
   closes the hint keeping its values and dismisses the application menu. Space, which the
   popover would treat as Enter, does nothing (`NoAction` in the `PinnedHint`
   key context). The keyboard (#169): the first frame puts it on FFT size; Tab and
@@ -147,9 +164,8 @@ hover-based, so any blocking layer above it wins.
   `PlotView::end_gestures`, which keeps the pointer.
 - Tests cover the pinned hint's lifecycle and isolation, a passive hint's
   trigger click, a drag crossing a blocking layer, a menu-like occluding layer
-  and interruption. The ruler context menu cannot be opened in a headless
-  test because of the toolkit's `PopupMenu` retention cycle (#144), so its cases
-  are native checks.
+  and interruption. The toolkit context-menu retention cycle (#144) is fixed in 0.9.1; native
+  compositor behavior remains distinct from headless input dispatch.
 
 ## Application menu and toolbar (#91, #99)
 
@@ -186,8 +202,9 @@ its digits (`file_items`). `app_menu_ui.rs` builds the stock `PopupMenu` entitie
 and their rows, and the popover only draws them. The popover's own gesture opens
 the menu on the button's press and reports it through `on_open_change`; the button
 carries no handler of its own. Escape closes the whole chain, outside clicks close
-it, Home, End and Space do nothing in the menu, and Enter or Space on File, View
-or Time scale format does not open that branch, so only Right enters one. F10, Tab and the File rows'
+it, Home, End and Space do nothing in the menu, and Enter or Right on File, View
+or Time scale format opens that branch; Space remains inert. The owner approved
+this standard submenu activation during #226. F10, Tab and the File rows'
 digits are bound in an `ApplicationMenu` key context that wraps the menu, and the
 digits answer only while the File submenu entity holds the keyboard. The stock
 menu draws a submenu only while its row is selected, and a hover moves that
@@ -197,8 +214,8 @@ the keyboard leaves the frame, and drops it on dismissal. While the
 menu is open a backdrop drawn below the popover's priority covers the window
 beneath it, so an outside click dismisses the menu and reaches no plot gesture, no
 title drag and no control, while an outside wheel reaches nothing and leaves the
-menu open. It covers only `chrome::Frame::free`, so the frame's resize edges keep
-working, and a press on them also dismisses the menu through `Shell::edge_pressed` (#170). The independent ruler context menu
+menu open. It covers only `chrome::overlay_area`, so the frame's resize edges keep
+working, and a press on them also dismisses the menu through the Root frame observer (#170, #226). The independent ruler context menu
 retains the stock PopupMenu. Toolbar buttons share the grid and orientation actions and persistence.
 Orientation is a two-segment control in one frame whose selected segment is the
 mode in force and whose tooltip names its own mode, and the segments and the grid
@@ -215,6 +232,11 @@ explicitly at startup and on each file opening: `Argand` or `filename – Argand
 so application switchers and window managers receive the same identity.
 
 ## Standard buttons (#130)
+
+The corner zoom pairs use standard div anchors in the current frame's measured
+plot rectangle. The existing canvas lays out and prepaints their standard elements
+before painting them above its marks; deferred gesture geometry never positions
+the buttons. Their visibility and gesture zones share the same corner constants.
 
 The corner zoom halves and the toolbar are gpui-component `Button`s, and each
 keeps the toolkit's own pressed, disabled and click behaviour. A control that
@@ -248,7 +270,7 @@ yellow range progression and the accepted colours are unchanged. The audit
 dispositions are recorded in the inventory table of
 [completed UI architecture plan](../plans/completed/124-standard-ui-architecture.md), one line per control, with the
 audit itself, every render and input entry point and each retained row's
-verified limitation in the locked 0.6.6 sources in [control inventory](../ui/124-inventory.md).
+verified limitation in the locked 0.9.1 sources in [control inventory](../ui/124-inventory.md).
 
 ## Recent files and opening
 

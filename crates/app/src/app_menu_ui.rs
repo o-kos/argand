@@ -45,14 +45,12 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         // The popover confirms on Space, and no menu closes that way.
         KeyBinding::new("space", gpui_kit::NoAction, Some(CONTEXT)),
     ];
-    keys.extend((0..app_menu::DIGITS).filter_map(|index| {
-        let digit = app_menu::digit(index)?;
-        Some(KeyBinding::new(
-            &digit.to_string(),
-            OpenRecentRow { index },
-            Some(CONTEXT),
-        ))
-    }));
+    keys.extend(
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, key)| KeyBinding::new(key, OpenRecentRow { index }, Some(CONTEXT))),
+    );
     cx.bind_keys(keys);
 }
 
@@ -1522,7 +1520,7 @@ mod tests {
             "nor began a title drag"
         );
         press(cx, "f10");
-        cx.simulate_event(gpui_kit::ScrollWheelEvent {
+        cx.simulate_event(gpui_kit::ScrollEvent {
             position: outside(),
             delta: gpui_kit::ScrollDelta::Pixels(gpui_kit::point(px(0.), px(80.))),
             ..Default::default()
@@ -1868,23 +1866,20 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn enter_runs_no_branch_where_the_stock_menu_ignores_one(cx: &mut TestAppContext) {
+    fn enter_and_right_each_enter_a_submenu_before_running_its_row(cx: &mut TestAppContext) {
         let (shell, cx) = open_window(cx);
         open_capture(cx, &shell);
-        let before = grid(cx, &shell);
-        press(cx, "f10");
-        // Down three times reaches the View branch, and Enter on a branch runs nothing.
-        press(cx, "down down down enter");
-        assert!(menu_open(cx, &shell), "the menu stays open");
-        assert!(
-            menu_focused(cx, &shell),
-            "and the keyboard stays in the menu"
-        );
-        assert_eq!(grid(cx, &shell), before, "with no row run");
-        press(cx, "right");
-        assert!(!menu_focused(cx, &shell), "Right enters the branch");
-        press(cx, "enter");
-        assert_ne!(grid(cx, &shell), before, "where Enter runs its row");
+        for key in ["enter", "right"] {
+            let before = grid(cx, &shell);
+            press(cx, "f10");
+            press(cx, "down down down");
+            press(cx, key);
+            assert!(menu_open(cx, &shell), "the menu stays open");
+            assert!(!menu_focused(cx, &shell), "the branch holds the keyboard");
+            assert_eq!(grid(cx, &shell), before, "opening a branch runs no row");
+            press(cx, "enter");
+            assert_ne!(grid(cx, &shell), before, "Enter runs the branch's row");
+        }
     }
 
     /// The View row of the menu bar, found while it is the only menu on screen.

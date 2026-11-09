@@ -1,127 +1,77 @@
 use super::*;
+use gpui_kit::Edges;
 
-fn normal() -> Frame {
-    Frame::new(size(px(1024.0), px(724.0)), Some(Tiling::default()), false)
-}
-
-fn edge_at(frame: &Frame, x: f32, y: f32) -> Option<ResizeEdge> {
-    frame.regions.iter().find_map(|(edge, bounds)| {
-        let point = point(px(x), px(y));
-        bounds.contains(&point).then_some(*edge)
-    })
+#[test]
+fn server_decorations_leave_the_whole_shell_to_overlays() {
+    let area = overlay_bounds(size(px(1000.), px(700.)), Edges::all(px(0.)), false);
+    assert_eq!(area.0, Bounds::new(point(px(0.), px(0.)), size(px(1000.), px(700.))));
 }
 
 #[test]
-fn resize_regions_leave_all_content_to_its_own_cursor() {
-    let frame = normal();
-    for (x, y, edge) in [
-        (6.0, 6.0, ResizeEdge::TopLeft),
-        (500.0, 6.0, ResizeEdge::Top),
-        (1018.0, 6.0, ResizeEdge::TopRight),
-        (6.0, 350.0, ResizeEdge::Left),
-        (1018.0, 350.0, ResizeEdge::Right),
-        (6.0, 718.0, ResizeEdge::BottomLeft),
-        (500.0, 718.0, ResizeEdge::Bottom),
-        (1018.0, 718.0, ResizeEdge::BottomRight),
-    ] {
-        assert_eq!(edge_at(&frame, x, y), Some(edge));
-    }
-    for (x, y) in [(19.0, 19.0), (1000.0, 30.0), (500.0, 350.0), (1000.0, 700.0)] {
-        assert_eq!(edge_at(&frame, x, y), None);
-    }
+fn restored_client_frame_excludes_only_the_toolkit_resize_band() {
+    let area = overlay_bounds(size(px(1000.), px(700.)), Edges::all(px(20.)), true);
+    assert_eq!(area.0, Bounds::new(point(px(3.), px(3.)), size(px(952.), px(652.))));
 }
 
 #[test]
-fn resize_grips_are_reachable_inside_the_visible_frame() {
-    let frame = normal();
-    assert_eq!(edge_at(&frame, 13.0, 350.0), Some(ResizeEdge::Left));
-    assert_eq!(edge_at(&frame, 1011.0, 350.0), Some(ResizeEdge::Right));
-    assert_eq!(edge_at(&frame, 500.0, 13.0), Some(ResizeEdge::Top));
-    assert_eq!(edge_at(&frame, 500.0, 711.0), Some(ResizeEdge::Bottom));
-    assert_eq!(edge_at(&frame, 13.0, 13.0), Some(ResizeEdge::TopLeft));
-    assert_eq!(edge_at(&frame, 1011.0, 711.0), Some(ResizeEdge::BottomRight));
+fn maximized_or_fully_tiled_frame_has_no_overlay_inset() {
+    let area = overlay_bounds(size(px(1600.), px(1000.)), Edges::all(px(0.)), true);
+    assert_eq!(area.0, Bounds::new(point(px(0.), px(0.)), size(px(1600.), px(1000.))));
 }
 
 #[test]
-fn the_free_area_meets_every_resize_region_without_overlapping_it() {
-    let frame = normal();
-    assert_eq!(
-        frame.free,
-        Bounds::new(point(px(18.0), px(18.0)), size(px(988.0), px(688.0)))
+fn partially_tiled_frame_keeps_only_free_edges_clear() {
+    let area = overlay_bounds(
+        size(px(1000.), px(700.)),
+        Edges { top: px(0.), right: px(20.), bottom: px(20.), left: px(0.) },
+        true,
     );
-    for (_, region) in &frame.regions {
-        assert!(!region.intersects(&frame.free), "{region:?} lies in the free area");
-    }
-    let expanded = Frame::new(size(px(1600.0), px(1000.0)), Some(Tiling::default()), true);
-    assert_eq!(
-        expanded.free,
-        Bounds::new(point(px(0.0), px(0.0)), size(px(1600.0), px(1000.0))),
-        "a window without resize regions is free everywhere"
-    );
+    assert_eq!(area.0, Bounds::new(point(px(0.), px(0.)), size(px(976.), px(676.))));
 }
 
 #[test]
-fn expanded_windows_have_no_resize_regions_or_corners() {
-    // Decorations can lag a state change: an untiled report must not leave
-    // resize handlers over the right-hand part of a maximized title bar.
-    let frame = Frame::new(size(px(1600.0), px(1000.0)), Some(Tiling::default()), true);
-    assert!(frame.regions.is_empty());
-    assert_eq!(frame.padding, Edges::default());
-    assert_eq!(frame.corners, Corners::default());
-    assert!(!frame.shadow);
+fn an_undersized_viewport_cannot_create_negative_overlay_sizes() {
+    let area = overlay_bounds(size(px(10.), px(10.)), Edges::all(px(20.)), true);
+    assert_eq!(area.0.size, size(px(0.), px(0.)));
 }
 
-#[test]
-fn only_free_tiled_edges_can_resize_or_round() {
-    let frame = Frame::new(
-        size(px(1000.0), px(700.0)),
-        Some(Tiling { top: true, left: true, ..Tiling::default() }),
-        false,
-    );
-    assert_eq!(edge_at(&frame, 500.0, 6.0), None);
-    assert_eq!(edge_at(&frame, 6.0, 350.0), None);
-    assert_eq!(edge_at(&frame, 994.0, 350.0), Some(ResizeEdge::Right));
-    assert_eq!(frame.corners.top_left, px(0.0));
-    assert_eq!(frame.corners.top_right, px(0.0));
-    assert_eq!(frame.corners.bottom_left, px(0.0));
-    assert_eq!(frame.corners.bottom_right, RADIUS);
-    assert!(!frame.shadow);
+struct Observed {
+    presses: std::rc::Rc<std::cell::Cell<usize>>,
+    popup: bool,
 }
-
-#[test]
-fn native_decorations_do_not_get_a_second_frame() {
-    let frame = Frame::new(size(px(1000.0), px(700.0)), None, false);
-    assert!(frame.regions.is_empty());
-    assert_eq!(frame.padding, Edges::default());
-    assert_eq!(frame.corners, Corners::default());
-    assert!(!frame.shadow);
-}
-
-/// A frame drawn for its resize edges alone, counting the presses its owner hears of.
-struct Framed {
-    edges: std::rc::Rc<std::cell::Cell<usize>>,
-}
-
-impl gpui_kit::Render for Framed {
-    fn render(&mut self, _: &mut Window, cx: &mut gpui_kit::Context<Self>) -> impl IntoElement {
-        let edges = self.edges.clone();
-        normal().render(div(), move |_, _| edges.set(edges.get() + 1), cx)
+impl gpui_kit::Render for Observed {
+    fn render(&mut self, _: &mut Window, _: &mut gpui_kit::Context<Self>) -> impl IntoElement {
+        let presses = self.presses.clone();
+        let surface = div().size_full().relative().when(self.popup, |surface| {
+            surface.child(gpui_kit::deferred(
+                div().absolute().left(px(0.)).top(px(0.)).w(px(40.)).h(px(80.))
+                    .occlude().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+            ))
+        });
+        observe_frame(
+            surface,
+            |_| Bounds::new(point(px(24.), px(24.)), size(px(352.), px(252.))),
+            move |_, _| presses.set(presses.get() + 1),
+        )
     }
 }
 
 #[gpui_kit::test]
-fn a_press_on_a_resize_edge_tells_the_frames_owner(cx: &mut gpui_kit::TestAppContext) {
-    cx.update(gpui_kit::init);
-    let edges = std::rc::Rc::new(std::cell::Cell::new(0));
-    let counted = edges.clone();
-    let (_, cx) = cx.add_window_view(|_, _| Framed { edges: counted });
-    cx.simulate_resize(size(px(1024.0), px(724.0)));
+fn frame_press_bubbles_but_a_popup_above_the_edge_keeps_its_input(cx: &mut gpui_kit::TestAppContext) {
+    use gpui_kit::test::TestWindowExt;
+    let presses = std::rc::Rc::new(std::cell::Cell::new(0));
+    let counted = presses.clone();
+    let (view, cx) = cx.add_window_view(|_, _| Observed { presses: counted, popup: false });
+    cx.simulate_resize(size(px(400.), px(300.)));
     cx.run_until_parked();
-    let none = gpui_kit::Modifiers::default();
-    cx.simulate_mouse_down(point(px(6.0), px(350.0)), MouseButton::Left, none);
-    cx.simulate_mouse_up(point(px(6.0), px(350.0)), MouseButton::Left, none);
-    assert_eq!(edges.get(), 1, "the left edge");
-    cx.simulate_mouse_down(point(px(500.0), px(350.0)), MouseButton::Left, none);
-    cx.simulate_mouse_up(point(px(500.0), px(350.0)), MouseButton::Left, none);
-    assert_eq!(edges.get(), 1, "but not the content");
+    cx.update(|window, cx| window.render_frame(cx));
+    cx.simulate_click(point(px(10.), px(40.)), gpui_kit::Modifiers::default());
+    assert_eq!(presses.get(), 1, "an uncovered edge press bubbles");
+    cx.simulate_click(point(px(200.), px(150.)), gpui_kit::Modifiers::default());
+    assert_eq!(presses.get(), 1, "content presses do not dismiss overlays");
+    view.update(cx, |view, cx| { view.popup = true; cx.notify(); });
+    cx.run_until_parked();
+    cx.update(|window, cx| window.render_frame(cx));
+    cx.simulate_click(point(px(10.), px(40.)), gpui_kit::Modifiers::default());
+    assert_eq!(presses.get(), 1, "a blocking popup owns a press over the edge");
 }

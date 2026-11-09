@@ -8,6 +8,65 @@ Scope: the production application tree. The #126 compatibility fixture was remov
 stage, so `crates/app/examples` holds only the `fft_scheduling` benchmark; the fixture's
 history stays in [126-compatibility](126-compatibility/).
 
+## Current 0.9.1 reassessment (#226)
+
+The dispositions below supersede the historical 0.6.6 audit that follows.
+Source paths name the registry `gpui-component-0.9.1`, `gpui-base-0.9.1` and
+`gpui-pre-0.3.12` graph; no registry source is modified.
+
+| Row | Current disposition and exact-source evidence | Coverage / limits |
+| --- | --- | --- |
+| R1 frame | Replaced by standard Root/WindowBorder. Component `root.rs:711` registers overlay/frame presentation, `:734` wraps the surface. `window_border.rs:109` exposes paddings, `:199` and `:227` still use reported bounds. Owner approved the configured preview, including shadow inset 20 and radius 8. | `chrome_tests.rs` checks local/global backdrop geometry for restored, fully/partly tiled and server-decorated windows. Runtime compositor resize/maximize/restore still needs native acceptance. |
+| R1 captions, R2 title gestures | Retained separately from the frame. Component `title_bar.rs:250` keeps WindowControls private; Linux click handler `:234` zooms directly. No public replacement of that subtree. Existing shared Argand controls/gestures are preserved, as approved in the preview. | Existing caption/toolbar gesture and focus tests; native double-click/drag checks remain required. |
+| R3, R6 buttons | Continue standard Button/ButtonGroup composition; no replacement control introduced. | Existing pressed/selected/disabled/focus tests. |
+| R4 application menu | Standard PopupMenu in controlled Popover retained for application digits, focus restoration and outside-input isolation. `menu/popup_menu.rs:887` confirms through activate; `:923` selects a submenu. Owner approved Enter plus Right. | Menu keyboard/row/digit/outside-click/wheel tests; Space remains inert. |
+| R5 splitter | Remains removed; no migration reason to reintroduce resizable UI. | Existing minimap layout checks. |
+| R7 numeric editing | Existing shared NumericEditor retains standard Input/Button behavior and the approved press/repeat transaction. Base `number_input.rs:266` and `:277` still step on click. Base now exposes button decorators (`:188`, `:194`), but Component internally owns those decorators in `input/number_input.rs:151`, `:184`; no component-level press/repeat contract is supplied. Replacing the existing shared editor is unnecessary for this migration. | Existing repeat, commit, locale, disabled and both property-panel regressions; native consumers still require checks. |
+| R8 ruler menu | Stock ContextMenu retained. `menu/context_menu.rs:508` now uses a Weak subscription, fixing the old retention cycle. PlotView bookkeeping remains for pointer/focus restoration, not to compensate for a leak. | Native menu lifecycle still requires acceptance; the historical prohibition on headless context-menu testing no longer applies. |
+| R9 hints/keycaps | Standard Tooltip/Popover/Kbd remain. Base `popover.rs:376` introduces PopoverContent with Escape handling, while Enter belongs to the trigger (`:343`) and PopoverContent explicitly blocks it with NoAction (`:27`). PinnedHint therefore explicitly binds/handles Confirm to preserve its approved Enter-close contract; child inputs/selects consume Confirm first. | Pinned lifecycle, nested selection, numeric commit and focus tests. |
+| R10 ready-input observer | Retained: GPUI `window.rs:5704` asserts paint phase for on_mouse_event. The existing canvas is still required to register the non-consuming window observer. | Ready dismissal and input passthrough tests. |
+| R11 symbolic keys | Retained plot-scoped interceptor; GPUI `app.rs:2705`, `:2720` still registers global observers/interceptors. | Exact-focus and multiwindow isolation tests. |
+| R12 domain drawing | Retained domain canvases, not ordinary-control replacements. Toolkit axis primitives do not own RF semantics or the bounded render model. | Axis/navigation/render-model and texture-retirement regression tests. |
+| R13 abandoned custom editor | Remains absent. | No new text editing implementation. |
+
+Corner zoom pairs use standard div anchors in the current plot rectangle inside
+the existing domain canvas. Their Button behavior, identities and styling remain
+standard; no new widget or retained geometry owner is introduced. The plot's
+font-measured rectangle is only available in prepaint, so a panel-level anchor
+would include the minimap and axis gutters. Public AnyElement layout/prepaint/paint
+APIs host the controls there, as supported by GPUI `element.rs:694`, `:705`, `:689`
+and the component radar chart's element-label lifecycle (`chart/radar_chart.rs:469`,
+`:482`). Deferred gesture geometry keeps the same corner policy but no longer
+positions the controls. First-resize-frame regression compares actual painted
+plot bounds with rendered Button bounds, without waiting for deferred convergence.
+The existing Paste-here marker is prepared in the same frame-local overlay bundle
+and painted before the standard controls, preserving its previous stacking order.
+A render/input regression checks overlapping marker/control quads and click ownership;
+this composition adds no retained entity, custom Element or replacement control.
+
+### Frame observer composition
+
+`FrameObserver` is a stateless Base RootPlugin, not a second root or a custom
+control. The standard component plugin remains the sole frame and resize owner.
+The observer's wrapper receives bubbled left presses only; stock WindowBorder's
+handler (`window_border.rs:217`) starts resize without stopping propagation.
+Deferred popups can consume input first. The callback resolves Shell through the
+current Root and retains no strong entity or focus handle. Geometry has one shared
+local-to-window transform, based on public toolkit paddings. No fixed 20-pixel
+padding is duplicated in application code. The private four-pixel hit band and
+one-pixel border are explicitly mirrored only to keep backdrops out of resizing.
+
+`frame_press_bubbles_but_a_popup_above_the_edge_keeps_its_input` exercises real
+GPUI dispatch for an uncovered edge, content and a blocking popup. Headless
+TestWindow reports server decorations; this test does not establish native client
+frame/compositor interactions. Those remain native acceptance scenarios.
+
+## Historical 0.6.6 audit
+
+The following source observations and line numbers preserve the earlier audit's
+reasoning. They are not current 0.9.1 limitations or instructions to retain a
+superseded frame.
+
 ## Reproducing the audit
 
 From the repository root. `PAT` names every render and input entry point plus the
