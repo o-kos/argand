@@ -1,5 +1,6 @@
 //! Status-bar file details and live analysis controls.
 
+use super::property_advice::color as advice_color;
 use super::*;
 use crate::settings::{DisplayedRange, RangeState};
 use argand_dsp::DynamicRange;
@@ -684,14 +685,6 @@ pub(super) fn analysis_editor(
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::AnyView {
     cx.new(|cx| editor::Editor::new(owner, window, cx)).into()
-}
-
-fn advice_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {
-    if cx.theme().is_dark() {
-        gpui_kit::rgb(0xfacc15).into()
-    } else {
-        gpui_kit::rgb(0x946200).into()
-    }
 }
 
 fn advice_hover_color(cx: &gpui_kit::App) -> gpui_kit::Hsla {

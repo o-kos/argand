@@ -5,6 +5,14 @@ use gpui_kit::{AnyElement, EntityId, TestSupportExt};
 use std::cell::Cell;
 use std::rc::Rc;
 
+pub(super) fn color(cx: &gpui_kit::App) -> gpui_kit::Hsla {
+    if cx.theme().is_dark() {
+        gpui_kit::rgb(0xfacc15).into()
+    } else {
+        gpui_kit::rgb(0x946200).into()
+    }
+}
+
 /// The widest the balloon's body grows, its pointer's length and the tip's distance from the sign.
 const BALLOON: f32 = 320.0;
 const POINTER: f32 = 9.0;

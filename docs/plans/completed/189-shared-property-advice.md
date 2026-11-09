@@ -27,3 +27,7 @@ After automatic FLAC format fallback, show a yellow marker beside the selected s
 - [ ] Full locked suite, fresh release after the gate, existing Draft PR publication.
 
 No native GUI launch, desktop input emulation or portal requests. Distinguish automated rendered-layout evidence from native validation.
+
+## Review correction
+
+Accepted the consistency observation that the generic warning token need not equal the existing Range palette. The exact existing dark/light Range color resolver now lives in the shared advice module and is used by both panels; Range appearance is unchanged.

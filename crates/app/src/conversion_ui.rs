@@ -526,7 +526,7 @@ impl Editor {
         .into_any_element();
         let value = if self.format_warning {
             let warning = "Sample format changed to Int 16-bit for FLAC";
-            let edge = cx.theme().warning;
+            let edge = property_advice::color(cx);
             self.format_advice.render(
                 div()
                     .flex()
