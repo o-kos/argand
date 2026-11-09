@@ -1623,13 +1623,25 @@ fn sample_choices_fit_and_flac_filters_without_resetting_drafts(cx: &mut TestApp
         frame(cx);
         cx.simulate_keystrokes("enter");
         frame(cx);
-        cx.update(|window, _| {
+        let last = cx.update(|window, _| {
             let first = window.find(sample_row("rl_u8")).bounds();
             let last = window.find(sample_row("iq_f16x8")).bounds();
             assert!(first.top() >= px(0.) && last.bottom() <= window.viewport_size().height);
+            last.center()
         });
-        cx.simulate_keystrokes("escape");
+        cx.simulate_mouse_move(last, None, gpui_kit::Modifiers::default());
+        cx.simulate_mouse_down(last, MouseButton::Left, gpui_kit::Modifiers::default());
+        cx.simulate_mouse_up(last, MouseButton::Left, gpui_kit::Modifiers::default());
+        frame(cx);
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.kind_value(cx).map(str::to_owned)),
+            Some(kind_label("iq_f16x8"))
+        );
         editor.update_in(cx, |editor, window, cx| {
+            editor.kind.update(cx, |state, cx| {
+                state.set_selected_value(&kind_label("iq_f32"), window, cx);
+                cx.emit(SelectEvent::Confirm(state.selected_value().cloned()));
+            });
             editor.container.update(cx, |state, cx| {
                 state.set_selected_value(&"FLAC".into(), window, cx);
                 cx.emit(SelectEvent::Confirm(state.selected_value().cloned()));
