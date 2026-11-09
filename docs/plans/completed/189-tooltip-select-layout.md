@@ -43,9 +43,9 @@ input emulation or portal is permitted; report automated layout coverage honestl
 - [x] Correct shared standard Select chrome sizing and viewport menu height.
 - [x] Give grouped sample rows concise labels and eligible FLAC choices.
 - [x] Verify rendered width at multiple font sizes and selection/draft behavior.
-- [ ] Check normal production compilation and the full formatting/Clippy/test gate.
+- [x] Check normal production compilation and the full formatting/Clippy/test gate.
 - [x] Move completed plan before final independent review; address findings.
-- [ ] Rebuild current release after the gate and publish the existing Draft PR.
+- [x] Rebuild current release after the gate and publish the existing Draft PR.
 
 ## Focused evidence and boundary
 
@@ -56,3 +56,12 @@ all ten WAV rows within a 1000-pixel viewport, exclusion of unsupported FLAC row
 actual pointer and keyboard choices, unsupported committed-value retention and
 WAV restoration without frequency draft changes. Native visual acceptance is not
 claimed; no desktop window or input automation is used.
+
+Independent review of the scoped implementation and its final test-only delta
+returned no substantive findings. The disabled-row limitation above was found by
+the focused pointer regression during implementation; it is addressed by the
+approved filtered-menu fallback. The full local gate passes 1,140 tests with no
+failures and one ignored manual benchmark. The final test-only extension also
+passes normal compilation, formatting, Clippy and its focused regression.
+The current release build completed successfully after these checks; publication
+uses the mandatory pre-push full gate. The Pull Request remains Draft.
