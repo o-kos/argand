@@ -23,9 +23,10 @@ use RF64 and reopen them with their original sample type and integer units.
   Do not alter the existing adjusted/computed-save rejection for these layouts.
 - Reuse the native RF64/BW64 parser, mmap traversal, normalization and writer.
   Symphonia 0.6.1 already decodes PCM24 but its WAVE reader only accepts RIFF.
-  Dependency upgrade #230 is independently reviewed in Draft PR #231. This branch
-  is stacked on `chore/230-symphonia-06`; PR #229 targets that prerequisite until
-  it merges. Preserve the original PCM24 plan commit through the rebase.
+  Dependency upgrade #230 was independently reviewed and merged in PR #231.
+  The PCM24-only commits were rebased onto current `main` without conflicts or
+  source/test changes, preserving the original PCM24 plan commit. PR #229 now
+  targets `main`; the prerequisite implementation is excluded from its diff.
   A new container library or dependency solely for scalar decoding is unnecessary;
   use standard fixed-byte integer conversion consistent with existing formats.
 - Full-valid PCM24 now reports I24 instead of the decoder I32 representation.
@@ -120,3 +121,12 @@ reviewed implementation and validation. One documentation finding was accepted a
 corrected, none were rejected, and no new findings remained. Native UI acceptance
 remains unperformed; the owner subsequently accepted proceeding without it and
 authorized Ready, merge after successful current full CI, and branch cleanup.
+
+## Ready validation
+
+The full local fmt, Clippy, test and ordered release gate was refreshed before
+Ready: 1,155 tests passed and one manual benchmark remained ignored. After the
+prerequisite squash merge, conflict-free rebase preserved all files outside the
+plan records byte-for-byte, including code, tests, Cargo files and CI configuration.
+Scoped documentation diff/link checks apply to the owner decision and completed
+plan relocation; the existing current-source gate and release evidence is retained.
