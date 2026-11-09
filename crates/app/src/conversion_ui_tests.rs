@@ -1832,6 +1832,53 @@ fn choose_kind(form: &Entity<Editor>, cx: &mut gpui_kit::VisualTestContext, toke
     frame(cx);
 }
 
+fn assert_advice_fallback(window: &Window) {
+    let tip = window.find("metadata-tooltip-content").bounds();
+    assert!(tip.right() <= window.viewport_size().width);
+    assert!(tip.bottom() <= window.viewport_size().height);
+    assert!(window.try_find("conversion-format-balloon").is_none());
+}
+
+fn exercise_reopened_advice(
+    cx: &mut gpui_kit::VisualTestContext,
+    anchor: gpui_kit::Point<gpui_kit::Pixels>,
+) {
+    let modifiers = gpui_kit::Modifiers::default();
+    let (close, geometry) = cx.update(|window, _| {
+        let balloon = window.find("conversion-format-balloon").bounds();
+        assert!(balloon.right() <= window.viewport_size().width);
+        assert!(window.try_find("metadata-tooltip-content").is_none());
+        (
+            window
+                .find("conversion-format-balloon-close")
+                .bounds()
+                .center(),
+            balloon,
+        )
+    });
+    cx.simulate_mouse_move(point(anchor.x + px(4.), anchor.y), None, modifiers);
+    frame(cx);
+    cx.update(|window, _| assert!(window.find("conversion-format-balloon").visible()));
+    cx.simulate_mouse_move(close, None, modifiers);
+    frame(cx);
+    cx.update(|window, _| assert!(window.find("conversion-format-balloon").visible()));
+    cx.simulate_mouse_down(close, MouseButton::Left, modifiers);
+    cx.simulate_mouse_up(close, MouseButton::Left, modifiers);
+    frame(cx);
+    cx.update(|window, _| assert!(window.try_find("conversion-format-balloon").is_none()));
+    cx.simulate_mouse_move(point(px(10.), px(10.)), None, modifiers);
+    frame(cx);
+    cx.simulate_mouse_move(anchor, None, modifiers);
+    frame(cx);
+    cx.update(|window, _| assert_eq!(window.find("conversion-format-balloon").bounds(), geometry));
+    cx.simulate_mouse_move(point(px(10.), px(10.)), None, modifiers);
+    frame(cx);
+    cx.update(|window, _| assert!(window.try_find("conversion-format-balloon").is_none()));
+    cx.simulate_mouse_move(anchor, None, modifiers);
+    frame(cx);
+    cx.update(|window, _| assert_eq!(window.find("conversion-format-balloon").bounds(), geometry));
+}
+
 #[gpui_kit::test]
 fn format_advice_reuses_range_close_hover_and_list_suppression(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);
@@ -1864,7 +1911,10 @@ fn format_advice_reuses_range_close_hover_and_list_suppression(cx: &mut TestAppC
             if let Some(balloon) = balloon {
                 assert!(balloon.bounds().right() <= window.viewport_size().width);
             }
-            window.find("conversion-format-advice").bounds().center()
+            {
+                let bounds = window.find("conversion-format-advice").bounds();
+                point(bounds.right() - px(3.), bounds.center().y)
+            }
         });
         if width == 1000. {
             cx.update(|window, cx| window.click("conversion-format-balloon-close", cx));
@@ -1879,17 +1929,17 @@ fn format_advice_reuses_range_close_hover_and_list_suppression(cx: &mut TestAppC
             });
         }
         let modifiers = gpui_kit::Modifiers::default();
+        cx.simulate_mouse_move(point(px(10.), px(10.)), None, modifiers);
+        frame(cx);
         cx.simulate_mouse_move(anchor, None, modifiers);
         cx.executor()
             .advance_clock(std::time::Duration::from_secs(1));
         frame(cx);
-        cx.update(|window, _| {
-            let tip = window.find("metadata-tooltip-content").bounds();
-            assert!(
-                tip.right() <= window.viewport_size().width
-                    && tip.bottom() <= window.viewport_size().height
-            );
-        });
+        if width == 1000. {
+            exercise_reopened_advice(cx, anchor);
+        } else {
+            cx.update(|window, _| assert_advice_fallback(window));
+        }
         let input = cx.update(|window, _| {
             window
                 .within("conversion-kind")
@@ -1908,6 +1958,7 @@ fn format_advice_reuses_range_close_hover_and_list_suppression(cx: &mut TestAppC
         });
         cx.simulate_keystrokes("escape");
         frame(cx);
+        cx.update(|window, _| assert!(window.try_find("conversion-format-balloon").is_none()));
         choose_kind(&form, cx, "iq_u8");
         cx.update(|window, _| {
             assert!(

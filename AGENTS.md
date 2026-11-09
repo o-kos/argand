@@ -1264,7 +1264,7 @@ rate limits and exact-rate/reference comments. Choosing FLAC changes any unsuppo
 draft format to I16 in its current domain, preserving rate and carrier and showing a
 warning; U8/I16 remain unchanged and returning to WAV keeps the chosen format.
 `property_advice.rs` shares measured callout placement, dismissal, standard close
-Button and hover fallback between Range and automatic sample-format changes. Format
+Button and hover reopening of the same balloon between Range and automatic sample-format changes; stock hover fallback is used only without side room. Format
 advice marks the selected value without an inline row, hides while a Select is open,
 and resets dismissal on a new automatic change; explicit choices clear the warning. First Save and selection export use the requested container; an explicit
 WAV/FLAC Save as extension overrides it. `History::unsaved` starts dirty without an Undo

@@ -82,10 +82,36 @@ fn balloon_side(
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+#[repr(u8)]
+enum HoverRegion {
+    Anchor = 1,
+    Body = 2,
+    Pointer = 4,
+    Close = 8,
+    Bridge = 16,
+}
+
+#[derive(Clone, Copy, Default, PartialEq)]
+enum HoverMode {
+    #[default]
+    WaitingForLeave,
+    Ready,
+    Visible,
+}
+
+#[derive(Clone, Copy, Default)]
+struct HoverState {
+    regions: u8,
+    mode: HoverMode,
+    enabled: bool,
+}
+
 #[derive(Clone, Default)]
 pub(super) struct Advice {
     drawn: Rc<Cell<Drawn>>,
     closed: Rc<Cell<bool>>,
+    hover: Rc<Cell<HoverState>>,
 }
 
 pub(super) type Click = Rc<dyn Fn(&gpui_kit::ClickEvent, &mut Window, &mut gpui_kit::App)>;
@@ -110,6 +136,7 @@ pub(super) struct Content {
 impl Advice {
     pub fn reset(&self) {
         self.closed.set(false);
+        self.hover.set(HoverState::default());
         let mut drawn = self.drawn.get();
         drawn.readout = None;
         self.drawn.set(drawn);
@@ -133,19 +160,27 @@ impl Advice {
         let side = measured.and_then(|(sheet, readout)| {
             balloon_side(sheet, readout, window.viewport_size().width)
         });
-        let hover = self.closed.get() || (measured.is_some() && side.is_none());
+        let mut hover = self.hover.get();
+        hover.enabled = !suppressed && side.is_some();
+        if !hover.enabled {
+            hover = HoverState::default();
+        }
+        self.hover.set(hover);
+        let fallback = measured.is_some() && side.is_none();
         let activate = content.action.as_ref().map(|action| action.click.clone());
         let anchor = content.anchor;
         let edge = content.edge;
         let tip = content.hover.clone();
+        let hovered = self.clone();
         let balloon = side
-            .filter(|_| !self.closed.get() && !suppressed)
+            .filter(|_| (!self.closed.get() || hover.mode == HoverMode::Visible) && !suppressed)
             .map(|side| self.balloon(side, content, owner, cx));
         div()
             .id(anchor)
             .test_support()
             .relative()
             .text_color(edge)
+            .on_hover(move |inside, _, cx| hovered.hovered(*inside, HoverRegion::Anchor, owner, cx))
             .when_some(activate, |value, action| {
                 value
                     .border_b_1()
@@ -154,7 +189,7 @@ impl Advice {
                     .cursor_pointer()
                     .on_click(move |event, window, cx| action(event, window, cx))
             })
-            .when(hover && !suppressed, |value| {
+            .when(fallback && !suppressed, |value| {
                 value.tooltip(move |window, cx| tip(window, cx))
             })
             .child(value)
@@ -163,6 +198,64 @@ impl Advice {
             }))
             .children(balloon)
             .into_any_element()
+    }
+
+    fn hovered(&self, inside: bool, region: HoverRegion, owner: EntityId, cx: &mut gpui_kit::App) {
+        let mut hover = self.hover.get();
+        if !hover.enabled {
+            return;
+        }
+        if inside {
+            hover.regions |= region as u8;
+        } else {
+            hover.regions &= !(region as u8);
+        }
+        if !inside && hover.mode == HoverMode::WaitingForLeave {
+            hover.mode = HoverMode::Ready;
+        } else if inside
+            && region == HoverRegion::Anchor
+            && hover.mode == HoverMode::Ready
+            && self.closed.get()
+        {
+            hover.mode = HoverMode::Visible;
+        }
+        self.hover.set(hover);
+        let state = self.hover.clone();
+        cx.defer(move |cx| {
+            let mut hover = state.get();
+            if hover.regions == 0 {
+                hover.mode = HoverMode::Ready;
+            }
+            state.set(hover);
+            cx.notify(owner);
+        });
+    }
+
+    fn close_button(&self, id: &'static str, owner: EntityId) -> Button {
+        let closed = self.closed.clone();
+        let hover = self.hover.clone();
+        let close_hover = self.clone();
+        Button::new(id)
+            .ghost()
+            .xsmall()
+            .icon(IconName::Close)
+            .tab_stop(false)
+            .on_hover(move |inside, _, cx| {
+                close_hover.hovered(*inside, HoverRegion::Close, owner, cx)
+            })
+            .on_click(move |_, _, cx| {
+                cx.stop_propagation();
+                closed.set(true);
+                let mut state = hover.get();
+                state.regions &= HoverRegion::Anchor as u8;
+                state.mode = if state.regions & HoverRegion::Anchor as u8 != 0 {
+                    HoverMode::WaitingForLeave
+                } else {
+                    HoverMode::Ready
+                };
+                hover.set(state);
+                cx.notify(owner);
+            })
     }
 
     fn balloon(
@@ -179,20 +272,14 @@ impl Advice {
         let activate = content.action.as_ref().map(|action| action.click.clone());
         let pointer_action = activate.clone();
         let shortcut = content.action.and_then(|action| action.keycap);
-        let closed = self.closed.clone();
-        let close = Button::new(content.close)
-            .ghost()
-            .xsmall()
-            .icon(IconName::Close)
-            .tab_stop(false)
-            .on_click(move |_, _, cx| {
-                cx.stop_propagation();
-                closed.set(true);
-                cx.notify(owner);
-            });
+        let close = self.close_button(content.close, owner);
         let edge = content.edge;
+        let body_hover = self.clone();
         let body = div()
             .id(content.balloon)
+            .on_hover(move |inside, _, cx| {
+                body_hover.hovered(*inside, HoverRegion::Body, owner, cx)
+            })
             .occlude()
             .when_some(activate, |body, action| {
                 body.cursor_pointer()
@@ -217,8 +304,12 @@ impl Advice {
             .when_some(shortcut, |body, shortcut| body.child(shortcut))
             .child(close)
             .test_support();
+        let pointer_hover = self.clone();
         let pointer = div()
             .id(content.pointer)
+            .on_hover(move |inside, _, cx| {
+                pointer_hover.hovered(*inside, HoverRegion::Pointer, owner, cx)
+            })
             .occlude()
             .when_some(pointer_action, |pointer, action| {
                 pointer
@@ -233,16 +324,22 @@ impl Advice {
             .flex()
             .items_center()
             .child(balloon_pointer(cx.theme().tokens.popover, edge, left));
+        let hovered = self.clone();
         let balloon = div()
+            .id((content.anchor, 0_u32))
+            .on_hover(move |inside, _, cx| hovered.hovered(*inside, HoverRegion::Bridge, owner, cx))
             .absolute()
             .top_0()
             .bottom_0()
-            .w(room + px(POINTER))
+            .w(room + px(POINTER + BALLOON_GAP))
             .flex()
             .items_center()
             .map(|balloon| match side {
-                Side::Right(_) => balloon.left_full().ml(px(BALLOON_GAP)),
-                Side::Left(_, beside) => balloon.right(beside).justify_end(),
+                Side::Right(_) => balloon.left_full().pl(px(BALLOON_GAP)),
+                Side::Left(_, beside) => balloon
+                    .right(beside - px(BALLOON_GAP))
+                    .pr(px(BALLOON_GAP))
+                    .justify_end(),
             })
             .child(body)
             .child(pointer);

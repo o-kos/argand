@@ -488,3 +488,12 @@ is a module of the binary again. What replaces them is
 `settings_editor::standard_input_tests`, a headless window whose root is a standard `Root`
 and whose body is a standard `NumberInput` and `Select`. The evidence the fixture gathered
 stays in [126-compatibility](126-compatibility/) as history.
+
+Advice dismissal and hover now share the same anchored balloon when side space is
+available. Standard GPUI hover handlers cover the existing anchor, body, pointer,
+close Button and three-pixel connecting gap; deferred reconciliation combines
+those occluding hit regions without timers or input replay. Only a new anchor
+entry reopens dismissed advice. Transient advice hides after leaving the union,
+and open Selects clear transient state. Stock Tooltip fallback remains only where
+neither side can fit the balloon. Rendered pointer coverage asserts the balloon
+ID, unchanged geometry, usable Close Button, gap crossing and suppression.

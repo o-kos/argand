@@ -17,8 +17,9 @@ Use GPUI hover handlers and deferred state reconciliation over the existing meas
 
 ## Validation
 
-- [ ] Implement shared lifecycle and retain placement/action behavior.
-- [ ] Pointer regression asserts the same balloon ID, geometry and Close Button after leave/re-entry, transient leave, Select suppression, renewed automatic advice and constrained fallback.
-- [ ] Normal application check, formatting, all-targets Clippy and focused coverage.
-- [ ] Move finished plan before final independent review and address findings.
+- [x] Implement shared lifecycle and retain placement/action behavior.
+- [x] Pointer regression asserts the same balloon ID, geometry and Close Button after leave/re-entry, transient leave, Select suppression, renewed automatic advice and constrained fallback.
+- [x] Normal application check, formatting, all-targets Clippy and focused coverage.
+- [x] Move finished plan before final independent review.
+- [ ] Address independent review findings.
 - [ ] Full locked gate, fresh release and existing Draft PR publication.
