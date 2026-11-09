@@ -2,6 +2,22 @@
 
 Capture history, source identity and safe file publication. Read this before changing editing, readers, saving, replacement or changed-on-disk handling.
 
+## Decoder boundary (#230)
+
+Decoder-backed WAVE/PCM and FLAC use Symphonia 0.6.1, selecting the first non-null
+**audio** track. Timing is read from the track, with WAVE/FLAC timestamps in sample
+units; seeks and strict packet continuity use checked signed timestamps. Decoded
+frames are copied interleaved directly into the reusable pending `f32` buffer.
+Only explicit `Ok(None)` at or beyond the known stream length is normal packet EOF.
+An unexpected EOF or unsupported decoder reset remains an error, including a truncated known-length FLAC with no complete first frame. Unknown-length
+counting has no declared-length constraint. The checked decoded packet end is reset
+to the actual landing timestamp on seek; seeking exactly to the endpoint establishes
+a logical EOF without asking the demuxer to find a frame there. Strict saves still
+refuse damaged packets,
+missing timestamp spans and short input, and publish only complete output. The
+native WAVE reader remains responsible for RF64/BW64; the decoder's WAVE reader
+continues to accept RIFF only.
+
 ## Saving (#186)
 
 `argand_io::write::save` writes a capture, or a `SampleSpan` of it, to a new file in the

@@ -49,6 +49,8 @@ promise applies to.
 
 - Corner zoom buttons stay attached to the plot while the window is resized, without waiting for deferred plot measurements (#226).
 
+- Truncated FLAC captures with a declared length and unsupported decoder resets report a read error instead of ending silently; incomplete saves remain unpublished (#230).
+
 - Save as of a fully computed capture keeps its original encoding when the original file has moved, disappeared or changed (#214).
 
 - A save fails, leaving no file behind, when one of the files it reads changes size or modification time while the save copies it, instead of writing a mix of old and new samples (#206).

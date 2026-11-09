@@ -8,20 +8,23 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use argand_core::{Domain, SampleFormat, SampleSource, SampleType, SignalMeta, SourceError};
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions};
+use symphonia::core::codecs::audio::well_known::{CODEC_ID_PCM_U8, CODEC_ID_PCM_U8_PLANAR};
+use symphonia::core::codecs::audio::{
+    AudioCodecParameters, AudioDecoder, AudioDecoderOptions, CODEC_ID_NULL_AUDIO,
+};
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, Track};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
+use symphonia::core::units::{Duration, Timestamp};
 
 use crate::normalize::{AUTO_HEADROOM, Normalize, gain_factor};
 use crate::shared_file::SharedFile;
 
 pub struct DecodedSource {
-    reader: Box<dyn FormatReader>,
-    decoder: Box<dyn Decoder>,
+    reader: Box<dyn FormatReader + 'static>,
+    decoder: Box<dyn AudioDecoder>,
     track_id: u32,
     meta: SignalMeta,
     /// Interleaved values already decoded but not yet handed to the caller.
@@ -36,8 +39,8 @@ pub struct DecodedSource {
     exhausted: bool,
     /// Fail on a damaged packet instead of skipping it, as exact copies need.
     strict: bool,
-    /// The timestamp the next packet must carry in strict mode, so a dropped frame is noticed.
-    next_ts: Option<u64>,
+    /// End of the last decoded packet, or the actual landing point after a seek.
+    decoded_end: Timestamp,
     /// The decoded file as it was opened.
     stamp: Option<crate::write::SourceStamp>,
     /// The handle the file was opened through, which every fresh parser of it reads.
@@ -190,29 +193,26 @@ impl DecodedSource {
             hint.with_extension(ext);
         }
 
-        let mut probed = symphonia::default::get_probe()
-            .format(
+        let mut reader = symphonia::default::get_probe()
+            .probe(
                 &hint,
                 mss,
-                &FormatOptions::default(),
-                &MetadataOptions::default(),
+                FormatOptions::default(),
+                MetadataOptions::default(),
             )
             .map_err(decode_err)?;
-        let mut reader = probed.format;
-        let tagged_freq = tagged(&mut probed.metadata, &mut *reader, REFERENCE_TAG);
-        let tagged_rate = tagged(&mut probed.metadata, &mut *reader, RATE_TAG);
+        let tagged_freq = tagged(&mut *reader, REFERENCE_TAG);
+        let tagged_rate = tagged(&mut *reader, RATE_TAG);
         let center_freq = center_freq.or(tagged_freq);
 
-        let track = reader
-            .tracks()
-            .iter()
-            .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-            .ok_or_else(|| SourceError::Decode("no decodable track".into()))?;
+        let (track, params) = audio_track(reader.tracks())?;
         let track_id = track.id;
-        let params = track.codec_params.clone();
+        let frames = track.num_frames;
+        let params = params.clone();
 
         let channels = params
             .channels
+            .as_ref()
             .ok_or_else(|| SourceError::Decode("channel count missing".into()))?
             .count();
         let domain = match channels {
@@ -231,7 +231,7 @@ impl DecodedSource {
             as f64;
 
         let decoder = symphonia::default::get_codecs()
-            .make(&params, &DecoderOptions::default())
+            .make_audio_decoder(&params, &AudioDecoderOptions::default())
             .map_err(decode_err)?;
 
         let format = match params.bits_per_sample {
@@ -257,11 +257,7 @@ impl DecodedSource {
                 }),
                 center_freq: center_freq.unwrap_or(0.0),
                 sample_type: SampleType::new(domain, format),
-                len_samples: params
-                    .n_frames
-                    .filter(|&count| count > 0)
-                    .or(known_len)
-                    .unwrap_or(0),
+                len_samples: frames.filter(|&count| count > 0).or(known_len).unwrap_or(0),
                 container,
                 divisor: 1.0,
                 source: PathBuf::from(path),
@@ -275,7 +271,7 @@ impl DecodedSource {
             divisor: 1.0,
             exhausted: false,
             strict: false,
-            next_ts: None,
+            decoded_end: Timestamp::ZERO,
             stamp,
             file: file.clone(),
         };
@@ -329,27 +325,26 @@ impl DecodedSource {
     fn fill(&mut self) -> Result<bool, SourceError> {
         loop {
             let packet = match self.reader.next_packet() {
-                Ok(p) => p,
-                Err(SymphoniaError::IoError(e))
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
-                {
-                    self.exhausted = true;
-                    return Ok(false);
-                }
-                Err(SymphoniaError::ResetRequired) => {
+                Ok(Some(packet)) => packet,
+                Ok(None) => {
+                    if u64::try_from(self.decoded_end.get()).unwrap_or(0) < self.meta.len_samples {
+                        return Err(SourceError::Decode(format!(
+                            "premature end of stream at sample {}, expected {}",
+                            self.decoded_end, self.meta.len_samples
+                        )));
+                    }
                     self.exhausted = true;
                     return Ok(false);
                 }
                 Err(e) => return Err(decode_err(e)),
             };
-            if packet.track_id() != self.track_id {
+            if packet.track_id != self.track_id {
                 continue;
             }
-            if let Some(expected) = self.next_ts
-                && packet.ts() != expected
-            {
+            if self.strict && packet.pts != self.decoded_end {
                 return Err(SourceError::Decode(format!(
-                    "a damaged frame is missing at sample {expected}"
+                    "a damaged frame is missing at sample {}",
+                    self.decoded_end
                 )));
             }
 
@@ -362,17 +357,15 @@ impl DecodedSource {
                 }
                 Err(e) => return Err(decode_err(e)),
             };
-            if self.strict {
-                self.next_ts = Some(packet.ts() + decoded.frames() as u64);
-            }
+            self.decoded_end = packet
+                .pts
+                .checked_add(Duration::new(decoded.frames() as u64))
+                .ok_or_else(|| SourceError::Decode("packet timestamp overflow".into()))?;
             if decoded.frames() == 0 {
                 continue;
             }
 
-            let mut sample_buf = SampleBuffer::<f32>::new(decoded.frames() as u64, *decoded.spec());
-            sample_buf.copy_interleaved_ref(decoded);
-            self.pending.clear();
-            self.pending.extend_from_slice(sample_buf.samples());
+            decoded.copy_to_vec_interleaved(&mut self.pending);
             self.pending_pos = 0;
             return Ok(true);
         }
@@ -419,7 +412,7 @@ impl DecodedSource {
     /// Refuse damaged packets from now on.
     pub(crate) fn strict(mut self) -> Self {
         self.strict = true;
-        self.next_ts = Some(0);
+        self.decoded_end = Timestamp::ZERO;
         self
     }
 
@@ -462,42 +455,39 @@ pub(crate) const REFERENCE_TAG: &str = "ARGAND_REFERENCE_FREQUENCY";
 /// Vorbis comment holding the exact sample rate, which STREAMINFO rounds to hertz.
 pub(crate) const RATE_TAG: &str = "ARGAND_SAMPLE_RATE";
 
-/// A number a stream's own tags carry under `key`, wherever the container keeps them.
-fn tagged(
-    probed: &mut symphonia::core::probe::ProbedMetadata,
-    reader: &mut dyn FormatReader,
-    key: &str,
-) -> Option<f64> {
+fn audio_track(tracks: &[Track]) -> Result<(&Track, &AudioCodecParameters), SourceError> {
+    tracks
+        .iter()
+        .find_map(|track| {
+            let params = track.codec_params.as_ref()?.audio()?;
+            (params.codec != CODEC_ID_NULL_AUDIO).then_some((track, params))
+        })
+        .ok_or_else(|| SourceError::Decode("no decodable audio track".into()))
+}
+
+/// A number a stream's own media tags carry under `key`.
+fn tagged(reader: &mut dyn FormatReader, key: &str) -> Option<f64> {
     reader
         .metadata()
         .current()
-        .and_then(|revision| number_tag(revision.tags(), key))
-        .or_else(|| {
-            probed
-                .get()
-                .and_then(|log| log.current().and_then(|r| number_tag(r.tags(), key)))
-        })
+        .and_then(|revision| number_tag(&revision.media.tags, key))
 }
 
 fn number_tag(tags: &[symphonia::core::meta::Tag], key: &str) -> Option<f64> {
     tags.iter()
-        .find(|tag| tag.key.eq_ignore_ascii_case(key))
-        .and_then(|tag| tag.value.to_string().trim().parse::<f64>().ok())
+        .find(|tag| tag.raw.key.eq_ignore_ascii_case(key))
+        .and_then(|tag| tag.raw.value.to_string().trim().parse::<f64>().ok())
         .filter(|value| value.is_finite())
 }
 
-fn original_units(params: &symphonia::core::codecs::CodecParameters) -> Option<(f64, f64)> {
+fn original_units(params: &AudioCodecParameters) -> Option<(f64, f64)> {
     if is_float(params) {
         return Some((1.0, 0.0));
     }
     let bits = params
         .bits_per_sample
         .filter(|bits| (1..=32).contains(bits))?;
-    let offset = if matches!(
-        params.codec,
-        symphonia::core::codecs::CODEC_TYPE_PCM_U8
-            | symphonia::core::codecs::CODEC_TYPE_PCM_U8_PLANAR
-    ) {
+    let offset = if matches!(params.codec, CODEC_ID_PCM_U8 | CODEC_ID_PCM_U8_PLANAR) {
         128.0
     } else {
         0.0
@@ -505,11 +495,11 @@ fn original_units(params: &symphonia::core::codecs::CodecParameters) -> Option<(
     Some((2.0f64.powi(bits as i32 - 1), offset))
 }
 
-fn is_float(params: &symphonia::core::codecs::CodecParameters) -> bool {
+fn is_float(params: &AudioCodecParameters) -> bool {
     matches!(
         params.sample_format,
-        Some(symphonia::core::sample::SampleFormat::F32)
-            | Some(symphonia::core::sample::SampleFormat::F64)
+        Some(symphonia::core::audio::sample::SampleFormat::F32)
+            | Some(symphonia::core::audio::sample::SampleFormat::F64)
     )
 }
 
@@ -546,30 +536,52 @@ impl SampleSource for DecodedSource {
             }
         }
 
+        // The endpoint is a logical EOF position, not a frame the demuxer can seek to.
+        if sample == self.meta.len_samples {
+            self.decoded_end = Timestamp::new(
+                i64::try_from(sample)
+                    .map_err(|_| SourceError::Decode("seek timestamp overflow".into()))?,
+            );
+            self.pending.clear();
+            self.pending_pos = 0;
+            self.skip = 0;
+            self.exhausted = true;
+            self.decoder.reset();
+            return Ok(());
+        }
+
         // FLAC and WAVE count timestamps in samples, so the sample is the timestamp.
         let result = self
             .reader
             .seek(
                 SeekMode::Accurate,
-                SeekTo::TimeStamp {
-                    ts: sample,
+                SeekTo::Timestamp {
+                    ts: Timestamp::new(
+                        i64::try_from(sample)
+                            .map_err(|_| SourceError::Decode("seek timestamp overflow".into()))?,
+                    ),
                     track_id: self.track_id,
                 },
             )
             .map_err(decode_err)?;
-        if self.strict {
-            if result.actual_ts > result.required_ts {
-                return Err(SourceError::Decode(format!(
-                    "the frame holding sample {sample} is damaged"
-                )));
-            }
-            self.next_ts = Some(result.actual_ts);
+        if self.strict && result.actual_ts > result.required_ts {
+            return Err(SourceError::Decode(format!(
+                "the frame holding sample {sample} is damaged"
+            )));
         }
+        self.decoded_end = result.actual_ts;
 
         // Seeks land on a packet boundary at or before the target, so the
         // remainder is dropped on the next read.
-        self.skip =
-            (result.required_ts.saturating_sub(result.actual_ts) as usize) * self.meta.channels();
+        self.skip = usize::try_from(
+            result
+                .required_ts
+                .get()
+                .saturating_sub(result.actual_ts.get()),
+        )
+        .ok()
+        .and_then(|frames| frames.checked_mul(self.meta.channels()))
+        .ok_or_else(|| SourceError::Decode("seek distance overflow".into()))?;
         self.decoder.reset();
         self.pending.clear();
         self.pending_pos = 0;
@@ -585,5 +597,30 @@ impl SampleSource for DecodedSource {
             }
         }
         Ok(written)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use symphonia::core::codecs::{CodecParameters, video::VideoCodecParameters};
+
+    #[test]
+    fn selects_the_first_non_null_audio_track() {
+        let unknown = Track::new(0);
+        let mut video = Track::new(1);
+        video.codec_params = Some(CodecParameters::Video(VideoCodecParameters::default()));
+        let mut null_audio = Track::new(2);
+        null_audio.codec_params = Some(CodecParameters::Audio(AudioCodecParameters::default()));
+        let mut audio = Track::new(3);
+        audio.codec_params = Some(CodecParameters::Audio(AudioCodecParameters {
+            codec: CODEC_ID_PCM_U8,
+            ..Default::default()
+        }));
+        let mut later = audio.clone();
+        later.id = 4;
+        let tracks = [unknown, video, null_audio, audio, later];
+        assert_eq!(audio_track(&tracks).unwrap().0.id, 3);
+        assert!(audio_track(&tracks[..3]).is_err());
     }
 }
