@@ -78,7 +78,7 @@ fn domain_switches_derive_carrier_and_rate_from_source_and_encoding_preserves_dr
         .update(cx, |_, window, cx| {
             let form = editor.read(cx);
             assert_eq!(form.request(cx).unwrap().output.sample_rate, 16000.);
-            assert_eq!(form.request(cx).unwrap().output.center_freq, 96000.);
+            assert_eq!(form.request(cx).unwrap().output.center_freq, 0.);
             assert!(form.summary(cx).unwrap().is_empty());
             let rate = form.rate.clone();
             let reference = form.reference.clone();
@@ -88,10 +88,7 @@ fn domain_switches_derive_carrier_and_rate_from_source_and_encoding_preserves_dr
                 crate::numbers::number(4000.)
             );
             reference.update(cx, |input, cx| input.set_value("3000", window, cx));
-            assert_eq!(
-                editor.read(cx).request(cx).unwrap().output.center_freq,
-                97_000.
-            );
+            assert_eq!(editor.read(cx).request(cx).unwrap().output.center_freq, 0.);
             editor.read(cx).kind.clone().update(cx, |kind, cx| {
                 kind.set_selected_value(&kind_label("rl_f32"), window, cx);
                 cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
@@ -110,12 +107,13 @@ fn domain_switches_derive_carrier_and_rate_from_source_and_encoding_preserves_dr
                 editor.read(cx).request(cx).unwrap().output.sample_rate,
                 18000.
             );
-            assert!(
-                editor
-                    .read(cx)
-                    .summary(cx)
-                    .unwrap()
-                    .contains("will be discarded")
+            assert_eq!(
+                editor.read(cx).summary(cx).unwrap(),
+                format!(
+                    "Input frequencies outside {} … {} Hz will be discarded",
+                    crate::numbers::number(-3000.),
+                    crate::numbers::number(4000.),
+                )
             );
             editor.read(cx).kind.clone().update(cx, |kind, cx| {
                 kind.set_selected_value(&kind_label("iq_f32"), window, cx);
@@ -1129,7 +1127,7 @@ fn shared_frequency_editor_steps_drafts_and_tab_visits_each_value_once(cx: &mut 
     cx.simulate_keystrokes("down");
     frame(cx);
     editor.read_with(cx, |editor, cx| {
-        assert_eq!(editor.request(cx).unwrap().output.center_freq, -11_999.)
+        assert_eq!(editor.request(cx).unwrap().carrier, Some(11999.))
     });
     cx.simulate_keystrokes("shift-tab");
     frame(cx);
@@ -1279,7 +1277,7 @@ fn opening_a_real_source_discards_old_carrier_drafts_and_derives_reverse_default
     current.read_with(cx, |editor, cx| {
         let request = editor.request(cx).unwrap();
         assert_eq!(request.output.sample_rate, 24000.);
-        assert_eq!(request.output.center_freq, 12000.);
+        assert_eq!(request.output.center_freq, 0.);
         assert_eq!(
             editor.reference.read(cx).value().as_ref(),
             crate::numbers::number(12000.)

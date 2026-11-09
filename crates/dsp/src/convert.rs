@@ -43,7 +43,7 @@ impl ConversionPlan {
 
     /// Use an exact output-minus-input reference delta in input-local hertz.
     /// Carrier conversion must not recover this delta from rounded metadata origins.
-    /// Absolute output metadata remains its caller's nearest representable f64.
+    /// Output metadata is a caller-owned annotation and does not determine this shift.
     pub fn with_reference_delta(
         input: &SignalMeta,
         output: &SignalMeta,
@@ -132,6 +132,11 @@ impl ConversionPlan {
             identity,
             retains_input_band: local_band == native,
         })
+    }
+
+    /// Retained input-array frequencies before finite filter transitions.
+    pub fn local_input_band(&self) -> (f64, f64) {
+        self.local_band
     }
 
     /// Whether the nominal input band is wholly retained, compared in local coordinates.

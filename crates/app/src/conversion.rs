@@ -22,7 +22,7 @@ pub struct Request {
     pub sources: Vec<Option<SourceFile>>,
     pub input: SignalMeta,
     pub output: SignalMeta,
-    /// Exact cross-domain carrier, independent of rounded physical metadata origins.
+    /// Exact cross-domain carrier, independent of the zero-origin output metadata.
     pub carrier: Option<f64>,
     pub container: argand_io::write::Container,
     pub target: PathBuf,
@@ -34,12 +34,12 @@ pub struct Request {
     pub copy: Option<argand_io::write::SaveRequest>,
 }
 
-/// Translate an array-domain carrier into the existing physical metadata origin.
-pub fn carrier_reference(
+/// Validate the carrier in real-array coordinates, independently of physical metadata.
+pub fn validate_carrier(
     input: &SignalMeta,
     output: &SignalMeta,
     carrier: f64,
-) -> Result<f64, &'static str> {
+) -> Result<(), &'static str> {
     let real_rate = if output.is_iq() {
         input.sample_rate
     } else {
@@ -51,11 +51,7 @@ pub fn carrier_reference(
     if !carrier.is_finite() || carrier < 0.0 || carrier > real_rate / 2.0 {
         return Err("Reference must lie between 0 and half the real sample rate");
     }
-    let reference = input.center_freq + if input.is_iq() { -carrier } else { carrier };
-    if !reference.is_finite() {
-        return Err("The resulting physical reference is not finite");
-    }
-    Ok(reference)
+    Ok(())
 }
 
 pub struct Converted {
@@ -68,9 +64,9 @@ impl Request {
         let mut input = self.input.clone();
         input.len_samples = self.capture.len();
         let plan = if let Some(carrier) = self.carrier {
-            let reference = carrier_reference(&input, &self.output, carrier)
+            validate_carrier(&input, &self.output, carrier)
                 .map_err(|error| self.refused(error.into()))?;
-            if input.is_iq() == self.output.is_iq() || reference != self.output.center_freq {
+            if input.is_iq() == self.output.is_iq() || self.output.center_freq != 0.0 {
                 return Err(self
                     .refused("the carrier does not match the output domain and metadata".into()));
             }

@@ -333,8 +333,9 @@ fn cancellation_and_source_change_after_a_block_leave_the_existing_target_alone(
 }
 
 #[test]
-fn carrier_translation_preserves_two_sided_tones_amplitude_and_physical_metadata() {
+fn carrier_translation_preserves_tones_and_rebases_output_metadata() {
     for (rate, physical_reference) in [
+        (12000., 0.),
         (24000., 0.),
         (24000.125, 1_000_000_000.5),
         (24000., 1e20),
@@ -364,8 +365,7 @@ fn carrier_translation_preserves_two_sided_tones_amplitude_and_physical_metadata
         forward.output = forward.input.clone();
         forward.output.sample_type = "rl_f32".parse().unwrap();
         forward.output.sample_rate = rate * 2.;
-        forward.output.center_freq =
-            carrier_reference(&forward.input, &forward.output, rate / 2.).unwrap();
+        forward.output.center_freq = 0.;
         forward.carrier = Some(rate / 2.);
         let plan = forward.plan().unwrap();
         assert!(plan.retains_input_band());
@@ -380,7 +380,8 @@ fn carrier_translation_preserves_two_sided_tones_amplitude_and_physical_metadata
             assert!((20. * (amplitude / expected).log10()).abs() < 0.1);
         }
         assert_eq!(real_meta.sample_rate, rate * 2.);
-        assert_eq!(real_meta.center_freq, physical_reference - rate / 2.);
+        assert_eq!(real_meta.center_freq, 0.);
+        assert_eq!(real_meta.frequency_span(), (0., rate));
         assert_eq!(real.len(), count * 2);
         for (n, &actual) in real.iter().enumerate().skip(8192).take(count) {
             let phase = std::f64::consts::TAU * n as f64 / 8.;
@@ -394,8 +395,7 @@ fn carrier_translation_preserves_two_sided_tones_amplitude_and_physical_metadata
         reverse.output = reverse.input.clone();
         reverse.output.sample_type = "iq_f32".parse().unwrap();
         reverse.output.sample_rate = rate;
-        reverse.output.center_freq =
-            carrier_reference(&reverse.input, &reverse.output, rate / 2.).unwrap();
+        reverse.output.center_freq = 0.;
         reverse.carrier = Some(rate / 2.);
         reverse.target = dir.join("roundtrip.wav");
         run(&reverse, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
@@ -405,7 +405,8 @@ fn carrier_translation_preserves_two_sided_tones_amplitude_and_physical_metadata
             assert!((20. * (amplitude / expected).log10()).abs() < 0.2);
         }
         assert_eq!(iq_meta.sample_rate, rate);
-        assert_eq!(iq_meta.center_freq, physical_reference);
+        assert_eq!(iq_meta.center_freq, 0.);
+        assert_eq!(iq_meta.frequency_span(), (-rate / 2., rate / 2.));
         assert_eq!(iq.len(), values.len());
         for (frame, expected) in iq
             .chunks_exact(2)
@@ -433,12 +434,76 @@ fn carrier_bounds_are_the_real_arrays_nyquist_not_the_metadata_origin() {
     output.sample_type = "rl_f32".parse().unwrap();
     output.sample_rate = 16000.;
     for invalid in [-1., 8000.1, f64::INFINITY, f64::NAN] {
-        assert!(carrier_reference(&input, &output, invalid).is_err());
+        assert!(validate_carrier(&input, &output, invalid).is_err());
     }
-    assert_eq!(
-        carrier_reference(&input, &output, 4000.).unwrap(),
-        input.center_freq - 4000.
-    );
+    assert!(validate_carrier(&input, &output, 4000.).is_ok());
+}
+
+#[test]
+fn custom_carrier_rebases_axis_and_places_tone_in_real_array() {
+    let dir = TempDir::new("carrier-custom-baseband");
+    let values: Vec<f32> = (0..32768)
+        .flat_map(|n| {
+            let phase = std::f64::consts::TAU * 200. * n as f64 / 12000.;
+            [(0.25 * phase.cos()) as f32, (0.25 * phase.sin()) as f32]
+        })
+        .collect();
+    for reference in [0., 12_579_000., 1e20] {
+        let mut forward = request_at_rate(
+            &dir,
+            "iq_f32".parse().unwrap(),
+            &values,
+            OpenHints {
+                normalize: Some(Normalize::None),
+                ..OpenHints::default()
+            },
+            12000,
+        );
+        forward.input.center_freq = reference;
+        forward.output.sample_type = "rl_f32".parse().unwrap();
+        forward.output.sample_rate = 8000.;
+        forward.output.center_freq = 0.;
+        forward.carrier = Some(1800.);
+        assert_eq!(forward.plan().unwrap().local_input_band(), (-1800., 2200.));
+        run(&forward, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+        let (meta, actual) = read(&forward);
+        assert_eq!(meta.frequency_span(), (0., 4000.));
+        let amplitude = carrier_tone_amplitude(&actual, 1, 2000. / 8000., 4096, 8192);
+        assert!((20. * (amplitude / 0.25).log10()).abs() < 0.1);
+    }
+}
+
+#[test]
+fn domain_result_zero_origin_survives_first_save_in_each_container() {
+    use argand_io::write::{Container, Output, SaveRequest};
+    let dir = TempDir::new("carrier-save-metadata");
+    for token in ["iq_i16", "rl_i16"] {
+        let mut conversion = request(
+            &dir,
+            token.parse().unwrap(),
+            &[0.25, 0., -0.25, 0.],
+            OpenHints::default(),
+        );
+        conversion.input.center_freq = 12_579_000.;
+        let iq = conversion.input.is_iq();
+        conversion.output.sample_type = if iq { "rl_i16" } else { "iq_i16" }.parse().unwrap();
+        conversion.output.sample_rate *= if iq { 2. } else { 0.5 };
+        conversion.output.center_freq = 0.;
+        conversion.carrier = Some(if iq { 4000. } else { 2000. });
+        run(&conversion, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+        let converted = carrier_reverse_source(&conversion);
+        for container in [Container::Wave, Container::Flac] {
+            let target = dir.join(&format!("saved-{token}.{}", container.extension()));
+            let mut save =
+                SaveRequest::span(converted.sources[0].clone().unwrap(), None, target.clone());
+            save.output = Output::Container(container);
+            argand_io::write::save(&save, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+            let source = argand_io::open(&target, &OpenHints::default()).unwrap();
+            assert_eq!(source.meta().center_freq, 0.);
+            assert_eq!(source.meta().sample_rate, conversion.output.sample_rate);
+            assert_eq!(source.meta().is_iq(), !iq);
+        }
+    }
 }
 
 fn carrier_tone_amplitude(

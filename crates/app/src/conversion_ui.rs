@@ -335,7 +335,8 @@ impl Editor {
             let carrier = crate::numbers::parse(self.reference.read(cx).value().as_ref())
                 .map_err(|_| "Enter a finite reference carrier in Hz".to_string())?;
             request.carrier = Some(carrier);
-            crate::conversion::carrier_reference(&request.input, &request.output, carrier)?
+            crate::conversion::validate_carrier(&request.input, &request.output, carrier)?;
+            0.0
         };
         request.container = match self.container.read(cx).selected_value().map(String::as_str) {
             Some("WAV") => argand_io::write::Container::Wave,
@@ -416,9 +417,9 @@ impl Editor {
         let plan = request.plan().map_err(|error| error.to_string())?;
         if !plan.retains_input_band() {
             return Ok(format!(
-                "Frequencies outside {} … {} Hz will be discarded",
-                crate::numbers::number(plan.band.0),
-                crate::numbers::number(plan.band.1)
+                "Input frequencies outside {} … {} Hz will be discarded",
+                crate::numbers::number(plan.local_input_band().0),
+                crate::numbers::number(plan.local_input_band().1)
             ));
         }
         Ok(String::new())
