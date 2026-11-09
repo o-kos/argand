@@ -71,6 +71,18 @@ redesign. The isolated preview backend fixture must never enter production.
 The owner also approved standard submenu activation with Enter as well as Right.
 Space remains intentionally inert in the application menu.
 
+### Stable compiler prerequisite
+
+The first full CI attempt exposed a macOS compiler blocker: gpui-pre-macos 0.3.12
+uses `Option::map_or_default`, stable since Rust 1.98.0, while the old pin was
+1.97.1. The project-wide stable Rust 1.98.1/MSRV 1.98 migration was split into
+#233 and PR #235, with its own Class A plan and independent review. That work
+adapted fixed-size iteration without changing complete groups, discarded tails,
+order or numerical operations; it introduced no suppression or toolkit patch.
+Its full three-platform CI passed on the old 0.6.6 toolkit graph before merge.
+This migration still requires its own current full CI with the 0.9.1 graph;
+the prerequisite's macOS result alone does not establish this backend build.
+
 ## Rejected alternatives
 
 - Selecting GPUI and gpui-component separately would recreate graph drift.
@@ -115,6 +127,8 @@ Space remains intentionally inert in the application menu.
 - [x] Reassess every relevant inventory exception; remove superseded paths and
       update architecture/inventory documentation alongside the code.
 - [x] Complete local gate and build the current release binary after the resize correction.
+- [x] ➕ Integrate the independently reviewed stable compiler prerequisite and
+      refresh the combined 0.9.1/Rust 1.98.1 full gate and release evidence.
 - [x] Record owner-provided resize observation and overall acceptance, separating
       them from unperformed individual native scenarios.
 - [x] Prepare neutral current-revision evidence for independent review.
@@ -145,12 +159,19 @@ The owner confirmed normal resize behavior in an independently launched fresh
 build and then approved the current result. The coordinator accepted this as
 completion of the agreed implementation/acceptance scope with the individual
 native evidence limits above retained. No fourth review round is requested.
-The branch incorporates the independent Symphonia update already accepted on main;
-the only merge conflict combined the two unrelated changelog entries.
-After that integration, the full formatting/Clippy/test gate passed again: 1152
-tests passed, including 617 application and 176 I/O tests, with one existing
-ignored manual cost measurement. The current release was then rebuilt successfully;
-no migration UI code changed during the main integration or acceptance reporting.
+The branch incorporates the independent Symphonia, native PCM24 and stable compiler
+updates accepted on main. Changelog conflicts retained both unrelated entries.
+The earlier Symphonia integration passed 1152 tests, including 617 application and
+176 I/O tests; that result predates the PCM24 and compiler prerequisite updates.
+The current combined tree passed formatting, strict Clippy and the full test suite
+on Rust 1.98.1: 1159 passed, 0 failed and one existing ignored manual measurement,
+including 617 application, 129 DSP and 182 I/O tests. The release build then passed.
+The actual-main integration tree matched the validated combined tree exactly;
+no workspace build script or production Git/branch metadata injection was found.
+The final report changes documentation only. Migration UI code did not change;
+the fixed-group compatibility changes were independently reviewed in #233, whose
+first round returned no substantive findings. No fourth UI review round is used.
+No additional owner-native observation is attributed to this compiler integration.
 
 ## Post-completion
 
@@ -168,10 +189,11 @@ Prepare standard Button elements during render, then use the toolkit's supported
 layout/prepaint/paint lifecycle at that current rectangle in the existing canvas.
 Keep one shared corner-zone policy for controls and deferred gesture geometry.
 The third and final independent review round found no substantive findings in
-this correction. After integrating main, current rustfmt, Clippy and full tests
-exited successfully: 1152 tests passed, including 617 application and 176 I/O tests,
-with one existing ignored manual release-mode conversion cost measurement. The
-subsequent release build exited successfully. The owner confirmed normal resize
+this correction. After integrating the accepted main updates and compiler
+prerequisite, current rustfmt, strict Clippy and full tests exited successfully on
+Rust 1.98.1: 1159 tests passed, including 617 application and 182 I/O tests, with
+one existing ignored manual release-mode conversion cost measurement. The
+subsequent release build exited successfully on the same combined build inputs. The owner confirmed normal resize
 behavior in a fresh build and approved the result; the evidence limitations below
 remain recorded.
 The focused PlotView suite passed all 50 tests. The regression changes parent

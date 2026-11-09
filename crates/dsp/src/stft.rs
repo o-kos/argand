@@ -754,7 +754,9 @@ impl Plan {
             acc.complex.clear();
             acc.complex.extend(
                 samples
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .zip(self.window.coefficients.iter())
                     .map(|(iq, &w)| Complex32::new(iq[0] * w, iq[1] * w)),
             );

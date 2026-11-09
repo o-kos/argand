@@ -112,7 +112,7 @@ fn bgra(image: &SpectrogramImage, orientation: crate::orientation::Mode) -> Vec<
         .chunks_exact(image.width.max(1) * CHANNELS)
         .enumerate()
     {
-        for (x, pixel) in row.chunks_exact(CHANNELS).enumerate() {
+        for (x, pixel) in row.as_chunks::<CHANNELS>().0.iter().enumerate() {
             let index = if orientation.vertical() {
                 x * image.height + image.height - 1 - y
             } else {

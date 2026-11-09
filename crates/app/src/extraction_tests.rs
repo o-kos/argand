@@ -185,7 +185,7 @@ fn a_non_kilohertz_source_rate_changes_samples_as_well_as_the_header() {
     let (meta, values) = read_all(&target);
     assert_eq!(meta.sample_rate, 2_000.0);
     assert_eq!(meta.len_samples, 2_000);
-    for (n, iq) in values.chunks_exact(2).enumerate().skip(500).take(1_000) {
+    for (n, iq) in values.as_chunks::<2>().0.iter().enumerate().skip(500).take(1_000) {
         let phase = std::f64::consts::TAU * 200.0 * n as f64 / meta.sample_rate;
         assert!((f64::from(iq[0]) - 0.5 * phase.cos()).abs() < 0.002);
         assert!((f64::from(iq[1]) - 0.5 * phase.sin()).abs() < 0.002);
@@ -247,7 +247,7 @@ fn a_full_band_rectangle_preserves_a_tone_next_to_native_nyquist() {
     assert_eq!(meta.sample_rate, 15_000.0);
     assert_eq!(meta.center_freq, 0.0);
     assert_eq!(meta.len_samples, 60_006);
-    for (n, iq) in values.chunks_exact(2).enumerate() {
+    for (n, iq) in values.as_chunks::<2>().0.iter().enumerate() {
         let time = span.start() as f64 / rate + n as f64 / meta.sample_rate;
         let high = std::f64::consts::TAU * frequency * time;
         let middle = std::f64::consts::TAU * -2_000.0 * time;

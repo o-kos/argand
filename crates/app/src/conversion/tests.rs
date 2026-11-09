@@ -271,7 +271,9 @@ fn normalization_happens_after_domain_conversion_and_reports_integer_clips_in_pr
     assert_eq!(result.clipped, 0);
     let (_, values) = read(&request);
     let peak = values
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|v| v[0].hypot(v[1]))
         .fold(0.0, f32::max);
     assert!((f64::from(peak) - 10f64.powf(crate::levelling::TARGET / 20.0)).abs() < 0.001);
@@ -409,8 +411,10 @@ fn carrier_translation_preserves_tones_and_rebases_output_metadata() {
         assert_eq!(iq_meta.frequency_span(), (-rate / 2., rate / 2.));
         assert_eq!(iq.len(), values.len());
         for (frame, expected) in iq
-            .chunks_exact(2)
-            .zip(values.chunks_exact(2))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .zip(values.as_chunks::<2>().0.iter())
             .skip(4096)
             .take(count - 8192)
         {

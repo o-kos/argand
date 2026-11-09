@@ -1074,7 +1074,7 @@ fn flac_segments_from_two_files_cross_block_boundaries_exactly() {
     ).unwrap();
     let saved = run(&wave).unwrap();
     let stored: Vec<i32> = data_bytes(&saved.path)
-        .chunks_exact(2)
+        .as_chunks::<2>().0.iter()
         .map(|c| i32::from(i16::from_le_bytes([c[0], c[1]])))
         .collect();
     let mut expected = second[10..30].to_vec();
@@ -1614,7 +1614,7 @@ fn inverting_sixteen_bits_conjugates_and_clamps_the_most_negative_value() {
     let target = dir.join("b.wav");
     run(&adjusted(request(&source, OpenHints::default(), None, target.clone()), true, 1.0)).unwrap();
     let stored: Vec<i16> = data_bytes(&target)
-        .chunks_exact(2)
+        .as_chunks::<2>().0.iter()
         .map(|value| i16::from_le_bytes([value[0], value[1]]))
         .collect();
     assert_eq!(stored, [100, 200, -32768, 32767]);
@@ -1638,7 +1638,7 @@ fn a_real_inversion_counts_the_parity_from_each_samples_own_index() {
     .unwrap();
     run(&adjusted(request, true, 1.0)).unwrap();
     let stored: Vec<i16> = data_bytes(&target)
-        .chunks_exact(2)
+        .as_chunks::<2>().0.iter()
         .map(|value| i16::from_le_bytes([value[0], value[1]]))
         .collect();
     assert_eq!(stored, [-1000, 1000, 1000, -1000]);
@@ -1652,7 +1652,7 @@ fn the_gain_clamps_twenty_four_bits() {
     let target = dir.join("b.wav");
     run(&adjusted(request(&source, OpenHints::default(), None, target.clone()), false, 4.0)).unwrap();
     let mut expected = Vec::new();
-    for value in data.chunks_exact(3) {
+    for value in data.as_chunks::<3>().0.iter() {
         let stored = i32::from_le_bytes([0, value[0], value[1], value[2]]) >> 8;
         let scaled = (f64::from(stored) * 4.0).clamp(-8_388_608.0, 8_388_607.0) as i32;
         expected.extend_from_slice(&scaled.to_le_bytes()[..3]);
@@ -1702,7 +1702,7 @@ fn computed_and_headerless_samples_go_through_the_adjustment() {
     let mut expected = bytes[..8].to_vec();
     let original = &bytes[8..];
     let mut at = 0;
-    for value in original[..10 * 4].chunks_exact(2) {
+    for value in original[..10 * 4].as_chunks::<2>().0.iter() {
         expected.extend_from_slice(&half(at, f64::from(i16::from_le_bytes([value[0], value[1]]))));
         at += 1;
     }
@@ -1710,7 +1710,7 @@ fn computed_and_headerless_samples_go_through_the_adjustment() {
         expected.extend_from_slice(&half(at, f64::from(value) * 32768.0));
         at += 1;
     }
-    for value in original[14 * 4..].chunks_exact(2) {
+    for value in original[14 * 4..].as_chunks::<2>().0.iter() {
         expected.extend_from_slice(&half(at, f64::from(i16::from_le_bytes([value[0], value[1]]))));
         at += 1;
     }
