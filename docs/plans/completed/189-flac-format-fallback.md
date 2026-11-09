@@ -21,7 +21,13 @@ Integer labels use Int 8-bit, Int 16-bit and Int 32-bit in rows, selected titles
 - [x] Extend the existing matrix to all ten formats, both domains and repeated FLAC selection.
 - [x] Synchronize current architecture documentation; preserve unrelated changes.
 - [x] Normal application check, targeted regression, formatting, all-targets Clippy.
-- [ ] Independent review; move plan to completed before final review.
-- [ ] Full locked tests and fresh release build after the gate.
+- [x] Independent review; move plan to completed before final review.
+- [x] Full locked tests and fresh release build after the gate.
 
 No native GUI launch or input emulation. Keep PR Draft and report remote checks separately.
+
+## Completion evidence
+
+The normal application check, formatting, all-targets Clippy and full locked suite pass: 1,142 tests, zero failures and one ignored manual benchmark. The release build completed after the gate. Independent review returned no substantive findings; none were rejected. The existing GUI matrix now covers every sample type, including both I32 domains, supported U8/I16 without warnings, frequency-draft preservation and repeated container confirmation. Native GUI validation was not run.
+
+The optional Range-style warning callout remains a separate UX discussion and is not implemented by this plan.
