@@ -398,6 +398,12 @@ impl Shell {
         }
     }
 
+    pub(super) fn request_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.settle_unsaved(Pending::Close, window, cx) {
+            window.remove_window();
+        }
+    }
+
     /// Whether `pending` can go ahead now; otherwise ask about the unsaved edits first.
     pub(super) fn settle_unsaved(
         &mut self,
@@ -405,7 +411,10 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.refuse_while_replacing(cx) {
+        if matches!(pending, Pending::Close) && self.close_after_conversion(window, cx) {
+            return false;
+        }
+        if self.conversion_active() || self.refuse_while_replacing(cx) {
             return false;
         }
         if !self
@@ -567,9 +576,7 @@ impl Shell {
     ) -> gpui_kit::Stateful<gpui_kit::Div> {
         content
             .on_action(cx.listener(|shell, _: &chrome::CloseWindow, window, cx| {
-                if shell.settle_unsaved(Pending::Close, window, cx) {
-                    window.remove_window();
-                }
+                shell.request_close(window, cx);
             }))
             .on_action(cx.listener(|shell, _: &Undo, window, cx| shell.undo(window, cx)))
             .on_action(cx.listener(|shell, _: &Redo, window, cx| shell.redo(window, cx)))

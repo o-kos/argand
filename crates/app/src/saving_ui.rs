@@ -70,7 +70,7 @@ impl Shell {
             Some(unsaved) => {
                 display.source = unsaved.name.clone().into();
                 display.container = unsaved.container.extension();
-                std::path::PathBuf::from(".")
+                unsaved.directory.clone()
             }
             None => saving::directory(&meta.source),
         };
@@ -79,6 +79,7 @@ impl Shell {
 
     fn save_matches(&self, of: &SaveOf) -> bool {
         self.saving.is_none()
+            && !self.computing()
             && self.file.as_ref().is_some_and(|file| {
                 file.id == of.document
                     && file

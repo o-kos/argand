@@ -160,6 +160,9 @@ impl Shell {
     }
 
     fn status_panel_available(&self, panel: StatusPanel) -> bool {
+        if self.conversion_active() {
+            return false;
+        }
         match panel {
             StatusPanel::File => self.conversion_request().is_some(),
             StatusPanel::Analysis => self.file.is_some(),
@@ -173,6 +176,11 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let open = self.status_hint(panel).read(cx).is_open();
+        if open && !self.status_panel_available(panel) {
+            self.status_hint(panel)
+                .update(cx, |hint, cx| hint.close(false, cx));
+            return;
+        }
         match event {
             hints::Pinned::Opened if open => {
                 // Choose the new owner before closing the old editor and emitting its Closed event.
@@ -261,6 +269,9 @@ impl Shell {
         let button = status_control(id, group, text, lit, cx)
             .disabled(!self.status_panel_available(panel))
             .on_hover(cx.listener(move |shell, hovered, window, cx| {
+                if !shell.status_panel_available(panel) {
+                    return;
+                }
                 shell
                     .status_hint(panel)
                     .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
@@ -329,6 +340,25 @@ impl Shell {
     }
 
     /// Close the pinned hints, the analysis settings and the selection panel, keeping their values.
+    pub(super) fn cancel_status_select(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let trigger = self.file_select_trigger(cx).or_else(|| {
+            let editor = self
+                .analysis_hint
+                .read(cx)
+                .view()?
+                .downcast::<editor::Editor>()
+                .ok()?;
+            editor.read(cx).open_select_trigger(cx)
+        });
+        #[cfg(test)]
+        eprintln!("caption trigger present: {}", trigger.is_some());
+        if let Some(trigger) = trigger {
+            // Close synchronously so the old frame's outside-click listener will propagate.
+            trigger.dispatch_action(&gpui_kit::base::actions::Cancel, window, cx);
+            cx.propagate();
+        }
+    }
+
     pub(super) fn close_hints(&mut self, cx: &mut Context<Self>) {
         self.status_panel_request += 1;
         self.close_analysis_hint(cx);

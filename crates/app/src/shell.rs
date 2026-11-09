@@ -335,6 +335,7 @@ fn to_bounds(geometry: Geometry) -> Bounds<Pixels> {
 /// rather than three that have to happen in the right order.
 pub(super) struct UnsavedDocument {
     name: String,
+    directory: std::path::PathBuf,
     container: argand_io::write::Container,
     backing: Arc<crate::scratch::Scratch>,
 }
@@ -744,7 +745,10 @@ impl Shell {
     /// transform, and that is a pass over the file that must not happen on the
     /// thread drawing the window.
     fn open(&mut self, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
-        if self.refuse_save_target(&origin.path, cx) || self.refuse_while_replacing(cx) {
+        if self.conversion_active()
+            || self.refuse_save_target(&origin.path, cx)
+            || self.refuse_while_replacing(cx)
+        {
             return;
         }
         if !self.settle_unsaved(editing_ui::Pending::Open(origin.clone()), window, cx) {
@@ -1375,6 +1379,9 @@ impl Shell {
     }
 
     fn choose_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.conversion_active() {
+            return;
+        }
         self.dismiss_application_menu(window, cx);
         self.close_hints(cx);
         // The release happens over the dialog, so nothing held now may stay pressed.
@@ -1520,7 +1527,8 @@ impl Shell {
         // A press on the title bar closes the settings hint and still reaches the control there.
         div()
             .flex_shrink_0()
-            .capture_any_mouse_down(cx.listener(|shell, _, _, cx| {
+            .capture_any_mouse_down(cx.listener(|shell, _, window, cx| {
+                shell.cancel_status_select(window, cx);
                 // The press reaches a selection segment after this, which must not open the panel again.
                 shell.press_closed_selection = shell.selection_hint.read(cx).is_open();
                 shell.close_hints(cx);
@@ -1893,6 +1901,13 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
+            .children(self.conversion_cover(gpui_kit::Bounds::new(
+                hint_area.origin,
+                gpui_kit::size(
+                    hint_area.size.width,
+                    (hint_area.size.height - window.rem_size() * 1.5).max(px(0.)),
+                ),
+            )))
             .children(self.status_panel_backdrop(
                 gpui_kit::Bounds::new(
                     hint_area.origin,

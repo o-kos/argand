@@ -743,6 +743,9 @@ impl Shell {
 
     /// Ctrl+E and Edit → Selection…, which open the panel or close it keeping the selection.
     pub(super) fn toggle_selection_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.conversion_active() {
+            return;
+        }
         self.dismiss_application_menu(window, cx);
         if self.entry_scale().is_none() {
             return;

@@ -8,14 +8,18 @@ use crate::saving::{Ended, Update};
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::IconName;
 use gpui_kit::component::input::InputState;
+use gpui_kit::component::searchable_list::{SearchableGroup, SearchableVec};
 use gpui_kit::component::select::{SelectEvent, SelectState};
 use gpui_kit::{AnyElement, Focusable};
+
+type SampleChoices = SearchableVec<SearchableGroup<Name>>;
 
 pub(super) struct State {
     pub(super) running: Option<Converting>,
     pub(super) updates: Option<Task<()>>,
     pub(super) pending: Option<PendingConversion>,
     next_reader: u64,
+    close_requested: bool,
     #[cfg(test)]
     fail_reader_open: bool,
     pub(super) hint: Entity<hints::PinnedHint>,
@@ -37,6 +41,7 @@ impl State {
             updates: None,
             pending: None,
             next_reader: 0,
+            close_requested: false,
             #[cfg(test)]
             fail_reader_open: false,
             hint,
@@ -65,6 +70,7 @@ pub(super) struct Converting {
     document: u64,
     version: u64,
     name: String,
+    directory: std::path::PathBuf,
     output_is_iq: bool,
     container: argand_io::write::Container,
     backing: Arc<crate::scratch::Scratch>,
@@ -77,8 +83,8 @@ fn kind_label(token: &str) -> String {
         "u8" => "Unsigned 8-bit",
         "i16" => "Signed 16-bit",
         "i32" => "Signed 32-bit",
-        "f32" => "Float 32-bit",
-        "f16x8" => "Float 16×8",
+        "f32" => "Float 32-bit (±1 scale)",
+        "f16x8" => "Float 32-bit (arbitrary scale)",
         _ => format,
     };
     format!("{domain} · {format}")
@@ -119,8 +125,9 @@ struct Editor {
     reference_iq: bool,
     container: Entity<SelectState<Vec<Name>>>,
     container_widths: Vec<Pixels>,
-    kind: Entity<SelectState<Vec<Name>>>,
+    kind: Entity<SelectState<SampleChoices>>,
     kind_widths: Vec<Pixels>,
+    closed_selects: [FocusHandle; 2],
     _subscriptions: Vec<Subscription>,
     owner: Option<WeakEntity<Shell>>,
     document: Option<u64>,
@@ -180,19 +187,16 @@ impl Editor {
             .iter()
             .map(|s| kind_label(s))
             .collect();
-        let selected = kinds
+        let selected = argand_core::SAMPLE_TYPE_TOKENS
             .iter()
-            .position(|s| *s == kind_label(&request.output.sample_type.to_string()))
-            .map(gpui_kit::component::IndexPath::new);
+            .position(|token| *token == request.output.sample_type.to_string())
+            .map(|index| gpui_kit::component::IndexPath::new(index % 5).section(index / 5));
         let kind_widths = presentation::shown_widths(&kinds, window, cx);
-        let kind = cx.new(|cx| {
-            SelectState::new(
-                kinds.into_iter().map(Name).collect::<Vec<_>>(),
-                selected,
-                window,
-                cx,
-            )
-        });
+        let groups = SearchableVec::new(vec![
+            SearchableGroup::new("Real").items(kinds[..5].iter().cloned().map(Name)),
+            SearchableGroup::new("I/Q").items(kinds[5..].iter().cloned().map(Name)),
+        ]);
+        let kind = cx.new(|cx| SelectState::new(groups, selected, window, cx));
         let containers = vec!["WAV".to_owned(), "FLAC".to_owned()];
         let container_widths = presentation::shown_widths(&containers, window, cx);
         let selected = usize::from(request.container == argand_io::write::Container::Flac);
@@ -204,6 +208,10 @@ impl Editor {
                 cx,
             )
         });
+        let closed_selects = [
+            container.read(cx).focus_handle(cx),
+            kind.read(cx).focus_handle(cx),
+        ];
         let subscriptions = vec![
             cx.subscribe(&rate_editor, |_, _, _: &numeric_editor::Changed, cx| {
                 cx.notify()
@@ -218,13 +226,14 @@ impl Editor {
             cx.subscribe_in(
                 &kind,
                 window,
-                |editor, _, _: &SelectEvent<Vec<Name>>, window, cx| {
+                |editor, _, _: &SelectEvent<SampleChoices>, window, cx| {
                     editor.sync_reference(window, cx);
                     cx.notify();
                 },
             ),
         ];
         Self {
+            closed_selects,
             reference_iq: request.output.is_iq(),
             request,
             container,
@@ -491,13 +500,20 @@ impl Render for Editor {
             ))
             .child(presentation::row(
                 "Sample format",
-                presentation::choice_control(
-                    "conversion-kind",
-                    &self.kind,
-                    &self.kind_widths,
-                    window,
-                    cx,
-                ),
+                div().id("conversion-format-hint")
+                    .tooltip(|_, cx| metadata_tooltip(MetadataHint {
+                        title: "Sample format",
+                        value: "Both floating formats store 32-bit float values".into(),
+                        explanation: "The arbitrary-scale format uses the CoolEdit 16×8 WAVE marker; the scale is a convention, not a clipping limit".into(),
+                        rows: Vec::new(),
+                    }, cx))
+                    .child(presentation::choice_control(
+                        "conversion-kind",
+                        &self.kind,
+                        &self.kind_widths,
+                        window,
+                        cx,
+                    )),
                 cx,
             ))
             .when(
@@ -565,6 +581,76 @@ fn panel(
 }
 
 impl Shell {
+    pub(super) fn file_select_trigger(&self, cx: &gpui_kit::App) -> Option<FocusHandle> {
+        let editor = self
+            .conversion
+            .hint
+            .read(cx)
+            .view()?
+            .downcast::<Editor>()
+            .ok()?;
+        let editor = editor.read(cx);
+        let handles = [
+            editor.container.read(cx).focus_handle(cx),
+            editor.kind.read(cx).focus_handle(cx),
+        ];
+        handles
+            .iter()
+            .zip(&editor.closed_selects)
+            .find_map(|(current, closed)| (current != closed).then(|| closed.clone()))
+    }
+
+    pub(super) fn conversion_active(&self) -> bool {
+        self.conversion.running.is_some() || self.conversion.pending.is_some()
+    }
+
+    pub(super) fn cancel_conversion(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.conversion.pending = None;
+        self.conversion.result = None;
+        if let Some(job) = &self.conversion.running {
+            job.job.cancel();
+        } else if std::mem::take(&mut self.conversion.close_requested) {
+            self.request_close(window, cx);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn close_after_conversion(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if !self.conversion_active() {
+            return false;
+        }
+        self.conversion.close_requested = true;
+        self.cancel_conversion(window, cx);
+        true
+    }
+
+    pub(super) fn conversion_cover(&self, area: gpui_kit::Bounds<Pixels>) -> Option<AnyElement> {
+        self.conversion_active().then(|| {
+            gpui_kit::deferred(
+                div()
+                    .id("conversion-busy-cover")
+                    .absolute()
+                    .left(area.origin.x)
+                    .top(area.origin.y)
+                    .w(area.size.width)
+                    .h(area.size.height)
+                    .occlude()
+                    .cursor(gpui_kit::CursorStyle::OperationNotAllowed)
+                    .on_any_mouse_down(|_, window, cx| {
+                        window.prevent_default();
+                        cx.stop_propagation();
+                    })
+                    .on_scroll_wheel(|_, _, cx| cx.stop_propagation()),
+            )
+            .with_priority(1)
+            .into_any_element()
+        })
+    }
+
     pub(super) fn conversion_request(&self) -> Option<Request> {
         if !self.can_save(false) || self.capture_changed() {
             return None;
@@ -643,6 +729,7 @@ impl Shell {
         let Some(editing) = file.editing.as_ref() else {
             return;
         };
+        let directory = self.save_presentation(&editing.file().meta).1;
         let document = file.id;
         let version = editing.version();
         let container = request.container;
@@ -687,10 +774,18 @@ impl Shell {
             document,
             version,
             name,
+            directory,
             output_is_iq,
             container,
             backing,
         });
+        self.dismiss_application_menu(window, cx);
+        self.close_hints(cx);
+        self.interrupt_plot(cx);
+        if let Some(plot) = self.plot_view() {
+            plot.update(cx, |plot, cx| plot.clear_pointer(cx));
+        }
+        window.focus(&self.focus_target(cx), cx);
         self.save_notice = None;
         cx.notify();
     }
@@ -711,6 +806,12 @@ impl Shell {
                 let Some(job) = self.conversion.running.take() else {
                     return;
                 };
+                if std::mem::take(&mut self.conversion.close_requested) {
+                    drop(job);
+                    self.request_close(window, cx);
+                    cx.notify();
+                    return;
+                }
                 match outcome {
                     Ended::Done(result) => {
                         if self.file.as_ref().map(|file| file.id) != Some(job.document)
@@ -814,6 +915,7 @@ impl Shell {
             pending.origin,
             Some(UnsavedDocument {
                 name: pending.job.name,
+                directory: pending.job.directory,
                 container: pending.job.container,
                 backing: pending.job.backing,
             }),
@@ -879,15 +981,8 @@ impl Shell {
                         .xsmall()
                         .icon(IconName::Close)
                         .tab_stop(false)
-                        .on_click(cx.listener(|shell, _, _, cx| {
-                            if shell.conversion.pending.take().is_some() {
-                                shell.conversion.result = None;
-                            } else if let Some(job) = &shell.conversion.running {
-                                job.job.cancel();
-                            } else {
-                                shell.conversion.result = None;
-                            }
-                            cx.notify();
+                        .on_click(cx.listener(|shell, _, window, cx| {
+                            shell.cancel_conversion(window, cx);
                         })),
                 )
                 .into_any_element(),

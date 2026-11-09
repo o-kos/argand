@@ -305,6 +305,10 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
         assert!(shell.file_name().contains("recording-converted.wav"));
         assert!(shell.can_save_over().is_err());
         assert!(shell.session.recent.iter().all(|entry| entry.path == path));
+        assert_eq!(
+            shell.save_presentation(&editing.file().meta).1,
+            path.parent().unwrap()
+        );
         editing.file().meta.source.clone()
     });
     assert_ne!(first_backing, path);
@@ -325,6 +329,12 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
     });
     shell.update_in(cx, |shell, window, cx| {
         assert!(shell.file_name().contains("recording-converted.flac"));
+        assert_eq!(
+            shell
+                .save_presentation(&shell.editing().unwrap().file().meta)
+                .1,
+            path.parent().unwrap()
+        );
         assert_eq!(
             shell.conversion_request().unwrap().container,
             argand_io::write::Container::Flac
@@ -850,6 +860,9 @@ fn stage_reader(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>)
         document: file.id,
         version: shell.editing().unwrap().version(),
         name: "staged-converted.wav".into(),
+        directory: shell
+            .save_presentation(&shell.editing().unwrap().file().meta)
+            .1,
         output_is_iq: false,
         container: argand_io::write::Container::Wave,
         backing: Arc::new(crate::scratch::Scratch::new(path.clone())),
@@ -910,7 +923,7 @@ fn unsaved_selection_exports_never_suggest_private_scratch_directories(cx: &mut 
             shell.band = band.then(|| argand_core::FrequencyBand::between(1000., 3000.).unwrap());
             let (display, directory) =
                 shell.save_presentation(&shell.editing().unwrap().file().meta);
-            assert!(directory.is_dir());
+            assert_eq!(directory, dir);
 
             assert_eq!(
                 display.source,
@@ -920,8 +933,7 @@ fn unsaved_selection_exports_never_suggest_private_scratch_directories(cx: &mut 
         });
         wait_for_save_chooser(cx);
         cx.simulate_new_path_selection(|directory| {
-            assert!(directory.is_dir());
-
+            assert_eq!(directory, dir);
             None
         });
         cx.run_until_parked();
@@ -1331,4 +1343,134 @@ fn exact_carrier_defaults_do_not_warn_from_rounded_physical_references(cx: &mut 
             assert!(editor.summary(cx).unwrap().is_empty());
         });
     }
+}
+
+#[gpui_kit::test]
+fn caption_close_with_open_sample_list_reaches_unsaved_workflow(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let dir = argand_io::testutil::TempDir::new("caption-select-close");
+    let path = dir.join("input.wav");
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path), window, cx)
+    });
+    wait_until(cx, &shell, "caption source", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described())
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.invert_spectrum(window, cx);
+        shell.convert_dialog(window, cx);
+    });
+    frame(cx);
+    let editor = shell.read_with(cx, |shell, cx| {
+        shell
+            .conversion
+            .hint
+            .read(cx)
+            .view()
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap()
+    });
+    let trigger = editor.read_with(cx, |editor, cx| editor.kind.read(cx).focus_handle(cx));
+    cx.update(|window, cx| window.focus(&trigger, cx));
+    cx.simulate_keystrokes("enter");
+    frame(cx);
+    assert_ne!(
+        editor.read_with(cx, |editor, cx| editor.kind.read(cx).focus_handle(cx)),
+        trigger
+    );
+    let close = cx.update(|window, _| {
+        let bounds = chrome::Frame::for_window(window).free;
+        let half = gpui_kit::component::TITLE_BAR_HEIGHT / 2.;
+        point(bounds.right() - half, bounds.top() + half)
+    });
+    cx.simulate_mouse_move(close, None, gpui_kit::Modifiers::default());
+    frame(cx);
+    cx.simulate_mouse_down(close, MouseButton::Left, gpui_kit::Modifiers::default());
+    cx.simulate_mouse_up(close, MouseButton::Left, gpui_kit::Modifiers::default());
+    frame(cx);
+    assert!(
+        cx.has_pending_prompt(),
+        "one caption click must ask about the unsaved capture"
+    );
+    cx.simulate_prompt_answer("Cancel");
+    frame(cx);
+    assert!(shell.read_with(cx, |shell, _| shell.editing().unwrap().is_dirty()));
+}
+
+#[gpui_kit::test]
+fn conversion_blocks_document_actions_and_close_waits_before_unsaved_prompt(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx, dir) = converted_fixture(cx, "busy-actions");
+    shell.update_in(cx, |shell, window, cx| {
+        shell.save_as(false, window, cx);
+        let file = shell.file.as_ref().unwrap();
+        let document = file.id;
+        let version = shell.editing().unwrap().version();
+        let (job, _) = crate::saving::spawn("busy-conversion-test", |_, _| (), |_| ());
+        shell.conversion.running = Some(Converting {
+            job,
+            progress: None,
+            document,
+            version,
+            name: "busy-converted.wav".into(),
+            directory: dir.clone(),
+            output_is_iq: true,
+            container: argand_io::write::Container::Wave,
+            backing: file.unsaved.as_ref().unwrap().backing.clone(),
+        });
+        shell.open(Origin::new(dir.join("other.wav")), window, cx);
+        shell.choose_file(window, cx);
+        shell.invert_spectrum(window, cx);
+        shell.normalize(window, cx);
+        window.dispatch_action(Box::new(editing_ui::Undo), cx);
+        window.dispatch_action(Box::new(editing_ui::DeleteSelection), cx);
+        window.dispatch_action(Box::new(editing_ui::PasteHere), cx);
+        shell.save_as(false, window, cx);
+        shell.open_application_menu(window, cx);
+        shell.convert_dialog(window, cx);
+        shell.edit_analysis(&EditAnalysis, window, cx);
+        shell.toggle_selection_panel(window, cx);
+        assert_eq!(shell.file.as_ref().unwrap().id, document);
+        assert_eq!(shell.editing().unwrap().version(), version);
+        assert!(!shell.can_save(false));
+        assert!(shell.editing_mut().is_none());
+        assert!(shell.cursor_readout(cx).is_none());
+        assert!(shell.application_menu.is_none());
+        assert!(!shell.conversion.hint.read(cx).is_open());
+        assert!(!shell.analysis_hint.read(cx).is_open());
+        assert!(!shell.selection_hint.read(cx).is_open());
+        shell.request_close(window, cx);
+        assert!(shell.conversion.close_requested);
+        assert!(shell.file.as_ref().unwrap().unsaved.is_some());
+    });
+    cx.run_until_parked();
+    assert!(
+        !cx.did_prompt_for_new_path(),
+        "queued chooser must not open during conversion"
+    );
+    assert!(
+        !cx.has_pending_prompt(),
+        "closing waits for the conversion worker"
+    );
+    shell.update_in(cx, |shell, window, cx| {
+        shell.receive_conversion(Update::Finished(Ended::Cancelled), window, cx);
+    });
+    cx.run_until_parked();
+    assert!(
+        cx.has_pending_prompt(),
+        "one close request resumes normal unsaved protection"
+    );
+    cx.simulate_prompt_answer("Cancel");
+    cx.run_until_parked();
+    shell.read_with(cx, |shell, _| {
+        assert!(shell.file.as_ref().unwrap().unsaved.is_some());
+        assert!(shell.editing().unwrap().is_dirty());
+    });
+    std::fs::remove_dir_all(dir).unwrap();
 }

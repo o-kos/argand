@@ -564,6 +564,21 @@ impl Editor {
             }))
     }
 
+    pub(super) fn open_select_trigger(&self, cx: &gpui_kit::App) -> Option<FocusHandle> {
+        [
+            &self.fft,
+            &self.window,
+            &self.aggregation,
+            &self.mode,
+            &self.palette,
+        ]
+        .iter()
+        .zip(&self.closed)
+        .find_map(|(state, closed)| {
+            (state.read(cx).focus_handle(cx) != *closed).then(|| closed.clone())
+        })
+    }
+
     /// Whether any list of the hint is open, which the balloon would cover.
     fn list_open(&self, cx: &gpui_kit::App) -> bool {
         [
@@ -875,19 +890,26 @@ pub(in crate::shell) fn number_width(value: &str, window: &Window, cx: &gpui_kit
 }
 
 /// Existing frameless Select presentation shared by both property editors.
-pub(in crate::shell) fn choice_control(
+pub(in crate::shell) fn choice_control<D>(
     id: &'static str,
-    state: &Entity<SelectState<Vec<Name>>>,
+    state: &Entity<SelectState<D>>,
     widths: &[Pixels],
     window: &Window,
     cx: &gpui_kit::App,
-) -> impl IntoElement {
+) -> impl IntoElement
+where
+    D: gpui_kit::component::searchable_list::SearchableListDelegate<Item = Name> + 'static,
+{
     let focused = state.read(cx).focus_handle(cx).is_focused(window);
     let widest = widths.iter().copied().fold(px(0.), Pixels::max);
     let shown = state
         .read(cx)
-        .selected_index(cx)
-        .and_then(|index| widths.get(index.row).copied())
+        .selected_value()
+        .and_then(|value| {
+            shown_widths(std::slice::from_ref(value), window, cx)
+                .first()
+                .copied()
+        })
         .unwrap_or(widest);
     let underline = div()
         .absolute()
@@ -901,7 +923,7 @@ pub(in crate::shell) fn choice_control(
         .appearance(false)
         .small()
         .w_full()
-        .menu_width(px(LIST));
+        .menu_width(widest.max(px(LIST)));
     div().relative().w(widest).child(list).child(underline)
 }
 

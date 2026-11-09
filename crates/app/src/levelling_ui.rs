@@ -20,10 +20,7 @@ const SAME_GAIN_DB: f64 = 0.001;
 impl Shell {
     /// Whether a suppression or a measurement is running, which edits and saves wait for.
     pub(super) fn computing(&self) -> bool {
-        self.suppressing.is_some()
-            || self.levelling.is_some()
-            || self.conversion.running.is_some()
-            || self.conversion.pending.is_some()
+        self.suppressing.is_some() || self.levelling.is_some() || self.conversion_active()
     }
 
     /// Whether the whole capture can be inverted or levelled now.
