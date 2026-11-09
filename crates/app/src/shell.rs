@@ -2014,6 +2014,7 @@ fn recent_hint(
                             div()
                                 .w_full()
                                 .flex_shrink_0()
+                                .text_xs()
                                 .text_color(cx.theme().muted_foreground)
                                 .child(directory.clone()),
                         ),
