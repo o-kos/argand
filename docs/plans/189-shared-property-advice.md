@@ -1,0 +1,29 @@
+# Issue #189: Shared property advice callouts
+
+Resolves #189; continues Draft PR #224.
+
+## Roles and risk
+
+- Class A: expected extraction diff above roughly 400 lines; behavior remains scoped to the two property editors.
+- Coordinator: `gpt-6-astra` medium.
+- Executor: `gpt-6.1-sol` medium.
+- Reviewer: `gpt-6.1-sol` high in a separate context.
+
+## Decisions and toolkit boundary
+
+Extract the existing Range advice state, measured side placement, standard Button close action, fallback Tooltip and retained domain pointer drawing into one shared implementation. No replacement control or new custom-input exception. Range keeps its optional recommendation action and shortcut. File format advice is informative.
+
+After automatic FLAC format fallback, show a yellow marker beside the selected sample format and an automatic anchored callout when room permits. Closing its X leaves the marker and permits ordinary hover advice without immediately reopening the automatic callout. If neither side has room, use the existing hover fallback. Hide automatic and hovered advice while a panel Select is open. Explicit format/container choice or starting conversion clears the warning; another automatic change resets dismissal. Do not increase panel height with an inline warning row.
+
+## Implementation and validation
+
+- [ ] Extract and reuse the Range advice lifecycle/rendering/placement.
+- [ ] Attach format advice to the measured sample-format value; retain warning clearing/reset rules.
+- [ ] Preserve Range action, Ctrl+R and keyboard/pointer behavior.
+- [ ] Meaningful GPUI auto/close/hover/list-suppression/clear and constrained-viewport coverage.
+- [ ] Update the retained UI inventory justification.
+- [ ] Normal application check, formatting, all-targets Clippy and focused regressions.
+- [ ] Move completed plan before final independent review.
+- [ ] Full locked suite, fresh release after the gate, existing Draft PR publication.
+
+No native GUI launch, desktop input emulation or portal requests. Distinguish automated rendered-layout evidence from native validation.
