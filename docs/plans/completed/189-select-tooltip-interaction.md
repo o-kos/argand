@@ -22,19 +22,23 @@ Locked Select exposes its list focus handle while open and trigger handle while 
 
 ## Implementation
 
-- [ ] Shared Select trigger/menu geometry and tooltip interaction.
-- [ ] Concise, bounded tooltip text/layout.
-- [ ] Float-to-FLAC draft transition and warning.
-- [ ] Meaningful combined pointer/keyboard and draft-state regressions.
+- [x] Shared Select trigger/menu geometry and tooltip interaction.
+- [x] Concise, bounded tooltip text/layout.
+- [x] Float-to-FLAC draft transition and warning.
+- [x] Meaningful combined pointer/keyboard and draft-state regressions.
 - [ ] Independent review; move completed plan before final review.
 
 ## Validation
 
-- [ ] Normal `cargo check -p argand --locked`.
-- [ ] Focused GUI regressions.
+- [x] Normal `cargo check -p argand --locked`.
+- [x] Focused GUI regressions.
 - [ ] `cargo fmt --all -- --check`.
 - [ ] `cargo clippy --all-targets --locked`.
 - [ ] `cargo test --locked`.
 - [ ] Fresh `cargo build --release --locked` after the gate.
 
 No native GUI launch or input emulation. Report automated layout evidence separately from native validation.
+
+## Verified toolkit behavior
+
+GPUI prepaint explicitly removes an active tooltip when its element no longer declares a tooltip builder. The combined pointer regression verifies disappearance and restoration, and selecting a shorter title verifies a smaller trigger with the same right anchor. Both property editors observe standard Select notifications so open-state changes invalidate their tooltip composition.

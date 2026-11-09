@@ -209,6 +209,9 @@ impl Editor {
         let aggregation = select(Choice::Aggregation, cx);
         let mode = select(Choice::Mode, cx);
         let palette = select(Choice::Palette, cx);
+        for select in [&fft, &window_choice, &aggregation, &mode, &palette] {
+            subscriptions.push(cx.observe(select, |_, _, cx| cx.notify()));
+        }
         let closed = [&fft, &window_choice, &aggregation, &mode, &palette]
             .map(|state| state.read(cx).focus_handle(cx));
         let (overlap_editor, overlap) = number(
@@ -587,7 +590,7 @@ impl Editor {
         ]
         .iter()
         .zip(&self.closed)
-        .any(|(state, closed)| state.read(cx).focus_handle(cx) != *closed)
+        .any(|(state, closed)| select_open(state, closed, cx))
     }
 
     /// The effective range, with its warning in a balloon pointing at the sign that ends it.
@@ -628,7 +631,7 @@ impl Editor {
                     .cursor_pointer()
                     .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
             })
-            .when(hover, |value| {
+            .when(hover && !self.list_open(cx), |value| {
                 value.tooltip(move |_, cx| {
                     let action = actionable
                         .then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
@@ -905,8 +908,10 @@ where
     let shown = state
         .read(cx)
         .selected_value()
+        .map(String::as_str)
+        .or(placeholder)
         .and_then(|value| {
-            shown_widths(std::slice::from_ref(value), window, cx)
+            shown_widths(&[value.to_owned()], window, cx)
                 .first()
                 .copied()
         })
@@ -928,7 +933,19 @@ where
         .w_full()
         .menu_width(widest.max(px(LIST)))
         .menu_max_h((window.viewport_size().height - px(48.)).max(px(0.)));
-    div().relative().w(widest).child(list).child(underline)
+    div().relative().w(shown).child(list).child(underline)
+}
+
+pub(in crate::shell) fn select_open<D>(
+    state: &Entity<SelectState<D>>,
+    closed: &FocusHandle,
+    cx: &gpui_kit::App,
+) -> bool
+where
+    D: gpui_kit::component::searchable_list::SearchableListDelegate + 'static,
+    D::Item: gpui_kit::component::searchable_list::SearchableListItem<Value = String>,
+{
+    state.read(cx).focus_handle(cx) != *closed
 }
 
 pub(in crate::shell) fn outlined_button(

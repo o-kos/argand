@@ -188,6 +188,7 @@ struct Editor {
     kind: Entity<SelectState<SampleChoices>>,
     kind_widths: Vec<Pixels>,
     unavailable_kind: Option<String>,
+    format_warning: bool,
     closed_selects: [FocusHandle; 2],
     _subscriptions: Vec<Subscription>,
     owner: Option<WeakEntity<Shell>>,
@@ -270,6 +271,8 @@ impl Editor {
             kind.read(cx).focus_handle(cx),
         ];
         let subscriptions = vec![
+            cx.observe(&kind, |_, _, cx| cx.notify()),
+            cx.observe(&container, |_, _, cx| cx.notify()),
             cx.subscribe(&rate_editor, |_, _, _: &numeric_editor::Changed, cx| {
                 cx.notify()
             }),
@@ -281,6 +284,7 @@ impl Editor {
                 &container,
                 window,
                 |editor, _, _: &SelectEvent<Vec<Name>>, window, cx| {
+                    editor.format_warning = false;
                     editor.filter_kinds(window, cx);
                     cx.notify();
                 },
@@ -289,6 +293,7 @@ impl Editor {
                 &kind,
                 window,
                 |editor, _, _: &SelectEvent<SampleChoices>, window, cx| {
+                    editor.format_warning = false;
                     if editor.kind.read(cx).selected_value().is_some() {
                         editor.unavailable_kind = None;
                     }
@@ -310,6 +315,7 @@ impl Editor {
             kind,
             kind_widths,
             unavailable_kind,
+            format_warning: false,
             _subscriptions: subscriptions,
             owner: None,
             document: None,
@@ -360,12 +366,24 @@ impl Editor {
     }
 
     fn filter_kinds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let value = self.kind_value(cx).map(str::to_owned);
+        let mut value = self.kind_value(cx).map(str::to_owned);
         let flac = self
             .container
             .read(cx)
             .selected_value()
             .is_some_and(|value| value == "FLAC");
+        if flac
+            && let Some(title) = &value
+            && (title.ends_with("(normalized)") || title.ends_with("(unscaled)"))
+        {
+            let token = if title.starts_with("I/Q") {
+                "iq_i16"
+            } else {
+                "rl_i16"
+            };
+            value = Some(kind_label(token));
+            self.format_warning = true;
+        }
         self.kind.update(cx, |kind, cx| {
             kind.set_items(sample_choices(flac), window, cx);
             if let Some(value) = &value {
@@ -462,6 +480,7 @@ impl Editor {
             let Some(request) = request.clone() else {
                 return;
             };
+            editor.format_warning = false;
             let Some(owner) = &editor.owner else {
                 return;
             };
@@ -473,30 +492,67 @@ impl Editor {
         }))
     }
 
-    fn reference_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn format_control(
+        &self,
+        tips: bool,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        presentation::row(
+            "Sample format",
+            div()
+                .id("conversion-format-hint")
+                .when(tips, |control| {
+                    control.tooltip(|_, cx| {
+                        metadata_tooltip(
+                            MetadataHint {
+                                title: "Sample format",
+                                value: "Normalized: nominal −1…+1 scale".into(),
+                                explanation: "Unscaled: arbitrary sample scale".into(),
+                                rows: Vec::new(),
+                            },
+                            cx,
+                        )
+                    })
+                })
+                .child(presentation::choice_control(
+                    "conversion-kind",
+                    &self.kind,
+                    &self.kind_widths,
+                    self.unavailable_kind.as_deref(),
+                    window,
+                    cx,
+                )),
+            cx,
+        )
+    }
+
+    fn reference_control(&self, tips: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let carrier = self.reference_iq != self.request.input.is_iq();
         div()
             .id("conversion-reference-hint")
-            .tooltip(move |_, cx| {
-                metadata_tooltip(
-                    MetadataHint {
-                        title: "Reference",
-                        value: if carrier {
-                            "Carrier frequency in the real signal"
-                        } else {
-                            "Physical frequency of array zero"
-                        }
-                        .into(),
-                        explanation: if carrier {
-                            "The frequency where I/Q zero is placed"
-                        } else {
-                            "Fixed while the signal domain is unchanged"
-                        }
-                        .into(),
-                        rows: Vec::new(),
-                    },
-                    cx,
-                )
+            .when(tips, |control| {
+                control.tooltip(move |_, cx| {
+                    metadata_tooltip(
+                        MetadataHint {
+                            title: "Reference",
+                            value: if carrier {
+                                "Carrier frequency in the real signal"
+                            } else {
+                                "Physical frequency of array zero"
+                            }
+                            .into(),
+                            explanation: if carrier {
+                                "The frequency where I/Q zero is placed"
+                            } else {
+                                "Fixed while the signal domain is unchanged"
+                            }
+                            .into(),
+                            rows: Vec::new(),
+                        },
+                        cx,
+                    )
+                })
             })
             .child(presentation::row(
                 "Reference",
@@ -522,6 +578,8 @@ impl Editor {
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.prepare(window, cx);
+        let tips = !presentation::select_open(&self.container, &self.closed_selects[0], cx)
+            && !presentation::select_open(&self.kind, &self.closed_selects[1], cx);
         let summary = self.summary(cx);
         let request = self
             .request(cx)
@@ -570,7 +628,7 @@ impl Render for Editor {
                 self.rate_editor.clone(),
                 cx,
             ))
-            .child(self.reference_control(cx))
+            .child(self.reference_control(tips, cx))
             .child(presentation::row(
                 "File type",
                 presentation::choice_control(
@@ -583,25 +641,7 @@ impl Render for Editor {
                 ),
                 cx,
             ))
-            .child(presentation::row(
-                "Sample format",
-                div().id("conversion-format-hint")
-                    .tooltip(|_, cx| metadata_tooltip(MetadataHint {
-                        title: "Sample format",
-                        value: "Both floating formats store 32-bit float values".into(),
-                        explanation: "Normalized means a nominal ±1 scale; unscaled uses arbitrary units and the CoolEdit 16×8 WAVE marker, without changing reader normalization or clipping limits".into(),
-                        rows: Vec::new(),
-                    }, cx))
-                    .child(presentation::choice_control(
-                        "conversion-kind",
-                        &self.kind,
-                        &self.kind_widths,
-                        self.unavailable_kind.as_deref(),
-                        window,
-                        cx,
-                    )),
-                cx,
-            ))
+            .child(self.format_control(tips, window, cx))
             .when(
                 summary.as_ref().map_or(true, |warning| !warning.is_empty()),
                 |panel| {
@@ -613,6 +653,14 @@ impl Render for Editor {
                     )
                 },
             )
+            .when(self.format_warning, |panel| {
+                panel.child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().warning)
+                        .child("Sample format changed to Signed 16-bit for FLAC"),
+                )
+            })
             .child(div().mt_1().pt_1().child(self.convert_button(request, cx)))
     }
 }

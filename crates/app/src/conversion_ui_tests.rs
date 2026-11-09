@@ -1654,9 +1654,9 @@ fn sample_choices_fit_and_flac_filters_without_resetting_drafts(cx: &mut TestApp
         assert_flac_trigger_fits(cx);
         assert_eq!(
             editor.read_with(cx, |editor, cx| editor.kind_value(cx).map(str::to_owned)),
-            Some(kind_label("iq_f32"))
+            Some(kind_label("iq_i16"))
         );
-        assert!(editor.read_with(cx, |editor, cx| editor.request(cx).is_err()));
+        assert!(editor.read_with(cx, |editor, cx| editor.request(cx).is_ok()));
         choose_container(&editor, cx, "WAV");
         assert_eq!(
             editor.read_with(cx, |editor, cx| editor
@@ -1664,7 +1664,7 @@ fn sample_choices_fit_and_flac_filters_without_resetting_drafts(cx: &mut TestApp
                 .read(cx)
                 .selected_value()
                 .cloned()),
-            Some(kind_label("iq_f32"))
+            Some(kind_label("iq_i16"))
         );
         choose_container(&editor, cx, "FLAC");
         cx.update(|window, cx| window.focus(&editor.read(cx).kind.read(cx).focus_handle(cx), cx));
@@ -1696,5 +1696,121 @@ fn sample_choices_fit_and_flac_filters_without_resetting_drafts(cx: &mut TestApp
             editor.read_with(cx, |editor, cx| editor.kind_value(cx).map(str::to_owned)),
             Some(kind_label("iq_u8"))
         );
+    }
+}
+
+#[gpui_kit::test]
+fn format_tooltip_disappears_for_open_select_and_returns_after_close(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let mut editor = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let form = cx.new(|cx| Editor::new(request(), window, cx));
+        editor = Some(form.clone());
+        Root::new(form, window, cx)
+    });
+    cx.simulate_resize(size(px(1000.), px(900.)));
+    let editor = editor.unwrap();
+    editor.update_in(cx, |editor, _, _| editor.focus_on_open = false);
+    frame(cx);
+    let long = cx.update(|window, _| window.within("conversion-kind").find("input").bounds());
+    let at = long.center();
+    let modifiers = gpui_kit::Modifiers::default();
+    cx.simulate_mouse_move(at, None, modifiers);
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    frame(cx);
+    cx.update(|window, _| {
+        let tip = window.find("metadata-tooltip-content").bounds();
+        assert!(
+            tip.right() <= window.viewport_size().width
+                && tip.bottom() <= window.viewport_size().height
+        );
+    });
+    cx.simulate_mouse_down(at, MouseButton::Left, modifiers);
+    cx.simulate_mouse_up(at, MouseButton::Left, modifiers);
+    frame(cx);
+    assert!(editor.read_with(cx, |editor, cx| presentation::select_open(
+        &editor.kind,
+        &editor.closed_selects[1],
+        cx
+    )));
+    cx.update(|window, _| {
+        assert!(
+            window.try_find("metadata-tooltip-content").is_none(),
+            "already visible tooltip must disappear"
+        );
+        assert!(window.find(sample_row("iq_i16")).visible());
+    });
+    let selected = cx.update(|window, _| window.find(sample_row("iq_i16")).bounds().center());
+    cx.simulate_mouse_move(selected, None, modifiers);
+    cx.simulate_mouse_down(selected, MouseButton::Left, modifiers);
+    cx.simulate_mouse_up(selected, MouseButton::Left, modifiers);
+    frame(cx);
+    let at = cx.update(|window, _| {
+        let short = window.within("conversion-kind").find("input").bounds();
+        assert!(
+            short.size.width < long.size.width,
+            "short selected titles must not reserve the longest option width"
+        );
+        assert!(
+            (short.right() - long.right()).abs() < px(1.),
+            "selected values keep their right-column anchor"
+        );
+        short.center()
+    });
+    cx.simulate_mouse_move(gpui_kit::point(px(900.), px(800.)), None, modifiers);
+    cx.simulate_mouse_move(at, None, modifiers);
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    frame(cx);
+    cx.update(|window, _| assert!(window.find("metadata-tooltip-content").visible()));
+}
+
+#[gpui_kit::test]
+fn flac_float_fallback_preserves_domain_and_frequency_draft(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    for token in ["rl_f32", "rl_f16x8", "iq_f32", "iq_f16x8", "iq_i32"] {
+        let mut form = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| Editor::new(request(), window, cx));
+            form = Some(editor.clone());
+            Root::new(editor, window, cx)
+        });
+        let form = form.unwrap();
+        form.update_in(cx, |editor, window, cx| {
+            editor.kind.update(cx, |state, cx| {
+                state.set_selected_value(&kind_label(token), window, cx);
+                cx.emit(SelectEvent::Confirm(state.selected_value().cloned()));
+            });
+        });
+        frame(cx);
+        form.update_in(cx, |editor, window, cx| {
+            editor
+                .rate
+                .update(cx, |input, cx| input.set_value("12345", window, cx));
+            editor
+                .reference
+                .update(cx, |input, cx| input.set_value("1800", window, cx));
+        });
+        choose_container(&form, cx, "FLAC");
+        form.read_with(cx, |editor, cx| {
+            assert_eq!(editor.rate.read(cx).value().as_ref(), "12345");
+            assert_eq!(editor.reference.read(cx).value().as_ref(), "1800");
+            let expected = if token == "iq_i32" {
+                token
+            } else if token.starts_with("iq") {
+                "iq_i16"
+            } else {
+                "rl_i16"
+            };
+            assert_eq!(editor.kind_value(cx), Some(kind_label(expected).as_str()));
+            assert_eq!(editor.format_warning, token != "iq_i32");
+            assert_eq!(editor.request(cx).is_ok(), token != "iq_i32");
+        });
+        choose_container(&form, cx, "WAV");
+        form.read_with(cx, |editor, cx| {
+            assert!(!editor.format_warning);
+            assert!(!editor.kind_value(cx).unwrap().contains("Float"));
+        });
     }
 }

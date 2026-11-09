@@ -2054,13 +2054,17 @@ fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::Any
                             .border_color(cx.theme().border)
                             .text_color(cx.theme().muted_foreground)
                             .child(hint.explanation.clone()),
-                    );
+                    )
+                    .into_any_element();
             }
             // A definite content width lets wrapped lines contribute their full layout height.
             let width = metadata_hint_width(&hint, window, cx);
             div()
+                .id("metadata-tooltip-content")
+                .map(gpui_kit::TestSupportExt::test_support)
                 .text_sm()
                 .w(width)
+                .whitespace_normal()
                 .py_1()
                 .flex()
                 .flex_col()
@@ -2088,6 +2092,7 @@ fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::Any
                             .child(hint.explanation.clone()),
                     )
                 })
+                .into_any_element()
         })
     })
 }
