@@ -2186,6 +2186,12 @@ mod analysis_hint_tests {
     /// Opens the hint, changes the range as its recommendation would, then closes it.
     fn change_and_close(cx: &mut TestAppContext, revert: bool) -> (Settings, Settings) {
         let handle = open(cx);
+        handle
+            .update(cx, |shell, window, cx| {
+                shell.open(Origin::new("/captures/a.iqw".into()), window, cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
         let (hint, opening) = handle
             .read_with(cx, |shell, _| (shell.analysis_hint.clone(), shell.settings))
             .unwrap();
