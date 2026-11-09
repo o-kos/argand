@@ -20,13 +20,13 @@ of scope.
 
 ## Context
 
-- [UI architecture](../architecture/ui.md) and
-  [control inventory](../ui/124-inventory.md) describe the current integration and
+- [UI architecture](../../architecture/ui.md) and
+  [control inventory](../../ui/124-inventory.md) describe the current integration and
   retain the historical 0.6.6 audit.
 - The owner approved target 0.9.1 and project-local installation of both upstream
   skills, including their complete references. Their unchanged source and known
   documentation caveats are recorded in
-  [provenance](../../.agents/skills/GPUI-KIT-PROVENANCE.md).
+  [provenance](../../../.agents/skills/GPUI-KIT-PROVENANCE.md).
 - Upstream v0.9.1 resolves to `39ab849a93b5f15507b969164d49891db8d5b470`.
   Registry sources selected by Cargo.lock remain authoritative for behavior.
 - Main was refreshed before branching. The owner's pre-existing AGENTS guidance
@@ -84,14 +84,14 @@ Space remains intentionally inert in the application menu.
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
 | One 0.9.1 facade and compatible graph | Manifest, lockfile and Cargo dependency inspection | Passed: facade 0.9.1, GPUI pre 0.3.12 | Default backend; no backend substitution |
-| Supported Root/overlay ownership | Exact-source review and focused regression tests | Automated checks passed; approved standard composition implemented | Native compositor acceptance remains pending |
-| Menus, nested Selects and panels preserve agreed interactions | Input/focus regression tests and native application scenarios | Automated input/focus tests passed | Native checks must be observed, not inferred from headless tests |
-| Numeric transactions and disabled controls remain correct | Settings/conversion regression coverage and native checks | Automated transaction/disabled/repeat tests passed | Native interaction checks remain pending |
+| Supported Root/overlay ownership | Exact-source review and focused regression tests | Automated checks passed; approved standard composition implemented | Owner accepted the result; individual compositor checks were not reported |
+| Menus, nested Selects and panels preserve agreed interactions | Input/focus regression tests and native application scenarios | Automated input/focus tests passed | No individual native menu/panel scenarios were reported |
+| Numeric transactions and disabled controls remain correct | Settings/conversion regression coverage and native checks | Automated transaction/disabled/repeat tests passed | No individual native numeric scenarios were reported |
 | Custom-control inventory reflects selected graph | Each retained exception reviewed against exact locked source | Completed for the selected graph | Do not generalize tag evidence to a different registry version |
-| Theme, window chrome and multiwindow input work | Targeted automated tests and native scenarios where available | Automated geometry/theme/window-isolation tests passed | Native Linux and Windows/macOS runtime acceptance remain unperformed |
+| Theme, window chrome and multiwindow input work | Targeted automated tests and native scenarios where available | Automated geometry/theme/window-isolation tests passed | Owner reported corrected resize behavior; other native/platform scenarios were not individually reported |
 | Texture retirement retains originating-window ownership and intervening-frame lifetime | Current texture-retirement and multiwindow regression tests | Existing snapshot-retirement and window-isolation tests passed; retirement code unchanged | Headless tests do not establish GPU completion or native multiwindow lifetime |
 | Current code passes required checks | Full local gate, then release build | Passed: current full gate and subsequent release build | Server CI and native acceptance reported separately |
-| Independent review and current-revision evidence | Separate reviewer using neutral exact snapshot | Three rounds completed; missing changelog addressed; rounds 2 and 3 clean | Native acceptance remains pending; plan stays active |
+| Independent review and current-revision evidence | Separate reviewer using neutral exact snapshot | Three rounds completed; missing changelog addressed; rounds 2 and 3 clean | Owner accepted the result with the evidence limits below |
 
 ## Implementation steps
 
@@ -110,13 +110,15 @@ Space remains intentionally inert in the application menu.
 - [x] Resolve Root/frame and menu checkpoints with source-backed owner decisions.
 - [x] Migrate approved integration and update focused Root, overlay, menu, input
       and ownership regression tests. Record the toolkit context-menu retention
-      fix in the inventory; native menu lifecycle and animation checks remain pending.
+      fix in the inventory; native menu lifecycle and animation were not individually
+      observed and remain recorded evidence limits.
 - [x] Reassess every relevant inventory exception; remove superseded paths and
       update architecture/inventory documentation alongside the code.
 - [x] Complete local gate and build the current release binary after the resize correction.
-- [ ] Run permitted native acceptance scenarios and record actual limitations.
+- [x] Record owner-provided resize observation and overall acceptance, separating
+      them from unperformed individual native scenarios.
 - [x] Prepare neutral current-revision evidence for independent review.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Move the accepted plan to `docs/plans/completed/` for final workflow completion.
 
 ## Validation
 
@@ -127,21 +129,34 @@ Space remains intentionally inert in the application menu.
 - [x] `cargo test --locked`, after the resize correction
 - [x] `cargo build --release --locked`, after the current full gate passes
 - [x] Focused automated Root, overlay, menu, input and multiwindow regressions.
-- [ ] Native animation and context-menu lifecycle checks; no dedicated current
-      runtime observation has been made.
-- [ ] Native application acceptance using the current release binary, disposable
-      signal data and supported configuration/session isolation. Exercise startup,
-      resize/maximize/restore, nested lists, panel transactions, keyboard focus,
-      pointer/wheel isolation, numeric disabled/repeat states and theme switching.
-      Record unavailable interaction capabilities and untested platforms explicitly.
+- [x] Record native animation and context-menu lifecycle evidence limits: no
+      individual runtime observations were reported for these scenarios.
+- [x] Record owner acceptance of the current result. The owner reported that resize
+      lag was resolved in an independently launched fresh build, then approved
+      the result. Exact process/hash was not independently inspected; no separate
+      claim is made for native menu/panel/focus/disabled/theme/close scenarios.
 - [x] Final independent review of the resize correction and current evidence;
       all three rounds completed. Round 1's missing changelog finding was accepted
       and addressed; rounds 2 and 3 returned no substantive findings.
 
+## Owner acceptance
+
+The owner confirmed normal resize behavior in an independently launched fresh
+build and then approved the current result. The coordinator accepted this as
+completion of the agreed implementation/acceptance scope with the individual
+native evidence limits above retained. No fourth review round is requested.
+The branch incorporates the independent Symphonia update already accepted on main;
+the only merge conflict combined the two unrelated changelog entries.
+After that integration, the full formatting/Clippy/test gate passed again: 1152
+tests passed, including 617 application and 176 I/O tests, with one existing
+ignored manual cost measurement. The current release was then rebuilt successfully;
+no migration UI code changed during the main integration or acceptance reporting.
+
 ## Post-completion
 
-Ready status, full three-platform CI, owner acceptance and squash merge follow the
-repository workflow. Migration completion does not authorize a release.
+Full three-platform CI on the current head, resolved review conversations, an
+up-to-date base and squash merge follow the repository workflow. Migration
+completion does not authorize a release.
 
 ### Current implementation evidence
 
@@ -156,7 +171,8 @@ The third and final independent review round found no substantive findings in
 this correction. Current rustfmt, Clippy and full tests exited successfully: 1146
 tests passed, including 617 application tests, with one existing ignored manual
 release-mode conversion cost measurement. The subsequent release build exited
-successfully. Corrected native resize acceptance remains pending.
+successfully. The owner subsequently confirmed normal resize behavior in a fresh build and
+approved the result; the evidence limitations below remain recorded.
 The focused PlotView suite passed all 50 tests. The regression changes parent
 layout dimensions and renders one frame inside the same update, before deferred
 effects can converge. It compares rendered Button hitboxes to the actual painted
@@ -167,8 +183,7 @@ unchanged; the production pairs remain enabled as before. A render/input regress
 places the Paste-here marker through a zoom half, verifies the marker paints below
 the control, and checks that the click emits exactly one zoom intent. Selection
 badges remain below the controls; unit hints occupy the axis gutters, while saved
-notices and entry overlays retain their later sibling order. Native resize acceptance
-must be repeated on the corrected production build.
+notices and entry overlays retain their later sibling order. The owner subsequently reported that the corrected resize behavior is normal.
 
 The automatic Root/frame integration is implemented with the approved radius and
 colors; captions retain their existing shared implementation. A stateless RootPlugin
@@ -196,4 +211,10 @@ with a disposable I/Q capture, portable default configuration and isolated XDG
 config/state/cache/data roots stayed alive for 12 seconds with no logged error,
 then received SIGTERM from the harness. This establishes startup smoke only;
 neither graceful close nor visible output or interaction was observed.
-No native application interaction or compositor acceptance has been performed.
+No executor-driven native interaction or compositor acceptance was performed.
+The owner reported that resize lag is resolved in an independently launched fresh
+build; its exact process/hash was not independently inspected. The owner then
+approved the current result. This is overall owner acceptance, not evidence that
+each menu, panel, focus, disabled-state, theme, maximize/restore/tiling, graceful-close
+or Windows/macOS scenario was individually exercised. Those unreported scenarios
+remain explicit evidence limits rather than claimed test passes.
