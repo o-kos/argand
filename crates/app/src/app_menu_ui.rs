@@ -353,10 +353,17 @@ impl Shell {
         let view = self.view_menu(focus.clone(), window, cx);
         let branch = file.clone();
         let menu = PopupMenu::build(window, cx, move |menu, _, _| {
-            menu.action_context(focus)
+            menu.action_context(focus.clone())
                 .item(PopupMenuItem::submenu("File", branch))
                 .item(PopupMenuItem::submenu("Edit", edit))
                 .item(PopupMenuItem::submenu("View", view))
+                .item(PopupMenuItem::separator())
+                .item(action_row(
+                    "About Argand…",
+                    Box::new(about_ui::ShowAbout),
+                    false,
+                    focus,
+                ))
         });
         self.application_menu_dismissed =
             Some(cx.subscribe_in(&menu, window, Self::application_menu_dismissed));
@@ -540,6 +547,7 @@ impl Shell {
                 "title-app-control",
                 self.application_menu_popover(app, cx),
             ))
+            .child(title_control("title-about-control", self.about_button(cx)))
             // Without a document these act on nothing, and each consumes only
             // its own box, so the gaps between them stay bare title-bar pixels.
             .when(self.view.is_some(), |bar| {
@@ -954,7 +962,7 @@ fn recent_row(number: Option<u8>, label: String, muted: gpui_kit::Hsla) -> impl 
 
 /// The width the title reserves for the toolbar.
 pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App, document: bool) -> Pixels {
-    let app = app_button_width(window, cx);
+    let app = app_button_width(window, cx) + window.rem_size() * 2.;
     if !document {
         return app;
     }
@@ -1063,7 +1071,7 @@ pub(super) fn toolbar_style(state: ToolbarState, cx: &gpui_kit::App) -> ButtonCu
 }
 
 /// The resting surface of an on control, which a custom variant would fade to a fifth.
-fn on_surface(state: ToolbarState, cx: &gpui_kit::App) -> Option<gpui_kit::Hsla> {
+pub(super) fn on_surface(state: ToolbarState, cx: &gpui_kit::App) -> Option<gpui_kit::Hsla> {
     (state == ToolbarState::On).then(|| toolbar_accent(cx).opacity(0.30))
 }
 
@@ -1075,7 +1083,7 @@ fn frame_colour(cx: &gpui_kit::App) -> gpui_kit::Hsla {
 }
 
 /// The tooltip stand-in for the pressed application button: renders nothing.
-struct NoTooltip;
+pub(super) struct NoTooltip;
 
 impl gpui_kit::Render for NoTooltip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -1094,8 +1102,9 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     /// The controls the toolbar offers, in the order they are drawn.
-    const CONTROLS: [&str; 4] = [
+    const CONTROLS: [&str; 5] = [
         "application-menu-button",
+        "about-button",
         "orientation-horizontal",
         "orientation-vertical",
         "toggle-grid",
@@ -1162,11 +1171,11 @@ mod tests {
         let handle = open(cx);
         assert_eq!(
             controls(cx, handle),
-            vec![true, false, false, false],
-            "the start page shows the application button alone"
+            vec![true, true, false, false, false],
+            "the start page keeps the application and About buttons"
         );
         open_document(cx, handle);
-        assert_eq!(controls(cx, handle), vec![true, true, true, true]);
+        assert_eq!(controls(cx, handle), vec![true, true, true, true, true]);
     }
 
     #[gpui_kit::test]
@@ -1182,8 +1191,8 @@ mod tests {
         };
         assert_eq!(
             reserved(cx, false),
-            app,
-            "the application button is all the toolbar holds without a document"
+            app + px(32.),
+            "application and About buttons remain available without a document"
         );
         open_document(cx, handle);
         // The first and the last control touch the toolbar's own edges.

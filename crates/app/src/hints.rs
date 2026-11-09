@@ -83,6 +83,10 @@ impl PinnedHint {
         }
     }
 
+    pub(super) fn focus_handle(&self) -> FocusHandle {
+        self.focus.clone()
+    }
+
     pub(super) fn is_open(&self) -> bool {
         self.content.is_some()
     }

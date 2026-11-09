@@ -65,10 +65,10 @@ the owner explicitly authorized a separate worktree after its branch changed.
 
 ## Implementation steps
 
-- [ ] Add Cargo/build metadata with exact-tag and missing-Git behavior.
-- [ ] Compose the About panel and integrate toolbar/menu/lifecycle.
-- [ ] Add meaningful metadata and production-path interaction coverage.
-- [ ] Update architecture, control inventory and changelog.
+- [x] Add Cargo/build metadata with exact-tag and missing-Git behavior.
+- [x] Compose the About panel and integrate toolbar/menu/lifecycle.
+- [x] Add meaningful metadata and production-path interaction coverage.
+- [x] Update architecture, control inventory and changelog.
 - [ ] Complete the local gate and record evidence/limits.
 - [ ] Prepare exact neutral independent review handoff and address findings.
 - [ ] Run full remote CI to success without merging.

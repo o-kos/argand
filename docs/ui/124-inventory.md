@@ -515,3 +515,17 @@ parsing accept `rl_i24` / `iq_i24`; CLI help and reports expose these same token
 No control composition or pointer/keyboard handler changes. Native interaction
 acceptance must still exercise the new rows; headless Select regressions establish
 only automated behavior, not desktop interaction.
+
+## About panel (#107)
+
+`about_ui.rs` adds a standard toolbar Button, direct PopupMenu command and the
+existing `hints::pinned` composition over standard Popover. It adds no replacement
+widget. Shell retains one `PinnedHint` and its scoped focus-out subscription;
+window deactivation closes it through the existing activation observer. Surface
+click dismissal is application panel policy. The repository uses the toolkit's
+standard `gpui_kit::base::Link`, whose 0.6.6 public re-export supports keyboard,
+focus and accessibility, with application theme styling and external URL opening.
+The older `component::link::Link` is pointer-only in the locked version and is not
+used. `about_ui_tests.rs` covers menu/button opening, repeated invocation, Escape,
+pointer and keyboard Link activation, focus subtree boundaries, window activation
+and themes. Native interaction and appearance remain a separate acceptance gate.

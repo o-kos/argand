@@ -31,6 +31,9 @@ use gpui_kit::{
 use crate::settings::Settings;
 use argand_dsp::AnalysisRequest;
 
+#[path = "about_ui.rs"]
+mod about_ui;
+
 #[path = "app_menu_ui.rs"]
 mod app_menu_ui;
 
@@ -89,7 +92,7 @@ use crate::spectrogram;
 use crate::{panels, waveform};
 
 /// What the window is called, in its title bar and to the desktop environment.
-const TITLE: &str = "Argand";
+const TITLE: &str = crate::about::NAME;
 /// Reverse-DNS identifier desktop environments group windows by.
 const APP_ID: &str = "io.github.o_kos.argand";
 
@@ -404,6 +407,10 @@ struct Shell {
     settings: Settings,
     /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
+    about_hint: Entity<hints::PinnedHint>,
+    about_request: u64,
+    _about: Subscription,
+    _about_focus: Subscription,
     status_panel: Option<settings_ui::StatusPanel>,
     status_panel_request: u64,
     /// What the analysis hint opened with, which Escape restores.
@@ -536,9 +543,12 @@ impl Shell {
             if window.is_window_active() {
                 shell.recent_files.refresh(&shell.session.recent);
                 shell.check_disk(window, cx);
-            } else if let Some(plot) = shell.plot_entity() {
-                // The release may happen in another window and never arrive here.
-                plot.update(cx, |plot, cx| plot.end_gestures(cx));
+            } else {
+                shell.close_about(cx);
+                if let Some(plot) = shell.plot_entity() {
+                    // The release may happen in another window and never arrive here.
+                    plot.update(cx, |plot, cx| plot.end_gestures(cx));
+                }
             }
             cx.notify();
         });
@@ -568,10 +578,21 @@ impl Shell {
             )
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
+        let about_hint = cx.new(about_ui::hint);
+        let about_events = cx.subscribe_in(&about_hint, window, Self::about_changed);
+        let about_focus = cx.on_focus_out(
+            &about_hint.read(cx).focus_handle(),
+            window,
+            |shell, _, _, cx| shell.close_about(cx),
+        );
         Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
+            about_hint,
+            about_request: 0,
+            _about: about_events,
+            _about_focus: about_focus,
             status_panel: None,
             status_panel_request: 0,
             hint_opening: None,
@@ -1866,6 +1887,7 @@ impl Render for Shell {
                 })
                 .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
                 .on_action(cx.listener(Self::toggle_application_menu))
+                .on_action(cx.listener(Self::show_about))
                 .on_action(cx.listener(Self::open_recent))
                 .on_action(cx.listener(Self::edit_analysis))
                 .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
@@ -1903,6 +1925,7 @@ impl Render for Shell {
             .size_full()
             .child(frame.render(content, Self::edge_pressed(cx.entity().downgrade()), cx))
             .children(menu_backdrop)
+            .children(hints::backdrop(&self.about_hint, hint_area, cx))
             .children(self.conversion_cover(gpui_kit::Bounds::new(
                 hint_area.origin,
                 gpui_kit::size(

@@ -12,6 +12,30 @@ Linux title-bar controls paint their own rounded hover/press backgrounds; Window
 
 The analysis settings hint selects Peak (MAX) or Mean power, including subsequent files; saved effective settings override configuration defaults after a restart. The current session persists transform/palette settings, the time-ruler format, grid visibility, orientation, scale-control visibility and interface theme. `session::VERSION` and `session::READABLE` define the written and supported versions; legacy dynamic range is ignored. Range and its mode reset to configuration defaults on file opening. Changes in the hint preview without altering saved session settings; a keeping close (click outside, Enter, Ctrl+, again, F10, Ctrl+O, opening a file) saves them, while Escape restores the settings, time view and frequency view the hint opened with (`HintOpening`). Reset to defaults, below the values, applies the configuration values and keeps the hint open. Window and colour-scheme names are title-cased in the interface (`editor::display_name`, which parses back unchanged), and each value looks its own width, right-aligned, with lists opening wider than any value they offer. Changes use the same cancellable worker and retain the old picture until the new one is complete (see [Time navigation (#30)](navigation-selection.md#time-navigation-30): every analysis after a file's first is a final-only replacement). Mean power accumulates squared, tone-calibrated spectral amplitudes in cached bin/frame cells and weights their overlap with display pixels before taking dB; it is not integrated band power. Temporal power sums use f64 and count every frame once, including preview frames. CLI `mean` retains its legacy dB average after frequency MAX. Neither reducer changes the waveform envelope, PSD, transform lattice, or normalization. The displayed settings are tracked separately from requested settings so pending work cannot mislabel the retained picture. The recommended range is the same measured value as the CLI; the GUI warning specifically requires a nonzero signal whose spectral peak is in the lower half of the absolute full-scale colour window. It is suppressed for peak-relative/auto modes; obsolete or failed deliveries never create a warning, while a failed re-analysis retains the presentation of the last accepted picture without an action. A narrower recommendation alone is not a warning. The transform summary is the settings button and owns the analysis hint. The range is a separate hinted status item with warned, corrected and full states. Its effective number, requested mode and recommendation are derived together when the accepted analysis snapshot enters the document, so the displayed state never combines parts of different updates. Warned and corrected states use the same default cursor, hover background and shared toggle action as Ctrl+R / Cmd+R; full and automatic ranges are informational only. The action retains the stricter requested-settings check. While the displayed and requested settings differ, or while re-analysis is failed, the level keeps the displayed appearance but offers no action, keycap or hover affordance.
 
+## About Argand (#107)
+
+A permanent Info button in the main toolbar and a direct About Argand application
+menu item open one retained `PinnedHint`, anchored below the toolbar like the
+selection panel and styled like File information. There is no command shortcut
+and hover only shows the build-identity tooltip. `about_ui.rs` composes the
+existing pinned helper, standard Button and keyboard-accessible Base Link. The
+repository Link opens its URL and closes About; every other panel click closes
+it too. Escape, focus leaving the whole popover subtree and window deactivation
+close it. Focus moving to the Link within About does not count as leaving.
+Opening another application panel/menu closes About. Deferred open requests are
+invalidated when another transition closes it, and repeated opening retains one
+content entity.
+
+`about.rs` reads the version, description, licence and repository from Cargo
+compile-time metadata. `build.rs` captures the short HEAD hash, commit timestamp
+in ISO 8601 with offset and an exact HEAD tag (`untagged` otherwise), with explicit
+`unavailable` values when Git identity cannot be obtained. The displayed time is
+the commit time, never the build time. No Git process runs at application startup.
+Rebuild inputs include worktree HEAD and shared refs/tags/packed refs. A source
+archive without its own `.git` never borrows an enclosing repository's identity.
+The tooltip contains tag, hash and commit date; the panel adds package details
+and the existing approved application artwork.
+
 ## Theme
 
 The default `theme = "system"` follows GPUI's OS appearance at startup and through a retained main-window appearance subscription. Theme changes refresh all windows. Explicit `dark` / `light` stay fixed; interface theme does not change the spectral palette. View → Theme chooses System, Light or Dark (#142); the choice is kept in the session (version 11, `Session::theme`) and, while the session holds none, `argand.toml` decides. The menu never rewrites `argand.toml`.
