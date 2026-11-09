@@ -50,9 +50,11 @@ independent reviewer: gpt-6.1-sol high, retaining the existing reviewer assignme
       loss, fractional rates, same-domain encoding changes and repeated toggles.
 - [x] Update current architecture documentation without rewriting completed plans.
 - [x] Freeze exact revision for independent review; address substantive findings.
-- [ ] Full formatting/Clippy/test gate, fresh release build, actual diagnostic
-      render on the second monitor without input emulation; coordinator assessment.
-- [ ] Complete plan before final review; push existing Draft after required hook.
+- [x] Full formatting/Clippy/test gate and coordinator assessment.
+- [x] Fresh release build.
+- [ ] Native visual verification: not completed; invalid diagnostic capture,
+      no further launch to avoid interfering with the owner's input.
+- [x] Complete plan before final review; retain the existing Draft and required push hook.
 
 ## Numerical validation
 
@@ -101,4 +103,14 @@ bases band-loss decisions on local edges. No findings were rejected. Five app
 carrier regressions pass, including actual encoded/reopened high-reference and
 fractional-rate roundtrips. The DSP regression checks full local coverage, the
 existing metadata-based constructor and phase at absolute output index 2^40+13.
-Follow-up independent review, refreshed full gate and release remain pending.
+Round 2 was clean. The final tests-only delta extracts source setup to satisfy
+Clippy without changing the runtime or assertions; that bounded delta also received
+a clean independent review. The refreshed full local gate
+passed: formatting, all-targets Clippy and 1134 tests, no failures, one ignored
+manual benchmark. The production release rebuilt successfully after the gate.
+
+The attempted actual diagnostic capture is invalid: its sample-rate field contains
+unexpected text and does not show the intended valid defaults. No native visual
+acceptance is claimed for this iteration. No further diagnostic launch or input
+emulation is performed; supported GPUI integration tests verify the defaults and
+absence of a warning. Native visual checking remains an explicit delivery limit.
