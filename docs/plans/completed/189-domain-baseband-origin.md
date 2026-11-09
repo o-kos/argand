@@ -72,8 +72,9 @@ unchanged.
   and async chooser continuations. Hide coordinate readouts while conversion runs.
 - Use the stock Select's grouped searchable delegate to distinguish Real and I/Q
   sections, retaining explicit domain in collapsed selection. Label arbitrary-scale
-  IEEE f32 as Float 32-bit (arbitrary scale), with CoolEdit 16×8 explained in the
-  tooltip; distinguish nominal Float 32-bit (±1 scale) without changing decoding.
+  IEEE f32 as Float 32-bit (unscaled), with arbitrary units and CoolEdit 16×8
+  explained in the tooltip; distinguish Float 32-bit (normalized), whose nominal
+  scale is ±1, without changing decoding or initial reader normalization.
 - A click on the application caption close button with a Select open must enter
   the normal guarded close workflow once. Verify actual GPUI hit-tested pointer
   delivery and unsaved protection; no input replay or custom Select replacement.
@@ -98,3 +99,12 @@ this composition and passes with it, including the normal unsaved dialog.
 - [x] Reproduce and fix one-click caption close with Select open using supported
       event composition; preserve normal unsaved workflow.
 - [ ] Complete follow-up, independent review, full gate and fresh release.
+
+### Expanded review dispositions
+
+The first expanded review accepted a queued-success cancellation race: cancelling
+the worker did not invalidate a success already waiting in the UI mailbox. A
+single retained cancellation intent now discards every terminal result after
+Cancel, then either retains the document or resumes the requested normal close
+workflow. A deterministic queued-success regression checks unchanged document,
+capture, version and unsaved state. No finding has been rejected.

@@ -306,10 +306,7 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
         assert!(shell.file_name().contains("recording-converted.wav"));
         assert!(shell.can_save_over().is_err());
         assert!(shell.session.recent.iter().all(|entry| entry.path == path));
-        assert_eq!(
-            shell.save_presentation(&editing.file().meta).1,
-            path.parent().unwrap()
-        );
+        assert_save_parent(shell, &path);
         editing.file().meta.source.clone()
     });
     assert_ne!(first_backing, path);
@@ -330,12 +327,7 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
     });
     shell.update_in(cx, |shell, window, cx| {
         assert!(shell.file_name().contains("recording-converted.flac"));
-        assert_eq!(
-            shell
-                .save_presentation(&shell.editing().unwrap().file().meta)
-                .1,
-            path.parent().unwrap()
-        );
+        assert_save_parent(shell, &path);
         assert_eq!(
             shell.conversion_request().unwrap().container,
             argand_io::write::Container::Flac
@@ -356,6 +348,14 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
         saved_ordinary_document,
     );
     assert_eq!(&std::fs::read(&target).unwrap()[..4], b"fLaC");
+    assert_saved_flac_metadata(&shell, cx);
+    assert_saved_samples(&target, 1200);
+    assert_saved_flac_band(&shell, cx, &dir);
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn assert_saved_flac_metadata(shell: &Entity<Shell>, cx: &mut gpui_kit::VisualTestContext) {
     assert_eq!(
         shell.read_with(cx, |shell, _| shell
             .editing()
@@ -365,10 +365,15 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
             .container),
         "flac"
     );
-    assert_saved_samples(&target, 1200);
-    assert_saved_flac_band(&shell, cx, &dir);
-    assert_eq!(std::fs::read(&path).unwrap(), original);
-    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn assert_save_parent(shell: &Shell, path: &std::path::Path) {
+    assert_eq!(
+        shell
+            .save_presentation(&shell.editing().unwrap().file().meta)
+            .1,
+        path.parent().unwrap()
+    );
 }
 
 fn assert_saved_flac_band(
@@ -1437,6 +1442,53 @@ fn caption_close_with_open_sample_list_reaches_unsaved_workflow(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
+fn cancellation_rejects_success_already_queued_by_the_worker(cx: &mut TestAppContext) {
+    let (shell, cx, dir) = converted_fixture(cx, "cancel-queued-success");
+    shell.update_in(cx, |shell, window, cx| {
+        let file = shell.file.as_ref().unwrap();
+        let document = file.id;
+        let editing = shell.editing().unwrap();
+        let version = editing.version();
+        let capture = editing.capture().clone();
+        let backing = file.unsaved.as_ref().unwrap().backing.clone();
+        let path = editing.file().meta.source.clone();
+        let samples = editing.len();
+        let (job, _) = crate::saving::spawn("queued-success-test", |_, _| (), |_| ());
+        shell.conversion.running = Some(Converting {
+            job,
+            progress: None,
+            document,
+            version,
+            name: "must-not-adopt.wav".into(),
+            directory: dir.clone(),
+            output_is_iq: true,
+            container: argand_io::write::Container::Wave,
+            backing,
+        });
+        let queued = Update::Finished(Ended::Done(crate::conversion::Converted {
+            saved: argand_io::write::Saved {
+                path,
+                samples,
+                container: "wav",
+                stamp: None,
+            },
+            clipped: 0,
+        }));
+        shell.cancel_conversion(window, cx);
+        shell.receive_conversion(queued, window, cx);
+        assert!(!shell.conversion_active());
+        assert!(shell.conversion.after_cancel.is_none());
+        assert_eq!(shell.file.as_ref().unwrap().id, document);
+        let editing = shell.editing().unwrap();
+        assert_eq!(editing.version(), version);
+        assert_eq!(editing.capture(), &capture);
+        assert!(editing.is_dirty());
+        assert!(shell.file.as_ref().unwrap().unsaved.is_some());
+    });
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[gpui_kit::test]
 fn conversion_blocks_document_actions_and_close_waits_before_unsaved_prompt(
     cx: &mut TestAppContext,
 ) {
@@ -1480,7 +1532,7 @@ fn conversion_blocks_document_actions_and_close_waits_before_unsaved_prompt(
         assert!(!shell.analysis_hint.read(cx).is_open());
         assert!(!shell.selection_hint.read(cx).is_open());
         shell.request_close(window, cx);
-        assert!(shell.conversion.close_requested);
+        assert!(shell.conversion.after_cancel == Some(AfterCancel::Close));
         assert!(shell.file.as_ref().unwrap().unsaved.is_some());
     });
     cx.run_until_parked();

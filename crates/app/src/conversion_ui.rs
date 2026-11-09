@@ -14,12 +14,18 @@ use gpui_kit::{AnyElement, Focusable};
 
 type SampleChoices = SearchableVec<SearchableGroup<Name>>;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AfterCancel {
+    KeepDocument,
+    Close,
+}
+
 pub(super) struct State {
     pub(super) running: Option<Converting>,
     pub(super) updates: Option<Task<()>>,
     pub(super) pending: Option<PendingConversion>,
     next_reader: u64,
-    close_requested: bool,
+    after_cancel: Option<AfterCancel>,
     #[cfg(test)]
     fail_reader_open: bool,
     pub(super) hint: Entity<hints::PinnedHint>,
@@ -41,7 +47,7 @@ impl State {
             updates: None,
             pending: None,
             next_reader: 0,
-            close_requested: false,
+            after_cancel: None,
             #[cfg(test)]
             fail_reader_open: false,
             hint,
@@ -83,8 +89,8 @@ fn kind_label(token: &str) -> String {
         "u8" => "Unsigned 8-bit",
         "i16" => "Signed 16-bit",
         "i32" => "Signed 32-bit",
-        "f32" => "Float 32-bit (±1 scale)",
-        "f16x8" => "Float 32-bit (arbitrary scale)",
+        "f32" => "Float 32-bit (normalized)",
+        "f16x8" => "Float 32-bit (unscaled)",
         _ => format,
     };
     format!("{domain} · {format}")
@@ -504,7 +510,7 @@ impl Render for Editor {
                     .tooltip(|_, cx| metadata_tooltip(MetadataHint {
                         title: "Sample format",
                         value: "Both floating formats store 32-bit float values".into(),
-                        explanation: "The arbitrary-scale format uses the CoolEdit 16×8 WAVE marker; the scale is a convention, not a clipping limit".into(),
+                        explanation: "Normalized means a nominal ±1 scale; unscaled uses arbitrary units and the CoolEdit 16×8 WAVE marker, without changing reader normalization or clipping limits".into(),
                         rows: Vec::new(),
                     }, cx))
                     .child(presentation::choice_control(
@@ -605,11 +611,14 @@ impl Shell {
     }
 
     pub(super) fn cancel_conversion(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.conversion
+            .after_cancel
+            .get_or_insert(AfterCancel::KeepDocument);
         self.conversion.pending = None;
         self.conversion.result = None;
         if let Some(job) = &self.conversion.running {
             job.job.cancel();
-        } else if std::mem::take(&mut self.conversion.close_requested) {
+        } else if self.conversion.after_cancel.take() == Some(AfterCancel::Close) {
             self.request_close(window, cx);
         }
         cx.notify();
@@ -623,7 +632,7 @@ impl Shell {
         if !self.conversion_active() {
             return false;
         }
-        self.conversion.close_requested = true;
+        self.conversion.after_cancel = Some(AfterCancel::Close);
         self.cancel_conversion(window, cx);
         true
     }
@@ -806,9 +815,11 @@ impl Shell {
                 let Some(job) = self.conversion.running.take() else {
                     return;
                 };
-                if std::mem::take(&mut self.conversion.close_requested) {
+                if let Some(after) = self.conversion.after_cancel.take() {
                     drop(job);
-                    self.request_close(window, cx);
+                    if after == AfterCancel::Close {
+                        self.request_close(window, cx);
+                    }
                     cx.notify();
                     return;
                 }
