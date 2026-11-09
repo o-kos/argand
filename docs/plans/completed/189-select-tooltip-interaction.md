@@ -26,19 +26,27 @@ Locked Select exposes its list focus handle while open and trigger handle while 
 - [x] Concise, bounded tooltip text/layout.
 - [x] Float-to-FLAC draft transition and warning.
 - [x] Meaningful combined pointer/keyboard and draft-state regressions.
-- [ ] Independent review; move completed plan before final review.
+- [x] Independent review; move completed plan before final review.
 
 ## Validation
 
 - [x] Normal `cargo check -p argand --locked`.
 - [x] Focused GUI regressions.
-- [ ] `cargo fmt --all -- --check`.
-- [ ] `cargo clippy --all-targets --locked`.
-- [ ] `cargo test --locked`.
-- [ ] Fresh `cargo build --release --locked` after the gate.
+- [x] `cargo fmt --all -- --check`.
+- [x] `cargo clippy --all-targets --locked`.
+- [x] `cargo test --locked`.
+- [x] Fresh `cargo build --release --locked` after the gate.
 
 No native GUI launch or input emulation. Report automated layout evidence separately from native validation.
 
 ## Verified toolkit behavior
 
 GPUI prepaint explicitly removes an active tooltip when its element no longer declares a tooltip builder. The combined pointer regression verifies disappearance and restoration, and selecting a shorter title verifies a smaller trigger with the same right anchor. Both property editors observe standard Select notifications so open-state changes invalidate their tooltip composition.
+
+## Completion and review
+
+The normal application check, formatting, all-targets Clippy and full locked suite pass: 1,142 tests, zero failures and one ignored manual benchmark. The release build completed after the gate. Independent review of the runtime and final tests-only geometry adjustment returned no substantive findings; none were rejected.
+
+The existing Analysis regression keeps its full open-menu bounds assertions while walking options. After confirmation it now checks the invariant right anchor, top and height, because the approved trigger width follows the selected title.
+
+Native desktop visual validation was not run. Automated GPUI pointer tests prove the combined open-list/tooltip transition and selected-trigger geometry; they do not establish native Wayland interaction.
