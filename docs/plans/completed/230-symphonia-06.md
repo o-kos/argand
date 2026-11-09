@@ -42,7 +42,7 @@ Symphonia 0.6.1 still accepts only RIFF WAVE, so this upgrade does not solve #19
 | Exact seek, reopen and source identity remain intact | Independent cursor, replacement/change and seek regressions | Seek/reopen/replacement and audio-track tests passed | Platform-specific identity limits unchanged |
 | EOF and damaged frames preserve safe-save behavior | Full stream and strict corruption/timestamp tests | Clean EOF, final-frame truncation and strict-save regressions passed | Declared-length FLAC truncation covered; private captures unavailable |
 | Current workspace passes required checks | fmt, Clippy, tests, then release build | All four checks passed; release build completed after tests | Local checks do not establish remote CI |
-| Independent review covers exact current snapshot | Neutral packet outside worktree and separate reviewer | Round 1 finding accepted; round 2 pending | Coordinator assesses findings |
+| Independent review covers exact current snapshot | Neutral packet outside worktree and separate reviewer | Round 1 finding accepted and verified; round 2 clean | Coordinator assesses findings |
 
 ## Implementation steps
 
@@ -50,7 +50,7 @@ Symphonia 0.6.1 still accepts only RIFF WAVE, so this upgrade does not solve #19
 - [x] Verify explicit EOF, timestamps, sample-copy, metadata and reopen contracts.
 - [x] Update relevant current documentation and user-visible changelog if warranted.
 - [x] Complete local validation and build the current release binary.
-- [ ] Complete independent review and record dispositions.
+- [x] Complete independent review and record dispositions.
 - [x] Move this plan to `docs/plans/completed/` before Ready/final review.
 
 ## Validation
@@ -63,7 +63,7 @@ Code pushes require the complete local gate. Preserve the production feature set
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after checks pass
 - [x] Targeted decoder and safe-save regression evidence.
-- [ ] Independent read-only review of the exact submitted state.
+- [x] Independent read-only review of the exact submitted state.
 
 Workspace tests passed: 1,150 tests; one manual release-mode conversion cost
 measurement is ignored. Tests use committed and synthetic FLAC/WAVE fixtures;
@@ -89,4 +89,7 @@ because the demuxer requires a frame to seek to. No findings were rejected.
 
 Refreshed fmt, Clippy, all 1,150 workspace tests (one ignored manual benchmark),
 and the ordered release build passed after freezing the final code/test snapshot.
-Round 2 independent review is pending.
+Round 2 independent read-only review was clean. The retained reviewer verified the
+accepted first-frame EOF finding against the production release reproduction. No
+findings were rejected and no new findings were raised. The coordinator assessed
+the final implementation and validation; the Pull Request remains Draft.
