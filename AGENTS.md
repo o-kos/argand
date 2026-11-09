@@ -1262,7 +1262,11 @@ name and requested WAV/FLAC container separately from the private encoded-WAVE b
 path. WAV supports all ten sample types; FLAC supports U8/I16 with the existing codec
 rate limits and exact-rate/reference comments. Choosing FLAC changes any unsupported
 draft format to I16 in its current domain, preserving rate and carrier and showing a
-warning; U8/I16 remain unchanged and returning to WAV keeps the chosen format. First Save and selection export use the requested container; an explicit
+warning; U8/I16 remain unchanged and returning to WAV keeps the chosen format.
+`property_advice.rs` shares measured callout placement, dismissal, standard close
+Button and hover fallback between Range and automatic sample-format changes. Format
+advice marks the selected value without an inline row, hides while a Select is open,
+and resets dismissal on a new automatic change; explicit choices clear the warning. First Save and selection export use the requested container; an explicit
 WAV/FLAC Save as extension overrides it. `History::unsaved` starts dirty without an Undo
 version. The first Save asks for a destination, then successful rebind clears unsaved
 identity. Temporary paths never enter Recent. `Source::backing` retains encoded

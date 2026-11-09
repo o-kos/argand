@@ -1,6 +1,7 @@
 //! File information, conversion draft, and the lifetime of unsaved conversion results.
 
 use super::numeric_editor::{self, NumericEditor};
+use super::property_advice::{self, Advice};
 use super::settings_ui::editor::{self as presentation, Name};
 use super::*;
 use crate::conversion::{Converted, Level, Request};
@@ -14,6 +15,7 @@ use gpui_kit::component::searchable_list::{
 };
 use gpui_kit::component::select::{SelectEvent, SelectState};
 use gpui_kit::{AnyElement, Focusable};
+use std::rc::Rc;
 
 type SampleChoices = SearchableVec<SearchableGroup<SampleChoice>>;
 
@@ -208,6 +210,7 @@ struct Editor {
     kind_widths: Vec<Pixels>,
     unavailable_kind: Option<String>,
     format_warning: bool,
+    format_advice: Advice,
     closed_selects: [FocusHandle; 2],
     _subscriptions: Vec<Subscription>,
     owner: Option<WeakEntity<Shell>>,
@@ -335,6 +338,7 @@ impl Editor {
             kind_widths,
             unavailable_kind,
             format_warning: false,
+            format_advice: Advice::default(),
             _subscriptions: subscriptions,
             owner: None,
             document: None,
@@ -399,6 +403,7 @@ impl Editor {
                 argand_core::SampleType::new(sample_type.domain, argand_core::SampleFormat::I16);
             value = Some(kind_label(&fallback.to_string()));
             self.format_warning = true;
+            self.format_advice.reset();
         }
         self.kind.update(cx, |kind, cx| {
             kind.set_items(sample_choices(flac), window, cx);
@@ -510,8 +515,55 @@ impl Editor {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        presentation::row(
-            "Sample format",
+        let choice = presentation::choice_control(
+            "conversion-kind",
+            &self.kind,
+            &self.kind_widths,
+            self.unavailable_kind.as_deref(),
+            window,
+            cx,
+        )
+        .into_any_element();
+        let value = if self.format_warning {
+            let warning = "Sample format changed to Int 16-bit for FLAC";
+            let edge = cx.theme().warning;
+            self.format_advice.render(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_color(cx.theme().popover_foreground)
+                            .child(choice),
+                    )
+                    .child("⚠"),
+                property_advice::Content {
+                    anchor: "conversion-format-advice",
+                    balloon: "conversion-format-balloon",
+                    close: "conversion-format-balloon-close",
+                    pointer: "conversion-format-balloon-pointer",
+                    warning: warning.into(),
+                    edge,
+                    action: None,
+                    hover: Rc::new(move |_, cx| {
+                        metadata_tooltip(
+                            MetadataHint {
+                                title: "Sample format",
+                                value: warning.into(),
+                                explanation: String::new(),
+                                rows: Vec::new(),
+                            },
+                            cx,
+                        )
+                    }),
+                },
+                !tips,
+                cx.entity_id(),
+                window,
+                cx,
+            )
+        } else {
             div()
                 .id("conversion-format-hint")
                 .when(tips, |control| {
@@ -527,16 +579,10 @@ impl Editor {
                         )
                     })
                 })
-                .child(presentation::choice_control(
-                    "conversion-kind",
-                    &self.kind,
-                    &self.kind_widths,
-                    self.unavailable_kind.as_deref(),
-                    window,
-                    cx,
-                )),
-            cx,
-        )
+                .child(choice)
+                .into_any_element()
+        };
+        presentation::row("Sample format", value, cx)
     }
 
     fn reference_control(&self, tips: bool, cx: &mut Context<Self>) -> impl IntoElement {
@@ -599,6 +645,8 @@ impl Render for Editor {
             .filter(|request| self.changed(request));
         div()
             .id("file-information-panel")
+            .relative()
+            .child(self.format_advice.sheet(cx.entity_id()))
             .key_context("FileInformation")
             .track_focus(&self.scope)
             .on_action(cx.listener(|editor, _: &FocusNext, window, cx| {
@@ -665,14 +713,6 @@ impl Render for Editor {
                     )
                 },
             )
-            .when(self.format_warning, |panel| {
-                panel.child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().warning)
-                        .child("Sample format changed to Int 16-bit for FLAC"),
-                )
-            })
             .child(div().mt_1().pt_1().child(self.convert_button(request, cx)))
     }
 }

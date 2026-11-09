@@ -17,13 +17,13 @@ After automatic FLAC format fallback, show a yellow marker beside the selected s
 
 ## Implementation and validation
 
-- [ ] Extract and reuse the Range advice lifecycle/rendering/placement.
-- [ ] Attach format advice to the measured sample-format value; retain warning clearing/reset rules.
-- [ ] Preserve Range action, Ctrl+R and keyboard/pointer behavior.
-- [ ] Meaningful GPUI auto/close/hover/list-suppression/clear and constrained-viewport coverage.
-- [ ] Update the retained UI inventory justification.
-- [ ] Normal application check, formatting, all-targets Clippy and focused regressions.
-- [ ] Move completed plan before final independent review.
+- [x] Extract and reuse the Range advice lifecycle/rendering/placement.
+- [x] Attach format advice to the measured sample-format value; retain warning clearing/reset rules.
+- [x] Preserve Range action, Ctrl+R and keyboard/pointer behavior.
+- [x] Meaningful GPUI auto/close/hover/list-suppression/clear and constrained-viewport coverage.
+- [x] Update the retained UI inventory justification.
+- [x] Normal application check, formatting, all-targets Clippy and focused regressions.
+- [x] Move completed plan before final independent review.
 - [ ] Full locked suite, fresh release after the gate, existing Draft PR publication.
 
 No native GUI launch, desktop input emulation or portal requests. Distinguish automated rendered-layout evidence from native validation.

@@ -1821,3 +1821,110 @@ fn flac_fallback_preserves_domain_and_frequency_draft(cx: &mut TestAppContext) {
         });
     }
 }
+
+fn choose_kind(form: &Entity<Editor>, cx: &mut gpui_kit::VisualTestContext, token: &str) {
+    form.update_in(cx, |editor, window, cx| {
+        editor.kind.update(cx, |state, cx| {
+            state.set_selected_value(&kind_label(token), window, cx);
+            cx.emit(SelectEvent::Confirm(state.selected_value().cloned()));
+        });
+    });
+    frame(cx);
+}
+
+#[gpui_kit::test]
+fn format_advice_reuses_range_close_hover_and_list_suppression(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    for width in [1000., 600.] {
+        let mut form = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| Editor::new(request(), window, cx));
+            form = Some(editor.clone());
+            Root::new(editor, window, cx)
+        });
+        cx.simulate_resize(size(px(width), px(900.)));
+        let form = form.unwrap();
+        form.update_in(cx, |editor, _, _| editor.focus_on_open = false);
+        frame(cx);
+        let before = cx.update(|window, _| window.find("convert-capture").bounds().top());
+        choose_container(&form, cx, "FLAC");
+        frame(cx);
+        let anchor = cx.update(|window, _| {
+            assert_eq!(
+                window.find("convert-capture").bounds().top(),
+                before,
+                "advice adds no inline row"
+            );
+            let balloon = window.try_find("conversion-format-balloon");
+            assert_eq!(
+                balloon.is_some(),
+                width == 1000.,
+                "automatic advice needs a readable side"
+            );
+            if let Some(balloon) = balloon {
+                assert!(balloon.bounds().right() <= window.viewport_size().width);
+            }
+            window.find("conversion-format-advice").bounds().center()
+        });
+        if width == 1000. {
+            cx.update(|window, cx| window.click("conversion-format-balloon-close", cx));
+            frame(cx);
+            frame(cx);
+            cx.update(|window, _| {
+                assert!(
+                    window.try_find("conversion-format-balloon").is_none(),
+                    "close must not immediately reopen"
+                );
+                assert!(window.find("conversion-format-advice").visible());
+            });
+        }
+        let modifiers = gpui_kit::Modifiers::default();
+        cx.simulate_mouse_move(anchor, None, modifiers);
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        frame(cx);
+        cx.update(|window, _| {
+            let tip = window.find("metadata-tooltip-content").bounds();
+            assert!(
+                tip.right() <= window.viewport_size().width
+                    && tip.bottom() <= window.viewport_size().height
+            );
+        });
+        let input = cx.update(|window, _| {
+            window
+                .within("conversion-kind")
+                .find("input")
+                .bounds()
+                .center()
+        });
+        cx.simulate_mouse_move(input, None, modifiers);
+        cx.simulate_mouse_down(input, MouseButton::Left, modifiers);
+        cx.simulate_mouse_up(input, MouseButton::Left, modifiers);
+        frame(cx);
+        cx.update(|window, _| {
+            assert!(window.try_find("metadata-tooltip-content").is_none());
+            assert!(window.try_find("conversion-format-balloon").is_none());
+            assert!(window.find(sample_row("iq_u8")).visible());
+        });
+        cx.simulate_keystrokes("escape");
+        frame(cx);
+        choose_kind(&form, cx, "iq_u8");
+        cx.update(|window, _| {
+            assert!(
+                window.try_find("conversion-format-advice").is_none(),
+                "explicit choice clears the marker"
+            )
+        });
+        choose_container(&form, cx, "WAV");
+        choose_kind(&form, cx, "iq_i32");
+        choose_container(&form, cx, "FLAC");
+        frame(cx);
+        cx.update(|window, _| {
+            assert_eq!(
+                window.try_find("conversion-format-balloon").is_some(),
+                width == 1000.,
+                "a new fallback resets dismissal"
+            )
+        });
+    }
+}

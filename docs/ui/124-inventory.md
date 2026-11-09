@@ -309,6 +309,18 @@ a hold-to-repeat; the steppers are not tab stops, the keyboard steps through the
 own arrows, and the repeat stops on an unusable value, on Reset to defaults, on the
 recommendation and once its stepper is no longer shown.
 
+Range and sample-format warnings share `property_advice.rs`: measured side placement,
+a standard close Button, the retained triangular pointer drawing, and ordinary Tooltip
+fallback after dismissal or when neither side has a readable width. The format warning
+is informational; Range retains its recommendation action and shortcut. Both disappear
+while a property Select is open. This extracts existing approved composition rather than
+introducing a replacement tooltip, select, button or input. The standard Tooltip cannot
+supply the persistent adjacent callout and dismiss-to-marker lifecycle; the same existing
+composition supplies it to both property editors. Keyboard focus remains with standard
+controls; the close Button is not a Tab stop. The format-advice GPUI regression covers
+automatic display, Close, hover fallback, open-list suppression, explicit clearing and
+constrained-viewport placement alongside the existing Range regressions.
+
 For the rest of the form the standard alternative is the same component, so no limitation is claimed. Composition
 would not help: the form's contract is a preview-and-keep transaction over a signal
 document, not a control.

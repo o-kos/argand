@@ -63,6 +63,8 @@ mod replace_ui;
 
 #[path = "numeric_editor.rs"]
 mod numeric_editor;
+#[path = "property_advice.rs"]
+mod property_advice;
 #[path = "saving_ui.rs"]
 mod saving_ui;
 #[path = "selection_gestures.rs"]

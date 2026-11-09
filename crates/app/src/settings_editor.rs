@@ -6,14 +6,13 @@
 //! whether the previewed settings are kept or restored.
 
 use super::super::numeric_editor::{self, NumericEditor};
+use super::super::property_advice::{self, Advice};
 use super::*;
 use gpui_kit::base::actions::Confirm;
-use gpui_kit::component::IconName;
 use gpui_kit::component::button::ButtonCustomVariant;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
-use gpui_kit::{Entity, Focusable, TestSupportExt};
-use std::cell::Cell;
+use gpui_kit::{Entity, Focusable};
 use std::rc::Rc;
 
 /// The key context of the editor inside the hint.
@@ -38,15 +37,6 @@ const LABEL: f32 = 110.0;
 
 /// The width of a list, which is wider than any value it offers.
 const LIST: f32 = 220.0;
-/// The widest the balloon's body grows, its pointer's length and the tip's distance from the sign.
-const BALLOON: f32 = 320.0;
-const POINTER: f32 = 9.0;
-const BALLOON_GAP: f32 = 3.0;
-/// The narrowest body the balloon takes on the right before it moves to the left.
-const BALLOON_MIN: f32 = 220.0;
-/// How far the balloon keeps from the window's edge, clear of the frame's resize grips.
-const BALLOON_MARGIN: f32 = 24.0;
-
 /// The width of the text in a number field, enough for any value it takes.
 const NUMBER: f32 = 44.0;
 
@@ -108,10 +98,7 @@ pub(super) struct Editor {
     range_editor: Entity<NumericEditor>,
     /// Each list's handle while it is closed, which an open list no longer answers with.
     closed: [FocusHandle; 5],
-    /// Where the last frame drew the hint and its Range value, which place the balloon.
-    drawn: Rc<Cell<Drawn>>,
-    /// Whether the balloon was closed with its ×, until the hint closes.
-    balloon_closed: bool,
+    advice: Advice,
     /// Whether the first frame has put the keyboard on the first value.
     placed: bool,
     /// The hint's own scope, which Tab and Shift+Tab never leave.
@@ -119,66 +106,6 @@ pub(super) struct Editor {
     /// The keyboard's place on Reset to defaults, marked as the values are.
     defaults_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
-}
-
-/// Records where an element was drawn into one field of `drawn`, and redraws the editor on a change.
-fn measure(
-    drawn: Rc<Cell<Drawn>>,
-    editor: gpui_kit::EntityId,
-    field: fn(&mut Drawn) -> &mut Option<gpui_kit::Bounds<Pixels>>,
-) -> impl IntoElement {
-    gpui_kit::canvas(
-        move |bounds, _, cx| {
-            let mut now = drawn.get();
-            if *field(&mut now) != Some(bounds) {
-                *field(&mut now) = Some(bounds);
-                drawn.set(now);
-                cx.notify(editor);
-            }
-        },
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .size_full()
-}
-
-/// Where the last frame drew the hint and its Range value.
-#[derive(Clone, Copy, Default, PartialEq)]
-struct Drawn {
-    sheet: Option<gpui_kit::Bounds<Pixels>>,
-    readout: Option<gpui_kit::Bounds<Pixels>>,
-}
-
-/// Which side of the hint the balloon stands on, and how wide its body may grow.
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Side {
-    Right(Pixels),
-    /// With the distance from the Range value's right edge to the balloon's right edge.
-    Left(Pixels, Pixels),
-}
-
-/// Where the balloon fits beside a hint drawn at `sheet` with its Range value at `readout`.
-///
-/// It stands right of the hint, wrapping into the room there is, and moves left of the hint
-/// once that room is narrower than a readable line. Without room on either side it is not
-/// shown, and the value's hover hint says the same.
-fn balloon_side(
-    sheet: gpui_kit::Bounds<Pixels>,
-    readout: gpui_kit::Bounds<Pixels>,
-    viewport: Pixels,
-) -> Option<Side> {
-    let reach = px(BALLOON_GAP + POINTER + BALLOON_MARGIN);
-    let right = (viewport - readout.right() - reach).min(px(BALLOON));
-    let left = (sheet.left() - reach).min(px(BALLOON));
-    let beside = readout.right() - sheet.left() + px(BALLOON_GAP);
-    let readable = px(BALLOON_MIN);
-    if right >= readable {
-        Some(Side::Right(right))
-    } else if left >= readable {
-        Some(Side::Left(left, beside))
-    } else {
-        None
-    }
 }
 
 impl Editor {
@@ -258,8 +185,7 @@ impl Editor {
             overlap_editor,
             range_editor,
             closed,
-            drawn: Rc::default(),
-            balloon_closed: false,
+            advice: Advice::default(),
             placed: false,
             scope: cx.focus_handle(),
             defaults_focus: cx.focus_handle().tab_stop(true),
@@ -603,135 +529,35 @@ impl Editor {
         let Some((warning, actionable)) = warning else {
             return div().child(text).into_any_element();
         };
-        // The warning colour edges the balloon, which a border of the hint's own would lose on the hint.
         let edge = advice_color(cx);
-        let drawn = self.drawn.get();
-        let measured = drawn.sheet.zip(drawn.readout);
-        let side = measured.and_then(|(sheet, readout)| {
-            balloon_side(sheet, readout, window.viewport_size().width)
-        });
-        // Without a balloon of its own the value carries the warning as an ordinary hover hint.
-        let hover = self.balloon_closed || (measured.is_some() && side.is_none());
-        let balloon = side
-            .filter(|_| !self.balloon_closed && !self.list_open(cx))
-            .map(|side| self.balloon(side, warning.clone(), actionable, edge, window, cx));
-        let hint = warning.clone();
-        let measure = measure(self.drawn.clone(), cx.entity_id(), |drawn| {
-            &mut drawn.readout
-        });
-        div()
-            .id("analysis-range-advice")
-            .relative()
-            .text_color(edge)
-            .when(actionable, |value| {
-                value
-                    .border_b_1()
-                    .border_dashed()
-                    .border_color(edge.opacity(0.6))
-                    .cursor_pointer()
-                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
-            })
-            .when(hover && !self.list_open(cx), |value| {
-                value.tooltip(move |_, cx| {
-                    let action = actionable
-                        .then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
-                    shortcut_tooltip(hint.clone(), action, "Shell", px(BALLOON), cx)
-                })
-            })
-            .child(format!("{text} ⚠"))
-            .child(measure)
-            .children(balloon)
-            .into_any_element()
-    }
-
-    /// The warning in a balloon on `side` of the hint, with its pointer towards the Range row.
-    fn balloon(
-        &self,
-        side: Side,
-        warning: String,
-        actionable: bool,
-        edge: gpui_kit::Hsla,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> gpui_kit::AnyElement {
         let shortcut = actionable
             .then(|| Kbd::binding_for_action(&UseRecommendedRange, Some("Shell"), window))
             .flatten();
-        let (room, left) = match side {
-            Side::Right(room) => (room, true),
-            Side::Left(room, _) => (room, false),
-        };
-        let close = Button::new("analysis-range-balloon-close")
-            .ghost()
-            .xsmall()
-            .icon(IconName::Close)
-            .tab_stop(false)
-            .on_click(cx.listener(|editor, _, _, cx| {
-                cx.stop_propagation();
-                editor.balloon_closed = true;
-                cx.notify();
-            }));
-        let body = div()
-            .id("analysis-range-balloon")
-            .occlude()
-            .when(actionable, |body| {
-                body.cursor_pointer()
-                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
-            })
-            .when(left, |body| body.ml(px(POINTER - 1.0)))
-            .when(!left, |body| body.mr(px(POINTER - 1.0)))
-            .max_w(room)
-            .flex()
-            .items_center()
-            .gap_2()
-            .pl_2()
-            .pr_1()
-            .py_0p5()
-            .bg(cx.theme().tokens.popover)
-            .border_1()
-            .border_color(edge)
-            .rounded(cx.theme().radius)
-            .shadow_md()
-            .text_color(cx.theme().popover_foreground)
-            .child(div().flex_1().min_w_0().child(warning))
-            .when_some(shortcut, |body, shortcut| {
-                body.child(shortcuts::keycap(shortcut, cx))
-            })
-            .child(close)
-            .test_support();
-        let pointer = div()
-            .id("analysis-range-balloon-pointer")
-            .occlude()
-            .when(actionable, |pointer| {
-                pointer
-                    .cursor_pointer()
-                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx)))
-            })
-            .absolute()
-            .top_0()
-            .bottom_0()
-            .when(left, |pointer| pointer.left_0())
-            .when(!left, |pointer| pointer.right_0())
-            .flex()
-            .items_center()
-            .child(balloon_pointer(cx.theme().tokens.popover, edge, left));
-        // The pointer comes last so it is painted over the border of the body it joins.
-        let balloon = div()
-            .absolute()
-            .top_0()
-            .bottom_0()
-            .w(room + px(POINTER))
-            .flex()
-            .items_center()
-            .map(|balloon| match side {
-                Side::Right(_) => balloon.left_full().ml(px(BALLOON_GAP)),
-                Side::Left(_, beside) => balloon.right(beside).justify_end(),
-            })
-            .child(body)
-            .child(pointer);
-        gpui_kit::deferred(balloon)
-            .with_priority(gpui_kit::base::POPUP_PRIORITY + 1)
-            .into_any_element()
+        let action = actionable.then(|| property_advice::Action {
+            click: Rc::new(cx.listener(|editor, _, window, cx| editor.toggle_range(window, cx))),
+            keycap: shortcut.map(|shortcut| shortcuts::keycap(shortcut, cx).into_any_element()),
+        });
+        self.advice.render(
+            div().child(format!("{text} ⚠")),
+            property_advice::Content {
+                anchor: "analysis-range-advice",
+                balloon: "analysis-range-balloon",
+                close: "analysis-range-balloon-close",
+                pointer: "analysis-range-balloon-pointer",
+                warning: warning.clone(),
+                edge,
+                action,
+                hover: Rc::new(move |_, cx| {
+                    let action = actionable
+                        .then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
+                    shortcut_tooltip(warning.clone(), action, "Shell", px(320.), cx)
+                }),
+            },
+            self.list_open(cx),
+            cx.entity_id(),
+            window,
+            cx,
+        )
     }
 
     /// A list as wide as its widest item, underlined only under the value it shows.
@@ -769,7 +595,7 @@ impl Render for Editor {
         } else {
             self.range_readout(window, cx)
         };
-        let measure = measure(self.drawn.clone(), cx.entity_id(), |drawn| &mut drawn.sheet);
+        let measure = self.advice.sheet(cx.entity_id());
         // The keyboard comes to the first value once the popover has taken it for itself.
         if !self.placed {
             self.placed = true;
@@ -1008,40 +834,6 @@ pub(in crate::shell) fn row(
                 .child(label),
         )
         .child(div().flex_1().min_w_0().flex().justify_end().child(value))
-}
-
-/// The balloon's pointer, its tip towards the Range row on the left or the right.
-fn balloon_pointer(
-    fill: impl Into<gpui_kit::Hsla>,
-    edge: gpui_kit::Hsla,
-    leftward: bool,
-) -> impl IntoElement {
-    let fill = fill.into();
-    gpui_kit::canvas(
-        |_, _, _| (),
-        move |bounds, _, window, _| {
-            let (tip, base) = if leftward {
-                (bounds.left(), bounds.right())
-            } else {
-                (bounds.right(), bounds.left())
-            };
-            let tip = gpui_kit::point(tip, bounds.center().y);
-            let upper = gpui_kit::point(base, bounds.top());
-            let lower = gpui_kit::point(base, bounds.bottom());
-            let mut body = gpui_kit::PathBuilder::fill();
-            body.add_polygon(&[upper, tip, lower], true);
-            if let Ok(path) = body.build() {
-                window.paint_path(path, fill);
-            }
-            let mut outline = gpui_kit::PathBuilder::stroke(px(1.0));
-            outline.add_polygon(&[upper, tip, lower], false);
-            if let Ok(path) = outline.build() {
-                window.paint_path(path, edge);
-            }
-        },
-    )
-    .w(px(POINTER))
-    .h(px(16.0))
 }
 
 const DEFAULTS: &str = "analysis-defaults";
@@ -2003,53 +1795,4 @@ pub(super) fn display_name(name: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("-")
-}
-
-#[cfg(test)]
-mod balloon_tests {
-    use super::*;
-    use gpui_kit::{Bounds, point, size};
-
-    /// A hint 370 wide from `left`, with its Range value ending 12 inside its right edge.
-    fn at(left: f32) -> (Bounds<Pixels>, Bounds<Pixels>) {
-        let sheet = Bounds::new(point(px(left), px(400.)), size(px(WIDTH), px(300.)));
-        let readout = Bounds::new(point(px(left + 300.), px(600.)), size(px(58.), px(20.)));
-        (sheet, readout)
-    }
-
-    #[test]
-    fn the_balloon_stands_right_while_a_readable_line_fits_there() {
-        let (sheet, readout) = at(170.);
-        assert_eq!(
-            balloon_side(sheet, readout, px(1400.)),
-            Some(Side::Right(px(BALLOON))),
-            "a wide window gives the whole balloon"
-        );
-        let room = px(820.) - readout.right() - px(BALLOON_GAP + POINTER + BALLOON_MARGIN);
-        assert_eq!(
-            balloon_side(sheet, readout, px(820.)),
-            Some(Side::Right(room)),
-            "a narrower one wraps it into the room up to the edge"
-        );
-    }
-
-    #[test]
-    fn the_balloon_moves_left_of_the_hint_without_room_on_the_right() {
-        let (sheet, readout) = at(600.);
-        let Some(Side::Left(room, beside)) = balloon_side(sheet, readout, px(1000.)) else {
-            panic!("the balloon should stand on the left");
-        };
-        assert_eq!(room, px(BALLOON), "the left has room for all of it");
-        assert_eq!(
-            readout.right() - beside,
-            sheet.left() - px(BALLOON_GAP),
-            "its right edge stands just clear of the hint"
-        );
-    }
-
-    #[test]
-    fn without_room_on_either_side_there_is_no_balloon() {
-        let (sheet, readout) = at(170.);
-        assert_eq!(balloon_side(sheet, readout, px(700.)), None);
-    }
 }
