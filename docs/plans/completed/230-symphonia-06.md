@@ -42,7 +42,7 @@ Symphonia 0.6.1 still accepts only RIFF WAVE, so this upgrade does not solve #19
 | Exact seek, reopen and source identity remain intact | Independent cursor, replacement/change and seek regressions | Seek/reopen/replacement and audio-track tests passed | Platform-specific identity limits unchanged |
 | EOF and damaged frames preserve safe-save behavior | Full stream and strict corruption/timestamp tests | Clean EOF, final-frame truncation and strict-save regressions passed | Declared-length FLAC truncation covered; private captures unavailable |
 | Current workspace passes required checks | fmt, Clippy, tests, then release build | All four checks passed; release build completed after tests | Local checks do not establish remote CI |
-| Independent review covers exact current snapshot | Neutral packet outside worktree and separate reviewer | Pending | Coordinator assesses findings |
+| Independent review covers exact current snapshot | Neutral packet outside worktree and separate reviewer | Round 1 finding accepted; round 2 pending | Coordinator assesses findings |
 
 ## Implementation steps
 
@@ -65,7 +65,7 @@ Code pushes require the complete local gate. Preserve the production feature set
 - [x] Targeted decoder and safe-save regression evidence.
 - [ ] Independent read-only review of the exact submitted state.
 
-Workspace tests passed: 1,148 tests; one manual release-mode conversion cost
+Workspace tests passed: 1,150 tests; one manual release-mode conversion cost
 measurement is ignored. Tests use committed and synthetic FLAC/WAVE fixtures;
 optional private captures are not available in this worktree. Native app interaction
 and remote CI are not claimed by these automated results.
@@ -75,3 +75,18 @@ and remote CI are not claimed by these automated results.
 Keep the PR Draft until owner acceptance. After current full CI and acceptance,
 follow normal merge and conditional branch cleanup. Resume #192 on this validated
 prerequisite with an explicit dependency if it is not yet merged.
+
+## Review dispositions
+
+Round 1 identified premature clean EOF when a known-length FLAC ends inside its
+first audio frame, or its only remaining frame fails decoding. Accepted: retain
+the checked decoded packet-end timestamp in normal and strict mode and reject EOF
+before the known length. Unknown-length scans remain unconstrained; normal mode
+still skips damaged interior packets. Added partial/corrupt-first-frame read,
+repeated read, seek-zero, auto-normalization and strict-save regressions. Extended
+valid final-block seeks and exact-endpoint seeks; the endpoint is handled locally
+because the demuxer requires a frame to seek to. No findings were rejected.
+
+Refreshed fmt, Clippy, all 1,150 workspace tests (one ignored manual benchmark),
+and the ordered release build passed after freezing the final code/test snapshot.
+Round 2 independent review is pending.

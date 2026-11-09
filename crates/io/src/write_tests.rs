@@ -1769,3 +1769,15 @@ fn a_truncated_final_flac_packet_never_publishes_a_save() {
     assert!(run(&request).is_err());
     assert_eq!(names(&dir), ["a.flac"]);
 }
+
+#[test]
+fn a_truncated_first_flac_packet_never_publishes_a_save() {
+    let dir = TempDir::new("write-flac-truncated-first");
+    let source = dir.join("a.flac");
+    let mut bytes = include_bytes!("../tests/fixtures/levels.flac").to_vec();
+    bytes.truncate(186);
+    fs::write(&source, bytes).unwrap();
+    let request = request(&source, OpenHints::default(), None, dir.join("b.flac"));
+    assert!(run(&request).is_err());
+    assert_eq!(names(&dir), ["a.flac"]);
+}

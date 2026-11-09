@@ -39,8 +39,8 @@ pub struct DecodedSource {
     exhausted: bool,
     /// Fail on a damaged packet instead of skipping it, as exact copies need.
     strict: bool,
-    /// The timestamp the next packet must carry in strict mode, so a dropped frame is noticed.
-    next_ts: Option<Timestamp>,
+    /// End of the last decoded packet, or the actual landing point after a seek.
+    decoded_end: Timestamp,
     /// The decoded file as it was opened.
     stamp: Option<crate::write::SourceStamp>,
     /// The handle the file was opened through, which every fresh parser of it reads.
@@ -271,7 +271,7 @@ impl DecodedSource {
             divisor: 1.0,
             exhausted: false,
             strict: false,
-            next_ts: None,
+            decoded_end: Timestamp::ZERO,
             stamp,
             file: file.clone(),
         };
@@ -327,6 +327,12 @@ impl DecodedSource {
             let packet = match self.reader.next_packet() {
                 Ok(Some(packet)) => packet,
                 Ok(None) => {
+                    if u64::try_from(self.decoded_end.get()).unwrap_or(0) < self.meta.len_samples {
+                        return Err(SourceError::Decode(format!(
+                            "premature end of stream at sample {}, expected {}",
+                            self.decoded_end, self.meta.len_samples
+                        )));
+                    }
                     self.exhausted = true;
                     return Ok(false);
                 }
@@ -335,11 +341,10 @@ impl DecodedSource {
             if packet.track_id != self.track_id {
                 continue;
             }
-            if let Some(expected) = self.next_ts
-                && packet.pts != expected
-            {
+            if self.strict && packet.pts != self.decoded_end {
                 return Err(SourceError::Decode(format!(
-                    "a damaged frame is missing at sample {expected}"
+                    "a damaged frame is missing at sample {}",
+                    self.decoded_end
                 )));
             }
 
@@ -352,14 +357,10 @@ impl DecodedSource {
                 }
                 Err(e) => return Err(decode_err(e)),
             };
-            if self.strict {
-                self.next_ts = Some(
-                    packet
-                        .pts
-                        .checked_add(Duration::new(decoded.frames() as u64))
-                        .ok_or_else(|| SourceError::Decode("packet timestamp overflow".into()))?,
-                );
-            }
+            self.decoded_end = packet
+                .pts
+                .checked_add(Duration::new(decoded.frames() as u64))
+                .ok_or_else(|| SourceError::Decode("packet timestamp overflow".into()))?;
             if decoded.frames() == 0 {
                 continue;
             }
@@ -411,7 +412,7 @@ impl DecodedSource {
     /// Refuse damaged packets from now on.
     pub(crate) fn strict(mut self) -> Self {
         self.strict = true;
-        self.next_ts = Some(Timestamp::ZERO);
+        self.decoded_end = Timestamp::ZERO;
         self
     }
 
@@ -535,6 +536,20 @@ impl SampleSource for DecodedSource {
             }
         }
 
+        // The endpoint is a logical EOF position, not a frame the demuxer can seek to.
+        if sample == self.meta.len_samples {
+            self.decoded_end = Timestamp::new(
+                i64::try_from(sample)
+                    .map_err(|_| SourceError::Decode("seek timestamp overflow".into()))?,
+            );
+            self.pending.clear();
+            self.pending_pos = 0;
+            self.skip = 0;
+            self.exhausted = true;
+            self.decoder.reset();
+            return Ok(());
+        }
+
         // FLAC and WAVE count timestamps in samples, so the sample is the timestamp.
         let result = self
             .reader
@@ -549,14 +564,12 @@ impl SampleSource for DecodedSource {
                 },
             )
             .map_err(decode_err)?;
-        if self.strict {
-            if result.actual_ts > result.required_ts {
-                return Err(SourceError::Decode(format!(
-                    "the frame holding sample {sample} is damaged"
-                )));
-            }
-            self.next_ts = Some(result.actual_ts);
+        if self.strict && result.actual_ts > result.required_ts {
+            return Err(SourceError::Decode(format!(
+                "the frame holding sample {sample} is damaged"
+            )));
         }
+        self.decoded_end = result.actual_ts;
 
         // Seeks land on a packet boundary at or before the target, so the
         // remainder is dropped on the next read.

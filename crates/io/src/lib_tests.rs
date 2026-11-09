@@ -560,7 +560,8 @@ fn flac_seeks_discard_old_packets_and_preserve_levels() {
     let mut source = open(&path, &hints).unwrap();
     let expected = drain(source.as_mut());
     let units = source.original_sample_units();
-    for sample in [14336, 0, 512, 4096, 14336, 1024, 0] {
+    assert!(matches!(source.seek(16385), Err(SourceError::SeekOutOfRange { .. })));
+    for sample in [14336, 0, 512, 4096, 14336, 1024, 0, 16383, 16384, 7] {
         source.seek(sample).unwrap();
         assert_eq!(drain(source.as_mut()), expected[sample as usize..], "sample {sample}");
         assert_eq!(source.original_sample_units(), units);
@@ -669,5 +670,29 @@ fn a_truncated_known_length_flac_is_an_error_instead_of_clean_eof() {
             Ok(_) => {}
             Err(_) => break,
         }
+    }
+}
+
+#[test]
+fn a_flac_without_a_complete_first_frame_is_not_clean_eof() {
+    let dir = TempDir::new("decoded-truncated-first");
+    let (path, data) = flac_fixture(&dir);
+    let audio = flac_audio_offset(&data);
+    for corrupt in [false, true] {
+        let mut bytes = data[..if corrupt { 3703 } else { audio + 100 }].to_vec();
+        if corrupt {
+            bytes[audio + 114] ^= 1;
+        }
+        std::fs::write(&path, bytes).unwrap();
+        let hints = OpenHints { normalize: Some(Normalize::None), ..Default::default() };
+        let mut source = open(&path, &hints).unwrap();
+        assert_eq!(source.meta().len_samples, 16384);
+        let mut buf = [0.0; 513];
+        assert!(source.read(&mut buf).is_err(), "corrupt={corrupt}");
+        assert!(source.read(&mut buf).is_err(), "repeated, corrupt={corrupt}");
+        source.seek(0).unwrap();
+        assert!(source.read(&mut buf).is_err(), "seek zero, corrupt={corrupt}");
+        let auto = OpenHints { normalize: Some(Normalize::Auto), ..Default::default() };
+        assert!(open(&path, &auto).is_err(), "normalization, corrupt={corrupt}");
     }
 }
