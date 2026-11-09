@@ -1956,7 +1956,7 @@ fn metadata_hint_width(hint: &MetadataHint, window: &Window, cx: &gpui_kit::App)
     [
         (hint.title, 0.875, FontWeight::SEMIBOLD),
         (hint.value.as_str(), 0.875, FontWeight::NORMAL),
-        (hint.explanation.as_str(), 0.75, FontWeight::NORMAL),
+        (hint.explanation.as_str(), 0.875, FontWeight::NORMAL),
     ]
     .into_iter()
     .flat_map(|(text, scale, weight)| {
@@ -2014,7 +2014,6 @@ fn recent_hint(
                             div()
                                 .w_full()
                                 .flex_shrink_0()
-                                .text_xs()
                                 .text_color(cx.theme().muted_foreground)
                                 .child(directory.clone()),
                         ),
@@ -2033,6 +2032,7 @@ fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::Any
                 return div()
                     .w(px(330.).min(window.viewport_size().width - px(48.)))
                     .py_1()
+                    .text_sm()
                     .flex()
                     .flex_col()
                     .gap_1()
@@ -2051,7 +2051,6 @@ fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::Any
                             .pt_2()
                             .border_t_1()
                             .border_color(cx.theme().border)
-                            .text_xs()
                             .text_color(cx.theme().muted_foreground)
                             .child(hint.explanation.clone()),
                     );
@@ -2059,6 +2058,7 @@ fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::Any
             // A definite content width lets wrapped lines contribute their full layout height.
             let width = metadata_hint_width(&hint, window, cx);
             div()
+                .text_sm()
                 .w(width)
                 .py_1()
                 .flex()
@@ -2083,7 +2083,6 @@ fn metadata_tooltip(hint: MetadataHint, cx: &mut gpui_kit::App) -> gpui_kit::Any
                         div()
                             .w_full()
                             .flex_shrink_0()
-                            .text_xs()
                             .text_color(cx.theme().muted_foreground)
                             .child(hint.explanation.clone()),
                     )

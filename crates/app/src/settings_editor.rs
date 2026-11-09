@@ -36,9 +36,6 @@ const WIDTH: f32 = 370.0;
 /// The width of every row's label column.
 const LABEL: f32 = 110.0;
 
-/// What a frameless select adds to its text, which is its padding and chevron.
-const CHEVRON: f32 = 34.0;
-
 /// The width of a list, which is wider than any value it offers.
 const LIST: f32 = 220.0;
 /// The widest the balloon's body grows, its pointer's length and the tip's distance from the sign.
@@ -746,6 +743,7 @@ impl Editor {
             id,
             self.combo(choice),
             &self.widths[choice as usize],
+            None,
             window,
             cx,
         )
@@ -886,7 +884,7 @@ pub(in crate::shell) fn value_column_width(window: &Window) -> Pixels {
 pub(in crate::shell) fn number_width(value: &str, window: &Window, cx: &gpui_kit::App) -> Pixels {
     let widths = shown_widths(&[value.to_owned()], window, cx);
     // Reserve the small Input's horizontal text padding, without a Select chevron.
-    (widths[0] - px(CHEVRON) + px(16.)).max(px(NUMBER))
+    (widths[0] - choice_chrome(window) + px(16.)).max(px(NUMBER))
 }
 
 /// Existing frameless Select presentation shared by both property editors.
@@ -894,11 +892,13 @@ pub(in crate::shell) fn choice_control<D>(
     id: &'static str,
     state: &Entity<SelectState<D>>,
     widths: &[Pixels],
+    placeholder: Option<&str>,
     window: &Window,
     cx: &gpui_kit::App,
 ) -> impl IntoElement
 where
-    D: gpui_kit::component::searchable_list::SearchableListDelegate<Item = Name> + 'static,
+    D: gpui_kit::component::searchable_list::SearchableListDelegate + 'static,
+    D::Item: gpui_kit::component::searchable_list::SearchableListItem<Value = String>,
 {
     let focused = state.read(cx).focus_handle(cx).is_focused(window);
     let widest = widths.iter().copied().fold(px(0.), Pixels::max);
@@ -922,8 +922,12 @@ where
         .id(id)
         .appearance(false)
         .small()
+        .when_some(placeholder, |list, value| {
+            list.placeholder(value.to_owned())
+        })
         .w_full()
-        .menu_width(widest.max(px(LIST)));
+        .menu_width(widest.max(px(LIST)))
+        .menu_max_h((window.viewport_size().height - px(48.)).max(px(0.)));
     div().relative().w(widest).child(list).child(underline)
 }
 
@@ -1113,6 +1117,11 @@ fn combo(
     (state, shown)
 }
 
+// Stock small Select: two 1px borders, horizontal padding, gap_1 and a size_3p5 caret.
+fn choice_chrome(window: &Window) -> Pixels {
+    gpui_kit::component::Size::Small.input_px() * 2. + px(2.) + window.rem_size() * 1.125
+}
+
 /// The width a frameless select takes to show each of its items with the chevron.
 pub(in crate::shell) fn shown_widths(
     items: &[String],
@@ -1130,7 +1139,7 @@ pub(in crate::shell) fn shown_widths(
         .map(|item| {
             let run = style.to_run(item.len());
             let line = text.shape_line(item.clone().into(), size, &[run], None);
-            line.width.ceil() + px(CHEVRON)
+            line.width.ceil() + choice_chrome(window)
         })
         .collect()
 }

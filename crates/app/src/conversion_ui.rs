@@ -5,14 +5,68 @@ use super::settings_ui::editor::{self as presentation, Name};
 use super::*;
 use crate::conversion::{Converted, Level, Request};
 use crate::saving::{Ended, Update};
+use gpui_kit::TestSupportExt;
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::IconName;
 use gpui_kit::component::input::InputState;
-use gpui_kit::component::searchable_list::{SearchableGroup, SearchableVec};
+use gpui_kit::component::searchable_list::{
+    SearchableGroup, SearchableListDelegate, SearchableListItem, SearchableVec,
+};
 use gpui_kit::component::select::{SelectEvent, SelectState};
 use gpui_kit::{AnyElement, Focusable};
 
-type SampleChoices = SearchableVec<SearchableGroup<Name>>;
+type SampleChoices = SearchableVec<SearchableGroup<SampleChoice>>;
+
+#[derive(Clone)]
+struct SampleChoice {
+    title: String,
+}
+
+impl SearchableListItem for SampleChoice {
+    type Value = String;
+
+    fn title(&self) -> gpui_kit::SharedString {
+        self.title.clone().into()
+    }
+
+    fn render(&self, _: &mut Window, _: &mut gpui_kit::App) -> impl IntoElement {
+        let label = self
+            .title
+            .split_once(" · ")
+            .map_or(self.title.as_str(), |(_, format)| format)
+            .to_owned();
+        div()
+            .id(gpui_kit::SharedString::from(format!(
+                "sample-format-{}",
+                self.title
+            )))
+            .test_support()
+            .child(label)
+    }
+
+    fn value(&self) -> &String {
+        &self.title
+    }
+}
+
+fn sample_choices(flac: bool) -> SampleChoices {
+    SearchableVec::new(
+        [("Real", "rl_"), ("I/Q", "iq_")]
+            .into_iter()
+            .map(|(title, prefix)| {
+                SearchableGroup::new(title).items(
+                    argand_core::SAMPLE_TYPE_TOKENS
+                        .iter()
+                        .filter(|token| token.starts_with(prefix))
+                        .filter(|token| !flac || token.ends_with("_u8") || token.ends_with("_i16"))
+                        .map(|token| SampleChoice {
+                            title: kind_label(token),
+                        }),
+                )
+            })
+            .collect::<Vec<_>>(),
+    )
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AfterCancel {
@@ -133,6 +187,7 @@ struct Editor {
     container_widths: Vec<Pixels>,
     kind: Entity<SelectState<SampleChoices>>,
     kind_widths: Vec<Pixels>,
+    unavailable_kind: Option<String>,
     closed_selects: [FocusHandle; 2],
     _subscriptions: Vec<Subscription>,
     owner: Option<WeakEntity<Shell>>,
@@ -193,15 +248,11 @@ impl Editor {
             .iter()
             .map(|s| kind_label(s))
             .collect();
-        let selected = argand_core::SAMPLE_TYPE_TOKENS
-            .iter()
-            .position(|token| *token == request.output.sample_type.to_string())
-            .map(|index| gpui_kit::component::IndexPath::new(index % 5).section(index / 5));
         let kind_widths = presentation::shown_widths(&kinds, window, cx);
-        let groups = SearchableVec::new(vec![
-            SearchableGroup::new("Real").items(kinds[..5].iter().cloned().map(Name)),
-            SearchableGroup::new("I/Q").items(kinds[5..].iter().cloned().map(Name)),
-        ]);
+        let groups = sample_choices(request.container == argand_io::write::Container::Flac);
+        let initial_kind = kind_label(&request.output.sample_type.to_string());
+        let selected = groups.position(&initial_kind);
+        let unavailable_kind = selected.is_none().then_some(initial_kind);
         let kind = cx.new(|cx| SelectState::new(groups, selected, window, cx));
         let containers = vec!["WAV".to_owned(), "FLAC".to_owned()];
         let container_widths = presentation::shown_widths(&containers, window, cx);
@@ -226,13 +277,21 @@ impl Editor {
                 &reference_editor,
                 |_, _, _: &numeric_editor::Changed, cx| cx.notify(),
             ),
-            cx.subscribe(&container, |_, _, _: &SelectEvent<Vec<Name>>, cx| {
-                cx.notify()
-            }),
+            cx.subscribe_in(
+                &container,
+                window,
+                |editor, _, _: &SelectEvent<Vec<Name>>, window, cx| {
+                    editor.filter_kinds(window, cx);
+                    cx.notify();
+                },
+            ),
             cx.subscribe_in(
                 &kind,
                 window,
                 |editor, _, _: &SelectEvent<SampleChoices>, window, cx| {
+                    if editor.kind.read(cx).selected_value().is_some() {
+                        editor.unavailable_kind = None;
+                    }
                     editor.sync_reference(window, cx);
                     cx.notify();
                 },
@@ -250,6 +309,7 @@ impl Editor {
             reference_editor,
             kind,
             kind_widths,
+            unavailable_kind,
             _subscriptions: subscriptions,
             owner: None,
             document: None,
@@ -299,11 +359,33 @@ impl Editor {
         }
     }
 
-    fn sync_reference(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let iq = self
-            .kind
+    fn filter_kinds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let value = self.kind_value(cx).map(str::to_owned);
+        let flac = self
+            .container
             .read(cx)
             .selected_value()
+            .is_some_and(|value| value == "FLAC");
+        self.kind.update(cx, |kind, cx| {
+            kind.set_items(sample_choices(flac), window, cx);
+            if let Some(value) = &value {
+                kind.set_selected_value(value, window, cx);
+            }
+        });
+        self.unavailable_kind = value.filter(|_| self.kind.read(cx).selected_value().is_none());
+    }
+
+    fn kind_value<'a>(&'a self, cx: &'a gpui_kit::App) -> Option<&'a str> {
+        self.kind
+            .read(cx)
+            .selected_value()
+            .map(String::as_str)
+            .or(self.unavailable_kind.as_deref())
+    }
+
+    fn sync_reference(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let iq = self
+            .kind_value(cx)
             .is_some_and(|value| value.starts_with("I/Q"));
         if iq == self.reference_iq {
             return;
@@ -332,14 +414,10 @@ impl Editor {
         let mut request = self.request.clone();
         request.output.sample_rate = crate::numbers::parse(self.rate.read(cx).value().as_ref())
             .map_err(|_| "Enter a positive finite sample rate in Hz".to_string())?;
-        let selected = self
-            .kind
-            .read(cx)
-            .selected_value()
-            .ok_or("Choose a sample type")?;
+        let selected = self.kind_value(cx).ok_or("Choose a sample type")?;
         request.output.sample_type = argand_core::SAMPLE_TYPE_TOKENS
             .iter()
-            .find(|token| kind_label(token) == *selected)
+            .find(|token| kind_label(token) == selected)
             .ok_or("Choose a supported sample type")?
             .parse()
             .map_err(|_| "Choose a supported sample type")?;
@@ -499,6 +577,7 @@ impl Render for Editor {
                     "conversion-container",
                     &self.container,
                     &self.container_widths,
+                    None,
                     window,
                     cx,
                 ),
@@ -517,6 +596,7 @@ impl Render for Editor {
                         "conversion-kind",
                         &self.kind,
                         &self.kind_widths,
+                        self.unavailable_kind.as_deref(),
                         window,
                         cx,
                     )),

@@ -1560,3 +1560,129 @@ fn conversion_blocks_document_actions_and_close_waits_before_unsaved_prompt(
     });
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+fn sample_row(token: &str) -> gpui_kit::SharedString {
+    format!("sample-format-{}", kind_label(token)).into()
+}
+
+fn assert_flac_trigger_fits(cx: &mut gpui_kit::VisualTestContext) {
+    cx.update(|window, cx| {
+        let input = window.within("conversion-container").find("input").bounds();
+        let text = "FLAC";
+        let style = gpui_kit::TextStyle {
+            font_family: cx.theme().font_family.clone(),
+            ..Default::default()
+        };
+        let glyphs = window
+            .text_system()
+            .shape_line(
+                text.into(),
+                window.rem_size() * 0.875,
+                &[style.to_run(text.len())],
+                None,
+            )
+            .width;
+        let reserved = px(18.) + window.rem_size() * (0.25 + 0.875);
+        assert!(
+            input.size.width >= glyphs + reserved,
+            "the rendered trigger must fit FLAC plus stock padding, borders, gap and caret"
+        );
+    });
+}
+
+fn choose_container(editor: &Entity<Editor>, cx: &mut gpui_kit::VisualTestContext, name: &str) {
+    editor.update_in(cx, |editor, window, cx| {
+        editor.container.update(cx, |state, cx| {
+            state.set_selected_value(&name.to_owned(), window, cx);
+            cx.emit(SelectEvent::Confirm(state.selected_value().cloned()));
+        });
+    });
+    frame(cx);
+}
+
+#[gpui_kit::test]
+fn sample_choices_fit_and_flac_filters_without_resetting_drafts(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        settings_ui::init(cx);
+    });
+    for rem in [16., 24.] {
+        let mut editor = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            window.set_rem_size(px(rem));
+            let form = cx.new(|cx| Editor::new(request(), window, cx));
+            editor = Some(form.clone());
+            Root::new(form, window, cx)
+        });
+        cx.simulate_resize(size(px(1000.), px(1000.)));
+        let editor = editor.unwrap();
+        editor.update_in(cx, |editor, window, cx| {
+            editor.focus_on_open = false;
+            window.focus(&editor.kind.read(cx).focus_handle(cx), cx);
+        });
+        frame(cx);
+        cx.simulate_keystrokes("enter");
+        frame(cx);
+        cx.update(|window, _| {
+            let first = window.find(sample_row("rl_u8")).bounds();
+            let last = window.find(sample_row("iq_f16x8")).bounds();
+            assert!(first.top() >= px(0.) && last.bottom() <= window.viewport_size().height);
+        });
+        cx.simulate_keystrokes("escape");
+        editor.update_in(cx, |editor, window, cx| {
+            editor.container.update(cx, |state, cx| {
+                state.set_selected_value(&"FLAC".into(), window, cx);
+                cx.emit(SelectEvent::Confirm(state.selected_value().cloned()));
+            });
+            editor
+                .rate
+                .update(cx, |state, cx| state.set_value("12345", window, cx));
+        });
+        frame(cx);
+        assert_flac_trigger_fits(cx);
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.kind_value(cx).map(str::to_owned)),
+            Some(kind_label("iq_f32"))
+        );
+        assert!(editor.read_with(cx, |editor, cx| editor.request(cx).is_err()));
+        choose_container(&editor, cx, "WAV");
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor
+                .kind
+                .read(cx)
+                .selected_value()
+                .cloned()),
+            Some(kind_label("iq_f32"))
+        );
+        choose_container(&editor, cx, "FLAC");
+        cx.update(|window, cx| window.focus(&editor.read(cx).kind.read(cx).focus_handle(cx), cx));
+        cx.simulate_keystrokes("enter");
+        frame(cx);
+        let target = cx.update(|window, _| {
+            for token in [
+                "rl_i32", "rl_f32", "rl_f16x8", "iq_i32", "iq_f32", "iq_f16x8",
+            ] {
+                assert!(window.try_find(sample_row(token)).is_none());
+            }
+            window.find(sample_row("iq_i16")).bounds().center()
+        });
+        cx.simulate_mouse_move(target, None, gpui_kit::Modifiers::default());
+        cx.simulate_mouse_down(target, MouseButton::Left, gpui_kit::Modifiers::default());
+        cx.simulate_mouse_up(target, MouseButton::Left, gpui_kit::Modifiers::default());
+        frame(cx);
+        editor.read_with(cx, |editor, cx| {
+            assert_eq!(editor.kind_value(cx), Some(kind_label("iq_i16").as_str()));
+            assert_eq!(editor.rate.read(cx).value().as_ref(), "12345");
+            assert_eq!(
+                editor.reference.read(cx).value().as_ref(),
+                crate::numbers::number(100_000.)
+            );
+        });
+        cx.simulate_keystrokes("enter up enter");
+        frame(cx);
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.kind_value(cx).map(str::to_owned)),
+            Some(kind_label("iq_u8"))
+        );
+    }
+}
