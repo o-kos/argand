@@ -21,6 +21,7 @@ fn request() -> Request {
         sources: Vec::new(),
         input: meta.clone(),
         output: meta,
+        carrier: None,
         target: "output.wav".into(),
         protected: Vec::new(),
         container: argand_io::write::Container::Wave,
@@ -1298,4 +1299,38 @@ fn panel_editor(shell: &Entity<Shell>, cx: &gpui_kit::VisualTestContext) -> Enti
             .downcast::<Editor>()
             .unwrap()
     })
+}
+
+#[gpui_kit::test]
+fn exact_carrier_defaults_do_not_warn_from_rounded_physical_references(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    for (rate, reference) in [(24000., 1e20), (8000.15, 1e10)] {
+        let mut source = request();
+        source.input.sample_rate = rate;
+        source.input.center_freq = reference;
+        source.output = source.input.clone();
+        let mut editor = None;
+        let window = cx.add_window(|window, cx| {
+            let form = cx.new(|cx| Editor::new(source, window, cx));
+            editor = Some(form.clone());
+            Root::new(form, window, cx)
+        });
+        let editor = editor.unwrap();
+        window
+            .update(cx, |_, window, cx| {
+                editor.read(cx).kind.clone().update(cx, |kind, cx| {
+                    kind.set_selected_value(&kind_label("rl_f32"), window, cx);
+                    cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+        editor.read_with(cx, |editor, cx| {
+            let draft = editor.request(cx).unwrap();
+            assert_eq!(draft.carrier, Some(rate / 2.));
+            assert_eq!(draft.output.sample_rate, rate * 2.);
+            assert!(draft.plan().unwrap().retains_input_band());
+            assert!(editor.summary(cx).unwrap().is_empty());
+        });
+    }
 }

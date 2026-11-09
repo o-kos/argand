@@ -22,6 +22,8 @@ pub struct Request {
     pub sources: Vec<Option<SourceFile>>,
     pub input: SignalMeta,
     pub output: SignalMeta,
+    /// Exact cross-domain carrier, independent of rounded physical metadata origins.
+    pub carrier: Option<f64>,
     pub container: argand_io::write::Container,
     pub target: PathBuf,
     pub protected: Vec<Protected>,
@@ -65,8 +67,19 @@ impl Request {
     pub fn plan(&self) -> Result<ConversionPlan, WriteError> {
         let mut input = self.input.clone();
         input.len_samples = self.capture.len();
-        let plan = ConversionPlan::new(&input, &self.output)
-            .map_err(|error| self.refused(error.to_string()))?;
+        let plan = if let Some(carrier) = self.carrier {
+            let reference = carrier_reference(&input, &self.output, carrier)
+                .map_err(|error| self.refused(error.into()))?;
+            if input.is_iq() == self.output.is_iq() || reference != self.output.center_freq {
+                return Err(self
+                    .refused("the carrier does not match the output domain and metadata".into()));
+            }
+            let delta = if input.is_iq() { -carrier } else { carrier };
+            ConversionPlan::with_reference_delta(&input, &self.output, delta)
+        } else {
+            ConversionPlan::new(&input, &self.output)
+        }
+        .map_err(|error| self.refused(error.to_string()))?;
         EncodedWave::check(&self.output, plan.samples)?;
         self.container.check(&self.output, plan.samples)?;
         if !self.full_scale.is_finite() || self.full_scale <= 0.0 {

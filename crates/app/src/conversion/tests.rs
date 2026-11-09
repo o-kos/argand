@@ -27,6 +27,7 @@ fn request_at_rate(
             encoding: None,
         })],
         output: input.clone(),
+        carrier: None,
         input,
         target: dir.join("output.wav"),
         protected: Vec::new(),
@@ -333,7 +334,12 @@ fn cancellation_and_source_change_after_a_block_leave_the_existing_target_alone(
 
 #[test]
 fn carrier_translation_preserves_two_sided_tones_amplitude_and_physical_metadata() {
-    for (rate, physical_reference) in [(24000., 0.), (24000.125, 1_000_000_000.5)] {
+    for (rate, physical_reference) in [
+        (24000., 0.),
+        (24000.125, 1_000_000_000.5),
+        (24000., 1e20),
+        (8000.15, 1e10),
+    ] {
         let dir = TempDir::new("carrier-roundtrip");
         let count = 32768;
         let values: Vec<f32> = (0..count)
@@ -360,7 +366,9 @@ fn carrier_translation_preserves_two_sided_tones_amplitude_and_physical_metadata
         forward.output.sample_rate = rate * 2.;
         forward.output.center_freq =
             carrier_reference(&forward.input, &forward.output, rate / 2.).unwrap();
+        forward.carrier = Some(rate / 2.);
         let plan = forward.plan().unwrap();
+        assert!(plan.retains_input_band());
         assert_eq!(
             plan.band, plan.input_band,
             "default retains the nominal whole band"
@@ -407,6 +415,7 @@ fn carrier_translation_preserves_two_sided_tones_amplitude_and_physical_metadata
         reverse.output.sample_rate = rate;
         reverse.output.center_freq =
             carrier_reference(&reverse.input, &reverse.output, rate / 2.).unwrap();
+        reverse.carrier = Some(rate / 2.);
         reverse.target = dir.join("roundtrip.wav");
         run(&reverse, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
         let (iq_meta, iq) = read(&reverse);

@@ -348,3 +348,34 @@ fn local_reference_math_keeps_long_capture_phase_and_fractional_shift_width() {
         assert!(error.abs() < 0.002, "n={n} phase error={error}");
     }
 }
+
+#[test]
+fn explicit_carrier_delta_keeps_local_band_and_long_phase_at_large_references() {
+    for (rate, reference) in [(24000., 1e20), (8000.15, 1e10)] {
+        let input = meta(true, rate, reference);
+        let output = meta(false, rate * 2., reference - rate / 2.);
+        let metadata_plan = ConversionPlan::new(&input, &output).unwrap();
+        assert_eq!(
+            metadata_plan.reference_delta,
+            output.center_freq - input.center_freq
+        );
+        assert!(
+            !metadata_plan.retains_input_band(),
+            "legacy API still follows rounded metadata"
+        );
+        let plan = ConversionPlan::with_reference_delta(&input, &output, -rate / 2.).unwrap();
+        assert!(plan.retains_input_band());
+        assert_eq!(plan.local_band, (-rate / 2., rate / 2.));
+        assert_eq!(plan.reference_delta, -rate / 2.);
+        let mut stream = plan.stream(input.len_samples).unwrap();
+        assert_eq!(stream.step, 0.25);
+        stream.given = (1u64 << 40) + 13;
+        let mut value = [[0.4, 0.3]];
+        stream.translate(&mut value);
+        assert!((value[0][0] + 0.3).abs() < 1e-6);
+        assert_eq!(value[0][1], 0.);
+        let reverse = ConversionPlan::with_reference_delta(&output, &input, rate / 2.).unwrap();
+        assert!(reverse.retains_input_band());
+        assert_eq!(reverse.stream(output.len_samples).unwrap().step, 0.);
+    }
+}

@@ -329,10 +329,12 @@ impl Editor {
             .parse()
             .map_err(|_| "Choose a supported sample type")?;
         request.output.center_freq = if request.output.is_iq() == request.input.is_iq() {
+            request.carrier = None;
             request.input.center_freq
         } else {
             let carrier = crate::numbers::parse(self.reference.read(cx).value().as_ref())
                 .map_err(|_| "Enter a finite reference carrier in Hz".to_string())?;
+            request.carrier = Some(carrier);
             crate::conversion::carrier_reference(&request.input, &request.output, carrier)?
         };
         request.container = match self.container.read(cx).selected_value().map(String::as_str) {
@@ -412,7 +414,7 @@ impl Editor {
     fn summary(&self, cx: &gpui_kit::App) -> Result<String, String> {
         let request = self.request(cx)?;
         let plan = request.plan().map_err(|error| error.to_string())?;
-        if plan.band != plan.input_band {
+        if !plan.retains_input_band() {
             return Ok(format!(
                 "Frequencies outside {} … {} Hz will be discarded",
                 crate::numbers::number(plan.band.0),
@@ -583,6 +585,7 @@ impl Shell {
             capture: editing.capture().clone(),
             sources: editing.source_files(),
             output: input.clone(),
+            carrier: None,
             input,
             target: std::path::PathBuf::new(),
             protected: editing.protected(),

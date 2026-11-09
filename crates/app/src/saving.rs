@@ -135,6 +135,7 @@ fn extract_flac(
         })],
         input,
         output,
+        carrier: None,
         container: Container::Flac,
         target: encoded_path.clone(),
         protected: protected.clone(),

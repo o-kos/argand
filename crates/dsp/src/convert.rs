@@ -23,10 +23,32 @@ pub struct ConversionPlan {
     /// Number of output frames, including both components for IQ.
     pub samples: u64,
     identity: bool,
+    retains_input_band: bool,
 }
 
 impl ConversionPlan {
     pub fn new(input: &SignalMeta, output: &SignalMeta) -> Result<Self, ExtractError> {
+        let plan =
+            Self::with_reference_delta(input, output, output.center_freq - input.center_freq)?;
+        let a = input.frequency_span();
+        let b = output.frequency_span();
+        if a.0 >= a.1 || b.0 >= b.1 {
+            return Err(ExtractError::OutsideCapture {
+                low: plan.band.0,
+                high: plan.band.1,
+            });
+        }
+        Ok(plan)
+    }
+
+    /// Use an exact output-minus-input reference delta in input-local hertz.
+    /// Carrier conversion must not recover this delta from rounded metadata origins.
+    /// Absolute output metadata remains its caller's nearest representable f64.
+    pub fn with_reference_delta(
+        input: &SignalMeta,
+        output: &SignalMeta,
+        delta: f64,
+    ) -> Result<Self, ExtractError> {
         for rate in [input.sample_rate, output.sample_rate] {
             if !rate.is_finite() || rate <= 0.0 {
                 return Err(ExtractError::BadRate(rate));
@@ -34,7 +56,6 @@ impl ConversionPlan {
         }
         let a = input.frequency_span();
         let b = output.frequency_span();
-        let delta = output.center_freq - input.center_freq;
         let native = relative_span(input);
         let target = relative_span(output);
         let local_band = (
@@ -56,8 +77,6 @@ impl ConversionPlan {
         ]
         .into_iter()
         .all(f64::is_finite)
-            || a.0 >= a.1
-            || b.0 >= b.1
             || local_band.0 >= local_band.1
         {
             return Err(ExtractError::OutsideCapture {
@@ -74,7 +93,7 @@ impl ConversionPlan {
             return Err(ExtractError::TooLong(input.len_samples));
         }
         let identity = input.sample_rate == output.sample_rate
-            && input.center_freq == output.center_freq
+            && delta == 0.0
             && input.is_iq() == output.is_iq();
         let input_width = input.sample_rate / if input.is_iq() { 1.0 } else { 2.0 };
         let output_width = output.sample_rate / if output.is_iq() { 1.0 } else { 2.0 };
@@ -103,12 +122,21 @@ impl ConversionPlan {
             passband: if identity {
                 band
             } else {
-                let edge = (band.1 - band.0) * 0.01;
-                (band.0 + edge, band.1 - edge)
+                let edge = width * 0.01;
+                (
+                    input.center_freq + (local_band.0 + edge),
+                    input.center_freq + (local_band.1 - edge),
+                )
             },
             samples: samples as u64,
             identity,
+            retains_input_band: local_band == native,
         })
+    }
+
+    /// Whether the nominal input band is wholly retained, compared in local coordinates.
+    pub fn retains_input_band(&self) -> bool {
+        self.retains_input_band
     }
 
     /// No filtering, translation or reconstruction is needed.

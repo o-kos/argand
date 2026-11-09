@@ -49,7 +49,7 @@ independent reviewer: gpt-6.1-sol high, retaining the existing reviewer assignme
 - [x] Verify custom Fs leaves C unchanged, custom C warns only on actual band
       loss, fractional rates, same-domain encoding changes and repeated toggles.
 - [x] Update current architecture documentation without rewriting completed plans.
-- [ ] Freeze exact revision for independent review; address substantive findings.
+- [x] Freeze exact revision for independent review; address substantive findings.
 - [ ] Full formatting/Clippy/test gate, fresh release build, actual diagnostic
       render on the second monitor without input emulation; coordinator assessment.
 - [ ] Complete plan before final review; push existing Draft after required hook.
@@ -77,3 +77,28 @@ and real tone projections, custom partial-band warning, finite carrier bounds,
 source-based toggles and current numeric-editor keyboard behavior. No DSP backend
 semantics were changed. The existing NumericEditor composes the same standard
 controls; no new custom-control exception is required.
+
+## Accepted precision correction
+
+The first independent review found that deriving the oscillator shift by subtracting
+rounded absolute metadata references loses the requested carrier at large references
+or fractional rates. Preserve the exact signed carrier delta separately in the app
+request. A narrowly named DSP constructor accepts that explicit input-local delta;
+the existing metadata-based constructor keeps its behavior. Local intersections,
+filter construction and oscillator use only local bounds/delta. Warning decisions
+compare native local bounds, not rounded physical labels. Output physical metadata
+is the nearest representable f64; at very large references it cannot express an
+arbitrarily small carrier exactly, and no stronger metadata precision is promised.
+Add regressions at R=1e20 and fractional Fs=8000.15/R=1e10, including default full
+coverage, independent array-frequency/phase/amplitude checks and roundtrip metadata.
+
+## Review record
+
+Round 1 accepted the carrier precision finding: subtracting rounded absolute
+references could shift the requested carrier or report false band loss. The fix
+retains exact carrier provenance, derives the signed local delta explicitly and
+bases band-loss decisions on local edges. No findings were rejected. Five app
+carrier regressions pass, including actual encoded/reopened high-reference and
+fractional-rate roundtrips. The DSP regression checks full local coverage, the
+existing metadata-based constructor and phase at absolute output index 2^40+13.
+Follow-up independent review, refreshed full gate and release remain pending.
