@@ -45,6 +45,8 @@ promise applies to.
 
 ### Changed
 
+- Building from source now requires Rust 1.98 or later; the pinned toolchain is stable Rust 1.98.1 (#233).
+
 - `--center` now overrides a frequency stored in the file instead of always replacing it with 0 Hz when absent.
 
 ### Fixed

@@ -25,22 +25,22 @@ pub fn convert(format: SampleFormat, bytes: &[u8], out: &mut [f32], scale: f32) 
             }
         }
         SampleFormat::I16 => {
-            for (dst, src) in out.iter_mut().zip(bytes.chunks_exact(2)) {
+            for (dst, src) in out.iter_mut().zip(bytes.as_chunks::<2>().0.iter()) {
                 *dst = i16::from_le_bytes([src[0], src[1]]) as f32 * scale;
             }
         }
         SampleFormat::I24 => {
-            for (dst, src) in out.iter_mut().zip(bytes.chunks_exact(3)) {
+            for (dst, src) in out.iter_mut().zip(bytes.as_chunks::<3>().0.iter()) {
                 *dst = packed_i24(src) as f32 * scale;
             }
         }
         SampleFormat::I32 => {
-            for (dst, src) in out.iter_mut().zip(bytes.chunks_exact(4)) {
+            for (dst, src) in out.iter_mut().zip(bytes.as_chunks::<4>().0.iter()) {
                 *dst = i32::from_le_bytes([src[0], src[1], src[2], src[3]]) as f32 * scale;
             }
         }
         SampleFormat::F32 | SampleFormat::F16x8 => {
-            for (dst, src) in out.iter_mut().zip(bytes.chunks_exact(4)) {
+            for (dst, src) in out.iter_mut().zip(bytes.as_chunks::<4>().0.iter()) {
                 *dst = f32::from_le_bytes([src[0], src[1], src[2], src[3]]) * scale;
             }
         }
@@ -59,19 +59,27 @@ pub fn peak_abs(format: SampleFormat, bytes: &[u8]) -> f32 {
             .map(|b| (*b as f32 - 128.0).abs())
             .fold(0.0f32, f32::max),
         SampleFormat::I16 => bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| (i16::from_le_bytes([c[0], c[1]]) as f32).abs())
             .fold(0.0f32, f32::max),
         SampleFormat::I24 => bytes
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| (packed_i24(c) as f32).abs())
             .fold(0.0f32, f32::max),
         SampleFormat::I32 => bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|c| (i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f32).abs())
             .fold(0.0f32, f32::max),
         SampleFormat::F32 | SampleFormat::F16x8 => bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]).abs())
             .fold(0.0f32, f32::max),
     }

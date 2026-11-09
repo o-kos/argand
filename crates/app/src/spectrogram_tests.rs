@@ -23,7 +23,7 @@ fn the_upload_reads_as_bgra_because_that_is_what_the_shader_reads() {
 fn every_pixel_keeps_the_alpha_the_shading_step_gave_it() {
     let bytes = bgra(&two_pixels(), crate::orientation::Mode::Horizontal);
     assert!(
-        bytes.chunks_exact(CHANNELS).all(|pixel| pixel[3] == 255),
+        bytes.as_chunks::<CHANNELS>().0.iter().all(|pixel| pixel[3] == 255),
         "a spectrogram is opaque, and gpui expects the alpha premultiplied"
     );
 }
@@ -63,12 +63,12 @@ fn every_pixel_uploaded_is_one_the_transform_produced() {
     let uploaded = bgra(&analysis.spectrogram, crate::orientation::Mode::Horizontal);
     assert_eq!(uploaded.len(), 128 * 64 * CHANNELS);
     for (i, (upload, transform)) in uploaded
-        .chunks_exact(CHANNELS)
-        .zip(analysis.spectrogram.rgba.chunks_exact(CHANNELS))
+        .as_chunks::<CHANNELS>().0.iter()
+        .zip(analysis.spectrogram.rgba.as_chunks::<CHANNELS>().0.iter())
         .enumerate()
     {
         assert_eq!(
-            upload,
+            *upload,
             [transform[2], transform[1], transform[0], transform[3]],
             "pixel {i} of the upload is not the pixel the transform produced"
         );
