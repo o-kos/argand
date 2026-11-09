@@ -201,7 +201,7 @@ modification time is beyond `SourceStamp`.
 ## Conversion publication and saving (#189)
 
 `write::EncodedWave`
-shares FloatWave's safe staging/publication and writes all ten supported types, rounding
+shares FloatWave's safe staging/publication and writes all twelve supported types, rounding
 integers to nearest with ties away from zero, saturating without dither and counting
 clipped scalar values. Floats keep finite overscale values; nonfinite data fails.
 Sources are stamped before/after reads and after final sync, before publication.
@@ -210,7 +210,7 @@ The result reader is prepared while the current document remains intact; only it
 Opened delivery adopts those same readers, without an unsaved-input prompt or Undo.
 Failed, cancelled and stale preparation never replaces or stops the current reader. `OpenFile::unsaved` holds the generated display
 name and requested WAV/FLAC container separately from the private encoded-WAVE backing
-path. WAV supports all ten sample types; FLAC supports U8/I16 with the existing codec
+path. WAV supports all twelve sample types; FLAC supports U8/I16 with the existing codec
 rate limits and exact-rate/reference comments. Choosing FLAC changes any unsupported
 draft format to I16 in its current domain, preserving rate and carrier and showing a
 warning; U8/I16 remain unchanged and returning to WAV keeps the chosen format.
@@ -227,3 +227,28 @@ disabled so f16x8 arbitrary units are not automatically rescaled.
 
 See [conversion DSP and reference semantics](processing.md#capture-conversion-189)
 and [File information UI](ui.md#file-information-and-conversion-189).
+
+## Native packed PCM24 (#192)
+
+`SampleFormat::I24` is a signed three-byte little-endian scalar with nominal full
+scale 8388608. `rl_i24` stores one scalar per sample and `iq_i24` stores an
+indivisible six-byte I/Q pair. Conversion sign-extends bit 23 with fixed-byte
+standard integer conversion, independently of host endianness; level scans use
+the same scalar decoder and aligned three-byte chunks. Normalization, gain and
+original-unit reconstruction follow the existing mapped integer path.
+
+RIFF/RF64/BW64 PCM24 is native only when the frame is tightly packed and every
+container bit is valid. Reduced-valid-bit extensible PCM24 retains its existing
+decoder fallback and metadata semantics; no partial-valid-bit support was added.
+The writer's generic RF64 guard still refuses any format the native reader cannot
+reopen. Full-valid PCM24 passes that guard, preserves stored bytes for unchanged
+segments, and uses the existing three-byte integer path for edited/computed output.
+Raw input accepts both I24 tokens and existing offsets, whole-frame truncation and
+source identity checks. FLAC decoding is unchanged; explicit FLAC conversion still
+supports only U8/I16 and filters I24 in the standard format selector.
+
+Full-valid PCM24 reports I24 rather than the decoder's I32 representation. Explicit
+sample-type overrides follow native byte reinterpretation, as for other mapped
+formats. Recent/session history preserves original opening hints and does not turn
+inferred decoder metadata into an override; automatic PCM24 detection is repeated
+on reopening. Deferred partial-valid layouts retain their decoder override semantics.

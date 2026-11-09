@@ -504,3 +504,14 @@ dismissal but clearing transient hover and obsolete anchor bounds. Reactivation
 distinguishes an outside pointer from an anchor reappearing beneath it. The Range
 regression applies the reopened recommendation, leaves while fixed, restores the
 warned range with Ctrl+R and verifies that only a fresh entry reopens the balloon.
+
+## Sample format options (#192)
+
+File information and whole-capture conversion retain `conversion_ui.rs`'s shared
+standard Select. WAVE offers the canonical twelve core sample types, including
+Real / I/Q Int 24-bit; FLAC keeps the existing U8/I16 filter and fallback. Document
+format hints identify signed 24-bit integers. Raw opening hints and CLI/configuration
+parsing accept `rl_i24` / `iq_i24`; CLI help and reports expose these same tokens.
+No control composition or pointer/keyboard handler changes. Native interaction
+acceptance must still exercise the new rows; headless Select regressions establish
+only automated behavior, not desktop interaction.

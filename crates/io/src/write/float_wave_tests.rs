@@ -174,7 +174,7 @@ fn a_capture_cancelled_while_it_is_finished_leaves_the_target_alone() {
 }
 
 #[test]
-fn encoded_wave_roundtrips_all_ten_types_and_reports_scalar_clipping() {
+fn encoded_wave_roundtrips_all_sample_types_and_reports_scalar_clipping() {
     for token in argand_core::SAMPLE_TYPE_TOKENS {
         let dir = TempDir::new(token);
         let target = dir.join("converted.wav");

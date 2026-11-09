@@ -275,3 +275,13 @@ The shared NumericEditor uses stock disabled controls and skips disabled numeric
 
 See [conversion DSP and reference semantics](processing.md#capture-conversion-189)
 and [conversion publication and saving](editing-io.md#conversion-publication-and-saving-189).
+
+## Sample type consumers (#192)
+
+The canonical twelve `SAMPLE_TYPE_TOKENS` include `rl_i24` and `iq_i24`. File
+information and conversion share the existing standard sample-format Select and
+show `Real · Int 24-bit` and `I/Q · Int 24-bit` for WAVE. FLAC filtering retains
+only U8/I16 and its existing domain-preserving fallback. The document format hint
+identifies signed 24-bit integers; raw opening hints, configuration/session tokens,
+CLI help and reports use the same parsed core sample type. No new widget or input
+handling is introduced. See the current [control inventory](../ui/124-inventory.md).

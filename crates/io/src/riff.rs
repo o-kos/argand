@@ -417,6 +417,8 @@ pub(crate) struct FmtChunk {
     pub sample_rate: u32,
     pub block_align: u16,
     pub bits: u16,
+    /// Significant bits in an extensible PCM container.
+    valid_bits: Option<u16>,
     /// First extension word, when `fmt ` is exactly 20 bytes.
     ext_word: Option<u32>,
     /// Sub-format tag from a WAVE_FORMAT_EXTENSIBLE GUID.
@@ -439,6 +441,7 @@ pub(crate) fn parse_fmt(body: &[u8]) -> Result<FmtChunk, RiffError> {
         sample_rate: u32_at(4),
         block_align: u16_at(12),
         bits: u16_at(14),
+        valid_bits: (body.len() >= 40).then(|| u16_at(18)),
         ext_word: (body.len() == 20).then(|| u32_at(16)),
         // Extensible layout: cbSize, validBits, channelMask, then a 16-byte
         // GUID whose first two bytes are the real format tag.
@@ -498,6 +501,13 @@ impl FmtChunk {
         let format = match (effective_tag, self.bits) {
             (WAVE_FORMAT_PCM, 8) => SampleFormat::U8,
             (WAVE_FORMAT_PCM, 16) => SampleFormat::I16,
+            (WAVE_FORMAT_PCM, 24)
+                if self.block_align == self.channels * 3
+                    && (self.format_tag != WAVE_FORMAT_EXTENSIBLE
+                        || self.valid_bits == Some(24)) =>
+            {
+                SampleFormat::I24
+            }
             (WAVE_FORMAT_PCM, 32) => SampleFormat::I32,
             (WAVE_FORMAT_IEEE_FLOAT, 32) => SampleFormat::F32,
             _ => return Err(self.unsupported()),

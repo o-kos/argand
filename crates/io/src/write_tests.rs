@@ -673,7 +673,8 @@ fn chunks_after_data_are_not_copied_as_samples() {
 fn a_type_hint_on_a_decoded_wave_keeps_its_stored_layout() {
     let dir = TempDir::new("write-24-hint");
     let source = dir.join("a.wav");
-    let data = write_wav24(&source, 2, 400);
+    write_extensible(&source, 20, 400);
+    let data = data_bytes(&source);
     let hints = OpenHints {
         sample_type: Some("iq_i32".parse().unwrap()),
         ..Default::default()
@@ -903,14 +904,29 @@ fn an_unknown_length_flac_is_counted_strictly_and_saved_whole() {
 }
 
 #[test]
-fn a_large_wave_the_native_reader_declines_is_refused() {
+fn a_packed_pcm24_save_can_use_rf64() {
     let dir = TempDir::new("write-24-rf64");
     let source = dir.join("a.wav");
     write_wav24(&source, 2, 400);
-    let request = request(&source, OpenHints::default(), None, dir.join("b.wav"));
+    let mut source_bytes = fs::read(&source).unwrap();
+    source_bytes[24..28].copy_from_slice(&2_400_000u32.to_le_bytes());
+    source_bytes[28..32].copy_from_slice(&14_400_000u32.to_le_bytes());
+    fs::write(&source, source_bytes).unwrap();
+    let mut request = request(&source, OpenHints::default(), None, dir.join("b.wav"));
+    request.meta.center_freq = 100e6;
     let result = save_with_limit(&request, &mut |_, _| {}, &AtomicBool::new(false), 1000);
-    assert!(matches!(result, Err(WriteError::Unsupported { .. })), "{result:?}");
-    assert_eq!(names(&dir), ["a.wav"]);
+    assert_eq!(result.unwrap().container, "rf64");
+    let bytes = fs::read(&request.target).unwrap();
+    assert_eq!(&bytes[..4], b"RF64");
+    assert_eq!(u64::from_le_bytes(bytes[28..36].try_into().unwrap()), 2400);
+    assert_eq!(u64::from_le_bytes(bytes[36..44].try_into().unwrap()), 400);
+    assert_eq!(data_bytes(&request.target), data_bytes(&source));
+    let reopened = open(&request.target, &OpenHints::default()).unwrap();
+    assert_eq!(reopened.meta().sample_type.to_string(), "iq_i24");
+    assert_eq!(reopened.meta().len_samples, 400);
+    assert_eq!(reopened.meta().sample_rate, 2_400_000.0);
+    assert_eq!(reopened.meta().center_freq, 100e6);
+    assert_eq!(reopened.original_sample_units(), Some((8388608.0, 0.0)));
 }
 
 #[test]
@@ -1290,7 +1306,7 @@ fn a_long_kiwi_recording_is_copied_in_large_reads() {
 }
 
 #[test]
-fn a_declined_layout_with_several_data_chunks_saves_what_it_opens() {
+fn packed_pcm24_with_several_data_chunks_saves_every_run() {
     let dir = TempDir::new("write-24-chunks");
     let source = dir.join("a.wav");
     let data = write_wav24(&source, 2, 400);
@@ -1304,7 +1320,10 @@ fn a_declined_layout_with_several_data_chunks_saves_what_it_opens() {
     let target = dir.join("b.wav");
     let saved = run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
     assert_eq!(saved.samples, open(&source, &OpenHints::default()).unwrap().meta().len_samples);
-    assert_eq!(data_bytes(&target), data);
+    let mut expected = data;
+    expected.extend_from_slice(&[1; 60]);
+    assert_eq!(saved.samples, 410);
+    assert_eq!(data_bytes(&target), expected);
 }
 
 /// Computed samples kept as unit-scale `f32`, encoded on the scale of the capture at `capture`.
@@ -1549,6 +1568,7 @@ fn linear_of(format: SampleFormat) -> Linear {
     match format {
         SampleFormat::U8 => Linear::Unsigned8,
         SampleFormat::I16 => Linear::Signed(2),
+        SampleFormat::I24 => Linear::Signed(3),
         SampleFormat::I32 => Linear::Signed(4),
         SampleFormat::F32 | SampleFormat::F16x8 => Linear::Float32,
     }
@@ -1780,4 +1800,19 @@ fn a_truncated_first_flac_packet_never_publishes_a_save() {
     let request = request(&source, OpenHints::default(), None, dir.join("b.flac"));
     assert!(run(&request).is_err());
     assert_eq!(names(&dir), ["a.flac"]);
+}
+
+#[test]
+fn reduced_valid_pcm24_keeps_decoder_fallback_and_rf64_refusal() {
+    let dir = TempDir::new("write-partial-24-rf64");
+    let source = dir.join("a.wav");
+    write_extensible(&source, 20, 400);
+    let bytes = fs::read(&source).unwrap();
+    assert!(matches!(riff::parse(&bytes), Err(riff::RiffError::Unsupported { .. })));
+    let decoded = open(&source, &OpenHints::default()).unwrap();
+    assert_eq!(decoded.meta().sample_type.to_string(), "iq_i32");
+    let request = request(&source, OpenHints::default(), None, dir.join("b.wav"));
+    let result = save_with_limit(&request, &mut |_, _| {}, &AtomicBool::new(false), 1000);
+    assert!(matches!(result, Err(WriteError::Unsupported { .. })));
+    assert_eq!(names(&dir), ["a.wav"]);
 }

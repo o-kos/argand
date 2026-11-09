@@ -176,7 +176,7 @@ fn open_kind(
             Ok(layout) => return open_wave(path, layout, hints),
             Err(RiffError::Unsupported { .. }) => {
                 // A valid wav in a layout the flat reader will not touch --
-                // 24-bit, say. The decoder may still manage it.
+                // reduced-valid-bit PCM24, for example. The decoder may still manage it.
                 tracing::debug!("wav layout not natively supported, trying the decoder");
                 return open_decoded(path, "wav", &wave_metadata(head, hints), known);
             }

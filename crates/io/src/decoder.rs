@@ -1,7 +1,7 @@
 //! Decoder-backed reader for containers that are not a flat sample array.
 //!
 //! FLAC lives here. So does any WAVE layout the native reader declines, such
-//! as 24-bit, which costs nothing extra now that the decoder is linked in.
+//! as reduced-valid-bit PCM24.
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
