@@ -157,3 +157,16 @@ fn a_budget_smaller_than_the_runs_still_measures_values() {
     );
     assert_eq!(divisor, 0.9 * AUTO_HEADROOM);
 }
+
+#[test]
+fn packed_i24_scans_align_three_byte_values_across_chunks_and_budgets() {
+    let count = (16 << 20) / 3 + 7;
+    let mut data = [1u8, 0, 0].repeat(count);
+    data[(count - 1) * 3..].copy_from_slice(&[0, 0, 128]);
+    let full = resolve_divisor(Normalize::Auto, SampleFormat::I24, &data);
+    assert_eq!(full, 8388608.0 * AUTO_HEADROOM);
+    let bounded = resolve_divisor_with_budget(Normalize::Auto, SampleFormat::I24, &data, Some(7));
+    assert_eq!(bounded, AUTO_HEADROOM);
+    assert_eq!(resolve_divisor_with_budget(Normalize::Factor(7.0), SampleFormat::I24, &data, Some(0)), 7.0);
+    assert_eq!(resolve_divisor(Normalize::None, SampleFormat::I24, &data), 8388608.0);
+}

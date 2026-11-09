@@ -171,11 +171,11 @@ fn rejects_files_it_cannot_describe() {
         RiffError::Unsupported { channels: 3, .. }
     ));
 
-    // 24-bit is a valid wav, just not one argand claims to read.
-    let file = wave(&fmt_body(WAVE_FORMAT_PCM, 1, 24_000, 24, None), &[0; 6], &[]);
+    // 64-bit PCM remains outside the native fixed-width formats.
+    let file = wave(&fmt_body(WAVE_FORMAT_PCM, 1, 24_000, 64, None), &[0; 8], &[]);
     assert!(matches!(
         parse(&file).unwrap_err(),
-        RiffError::Unsupported { bits: 24, .. }
+        RiffError::Unsupported { bits: 64, .. }
     ));
 
     let mut headerless = wave(&fmt_body(WAVE_FORMAT_PCM, 1, 24_000, 16, None), &[0; 6], &[]);

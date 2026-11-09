@@ -54,6 +54,10 @@ pub fn encode(format: SampleFormat, values: &[f32]) -> Vec<u8> {
                 let q = (v * 32768.0).round().clamp(-32768.0, 32767.0) as i16;
                 out.extend_from_slice(&q.to_le_bytes());
             }
+            SampleFormat::I24 => {
+                let q = (v * 8388608.0).round().clamp(-8388608.0, 8388607.0) as i32;
+                out.extend_from_slice(&q.to_le_bytes()[..3]);
+            }
             SampleFormat::I32 => {
                 let q = (v as f64 * 2147483648.0)
                     .round()
