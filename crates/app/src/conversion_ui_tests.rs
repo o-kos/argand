@@ -1767,9 +1767,9 @@ fn format_tooltip_disappears_for_open_select_and_returns_after_close(cx: &mut Te
 }
 
 #[gpui_kit::test]
-fn flac_float_fallback_preserves_domain_and_frequency_draft(cx: &mut TestAppContext) {
+fn flac_fallback_preserves_domain_and_frequency_draft(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);
-    for token in ["rl_f32", "rl_f16x8", "iq_f32", "iq_f16x8", "iq_i32"] {
+    for token in argand_core::SAMPLE_TYPE_TOKENS {
         let mut form = None;
         let (_, cx) = cx.add_window_view(|window, cx| {
             let editor = cx.new(|cx| Editor::new(request(), window, cx));
@@ -1796,7 +1796,8 @@ fn flac_float_fallback_preserves_domain_and_frequency_draft(cx: &mut TestAppCont
         form.read_with(cx, |editor, cx| {
             assert_eq!(editor.rate.read(cx).value().as_ref(), "12345");
             assert_eq!(editor.reference.read(cx).value().as_ref(), "1800");
-            let expected = if token == "iq_i32" {
+            let supported = token.ends_with("_u8") || token.ends_with("_i16");
+            let expected = if supported {
                 token
             } else if token.starts_with("iq") {
                 "iq_i16"
@@ -1804,8 +1805,14 @@ fn flac_float_fallback_preserves_domain_and_frequency_draft(cx: &mut TestAppCont
                 "rl_i16"
             };
             assert_eq!(editor.kind_value(cx), Some(kind_label(expected).as_str()));
-            assert_eq!(editor.format_warning, token != "iq_i32");
-            assert_eq!(editor.request(cx).is_ok(), token != "iq_i32");
+            assert_eq!(editor.format_warning, !supported);
+            assert!(editor.request(cx).is_ok());
+        });
+        choose_container(&form, cx, "FLAC");
+        form.read_with(cx, |editor, cx| {
+            assert!(!editor.format_warning);
+            assert!(editor.kind.read(cx).selected_value().is_some());
+            assert!(editor.request(cx).is_ok());
         });
         choose_container(&form, cx, "WAV");
         form.read_with(cx, |editor, cx| {

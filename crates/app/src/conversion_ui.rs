@@ -49,6 +49,20 @@ impl SearchableListItem for SampleChoice {
     }
 }
 
+fn flac_supports(format: argand_core::SampleFormat) -> bool {
+    matches!(
+        format,
+        argand_core::SampleFormat::U8 | argand_core::SampleFormat::I16
+    )
+}
+
+fn sample_type_for_label(label: &str) -> Option<argand_core::SampleType> {
+    argand_core::SAMPLE_TYPE_TOKENS
+        .iter()
+        .find(|token| kind_label(token) == label)
+        .and_then(|token| token.parse().ok())
+}
+
 fn sample_choices(flac: bool) -> SampleChoices {
     SearchableVec::new(
         [("Real", "rl_"), ("I/Q", "iq_")]
@@ -58,7 +72,12 @@ fn sample_choices(flac: bool) -> SampleChoices {
                     argand_core::SAMPLE_TYPE_TOKENS
                         .iter()
                         .filter(|token| token.starts_with(prefix))
-                        .filter(|token| !flac || token.ends_with("_u8") || token.ends_with("_i16"))
+                        .filter(|token| {
+                            !flac
+                                || token
+                                    .parse::<argand_core::SampleType>()
+                                    .is_ok_and(|sample_type| flac_supports(sample_type.format))
+                        })
                         .map(|token| SampleChoice {
                             title: kind_label(token),
                         }),
@@ -140,9 +159,9 @@ fn kind_label(token: &str) -> String {
     let (domain, format) = token.split_once('_').unwrap_or(("", token));
     let domain = if domain == "iq" { "I/Q" } else { "Real" };
     let format = match format {
-        "u8" => "Unsigned 8-bit",
-        "i16" => "Signed 16-bit",
-        "i32" => "Signed 32-bit",
+        "u8" => "Int 8-bit",
+        "i16" => "Int 16-bit",
+        "i32" => "Int 32-bit",
         "f32" => "Float 32-bit (normalized)",
         "f16x8" => "Float 32-bit (unscaled)",
         _ => format,
@@ -373,15 +392,12 @@ impl Editor {
             .selected_value()
             .is_some_and(|value| value == "FLAC");
         if flac
-            && let Some(title) = &value
-            && (title.ends_with("(normalized)") || title.ends_with("(unscaled)"))
+            && let Some(sample_type) = value.as_deref().and_then(sample_type_for_label)
+            && !flac_supports(sample_type.format)
         {
-            let token = if title.starts_with("I/Q") {
-                "iq_i16"
-            } else {
-                "rl_i16"
-            };
-            value = Some(kind_label(token));
+            let fallback =
+                argand_core::SampleType::new(sample_type.domain, argand_core::SampleFormat::I16);
+            value = Some(kind_label(&fallback.to_string()));
             self.format_warning = true;
         }
         self.kind.update(cx, |kind, cx| {
@@ -433,12 +449,8 @@ impl Editor {
         request.output.sample_rate = crate::numbers::parse(self.rate.read(cx).value().as_ref())
             .map_err(|_| "Enter a positive finite sample rate in Hz".to_string())?;
         let selected = self.kind_value(cx).ok_or("Choose a sample type")?;
-        request.output.sample_type = argand_core::SAMPLE_TYPE_TOKENS
-            .iter()
-            .find(|token| kind_label(token) == selected)
-            .ok_or("Choose a supported sample type")?
-            .parse()
-            .map_err(|_| "Choose a supported sample type")?;
+        request.output.sample_type =
+            sample_type_for_label(selected).ok_or("Choose a supported sample type")?;
         request.output.center_freq = if request.output.is_iq() == request.input.is_iq() {
             request.carrier = None;
             request.input.center_freq
@@ -658,7 +670,7 @@ impl Render for Editor {
                     div()
                         .text_xs()
                         .text_color(cx.theme().warning)
-                        .child("Sample format changed to Signed 16-bit for FLAC"),
+                        .child("Sample format changed to Int 16-bit for FLAC"),
                 )
             })
             .child(div().mt_1().pt_1().child(self.convert_button(request, cx)))

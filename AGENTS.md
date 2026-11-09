@@ -1260,9 +1260,9 @@ Opened delivery adopts those same readers, without an unsaved-input prompt or Un
 Failed, cancelled and stale preparation never replaces or stops the current reader. `OpenFile::unsaved` holds the generated display
 name and requested WAV/FLAC container separately from the private encoded-WAVE backing
 path. WAV supports all ten sample types; FLAC supports U8/I16 with the existing codec
-rate limits and exact-rate/reference comments. Choosing FLAC changes either floating
+rate limits and exact-rate/reference comments. Choosing FLAC changes any unsupported
 draft format to I16 in its current domain, preserving rate and carrier and showing a
-warning; returning to WAV keeps I16. I32 remains an explicit incompatibility. First Save and selection export use the requested container; an explicit
+warning; U8/I16 remain unchanged and returning to WAV keeps the chosen format. First Save and selection export use the requested container; an explicit
 WAV/FLAC Save as extension overrides it. `History::unsaved` starts dirty without an Undo
 version. The first Save asks for a destination, then successful rebind clears unsaved
 identity. Temporary paths never enter Recent. `Source::backing` retains encoded
