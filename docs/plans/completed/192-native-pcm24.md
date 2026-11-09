@@ -32,6 +32,9 @@ use RF64 and reopen them with their original sample type and integer units.
   Explicit sample-type overrides use existing native byte reinterpretation.
   Session history retains original opening hints, not inferred decoder metadata,
   so auto-detected I32 is not persisted as an override.
+- The owner explicitly authorized Ready, squash merge after successful current full CI,
+  and branch cleanup without the outstanding native GUI observation. This is an
+  acceptance decision, not evidence that the native scenario was exercised.
 - Existing standard sample-format Selects gain entries, without custom controls.
   FLAC conversion remains limited to the existing U8/I16 encoder support.
 
@@ -44,7 +47,7 @@ use RF64 and reopen them with their original sample type and integer units.
 | Normalization, gain and original integer units agree | None/factor/auto/bounded scans, gain and inverse unit reconstruction | Passed full/bounded scans and inverse unit reconstruction with gain | Float scaling tolerances stated in tests |
 | Supported PCM24 saves can use RF64 and reopen | Forced small RIFF threshold, exact payload/metadata and reopened values | Passed actual writer RF64 promotion, ds64/payload and metadata/reopen assertions | Unsupported layouts retain generic refusal |
 | Reduced-valid PCM24 preserves existing behavior | Decoder fallback and copied-header/payload tests; computed-save refusal | Passed fallback metadata, copied-payload and generic RF64/computed refusal tests | New partial-valid support explicitly deferred |
-| Sample-format UI offers Int 24-bit for real and I/Q WAVE conversion | Current production application: open File information, choose both entries with pointer/keyboard, dismiss/commit, save/reopen; compare Int 16-bit; verify FLAC filtering | Incomplete: new options and FLAC fallback pass headless regressions; native scenario unperformed | Native input capability unavailable; headless evidence cannot establish UI acceptance |
+| Sample-format UI offers Int 24-bit for real and I/Q WAVE conversion | Current production application: open File information, choose both entries with pointer/keyboard, dismiss/commit, save/reopen; compare Int 16-bit; verify FLAC filtering | Owner accepted proceeding without native observation; new options and FLAC fallback pass headless regressions | Native scenario unperformed; native input capability unavailable; no interaction acceptance claimed |
 
 Numerical reader reference: at Fs = 2.4 MHz and reference = 100 MHz, stored scalars
 `[-8388608, -1, 0, 8388607]` decode exactly to
@@ -61,8 +64,8 @@ original-unit affine mapping as other native integer formats.
 - [x] Add numerical, mapping, large-file and save/reopen regression coverage.
 - [x] Update current architecture, supported-format documentation and changelog.
 - [x] Complete full local validation and independent review.
-- [x] Exercise native UI acceptance, or record the unavailable capability and retain Draft.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Record unavailable native UI capability and the owner decision to proceed without observation.
+- [x] Move this plan to `docs/plans/completed/` before Ready.
 
 ## Validation
 
@@ -74,12 +77,12 @@ not apply until implementation. Subsequent code pushes require the full local ga
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks above pass
 - [x] Independent read-only review of the exact submitted snapshot.
-- [ ] Running-application UI acceptance, subject to the capability limit above.
+- [ ] Running-application UI acceptance (unperformed; owner explicitly accepted proceeding without it).
 
 ## Post-completion
 
 After owner acceptance and current full CI, follow the normal merge and conditional
-branch cleanup policy. This implementation stays Draft while acceptance is incomplete.
+branch cleanup policy. The owner authorized Ready and merge after current full CI despite unperformed native UI acceptance.
 
 ## Current validation and acceptance limits
 
@@ -95,8 +98,9 @@ The UI acceptance skill's native scenario remains unperformed: available tools h
 no native desktop input connector and the computer-use tool disables native apps.
 No workaround was used. Pointer/keyboard choice, dismissal/commit and production
 appearance of the new Int 24-bit rows still need native acceptance. Automated Select
-and FLAC fallback results do not establish it. Keep this active plan unfinished and
-the PR Draft while native acceptance is incomplete; move to completed before Ready.
+and FLAC fallback results do not establish it. The owner explicitly accepted
+proceeding to Ready and merge without this observation; the scenario remains
+unperformed and is not represented as a passing native test.
 
 ## Independent review dispositions
 
@@ -114,4 +118,5 @@ no code gate or release rebuild is needed for unchanged source/tests. The retain
 delta and unchanged code/binaries; round 2 was clean. The coordinator accepted the
 reviewed implementation and validation. One documentation finding was accepted and
 corrected, none were rejected, and no new findings remained. Native UI acceptance
-remains incomplete, so this plan stays active and the Pull Request stays Draft.
+remains unperformed; the owner subsequently accepted proceeding without it and
+authorized Ready, merge after successful current full CI, and branch cleanup.
