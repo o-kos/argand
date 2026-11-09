@@ -143,7 +143,7 @@ fn frequency_editor(
             numeric_editor::Config {
                 unit: "Hz",
                 step: 1.,
-                minimum: if positive { 0. } else { -f64::MAX },
+                minimum: 0.,
                 maximum: f64::MAX,
                 minimum_inclusive: !positive,
                 down: ids.0,
@@ -295,15 +295,20 @@ impl Editor {
         }
         self.reference_iq = iq;
         let locked = iq == self.request.input.is_iq();
-        if locked {
-            self.reference.update(cx, |input, cx| {
-                input.set_value(
-                    crate::numbers::number(self.request.input.center_freq),
-                    window,
-                    cx,
-                )
-            });
-        }
+        let source = &self.request.input;
+        let (rate, reference) = if locked {
+            (source.sample_rate, source.center_freq)
+        } else if source.is_iq() {
+            (source.sample_rate * 2.0, source.sample_rate / 2.0)
+        } else {
+            (source.sample_rate / 2.0, source.sample_rate / 4.0)
+        };
+        self.rate.update(cx, |input, cx| {
+            input.set_value(crate::numbers::number(rate), window, cx)
+        });
+        self.reference.update(cx, |input, cx| {
+            input.set_value(crate::numbers::number(reference), window, cx)
+        });
         self.reference_editor
             .update(cx, |editor, cx| editor.set_disabled(locked, cx));
     }
@@ -326,8 +331,9 @@ impl Editor {
         request.output.center_freq = if request.output.is_iq() == request.input.is_iq() {
             request.input.center_freq
         } else {
-            crate::numbers::parse(self.reference.read(cx).value().as_ref())
-                .map_err(|_| "Enter a finite reference frequency in Hz".to_string())?
+            let carrier = crate::numbers::parse(self.reference.read(cx).value().as_ref())
+                .map_err(|_| "Enter a finite reference carrier in Hz".to_string())?;
+            crate::conversion::carrier_reference(&request.input, &request.output, carrier)?
         };
         request.container = match self.container.read(cx).selected_value().map(String::as_str) {
             Some("WAV") => argand_io::write::Container::Wave,
@@ -369,6 +375,38 @@ impl Editor {
                 shell.convert_draft(request, document, version, window, cx)
             });
         }))
+    }
+
+    fn reference_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let carrier = self.reference_iq != self.request.input.is_iq();
+        div()
+            .id("conversion-reference-hint")
+            .tooltip(move |_, cx| {
+                metadata_tooltip(
+                    MetadataHint {
+                        title: "Reference",
+                        value: if carrier {
+                            "Carrier frequency in the real signal"
+                        } else {
+                            "Physical frequency of array zero"
+                        }
+                        .into(),
+                        explanation: if carrier {
+                            "The frequency where I/Q zero is placed"
+                        } else {
+                            "Fixed while the signal domain is unchanged"
+                        }
+                        .into(),
+                        rows: Vec::new(),
+                    },
+                    cx,
+                )
+            })
+            .child(presentation::row(
+                "Reference",
+                self.reference_editor.clone(),
+                cx,
+            ))
     }
 
     fn summary(&self, cx: &gpui_kit::App) -> Result<String, String> {
@@ -436,11 +474,7 @@ impl Render for Editor {
                 self.rate_editor.clone(),
                 cx,
             ))
-            .child(presentation::row(
-                "Reference",
-                self.reference_editor.clone(),
-                cx,
-            ))
+            .child(self.reference_control(cx))
             .child(presentation::row(
                 "File type",
                 presentation::choice_control(

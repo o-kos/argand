@@ -32,6 +32,30 @@ pub struct Request {
     pub copy: Option<argand_io::write::SaveRequest>,
 }
 
+/// Translate an array-domain carrier into the existing physical metadata origin.
+pub fn carrier_reference(
+    input: &SignalMeta,
+    output: &SignalMeta,
+    carrier: f64,
+) -> Result<f64, &'static str> {
+    let real_rate = if output.is_iq() {
+        input.sample_rate
+    } else {
+        output.sample_rate
+    };
+    if !real_rate.is_finite() || real_rate <= 0.0 {
+        return Err("Enter a positive finite sample rate in Hz");
+    }
+    if !carrier.is_finite() || carrier < 0.0 || carrier > real_rate / 2.0 {
+        return Err("Reference must lie between 0 and half the real sample rate");
+    }
+    let reference = input.center_freq + if input.is_iq() { -carrier } else { carrier };
+    if !reference.is_finite() {
+        return Err("The resulting physical reference is not finite");
+    }
+    Ok(reference)
+}
+
 pub struct Converted {
     pub saved: Saved,
     pub clipped: u64,

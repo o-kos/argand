@@ -1231,8 +1231,7 @@ both property editors share `settings_editor` row, numeric, Select and outlined-
 presentation over standard controls. Numeric initialization and Enter/blur formatting share
 one event handler, while each editor keeps its own preview/draft transaction. One `StatusPanel` owner and shared trigger/popover
 composition route both editors through the same opening/closing lifecycle; choosing
-a new owner closes the previous panel, and stale close events cannot clear it. Explicit output sample rate/reference draft fields are never rewritten
-by a domain change. Drafts do not mutate the current document; Escape discards them. `argand_dsp::convert::ConversionPlan` intersects native input-local bounds
+a new owner closes the previous panel, and stale close events cannot clear it. On a real/IQ domain change, target sample rate and conversion carrier defaults are derived from the source: IQ to real doubles Fs with carrier FsIQ/2; real to IQ halves Fs with carrier FsReal/4. Subsequent numeric edits remain explicit; changing target Fs does not move the carrier. Drafts do not mutate the current document; Escape discards them. `argand_dsp::convert::ConversionPlan` intersects native input-local bounds
 with output bounds shifted by the reference difference, preserving exact native
 endpoints at large physical references. Reconstruction width is bounded by both
 declared domain bandwidths; the final oscillator subtracts that same reference delta.
@@ -1272,4 +1271,4 @@ reader leases retain backing through termination, and opening another capture ca
 conversion. The result opens with normalization
 disabled so f16x8 arbitrary units are not automatically rescaled.
 
-Conversion Reference is editable only when the target real/IQ domain differs from the source. Returning to the original domain resets the reference draft and the application request enforces the original value. Sample rate stays explicitly entered. The shared NumericEditor uses stock disabled controls and skips disabled numeric handles in its existing scoped Tab traversal.
+Conversion Reference is editable only when the target real/IQ domain differs from the source. Across domains it is the carrier C locating I/Q zero in the real array, not the physical metadata origin. The application derives Rreal=Riq-C or Riq=Rreal+C and keeps the DSP physical-frequency API unchanged. Returning to the source domain restores its Fs and physical reference; numeric-encoding-only changes preserve active drafts. The shared NumericEditor uses stock disabled controls and skips disabled numeric handles in its existing scoped Tab traversal.

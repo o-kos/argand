@@ -31,7 +31,7 @@ fn request() -> Request {
 }
 
 #[gpui_kit::test]
-fn reference_unlocks_only_across_domains_and_restores_without_changing_rate(
+fn domain_switches_derive_carrier_and_rate_from_source_and_encoding_preserves_drafts(
     cx: &mut TestAppContext,
 ) {
     cx.update(gpui_kit::init);
@@ -75,14 +75,21 @@ fn reference_unlocks_only_across_domains_and_restores_without_changing_rate(
     cx.run_until_parked();
     window
         .update(cx, |_, window, cx| {
-            editor
-                .read(cx)
-                .reference
-                .clone()
-                .update(cx, |input, cx| input.set_value("100001", window, cx));
+            let form = editor.read(cx);
+            assert_eq!(form.request(cx).unwrap().output.sample_rate, 16000.);
+            assert_eq!(form.request(cx).unwrap().output.center_freq, 96000.);
+            assert!(form.summary(cx).unwrap().is_empty());
+            let rate = form.rate.clone();
+            let reference = form.reference.clone();
+            rate.update(cx, |input, cx| input.set_value("18000", window, cx));
+            assert_eq!(
+                editor.read(cx).reference.read(cx).value().as_ref(),
+                crate::numbers::number(4000.)
+            );
+            reference.update(cx, |input, cx| input.set_value("3000", window, cx));
             assert_eq!(
                 editor.read(cx).request(cx).unwrap().output.center_freq,
-                100_001.
+                97_000.
             );
             editor.read(cx).kind.clone().update(cx, |kind, cx| {
                 kind.set_selected_value(&kind_label("rl_f32"), window, cx);
@@ -95,8 +102,19 @@ fn reference_unlocks_only_across_domains_and_restores_without_changing_rate(
         .update(cx, |_, window, cx| {
             assert_eq!(
                 editor.read(cx).reference.read(cx).value().as_ref(),
-                "100001",
+                "3000",
                 "encoding-only changes preserve the active draft"
+            );
+            assert_eq!(
+                editor.read(cx).request(cx).unwrap().output.sample_rate,
+                18000.
+            );
+            assert!(
+                editor
+                    .read(cx)
+                    .summary(cx)
+                    .unwrap()
+                    .contains("will be discarded")
             );
             editor.read(cx).kind.clone().update(cx, |kind, cx| {
                 kind.set_selected_value(&kind_label("iq_f32"), window, cx);
@@ -111,7 +129,7 @@ fn reference_unlocks_only_across_domains_and_restores_without_changing_rate(
             crate::numbers::number(100_000.)
         );
         assert_eq!(editor.request(cx).unwrap().output.center_freq, 100_000.);
-        assert_eq!(editor.rate.read(cx).value().as_ref(), "12345");
+        assert_eq!(editor.request(cx).unwrap().output.sample_rate, 8000.);
     });
 }
 
@@ -1093,7 +1111,7 @@ fn shared_frequency_editor_steps_drafts_and_tab_visits_each_value_once(cx: &mut 
     cx.simulate_keystrokes("up");
     frame(cx);
     editor.read_with(cx, |editor, cx| {
-        assert_eq!(editor.request(cx).unwrap().output.sample_rate, 24_001.)
+        assert_eq!(editor.request(cx).unwrap().output.sample_rate, 48_001.)
     });
     cx.simulate_keystrokes("tab");
     frame(cx);
@@ -1110,7 +1128,7 @@ fn shared_frequency_editor_steps_drafts_and_tab_visits_each_value_once(cx: &mut 
     cx.simulate_keystrokes("down");
     frame(cx);
     editor.read_with(cx, |editor, cx| {
-        assert_eq!(editor.request(cx).unwrap().output.center_freq, -1.)
+        assert_eq!(editor.request(cx).unwrap().output.center_freq, -11_999.)
     });
     cx.simulate_keystrokes("shift-tab");
     frame(cx);
@@ -1197,4 +1215,87 @@ fn an_edit_during_save_directory_preparation_does_not_open_a_stale_chooser(
         assert!(shell.file.as_ref().unwrap().unsaved.is_some());
     });
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[gpui_kit::test]
+fn opening_a_real_source_discards_old_carrier_drafts_and_derives_reverse_defaults(
+    cx: &mut TestAppContext,
+) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let dir = argand_io::testutil::TempDir::new("carrier-new-source");
+    let iq_path = dir.join("iq.wav");
+    write_wave(&iq_path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(iq_path), window, cx)
+    });
+    wait_until(cx, &shell, "IQ source", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described())
+    });
+    cx.simulate_keystrokes("f11");
+    frame(cx);
+    let old = panel_editor(&shell, cx);
+    old.update_in(cx, |editor, window, cx| {
+        editor.kind.update(cx, |kind, cx| {
+            kind.set_selected_value(&kind_label("rl_f32"), window, cx);
+            cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
+        });
+    });
+    frame(cx);
+    old.update_in(cx, |editor, window, cx| {
+        editor
+            .reference
+            .update(cx, |input, cx| input.set_value("1000", window, cx))
+    });
+    let path = argand_io::testutil::write_wav(
+        &dir.join("real.wav"),
+        "rl_f32".parse().unwrap(),
+        48000,
+        &vec![0.25; 2400],
+        1.,
+    );
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path), window, cx)
+    });
+    wait_until(cx, &shell, "real source", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described() && !editing.file().meta.is_iq())
+    });
+    assert!(!shell.read_with(cx, |shell, cx| shell.conversion.hint.read(cx).is_open()));
+    cx.simulate_keystrokes("f11");
+    frame(cx);
+    let current = panel_editor(&shell, cx);
+    current.update_in(cx, |editor, window, cx| {
+        editor.kind.update(cx, |kind, cx| {
+            kind.set_selected_value(&kind_label("iq_f32"), window, cx);
+            cx.emit(SelectEvent::Confirm(kind.selected_value().cloned()));
+        });
+    });
+    frame(cx);
+    current.read_with(cx, |editor, cx| {
+        let request = editor.request(cx).unwrap();
+        assert_eq!(request.output.sample_rate, 24000.);
+        assert_eq!(request.output.center_freq, 12000.);
+        assert_eq!(
+            editor.reference.read(cx).value().as_ref(),
+            crate::numbers::number(12000.)
+        );
+        assert!(editor.summary(cx).unwrap().is_empty());
+    });
+}
+
+fn panel_editor(shell: &Entity<Shell>, cx: &gpui_kit::VisualTestContext) -> Entity<Editor> {
+    shell.read_with(cx, |shell, cx| {
+        shell
+            .conversion
+            .hint
+            .read(cx)
+            .view()
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap()
+    })
 }
