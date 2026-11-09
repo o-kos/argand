@@ -560,7 +560,8 @@ fn flac_seeks_discard_old_packets_and_preserve_levels() {
     let mut source = open(&path, &hints).unwrap();
     let expected = drain(source.as_mut());
     let units = source.original_sample_units();
-    for sample in [14336, 0, 512, 4096, 14336, 1024, 0] {
+    assert!(matches!(source.seek(16385), Err(SourceError::SeekOutOfRange { .. })));
+    for sample in [14336, 0, 512, 4096, 14336, 1024, 0, 16383, 16384, 7] {
         source.seek(sample).unwrap();
         assert_eq!(drain(source.as_mut()), expected[sample as usize..], "sample {sample}");
         assert_eq!(source.original_sample_units(), units);
@@ -626,4 +627,72 @@ fn a_long_kiwi_recording_reads_again_after_pages_are_released() {
     assert_eq!(first.len(), values.len());
     source.seek(1_000).unwrap();
     assert_eq!(drain(source.as_mut()), first[2_000..]);
+}
+
+#[test]
+fn decoded_packets_replace_the_pending_buffer_and_end_cleanly() {
+    let dir = TempDir::new("decoded-packets-eof");
+    for st in all_sample_types().into_iter().filter(|st| st.format != SampleFormat::F16x8) {
+        let values: Vec<f32> = (0..5003 * st.channels())
+            .map(|n| ((n % 127) as f32 - 63.0) / 128.0)
+            .collect();
+        let path = write_wav(&dir.join(&format!("{st}.wav")), st, 2_400_000, &values, 1.0);
+        let mut expected = open(&path, &OpenHints {
+            normalize: Some(Normalize::None), ..OpenHints::default()
+        }).unwrap();
+        let mut decoded = DecodedSource::open(&path, "wav", None, None, None, Normalize::None, 0.0).unwrap();
+        let expected = drain(expected.as_mut());
+        assert_eq!(drain(&mut decoded), expected, "{st}");
+        let mut buf = [f32::NAN; 17];
+        assert_eq!(decoded.read(&mut buf).unwrap(), 0, "{st}");
+        assert_eq!(decoded.read(&mut buf).unwrap(), 0, "{st}");
+        for sample in [4097, 1, 5002] {
+            decoded.seek(sample).unwrap();
+            let count = decoded.read(&mut buf).unwrap();
+            assert_eq!(count % st.channels(), 0);
+            let start = sample as usize * st.channels();
+            assert_eq!(&buf[..count], &expected[start..start + count], "{st} at {sample}");
+        }
+    }
+}
+
+#[test]
+fn a_truncated_known_length_flac_is_an_error_instead_of_clean_eof() {
+    let dir = TempDir::new("decoded-truncated-eof");
+    let (path, mut bytes) = flac_fixture(&dir);
+    bytes.truncate(bytes.len() - 32);
+    std::fs::write(&path, bytes).unwrap();
+    let mut source = open(&path, &OpenHints::default()).unwrap();
+    let mut buf = [0.0; 513];
+    loop {
+        match source.read(&mut buf) {
+            Ok(0) => panic!("truncated FLAC was reported as clean EOF"),
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+}
+
+#[test]
+fn a_flac_without_a_complete_first_frame_is_not_clean_eof() {
+    let dir = TempDir::new("decoded-truncated-first");
+    let (path, data) = flac_fixture(&dir);
+    let audio = flac_audio_offset(&data);
+    for corrupt in [false, true] {
+        let mut bytes = data[..if corrupt { 3703 } else { audio + 100 }].to_vec();
+        if corrupt {
+            bytes[audio + 114] ^= 1;
+        }
+        std::fs::write(&path, bytes).unwrap();
+        let hints = OpenHints { normalize: Some(Normalize::None), ..Default::default() };
+        let mut source = open(&path, &hints).unwrap();
+        assert_eq!(source.meta().len_samples, 16384);
+        let mut buf = [0.0; 513];
+        assert!(source.read(&mut buf).is_err(), "corrupt={corrupt}");
+        assert!(source.read(&mut buf).is_err(), "repeated, corrupt={corrupt}");
+        source.seek(0).unwrap();
+        assert!(source.read(&mut buf).is_err(), "seek zero, corrupt={corrupt}");
+        let auto = OpenHints { normalize: Some(Normalize::Auto), ..Default::default() };
+        assert!(open(&path, &auto).is_err(), "normalization, corrupt={corrupt}");
+    }
 }
