@@ -73,6 +73,17 @@ Any class A signal makes the work class A. File counts consider code only. A
 configuration, CI or security-policy edit can affect behaviour without changing
 code; classify its actual risk rather than assuming class C from its extension.
 
+## Local Rust and build resources
+
+Before any Rust command, dependency change or worktree operation, follow
+[the local resource policy](CONTRIBUTING.md#local-rust-and-build-resources): one
+owner-approved installed Rust, one agreed Argand/Wireroom toolkit graph, a common
+intermediate build-dir outside worktrees, workspace-local final artifacts in
+target-dir, and the prescribed worktree location. Stop on a missing or conflicting
+setup; never auto-install a toolchain. Follow the policy's explicit owner approval
+for initial dependency compilation and dependency rebuilds beyond the agreed
+debug/test and release baseline. The owner alone controls disk budgeting.
+
 ## Workflow and access
 
 [CONTRIBUTING.md](CONTRIBUTING.md) is the canonical development workflow: scoped
