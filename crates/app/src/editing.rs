@@ -332,14 +332,6 @@ impl Editing {
         &self.sources[0]
     }
 
-    /// Record what was learned about the opened file off the window's thread.
-    #[cfg(test)]
-    pub fn describe_file(&mut self, stamp: Option<SourceStamp>, storage: Option<Storage>) {
-        self.sources[0].stamp = stamp;
-        self.sources[0].storage = storage;
-        self.statistics_revision = next_statistics_revision();
-    }
-
     /// Record the checked output description independently of the sample sources.
     pub fn describe_format(&mut self, stamp: Option<SourceStamp>, format: Option<Format>) {
         self.sources[0].stamp = stamp;
@@ -804,6 +796,9 @@ impl Editing {
         })
     }
 }
+
+#[cfg(test)]
+include!("editing_support_test.rs");
 
 #[cfg(test)]
 mod tests {

@@ -30,7 +30,7 @@ No new controls or UI behavior, public API, production module reorganization, de
   715 release and 709 debug/test artifacts fresh after this output split.
 - Existing benchmark extraction preserves the original measurement body and uses
   no new dependencies/features/profiles. Its explicit target has harness=false and
-  test=false. Benchmark compilation has not been authorized or performed.
+  test=false. Guarded workspace benchmark compilation passed without external dependency compilation; the manual measurement was not run.
 - Existing resource-policy edits are a separate documentation commit in this branch.
   No production behavior, UI acceptance, dependencies or toolkit changes follow from it.
 - Start from merged main in the normal checkout, with a versioned plan committed
@@ -70,7 +70,7 @@ Audit relative module/include resolution before relocation: nested `mod`, `#[pat
 ### Special seams requiring explicit handling
 
 - `dsp/overview.rs` has a standalone cfg(test) root-level test in addition to its inline tests. Keep that test at its original logical scope through a documented cfg-only `include!("overview_root_test.rs")`, containing the original attributes/function, instead of silently changing its fully qualified name by nesting it.
-- Test-only associated functions/constants move to a cfg-only child support module with `impl ParentType`, accessing parent private fields normally. Preserve effective visibility, not merely spelling: a private parent helper may need child `pub(super)` for existing parent consumers; an original parent-relative visibility may need a correspondingly higher explicit scope. Do not expose any non-test API. Existing call paths are preserved with narrow cfg-only imports/reexports where necessary.
+- Test-only associated functions/constants move to cfg-only sibling support files included at their original module scope. This preserves effective visibility and existing method/import paths without adding a production or support module boundary. Include wiring precedes test modules where required by Clippy. Only narrow cfg-only imports, instrumentation slots and forwarding calls remain in production files.
 - Examples include analysis delivery/open/request fixtures, OpenFile record_for_test, SaveOf::whole_for_test, Rebinding::kept, BadgeEntry inspectors, Ruler::CLOCK and warned_analysis. Move the implementation and its fixture-specific imports; production retains only cfg module/import/call wiring.
 - `stft::BLOCK_SAMPLES`: keep production `1 << 20` unchanged; put the test-only 4096 constant in a separate cfg support file and import it under the original test gate. Do not unify test and production values or alter app dependency versus DSP unit-test feature behavior.
 - `sample_statistics::Cache` has a cfg(test) counter field and cfg-only counter increment inside a production function. Rust cannot splice a field from an external file. Retain only the cfg instrumentation slot/type reference and a cfg-only forwarding call at the existing point; move counter type/helper logic into the separate support file. Keep tuple indexing/layout, ordering and visibility unchanged. Treat this as test wiring, not an exemption for inline fixture implementation. If extraction would require changing production state representation or data layout, stop and report instead.
@@ -115,28 +115,28 @@ Temporary comparison helpers/results live outside the final test source unless t
 ## Implementation steps
 
 - [x] Confirm merged #144, restore local changes exactly and create the ordinary #222 branch.
-- [ ] Commit this phase plan and open the early Draft (Refs #222).
-- [ ] Record exact per-target discovery/ignored/cfg/fixture baseline and targeted measurements.
-- [ ] Extract inline test modules across all crates without changing module/test names; preserve existing separate files.
-- [ ] Extract free/associated helper bodies/constants and resolve all cfg-only seams with effective visibility preserved.
-- [ ] Verify full extraction manifest, token/wiring diff and discovery equality; run focused regressions.
-- [ ] Apply the four bounded fixture/setup optimizations with equivalence and retained-coverage evidence.
-- [ ] Record paired measurement samples, exercised optional fixtures and limitations; retain all original tests.
-- [ ] Update only current test organization/documentation and this phase plan; explicitly leave production module organization in #222 open for owner agreement.
-- [ ] Complete fmt, strict Clippy, full workspace tests and release after the gate.
-- [ ] Move this completed phase plan before final independent review; provide neutral exact snapshot/diff/manifest, raw validation and honest pending limits.
-- [ ] Address findings within the three-round policy; coordinator assesses exact critical changes and evidence.
+- [x] Commit this phase plan and open the early Draft (Refs #222): PR #237.
+- [x] Record exact per-target discovery/ignored/cfg/fixture baseline and targeted measurements.
+- [x] Extract 49 inline test modules across all crates without changing module/test names; preserve existing separate files.
+- [x] Extract free/associated helper bodies/constants and resolve cfg-only seams with effective visibility preserved; retain only instrumentation slots and forwarding calls.
+- [x] Verify full extraction manifest, token/wiring diff and discovery equality; run focused regressions.
+- [x] Apply the four bounded fixture/setup optimizations with equivalence and retained-coverage evidence.
+- [x] Record paired measurement samples, exercised optional fixtures and limitations; retain all original tests.
+- [x] Update only current test organization/documentation and this phase plan; explicitly leave production module organization in #222 open for owner agreement.
+- [x] Complete fmt, strict Clippy, full workspace tests and release after the gate.
+- [x] Move this completed phase plan before final independent review; provide neutral exact snapshot/diff/manifest, raw validation and honest pending limits.
+- [x] Address findings within the three-round policy; independent round two clean and coordinator assessment accepted.
 - [ ] Publish with hook intact, Ready/current Linux+Windows+macOS ci/full; merge only under existing owner authorization and fresh exact-head/protection/thread guards.
 
 ## Acceptance and evidence matrix
 
 | Criterion | Evidence | Current status / limits |
 | --- | --- | --- |
-| No inline test/helper implementation in production files | Syntax inventory + reviewed wiring/field-slot exceptions + diff | Pending extraction |
-| Every previous test name/ignore/gate preserved | Per-executable before/after exact discovery plus platform source inventory | Pending exact discovery; current ordinary suite is 1162/0/0 |
-| Production behavior/API/tree unchanged | Non-test token/diff assessment, unchanged manifests/lock, full gate/release and reviewer | Pending; cfg wiring/support is the only production-file delta |
-| Four optimizations preserve all case axes/oracles | Helper equivalence evidence, critical numerical review and focused actual tests | Pending; no tolerance or test-count target |
-| Cost statements supported | Paired raw measurements + work counts + load/fixture record | Pending; no promised speedup |
+| No inline test/helper implementation in production files | Syntax inventory + reviewed wiring/field-slot exceptions + diff | Extracted; remaining cfg-only include/slot/forwarding exceptions documented |
+| Every previous test name/ignore/gate preserved | Per-executable before/after exact discovery plus platform source inventory | Exact executable-name sets match; final workspace tests 1162/0/0; platform gates assessed from source |
+| Production behavior/API/tree unchanged | Non-test token/diff assessment, unchanged manifests/lock, full gate/release and reviewer | All 50 production-file non-test token streams match; cfg wiring/support only; independent round two clean; coordinator accepted |
+| Four optimizations preserve all case axes/oracles | Helper equivalence evidence, critical numerical review and focused actual tests | Temporary fixture comparisons matched bitwise; case axes, names and tolerances retained |
+| Cost statements supported | Paired raw measurements + work counts + load/fixture record | Three paired AB/BA/AB samples per case; limited local timings below |
 | UI semantics unchanged | Existing production-view dispatch/focus/disabled/overlap/retirement suites retained | No new UI behavior or native acceptance claimed |
 | #222 production tree remains owner-gated | Partial-phase plan and PR use Refs, issue stays open, explicit deferred production scope | Required boundary, not an unfinished implementation checkbox |
 
@@ -151,19 +151,21 @@ validation does not waive owner approval. Do not change compiler/profile/feature
 RUSTFLAGS, toolkit graph or dependency versions to make the guard pass.
 
 Ordinary own-project recompilation for test changes is authorized within the agreed
-baseline. New bench/check/Clippy dependency artifact variants are not automatically
-authorized: inspect their requested inputs with the guard, preserve the diagnostic,
-and obtain approval if new dependency compilation is required. The explicit benchmark
-command, if later approved, is `cargo bench --workspace --bench conversion_cost`;
-package-only selection can change feature unification and is excluded.
+baseline. The owner additionally approved the check/Clippy baseline in this same
+compiler, cache and locked graph; the guard permits those locked registry inputs
+only during that approved baseline. Other external rebuild requests still require
+stop-and-explain approval. Guarded `cargo bench --workspace --bench conversion_cost
+--no-run` passed with only own-crate compilation; the explicit measurement command
+is `cargo bench --workspace --bench conversion_cost` and was not run. Package-only
+selection can change feature unification and is excluded.
 
 ## Required checks and review
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (inherited strict warnings)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked` after the checks pass
-- [ ] Exact current-revision independent review and coordinator assessment
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (inherited strict warnings)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked` after the checks pass
+- [x] Exact current-revision independent review and coordinator assessment
 - [ ] Current Ready PR Linux, Windows, macOS and ci/full all explicitly success
 
 No native UI acceptance is fabricated for a test-only change. If a relocation or optimization uncovers a production regression, apply the active-task routing rules and report the scope rather than silently redesigning production.
@@ -175,3 +177,68 @@ Regex/brace counting; merging test modules or renaming tests; broad *_tests.rs r
 ## Post-completion
 
 Safe conditional cleanup of this accepted PR branch after protected squash merge; preserve owner stashes/backups/processes. #222 remains open for a separately discussed production-module proposal and any remaining owner-approved scope. No production module moves are authorized by completion of this test phase.
+
+## Current implementation evidence
+
+- Mechanical extraction compiled on the existing workspace debug/test graph with an
+  external guard allowing only repository crate compilation; zero dependency builds
+  were requested. All 1162 discovered test names and zero ignored cases matched.
+- 48 ordinary module bodies matched their original slices after parsing/canonical
+  formatting with rustfmt. The additional restricted-visibility shared harness and
+  root test retain their original logical scopes. A token-tree audit confirms
+  non-test token equality across all 50 changed production source files after
+  removing positive cfg(test) items; this is an audit aid, not a Rust parser or
+  replacement for compilation and independent review.
+- Test-only helpers use cfg-only include files at the original module scope instead
+  of new child modules. This preserves effective visibility, method paths and root
+  test names without reexports or production module changes. Existing include-only
+  wiring stays unchanged. The counter slot remains the same AtomicU64 via a type
+  alias; its increment and the conversion reader-failure effect move behind cfg-only
+  forwarding calls at the original sequence points.
+- Temporary old/new comparisons passed on the existing conversion and suppression
+  fixtures: every generated tone f32 and each band-power f64 matched bitwise. The
+  existing scheduling matrix also passed. Temporary comparisons and old helper
+  copies were removed from final source; numerical tolerances were not changed.
+- Scheduling references drop from 30 to 6 while all 30 progressive cases remain.
+  Paired suppression bands share FFTs only for identical sample intervals in three
+  tests (four intervals). Conversion synthesis no longer allocates a Vec per frame.
+- Only fixed/auto range-mode metadata cases use explicit 500x300 images. Their PNG
+  publication checks remain explicit. The dedicated default-render test now omits
+  the image option and asserts the documented 2048x512 PNG dimensions, retaining
+  actual default-image coverage separately from the report-only cases.
+- Final workspace tests pass: 1162 passed, zero failed/ignored; exact discovery is
+  unchanged. Formatting and strict all-target Clippy pass. Clippy required a
+  test-helper iterator filter and ordering three support includes before test
+  modules; no production logic or lint suppression changed. Final release passed after all other checks (2m46s, own argand recompilation
+  only); independent round two is clean and the coordinator accepted the critical invariants.
+- Three paired local samples per case (AB/BA/AB) gave before/after medians:
+  scheduling 7.6668/4.5979s, paired suppression 0.1385/0.1305s, conversion
+  0.5533/0.5426s, and CLI range reports 0.7719/0.1671s. These are filtered
+  debug-test runs, not release/application benchmarks. Conversion ranges overlap
+  (0.5480..0.5595s vs 0.5329..0.5797s), so no reliable conversion runtime speedup
+  is claimed; its removed per-frame allocations are directly visible in source.
+- Guarded standalone workspace benchmark compilation passed with own-crate
+  compilation only. Its three manual scenarios/output are unchanged; no measurement
+  execution or performance threshold is introduced.
+- Independent round one reported no substantive source findings. Round two found no substantive issues in
+  the final source and Clippy delta; the coordinator accepted the assessment. Local evidence remains distinct from pending
+  current-head Windows/macOS/Linux full CI.
+
+## Final local evidence locations
+
+The handoff retains raw fmt, Clippy, workspace-test and release logs, exact final
+discovery, fixture-equivalence results and paired samples outside the worktree.
+Final discovery matches all 1162 names with zero ignored; test totals are 1162/0/0.
+The external guard blocked no dependency compilation during resumed tests/release.
+The check/Clippy baseline was explicitly owner-approved; no compiler, feature,
+profile, toolkit graph or lockfile changes were made. Production-token equality
+was refreshed after the final cfg-only include ordering. Linux tests do not prove
+platform-only execution or that optional external capture fixtures were present;
+retain those branches and distinguish pending platform CI from local evidence.
+
+Independent review used the approved gpt-6.1-sol high reviewer in both rounds.
+No substantive findings were declined or left unresolved. The coordinator examined
+the independent scheduling reference/fresh-source axes, conversion expression and
+bit order, per-band FFT accumulation order and CLI default-image assertions.
+Local implementation and review are complete; publication/current-head full CI
+and protected merge remain post-implementation steps, not claimed as passed here.

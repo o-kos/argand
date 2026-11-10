@@ -36,10 +36,23 @@ fn assert_progressive_options_match(
     request.reduce = reduce;
     request.dynamic_range = DynamicRange::Auto;
     let plain = analyze(&mut source, &request, &mut |_, _| {}).unwrap();
+    assert_progressive_reference(domain, values, &request, options, &plain);
+}
+
+fn assert_progressive_reference(
+    domain: Domain,
+    values: &[f32],
+    request: &AnalysisRequest,
+    options: ProgressiveOptions,
+    plain: &Analysis,
+) {
+    let mut source = VecSource::new(domain, values.to_vec(), 100_000.0);
+    let width = request.width;
+    let reduce = request.reduce;
     let mut previews = 0;
     let refined = analyze_progressive_with_options(
         &mut source,
-        &request,
+        request,
         options,
         &|| Flow::Continue,
         &mut |preview, coverage| {
@@ -197,13 +210,19 @@ fn scheduling_preserves_fft_counts_psd_waveform_and_both_reducers() {
 
 fn check_scheduling_options(domain: Domain, values: &[f32]) {
     for reduce in [Reduce::Max, Reduce::Mean, Reduce::MeanPower] {
+        let mut source = VecSource::new(domain, values.to_vec(), 100_000.0);
+        let mut request = request(7, 33, SampleRange::new(17, source.meta.len_samples - 17));
+        request.waveform_columns = Some(7);
+        request.reduce = reduce;
+        request.dynamic_range = DynamicRange::Auto;
+        let plain = analyze(&mut source, &request, &mut |_, _| {}).unwrap();
         for batch in [1, 16, 256, 1024, 4096] {
-            assert_progressive_options_match(
+            assert_progressive_reference(
                 domain,
-                reduce,
-                7,
                 values,
+                &request,
                 ProgressiveOptions::new(batch).unwrap(),
+                &plain,
             );
         }
     }

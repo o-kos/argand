@@ -95,9 +95,12 @@ fn dynamic_range_modes_are_applied_and_reported() {
         "256",
         "-d",
         "40",
+        "-i",
+        "500x300",
         "-o",
         fixed_png.to_str().unwrap(),
     ]);
+    assert_png(&fixed_png);
     assert_eq!(fixed["stft"]["dynamic_range_mode"], "fixed");
     assert_eq!(fixed["stft"]["dynamic_range_db"], 40.0);
     assert!(fixed["stft"]["db_max"].as_f64().unwrap() < -40.0);
@@ -116,9 +119,12 @@ fn dynamic_range_modes_are_applied_and_reported() {
         "256",
         "-d",
         "auto",
+        "-i",
+        "500x300",
         "-o",
         auto_png.to_str().unwrap(),
     ]);
+    assert_png(&auto_png);
     assert_eq!(automatic["stft"]["dynamic_range_mode"], "auto");
     assert_eq!(
         automatic["stft"]["dynamic_range_db"],
@@ -545,17 +551,18 @@ fn the_default_render_is_a_waveform_and_a_spectrogram() {
     let values = iq_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
     let input = write_wav(&dir.join("x.wav"), sample_type, RATE, &values, 1.0);
 
-    let report = run_json(
-        &[
-            &[
-                input.to_str().unwrap(),
-                "-o",
-                png(&dir, "default.png").to_str().unwrap(),
-            ],
-            fft_args().as_slice(),
-        ]
-        .concat(),
-    );
+    let output = png(&dir, "default.png");
+    let report = run_json(&[
+        input.to_str().unwrap(),
+        "-f",
+        "256",
+        "-d",
+        "60",
+        "-o",
+        output.to_str().unwrap(),
+    ]);
+    assert_png(&output);
+    assert_eq!(image::image_dimensions(&output).unwrap(), (2048, 512));
     assert_eq!(report["output"]["panels"], "waveform");
 
     // The spectrum panel is opt-in, but the report still measures one: the

@@ -36,22 +36,6 @@ pub(super) struct SaveOf {
     pub(super) _scratch: Vec<Arc<crate::scratch::Scratch>>,
 }
 
-#[cfg(test)]
-impl SaveOf {
-    /// A whole save of `version` of `document` that goes on from the saved file.
-    pub(super) fn whole_for_test(document: u64, version: u64) -> Self {
-        Self {
-            document,
-            version,
-            whole: true,
-            rebind: true,
-            then: None,
-            over: false,
-            _scratch: Vec::new(),
-        }
-    }
-}
-
 /// How the last save ended, or why an edit was refused, shown until it is closed.
 pub(super) enum Notice {
     Saved(String),
@@ -531,3 +515,6 @@ fn file_name(path: &std::path::Path) -> String {
         |name| name.to_string_lossy().into_owned(),
     )
 }
+
+#[cfg(test)]
+include!("saving_ui_support_test.rs");
