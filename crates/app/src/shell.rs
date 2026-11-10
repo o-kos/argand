@@ -1563,7 +1563,7 @@ impl Shell {
         } else {
             gpui_kit::component::TITLE_BAR_HEIGHT * 3.
         };
-        let about_width = window.rem_size() * 2.;
+        let about_width = about_ui::button_width(window, cx) + window.rem_size() * 0.25;
         let margin = (leading + app_menu_ui::toolbar_width(window, cx, self.view.is_some()))
             .max(controls + about_width)
             + window.rem_size() * 0.75;

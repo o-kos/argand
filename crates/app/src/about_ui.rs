@@ -3,8 +3,8 @@
 use super::*;
 use crate::about;
 use gpui_kit::base::Link;
-use gpui_kit::component::Selectable;
-use gpui_kit::{Anchor, AnyElement, img};
+use gpui_kit::component::{Icon, Selectable};
+use gpui_kit::{Anchor, AnyElement, img, relative};
 
 actions!(about_panel, [ShowAbout]);
 
@@ -100,22 +100,29 @@ impl Render for About {
             .child(
                 div()
                     .flex()
-                    .items_center()
+                    .items_start()
                     .gap_3()
                     .child(img("argand/about.png").size_12())
                     .child(
                         div()
                             .flex()
                             .flex_col()
-                            .gap_1()
+                            .h_12()
+                            // Match glyph bearings to the artwork’s transparent inset.
+                            .py(px(1.))
+                            .justify_between()
                             .child(
                                 div()
                                     .text_lg()
+                                    .line_height(relative(1.))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(about::NAME),
                             )
                             .child(
                                 div()
+                                    .relative()
+                                    .top(-px(1.))
+                                    .line_height(relative(1.))
                                     .text_color(cx.theme().muted_foreground)
                                     .child(format!("Version {}", about::VERSION)),
                             ),
@@ -139,6 +146,21 @@ impl Render for About {
                     .child(link),
             )
     }
+}
+
+pub(super) fn button_width(window: &Window, cx: &gpui_kit::App) -> Pixels {
+    let style = gpui_kit::TextStyle {
+        font_family: cx.theme().font_family.clone(),
+        ..Default::default()
+    };
+    let label = window.text_system().shape_line(
+        about::VERSION.into(),
+        window.rem_size() * 0.75,
+        &[style.to_run(about::VERSION.len())],
+        None,
+    );
+    // Tag, content gap and the button's horizontal padding.
+    label.width.ceil() + window.rem_size() * 2.
 }
 
 fn tooltip_content(window: &mut Window, cx: &mut gpui_kit::App) -> AnyElement {
@@ -235,12 +257,15 @@ impl Shell {
         let mut button = Button::new("about-button")
             .accessibility_label("About Argand")
             .tab_stop(false)
-            .w_7()
+            .xsmall()
             .h_7()
             .ghost()
             .open(open)
-            .p_0()
-            .child(img("argand/app.png").size_5())
+            .px_2()
+            .font_weight(FontWeight::NORMAL)
+            .text_color(cx.theme().muted_foreground)
+            .icon(Icon::new(gpui_kit::assets::IconName::Tag))
+            .label(about::VERSION)
             .on_click(cx.listener(|shell, _, window, cx| shell.show_about(&ShowAbout, window, cx)));
         let panels = [
             &self.analysis_hint,

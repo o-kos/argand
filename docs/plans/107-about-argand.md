@@ -121,8 +121,9 @@ Native acceptance remains incomplete.
 
 ## Post-completion
 
-Merge is not authorized by this task. Native acceptance must be completed before
-Ready/merge under the repository policy. Preserve the independent main checkout.
+The owner authorized autonomous completion, current full CI, squash merge and safe
+branch/worktree cleanup after accepting the final native appearance. Preserve the
+independent main checkout and its running application.
 
 ## Current validation refresh
 
@@ -179,3 +180,39 @@ that run does not establish a full current-source workspace gate. No cache
 cleanup, timestamp manipulation, compiler flags or dependency changes were used
 to force a different result; current-source workspace validation remains pending
 resolution of the shared-artifact identity discrepancy.
+
+## Final title-bar refinement
+
+The owner selected the standard ghost Button with the existing toolkit outline
+Tag icon and the package version without a `v` prefix. Its text uses the same
+extra-small normal-weight muted typography as the empty status bar. The About
+header distributes the title and version over the logo height; production
+screenshots must confirm visible glyph alignment in both themes. Existing panel
+behavior and tooltip suppression remain unchanged. The owner directed continuation without intervening in the shared cache.
+Application tests and bounded production release/native iterations are allowed;
+the workspace source-identity limitation remains unresolved and prevents claims
+of final validation, Ready or review readiness.
+
+
+## Accepted final native refinement
+
+The owner accepted the outline Tag plus unprefixed package-version title-bar
+button and requested only a one-logical-pixel upward offset of the Version line.
+The standard relative text positioning implements that offset; logo, title and
+line-box distribution remain unchanged. No universal pixel-perfect ink alignment
+across fonts or scaling is claimed.
+
+Current app-only validation passes formatting, Clippy and 629 binary tests. The
+ordinary production release compiled only Argand. Actual isolated system-Xvfb
+screenshots cover light/dark at 100% and 125%; button opening and Escape dismissal
+were refreshed. At 125%, Version's visible bottom moved from one pixel below the
+colored logo to its bottom; at 100% it moved one pixel upward as requested. The
+owner accepted the result. Previous link, menu and cross-panel hover evidence
+remains applicable to the unchanged interaction code. All owned native test
+processes were stopped; the owner's running instance was preserved.
+
+Independent round 3 returned no substantive findings on the preceding frozen
+source. The coordinator assessed the bounded owner-requested Version offset;
+that delta was not independently reviewed in a fourth round. Full workspace
+source identity remains pending legitimate upstream integration and a fresh gate;
+no manual shared-cache intervention is authorized or performed.

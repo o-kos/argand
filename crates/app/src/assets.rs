@@ -7,7 +7,7 @@ use std::borrow::Cow;
 // The Lucide toolbar artwork the default component bundle omits.
 icon_assets!(
     SegmentIcons,
-    [PanelTop, MoveHorizontal, MoveVertical, SquareDashed]
+    [PanelTop, MoveHorizontal, MoveVertical, SquareDashed, Tag]
 );
 
 pub struct Assets;
@@ -62,6 +62,7 @@ mod tests {
             "argand/grid.svg",
             "icons/panel-left.svg",
             "icons/panel-top.svg",
+            "icons/tag.svg",
         ] {
             let loaded = Assets.load(path).expect("the source answers").is_some();
             assert!(loaded, "{path} resolves");
