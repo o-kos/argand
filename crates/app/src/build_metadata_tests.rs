@@ -142,20 +142,15 @@ fn linked_worktrees_track_their_head_and_shared_refs_and_tags() {
 }
 
 #[test]
-fn the_tooltip_uses_the_built_identity() {
-    assert_eq!(
-        super::tooltip(),
-        format!(
-            "About Argand {}\n{} · {}\n{}",
-            super::VERSION,
-            super::TAG,
-            super::HASH,
-            super::display_date(super::DATE)
-        )
-    );
+fn package_metadata_identifies_the_application() {
+    assert_eq!(super::title(), format!("Argand {}", super::VERSION));
     assert_eq!(super::VERSION, env!("CARGO_PKG_VERSION"));
     assert_eq!(super::LICENSE, "MIT");
     assert_eq!(super::REPOSITORY, "https://github.com/o-kos/argand");
+    assert_eq!(
+        super::DESCRIPTION,
+        "Signal editor and analyzer for real and complex signals"
+    );
 }
 
 #[test]

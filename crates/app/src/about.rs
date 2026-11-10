@@ -14,11 +14,8 @@ pub fn display_date(date: &str) -> String {
     date.replacen('T', " ", 1)
 }
 
-pub fn tooltip() -> String {
-    format!(
-        "About {NAME} {VERSION}\n{TAG} · {HASH}\n{}",
-        display_date(DATE)
-    )
+pub fn title() -> String {
+    format!("{NAME} {VERSION}")
 }
 
 #[cfg(test)]

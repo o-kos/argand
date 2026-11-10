@@ -577,7 +577,7 @@ only automated behavior, not desktop interaction.
 
 ## About panel (#107)
 
-`about_ui.rs` adds a standard ghost Info Button at the right end of the title bar,
+`about_ui.rs` adds a standard ghost Argand-logo Button at the right end of the title bar,
 a direct PopupMenu command and the existing `hints::pinned` composition over standard Popover. It adds no replacement
 widget. Shell retains one `PinnedHint` and its scoped focus-out subscription;
 window deactivation closes it through the existing activation observer. Surface

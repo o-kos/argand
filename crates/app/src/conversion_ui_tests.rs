@@ -949,6 +949,14 @@ fn unsaved_selection_exports_never_suggest_private_scratch_directories(cx: &mut 
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+fn hover_about(cx: &mut gpui_kit::VisualTestContext) {
+    let position = cx.update(|window, _| window.find("about-button").bounds().center());
+    cx.simulate_mouse_move(position, None, gpui_kit::Modifiers::default());
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    frame(cx);
+}
+
 #[gpui_kit::test]
 fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAppContext) {
     use super::super::replace_ui::tests::{wait_until, write_wave};
@@ -963,6 +971,8 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
             .editing()
             .is_some_and(|editing| editing.is_described())
     });
+    hover_about(cx);
+    assert!(cx.update(|window, _| window.try_find("about-tooltip").is_some()));
     cx.simulate_keystrokes("f11");
     frame(cx);
     {
@@ -995,6 +1005,9 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
         .advance_clock(std::time::Duration::from_secs(1));
     frame(cx);
     assert_property_panels(cx, &shell, false, true);
+    hover_about(cx);
+    assert!(cx.update(|window, _| window.try_find("about-tooltip").is_none()));
+    assert_property_panels(cx, &shell, false, true);
     shell.update(cx, |shell, cx| {
         shell.status_panel_changed(
             super::super::settings_ui::StatusPanel::File,
@@ -1013,6 +1026,9 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
     cx.executor()
         .advance_clock(std::time::Duration::from_secs(1));
     frame(cx);
+    assert_property_panels(cx, &shell, true, false);
+    hover_about(cx);
+    assert!(cx.update(|window, _| window.try_find("about-tooltip").is_none()));
     assert_property_panels(cx, &shell, true, false);
     shell.read_with(cx, |shell, cx| {
         let editor = shell

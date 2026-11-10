@@ -28,7 +28,7 @@ the owner explicitly authorized a separate worktree after its branch changed.
 
 ## Decisions
 
-- Right title-bar Info button and main-menu command open one retained panel. No shortcut.
+- Right title-bar logo button and main-menu command open one retained panel. No shortcut.
 - Hover shows a tooltip containing the package version, exact HEAD tag (or `untagged`), short hash and
   commit timestamp. Hover does not open the panel.
 - The panel closes on any click within it (the repository Link also opens its
@@ -39,7 +39,7 @@ the owner explicitly authorized a separate worktree after its branch changed.
   in ISO 8601 with offset, exact tag or `untagged`. No nearest-tag substitution.
 - Rebuild tracking covers worktree HEAD, its symbolic ref, shared refs/tags and
   packed refs; missing Git/source archive data has explicit unavailable labels.
-- Owner correction: use a standard compact ghost Info Button at the right end of
+- Owner correction: use a standard compact ghost logo Button at the right end of
   the title bar, a right-anchored panel, an emphasized product heading and secondary
   version. Format the commit date with a space instead of `T`, preserving its timezone.
 - A production-binary run on an isolated Xvfb X11 display verified the earlier UI.
@@ -136,8 +136,8 @@ or change the caller repository.
 
 After that correction and the title-bar refinement, ordinary `cargo fmt --all --
 --check`, `cargo clippy --all-targets --locked` and `cargo test --locked` pass in the
-owner-approved shared baseline. Current workspace results: 1171 tests passed,
-with no failures and 1 ignored tests. These include the isolation regression,
+owner-approved shared baseline. That snapshot recorded 1,171 tests passed,
+with no failures and 1 ignored test. These include the isolation regression,
 readable commit-date and version-tooltip assertions, and the production-path About
 pointer, keyboard, focus, dismissal and right-anchored geometry scenarios.
 
@@ -152,3 +152,30 @@ right placement, tooltip, themes and narrow-window layout, final independent rou
 3 and full remote CI remain pending. Keep the Pull Request Draft while these
 requirements are incomplete. Exact snapshot, artifact and current check evidence
 are retained in the external handoff and Pull Request.
+
+## Owner visual refinement
+
+Use the existing Argand logo artwork on the standard compact ghost title-bar
+Button, retaining its accessible About name and hit target. Suppress its passive
+tooltip while any retained shared pinned panel is open: Analysis settings, File
+information, Selection or About. Do not change those panels' lifecycle or settings.
+The tooltip title is `Argand <version>`; build tag/hash and commit date use smaller
+muted supporting text. About uses a viewport-bounded 20-rem panel, the accurate
+real-and-complex-signal description from Cargo metadata, and a smaller right-aligned
+repository Link using the semantic theme link color. Refresh production native
+appearance and cross-panel hover checks after rebuilding; final review remains
+pending visual assessment.
+
+The application uses the toolkit blue palette for its semantic link color
+(`blue-400` in dark mode, `blue-600` in light mode). About is currently the
+only application consumer of this token. The existing theme-switch test also
+checks that the link color survives mode changes.
+
+The subsequent canonical workspace test run after this visual refinement exited
+successfully and passed all 629 application tests, including cross-panel hover
+suppression. However, its CLI and core executables reported two combined test
+names from the independent main checkout, absent from this branch. Therefore
+that run does not establish a full current-source workspace gate. No cache
+cleanup, timestamp manipulation, compiler flags or dependency changes were used
+to force a different result; current-source workspace validation remains pending
+resolution of the shared-artifact identity discrepancy.

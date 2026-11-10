@@ -3,7 +3,7 @@
 use super::*;
 use crate::about;
 use gpui_kit::base::Link;
-use gpui_kit::component::{Icon, Selectable};
+use gpui_kit::component::Selectable;
 use gpui_kit::{Anchor, AnyElement, img};
 
 actions!(about_panel, [ShowAbout]);
@@ -66,6 +66,7 @@ impl Render for About {
             .text_color(cx.theme().link)
             .underline()
             .cursor_pointer()
+            .text_xs()
             .focus_visible(|style| {
                 style
                     .bg(cx.theme().accent)
@@ -75,7 +76,7 @@ impl Render for About {
         div()
             .id("about-panel")
             .map(gpui_kit::TestSupportExt::test_support)
-            .w_96()
+            .w_80()
             .max_w((window.viewport_size().width - window.rem_size() * 3.).max(px(0.)))
             .px_3()
             .py_2()
@@ -133,17 +134,36 @@ impl Render for About {
                 div()
                     .id("about-repository")
                     .map(gpui_kit::TestSupportExt::test_support)
+                    .flex()
+                    .justify_end()
                     .child(link),
             )
     }
 }
 
-fn tooltip_content(window: &mut Window, _: &mut gpui_kit::App) -> AnyElement {
+fn tooltip_content(window: &mut Window, cx: &mut gpui_kit::App) -> AnyElement {
     div()
-        .w_80()
+        .id("about-tooltip")
+        .map(gpui_kit::TestSupportExt::test_support)
+        .w_64()
         .max_w((window.viewport_size().width - window.rem_size() * 3.).max(px(0.)))
         .whitespace_normal()
-        .child(about::tooltip())
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(about::title())
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(format!("{} · {}", about::TAG, about::HASH)),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(about::display_date(about::DATE)),
+        )
         .into_any_element()
 }
 
@@ -215,16 +235,26 @@ impl Shell {
         let mut button = Button::new("about-button")
             .accessibility_label("About Argand")
             .tab_stop(false)
-            .small()
             .w_7()
             .h_7()
             .ghost()
             .open(open)
-            .child(Icon::new(gpui_kit::assets::IconName::Info).size_5())
+            .p_0()
+            .child(img("argand/app.png").size_5())
             .on_click(cx.listener(|shell, _, window, cx| shell.show_about(&ShowAbout, window, cx)));
-        let hint = self.about.hint.downgrade();
+        let panels = [
+            &self.analysis_hint,
+            &self.selection_hint,
+            &self.conversion.hint,
+            &self.about.hint,
+        ]
+        .map(Entity::downgrade);
         button.interactivity().tooltip(move |_, cx| {
-            if hint.upgrade().is_some_and(|hint| hint.read(cx).is_open()) {
+            if panels.iter().any(|panel| {
+                panel
+                    .upgrade()
+                    .is_some_and(|panel| panel.read(cx).is_open())
+            }) {
                 cx.new(|_| app_menu_ui::NoTooltip).into()
             } else {
                 hints::passive(cx, |_| Tooltip::element(tooltip_content))

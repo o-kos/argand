@@ -31,7 +31,7 @@ The analysis settings hint selects Peak (MAX) or Mean power, including subsequen
 
 ## About Argand (#107)
 
-A permanent standard ghost Info button at the right end of the title bar before
+A permanent standard ghost Argand-logo button at the right end of the title bar before
 window controls and a direct About Argand application-menu item open one retained
 `PinnedHint`, anchored beneath the right title-bar button toward the window interior
 and styled like File information. There is no command shortcut
