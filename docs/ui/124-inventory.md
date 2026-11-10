@@ -582,9 +582,9 @@ existing `hints::pinned` composition over standard Popover. It adds no replaceme
 widget. Shell retains one `PinnedHint` and its scoped focus-out subscription;
 window deactivation closes it through the existing activation observer. Surface
 click dismissal is application panel policy. The repository uses the toolkit's
-standard `gpui_kit::base::Link`, whose 0.6.6 public re-export supports keyboard,
+standard `gpui_kit::base::Link`, whose 0.9.1 public re-export supports keyboard,
 focus and accessibility, with application theme styling and external URL opening.
-A scoped Link key context suppresses the Popover Enter binding so the standard
+A scoped Link key context suppresses the PinnedHint Enter binding so the standard
 Link owns its normal key-up activation; Escape still reaches the Popover.
 The older `component::link::Link` is pointer-only in the locked version and is not
 used. `about_ui_tests.rs` covers menu/button opening, repeated invocation, Escape,

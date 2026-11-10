@@ -19,10 +19,9 @@ build commit identity. No keyboard shortcut or independent application window.
 
 ## Context
 
-The implementation starts from current main with locked GPUI Kit 0.6.6.
-Upstream Rust 1.98.1 baseline work was merged before final validation; the
-toolkit lock and About implementation are unchanged by that integration. The
-independent GPUI Kit migration remains a separate Draft. Reuse `PinnedHint`,
+The implementation started on GPUI Kit 0.6.6. Before final validation, upstream
+Rust 1.98.1 and GPUI Kit 0.9.1 / standard window frame work were merged.
+The current integration uses the locked 0.9.1 graph and updated toolkit guides. Reuse `PinnedHint`,
 standard Popover, Button and the keyboard-accessible Base Link, with existing
 panel surface styling. The main working directory belongs to separate work;
 the owner explicitly authorized a separate worktree after its branch changed.
@@ -48,7 +47,7 @@ the owner explicitly authorized a separate worktree after its branch changed.
 
 - A separate native About window: contradicts the transient-surface requirement.
 - A centred Dialog: superseded by the owner's File information panel analogy.
-- Legacy component Link: locked 0.6.6 supports pointer activation only; use the
+- Legacy component Link: locked 0.9.1 supports pointer activation only; use the
   standard Base Link with its focus, keyboard and accessibility contract.
 - Runtime Git subprocesses or a duplicate hardcoded package version.
 
@@ -71,7 +70,9 @@ the owner explicitly authorized a separate worktree after its branch changed.
 - [x] Compose the About panel and integrate toolbar/menu/lifecycle.
 - [x] Add meaningful metadata and production-path interaction coverage.
 - [x] Update architecture, control inventory and changelog.
-- [x] Complete the local gate and record evidence/limits.
+- [x] Run formatting, lint and tests on GPUI Kit 0.9.1; record evidence/limits.
+- Build the release from the final committed source before review handoff;
+  retain its exit status and exact artifact identity in the external packet.
 - [x] Prepare exact neutral independent review handoff; round 1 has no findings.
 - Full remote CI must succeed without merging; exact revision and results are
   recorded in the Pull Request, keeping its CI evidence current.
@@ -82,33 +83,36 @@ the owner explicitly authorized a separate worktree after its branch changed.
 - [x] `cargo fmt --all -- --check` (Rust 1.98.1 after upstream integration)
 - [x] `cargo clippy --all-targets --locked` (Rust 1.98.1 after upstream integration)
 - [x] `cargo test --locked` (Rust 1.98.1 after upstream integration)
-- [x] `cargo build --release --locked`, after the checks above pass
+- `cargo build --release --locked` follows the checks above and this final
+  source commit; current-revision result and identity are in the review packet.
 - [x] Metadata tests, rendered pointer/keyboard/focus integration tests.
-- Independent review: round 1 is clean; focused upstream-integration revalidation
+- Independent review: round 1 is clean; full toolkit-integration revalidation
   and its exact snapshot/result are recorded in the Pull Request review handoff.
 - Full Linux/Windows/macOS remote CI: current-revision run/result is recorded in
   the Pull Request. Native acceptance remains a separate pending requirement.
 
-Current automated evidence: the Rust 1.98.1 workspace gate passes 1,167 tests (one existing
-ignored test). Six About production-path UI scenarios cover both entry points,
-Escape, repeated opening, pointer/Enter/Space repository activation, focus
-subtree transitions, window activation, outside presses and light/dark layout.
-The metadata module also passes four standalone tests without GPUI. A disposable
-Cargo project verifies actual rebuilds for same-ref commits, first tags, packed
-refs creation/removal and linked-worktree shared refs; missing Git returns explicit
-unavailable values without a panic. The full gate and source snapshot are retained
-in the external review packet. The Rust 1.98.1 release build passed in 9m24s.
-A final release rebuild follows this validation-record commit so its embedded
-identity names the submitted source revision; its artifact identity is retained
-in the external handoff.
+Current GPUI Kit 0.9.1 / Rust 1.98.1 formatting, lint and workspace tests pass:
+1,169 tests passed, with one pre-existing ignored test. Six About production-path
+UI scenarios cover both entry points, Escape, repeated opening, pointer/Enter/Space
+repository activation, focus subtree transitions, window activation, outside
+presses and light/dark layout. The harness uses the standard Root and Kit's full
+key-press pairs. The scoped Link Enter binding remains necessary because
+PinnedHint's explicit Confirm binding is deeper than PopoverContent's binding.
 
-Independent review round 1 found no substantive metadata, lifecycle, UI-composition,
-architecture or validation-evidence findings. There were no accepted/rejected
-findings to carry forward. Upstream integration requires the full gate on the new
-Rust baseline (formatting, lint, tests and release now pass) and a focused
-current-snapshot review before the final CI result. Focused revalidation and
-remote CI outcomes are retained in the Pull Request without subsequent commits
-that would invalidate the checked revision.
+The unchanged metadata module also passes four standalone tests without GPUI.
+A disposable Cargo project verifies actual rebuilds for same-ref commits, first
+tags, packed refs creation/removal and linked-worktree shared refs; missing Git
+returns explicit unavailable values without a panic. Raw validation and the full
+source snapshot are retained in the external review packet. The release build
+follows the final source commit, so its embedded identity names the submitted
+revision; the artifact identity and exit status are retained in that packet.
+
+Independent review round 1 on the earlier toolkit baseline found no substantive
+metadata, lifecycle, UI-composition, architecture or validation-evidence findings.
+There were no accepted/rejected findings to carry forward. The GPUI Kit 0.9.1
+integration requires full current-snapshot code review; round 1 does not establish
+the new snapshot. Current review and remote CI outcomes are retained in the Pull
+Request without subsequent commits that would invalidate the checked revision.
 Native acceptance remains incomplete.
 
 ## Post-completion

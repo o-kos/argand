@@ -29,7 +29,7 @@ fn open(cx: &mut TestAppContext) -> Harness {
         let view = cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
         shell = Some(view.clone());
         window.activate_window();
-        Root::new(view, window, cx).bordered(false)
+        Root::new(view, window, cx)
     });
     let h = Harness {
         window,
@@ -49,13 +49,6 @@ fn keys(cx: &mut TestAppContext, h: &Harness, keys: &str) {
     cx.update_window(h.window.into(), |_, window, cx| {
         for key in keys.split_whitespace() {
             window.press(key, cx);
-            window.dispatch_event(
-                gpui_kit::KeyUpEvent {
-                    keystroke: gpui_kit::Keystroke::parse(key).expect("key"),
-                }
-                .to_platform_input(),
-                cx,
-            );
         }
     })
     .expect("window");
