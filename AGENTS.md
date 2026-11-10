@@ -82,7 +82,7 @@ intermediate build-dir outside worktrees, workspace-local final artifacts in
 target-dir, and the prescribed worktree location. Stop on a missing or conflicting
 setup; never auto-install a toolchain. Follow the policy's explicit owner approval
 for initial dependency compilation and dependency rebuilds beyond the agreed
-debug/test and release baseline. The owner alone controls disk budgeting.
+debug/test, release and check/Clippy baseline. The owner alone controls disk budgeting.
 
 ## Workflow and access
 

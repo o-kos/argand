@@ -95,7 +95,7 @@ do not set a shared global target-dir. Do not create per-worktree intermediate b
 caches or scratch build caches. If the common build-dir is not known or configured,
 stop before building. Preserve existing intermediate artifacts when configuring the
 split; do not move or clear them just to change the final-output directory.
-The baseline covers debug/test and release artifacts. Before initial dependency
+The owner-approved baseline covers debug/test, release and check/Clippy artifacts. Before initial dependency
 compilation, agree the installed toolchain and common cache with the owner and obtain
 explicit approval to build that baseline. Ordinary recompilation of changed project
 code is allowed within the agreed setup. If GPUI Kit or other dependencies need to be
