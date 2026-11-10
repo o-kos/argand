@@ -1,5 +1,5 @@
 use super::*;
-use crate::orientation::Mode;
+use crate::navigation::orientation::Mode;
 
 #[test]
 fn everything_outside_the_selection_is_dimmed_once() {

@@ -801,6 +801,5 @@ impl Editing {
 include!("editing_support_test.rs");
 
 #[cfg(test)]
-mod tests {
-    include!("editing_tests.rs");
-}
+#[path = "editing_test.rs"]
+mod tests;

@@ -254,6 +254,5 @@ fn root(path: &Path) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("recent_tests.rs");
-}
+#[path = "recent_test.rs"]
+mod tests;

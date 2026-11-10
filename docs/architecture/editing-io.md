@@ -71,9 +71,9 @@ Opening prefers `argd`, then `auxi`, then the comment, also for a WAVE layout th
 reads, and an exact rate only while it agrees with the header's within 1 Hz. `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins, and a
 session hint of 0 means none.
 
-`saving.rs` runs one save on its own thread with 4 MiB buffers, progress at most every
+`processing/saving.rs` runs one save on its own thread with 4 MiB buffers, progress at most every
 100 ms through a bounded channel and a cancel flag; dropping the `Job` cancels it and waits
-at most one second for the temporary file to go. `saving_ui.rs` owns File → Save as…
+at most one second for the temporary file to go. `shell/saving_ui.rs` owns File → Save as…
 (Ctrl+Shift+S, Cmd+Shift+S) and Save selection as… (Ctrl+Alt+S, Cmd+Option+S), disabled
 without a described capture, during a save, and for the second without a time selection.
 The dialog is `App::prompt_for_new_path` in the source folder with
@@ -102,7 +102,7 @@ disk since is refused when saved, by the writer's stamp check. After delete and 
 is selected; after paste the pasted samples are; undo and redo restore each version's
 selection.
 
-`editing_ui.rs` owns the commands. There is no insertion cursor: a right click on the
+`shell/editing_ui.rs` owns the commands. There is no insertion cursor: a right click on the
 spectrogram (`PlotView::spectrum_context_menu`) offers Cut, Copy, Paste here, Replace
 selection and Delete, Paste here going before the clicked sample (`PlotView::paste_point`,
 kept past the menu's dismissal because its action arrives after it) and marked by a line
@@ -132,7 +132,7 @@ what the question left waiting. A save needs a non-empty capture whose files all
 
 ## Saving over the open file (#193)
 
-File → Save (Ctrl+S, Cmd+S) writes the edited capture over its own file (`replace_ui.rs`).
+File → Save (Ctrl+S, Cmd+S) writes the edited capture over its own file (`shell/replace_ui.rs`).
 `write::stage` writes the temporary file while the original is still read and returns a
 `Staged` that `commit` moves into place or, dropped, removes; `SaveRequest::replacing` lets
 the target be the replaced file, whose stamp `commit` checks just before the rename, and a
@@ -182,7 +182,7 @@ A reader cannot name the file it found changed, so `disk_change::naming` names i
 known: the minimap names its file, and the analysis worker names the opened file while the
 capture reads nothing else; otherwise the notice says the capture changed. `Document::is_changed`
 holds from a failed analysis, minimap or envelope (`Document::note_failure`; the opened file's
-minimap and a pasted file's envelope only while the current version still reads that file), or from the activation check (`disk_change_ui.rs`), which
+minimap and a pasted file's envelope only while the current version still reads that file), or from the activation check (`shell/disk_change_ui.rs`), which
 stamps the files the current version reads by path on a thread of its own, at most one at a
 time per document, and applies the result only to the same document and the same stamps. No
 check starts or applies while `replacement_active` or while a saved file is being rebound

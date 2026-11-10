@@ -4,12 +4,12 @@ Physical coordinates, plot navigation and selection presentation. Read this befo
 
 ## Time navigation (#30)
 
-`navigation.rs` owns bounded sample ranges and held-grid level lookup without GPUI.
+`navigation/mod.rs` owns bounded sample ranges and held-grid level lookup without GPUI.
 The shell starts every opened file at its full sample range, clamps its span to
 one FFT or the shorter capture, and sends range changes through the existing
 cancellable mailbox. Size and style changes retain their previous cache semantics.
-`navigation_ui.rs` provides Ctrl+wheel zoom about the pointer, middle-button and Space+left-drag pan on the spectrum, left-drag pan on the time ruler, identical Ctrl+wheel zoom and wheel horizontal pan over plots and the time ruler, keyboard
-commands and the View menu. The crosshair is restricted to the spectrogram. `plot_ui.rs` immediately maps held spectral pictures into
+`shell/plot/navigation_ui.rs` provides Ctrl+wheel zoom about the pointer, middle-button and Space+left-drag pan on the spectrum, left-drag pan on the time ruler, identical Ctrl+wheel zoom and wheel horizontal pan over plots and the time ruler, keyboard
+commands and the View menu. The crosshair is restricted to the spectrogram. `shell/plot/plot_ui.rs` immediately maps held spectral pictures into
 the requested time interval and clips the spectrogram to its plot. Cursor levels
 come from the displayed grid's own extents; uncovered time has no reported level.
 The completed full-capture minimap updates the file hint's extrema independently
@@ -26,12 +26,12 @@ Cursor time precision follows the visible time per pixel, up to nanoseconds.
 
 Every analysis after a file's first one replaces a picture already shown, whether the
 range moved or a transform setting changed (#108), and uses
-`ProgressiveOptions::final_only` (`Requested::replacement` in `analysis.rs`): sequential
+`ProgressiveOptions::final_only` (`Requested::replacement` in `analysis/mod.rs`): sequential
 sample reading, no sparse previews or intermediate pictures, and cancellation between
 bounded batches. Only the first analysis of an opened file previews and refines, because
 it has no picture to keep; an edit keeps its picture moved with the samples (#193). A settings change used to restart the preview sequence, which
 replaced a complete picture with a coarse one and changed its brightness several times
-in the peak-relative range mode. `analysis_progress.rs` forwards source hints and sends bounded, nonblocking
+in the peak-relative range mode. `analysis/progress.rs` forwards source hints and sends bounded, nonblocking
 progress-only notifications from sequential reads every 50 ms. At most 128 frames fitting one configured memory/work-bounded batch use a
 single FFT accumulator; larger workloads retain parallel frame groups. Navigation
 textures use one logical column for a single FFT frame; multi-frame pictures retain
@@ -40,7 +40,7 @@ The overview computes and shades identical adjacent time-cell overlaps once and
 copies their pixels. Waveform columns still match the plot width. Spectrogram
 textures replicate their edge texels and clip the padding at paint time to prevent
 linear atlas sampling from bleeding neighbouring allocations into stretched images.
-`backdrop.rs` keeps one additional wider picture (CPU grid/image, GPU
+`shell/backdrop.rs` keeps one additional wider picture (CPU grid/image, GPU
 texture) to fill only time uncovered by the foreground. It is scoped
 to the displayed transform and file. It keeps the widest extent, upgrades a matching
 preview on completion, and reports cursor levels only from completed backdrops.
@@ -86,7 +86,7 @@ panel has no room; `cursor_guides::badge_rects` holds the geometry.
 
 ## Time ruler modes (#81)
 
-`time_ruler.rs` owns the toolkit-neutral clock/seconds/samples presentation.
+`navigation/time_ruler.rs` owns the toolkit-neutral clock/seconds/samples presentation.
 `View > Time scale format` and the time-ruler context menu share the mode items; session version 7 remembers it, while older
 sessions default to clock and file openings still reset the navigation range.
 `AxisKind::Seconds` uses decimal second steps with matching fractional labels;
@@ -106,8 +106,8 @@ badge backgrounds, including across the gap below the spectral image.
 Status-bar coordinates share the Alt badge formatter and follow both ruler units. CLI defaults and
 CLI frequency axes are unchanged.
 
-`numbers.rs` formats GUI numbers with ICU/CLDR using the regional numeric locale
-read by `numeric_locale.rs` at startup. Top-level `Config::number_format` defaults
+`numbers/mod.rs` formats GUI numbers with ICU/CLDR using the regional numeric locale
+read by `numbers/system.rs` at startup. Top-level `Config::number_format` defaults
 to `system` and accepts an explicit BCP 47 tag or C/POSIX. It has no visual editor
 or session override. Configuration loads before numeric initialization, which
 precedes session restoration and window creation; invalid locale strings reset
@@ -132,7 +132,7 @@ Alt guides and cursor feedback available without a mouse move after dismissal.
 
 ## Frequency navigation (#80)
 
-`frequency.rs` owns a normalized, bounded frequency viewport independent of the time
+`navigation/frequency.rs` owns a normalized, bounded frequency viewport independent of the time
 range. Each file opening resets it. Its minimum span is one retained frequency
 cell, with at most 2048 cells across the capture band and a physical-coordinate
 precision floor for extreme centre frequencies. The document mailbox treats
@@ -174,7 +174,7 @@ device pixel wide).
 ## Selection on the plot (#183)
 
 A selection carries its readouts as badges over the plot (`axes::SelectionBadges`,
-`selection_badges.rs`), in the Alt badge look, one `AxisBadges` per selected axis, dimensioned
+`axes/selection_badges.rs`), in the Alt badge look, one `AxisBadges` per selected axis, dimensioned
 as on a drawing: each edge's badge just beyond the selection on one side, running from its
 edge towards the other so the corners stay free for the other axis. Where the edges are too
 close for both, a rectangle shows only that axis's extent, while a selection of one axis
@@ -210,7 +210,7 @@ the selection, so two edges meeting at a corner keep their tails apart (`selecti
 selection stands far enough from it that the badge input opened over it keeps one logical pixel
 clear (`Extent::clear`, from `badge_entry::entry_size`). The status bar shows no selection.
 
-`selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
+`shell/plot/selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
 every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
 pixels of an edge grabs it (`Grab::Edges`): a time edge on the spectrum along the band's
 extent and on the minimap, a band edge on the spectrum along the time extent and on the
@@ -227,7 +227,7 @@ still pan everywhere.
 
 ## Typing a selection (#219)
 
-`selection_entry.rs` (toolkit-neutral) writes and reads a selection's six values
+`navigation/selection_entry.rs` (toolkit-neutral) writes and reads a selection's six values
 (`Field::{TimeStart, TimeEnd, TimeLength, BandLow, BandHigh, BandWidth}`) against a `Scale`
 the shell gives (`Shell::entry_scale`), which the badges' own texts come from too, so the badges,
 the badge input and the dialog show one value alike: time in the ruler's mode to one pixel of the
@@ -242,7 +242,7 @@ the end or high edge, and an equal edge or a text that does not parse gives noth
 The badge layout is `SelectionBadges::place`, run in the canvas's prepaint; each badge carries
 its `Field` and `BadgeLayout` hands the rectangles to `PlotView::place_badges`. A left press on a
 badge (`PlotView::badge_at`) starts no gesture and the pointer is an arrow there; a double click
-opens a `BadgeEntry` (`badge_entry.rs`), an extra-small stock `Input` with `appearance(false)` in
+opens a `BadgeEntry` (`shell/badge_entry.rs`), an extra-small stock `Input` with `appearance(false)` in
 the badge's type and padding, keeping its own height centred on the badge in a frame as wide as
 the badge with room for the caret, a sibling of the plot
 surface so no `Plot` binding matches while it holds the keyboard, and the badge under it is not
@@ -250,7 +250,7 @@ painted. Enter applies it as `PlotIntent::Select` or marks the text it refuses i
 colour, Escape (the `BadgeEntry` context, since the input passes it on) and blur close it
 unchanged, unchanged text applies nothing, and a selection changed elsewhere closes it.
 
-The selection panel (`selection_panel.rs`), which replaced a modal dialog at the owner's
+The selection panel (`shell/plot/selection_panel.rs`), which replaced a modal dialog at the owner's
 request, is a `PinnedHint` hanging under three title-bar segments right of Grid, Time, Band and
 Both (`app_menu_ui::selection_segments`, toolbar-styled `Button`s in a `ButtonGroup` with the
 Lucide `move-horizontal`, `move-vertical` and `square-dashed` artwork, the arrows running along

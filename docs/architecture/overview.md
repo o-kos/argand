@@ -30,9 +30,41 @@ Argand is designed for viewing, navigating, editing, and performing spectral ana
 - **argand-dsp:** STFT and spectrogram generation, Welch PSD, window functions, min/max pyramid construction, and band extraction (`extract`: frequency shift, low-pass filtering integer decimation and fractional-rate reconstruction, see [Band and rectangle selection (#202)](processing.md#band-and-rectangle-selection-202)) and band suppression (`suppress`, see [Band suppression (#212)](processing.md#band-suppression-212)). Shading is a separate public step over a `DbGrid`, so changing the colour scheme or the dynamic range recolours values a caller already holds instead of running the transform again. It depends on rustfft and must not depend on GUI code.
 - **argand-io:** WAV and other format readers behind the `FormatReader` interface: probe, open, and read through a lazy sample source, and `write::save`, which writes a capture or a span of it to a new file (see [Saving (#186)](editing-io.md#saving-186)). A plain RIFF WAVE may split its samples over several `data` chunks, as KiwiSDR recorders do with a `kiwi` GNSS chunk before each (#204): `riff::WavLayout::runs` walks the chunks after the first `data` up to the stated RIFF end and returns each body as a `DataRun`, `MmapSource` reads the runs as one array and the writer copies them into one `data` chunk. `write::FloatWave` writes computed real or I/Q `f32` samples, and a `SourceFile` with an `Encoding` is such a file that a save encodes into the capture's own format (#212). RF64/BW64 and a file with nothing after its first `data` chunk are one run, without a walk. This is the future connection point for custom formats through the worker.
 - **argand-edit:** the editing engine: an immutable piece table (`Capture`) over the files a capture reads, `Clip`s of it, a `History` of versions for undo and redo, and `EditedSource`, a `SampleSource` reading a capture through one opened source per `SourceId` (see [Editing (#195, #196)](editing-io.md#editing-195-196)). It depends on `argand-core` only.
-- **argand-app:** the application binary, `argand`, using the GPUI Kit facade over GPUI and gpui-component. It opens a signal file, analyses it on a thread of its own, and draws the spectrogram with axes. Its modules divide by whether they name a toolkit: `config.rs`, `session.rs`, `document.rs` and `analysis.rs` do not and are tested without a window, while `shell.rs`, `chrome.rs`, `axes.rs` and `spectrogram.rs` do. It owns cursors, selections and scrolling; the detailed spectrum window remains planned. The application binary is shipped alongside `aspec`.
+- **argand-app:** the application binary, `argand`, using the GPUI Kit facade over GPUI and gpui-component. It opens a signal file, analyses it on a thread of its own, and draws the spectrogram with axes. Its modules divide by whether they name a toolkit: `config.rs`, `session.rs`, `document.rs` and `analysis/mod.rs` do not and are tested without a window, while `shell/mod.rs`, `chrome.rs`, `axes/mod.rs` and `spectrogram.rs` do. It owns cursors, selections and scrolling; the detailed spectrum window remains planned. The application binary is shipped alongside `aspec`.
 - **argand-worker:** a planned processing worker binary that loads C ABI libraries and communicates through a stdio protocol. It is deferred.
 - **argand-abi:** planned C ABI contract and protocol types. It is deferred.
+
+## Application module layout
+
+Paths below are relative to `crates/app/src`. Subsystems use ordinary Rust modules;
+consumers name the actual namespace rather than old root compatibility reexports:
+
+- `processing/` groups toolkit-neutral conversion, extraction, suppression,
+  levelling and saving/publication workflows with their shared job/source seams.
+- `navigation/` owns sample/time and frequency viewports, orientation, time-ruler
+  coordinates and typed selection-entry parsing/formatting. These models name no GPUI.
+- `shell/plot/` groups the plot entity, drawing, navigation input, selection
+  gestures and selection panel. Shell still owns documents and every GPU texture;
+  PlotView owns focus/pointer/gesture state and emits intents. Internal visibility
+  names `crate::shell` where nesting would otherwise narrow the existing boundary.
+- `analysis/` owns the document worker, progress, per-document execution policy and
+  its CPU-affinity adapter. Config refers to `analysis::execution::Settings`.
+- `axes/` owns cursor guides and selection badges; `numbers/` owns numeric
+  presentation and its platform locale adapter. The settings view/editor live in
+  `shell/settings_ui/`; other operation views remain direct Shell children.
+
+Root document/open-file/editing/source-change services, minimap/statistics tasks,
+configuration/session/settings/recent history, scratch storage and application
+bootstrap/platform/resource helpers remain independently named shared owners.
+Scratch is used by both editing and processing; putting it beneath one would
+misstate ownership. Persistence is not a GUI settings feature. A toolkit-neutral
+service does not become a child of its GUI consumer merely to reduce root files.
+
+Unit tests use sibling `*_test.rs` files with the same case names, cfg gates and
+private access. Their fully qualified module names follow the new subsystems.
+Test-only support includes remain at original relative scopes for associated
+fixture implementations/instrumentation; plot context-menu tests keep their
+nested scope. These exceptions do not redirect production module layout.
 
 ## Configuration and session
 

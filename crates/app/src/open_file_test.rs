@@ -71,7 +71,7 @@ fn state() -> OpenFileState {
     let (analyst, _updates, _start) = crate::analysis::prepare(
         PathBuf::from("missing.iqw"),
         Default::default(),
-        crate::execution::Settings::default(),
+        crate::analysis::execution::Settings::default(),
         crate::release::lease().0,
     );
     let document = Document::opening(crate::document::Origin::new(PathBuf::from("missing.iqw")));

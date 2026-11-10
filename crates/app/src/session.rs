@@ -252,14 +252,14 @@ pub struct Recent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
     #[serde(default)]
-    pub orientation: crate::orientation::Mode,
+    pub orientation: crate::navigation::orientation::Mode,
     #[serde(default = "default_grid_visibility")]
     pub show_grid: bool,
     /// Whether the ruler overlay controls ([+|-] corner buttons) are shown.
     #[serde(default = "default_scale_ui_visibility")]
     pub show_scale_ui: bool,
     #[serde(default)]
-    pub time_ruler: crate::time_ruler::Mode,
+    pub time_ruler: crate::navigation::time_ruler::Mode,
     /// The interface theme chosen in the menu, or none to follow the configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<crate::config::Theme>,
@@ -288,8 +288,8 @@ impl Default for Session {
             version: VERSION,
             show_grid: true,
             show_scale_ui: true,
-            orientation: crate::orientation::Mode::default(),
-            time_ruler: crate::time_ruler::Mode::default(),
+            orientation: crate::navigation::orientation::Mode::default(),
+            time_ruler: crate::navigation::time_ruler::Mode::default(),
             theme: None,
             analysis_settings: None,
             geometry: None,
@@ -1037,6 +1037,5 @@ fn fit(window: Geometry, display: Geometry) -> Geometry {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("session_tests.rs");
-}
+#[path = "session_test.rs"]
+mod tests;

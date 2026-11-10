@@ -691,6 +691,5 @@ fn file_size(bytes: u64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("document_tests.rs");
-}
+#[path = "document_test.rs"]
+mod tests;

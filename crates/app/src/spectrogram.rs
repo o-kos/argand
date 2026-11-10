@@ -25,7 +25,7 @@ const CHANNELS: usize = 4;
 /// empty range produces: there is nothing to draw and nothing to upload.
 pub fn texture(
     image: &SpectrogramImage,
-    orientation: crate::orientation::Mode,
+    orientation: crate::navigation::orientation::Mode,
 ) -> Option<Arc<RenderImage>> {
     // A buffer of no bytes still satisfies the image crate, and an empty
     // texture reaches the atlas as a zero-sized allocation. Neither is a
@@ -62,7 +62,10 @@ pub fn paint(texture: Arc<RenderImage>, bounds: Bounds<Pixels>, window: &mut Win
     });
 }
 
-fn padded_bgra(image: &SpectrogramImage, orientation: crate::orientation::Mode) -> Option<Vec<u8>> {
+fn padded_bgra(
+    image: &SpectrogramImage,
+    orientation: crate::navigation::orientation::Mode,
+) -> Option<Vec<u8>> {
     let (width, height) = orientation.axes(image.width, image.height);
     let stride = width.checked_mul(CHANNELS)?;
     if image.rgba.len() != stride.checked_mul(height)? || stride == 0 || height == 0 {
@@ -91,7 +94,7 @@ fn padded_bgra(image: &SpectrogramImage, orientation: crate::orientation::Mode) 
 pub fn column_texture(
     image: &SpectrogramImage,
     column: usize,
-    orientation: crate::orientation::Mode,
+    orientation: crate::navigation::orientation::Mode,
 ) -> Option<Arc<RenderImage>> {
     if column >= image.width {
         return None;
@@ -105,7 +108,7 @@ pub fn column_texture(
 }
 
 /// The same pixels with red and blue exchanged.
-fn bgra(image: &SpectrogramImage, orientation: crate::orientation::Mode) -> Vec<u8> {
+fn bgra(image: &SpectrogramImage, orientation: crate::navigation::orientation::Mode) -> Vec<u8> {
     let mut bytes = vec![0; image.rgba.len()];
     for (y, row) in image
         .rgba
@@ -126,6 +129,5 @@ fn bgra(image: &SpectrogramImage, orientation: crate::orientation::Mode) -> Vec<
 }
 
 #[cfg(test)]
-mod tests {
-    include!("spectrogram_tests.rs");
-}
+#[path = "spectrogram_test.rs"]
+mod tests;

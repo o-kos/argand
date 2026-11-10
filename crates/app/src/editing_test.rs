@@ -1,0 +1,667 @@
+use super::*;
+use std::path::PathBuf;
+
+use argand_core::{Domain, SampleFormat, SampleType};
+
+fn meta(path: &str, len: u64, rate: f64) -> SignalMeta {
+    SignalMeta {
+        sample_rate: rate,
+        center_freq: 0.0,
+        sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
+        len_samples: len,
+        container: "wav",
+        divisor: 32768.0,
+        source: PathBuf::from(path),
+    }
+}
+
+const LINEAR: Storage = Storage::Linear {
+    format_tag: 1,
+    bits: 16,
+    channels: 2,
+    block: 4,
+    unscaled_float: false,
+};
+
+fn editing(path: &str, len: u64, rate: f64) -> Editing {
+    let mut editing = Editing::new(meta(path, len, rate), OpenHints::default());
+    let dir = argand_io::testutil::TempDir::new("editing-format");
+    let path = argand_io::testutil::write_wav(
+        &dir.join("format.wav"),
+        editing.file().meta.sample_type,
+        rate as u32,
+        &[0.0, 0.0],
+        1.0,
+    );
+    let source = argand_io::open(&path, &OpenHints::default()).unwrap();
+    let format = argand_io::write::format(&SourceFile {
+        meta: source.meta().clone(),
+        hints: OpenHints::default(),
+        stamp: None,
+        encoding: None,
+    })
+    .unwrap();
+    editing.describe_format(None, Some(format));
+    editing
+}
+
+fn span(a: u64, b: u64) -> SampleSpan {
+    SampleSpan::between(a, b).unwrap()
+}
+
+#[test]
+fn a_paste_from_another_file_adds_it_once_when_it_matches() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let other = editing("/b.wav", 50, 1000.0);
+    let clipboard = other.copy(span(0, 20));
+    document.paste(&clipboard, Placement::At(100)).unwrap();
+    document.paste(&clipboard, Placement::At(0)).unwrap();
+    assert_eq!(document.capture().sources(), [SourceId(0), SourceId(1)]);
+    assert_eq!(document.len(), 140);
+    let state = document.edit_state();
+    assert!(state.sources[0].is_none());
+    assert_eq!(
+        state.sources[1]
+            .as_ref()
+            .map(|file| file.meta.source.clone()),
+        Some(PathBuf::from("/b.wav"))
+    );
+    assert_eq!(document.missing_envelopes().len(), 1);
+}
+
+#[test]
+fn a_paste_from_a_file_stored_differently_or_at_another_rate_is_refused() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let mut float = Editing::new(meta("/f.wav", 50, 1000.0), OpenHints::default());
+    float.describe_file(
+        None,
+        Some(Storage::Linear {
+            format_tag: 3,
+            bits: 32,
+            channels: 2,
+            block: 8,
+            unscaled_float: false,
+        }),
+    );
+    let faster = editing("/r.wav", 50, 2000.0);
+    let unchecked = Editing::new(meta("/u.wav", 50, 1000.0), OpenHints::default());
+    for (other, refused) in [
+        (
+            &float,
+            PasteError::Storage {
+                name: "f.wav".into(),
+            },
+        ),
+        (
+            &faster,
+            PasteError::Rate {
+                name: "r.wav".into(),
+            },
+        ),
+        (
+            &unchecked,
+            PasteError::Unknown {
+                name: "u.wav".into(),
+            },
+        ),
+    ] {
+        let clipboard = other.copy(span(0, 10));
+        assert_eq!(document.paste(&clipboard, Placement::At(0)), Err(refused));
+    }
+    assert!(!document.is_dirty(), "a refused paste changes nothing");
+}
+
+#[test]
+fn a_save_names_only_the_files_its_samples_come_from() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let other = editing("/b.wav", 50, 1000.0);
+    document
+        .paste(&other.copy(span(0, 20)), Placement::At(100))
+        .unwrap();
+    let whole = document
+        .save_request(None, PathBuf::from("/out.wav"))
+        .unwrap();
+    assert_eq!(whole.sources.len(), 2);
+    assert_eq!(whole.segments.len(), 2);
+    assert_eq!(
+        (
+            whole.segments[1].source,
+            whole.segments[1].start,
+            whole.segments[1].len
+        ),
+        (1, 0, 20)
+    );
+    let tail = document
+        .save_request(Some(span(105, 110)), PathBuf::from("/out.wav"))
+        .unwrap();
+    assert_eq!(tail.sources.len(), 1);
+    assert_eq!(tail.sources[0].meta.source, PathBuf::from("/b.wav"));
+    assert_eq!(
+        tail.protected[0].path,
+        PathBuf::from("/a.wav"),
+        "the open file stays protected"
+    );
+    assert_eq!(
+        tail.meta.source,
+        PathBuf::from("/a.wav"),
+        "and describes the result"
+    );
+    assert_eq!(
+        (
+            tail.segments[0].source,
+            tail.segments[0].start,
+            tail.segments[0].len
+        ),
+        (0, 5, 5)
+    );
+}
+
+#[test]
+fn an_empty_capture_has_nothing_to_save() {
+    let mut document = editing("/a.wav", 10, 1000.0);
+    document.delete(span(0, 10));
+    assert!(
+        document
+            .save_request(None, PathBuf::from("/out.wav"))
+            .is_none()
+    );
+}
+
+#[test]
+fn the_same_file_opened_another_way_is_another_source() {
+    let mut document = editing("/a.raw", 100, 1000.0);
+    let mut shifted = Editing::new(
+        meta("/a.raw", 100, 1000.0),
+        OpenHints {
+            byte_offset: 4,
+            ..Default::default()
+        },
+    );
+    shifted.describe_file(None, Some(LINEAR));
+    document
+        .paste(&shifted.copy(span(0, 10)), Placement::At(0))
+        .unwrap();
+    assert_eq!(document.capture().sources(), [SourceId(0), SourceId(1)]);
+}
+
+#[test]
+fn an_envelope_is_asked_for_once_and_a_save_waits_for_every_stamp() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let other = editing("/b.wav", 50, 1000.0);
+    assert!(!document.is_described());
+    document
+        .paste(&other.copy(span(0, 20)), Placement::At(0))
+        .unwrap();
+    assert_eq!(document.missing_envelopes().len(), 1);
+    document.undo();
+    document.redo();
+    assert!(
+        document.missing_envelopes().is_empty(),
+        "the scan already started"
+    );
+}
+
+#[test]
+fn a_clipboard_copied_before_its_file_was_checked_learns_its_storage() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let early = Editing::new(meta("/b.wav", 50, 1000.0), OpenHints::default());
+    let mut clipboard = early.copy(span(0, 10));
+    let refused = document.paste(&clipboard, Placement::At(0));
+    assert!(matches!(refused, Err(PasteError::Unknown { .. })));
+    clipboard.describe(early.file(), Some(LINEAR));
+    assert!(
+        document.paste(&clipboard, Placement::At(0)).is_err(),
+        "a file without a stamp from its opening is not trusted"
+    );
+}
+
+#[test]
+fn a_clipboard_follows_its_samples_into_the_file_saved_over_them() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let clipboard = document.copy(span(60, 70));
+    let gone = document.copy(span(10, 20));
+    document.delete(span(0, 30));
+    let written = document.written_source();
+    let moved = clipboard
+        .moved_onto(document.file(), document.capture(), &written)
+        .expect("the copied samples were kept");
+    assert_eq!(
+        moved.clip.pieces(),
+        [argand_edit::Piece {
+            source: SourceId(0),
+            start: 30,
+            len: 10,
+        }]
+    );
+    assert_eq!(moved.sources[0].meta.len_samples, 70);
+    let mut adopted = moved.clone();
+    adopted.adopt(&Source {
+        stamp: None,
+        ..written
+    });
+    assert!(
+        gone.moved_onto(
+            document.file(),
+            document.capture(),
+            &document.written_source()
+        )
+        .is_none(),
+        "a copy of deleted samples cannot follow"
+    );
+}
+
+#[test]
+fn moved_positions_are_where_the_samples_sit_after_the_edits() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.delete(span(0, 30));
+    assert_eq!(
+        positions_in(document.capture(), 60, 10),
+        Some(vec![(30, 10)])
+    );
+    assert_eq!(positions_in(document.capture(), 25, 10), None);
+}
+
+#[test]
+fn an_envelope_left_unfinished_is_asked_for_again_after_a_restore() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let other = editing("/b.wav", 50, 1000.0);
+    document
+        .paste(&other.copy(span(0, 20)), Placement::At(0))
+        .unwrap();
+    assert_eq!(document.missing_envelopes().len(), 1);
+    assert!(document.missing_envelopes().is_empty());
+    document.restart_envelopes();
+    assert_eq!(
+        document.missing_envelopes().len(),
+        1,
+        "its builder went with the closed document"
+    );
+}
+
+/// Computed samples of `len`, at the capture's rate and kind, in a scratch file at `path`.
+fn computed(path: &std::path::Path, len: u64, rate: f64) -> Source {
+    std::fs::write(path, b"computed").unwrap();
+    let mut meta = meta(&path.to_string_lossy(), len, rate);
+    meta.sample_type = SampleType::new(Domain::Iq, SampleFormat::F32);
+    meta.divisor = 1.0;
+    Source::computed(
+        Arc::new(Scratch::new(path.to_owned())),
+        meta,
+        argand_io::write::SourceStamp::of(path).ok(),
+    )
+}
+
+fn scratch_dir(label: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("argand-editing-{label}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn computed_samples_replace_their_span_as_one_edit() {
+    let dir = scratch_dir("replace");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.describe_units(Some((32768.0, 0.0)));
+    assert!(document.can_compute());
+    assert!(!document.replace_computed(
+        span(10, 30),
+        computed(&dir.join("short.wav"), 19, 1000.0),
+        0,
+        Selection::default()
+    ));
+    let rectangle = Selection {
+        time: Some(span(15, 25)),
+        band: argand_core::FrequencyBand::between(100.0, 200.0),
+    };
+    assert!(document.replace_computed(
+        span(10, 30),
+        computed(&dir.join("1.wav"), 20, 1000.0),
+        0,
+        rectangle
+    ));
+    assert_eq!(document.len(), 100);
+    assert_eq!(document.marked(), rectangle);
+    let pieces: Vec<(u32, u64, u64)> = document
+        .capture()
+        .pieces()
+        .iter()
+        .map(|piece| (piece.source.0, piece.start, piece.len))
+        .collect();
+    assert_eq!(pieces, [(0, 0, 10), (1, 0, 20), (0, 30, 70)]);
+    assert!(document.undo());
+    assert!(document.is_untouched());
+    assert_eq!(
+        document.marked(),
+        rectangle,
+        "undoing it keeps the selection"
+    );
+    assert!(document.redo());
+    assert_eq!(document.marked(), rectangle);
+    assert_eq!(document.missing_envelopes().len(), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_scratch_file_goes_once_no_version_or_clipboard_reads_it() {
+    let dir = scratch_dir("lifetime");
+    let path = dir.join("1.wav");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.replace_computed(
+        span(0, 10),
+        computed(&path, 10, 1000.0),
+        0,
+        Selection::default(),
+    );
+    let clipboard = document.copy(span(0, 5));
+    drop(document);
+    assert!(path.exists(), "the clipboard still reads it");
+    drop(clipboard);
+    assert!(!path.exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn computed_samples_paste_into_a_capture_stored_otherwise_of_the_same_rate_and_kind() {
+    let dir = scratch_dir("paste");
+    let mut source = editing("/a.wav", 100, 1000.0);
+    source.replace_computed(
+        span(0, 10),
+        computed(&dir.join("1.wav"), 10, 1000.0),
+        0,
+        Selection::default(),
+    );
+    let clipboard = source.copy(span(0, 10));
+    let mut other = Editing::new(meta("/b.wav", 50, 1000.0), OpenHints::default());
+    other.describe_file(
+        None,
+        Some(Storage::Linear {
+            format_tag: 1,
+            bits: 32,
+            channels: 2,
+            block: 8,
+            unscaled_float: false,
+        }),
+    );
+    assert!(other.paste(&clipboard, Placement::At(0)).is_ok());
+    let mut slower = editing("/c.wav", 50, 500.0);
+    assert!(matches!(
+        slower.paste(&clipboard, Placement::At(0)),
+        Err(PasteError::Rate { .. })
+    ));
+    let mut real = Editing::new(
+        SignalMeta {
+            sample_type: SampleType::new(Domain::Real, SampleFormat::I16),
+            ..meta("/d.wav", 50, 1000.0)
+        },
+        OpenHints::default(),
+    );
+    assert!(matches!(
+        real.paste(&clipboard, Placement::At(0)),
+        Err(PasteError::Kind { .. })
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_picture_stays_over_samples_computed_in_place_and_brought_back() {
+    let dir = scratch_dir("picture");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.replace_computed(
+        span(10, 30),
+        computed(&dir.join("1.wav"), 20, 1000.0),
+        0,
+        Selection::default(),
+    );
+    let moved = document.repicture();
+    assert_eq!(moved(5), Some(5));
+    assert_eq!(moved(20), Some(20));
+    assert!(document.undo());
+    let moved = document.repicture();
+    assert_eq!(moved(20), Some(20));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_save_of_computed_samples_retains_the_format_without_reading_the_opened_file() {
+    let dir = scratch_dir("save");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.describe_units(Some((32768.0, 0.0)));
+    document.replace_computed(
+        span(0, 100),
+        computed(&dir.join("1.wav"), 100, 1000.0),
+        0,
+        Selection::default(),
+    );
+    let request = document
+        .save_request(None, PathBuf::from("/b.wav"))
+        .unwrap();
+    assert_eq!(request.sources.len(), 1);
+    assert_eq!(request.format.as_ref().unwrap().storage(), LINEAR);
+    assert_eq!(request.sources[0].meta.source, dir.join("1.wav"));
+    assert_eq!(
+        request.sources[0].encoding,
+        Some(argand_io::write::Encoding {
+            factor: 32768.0,
+            offset: 0.0
+        })
+    );
+    assert_eq!(request.segments.len(), 1);
+    assert_eq!(request.segments[0].source, 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn saving_remaps_non_contiguous_computed_source_ids() {
+    let dir = scratch_dir("save-remap");
+    let mut document = editing("/a.wav", 100, 1000.0);
+    document.describe_units(Some((32768.0, 0.0)));
+    for (name, selected) in [
+        ("unused.wav", span(0, 100)),
+        ("first.wav", span(0, 50)),
+        ("last.wav", span(50, 100)),
+    ] {
+        document.replace_computed(
+            selected,
+            computed(&dir.join(name), selected.count(), 1000.0),
+            0,
+            Selection::default(),
+        );
+    }
+    assert_eq!(document.capture().sources(), [SourceId(2), SourceId(3)]);
+    let request = document
+        .save_request(None, PathBuf::from("/b.wav"))
+        .unwrap();
+    assert_eq!(request.sources.len(), 2);
+    assert_eq!(request.sources[0].meta.source, dir.join("first.wav"));
+    assert_eq!(request.sources[1].meta.source, dir.join("last.wav"));
+    assert_eq!(
+        request
+            .segments
+            .iter()
+            .map(|segment| segment.source)
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_document_without_a_checked_output_format_cannot_save() {
+    let document = Editing::new(meta("/missing.wav", 100, 1000.0), OpenHints::default());
+    assert!(!document.is_described());
+    assert!(
+        document
+            .save_request(None, PathBuf::from("/b.wav"))
+            .is_none()
+    );
+}
+
+#[test]
+fn an_adjustment_is_a_version_that_keeps_the_pieces_and_the_selection() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let selected = Selection::time(span(10, 20));
+    let inverted = Adjustment::IDENTITY.inverted();
+    assert!(document.adjust(inverted, selected));
+    assert!(!document.adjust(inverted, selected), "nothing new to add");
+    assert_eq!(document.adjustment(), inverted);
+    assert_eq!(document.marked(), selected);
+    assert!(document.is_dirty() && !document.is_untouched());
+    let request = document
+        .save_request(Some(span(5, 50)), PathBuf::from("/b.wav"))
+        .unwrap();
+    assert_eq!(request.adjustment, inverted);
+    assert!(document.undo());
+    assert_eq!(document.marked(), selected);
+    assert!(document.adjustment().is_identity() && document.is_untouched());
+}
+
+#[test]
+fn a_copy_pastes_only_under_the_adjustment_it_was_copied_under() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let before = document.copy(span(0, 10));
+    document.adjust(Adjustment::new(false, 2.0).unwrap(), Selection::default());
+    assert_eq!(
+        document.paste(&before, Placement::At(0)),
+        Err(PasteError::Adjustment)
+    );
+    let after = document.copy(span(0, 10));
+    assert!(document.paste(&after, Placement::At(0)).is_ok());
+}
+
+#[test]
+fn copies_of_a_file_saved_adjusted_cannot_follow_it() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    let clipboard = document.copy(span(60, 70));
+    document.adjust(Adjustment::IDENTITY.inverted(), Selection::default());
+    let written = document.written_source();
+    assert!(
+        clipboard
+            .moved_onto(document.file(), document.capture(), &written)
+            .is_none()
+    );
+}
+
+#[test]
+fn full_scale_is_the_stored_full_scale_once_the_units_are_known() {
+    let mut document = editing("/a.wav", 100, 1000.0);
+    assert_eq!(
+        document.full_scale(),
+        None,
+        "the reader's units are not known yet"
+    );
+    document.describe_units(Some((32768.0 / 4.0, 0.0)));
+    assert_eq!(document.full_scale(), Some(32768.0));
+}
+
+#[test]
+fn a_copy_under_a_real_inversion_cannot_follow_its_samples_to_the_other_parity() {
+    let mut meta = meta("/a.wav", 100, 1000.0);
+    meta.sample_type = SampleType::new(Domain::Real, SampleFormat::I16);
+    let mut document = Editing::new(meta, OpenHints::default());
+    document.adjust(Adjustment::IDENTITY.inverted(), Selection::default());
+    let odd = document.copy(span(61, 62));
+    let even = document.copy(span(60, 62));
+    document.undo();
+    document.delete(span(0, 1));
+    let written = document.written_source();
+    assert!(
+        odd.moved_onto(document.file(), document.capture(), &written)
+            .is_none()
+    );
+    assert!(
+        even.moved_onto(document.file(), document.capture(), &written)
+            .is_none()
+    );
+    document.undo();
+    document.delete(span(0, 2));
+    let written = document.written_source();
+    assert!(
+        odd.moved_onto(document.file(), document.capture(), &written)
+            .is_some()
+    );
+}
+
+#[test]
+fn encoded_unsaved_backing_is_not_reencoded_as_computed_float_and_survives_copy() {
+    let dir = scratch_dir("unsaved-backing");
+    let path = dir.join("encoded.wav");
+    std::fs::write(&path, b"encoded integer samples").unwrap();
+    let backing = Arc::new(Scratch::new(path.clone()));
+    let mut document = Editing::unsaved(
+        meta(&path.to_string_lossy(), 10, 8000.),
+        OpenHints::default(),
+        backing,
+    );
+    document.describe_file(argand_io::write::SourceStamp::of(&path).ok(), None);
+    document.describe_units(Some((32768., 0.)));
+    assert!(document.is_dirty());
+    assert!(!document.can_undo());
+    assert!(
+        document.source_files()[0]
+            .as_ref()
+            .unwrap()
+            .encoding
+            .is_none()
+    );
+    let copied = document.copy(span(0, 10));
+    drop(document);
+    assert!(path.exists(), "clipboard retains encoded scratch backing");
+    drop(copied);
+    assert!(!path.exists());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn source_statistics_completion_after_an_edit_is_retained_and_resolves_pending_capture() {
+    let mut document = editing("/a.wav", 100, 1000.);
+    assert!(document.statistics_request().is_none());
+    document.delete(span(10, 20));
+    let index = crate::sample_statistics::Index::new(100, 2, Some(1.)).finish();
+    document.set_envelope(
+        SourceId(0),
+        Arc::new(Snapshot {
+            envelope: argand_core::WaveformEnvelope::new(100, 2),
+            full_scale: 1.,
+            complete: true,
+            samples: 100,
+            statistics: Some(Arc::new(index)),
+        }),
+    );
+    let current = document
+        .statistics_request()
+        .expect("source completion is independent of capture edit version");
+    assert_eq!(current.capture.len(), 90);
+    assert!(current.indices[0].is_some());
+    assert!(document.statistics_request().is_some());
+}
+
+#[test]
+fn failed_statistics_follow_retained_sources_across_edits_and_descriptions() {
+    let other = editing("/b.wav", 20, 1000.0);
+    for (failed, retained, removed) in [
+        (SourceId(0), span(0, 10), span(0, 90)),
+        (SourceId(1), span(100, 110), span(100, 110)),
+    ] {
+        let mut capture = editing("/a.wav", 100, 1000.0);
+        capture
+            .paste(&other.copy(span(0, 20)), Placement::At(100))
+            .unwrap();
+        capture.fail_statistics(failed);
+        capture.delete(retained);
+        capture.describe_units(Some((32768., 0.)));
+        assert!(
+            capture.statistics_failed(),
+            "retaining a failed source stays terminal"
+        );
+        capture.delete(removed);
+        assert!(
+            !capture.statistics_failed(),
+            "removing a failed source recovers"
+        );
+        assert!(capture.undo());
+        assert!(
+            capture.statistics_failed(),
+            "undo restores the failed source"
+        );
+    }
+}

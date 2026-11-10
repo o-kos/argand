@@ -14,7 +14,7 @@ edit clear the band, except a suppression, which keeps both (#212). Edit command
 a band is selected. The spectrum tints the band across the visible time, or the rectangle,
 through `waveform::selected_rect`; the minimap tints only a time span. Selection badges show the band's edges and width in the frequency ruler's unit; the status bar shows no selection.
 
-Save selection as… with a band computes the file (`extraction.rs`, run on the save thread
+Save selection as… with a band computes the file (`processing/extraction.rs`, run on the save thread
 by `saving::start_extraction`): each file the current version reads is reopened with
 the normalization the window resolved (`argand_io::reopen_stamped`) and must keep its stamp, also after reading, and the span plus the filter's
 margin is read through an `EditedSource`. `argand_dsp::extract::ExtractPlan` takes
@@ -84,9 +84,9 @@ samples (`SHORTEST_TAPER`), on each side, inside the capture, and the taper fade
 widening, so the whole selected span is suppressed without a click. Convolution is overlap-save as in `extract`, with the delay
 compensated, so output `n` is input `n`.
 
-`suppression.rs` computes it on a thread of its own (`saving::spawn`, the save thread made
+`processing/suppression.rs` computes it on a thread of its own (`saving::spawn`, the save thread made
 generic) with progress, a cancel and the status-bar item `Suppressing the band…`
-(`suppression_ui.rs`). Edits and saves wait for it, and opening another file cancels it. The
+(`shell/suppression_ui.rs`). Edits and saves wait for it, and opening another file cancels it. The
 changed span is written as unit-scale `f32` through `FloatWave` into a scratch file.
 `scratch.rs` keeps those in `<cache>/argand/scratch/<pid>/`, the user's own cache folder and
 mode 0700 on Unix, never the shared temporary folder, under a lock on `<pid>.lock`, and
@@ -143,7 +143,7 @@ hull, which errs outward. The status bar shows `Inverted`, the gain in dB or bot
 analysis item (`adjustment_item`).
 
 Normalize level asks nothing: the normal form is one, the peak at `levelling::TARGET`, −0.1
-dBFS, just below full scale, as the owner chose. `levelling.rs` measures the peak of the unadjusted
+dBFS, just below full scale, as the owner chose. `processing/levelling.rs` measures the peak of the unadjusted
 capture on the save thread's shape (`saving::spawn`, `Measuring the level…` with a cancel in
 the status bar; edits and saves wait, opening a file cancels it). The peak is the largest
 `|I + jQ|`, or `|x|` for a real capture, taken piece by piece in stored units, each source

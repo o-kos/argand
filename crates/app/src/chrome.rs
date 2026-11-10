@@ -192,6 +192,5 @@ pub fn observe_frame(
 }
 
 #[cfg(test)]
-mod tests {
-    include!("chrome_tests.rs");
-}
+#[path = "chrome_test.rs"]
+mod tests;
