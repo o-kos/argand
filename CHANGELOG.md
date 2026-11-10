@@ -13,6 +13,8 @@ promise applies to.
 
 ### Added
 
+- About Argand opens from a version button in the title bar or the application menu and shows package details, the repository link and build commit identity. Its tooltip identifies the version, exact tag, commit and commit date (#107).
+
 - Packed signed 24-bit PCM opens natively in real and I/Q RIFF/RF64/BW64 and raw captures (`rl_i24` / `iq_i24`). Supported 24-bit WAVE saves can use RF64, with normalization, gain and original integer units preserved. File information and WAVE conversion offer Int 24-bit (#192).
 
 - File information edits the target sample rate, reference frequency, real/IQ sample format and WAV/FLAC file type. Edit → Convert to… (F11) opens the same panel. Conversion preserves the whole currently edited signal’s level and replaces the document only after success, without Undo. Switching real/IQ derives rate/carrier defaults from the source, applies the carrier in sample coordinates and gives the result a zero-origin frequency axis; custom choices filter frequencies outside the target band. The result is unsaved until File → Save chooses a destination; the original disk file remains unchanged. File and Analysis property panels share numeric editing and switch when their neighbouring status summaries are hovered (#189).

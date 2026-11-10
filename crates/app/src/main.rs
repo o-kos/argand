@@ -9,6 +9,7 @@
 //! rewritten as the window moves. Both are read before the window exists, and
 //! neither can stop it appearing: see [`config`] and [`session`].
 
+mod about;
 mod analysis;
 mod app_menu;
 mod assets;

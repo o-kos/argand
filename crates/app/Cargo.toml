@@ -4,7 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "argand - a signal editor and analyzer for I/Q captures"
+description = "Signal editor and analyzer for real and complex signals"
+repository = "https://github.com/o-kos/argand"
 
 [[bin]]
 name = "argand"
