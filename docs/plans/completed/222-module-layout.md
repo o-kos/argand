@@ -20,9 +20,9 @@ The owner requested starting this Issue after its two test phases had merged.
 Merged PR #237 extracted inline test bodies/support and removed repeated fixture
 work. Merged PR #238 audited tests by product contract and retired low-value
 layers. Their completed plans remain historical evidence, not work to repeat:
-[extraction](completed/222-separate-test-files.md),
-[audit](completed/222-remove-redundant-checks.md), and
-[benchmark](completed/222-conversion-cost-benchmark.md).
+[extraction](222-separate-test-files.md),
+[audit](222-remove-redundant-checks.md), and
+[benchmark](222-conversion-cost-benchmark.md).
 Use the accepted audit dispositions and refresh discovery for this branch. No
 additional test removal, consolidation, fixture optimization or runtime benchmark
 is proposed. Remaining inconsistent unit-test filenames are normalized here.
@@ -123,19 +123,22 @@ module visibility and Windows/macOS cfg branches explicitly.
 - [x] Verify installed-toolchain selection and shared build configuration without
   invoking a Rust proxy or compiling dependencies.
 - [x] Commit this plan and open early Draft PR #239 before implementation.
-- [ ] Record old-to-new file/module/test/include mapping and current executable
+- [x] Record old-to-new file/module/test/include mapping and current executable
   discovery, including platform-gated source declarations, outside the worktree.
 - [x] Complete revised production subsystems and move their tests/support to the selected owner
   directories; preserve behavior, ownership and effective access through mapped module paths.
 - [x] Normalize remaining app sibling test filenames and equivalent test wiring.
-- [ ] Verify content/token equivalence with an explicit path/wiring-only allowlist;
+- [x] Verify preservation through explicit path/import/visibility/wiring mapping
+  and reviewed formatting differences;
   compare executable test-name and ignored sets through the explicit namespace
   mapping, not just counts.
 - [x] Update current architecture, UI inventory and AGENTS routing references to
   resulting paths; leave completed historical plans unchanged.
-- [ ] Complete required local validation and exact-revision independent review;
-  resolve findings within three rounds and obtain coordinator assessment.
-- [ ] Move this plan to completed and request current-head full CI through Ready.
+- [x] Complete required local validation.
+- [x] Complete final exact-revision independent review; resolve findings within
+  three rounds and obtain coordinator assessment.
+- [x] Move this plan to completed before final independent review.
+- [ ] Request current-head full CI through Ready after coordinator assessment.
 
 ## Resources and validation
 
@@ -156,18 +159,18 @@ No new worktree, cache, dependencies, features, flags, profiles or benchmarks.
 
 | Criterion | Verification | Result / limits |
 | --- | --- | --- |
-| Physical tree matches actual ownership | Per-owner old/new mapping, no obsolete production path overrides | Planned |
-| Production behavior/API/lifetimes unchanged | Mapped logical paths, effective visibility and body/token equivalence; independent review | Pending |
-| Existing audit coverage preserved | Accepted #237/#238 dispositions plus mapped before/after discovery, ignored and platform source sets | Prior audit accepted; branch evidence pending |
-| Toolkit-neutral boundary preserved | Same toolkit boundary/Cargo graph and runtime ownership; worker/model files stay independent | Planned |
-| Current docs and routing match tree | Current-path/link searches; no historical plan rewrites | Pending |
-| Cross-platform validation | Local gate and current Ready Linux/Windows/macOS ci/full | Not run |
+| Physical tree matches actual ownership | Per-owner old/new mapping, no obsolete production path overrides | Implemented; 135 original files retained plus two grouping declarations; navigation tests beside owner |
+| Production behavior/API/lifetimes unchanged | Mapped paths/effective visibility, reviewed body differences and full local gate | Local checks pass; round-two preservation review has no remaining finding; final round three clean; coordinator accepted |
+| Existing audit coverage preserved | Accepted #237/#238 dispositions plus mapped executable discovery and platform source attributes | Actual baseline/current sets match: 870 tests, zero added/removed/ignored through namespace mapping |
+| Toolkit-neutral boundary preserved | Same toolkit boundary/Cargo graph and runtime ownership; worker/model files stay independent | Source boundary retained; unchanged manifests/lock; guarded compilation succeeds |
+| Current docs and routing match tree | Current-path/link searches; no historical plan rewrites | Updated architecture/inventory/routing; concrete current source links resolve |
+| Cross-platform validation | Local gate and current Ready Linux/Windows/macOS ci/full | Local fmt/Clippy/tests/release pass; remote matrix pending publication/Ready |
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, last after the checks above
-- [ ] Exact-revision independent review and coordinator assessment
+- [x] `cargo build --release --locked`, last after the checks above
+- [x] Exact-revision independent review and coordinator assessment
 - [ ] Current-head Linux, Windows, macOS and `ci/full` explicitly successful
 
 This mechanical layout change has no intended UI or DSP semantic change. No native
@@ -190,9 +193,9 @@ passed without compilation or shared-cache use. A narrow lexical audit verifies
 files have reviewed rustfmt punctuation/closure wrapping changes: replacing
 include-only test wrappers by ordinary module declarations exposes previously
 include-hidden test files to cargo fmt traversal. These existing files therefore
-receive standard formatting, so strict whole-
-tree token equality is not claimed. Review the complete rename-aware patch and
-mapped baseline, including relative imports and effective Shell visibility.
+receive standard formatting, so strict whole-tree token equality is not claimed.
+The rename-aware patch and mapped baseline were inspected, including relative
+imports and effective Shell visibility; final independent round three is clean.
 
 The initial guarded Cargo test-discovery preparation was rejected by automatic
 approval review before execution because current-transcript compilation/cache
@@ -205,34 +208,45 @@ rebuild. No rejected action was retried before this owner authorization.
 
 Independent round one of the initial owner-directory stage was clean. Round two
 of the broadened subsystem tree accepted the layout/preservation and found one
-P2: navigation's own two test files still used parent-directory paths. Move both
-beside navigation/mod.rs and retain their logical test modules. This finding is
-accepted and fixed; a scan found no other parent-directory test redirections.
-Round three must inspect the final snapshot and current local validation evidence.
+P2: navigation's own two test files still used parent-directory paths. Both were
+moved beside navigation/mod.rs with their logical test modules preserved. The
+finding is accepted and fixed; a scan found no other parent-directory test redirections.
+Round three inspected the final snapshot, raw local validation and corrected
+plan statuses; no substantive findings remained. The coordinator accepted the
+source invariants, subsystem scope and current evidence.
 No findings were rejected.
 
 ### Current local gate and exact baseline comparison
 
 Formatting and strict Clippy pass. Clippy initially found five unused inherited
 plot glob imports and a line-count increase from a long qualified selection-panel
-call; remove the redundant imports and use an explicit scoped selection-panel
-import, preserving behavior without suppressions. Full workspace tests pass:
-870 passed, zero failed/ignored, with unchanged package counts (App501, CLI50+24,
-core36, DSP97, edit12, I/O150). Current executable discovery records those870 names,
-ignored sets and binary hashes. Release remains pending.
+call. The redundant imports were removed and an explicit scoped selection-panel
+import preserves behavior without suppressions. Full workspace tests pass:
+870 passed, zero failed/ignored, with unchanged package counts (App 501, CLI 50+24,
+core 36, DSP 97, edit 12, I/O 150). Current executable discovery records those 870 names,
+ignored sets and binary hashes. Release passed last after the checks above.
 
-Existing temporary discovery records were1158/1162-test earlier snapshots rather
-than the accepted870-test baseline, so do not compare against those stale records.
-For exact evidence, first commit all current work and verify a clean checkout;
-temporarily detach the exact accepted base in this same checkout (no new worktree
-or cache), run guarded workspace test no-run with unchanged inputs, and capture
-actual baseline executable lists. Return to the original branch and verify its
-expected committed head before rebuilding/rerunning current tests once. Compare
-through the explicit module namespace mapping. Release runs last after the other
-checks. Retain raw baseline/current artifact and binary identities externally.
+Existing temporary discovery records were 1158/1162-test earlier snapshots rather
+than the accepted 870-test baseline, so do not compare against those stale records.
+For exact evidence, all current work was committed and the clean same checkout
+temporarily detached at the exact accepted base (no new worktree/cache). Guarded
+test no-run rebuilt only the own App target, with 708 other artifacts fresh.
+Actual baseline/current executable discovery sets both contain 870 tests; explicit
+namespace mapping yields zero added/removed names and zero ignored tests. The
+original branch and expected committed head were verified on return. Current
+tests were rebuilt/rerun once and passed 870/0/0; final discovery matches the first
+current capture exactly. Release then passed last. Raw commands/output, namespace
+map and binary/source identities are retained externally; no stale baseline or
+source-derived test list substitutes for executable discovery.
+
+Local final release: 714 fresh artifacts and one own App rebuild; no external
+dependency compilation. Final binaries are workspace-local. Standalone formatter,
+Clippy and tests passed on the same production source; this plan move/evidence
+update changes only documentation. Native UI was not exercised because no UI
+semantics changed; current full remote CI is still pending Ready/publication.
 
 ## Post-completion
 
-After current full CI and review pass, complete the protected PR merge/conditional
-branch cleanup under owner authorization. Preserve unrelated refs, stashes and
-worktrees; no cleanup of earlier accepted branches is part of this Issue.
+After the protected PR merge, conditionally remove only this accepted branch,
+bound to its accepted head. Preserve unrelated refs, stashes and worktrees; no
+cleanup of earlier accepted branches is part of this Issue.
