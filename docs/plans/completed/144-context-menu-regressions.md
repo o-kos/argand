@@ -62,9 +62,9 @@ No production behavior, controls, dependency graph or module hierarchy changes.
 - [x] Add production ruler-menu keyboard isolation and recovery regression.
 - [x] Add time/spectrum open-menu window-close lifetime regressions.
 - [x] Correct the current inventory's obsolete cycle/testing restriction.
-- [ ] Run focused regressions and the full local gate.
-- [ ] Complete independent review and coordinator assessment.
-- [ ] Move the plan to completed before Ready.
+- [x] Run focused regressions and the full local gate.
+- [x] Complete independent review and coordinator assessment.
+- [x] Move the plan to completed before Ready.
 
 ## Validation
 
@@ -72,11 +72,12 @@ No production behavior, controls, dependency graph or module hierarchy changes.
   regressions passed; the remaining workspace tests were filtered out.
 - Optional leak-detector rebuild omitted: direct WeakEntity destruction assertions
   are active without it. No snapshot assertion or detector-success claim is used.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after all previous checks pass.
-- [ ] Independent read-only review of the exact snapshot.
+- [x] `cargo fmt --all -- --check`, plus explicit rustfmt check of the included test file.
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`: 1162 passed, zero failed; one existing manual cost benchmark ignored.
+- [x] `cargo build --release --locked`, after all previous checks pass.
+- [x] Independent read-only review by `gpt-6.1-sol` high: round 1 clean;
+  coordinator assessment accepted. The final completion commit changes only this plan.
 
 ## Post-completion
 
