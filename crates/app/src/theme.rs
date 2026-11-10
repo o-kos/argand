@@ -44,6 +44,7 @@ fn derive(base: &ThemeConfig, adjust: fn(&mut ThemeConfigColors)) -> ThemeConfig
 }
 
 fn dark(colors: &mut ThemeConfigColors) {
+    colors.link = Some("blue-400".into());
     colors.status_bar = Some("#171717".into());
     colors.status_bar_border = Some("#2a2a2a".into());
     colors.popover = Some("#2b2b2b".into());
@@ -55,6 +56,7 @@ fn dark(colors: &mut ThemeConfigColors) {
 }
 
 fn light(colors: &mut ThemeConfigColors) {
+    colors.link = Some("blue-600".into());
     colors.status_bar = Some("#f3f3f3".into());
     colors.status_bar_border = Some("#dedede".into());
     colors.border = Some("#d9d9d9".into());

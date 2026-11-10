@@ -406,7 +406,7 @@ fn the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not(cx: &mut TestAp
     assert!(!pending(cx), "and releasing it clears the arming");
 
     // A press on a segment, on the group's own frame between the segments,
-    // on Grid and on the application button never arms the drag.
+    // on Grid, About and the application button never arms the drag.
     let frame = cx.update(|window, _| {
         let first = window.find("orientation-horizontal").bounds().center();
         let second = window.find("orientation-vertical").bounds().center();
@@ -416,6 +416,7 @@ fn the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not(cx: &mut TestAp
         at(cx, "orientation-horizontal"),
         frame,
         at(cx, "toggle-grid"),
+        at(cx, "about-button"),
         at(cx, "application-menu-button"),
     ] {
         cx.simulate_mouse_down(at, gpui_kit::MouseButton::Left, none);

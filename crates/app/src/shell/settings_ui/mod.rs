@@ -184,6 +184,7 @@ impl Shell {
         match event {
             hints::Pinned::Opened if open => {
                 // Choose the new owner before closing the old editor and emitting its Closed event.
+                self.close_about(cx);
                 self.status_panel_request += 1;
                 self.status_panel = Some(panel);
                 let other = match panel {
@@ -217,6 +218,7 @@ impl Shell {
         if !self.status_panel_available(panel) {
             return;
         }
+        self.close_about(cx);
         self.dismiss_application_menu(window, cx);
         self.status_panel_request += 1;
         let request = self.status_panel_request;
@@ -358,6 +360,7 @@ impl Shell {
     }
 
     pub(super) fn close_hints(&mut self, cx: &mut Context<Self>) {
+        self.close_about(cx);
         self.status_panel_request += 1;
         self.close_analysis_hint(cx);
         self.close_selection_hint(cx);

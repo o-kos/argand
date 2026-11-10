@@ -134,7 +134,7 @@ module visibility and Windows/macOS cfg branches explicitly.
   mapping, not just counts.
 - [x] Update current architecture, UI inventory and AGENTS routing references to
   resulting paths; leave completed historical plans unchanged.
-- [x] Complete required local validation.
+- [ ] Refresh required local validation after accepted upstream integration.
 - [x] Complete final exact-revision independent review; resolve findings within
   three rounds and obtain coordinator assessment.
 - [x] Move this plan to completed before final independent review.
@@ -164,12 +164,12 @@ No new worktree, cache, dependencies, features, flags, profiles or benchmarks.
 | Existing audit coverage preserved | Accepted #237/#238 dispositions plus mapped executable discovery and platform source attributes | Actual baseline/current sets match: 870 tests, zero added/removed/ignored through namespace mapping |
 | Toolkit-neutral boundary preserved | Same toolkit boundary/Cargo graph and runtime ownership; worker/model files stay independent | Source boundary retained; unchanged manifests/lock; guarded compilation succeeds |
 | Current docs and routing match tree | Current-path/link searches; no historical plan rewrites | Updated architecture/inventory/routing; concrete current source links resolve |
-| Cross-platform validation | Local gate and current Ready Linux/Windows/macOS ci/full | Local fmt/Clippy/tests/release pass; remote matrix pending publication/Ready |
+| Cross-platform validation | Current local gate and strict Ready matrix | Previous-base local gate and all three CI jobs passed; new accepted About base requires refreshed validation |
 
-- [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --all-targets --locked`
-- [x] `cargo test --locked`
-- [x] `cargo build --release --locked`, last after the checks above
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --all-targets --locked`
+- [ ] `cargo test --locked`
+- [ ] `cargo build --release --locked`, last after the checks above
 - [x] Exact-revision independent review and coordinator assessment
 - [ ] Current-head Linux, Windows, macOS and `ci/full` explicitly successful
 
@@ -178,7 +178,7 @@ UI acceptance, performance improvement or server-CI success is inferred from
 source equivalence or a test count. If inspection reveals a behavior change is
 needed, report it and apply the existing triage/owner-decision policy first.
 
-## Current evidence and validation
+## Evidence before concurrent upstream integration
 
 The revised tree retains all 135 original application Rust files and adds only two
 module declaration files (processing and Shell plot). A source module-declaration
@@ -244,6 +244,38 @@ dependency compilation. Final binaries are workspace-local. Standalone formatter
 Clippy and tests passed on the same production source; this plan move/evidence
 update changes only documentation. Native UI was not exercised because no UI
 semantics changed; current full remote CI is still pending Ready/publication.
+
+## Concurrent accepted About integration
+
+While the Ready full matrix for the first completed layout was running, main
+accepted PR #234 (About Argand). The earlier green 870-test/local-release/full-CI
+results apply only to the previous base and do not validate the new combined tree.
+The branch returned to Draft before integrating the accepted upstream work.
+
+The merge had one conflict, solely in Shell module declarations. It retains
+ordinary `mod about_ui;` and moves the new About view and sibling test into Shell;
+both files are byte-identical to accepted upstream. About model, build metadata,
+assets/tests, build script and package metadata are retained byte-identically.
+Rename-aware merge preserves upstream additions in the already relocated menu,
+conversion, hints, selection/settings and Shell files. No new About behavior,
+widget, toolkit/dependency/version/feature change is introduced by #222.
+
+The build script necessarily names `src/build_metadata.rs` by path from outside
+src; this explicit cross-root exception avoids duplicating the shared build/test
+metadata implementation. It now binds the binary to the committed source identity;
+final release must be built after the integration commit and evidence updates must
+not silently invalidate that identity.
+
+- [x] ➕ Integrate accepted upstream and resolve only the module-declaration conflict.
+- [x] ➕ Place new About view/tests beside Shell, preserving upstream bodies.
+- [ ] ➕ Refresh exact new-base/current executable discovery and guarded local gate.
+- [ ] ➕ Refresh metadata-aware release identity and current full CI.
+- [ ] ➕ Obtain coordinator assessment of the bounded integration and current evidence;
+  previous clean round three is not claimed to have reviewed later upstream code.
+
+The three independent rounds are already complete; no fourth round was started.
+The coordinator must reconsider the integration plan/evidence under the review
+policy before publication/Ready/merge. No review requirement is silently waived.
 
 ## Post-completion
 

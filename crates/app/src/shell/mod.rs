@@ -32,6 +32,8 @@ use self::plot::selection_panel;
 use crate::settings::Settings;
 use argand_dsp::AnalysisRequest;
 
+mod about_ui;
+
 mod app_menu_ui;
 
 mod shortcuts;
@@ -65,7 +67,7 @@ use crate::spectrogram;
 use crate::{panels, waveform};
 
 /// What the window is called, in its title bar and to the desktop environment.
-const TITLE: &str = "Argand";
+const TITLE: &str = crate::about::NAME;
 /// Reverse-DNS identifier desktop environments group windows by.
 const APP_ID: &str = "io.github.o_kos.argand";
 
@@ -95,6 +97,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     editing_ui::init(cx);
     badge_entry::init(cx);
     selection_panel::init(cx);
+    about_ui::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([
@@ -375,6 +378,7 @@ struct Shell {
     settings: Settings,
     /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
+    about: about_ui::State,
     status_panel: Option<settings_ui::StatusPanel>,
     status_panel_request: u64,
     /// What the analysis hint opened with, which Escape restores.
@@ -503,16 +507,7 @@ impl Shell {
         window.focus(&focus, cx);
         window.set_window_title(TITLE);
         let bounds = cx.observe_window_bounds(window, |shell, window, _| shell.remember(window));
-        let activation = cx.observe_window_activation(window, |shell, window, cx| {
-            if window.is_window_active() {
-                shell.recent_files.refresh(&shell.session.recent);
-                shell.check_disk(window, cx);
-            } else if let Some(plot) = shell.plot_entity() {
-                // The release may happen in another window and never arrive here.
-                plot.update(cx, |plot, cx| plot.end_gestures(cx));
-            }
-            cx.notify();
-        });
+        let activation = cx.observe_window_activation(window, Self::activation_changed);
         sync_theme(saved.theme.unwrap_or(config.theme), window, cx);
         let appearance = cx.observe_window_appearance(window, |shell, window, cx| {
             sync_theme(shell.theme(), window, cx);
@@ -539,10 +534,12 @@ impl Shell {
             )
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
+        let about = about_ui::State::new(window, cx);
         Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
+            about,
             status_panel: None,
             status_panel_request: 0,
             hint_opening: None,
@@ -600,6 +597,20 @@ impl Shell {
             _pinned: pinned,
             _selection_pinned: selection_pinned,
         }
+    }
+
+    fn activation_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if window.is_window_active() {
+            self.recent_files.refresh(&self.session.recent);
+            self.check_disk(window, cx);
+        } else {
+            self.close_about(cx);
+            if let Some(plot) = self.plot_entity() {
+                // The release may happen in another window and never arrive here.
+                plot.update(cx, |plot, cx| plot.end_gestures(cx));
+            }
+        }
+        cx.notify();
     }
 
     /// A finished save is announced until the next input, a mouse move included.
@@ -1531,8 +1542,9 @@ impl Shell {
         } else {
             gpui_kit::component::TITLE_BAR_HEIGHT * 3.
         };
+        let about_width = about_ui::button_width(window, cx) + window.rem_size() * 0.25;
         let margin = (leading + app_menu_ui::toolbar_width(window, cx, self.view.is_some()))
-            .max(controls)
+            .max(controls + about_width)
             + window.rem_size() * 0.75;
         div()
             .flex()
@@ -1556,7 +1568,18 @@ impl Shell {
                     .text_center()
                     .child(self.file_name()),
             )
-            .child(div().w(margin - controls).flex_shrink_0())
+            .child(
+                div()
+                    .w(margin - controls)
+                    .flex_shrink_0()
+                    .flex()
+                    .justify_end()
+                    .pr_1()
+                    .child(app_menu_ui::title_control(
+                        "title-about-control",
+                        self.about_button(cx),
+                    )),
+            )
     }
 
     fn content(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1867,6 +1890,7 @@ impl Render for Shell {
                 })
                 .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
                 .on_action(cx.listener(Self::toggle_application_menu))
+                .on_action(cx.listener(Self::show_about))
                 .on_action(cx.listener(Self::open_recent))
                 .on_action(cx.listener(Self::edit_analysis))
                 .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
@@ -1904,6 +1928,7 @@ impl Render for Shell {
             .size_full()
             .child(content)
             .children(menu_backdrop)
+            .children(hints::backdrop(&self.about.hint, hint_area, cx))
             .children(self.conversion_cover(gpui_kit::Bounds::new(
                 hint_area.origin,
                 gpui_kit::size(

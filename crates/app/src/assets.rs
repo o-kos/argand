@@ -7,12 +7,16 @@ use std::borrow::Cow;
 // The Lucide toolbar artwork the default component bundle omits.
 icon_assets!(
     SegmentIcons,
-    [PanelTop, MoveHorizontal, MoveVertical, SquareDashed]
+    [PanelTop, MoveHorizontal, MoveVertical, SquareDashed, Tag]
 );
 
 pub struct Assets;
 
 const ARTWORK: &[(&str, &[u8])] = &[
+    (
+        "argand/about.png",
+        include_bytes!("../assets/icons/argand-128.png"),
+    ),
     (
         "argand/app.png",
         include_bytes!("../assets/icons/argand-24.png"),
@@ -46,3 +50,7 @@ impl AssetSource for Assets {
         Ok(entries)
     }
 }
+
+#[cfg(test)]
+#[path = "assets_test.rs"]
+mod tests;

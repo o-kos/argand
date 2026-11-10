@@ -352,10 +352,17 @@ impl Shell {
         let view = self.view_menu(focus.clone(), window, cx);
         let branch = file.clone();
         let menu = PopupMenu::build(window, cx, move |menu, _, _| {
-            menu.action_context(focus)
+            menu.action_context(focus.clone())
                 .item(PopupMenuItem::submenu("File", branch))
                 .item(PopupMenuItem::submenu("Edit", edit))
                 .item(PopupMenuItem::submenu("View", view))
+                .item(PopupMenuItem::separator())
+                .item(action_row(
+                    "About Argand…",
+                    Box::new(about_ui::ShowAbout),
+                    false,
+                    focus,
+                ))
         });
         self.application_menu_dismissed =
             Some(cx.subscribe_in(&menu, window, Self::application_menu_dismissed));
@@ -1013,7 +1020,10 @@ pub(super) fn keeps_focus(
 /// One toolbar control's box, which consumes its own left press and double
 /// click so neither arms the title-bar drag that the bare pixels around it,
 /// including the toolbar's gaps, fall through to.
-fn title_control(id: &'static str, child: impl IntoElement) -> gpui_kit::Stateful<gpui_kit::Div> {
+pub(super) fn title_control(
+    id: &'static str,
+    child: impl IntoElement,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
     keeps_focus(id, child)
         .on_mouse_down(MouseButton::Left, |_, _, cx| {
             cx.stop_propagation();
@@ -1062,7 +1072,7 @@ pub(super) fn toolbar_style(state: ToolbarState, cx: &gpui_kit::App) -> ButtonCu
 }
 
 /// The resting surface of an on control, which a custom variant would fade to a fifth.
-fn on_surface(state: ToolbarState, cx: &gpui_kit::App) -> Option<gpui_kit::Hsla> {
+pub(super) fn on_surface(state: ToolbarState, cx: &gpui_kit::App) -> Option<gpui_kit::Hsla> {
     (state == ToolbarState::On).then(|| toolbar_accent(cx).opacity(0.30))
 }
 
@@ -1074,7 +1084,7 @@ fn frame_colour(cx: &gpui_kit::App) -> gpui_kit::Hsla {
 }
 
 /// The tooltip stand-in for the pressed application button: renders nothing.
-struct NoTooltip;
+pub(super) struct NoTooltip;
 
 impl gpui_kit::Render for NoTooltip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
