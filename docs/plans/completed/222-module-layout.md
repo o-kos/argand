@@ -159,16 +159,16 @@ No new worktree, cache, dependencies, features, flags, profiles or benchmarks.
 
 | Criterion | Verification | Result / limits |
 | --- | --- | --- |
-| Physical tree matches actual ownership | Per-owner old/new mapping, no obsolete production path overrides | Implemented; 135 original files retained plus two grouping declarations; navigation tests beside owner |
-| Production behavior/API/lifetimes unchanged | Mapped paths/effective visibility, reviewed body differences and full local gate | Local checks pass; round-two preservation review has no remaining finding; final round three clean; coordinator accepted |
-| Existing audit coverage preserved | Accepted #237/#238 dispositions plus mapped executable discovery and platform source attributes | Actual baseline/current sets match: 870 tests, zero added/removed/ignored through namespace mapping |
+| Physical tree matches actual ownership | Per-owner old/new mapping, no obsolete production path overrides | Implemented; 141 accepted-base files retained plus two grouping declarations; navigation and About tests beside owners |
+| Production behavior/API/lifetimes unchanged | Mapped paths/effective visibility, reviewed body differences and full local gate | Original layout passed three review rounds; bounded accepted-main integration passes current local checks and awaits coordinator assessment |
+| Existing audit coverage preserved | Accepted #237/#238 dispositions plus mapped executable discovery and platform source attributes | New accepted-base/current sets match: 883 tests, zero added/removed/ignored through namespace mapping |
 | Toolkit-neutral boundary preserved | Same toolkit boundary/Cargo graph and runtime ownership; worker/model files stay independent | Source boundary retained; unchanged manifests/lock; guarded compilation succeeds |
 | Current docs and routing match tree | Current-path/link searches; no historical plan rewrites | Updated architecture/inventory/routing; concrete current source links resolve |
 | Cross-platform validation | Current local gate and strict Ready matrix | Previous-base local gate and all three CI jobs passed; new accepted About base requires refreshed validation |
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, last after the checks above
 - [x] Exact-revision independent review and coordinator assessment
 - [ ] Current-head Linux, Windows, macOS and `ci/full` explicitly successful
@@ -270,7 +270,8 @@ not silently invalidate that identity.
 - [x] ➕ Integrate accepted upstream and resolve only the module-declaration conflict.
 - [x] ➕ Place new About view/tests beside Shell, preserving upstream bodies;
   compile-driven test wiring names the actual plot navigation module.
-- [ ] ➕ Refresh exact new-base/current executable discovery and guarded local gate.
+- [x] ➕ Refresh exact new-base/current executable discovery and guarded fmt/Clippy/tests;
+  release remains the last pending local check.
 - [ ] ➕ Refresh metadata-aware release identity and current full CI.
 - [ ] ➕ Obtain coordinator assessment of the bounded integration and current evidence;
   previous clean round three is not claimed to have reviewed later upstream code.
@@ -278,6 +279,34 @@ not silently invalidate that identity.
 The three independent rounds are already complete; no fourth round was started.
 The coordinator must reconsider the integration plan/evidence under the review
 policy before publication/Ready/merge. No review requirement is silently waived.
+
+### New-base local evidence and own-artifact refresh
+
+The accepted About base has 883 executable tests. A clean same-checkout baseline
+capture and return to the expected committed feature head were verified. Actual
+new-base/current discovery sets match through the existing namespace mapping:
+883 tests, zero added/removed/ignored; new About test names remain unchanged.
+Current full workspace tests pass: App 514, CLI 50+24, core 36, DSP 97, editing 12,
+I/O 150, zero failed/ignored, plus doctests. Formatting and strict Clippy pass.
+
+The first attempts exposed stale workspace paths inside fresh cached own test
+executables after another checkout was removed: CLI CARGO_BIN_EXE_aspec pointed
+to that checkout's binary, and I/O CARGO_MANIFEST_DIR pointed to its source tree.
+Current workspace outputs existed. Byte inspection established the mismatches;
+this is not attributed to a production or test-scenario regression.
+
+Only own workspace source mtimes were refreshed, with source bytes/Git diff,
+features, flags, profiles, toolchain and cache configuration unchanged. Cargo
+rebuilt own crate artifacts and the embedded current-workspace paths were verified;
+all 883 tests then passed. External compilation remained blocked by the existing
+guard. No shared cache was cleared and no per-worktree cache was introduced.
+The broader cache-identity correctness concern is separate from #222; its precise
+fingerprint cause is not established. A neutral separate-Issue draft is retained
+with the integration handoff, without silently changing the approved cache policy.
+
+Release must run last after committing this evidence so inherited build metadata
+names the actual submitted source revision. Current full CI and coordinator
+integration assessment remain pending; the old-base green matrix is historical.
 
 ## Post-completion
 
