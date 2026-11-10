@@ -19,5 +19,5 @@ pub fn title() -> String {
 }
 
 #[cfg(test)]
-#[path = "build_metadata_tests.rs"]
+#[path = "build_metadata_test.rs"]
 mod tests;

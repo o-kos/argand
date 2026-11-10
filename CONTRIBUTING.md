@@ -75,6 +75,43 @@ Preserve unrelated work and leave completed historical plans unchanged.
 
     Hoist the shared condition, or split the function so each half has one job.
 
+### Local Rust and build resources
+
+Use one owner-approved installed Rust toolchain for all projects, preferably the
+system-managed Rust and Cargo. Installing or upgrading Rust requires explicit owner
+approval. Project pins document reproducibility requirements, not permission for an
+automatic rustup download. Check executable selection without triggering a missing
+toolchain download; stop and discuss mismatches instead of adding overrides or
+changing the installation, defaults, PATH or project pins. CI provisioning is separate.
+
+Argand and Wireroom use one agreed GPUI Kit version and compatible locked backend
+graph. Do not independently change toolkit/backend versions, toolkit features or
+locked toolkit dependencies. Stop and discuss incompatibilities with the owner.
+
+Use one explicitly configured common Cargo `build.build-dir` outside all project
+worktrees across projects and worktrees for intermediate artifacts and the build
+cache. Keep final outputs in each workspace's local `target/` (`build.target-dir`);
+do not set a shared global target-dir. Do not create per-worktree intermediate build
+caches or scratch build caches. If the common build-dir is not known or configured,
+stop before building. Preserve existing intermediate artifacts when configuring the
+split; do not move or clear them just to change the final-output directory.
+The owner-approved baseline covers debug/test, release and check/Clippy artifacts. Before initial dependency
+compilation, agree the installed toolchain and common cache with the owner and obtain
+explicit approval to build that baseline. Ordinary recompilation of changed project
+code is allowed within the agreed setup. If GPUI Kit or other dependencies need to be
+rebuilt beyond that baseline, stop before rebuilding, explain the concrete cause of
+artifact invalidation, and obtain explicit owner approval. Required validation does
+not waive this approval. Avoid unnecessary feature, profile, compiler, target or
+RUSTFLAGS changes and repeated builds; different compilation inputs can invalidate
+dependency artifacts even when GPUI source is unchanged. Keep final binary paths
+local to their workspace and verify the exact built revision before use; a path
+alone does not identify the source revision. Do not clear the common intermediate
+cache while another project or task may use it. Configuration or metadata checks
+do not prove that Cargo will reuse every dependency artifact without rebuilding.
+
+Only the owner controls the disk budget. Do not add quotas, monitoring scripts,
+periodic measurements or extra budget-management procedures.
+
 ## Before implementation
 
 Open-ended ideas may begin in a GitHub Discussion. Under the workflow scope above, before implementation starts, create or select a GitHub Issue that states:
@@ -94,6 +131,14 @@ Use `feature`, `fix`, `docs`, `refactor`, `test`, or `chore` as the type. For ex
 Use the repository's main working directory by default. Create an additional
 worktree outside it only when the project owner explicitly asks for one; do not
 infer that request from parallel work, isolation, or convenience.
+Place every requested linked worktree under the sibling `argand.worktrees`
+directory (`../argand.worktrees/<task>` from the main checkout). Use the common Cargo
+intermediate build-dir outside all worktrees and keep final target-dir outputs local
+to each workspace. The intermediate cache can hold multiple legitimate compiler,
+feature and profile variants; verify the built revision before demonstrating an
+artifact.
+Remove completed linked worktrees using the safe completion checks below; do not
+force removal of unique or unrelated work.
 
 Create `docs/plans/<issue>-<short-description>.md` from `docs/plans/TEMPLATE.md` and commit it before implementation. The plan must link to the Issue and describe the implementation tasks and validation strategy. Record its risk class and the approved role assignments before execution; classes describe scrutiny, not reviewer-model selection.
 

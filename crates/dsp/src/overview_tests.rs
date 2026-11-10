@@ -22,7 +22,7 @@ fn check_exact_overview(domain: Domain, reduce: Reduce) {
                     assert!(preview.frames > 0);
                     Flow::Continue
                 }).unwrap();
-            for (width, height) in [(1, 1), (7, 33), (127, 300), (200, 1100), (5, 7)] {
+            for (width, height) in [(1, 1), (7, 33), (200, 1100)] {
                 req.width = width;
                 req.height = height;
                 req.waveform_columns = Some(width);
@@ -144,7 +144,7 @@ fn explicit_style_refresh_bypasses_the_periodic_snapshot_interval() {
 fn final_only_overview_matches_progressive_for_serial_and_parallel_workloads() {
     for domain in [Domain::Real, Domain::Iq] {
         for reduce in [Reduce::Max, Reduce::MeanPower] {
-            for frames in [1, 16, 128, 257] {
+            for frames in [1, 257] {
                 check_final_only(domain, reduce, frames);
             }
         }

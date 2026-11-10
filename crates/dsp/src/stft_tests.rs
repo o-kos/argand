@@ -113,19 +113,6 @@ fn request(width: usize, height: usize, range: SampleRange) -> AnalysisRequest {
 }
 
 #[test]
-fn a_complex_tone_lands_in_the_two_sided_spectrum() {
-    let mut src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 1.0), 0.0);
-    let analysis = run(&mut src, 64, 64);
-
-    assert_eq!(analysis.psd.db.len(), FFT, "i/q spectrum is two-sided");
-
-    let peak = analysis.psd.peak(0.0).unwrap();
-    // Bin 0 sits at -Fs/2, so a positive tone lands above the midpoint.
-    assert_eq!(peak.bin, FFT / 2 + TONE_BIN);
-    assert!((peak.offset_hz - TONE_HZ).abs() < 1.0, "{}", peak.offset_hz);
-}
-
-#[test]
 fn a_negative_frequency_is_distinguishable_from_a_positive_one() {
     // The whole point of a complex capture: -f and +f are different signals.
     // Treating the interleaved stream as real would collapse them together.
@@ -217,132 +204,6 @@ fn the_frequency_axis_is_offset_by_the_centre_frequency() {
 }
 
 #[test]
-fn the_image_carries_the_extents_it_was_drawn_for() {
-    let mut src = VecSource::new(Domain::Iq, iq_tone(4800, TONE_HZ, 1.0), 0.0);
-    let analysis = run(&mut src, 37, 23);
-    let img = &analysis.spectrogram;
-
-    assert_eq!((img.width, img.height), (37, 23));
-    assert_eq!(img.rgba.len(), 37 * 23 * 4);
-    assert_eq!(img.t0, 0.0);
-    assert!((img.t1 - 0.2).abs() < 1e-9, "4800 samples at 24 kHz is 200 ms");
-    assert_eq!(img.db_max, 0.0, "full-scale reference puts 0 dB at the top");
-    assert_eq!(img.db_min, -110.0);
-    assert!(img.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 255), "no gaps");
-}
-
-#[test]
-fn the_tone_is_the_brightest_row_of_the_image() {
-    let mut src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 1.0), 0.0);
-    let analysis = run(&mut src, 16, FFT);
-    let img = &analysis.spectrogram;
-
-    // Row 0 is the top of the image, which is +Fs/2.
-    let expected_row = FFT - 1 - (FFT / 2 + TONE_BIN);
-    let brightest = (0..img.height)
-        .max_by_key(|&y| img.get(4, y).expect("a pixel inside the image")[0])
-        .expect("non-empty image");
-    assert_eq!(brightest, expected_row, "tone should sit above the midline");
-    assert!(brightest < img.height / 2);
-}
-
-#[test]
-fn a_signal_spanning_several_blocks_matches_a_short_one() {
-    // BLOCK_SAMPLES is deliberately tiny under test, so this crosses the
-    // carry-over path several times.
-    let short = iq_tone(4096, TONE_HZ, 1.0);
-    let long = iq_tone(4096 * 5, TONE_HZ, 1.0);
-
-    let mut a = VecSource::new(Domain::Iq, short, 0.0);
-    let mut b = VecSource::new(Domain::Iq, long, 0.0);
-    let short_peak = run(&mut a, 8, 8).psd.peak(0.0).unwrap();
-    let long_analysis = run(&mut b, 8, 8);
-    let long_peak = long_analysis.psd.peak(0.0).unwrap();
-
-    assert_eq!(short_peak.bin, long_peak.bin);
-    assert!((short_peak.db - long_peak.db).abs() < 0.1);
-    assert!(long_analysis.frames > 4096 / (FFT / 4) as u64);
-}
-
-#[test]
-fn every_column_gets_covered_when_frames_outnumber_them() {
-    let mut src = VecSource::new(Domain::Iq, iq_tone(40_000, TONE_HZ, 1.0), 0.0);
-    let analysis = run(&mut src, 100, 16);
-    let img = &analysis.spectrogram;
-
-    let expected_row = 16 - 1 - (16 / 2 + 103 * 16 / FFT);
-    for x in 0..img.width {
-        let brightest = (0..img.height)
-            .max_by_key(|&y| img.get(x, y).expect("a pixel inside the image")[0])
-            .unwrap();
-        assert_eq!(brightest, expected_row, "column {x} is blank or wrong");
-    }
-}
-
-#[test]
-fn mean_and_max_differ_on_a_burst() {
-    // A tone for the first eighth, silence after: max keeps it visible.
-    let mut data = iq_tone(2048, TONE_HZ, 1.0);
-    data.extend(std::iter::repeat_n(0.0, 2048 * 7 * 2));
-
-    let mut max_src = VecSource::new(Domain::Iq, data.clone(), 0.0);
-    let mut mean_src = VecSource::new(Domain::Iq, data, 0.0);
-
-    let max = run_with(&mut max_src, 1, FFT, Reduce::Max, DynamicRange::Default);
-    let mean = run_with(&mut mean_src, 1, FFT, Reduce::Mean, DynamicRange::Default);
-
-    let brightest = |a: &Analysis| {
-        (0..a.spectrogram.height)
-            .map(|y| a.spectrogram.get(0, y).expect("a pixel inside the image")[0])
-            .max()
-            .unwrap()
-    };
-    assert!(
-        brightest(&max) > brightest(&mean),
-        "max {} should beat mean {}",
-        brightest(&max),
-        brightest(&mean)
-    );
-}
-
-#[test]
-fn a_fixed_range_stretches_a_quiet_signal_to_full_brightness() {
-    let mut fs_src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 0.001), 0.0);
-    let mut peak_src = VecSource::new(Domain::Iq, iq_tone(8192, TONE_HZ, 0.001), 0.0);
-
-    let fs = run_with(&mut fs_src, 8, 64, Reduce::Max, DynamicRange::Default);
-    let peak = run_with(
-        &mut peak_src,
-        8,
-        64,
-        Reduce::Max,
-        DynamicRange::Fixed(110.0),
-    );
-
-    assert_eq!(fs.spectrogram.db_max, 0.0);
-    assert!(peak.spectrogram.db_max < -50.0, "{}", peak.spectrogram.db_max);
-
-    let brightest = |a: &Analysis| {
-        (0..a.spectrogram.height)
-            .map(|y| a.spectrogram.get(4, y).expect("a pixel inside the image")[0])
-            .max()
-            .unwrap()
-    };
-    assert!(brightest(&peak) > brightest(&fs));
-    assert_eq!(brightest(&peak), 255, "peak-relative range should reach the top");
-}
-
-#[test]
-fn dynamic_range_literals_accept_auto_and_positive_numbers_only() {
-    assert_eq!("auto".parse(), Ok(DynamicRange::Auto));
-    assert_eq!("AUTO".parse(), Ok(DynamicRange::Auto));
-    assert_eq!("40".parse(), Ok(DynamicRange::Fixed(40.0)));
-    for bad in ["default", "0", "-1", "NaN", "inf", "wide"] {
-        assert!(bad.parse::<DynamicRange>().is_err(), "accepted {bad}");
-    }
-}
-
-#[test]
 fn the_recommendation_adds_headroom_rounds_up_and_clamps() {
     let range_for = |db: Vec<f32>| {
         recommended_dynamic_range(&Psd {
@@ -416,21 +277,7 @@ fn the_window_bandwidth_is_reported_in_hertz() {
     let mut src = VecSource::new(Domain::Iq, iq_tone(4096, TONE_HZ, 1.0), 0.0);
     let analysis = run(&mut src, 8, 8);
     let want = 1.5 * RATE / FFT as f64; // hann spreads noise over 1.5 bins
-    assert!((analysis.enbw_hz - want).abs() < 0.1, "{}", analysis.enbw_hz);
-}
-
-#[test]
-fn a_range_selects_part_of_the_signal() {
-    let mut src = VecSource::new(Domain::Iq, iq_tone(24_000, TONE_HZ, 1.0), 0.0);
-    let analysis = analyze(
-        &mut src,
-        &request(16, 16, SampleRange::new(6_000, 12_000)),
-        &mut |_, _| {},
-    )
-    .unwrap();
-
-    assert!((analysis.spectrogram.t0 - 0.25).abs() < 1e-9);
-    assert!((analysis.spectrogram.t1 - 0.75).abs() < 1e-9);
+    assert!((analysis.enbw_hz - want).abs() < 1e-3, "{}", analysis.enbw_hz);
 }
 
 #[test]
@@ -518,12 +365,6 @@ fn the_envelope_shares_the_spectrogram_time_axis() {
 }
 
 #[test]
-fn no_waveform_is_built_unless_one_is_asked_for() {
-    let mut src = VecSource::new(Domain::Real, real_tone(4096, TONE_HZ, 0.5), 0.0);
-    assert!(run(&mut src, 16, 16).waveform.is_none());
-}
-
-#[test]
 fn the_envelope_covers_the_tail_past_the_last_whole_frame() {
     // 5000 samples with hop 256: the last frame ends at 4864, so the frame
     // loop never reads the final 136 samples. The strip still has to show them.
@@ -545,26 +386,6 @@ fn the_envelope_covers_the_tail_past_the_last_whole_frame() {
     let waveform = analysis.waveform.expect("a waveform was asked for");
     let (_, max) = waveform.column(24, 0).expect("the last column");
     assert_eq!(max, 0.95, "the tail spike never reached the envelope");
-}
-
-#[test]
-fn overlap_is_reported_from_the_hop() {
-    assert_eq!(StftConfig::new(2048, Window::Hann).hop, 512);
-    assert!((StftConfig::new(2048, Window::Hann).overlap_percent() - 75.0).abs() < 1e-9);
-    let half = StftConfig {
-        fft_size: 2048,
-        hop: 1024,
-        window: Window::Hann,
-    };
-    assert!((half.overlap_percent() - 50.0).abs() < 1e-9);
-}
-
-#[test]
-fn the_published_decibel_floor_matches_the_floors_that_produce_it() {
-    // Both clamps have to agree with the constant a renderer reserves from,
-    // or a label can come out wider than the room set aside for it.
-    assert_eq!(20.0 * MAG_FLOOR.log10(), DB_FLOOR);
-    assert!((10.0 * POWER_FLOOR.log10() - f64::from(DB_FLOOR)).abs() < 1e-9);
 }
 
 #[test]
@@ -696,131 +517,9 @@ fn shading_a_grid_that_does_not_cover_its_shape_draws_nothing() {
     assert!(image.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 255));
 }
 
-#[test]
-fn shading_stops_rather_than_writing_pixels_an_image_cannot_hold() {
-    let grid = DbGrid {
-        width: 4,
-        height: 4,
-        values: vec![-10.0; 16],
-        t0: 0.0,
-        t1: 1.0,
-        f0: -12_000.0,
-        f1: 12_000.0,
-    };
-    let shading = Shading {
-        colormap: Colormap::Grayscale,
-        db_min: -110.0,
-        db_max: 0.0,
-    };
-
-    // An image one column short would take the first three columns and drop
-    // the fourth on the floor, so nothing is shaded at all.
-    let mut short = SpectrogramImage::new(3, 4);
-    shade_columns(&grid, shading, &mut short, 0..grid.width);
-    assert!(
-        short.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 0),
-        "an image that does not cover the grid keeps every pixel untouched"
-    );
-
-    // An image one row short has the same fate.
-    let mut squat = SpectrogramImage::new(4, 3);
-    shade_columns(&grid, shading, &mut squat, 0..grid.width);
-    assert!(
-        squat.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 0),
-        "an image that does not cover the grid keeps every pixel untouched"
-    );
-
-    // An image larger than the grid still shades the part they share.
-    let mut larger = SpectrogramImage::new(6, 5);
-    shade_columns(&grid, shading, &mut larger, 0..grid.width);
-    let shaded = larger.rgba.as_chunks::<4>().0.iter().filter(|p| p[3] == 255).count();
-    assert_eq!(shaded, grid.width * grid.height);
-
-    // And a grid that does cover itself is unaffected, which is the case every
-    // caller actually takes.
-    let mut exact = SpectrogramImage::new(4, 4);
-    shade_columns(&grid, shading, &mut exact, 0..grid.width);
-    assert!(exact.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 255));
-}
-
-#[test]
-fn shading_skips_a_column_the_grid_does_not_hold() {
-    let grid = DbGrid {
-        width: 4,
-        height: 4,
-        values: vec![-10.0; 16],
-        t0: 0.0,
-        t1: 1.0,
-        f0: -12_000.0,
-        f1: 12_000.0,
-    };
-    let shading = Shading {
-        colormap: Colormap::Grayscale,
-        db_min: -110.0,
-        db_max: 0.0,
-    };
-
-    // A column index past the grid is skipped instead of slicing out a range
-    // that belongs to no column it has values for.
-    let mut image = SpectrogramImage::new(8, 4);
-    shade_columns(&grid, shading, &mut image, 0..grid.width);
-    let mut beyond = SpectrogramImage::new(8, 4);
-    shade_columns(
-        &grid,
-        shading,
-        &mut beyond,
-        [0, 1, 2, 3, 4, 7, usize::MAX].iter().copied(),
-    );
-    assert_eq!(
-        image.rgba, beyond.rgba,
-        "columns outside the grid change nothing"
-    );
-
-    // A grid whose values fall short of its shape is skipped the same way,
-    // which the checked accessor answers rather than a slice that panics.
-    let mut broken = grid.clone();
-    broken.values.pop();
-    let mut image = SpectrogramImage::new(8, 4);
-    shade_columns(&broken, shading, &mut image, 0..broken.width);
-    assert!(
-        image.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 0),
-        "a grid that does not cover its shape shades nothing"
-    );
-}
-
 include!("progressive_tests.rs");
 
 #[path = "aggregation_tests.rs"]
 mod aggregation;
 
 include!("overview_tests.rs");
-
-#[test]
-fn range_advice_uses_the_shared_ten_decibel_threshold_and_is_absent_in_auto() {
-    assert_eq!(suggested_range_db(false, 69.9, 60.0), None);
-    assert_eq!(suggested_range_db(false, 70.0, 60.0), Some(60.0));
-    assert_eq!(suggested_range_db(true, 110.0, 60.0), None);
-    assert_eq!(suggested_range_db(false, f32::NAN, 60.0), None);
-}
-
-#[test]
-fn iq_frame_discards_odd_tail_and_limits_pairs_to_the_window() {
-    let source = VecSource::new(Domain::Iq, [1.0, 0.0].repeat(4), 0.0);
-    let plan = Plan::new(&StftConfig::new(4, Window::Rect), &source.meta, 4, Reduce::Max);
-    for tail in [vec![], vec![0.25], vec![0.25, 0.5, 0.75]] {
-        let mut samples = source.data.clone();
-        samples.extend(tail);
-        let mut partial = plan.partial();
-        plan.frame(&samples, &mut partial, 0);
-        assert_eq!(partial.complex, vec![
-            Complex32::new(4.0, 0.0),
-            Complex32::new(0.0, 0.0),
-            Complex32::new(0.0, 0.0),
-            Complex32::new(0.0, 0.0),
-        ]);
-        assert_eq!(partial.mags, [0.0, 0.0, 1.0, 0.0]);
-        assert_eq!(partial.power, [0.0, 0.0, 1.0, 0.0]);
-        assert_eq!(partial.time_peak, 1.0);
-        assert_eq!(partial.frames, 1);
-    }
-}

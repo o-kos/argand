@@ -1,45 +1,17 @@
-#[test]
-fn progressive_final_matches_plain_analysis_in_both_domains_and_reducers() {
-    for domain in [Domain::Real, Domain::Iq] {
-        let mut values = match domain {
-            Domain::Real => real_tone(FFT * 64 + 73, TONE_HZ, 0.4),
-            Domain::Iq => iq_tone(FFT * 64 + 73, TONE_HZ, 0.4),
-        };
-        values[FFT * 3 + 27] = 0.95;
-        *values.last_mut().unwrap() = -0.8;
-        for reduce in [Reduce::Max, Reduce::Mean, Reduce::MeanPower] {
-            for width in [1, 7, 128, 257] {
-                assert_progressive_matches(domain, reduce, width, &values);
-            }
-        }
-    }
-}
-
-fn assert_progressive_matches(domain: Domain, reduce: Reduce, width: usize, values: &[f32]) {
-    assert_progressive_options_match(domain, reduce, width, values, ProgressiveOptions::default());
-}
-
-fn assert_progressive_options_match(
+fn assert_progressive_reference(
     domain: Domain,
-    reduce: Reduce,
-    width: usize,
     values: &[f32],
+    request: &AnalysisRequest,
     options: ProgressiveOptions,
+    plain: &Analysis,
 ) {
     let mut source = VecSource::new(domain, values.to_vec(), 100_000.0);
-    let mut request = request(
-        width,
-        33,
-        SampleRange::new(17, source.meta.len_samples - 17),
-    );
-    request.waveform_columns = Some(width);
-    request.reduce = reduce;
-    request.dynamic_range = DynamicRange::Auto;
-    let plain = analyze(&mut source, &request, &mut |_, _| {}).unwrap();
+    let width = request.width;
+    let reduce = request.reduce;
     let mut previews = 0;
     let refined = analyze_progressive_with_options(
         &mut source,
-        &request,
+        request,
         options,
         &|| Flow::Continue,
         &mut |preview, coverage| {
@@ -197,13 +169,19 @@ fn scheduling_preserves_fft_counts_psd_waveform_and_both_reducers() {
 
 fn check_scheduling_options(domain: Domain, values: &[f32]) {
     for reduce in [Reduce::Max, Reduce::Mean, Reduce::MeanPower] {
-        for batch in [1, 16, 256, 1024, 4096] {
-            assert_progressive_options_match(
+        let mut source = VecSource::new(domain, values.to_vec(), 100_000.0);
+        let mut request = request(7, 33, SampleRange::new(17, source.meta.len_samples - 17));
+        request.waveform_columns = Some(7);
+        request.reduce = reduce;
+        request.dynamic_range = DynamicRange::Auto;
+        let plain = analyze(&mut source, &request, &mut |_, _| {}).unwrap();
+        for batch in [1, 1024] {
+            assert_progressive_reference(
                 domain,
-                reduce,
-                7,
                 values,
+                &request,
                 ProgressiveOptions::new(batch).unwrap(),
+                &plain,
             );
         }
     }

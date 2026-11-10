@@ -103,47 +103,9 @@ fn worker_count(requested: usize, available: usize, cpus: Option<&[usize]>) -> u
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn budgets_respect_process_limits_and_selected_cpus() {
-        assert_eq!(worker_count(0, 12, None), 8);
-        assert_eq!(worker_count(4, 12, None), 4);
-        assert_eq!(worker_count(32, 12, None), 12);
-        assert_eq!(worker_count(0, 1, None), 1);
-        assert_eq!(worker_count(8, 12, Some(&[7, 19, 31])), 3);
-        assert_eq!(worker_count(8, 2, Some(&[7, 19, 31])), 2);
-    }
-
-    #[test]
-    fn invalid_fields_are_repaired_independently() {
-        let mut settings = Settings {
-            workers: 999,
-            batch_frames: 0,
-            affinity: Affinity::Efficiency,
-        };
-        settings.repair();
-        assert_eq!(settings.workers, 0);
-        assert_eq!(settings.batch_frames, Settings::default().batch_frames);
-        assert_eq!(settings.affinity, Affinity::Efficiency);
-    }
-}
+#[path = "execution_test.rs"]
+mod tests;
 
 #[cfg(test)]
-mod configuration_tests {
-    use super::*;
-
-    #[test]
-    fn partial_analysis_configuration_keeps_independent_defaults() {
-        let config: crate::config::Config =
-            toml::from_str("[analysis]\nworkers = 4\naffinity = 'efficiency'").unwrap();
-        assert_eq!(config.analysis.workers, 4);
-        assert_eq!(
-            config.analysis.batch_frames,
-            Settings::default().batch_frames
-        );
-        assert_eq!(config.analysis.affinity, Affinity::Efficiency);
-        assert!(toml::from_str::<crate::config::Config>("[analysis]\naffinity = 'cpu4'").is_err());
-    }
-}
+#[path = "execution_configuration_test.rs"]
+mod configuration_tests;

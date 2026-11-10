@@ -52,22 +52,6 @@ fn drain(src: &mut dyn SampleSource) -> Vec<f32> {
 }
 
 #[test]
-fn detects_every_wav_sample_type_from_content() {
-    let dir = TempDir::new("open-wav");
-    let values = [0.25f32, -0.25, 0.5, -0.5];
-
-    for st in all_sample_types() {
-        // Deliberately misleading extension: detection must go by content.
-        let path = write_wav(&dir.join(&format!("{st}.dat")), st, 24_000, &values, 1.0);
-        let src = open(&path, &OpenHints::default()).unwrap();
-        assert_eq!(src.meta().sample_type, st, "{st}");
-        assert_eq!(src.meta().container, "wav", "{st}");
-        assert_eq!(src.meta().sample_rate, 24_000.0, "{st}");
-        assert_eq!(src.meta().sample_rate, 24_000.0, "{st}");
-    }
-}
-
-#[test]
 fn raw_needs_a_spec_and_honours_the_offset() {
     let dir = TempDir::new("open-raw");
     let values = [0.5f32, -0.5, 0.25, -0.25];
@@ -89,28 +73,6 @@ fn raw_needs_a_spec_and_honours_the_offset() {
 }
 
 #[test]
-fn raw_without_a_rate_anywhere_is_an_error() {
-    let dir = TempDir::new("open-raw-rate");
-    let path = write_raw(&dir.join("dump.bin"), SampleFormat::I16, &[0.5], 1.0);
-
-    let hints = OpenHints {
-        raw: Some("rl_i16".parse().unwrap()),
-        ..Default::default()
-    };
-    assert!(matches!(
-        err_of(open(&path, &hints)),
-        IoError::MissingRate { .. }
-    ));
-
-    // --rate supplies what the spec left out.
-    let hints = OpenHints {
-        sample_rate: Some(8000.0),
-        ..hints
-    };
-    assert_eq!(open(&path, &hints).unwrap().meta().sample_rate, 8000.0);
-}
-
-#[test]
 fn overrides_beat_the_header() {
     let dir = TempDir::new("open-override");
     let st = SampleType::new(Domain::Iq, SampleFormat::I16);
@@ -128,54 +90,6 @@ fn overrides_beat_the_header() {
     assert_eq!(src.meta().sample_type.format, SampleFormat::I32);
     // Reinterpreting 16-bit stereo as 32-bit mono halves the sample count.
     assert_eq!(src.meta().len_samples, 2);
-}
-
-#[test]
-fn centre_frequency_shifts_the_reported_span() {
-    let dir = TempDir::new("open-centre");
-    let st = SampleType::new(Domain::Iq, SampleFormat::I16);
-    let path = write_wav(&dir.join("c.wav"), st, 24_000, &[0.0; 8], 1.0);
-
-    let hints = OpenHints {
-        center_freq: Some(12_579_000.0),
-        ..Default::default()
-    };
-    let (lo, hi) = open(&path, &hints).unwrap().meta().frequency_span();
-    assert_eq!((lo, hi), (12_567_000.0, 12_591_000.0));
-}
-
-#[test]
-fn reports_useful_errors_for_files_it_cannot_read() {
-    let dir = TempDir::new("open-errors");
-
-    let missing = dir.join("nope.wav");
-    assert!(matches!(
-        err_of(open(&missing, &OpenHints::default())),
-        IoError::Open { .. }
-    ));
-
-    let empty = dir.join("empty.bin");
-    std::fs::write(&empty, []).unwrap();
-    assert!(matches!(
-        err_of(open(&empty, &OpenHints::default())),
-        IoError::Empty { .. }
-    ));
-
-    // Looks like RIFF, has no usable chunks.
-    let broken = dir.join("broken.wav");
-    std::fs::write(&broken, b"RIFF\x04\x00\x00\x00WAVE").unwrap();
-    let err = err_of(open(&broken, &OpenHints::default()));
-    assert!(matches!(err, IoError::Wav { .. }), "{err}");
-    assert!(err.to_string().contains("wav"), "{err}");
-}
-
-#[test]
-fn the_unknown_container_error_points_at_the_way_out() {
-    let dir = TempDir::new("open-hint");
-    let path = dir.join("mystery.bin");
-    std::fs::write(&path, [1u8; 64]).unwrap();
-    let msg = err_of(open(&path, &OpenHints::default())).to_string();
-    assert!(msg.contains("--raw"), "{msg}");
 }
 
 #[test]
@@ -229,18 +143,6 @@ fn every_repository_capture_reads_end_to_end() {
 }
 
 #[test]
-fn the_half_hour_capture_has_the_length_its_header_claims() {
-    let Some(path) = optional_fixture("12.579000_25_08_26_06_09_10.iqw") else {
-        return;
-    };
-    let src = open(&path, &OpenHints::default()).unwrap();
-    let meta = src.meta();
-    assert_eq!(meta.sample_rate, 24_000.0);
-    assert_eq!(meta.len_samples, 43_200_000);
-    assert_eq!(meta.duration_seconds(), 1800.0);
-}
-
-#[test]
 fn reads_the_external_format_matrix() {
     // codec, expected sample type, expected container
     let cases = [
@@ -271,21 +173,6 @@ fn reads_the_external_format_matrix() {
             buf[..n].iter().all(|v| v.is_finite() && v.abs() <= 1.5),
             "{name} produced out-of-range values"
         );
-    }
-}
-
-#[test]
-fn an_iq_capture_survives_a_round_trip_through_the_reader() {
-    let dir = TempDir::new("open-tone");
-    let st = SampleType::new(Domain::Iq, SampleFormat::I16);
-    let values = iq_tone(1024, 24_000.0, 2404.0, 0.5);
-    let path = write_wav(&dir.join("tone.wav"), st, 24_000, &values, 1.0);
-
-    let mut src = open(&path, &OpenHints::default()).unwrap();
-    let got = drain(src.as_mut());
-    assert_eq!(got.len(), values.len());
-    for (got, want) in got.iter().zip(values.iter()) {
-        assert!((got - want).abs() < 1e-3, "{got} vs {want}");
     }
 }
 

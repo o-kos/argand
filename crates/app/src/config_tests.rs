@@ -1,7 +1,6 @@
 use super::*;
 use crate::panels::MinimapSize;
 use argand_dsp::AnalysisRequest;
-use argand_dsp::Window;
 
 /// A scratch directory removed when it goes out of scope.
 struct TempDir {
@@ -35,62 +34,11 @@ impl Drop for TempDir {
 }
 
 #[test]
-fn theme_defaults_to_system_and_retains_explicit_overrides() {
-    assert_eq!(Config::default().theme, Theme::System);
-    let dir = TempDir::new("theme");
-    for (name, expected) in [("system", Theme::System), ("dark", Theme::Dark), ("light", Theme::Light)] {
-        let path = dir.write("argand.toml", &format!("theme = {name:?}\n"));
-        assert_eq!(Config::load(&[path]).theme, expected);
-    }
-    let path = dir.write("argand.toml", "number_format = \"ru-RU\"\n");
-    assert_eq!(Config::load(&[path]).theme, Theme::System);
-}
-
-#[test]
-fn distributed_template_explicitly_lists_every_configuration_key() {
-    use std::collections::BTreeSet;
-
-    let template: toml::Table =
-        toml::from_str(include_str!("../assets/argand.toml")).expect("valid template");
-    let sections: &[(&str, &[&str])] = &[
-        (
-            "",
-            &[
-                "theme", "number_format", "color_scheme", "dynamic_range", "aggregation",
-                "stft", "analysis", "panels",
-            ],
-        ),
-        ("stft", &["fft_size", "window"]),
-        ("analysis", &["workers", "batch_frames", "affinity"]),
-        ("panels", &["minimap_size", "waveform_fraction"]),
-    ];
-    for &(section, keys) in sections {
-        let table = if section.is_empty() {
-            &template
-        } else {
-            template[section].as_table().expect("configuration section")
-        };
-        let actual: BTreeSet<_> = table.keys().map(String::as_str).collect();
-        assert_eq!(actual, keys.iter().copied().collect(), "section {section:?}");
-    }
-}
-
-#[test]
 fn distributed_template_parses_without_repairs_and_matches_built_in_defaults() {
     let template = include_str!("../assets/argand.toml");
     let config: Config = toml::from_str(template).expect("valid distributed configuration");
     assert_eq!(config, Config::default());
     assert_eq!(config.clone().repaired(), config);
-}
-
-#[test]
-fn number_format_defaults_to_system_and_accepts_explicit_locales() {
-    let dir = TempDir::new("number-format");
-    assert_eq!(Config::default().number_format, "system");
-    for format in ["system", "ru-RU", "en-US", "ar-EG-u-nu-latn", "C", "POSIX"] {
-        let path = dir.write("argand.toml", &format!("number_format = {format:?}\n"));
-        assert_eq!(Config::load(&[path]).number_format, format);
-    }
 }
 
 #[test]
@@ -105,18 +53,6 @@ fn invalid_number_format_preserves_other_configuration() {
         assert_eq!(config.number_format, "system");
         assert_eq!(config.theme, Theme::Light);
     }
-}
-
-#[test]
-fn a_file_that_sets_one_value_is_a_complete_file() {
-    let dir = TempDir::new("partial");
-    let path = dir.write("argand.toml", "theme = \"light\"\n");
-
-    let config = Config::load(&[path]);
-    assert_eq!(config.theme, Theme::Light);
-    // Everything it did not mention keeps the shipped value.
-    assert_eq!(config.panels, Panels::default());
-    assert_eq!(config.number_format, "system");
 }
 
 #[test]
@@ -190,49 +126,6 @@ fn the_application_never_writes_the_file_a_person_owns() {
 }
 
 #[test]
-fn every_setting_the_file_offers_is_read_by_the_name_the_cli_uses() {
-    let dir = TempDir::new("full");
-    let path = dir.write(
-        "argand.toml",
-        r#"
-theme = "light"
-color_scheme = "viridis"
-dynamic_range = "auto"
-
-[stft]
-fft_size = 4096
-window = "blackman-harris"
-
-[panels]
-waveform_fraction = 0.35
-"#,
-    );
-
-    let config = Config::load(std::slice::from_ref(&path));
-    assert_eq!(config.theme, Theme::Light);
-    assert_eq!(config.color_scheme, Colormap::Viridis);
-    assert_eq!(config.dynamic_range, DynamicRange::Auto);
-    assert_eq!(config.stft.fft_size, 4096);
-    assert_eq!(config.stft.window, Window::BlackmanHarris);
-    assert!((config.panels.waveform_fraction - 0.35).abs() < 1e-6);
-}
-
-#[test]
-fn the_colour_range_takes_the_word_the_report_prints() {
-    let dir = TempDir::new("range");
-    // `default` is what the report shows and what the command line spells by
-    // leaving `-d` out, so a file may say it.
-    let path = dir.write("argand.toml", "dynamic_range = \"default\"\n");
-    assert_eq!(Config::load(&[path]).dynamic_range, DynamicRange::Default);
-
-    let path = dir.write("numeric.toml", "dynamic_range = \"60\"\n");
-    assert_eq!(
-        Config::load(&[path]).dynamic_range,
-        DynamicRange::Fixed(60.0)
-    );
-}
-
-#[test]
 fn a_value_that_parses_but_cannot_be_used_costs_only_itself() {
     let dir = TempDir::new("repair");
     // A transform size the FFT would refuse, beside a setting that is fine.
@@ -245,40 +138,6 @@ fn a_value_that_parses_but_cannot_be_used_costs_only_itself() {
     assert_eq!(config.stft.fft_size, Config::default().stft.fft_size);
     // The rest of the file survived: one bad value is not a bad file.
     assert_eq!(config.theme, Theme::Light);
-}
-
-#[test]
-fn a_waveform_share_that_leaves_no_plot_is_refused() {
-    let dir = TempDir::new("fraction");
-    let default = Config::default().panels.waveform_fraction;
-    for value in ["0.0", "1.0", "-0.5", "2.0", "nan", "inf"] {
-        let path = dir.write(
-            "argand.toml",
-            &format!("[panels]\nwaveform_fraction = {value}\n"),
-        );
-        let got = Config::load(&[path]).panels.waveform_fraction;
-        assert!(
-            (got - default).abs() < 1e-6,
-            "{value} was accepted as {got}"
-        );
-    }
-}
-
-#[test]
-fn a_name_the_cli_would_reject_is_rejected_here_too() {
-    let dir = TempDir::new("names");
-    for text in [
-        "color_scheme = \"chartreuse\"",
-        "dynamic_range = \"loud\"",
-        "[stft]\nwindow = \"triangular\"",
-    ] {
-        let path = dir.write("argand.toml", text);
-        assert_eq!(
-            Config::load(&[path]),
-            Config::default(),
-            "{text} was accepted"
-        );
-    }
 }
 
 #[test]

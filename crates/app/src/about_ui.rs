@@ -296,5 +296,5 @@ impl Shell {
 }
 
 #[cfg(test)]
-#[path = "about_ui_tests.rs"]
+#[path = "about_ui_test.rs"]
 mod tests;

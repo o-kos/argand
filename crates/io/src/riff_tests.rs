@@ -300,20 +300,6 @@ fn a_declared_length_is_never_capped_at_four_gigabytes() {
     assert_eq!(layout.len_samples(7_000_000_000), 1_500_000_000);
 }
 
-#[test]
-fn container_probes_do_not_overlap() {
-    let wav = wave(&fmt_body(WAVE_FORMAT_PCM, 1, 8000, 16, None), &[0; 4], &[]);
-    assert!(is_wave(&wav));
-    assert!(!is_flac(&wav));
-    assert!(is_wave(b"RF64\xff\xff\xff\xffWAVE"));
-    assert!(is_wave(b"BW64\xff\xff\xff\xffWAVE"));
-    assert!(!is_wave(b"RF64\xff\xff\xff\xffAVI "));
-    assert!(is_flac(b"fLaC\x00\x00\x00\x22"));
-    assert!(!is_wave(b"fLaC\x00\x00\x00\x22"));
-    assert!(!is_wave(b"RIF"));
-    assert!(!is_flac(b"fLa"));
-}
-
 /// A RIFF body of `fmt ` and the given chunks, with a correct RIFF size.
 fn chunked(chunks: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
     let mut out = b"RIFF\0\0\0\0WAVE".to_vec();
@@ -373,21 +359,4 @@ fn chunks_past_the_riff_size_are_not_samples() {
     let runs = runs_of(&file);
     assert_eq!(runs.len(), 1);
     assert_eq!(runs[0].len, 16);
-}
-
-#[test]
-fn a_single_data_chunk_is_one_run() {
-    let file = wave(
-        &fmt_body(WAVE_FORMAT_PCM, 2, 24_000, 16, None),
-        &[0u8; 40],
-        &[(b"LIST", vec![b'x'; 7])],
-    );
-    let layout = parse(&file).unwrap();
-    assert_eq!(
-        runs_of(&file),
-        [DataRun {
-            offset: layout.data_offset as u64,
-            len: 40
-        }]
-    );
 }

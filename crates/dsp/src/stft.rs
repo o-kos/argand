@@ -30,9 +30,8 @@ use crate::window::{Window, WindowTable};
 /// disappears against the transforms, small enough to stay cache-friendly.
 #[cfg(not(test))]
 const BLOCK_SAMPLES: usize = 1 << 20;
-/// Small under test so that the block-boundary carry is actually exercised.
 #[cfg(test)]
-const BLOCK_SAMPLES: usize = 4096;
+include!("stft_support_test.rs");
 
 /// Magnitude floor, so that silence cannot reach `-inf`.
 const MAG_FLOOR: f32 = 1e-15;

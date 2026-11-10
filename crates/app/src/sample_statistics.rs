@@ -139,10 +139,7 @@ struct Boundary {
 }
 
 #[derive(Default)]
-pub struct Cache(
-    Mutex<VecDeque<Boundary>>,
-    #[cfg(test)] std::sync::atomic::AtomicU64,
-);
+pub struct Cache(Mutex<VecDeque<Boundary>>, #[cfg(test)] ReadCounter);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Metrics {
@@ -244,9 +241,7 @@ fn boundary(
         return Ok(value);
     }
     #[cfg(test)]
-    cache
-        .1
-        .fetch_add(end - first, std::sync::atomic::Ordering::Relaxed);
+    record_read_for_test(cache, end - first);
     let mut reader = crate::extraction::reopen(file)?;
     reader.seek(first)?;
     let mut left = end - first;
@@ -282,3 +277,6 @@ fn boundary(
 #[cfg(test)]
 #[path = "sample_statistics_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+include!("sample_statistics_support_test.rs");

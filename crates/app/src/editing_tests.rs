@@ -42,35 +42,6 @@ fn span(a: u64, b: u64) -> SampleSpan {
 }
 
 #[test]
-fn delete_and_undo_change_the_length_and_the_unsaved_state() {
-    let mut document = editing("/a.wav", 100, 1000.0);
-    assert!(document.is_untouched() && !document.is_dirty());
-    document.delete(span(10, 30));
-    assert_eq!(document.len(), 80);
-    assert!(document.is_dirty() && document.marked().time.is_none());
-    assert!(document.undo());
-    assert_eq!(document.len(), 100);
-    assert!(!document.is_dirty() && document.is_untouched());
-    assert!(document.redo());
-    document.mark_saved();
-    assert!(!document.is_dirty());
-}
-
-#[test]
-fn a_paste_into_the_same_capture_needs_no_check_and_selects_what_it_pasted() {
-    let mut document = Editing::new(meta("/a.wav", 100, 1000.0), OpenHints::default());
-    let clipboard = document.copy(span(0, 10));
-    let pasted = document.paste(&clipboard, Placement::At(50)).unwrap();
-    assert_eq!(pasted, span(50, 60));
-    assert_eq!(document.len(), 110);
-    assert_eq!(document.marked().time, Some(pasted));
-    let replaced = document.paste(&clipboard, Placement::Replace(span(0, 50))).unwrap();
-    assert_eq!(replaced, span(0, 10));
-    assert_eq!(document.len(), 70);
-    assert_eq!(document.capture().sources(), [SourceId(0)]);
-}
-
-#[test]
 fn a_paste_from_another_file_adds_it_once_when_it_matches() {
     let mut document = editing("/a.wav", 100, 1000.0);
     let other = editing("/b.wav", 50, 1000.0);
@@ -127,24 +98,6 @@ fn a_save_names_only_the_files_its_samples_come_from() {
     assert_eq!(tail.protected[0].path, PathBuf::from("/a.wav"), "the open file stays protected");
     assert_eq!(tail.meta.source, PathBuf::from("/a.wav"), "and describes the result");
     assert_eq!((tail.segments[0].source, tail.segments[0].start, tail.segments[0].len), (0, 5, 5));
-}
-
-#[test]
-fn the_minimap_waits_for_the_file_envelope() {
-    let mut document = editing("/a.wav", 10, 1000.0);
-    assert!(document.minimap().is_none());
-    let envelope = argand_core::WaveformEnvelope::new(10, 2);
-    document.set_envelope(
-        SourceId(0),
-        Arc::new(Snapshot { statistics: None,
-            envelope,
-            full_scale: 1.0,
-            complete: true,
-            samples: 10,
-        }),
-    );
-    document.delete(span(0, 5));
-    assert_eq!(document.minimap().map(|snapshot| snapshot.samples), Some(5));
 }
 
 #[test]

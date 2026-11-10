@@ -376,20 +376,6 @@ impl RenderCache {
     }
 }
 
-#[cfg(test)]
-fn rebin(store: &ColumnStore, time: &Overlaps, frequency: &Overlaps) -> Vec<f32> {
-    let filled: Vec<_> = (0..store.width).collect();
-    time.0
-        .iter()
-        .flat_map(|spans| {
-            frequency
-                .0
-                .iter()
-                .map(|rows| reduced_value(store, &filled, spans, rows))
-        })
-        .collect()
-}
-
 fn reduced_value(
     store: &ColumnStore,
     filled: &[usize],
@@ -445,106 +431,11 @@ fn rebin_waveform(source: WaveformEnvelope, columns: usize, samples: u64) -> Wav
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn fractional_time_cells_use_frame_counts_and_keep_boundary_peaks() {
-        let mut store = ColumnStore::new(3, 1, Reduce::MeanPower);
-        store.counts = vec![4, 3, 3];
-        store.power = vec![4.0, 27.0, 75.0];
-        let time = Overlaps::new(10, 3, 2, true);
-        let freq = Overlaps::new(1, 1, 1, false);
-        let db = rebin(&store, &time, &freq);
-        for (actual, power) in db.iter().zip([2.6f64, 18.6]) {
-            assert!((f64::from(*actual) - 10.0 * power.log10()).abs() < 1e-5);
-        }
-        store.reduce = Reduce::Max;
-        store.values = vec![1.0, 3.0, 5.0];
-        let db = rebin(&store, &time, &freq);
-        assert!((db[0] - 20.0 * 3.0f32.log10()).abs() < 1e-5);
-        assert!((db[1] - 20.0 * 5.0f32.log10()).abs() < 1e-5);
-    }
-
-    #[test]
-    fn unequal_frequency_groups_are_weighted_by_bin_overlap() {
-        let mut store = ColumnStore::new(1, 2, Reduce::MeanPower);
-        store.counts = vec![2];
-        store.power = vec![2.0, 18.0];
-        let values = rebin(
-            &store,
-            &Overlaps::new(2, 1, 1, true),
-            &Overlaps::new(5, 2, 3, false),
-        );
-        for (actual, power) in values.iter().zip([1.0f64, 5.0, 9.0]) {
-            assert!((f64::from(*actual) - 10.0 * power.log10()).abs() < 1e-5);
-        }
-        let whole = rebin(
-            &store,
-            &Overlaps::new(2, 1, 1, true),
-            &Overlaps::new(5, 2, 1, false),
-        );
-        assert!((f64::from(whole[0]) - 10.0 * 5.8f64.log10()).abs() < 1e-5);
-    }
-
-    #[test]
-    fn envelope_rebin_keeps_a_peak_crossing_a_cache_boundary() {
-        let source = WaveformEnvelope {
-            columns: 3,
-            channels: 2,
-            min: vec![0.0, 0.0, -0.8, -0.4, 0.0, 0.0],
-            max: vec![0.0, 0.0, 0.9, 0.3, 0.0, 0.0],
-            t0: 0.0,
-            t1: 10.0,
-        };
-        let view = rebin_waveform(source, 2, 10);
-        assert_eq!(view.min, vec![-0.8, -0.4, -0.8, -0.4]);
-        assert_eq!(view.max, vec![0.9, 0.3, 0.9, 0.3]);
-    }
-}
+#[path = "overview_test.rs"]
+mod tests;
 
 #[cfg(test)]
-#[test]
-fn incremental_overview_render_matches_a_fresh_render_with_empty_followers() {
-    use argand_core::{Domain, SampleFormat, SampleType};
-    for reduce in [Reduce::Max, Reduce::MeanPower] {
-        let meta = SignalMeta {
-            sample_rate: 1000.0,
-            center_freq: 0.0,
-            sample_type: SampleType::new(Domain::Iq, SampleFormat::F32),
-            len_samples: 1000,
-            container: "test",
-            divisor: 1.0,
-            source: "memory".into(),
-        };
-        let request = AnalysisRequest {
-            cfg: StftConfig::new(8, Window::Hann),
-            range: SampleRange::new(0, 1000),
-            width: 7,
-            height: 4,
-            reduce,
-            colormap: Colormap::Oceanic,
-            dynamic_range: DynamicRange::Auto,
-            waveform_columns: None,
-        };
-        let mut state = Overview::with_cache(meta, request, false).unwrap();
-        for (column, value) in [(0, 0.1), (6, 0.8), (0, 0.6), (3, 0.2), (3, 0.7)] {
-            let mut partial = state.partial();
-            partial.cols = vec![column];
-            partial.rows = vec![value, value * 0.5, value * 0.1, 0.0];
-            partial.frames = 1;
-            state.absorb(&partial);
-            let incremental = state.render(5, 3, None).unwrap();
-            state.view_cache = None;
-            let fresh = state.render(5, 3, None).unwrap();
-            assert_eq!(incremental.db.values, fresh.db.values);
-            assert_eq!(incremental.spectrogram.rgba, fresh.spectrogram.rgba);
-        }
-        state.display_scale = None;
-        let final_view = state.render(5, 3, None).unwrap();
-        state.view_cache = None;
-        let fresh = state.render(5, 3, None).unwrap();
-        assert_eq!(final_view.db.values, fresh.db.values);
-        assert_eq!(final_view.spectrogram.rgba, fresh.spectrogram.rgba);
-    }
-}
+include!("overview_support_test.rs");
+
+#[cfg(test)]
+include!("overview_root_test.rs");

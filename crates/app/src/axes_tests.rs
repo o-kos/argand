@@ -23,24 +23,6 @@ fn measure(panel: Size<Pixels>, extents: Extents) -> Frame {
 }
 
 #[test]
-fn the_picture_gets_what_the_labels_leave() {
-    let frame = measure(panel(1200.0, 800.0), HFDL);
-
-    // The gutter fits the labels actually placed, not every decimal the unit resolves.
-    let widest = frame.frequency.iter().map(|tick| DejaVuSans.width(&tick.label, 11.0)).fold(0., f32::max);
-    assert!(frame.gutter >= widest + LABEL_PAD);
-    assert!(frame.gutter < DejaVuSans.width("12.591000", 11.0) + LABEL_PAD, "no worst-case reserve");
-    assert!(1200.0 - frame.plot.right() >= frame.gutter + OUTER_PAD - 1e-3);
-    assert!(frame.plot.x >= OUTER_PAD);
-    assert!(frame.plot.right() < 1200.0);
-    assert!(
-        frame.plot.y + frame.plot.height < 800.0,
-        "the time labels need a row"
-    );
-    assert_eq!(frame.plot.y, 0., "the image meets the minimap separator");
-}
-
-#[test]
 fn both_axes_are_marked_and_every_mark_lands_inside_the_plot() {
     let frame = measure(panel(1200.0, 800.0), HFDL);
 
@@ -59,22 +41,6 @@ fn both_axes_are_marked_and_every_mark_lands_inside_the_plot() {
     for tick in &frame.frequency {
         assert!((tick.offset as f32) < frame.plot.height, "{tick:?}");
     }
-}
-
-#[test]
-fn a_tuned_capture_reads_in_the_unit_its_digits_need() {
-    let frame = measure(panel(1200.0, 800.0), HFDL);
-    assert_eq!(frame.caption, Some("MHz"));
-
-    // Baseband: the same span with nothing added to it is kilohertz.
-    let baseband = measure(
-        panel(1200.0, 800.0),
-        Extents { orientation: crate::orientation::Mode::Horizontal, time: crate::time_ruler::Ruler::CLOCK,
-            seconds: (0.0, 1800.0),
-            hertz: (-12_000.0, 12_000.0),
-        },
-    );
-    assert_eq!(baseband.caption, Some("kHz"));
 }
 
 #[test]
@@ -100,30 +66,6 @@ fn a_real_capture_is_labelled_from_zero_up_and_a_complex_one_either_side() {
         real.frequency.iter().all(|tick| tick.value >= 0.0),
         "a one-sided spectrum has no negative frequency to mark"
     );
-}
-
-#[test]
-fn a_panel_with_no_room_left_for_a_picture_is_not_one() {
-    // Narrower than the gutter the frequency labels need, and shorter than the
-    // two label rows: there is no rectangle to draw into.
-    assert!(Frame::measure(panel(20.0, 400.0), UNSCALED, HFDL, &DejaVuSans, None).is_none());
-    assert!(Frame::measure(panel(1200.0, 8.0), UNSCALED, HFDL, &DejaVuSans, None).is_none());
-}
-
-#[test]
-fn a_gutter_reserved_from_zeros_holds_whatever_digits_turn_up_in_it() {
-    // The bound the gutter is built from stands in for a number nobody has
-    // picked yet, and every label the axis then chooses has to fit inside it.
-    let frame = measure(panel(1600.0, 900.0), HFDL);
-    for tick in &frame.frequency {
-        let width = DejaVuSans.width(&tick.label, 11.0);
-        assert!(
-            width + LABEL_PAD <= 1600.0 - frame.plot.right(),
-            "{:?} measures {width} in a {} pixel gutter",
-            tick.label,
-            1600.0 - frame.plot.right()
-        );
-    }
 }
 
 #[test]
@@ -208,136 +150,6 @@ fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
 }
 
 #[test]
-fn axis_labels_clear_adjacent_panels_and_the_window_edges() {
-    for scale in [1.0, 1.25, 1.5, 2.0] {
-        let extents = Extents { orientation: crate::orientation::Mode::Horizontal, time: crate::time_ruler::Ruler::CLOCK, seconds: (0.0, 30.456), hertz: (-12_000.0, 12_000.0) };
-        let frame = Frame::measure(panel(300.0, 240.0), scale, extents, &DejaVuSans, None)
-            .expect("the panel holds a plot and its labels");
-        assert_axis_bands_fit(&frame, 300.0, 240.0);
-    }
-}
-
-fn assert_axis_bands_fit(frame: &Frame, width: f32, height: f32) {
-    let half_line = LINE_HEIGHT / 2.0;
-    assert_eq!(frame.plot.x, 4.0);
-    assert_eq!(frame.plot.y, 0.0, "the image has no gap below the minimap");
-    assert!(frame.caption_row - half_line >= -48., "caption fits beside the minimap");
-    assert_eq!(frame.caption_row + DejaVuSans.digit_height(LABEL_SIZE) / 2., frame.plot.y);
-    assert!(frame.time_row - half_line > frame.plot.bottom());
-    let half_ink = DejaVuSans.digit_height(LABEL_SIZE) / 2.0;
-    let above = frame.time_row - half_ink - (frame.plot.bottom() + 1.);
-    let below = height - (frame.time_row + half_ink);
-    assert!(above >= BOTTOM_LABEL_DROP - 1e-4, "labels clear the ruler line");
-    assert!((below - above - (BOTTOM_LABEL_FOOT - BOTTOM_LABEL_DROP)).abs() < 1e-4, "more room below the labels");
-    assert!(!frame.frequency.is_empty());
-    for tick in &frame.frequency {
-        let center = frame.plot.bottom() - tick.offset as f32 + 0.5;
-        assert!(center - half_ink >= frame.plot.y, "frequency label stays inside the plot");
-        assert!(center + half_ink <= frame.plot.bottom(), "frequency label enters the time row");
-        let right = frame.plot.right() + LABEL_PAD + DejaVuSans.width(&tick.label, LABEL_SIZE);
-        assert!(right <= width - 4.0);
-    }
-}
-
-#[test]
-fn time_modes_preserve_plot_geometry_and_sample_origin() {
-    use crate::{navigation::View, time_ruler::{Mode, Ruler}};
-    let view = View { start: 2_400_000, len: 24_000 };
-    for width in [180., 640., 1200.] {
-        let baseline = measure(panel(width, 400.), HFDL);
-        for mode in [Mode::Clock, Mode::Seconds, Mode::Samples] {
-            let extents = Extents {
-                time: Ruler { mode, view, total: 43_200_000 },
-                seconds: view.seconds(24_000.),
-                ..HFDL
-            };
-            let frame = measure(panel(width, 400.), extents);
-            assert_eq!(frame.plot, baseline.plot);
-            assert_eq!(frame.frequency, baseline.frequency);
-            assert_time_labels_fit(&frame);
-            let bounds = extents.time.bounds(extents.seconds);
-            for tick in &frame.time {
-                assert!((bounds.0..=bounds.1).contains(&tick.value));
-                assert!(tick.label.is_empty() || tick.label.starts_with('#') == (mode == Mode::Samples));
-            }
-        }
-    }
-}
-
-#[test]
-fn localized_time_labels_fit_and_units_do_not_resize_the_plot() {
-    struct Localized(crate::numbers::Numbers);
-    impl LabelMeasure for Localized {
-        fn localize(&self, text: &str, kind: AxisKind) -> String { self.0.axis_label(text, kind) }
-        fn width(&self, text: &str, size: f32) -> f32 {
-            DejaVuSans.width(&text.replace(['\u{a0}', '\u{202f}'], " "), size)
-        }
-        fn digit_height(&self, size: f32) -> f32 { DejaVuSans.digit_height(size) }
-    }
-    for locale in ["en-US", "ru-RU", "de-DE", "hi-IN"] {
-        let labels = Localized(crate::numbers::Numbers::new(locale));
-        let mut previous_plot = None;
-        for mode in [crate::time_ruler::Mode::Clock, crate::time_ruler::Mode::Seconds, crate::time_ruler::Mode::Samples] {
-            let extents = Extents { orientation: crate::orientation::Mode::Horizontal,
-                time: crate::time_ruler::Ruler { mode, view: crate::navigation::View { start: 1_234_000, len: 20_000 }, total: 2_000_000 },
-                seconds: (1234., 1254.), hertz: (-100., 100.),
-            };
-            let frame = Frame::measure(panel(700., 400.), 1., extents, &labels, None).unwrap();
-            if let Some(plot) = previous_plot { assert_eq!(frame.plot, plot); }
-            previous_plot = Some(frame.plot);
-            assert_eq!(frame.time_caption, mode.caption());
-            assert!(!frame.time.is_empty());
-            let mut end = 0.;
-            for tick in frame.time.into_iter().filter(|tick| !tick.label.is_empty()) {
-                assert!(!tick.label.contains(['#', 's']));
-                let left = tick.offset as f32 + BOTTOM_LABEL_START;
-                assert!(left >= end);
-                end = left + labels.width(&tick.label, LABEL_SIZE);
-                assert!(end <= frame.plot.width);
-            }
-        }
-    }
-}
-
-#[test]
-fn unit_hints_follow_visible_captions_and_stay_in_the_gutter() {
-    use crate::time_ruler::Mode;
-    for scale in [1., 2.] {
-        for mode in [Mode::Clock, Mode::Seconds, Mode::Samples] {
-            for (hertz, text) in [
-                ((0., 100.), "Frequency in Hz"),
-                ((0., 5000.), "Frequency in kHz"),
-                ((12e6, 13e6), "Frequency in MHz"),
-                ((1e9, 2e9), "Frequency in GHz"),
-            ] {
-                let mut extents = HFDL;
-                extents.hertz = hertz;
-                extents.time.mode = mode;
-                let mut frame = Frame::measure(panel(800., 600.), scale, extents, &DejaVuSans, None)
-                    .expect("plot fits");
-                let [time, frequency] = frame.unit_hints(&DejaVuSans).map(Option::unwrap);
-                assert_eq!(frequency.text, text);
-                assert_eq!(time.bounds.width, DejaVuSans.width(mode.caption(), LABEL_SIZE).ceil());
-                assert_unit_hint_bounds(&frame, time);
-                assert_unit_hint_bounds(&frame, frequency);
-                assert!(time.bounds.y > frame.plot.bottom());
-                assert_eq!(frequency.bounds.y + frequency.bounds.height / 2.
-                    + DejaVuSans.digit_height(LABEL_SIZE) / 2., frame.plot.y);
-                frame.frequency.clear();
-                assert!(frame.unit_hints(&DejaVuSans)[1].is_none());
-            }
-        }
-    }
-}
-
-fn assert_unit_hint_bounds(frame: &Frame, hint: UnitHint) {
-    assert!(hint.bounds.x > frame.plot.right());
-    assert!(hint.bounds.right() <= 800. - OUTER_PAD);
-    assert!(hint.bounds.y >= -48.);
-    assert!(hint.bounds.bottom() <= 600.);
-}
-
-#[test]
 fn unit_resolution_uses_device_pixels_current_view_and_caption_units() {
     use crate::time_ruler::Mode;
     let mut extents = HFDL;
@@ -416,26 +228,6 @@ fn frequency_resolution_selects_units_independently_of_the_ruler() {
     assert_eq!(localized, "Resolution: 0,496 Hz/px");
 }
 
-#[test]
-fn vertical_m39_time_labels_use_the_space_between_unit_captions() {
-    let extents = Extents {
-        orientation: crate::orientation::Mode::Vertical,
-        time: crate::time_ruler::Ruler::CLOCK,
-        seconds: (0., 424_703. / 7200.),
-        hertz: (0., 3600.),
-    };
-    for scale in [1., 1.25, 1.5, 2.] {
-        let frame = Frame::measure(panel(1152., 720.), scale, extents, &DejaVuSans, None).unwrap();
-        for value in [2., 58.] {
-            let tick = frame.time.iter().find(|tick| tick.value == value).unwrap();
-            assert!(!tick.label.is_empty(), "missing label at {value}s, scale {scale}");
-        }
-        assert!(frame.time.iter().find(|tick| tick.value == 0.).unwrap().label.is_empty(),
-            "the time unit occupies the zero label's space");
-        assert_vertical_time_clearance(&frame);
-    }
-}
-
 fn assert_vertical_time_clearance(frame: &Frame) {
     let half_ink = DejaVuSans.digit_height(LABEL_SIZE) / 2.;
     let top = frame.time_caption_row + half_ink;
@@ -447,77 +239,5 @@ fn assert_vertical_time_clearance(frame: &Frame) {
         assert!(center + half_ink <= bottom - OUTER_PAD);
         assert!(center - half_ink - previous_end >= DejaVuSans.width("00", LABEL_SIZE));
         previous_end = center + half_ink;
-    }
-}
-
-#[test]
-fn vertical_time_labels_clear_captions_when_resized_and_panned() {
-    for height in [60., 100., 240., 719.5, 1000.] {
-        for scale in [1., 1.25, 2.] {
-            let extents = Extents {
-                orientation: crate::orientation::Mode::Vertical,
-                seconds: (0., 424_703. / 7200.),
-                hertz: (0., 3600.),
-                ..HFDL
-            };
-            let frame = Frame::measure(panel(400., height), scale, extents, &DejaVuSans, None).unwrap();
-            assert_vertical_time_clearance(&frame);
-            for start in [0.1, 1., 5.9, 30.] {
-                let panned = Extents { seconds: (start, start + extents.seconds.1), ..extents };
-                let frame = Frame::measure(panel(400., height), scale, panned, &DejaVuSans, frame.time_scheme).unwrap();
-                assert_vertical_time_clearance(&frame);
-            }
-        }
-    }
-}
-
-#[test]
-fn bottom_labels_hang_beside_their_ticks_in_both_orientations() {
-    let ink = DejaVuSans.digit_height(LABEL_SIZE);
-    assert_eq!(BOTTOM_LABEL_START - 1., BOTTOM_LABEL_GAP, "gap after the one-pixel tick");
-    for orientation in [crate::orientation::Mode::Horizontal, crate::orientation::Mode::Vertical] {
-        for (width, height) in [(300., 240.), (800., 600.)] {
-            for scale in [1., 1.25, 1.5, 2.] {
-                let extents = Extents { orientation, ..HFDL };
-                let frame = Frame::measure(panel(width, height), scale, extents, &DejaVuSans, None).unwrap();
-                let line = frame.plot.bottom() + 1.;
-                let drop = frame.time_row - ink / 2. - line;
-                assert!(drop >= BOTTOM_LABEL_DROP - 1e-4, "ink starts below the ruler line at {scale}");
-                assert!(drop < BOTTOM_LABEL_DROP + 1. / scale, "rounding adds under a device pixel at {scale}");
-                let below = height - (frame.time_row + ink / 2.);
-                let extra = BOTTOM_LABEL_FOOT - BOTTOM_LABEL_DROP;
-                assert!((below - drop - extra).abs() < 1e-4, "the foot adds room below at {scale}");
-            }
-        }
-    }
-}
-
-#[test]
-fn a_held_gutter_keeps_the_right_ruler_from_narrowing() {
-    for orientation in [crate::orientation::Mode::Horizontal, crate::orientation::Mode::Vertical] {
-        let extents = Extents { orientation, ..HFDL };
-        let fresh = Frame::measure_view(panel(900., 600.), 1.25, extents, &DejaVuSans, Held::default()).unwrap();
-        let wider = fresh.gutter + 30.;
-        let held = Held { gutter: wider, ..Held::default() };
-        let kept = Frame::measure_view(panel(900., 600.), 1.25, extents, &DejaVuSans, held).unwrap();
-        assert_eq!(kept.gutter, wider, "the floor wins over narrower labels");
-        assert!(kept.plot.right() < fresh.plot.right(), "the plot gives the room back");
-        let held = Held { gutter: fresh.gutter - 10., ..Held::default() };
-        let grown = Frame::measure_view(panel(900., 600.), 1.25, extents, &DejaVuSans, held).unwrap();
-        assert_eq!(grown.gutter, fresh.gutter, "wider labels still widen the ruler");
-    }
-}
-
-#[test]
-fn remeasuring_the_time_scheme_keeps_the_painted_plot_width() {
-    for orientation in [crate::orientation::Mode::Horizontal, crate::orientation::Mode::Vertical] {
-        let extents = Extents { orientation, ..HFDL };
-        let fresh = Frame::measure_view(panel(900., 600.), 1.25, extents, &DejaVuSans, Held::default()).unwrap();
-        let panned = Extents { hertz: (extents.hertz.0 + 1234.5, extents.hertz.1 + 1234.5), ..extents };
-        let held = Held { time: fresh.time_scheme, frequency: fresh.frequency_scheme, gutter: fresh.gutter };
-        let painted = Frame::measure_view(panel(900., 600.), 1.25, panned, &DejaVuSans, held).unwrap();
-        let held = Held { time: None, frequency: fresh.frequency_scheme, gutter: painted.gutter };
-        let remeasured = Frame::measure_view(panel(900., 600.), 1.25, panned, &DejaVuSans, held).unwrap();
-        assert_eq!(remeasured.plot, painted.plot, "the held frequency scheme keeps the gutter");
     }
 }

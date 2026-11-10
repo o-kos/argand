@@ -22,7 +22,7 @@ Source paths name the registry `gpui-component-0.9.1`, `gpui-base-0.9.1` and
 | R4 application menu | Standard PopupMenu in controlled Popover retained for application digits, focus restoration and outside-input isolation. `menu/popup_menu.rs:887` confirms through activate; `:923` selects a submenu. Owner approved Enter plus Right. | Menu keyboard/row/digit/outside-click/wheel tests; Space remains inert. |
 | R5 splitter | Remains removed; no migration reason to reintroduce resizable UI. | Existing minimap layout checks. |
 | R7 numeric editing | Existing shared NumericEditor retains standard Input/Button behavior and the approved press/repeat transaction. Base `number_input.rs:266` and `:277` still step on click. Base now exposes button decorators (`:188`, `:194`), but Component internally owns those decorators in `input/number_input.rs:151`, `:184`; no component-level press/repeat contract is supplied. Replacing the existing shared editor is unnecessary for this migration. | Existing repeat, commit, locale, disabled and both property-panel regressions; native consumers still require checks. |
-| R8 ruler menu | Stock ContextMenu retained. `menu/context_menu.rs:508` now uses a Weak subscription, fixing the old retention cycle. PlotView bookkeeping remains for pointer/focus restoration, not to compensate for a leak. | Native menu lifecycle still requires acceptance; the historical prohibition on headless context-menu testing no longer applies. |
+| R8 ruler menu | Stock ContextMenu retained. `menu/context_menu.rs:513` uses a Weak subscription, fixing the old retention cycle. PlotView bookkeeping remains for pointer/focus restoration, not to compensate for a leak. | `plot_view_context_menu_test.rs` exercises real ruler/spectrum menus, keyboard isolation/recovery and popup release on window close. Native menu appearance and OS interaction are not established by these headless tests. |
 | R9 hints/keycaps | Standard Tooltip/Popover/Kbd remain. Base `popover.rs:376` introduces PopoverContent with Escape handling, while Enter belongs to the trigger (`:343`) and PopoverContent explicitly blocks it with NoAction (`:27`). PinnedHint therefore explicitly binds/handles Confirm to preserve its approved Enter-close contract; child inputs/selects consume Confirm first. | Pinned lifecycle, nested selection, numeric commit and focus tests. |
 | R10 ready-input observer | Retained: GPUI `window.rs:5704` asserts paint phase for on_mouse_event. The existing canvas is still required to register the non-consuming window observer. | Ready dismissal and input passthrough tests. |
 | R11 symbolic keys | Retained plot-scoped interceptor; GPUI `app.rs:2705`, `:2720` still registers global observers/interceptors. | Exact-focus and multiwindow isolation tests. |
@@ -258,9 +258,7 @@ left press and double click through `title_control` (`app_menu_ui.rs:767` to `:7
 the container keeps only its right-press stop, so the gaps between controls stay bare
 title-bar pixels that carry the drag and the double click (#158).
 
-Covering tests: `the_document_controls_join_the_toolbar`,
-`the_title_reserves_exactly_what_the_toolbar_draws` (`app_menu_ui.rs:894`, `:906`) and
-`the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not`, which mutation checks
+Covering test: `the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not`, which mutation checks
 against both the occluding container and a consumption-free wrapper.
 Native rows R3 and O1.
 
@@ -279,11 +277,9 @@ Cancel composition fails the one-click assertion.
 (`plot_ui.rs:525` to `:577`); the component owns press, disabled and click, and
 `pressed_zoom`, `release_press` and the `ToggleScaleUi` repair are gone.
 
-Covering tests: `the_halves_split_their_pair_in_two`,
-`a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot`,
-`a_release_outside_a_zoom_half_changes_nothing`,
-`hiding_the_pairs_during_a_press_leaves_nothing_behind` (`plot_view.rs:1119`, `:1156`,
-`:1179`, `:1209`), plus `the_document_controls_join_the_toolbar`.
+Covering tests: `a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot` and
+`hiding_the_pairs_during_a_press_leaves_nothing_behind`. Private split geometry and
+stock-button outside-release smoke checks were retired in #222.
 
 ### R4 Main cascading menu
 
@@ -322,13 +318,9 @@ mouse up only (`gpui-base-0.6.6/src/resizable/panel.rs:473` to `:486`), which co
 answered the continuous observation the removed handle provided, so nothing was adopted in
 its place.
 
-Covering tests: `a_rem_size_follows_the_font_and_not_the_window`,
-`a_pixel_size_ignores_the_font`, `sizes_parse_with_either_unit_and_any_spacing`,
-`unusable_sizes_are_refused` (`panels.rs:83` to `:136`) for the fixed size,
-`the_minimap_size_reads_either_unit` and `an_unusable_minimap_size_falls_back_alone`
-(`config_tests.rs:373`, `:387`) for its configuration, and
-`the_version_goes_up_when_the_layout_gains_something` (`session_tests.rs:679`) for the
-session that no longer carries the fraction.
+Covering tests: `unusable_sizes_are_refused`, `the_minimap_size_reads_either_unit`
+and `an_unusable_minimap_size_falls_back_alone`. Simple rem/pixel conversion and
+session-version literal checks were retired in #222; configuration behavior is unchanged.
 
 ### R6 Toolbar, status range/FFT, start/recent buttons
 
@@ -342,12 +334,10 @@ surfaces (`app_menu_ui.rs:773`).
 `Button`s with a custom variant, and the audit found no custom press, hover or focus
 machinery in them. The accepted warning and neutral colours are painted by that variant.
 
-Covering tests: `the_document_controls_join_the_toolbar`,
-`the_title_reserves_exactly_what_the_toolbar_draws`, `the_segment_group_carries_its_own_frame`,
-`only_the_other_orientation_segment_switches` (`app_menu_ui.rs:894` to `:970`); the
-`settings.rs` cases `confirming_numeric_edits_validates_both_fields_without_losing_either`
-and `displayed_value_and_state_advance_as_one_analysis_snapshot` (`settings.rs:213`, `:408`)
-for the range item's action and its labels.
+Covering tests: `only_the_other_orientation_segment_switches`,
+`confirming_numeric_edits_validates_both_fields_without_losing_either` and
+`displayed_value_and_state_advance_as_one_analysis_snapshot`. Private toolbar
+composition snapshots were retired in #222.
 
 ### R7 Settings form
 
@@ -388,28 +378,33 @@ document, not a control.
 Covering tests: `settings_editor::hint_tests` (choosing previews and keeps the hint, Enter in a number
 applies it and keeps the hint, a keeping close saves, a held stepper stops when the pointer
 leaves it, a list stays put while the keyboard walks it, an unusable number keeps the hint with its error, Escape restores
-settings and views, Defaults) and `settings_editor::standard_input_tests` (standard
-in-window typing, choosing and one-level Escape in a window whose root is a standard
-`Root`). `confirming_numeric_edits_validates_both_fields_without_losing_either` and
+settings and views, Defaults). The toolkit-only stock-control fixture was retired;
+the actual editor form and event workflows remain the product boundary. `confirming_numeric_edits_validates_both_fields_without_losing_either` and
 `saved_choices_round_trip_and_invalid_values_fall_back` in `settings.rs` cover the
 transaction. Native row S1.
 
 ### R8 Ruler context menu
 
-**Retained, and already standard.** `navigation_ui.rs:917` opens a stock `PopupMenu`
-through the toolkit's `.context_menu`. The only custom part is bookkeeping: the popup menu
-entity is retained by a toolkit reference cycle, so `PlotView` tracks it and matches its
-`DismissEvent` to clear the menu and restore the pointer (`plot_view.rs:140`). That is
-lifecycle tracking, not a control, and it cannot be composed away.
+**Retained, and already standard.** `PlotView::time_context_menu` and
+`PlotView::spectrum_context_menu` in `navigation_ui.rs` open stock `PopupMenu`s
+through the toolkit's `.context_menu`. GPUI Component 0.9.1
+`menu/context_menu.rs:513` captures a Weak reference in its dismiss subscription,
+removing the retention cycle recorded in #144. PlotView's weak menu handle and
+`DismissEvent` subscription still clear menu state and restore the pointer; this
+is application lifecycle tracking, not a replacement control.
 
 Covering tests: `an_overlay_on_the_plot_hides_its_pointer_until_the_first_move_back`,
 `an_overlay_on_the_plot_takes_its_wheel_clicks_and_drags`,
 `a_drag_keeps_tracking_over_a_hint_on_the_plot` and
-`a_new_orientation_keeps_a_resting_pointer` (`plot_view.rs:820`, `:849`, `:1017`, `:942`)
-drive an occluding layer over the plot and read the pointer and the intents, which is the
-same contract the menu's own hitbox has to keep. The popup entity's own retention and
-dismissal cannot be opened in a headless test (toolkit reference cycle, #144), so its
-dismissal is a native row: F3 and P1.
+`a_new_orientation_keeps_a_resting_pointer` in `plot_view.rs` drive an occluding
+layer over the plot and read the pointer and intents. The UI integration tests
+in `plot_view_context_menu_test.rs` additionally open the production menus with
+real right-click events. They check ruler-menu focus and isolation of Ctrl+G,
+time/frequency zoom and Home, Escape focus restoration and command recovery,
+reopening, and release of time/spectrum popup entities after closing their
+windows without dismissing them. Lifetime assertions use WeakEntity directly;
+they do not rely on the optional GPUI leak detector. Native appearance, pointer
+transitions and OS interaction remain outside this automated evidence.
 
 ### R9 Metadata, analysis and shortcut hints, and keycaps
 
@@ -444,9 +439,9 @@ Covering tests: `a_short_hover_opens_nothing`, `leaving_the_trigger_keeps_the_hi
 `escape_closes_the_hint_and_reverts`,
 `a_passive_hint_leaves_its_trigger_the_click` (`hints.rs:337` to `:481`);
 `the_shell_follows_the_mouse_into_and_out_of_the_window`,
-`edit_analysis_opens_the_hint_and_closes_it_keeping_the_values`,
-`escape_restores_the_settings_the_hint_opened_with`,
-`other_closes_keep_what_changed` (`shell.rs:1777` to `:1831`). Native row P2.
+`edit_analysis_opens_the_hint_and_closes_it_keeping_the_values`. Duplicate
+settings-model close-policy checks were retired in #222; the real form and event
+workflows retain transaction coverage. Native row P2.
 
 ### R10 Ready-input capture canvas
 
@@ -544,10 +539,10 @@ the registry. Every limitation claimed above is one of these.
 `crates/app/examples/ui_compatibility.rs` and `crates/app/examples/ui_compatibility/` were
 the #126 and #137 probe. They are gone, together with the library face
 `crates/app/src/lib.rs` that existed only to let the example share `chrome.rs`; `chrome.rs`
-is a module of the binary again. What replaces them is
-`settings_editor::standard_input_tests`, a headless window whose root is a standard `Root`
-and whose body is a standard `NumberInput` and `Select`. The evidence the fixture gathered
-stays in [126-compatibility](126-compatibility/) as history.
+is a module of the binary again. The later toolkit-only stock-control fixture was
+also retired in #222; current verification belongs to the actual settings editor
+form/event workflows. The evidence the fixture gathered stays in
+[126-compatibility](126-compatibility/) as history.
 
 Advice dismissal and hover now share the same anchored balloon when side space is
 available. Standard GPUI hover handlers cover the existing anchor, body, pointer,

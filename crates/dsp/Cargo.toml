@@ -16,3 +16,8 @@ realfft.workspace = true
 rustfft.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+[[bench]]
+name = "conversion_cost"
+harness = false
+test = false
