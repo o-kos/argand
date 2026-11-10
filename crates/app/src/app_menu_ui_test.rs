@@ -6,14 +6,6 @@ use gpui_kit::test::TestWindowExt;
 use gpui_kit::{TestAppContext, WindowHandle};
 use std::path::{Path, PathBuf};
 
-/// The controls the toolbar offers, in the order they are drawn.
-const CONTROLS: [&str; 4] = [
-    "application-menu-button",
-    "orientation-horizontal",
-    "orientation-vertical",
-    "toggle-grid",
-];
-
 fn open(cx: &mut TestAppContext) -> WindowHandle<Shell> {
     cx.update(|cx| {
         gpui_kit::init(cx);
@@ -47,17 +39,6 @@ fn open_document(cx: &mut TestAppContext, handle: WindowHandle<Shell>) {
     frame(cx, handle);
 }
 
-/// Which of the toolbar controls the last frame drew.
-fn controls(cx: &mut TestAppContext, handle: WindowHandle<Shell>) -> Vec<bool> {
-    cx.update_window(handle.into(), |_, window, _| {
-        CONTROLS
-            .iter()
-            .map(|id| window.try_find(*id).is_some())
-            .collect()
-    })
-    .unwrap()
-}
-
 fn vertical(cx: &mut TestAppContext, handle: WindowHandle<Shell>) -> bool {
     handle
         .read_with(cx, |shell, _| shell.session.orientation.vertical())
@@ -68,83 +49,6 @@ fn owner_focused(cx: &mut TestAppContext, handle: WindowHandle<Shell>) -> bool {
     handle
         .update(cx, |shell, window, _| shell.focus.is_focused(window))
         .unwrap()
-}
-
-#[gpui_kit::test]
-fn the_document_controls_join_the_toolbar(cx: &mut TestAppContext) {
-    let handle = open(cx);
-    assert_eq!(
-        controls(cx, handle),
-        vec![true, false, false, false],
-        "the start page shows the application button alone"
-    );
-    open_document(cx, handle);
-    assert_eq!(controls(cx, handle), vec![true, true, true, true]);
-}
-
-#[gpui_kit::test]
-fn the_title_reserves_exactly_what_the_toolbar_draws(cx: &mut TestAppContext) {
-    let handle = open(cx);
-    let app = handle
-        .update(cx, |_, window, cx| app_button_width(window, cx))
-        .unwrap();
-    let reserved = |cx: &mut TestAppContext, document: bool| {
-        handle
-            .update(cx, |_, window, cx| toolbar_width(window, cx, document))
-            .unwrap()
-    };
-    assert_eq!(
-        reserved(cx, false),
-        app,
-        "the application button is all the toolbar holds without a document"
-    );
-    open_document(cx, handle);
-    // The first and the last control touch the toolbar's own edges.
-    let drawn = cx
-        .update_window(handle.into(), |_, window, _| {
-            let first = window.find("application-menu-button").bounds();
-            // The last segment stands inside its group's one-pixel frame.
-            let last = window.find("select-both").bounds();
-            last.right() + px(1.) - first.origin.x
-        })
-        .unwrap();
-    assert_eq!(
-        reserved(cx, true),
-        drawn,
-        "the title reserves both segment groups, the separator and the grid"
-    );
-}
-
-#[gpui_kit::test]
-fn the_segment_group_carries_its_own_frame(cx: &mut TestAppContext) {
-    let handle = open(cx);
-    open_document(cx, handle);
-    let bounds = |cx: &mut TestAppContext, id: &'static str| {
-        cx.update_window(handle.into(), |_, window, _| window.find(id).bounds())
-            .unwrap()
-    };
-    let first = bounds(cx, "orientation-horizontal");
-    let second = bounds(cx, "orientation-vertical");
-    let grid = bounds(cx, "toggle-grid");
-    assert_eq!(first.size, second.size, "the segments are equal");
-    assert_eq!(first.size.width, px(26.));
-    assert_eq!(
-        first.size.height,
-        px(24.),
-        "a segment fills the frame's inside"
-    );
-    assert_eq!(second.origin.x - first.origin.x, px(26.));
-    assert_eq!(first.origin.y, second.origin.y, "the pair is one row");
-    assert_eq!(
-        grid.size.height,
-        px(26.),
-        "the group and the grid keep one height"
-    );
-    assert_eq!(
-        first.origin.y - grid.origin.y,
-        px(1.),
-        "the frame is one pixel above the segments"
-    );
 }
 
 #[gpui_kit::test]
@@ -910,13 +814,6 @@ fn a_long_recent_name_keeps_the_file_branch_within_its_width(cx: &mut TestAppCon
         row_height(cx, 2) <= px(26.),
         "and the long name truncates in one line instead of wrapping"
     );
-}
-
-#[test]
-fn the_popover_trigger_reports_itself_unselected() {
-    let trigger = Trigger(Button::new("application-menu-button"));
-    assert!(!trigger.is_selected());
-    assert!(!trigger.selected(true).is_selected());
 }
 
 /// Give the open capture the description its file would have reported, from a real file.

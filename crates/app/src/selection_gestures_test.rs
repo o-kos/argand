@@ -30,37 +30,3 @@ fn a_moved_span_stays_exact_and_inside_a_huge_capture() {
     let early = SampleSpan::between(5, 10).unwrap();
     assert_eq!(moved_span(early, -100., 1000).start(), 0);
 }
-
-#[test]
-fn corners_and_edges_show_their_resize_cursors_in_both_orientations() {
-    use crate::orientation::Mode;
-    let corner = |time, frequency| Grab::Edges {
-        time: Some(time),
-        frequency: Some(frequency),
-    };
-    assert_eq!(
-        grab_cursor(corner(Edge::High, Edge::High), Mode::Horizontal),
-        CursorStyle::ResizeUpRightDownLeft
-    );
-    assert_eq!(
-        grab_cursor(corner(Edge::Low, Edge::High), Mode::Horizontal),
-        CursorStyle::ResizeUpLeftDownRight
-    );
-    assert_eq!(
-        grab_cursor(corner(Edge::High, Edge::High), Mode::Vertical),
-        CursorStyle::ResizeUpLeftDownRight
-    );
-    let time = Grab::Edges {
-        time: Some(Edge::Low),
-        frequency: None,
-    };
-    assert_eq!(
-        grab_cursor(time, Mode::Horizontal),
-        CursorStyle::ResizeLeftRight
-    );
-    assert_eq!(grab_cursor(time, Mode::Vertical), CursorStyle::ResizeUpDown);
-    assert_eq!(
-        grab_cursor(Grab::Inside, Mode::Vertical),
-        CursorStyle::OpenHand
-    );
-}

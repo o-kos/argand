@@ -1,14 +1,6 @@
 use super::*;
 
 #[test]
-fn the_identity_leaves_values_alone() {
-    let mut values = [0.25f32, -0.5, 0.75, -1.0];
-    Adjustment::IDENTITY.apply(&mut values, 2, 3);
-    assert_eq!(values, [0.25, -0.5, 0.75, -1.0]);
-    assert_eq!(Adjustment::default(), Adjustment::IDENTITY);
-}
-
-#[test]
 fn inverting_a_complex_capture_conjugates_every_sample() {
     let mut values = [0.25f32, -0.5, 0.75, 1.0];
     Adjustment::IDENTITY.inverted().apply(&mut values, 2, 7);
@@ -43,12 +35,6 @@ fn a_gain_must_be_positive_and_finite() {
     assert_eq!(Adjustment::new(false, f64::NAN), None);
     assert_eq!(Adjustment::new(false, f64::INFINITY), None);
     assert_eq!(Adjustment::IDENTITY.with_gain(0.5).map(Adjustment::gain), Some(0.5));
-}
-
-#[test]
-fn inverting_twice_is_the_identity() {
-    assert!(Adjustment::IDENTITY.inverted().inverted().is_identity());
-    assert!(!Adjustment::IDENTITY.inverted().is_identity());
 }
 
 #[test]

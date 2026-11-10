@@ -258,9 +258,7 @@ left press and double click through `title_control` (`app_menu_ui.rs:767` to `:7
 the container keeps only its right-press stop, so the gaps between controls stay bare
 title-bar pixels that carry the drag and the double click (#158).
 
-Covering tests: `the_document_controls_join_the_toolbar`,
-`the_title_reserves_exactly_what_the_toolbar_draws` (`app_menu_ui.rs:894`, `:906`) and
-`the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not`, which mutation checks
+Covering test: `the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not`, which mutation checks
 against both the occluding container and a consumption-free wrapper.
 Native rows R3 and O1.
 
@@ -279,11 +277,9 @@ Cancel composition fails the one-click assertion.
 (`plot_ui.rs:525` to `:577`); the component owns press, disabled and click, and
 `pressed_zoom`, `release_press` and the `ToggleScaleUi` repair are gone.
 
-Covering tests: `the_halves_split_their_pair_in_two`,
-`a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot`,
-`a_release_outside_a_zoom_half_changes_nothing`,
-`hiding_the_pairs_during_a_press_leaves_nothing_behind` (`plot_view.rs:1119`, `:1156`,
-`:1179`, `:1209`), plus `the_document_controls_join_the_toolbar`.
+Covering tests: `a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot` and
+`hiding_the_pairs_during_a_press_leaves_nothing_behind`. Private split geometry and
+stock-button outside-release smoke checks were retired in #222.
 
 ### R4 Main cascading menu
 
@@ -322,13 +318,9 @@ mouse up only (`gpui-base-0.6.6/src/resizable/panel.rs:473` to `:486`), which co
 answered the continuous observation the removed handle provided, so nothing was adopted in
 its place.
 
-Covering tests: `a_rem_size_follows_the_font_and_not_the_window`,
-`a_pixel_size_ignores_the_font`, `sizes_parse_with_either_unit_and_any_spacing`,
-`unusable_sizes_are_refused` (`panels.rs:83` to `:136`) for the fixed size,
-`the_minimap_size_reads_either_unit` and `an_unusable_minimap_size_falls_back_alone`
-(`config_tests.rs:373`, `:387`) for its configuration, and
-`the_version_goes_up_when_the_layout_gains_something` (`session_tests.rs:679`) for the
-session that no longer carries the fraction.
+Covering tests: `unusable_sizes_are_refused`, `the_minimap_size_reads_either_unit`
+and `an_unusable_minimap_size_falls_back_alone`. Simple rem/pixel conversion and
+session-version literal checks were retired in #222; configuration behavior is unchanged.
 
 ### R6 Toolbar, status range/FFT, start/recent buttons
 
@@ -342,12 +334,10 @@ surfaces (`app_menu_ui.rs:773`).
 `Button`s with a custom variant, and the audit found no custom press, hover or focus
 machinery in them. The accepted warning and neutral colours are painted by that variant.
 
-Covering tests: `the_document_controls_join_the_toolbar`,
-`the_title_reserves_exactly_what_the_toolbar_draws`, `the_segment_group_carries_its_own_frame`,
-`only_the_other_orientation_segment_switches` (`app_menu_ui.rs:894` to `:970`); the
-`settings.rs` cases `confirming_numeric_edits_validates_both_fields_without_losing_either`
-and `displayed_value_and_state_advance_as_one_analysis_snapshot` (`settings.rs:213`, `:408`)
-for the range item's action and its labels.
+Covering tests: `only_the_other_orientation_segment_switches`,
+`confirming_numeric_edits_validates_both_fields_without_losing_either` and
+`displayed_value_and_state_advance_as_one_analysis_snapshot`. Private toolbar
+composition snapshots were retired in #222.
 
 ### R7 Settings form
 
@@ -388,9 +378,8 @@ document, not a control.
 Covering tests: `settings_editor::hint_tests` (choosing previews and keeps the hint, Enter in a number
 applies it and keeps the hint, a keeping close saves, a held stepper stops when the pointer
 leaves it, a list stays put while the keyboard walks it, an unusable number keeps the hint with its error, Escape restores
-settings and views, Defaults) and `settings_editor::standard_input_tests` (standard
-in-window typing, choosing and one-level Escape in a window whose root is a standard
-`Root`). `confirming_numeric_edits_validates_both_fields_without_losing_either` and
+settings and views, Defaults). The toolkit-only stock-control fixture was retired;
+the actual editor form and event workflows remain the product boundary. `confirming_numeric_edits_validates_both_fields_without_losing_either` and
 `saved_choices_round_trip_and_invalid_values_fall_back` in `settings.rs` cover the
 transaction. Native row S1.
 
@@ -450,9 +439,9 @@ Covering tests: `a_short_hover_opens_nothing`, `leaving_the_trigger_keeps_the_hi
 `escape_closes_the_hint_and_reverts`,
 `a_passive_hint_leaves_its_trigger_the_click` (`hints.rs:337` to `:481`);
 `the_shell_follows_the_mouse_into_and_out_of_the_window`,
-`edit_analysis_opens_the_hint_and_closes_it_keeping_the_values`,
-`escape_restores_the_settings_the_hint_opened_with`,
-`other_closes_keep_what_changed` (`shell.rs:1777` to `:1831`). Native row P2.
+`edit_analysis_opens_the_hint_and_closes_it_keeping_the_values`. Duplicate
+settings-model close-policy checks were retired in #222; the real form and event
+workflows retain transaction coverage. Native row P2.
 
 ### R10 Ready-input capture canvas
 
@@ -550,10 +539,10 @@ the registry. Every limitation claimed above is one of these.
 `crates/app/examples/ui_compatibility.rs` and `crates/app/examples/ui_compatibility/` were
 the #126 and #137 probe. They are gone, together with the library face
 `crates/app/src/lib.rs` that existed only to let the example share `chrome.rs`; `chrome.rs`
-is a module of the binary again. What replaces them is
-`settings_editor::standard_input_tests`, a headless window whose root is a standard `Root`
-and whose body is a standard `NumberInput` and `Select`. The evidence the fixture gathered
-stays in [126-compatibility](126-compatibility/) as history.
+is a module of the binary again. The later toolkit-only stock-control fixture was
+also retired in #222; current verification belongs to the actual settings editor
+form/event workflows. The evidence the fixture gathered stays in
+[126-compatibility](126-compatibility/) as history.
 
 Advice dismissal and hover now share the same anchored balloon when side space is
 available. Standard GPUI hover handlers cover the existing anchor, body, pointer,

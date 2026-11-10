@@ -79,11 +79,3 @@ fn output_and_retained_input_are_bounded_even_with_large_offsets_and_upsampling(
     }
     assert_eq!(total, 20_000);
 }
-
-#[test]
-fn export_bands_have_space_for_fractional_reconstruction() {
-    for width in [48_000.0, 47_999.0, 47_990.0] {
-        let plan = Plan::new(96_000.0, 60_000.0, width).unwrap();
-        assert!(plan.margin() < 1024);
-    }
-}

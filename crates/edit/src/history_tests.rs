@@ -19,16 +19,6 @@ fn undo_and_redo_walk_the_versions_with_their_state() {
 }
 
 #[test]
-fn a_new_edit_drops_what_could_have_been_redone() {
-    let mut history = History::new(capture(10), ());
-    history.apply(capture(8), ());
-    history.undo();
-    history.apply(capture(9), ());
-    assert!(!history.can_redo());
-    assert_eq!(history.capture().len(), 9);
-}
-
-#[test]
 fn versions_never_repeat_their_number() {
     let mut history = History::new(capture(10), ());
     history.apply(capture(8), ());

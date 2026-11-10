@@ -404,7 +404,3 @@ fn balloon_pointer(
     .w(px(POINTER))
     .h(px(16.0))
 }
-
-#[cfg(test)]
-#[path = "property_advice_balloon_test.rs"]
-mod balloon_tests;

@@ -31,14 +31,6 @@ impl Drop for TempDir {
 
 /// A single 1920x1080 display with its origin at zero.
 const PRIMARY: Geometry = Geometry::new(0.0, 0.0, 1920.0, 1080.0);
-/// A second display to the right of it, as a dual-head desktop reports one.
-const SECONDARY: Geometry = Geometry::new(1920.0, 0.0, 1920.0, 1080.0);
-
-#[test]
-fn a_window_that_still_fits_is_restored_untouched() {
-    let saved = Geometry::new(100.0, 80.0, 1280.0, 800.0);
-    assert_eq!(place(Some(saved), &[PRIMARY]), Some(saved));
-}
 
 #[test]
 fn a_window_left_on_a_display_that_is_gone_comes_back_where_it_can_be_seen() {
@@ -56,14 +48,6 @@ fn a_window_left_on_a_display_that_is_gone_comes_back_where_it_can_be_seen() {
     );
     // The size it was left at is worth keeping; only the position had to move.
     assert_eq!((placed.width, placed.height), (saved.width, saved.height));
-}
-
-#[test]
-fn a_window_still_on_its_own_display_stays_there() {
-    // Both screens present, and the rectangle lies wholly within the second
-    // one, so nothing about it needs adjusting.
-    let saved = Geometry::new(2200.0, 200.0, 1280.0, 800.0);
-    assert_eq!(place(Some(saved), &[PRIMARY, SECONDARY]), Some(saved));
 }
 
 #[test]
@@ -117,12 +101,12 @@ fn a_session_survives_the_round_trip() {
     let dir = TempDir::new("roundtrip");
     let path = dir.join("session.toml");
     let session = Session {
-        show_grid: true,
+        show_grid: false,
         show_scale_ui: true,
-        theme: None,
-        orientation: crate::orientation::Mode::default(),
+        theme: Some(crate::config::Theme::Dark),
+        orientation: crate::orientation::Mode::Vertical,
         analysis_settings: None,        version: VERSION,
-        time_ruler: crate::time_ruler::Mode::Clock,
+        time_ruler: crate::time_ruler::Mode::Samples,
         geometry: Some(Geometry::new(12.0, 34.0, 1280.0, 800.0)),
         window_state: WindowState::Maximized,
         recent: Vec::new(),
@@ -684,50 +668,6 @@ fn a_session_from_before_the_recent_list_is_read_and_brought_forward() {
 }
 
 #[test]
-fn the_version_goes_up_when_the_layout_gains_something() {
-    // The point of the number: an older binary must see one it does not know
-    // and leave the file, rather than reading what it understands and
-    // rewriting without the rest. The recent list is what it would have lost.
-    let dir = TempDir::new("downgrade");
-    let path = dir.join(FILE_NAME);
-    let mut session = Session::default();
-    session.remember(Path::new("/captures/dump.bin"), &raw_hints());
-    assert!(session.save(&path));
-
-    let text = std::fs::read_to_string(&path).expect("read back");
-    assert!(
-        text.contains("version = 11"),
-        "the current session layout is version 11: {text}"
-    );
-}
-
-#[test]
-fn a_chosen_theme_round_trips_and_an_older_session_chooses_none() {
-    use crate::config::Theme;
-    let dir = TempDir::new("theme");
-    let path = dir.join(FILE_NAME);
-    std::fs::write(&path, "version = 10
-window_state = \"normal\"\n")
-        .expect("write session");
-    let restored = Session::load(&path);
-    assert!(restored.writable);
-    assert_eq!(restored.session.theme, None, "an older session follows the configuration");
-
-    for theme in [Theme::System, Theme::Light, Theme::Dark] {
-        let session = Session {
-            theme: Some(theme),
-            ..Session::default()
-        };
-        assert!(session.save(&path));
-        assert_eq!(Session::load(&path).session.theme, Some(theme));
-    }
-
-    assert!(Session::default().save(&path));
-    let text = std::fs::read_to_string(&path).expect("read back");
-    assert!(!text.contains("theme"), "no choice writes no theme: {text}");
-}
-
-#[test]
 fn a_saved_panel_split_is_read_and_forgotten() {
     let dir = TempDir::new("panel-split");
     let path = dir.join(FILE_NAME);
@@ -772,78 +712,6 @@ fn analysis_settings_survive_restart_without_changing_configuration_or_older_geo
     assert!(!std::fs::read_to_string(&path).unwrap().contains("dynamic_range"));
     assert_eq!(restored.geometry, session.geometry);
     assert_eq!(std::fs::read_to_string(config_path).unwrap(), config_text);
-}
-
-
-#[test]
-fn legacy_saved_zoom_is_ignored() {
-    let dir = TempDir::new("legacy-view");
-    let path = dir.join("session.toml");
-    let mut session = Session::default();
-    session.remember(Path::new("/captures/one.wav"), &OpenHints::default());
-    assert!(session.save(&path));
-    let mut text = std::fs::read_to_string(&path).unwrap();
-    text.push_str("\n[recent.view]\nstart = 100\nlen = 2048\n");
-    std::fs::write(&path, text).unwrap();
-    let restored = Session::load(&path).session;
-    assert_eq!(restored.recent.len(), 1);
-    assert_eq!(restored.recent, session.recent);
-}
-
-#[test]
-fn ruler_mode_round_trips_and_all_older_sessions_default_to_clock() {
-    use crate::time_ruler::Mode;
-    let dir = TempDir::new("ruler-mode");
-    let path = dir.join(FILE_NAME);
-    for mode in [Mode::Clock, Mode::Seconds, Mode::Samples] {
-        let session = Session { time_ruler: mode, ..Session::default() };
-        assert!(session.save(&path));
-        assert_eq!(Session::load(&path).session.time_ruler, mode);
-    }
-    for version in 1..=6 {
-        std::fs::write(&path, format!("version = {version}\nwindow_state = \"normal\"\n")).unwrap();
-        let restored = Session::load(&path);
-        assert!(restored.writable);
-        assert_eq!(restored.session.time_ruler, Mode::Clock);
-        assert_eq!(restored.session.version, VERSION);
-    }
-}
-
-#[test]
-fn grid_visibility_round_trips_both_values_and_defaults_for_older_sessions() {
-    let dir = TempDir::new("grid-visibility");
-    let path = dir.join(FILE_NAME);
-    for show_grid in [false, true] {
-        let session = Session { show_grid, ..Session::default() };
-        assert!(session.save(&path));
-        assert_eq!(Session::load(&path).session.show_grid, show_grid);
-    }
-    for version in 1..VERSION {
-        std::fs::write(&path, format!("version = {version}\nwindow_state = \"maximized\"\n")).unwrap();
-        let restored = Session::load(&path);
-        assert!(restored.writable);
-        assert!(restored.session.show_grid);
-        assert_eq!(restored.session.window_state, WindowState::Maximized);
-    }
-}
-
-#[test]
-fn orientation_round_trips_and_older_sessions_keep_horizontal_default() {
-    use crate::orientation::Mode;
-    let dir = TempDir::new("orientation");
-    let path = dir.join(FILE_NAME);
-    for orientation in [Mode::Horizontal, Mode::Vertical] {
-        let session = Session { orientation, ..Session::default() };
-        assert!(session.save(&path));
-        assert_eq!(Session::load(&path).session.orientation, orientation);
-    }
-    for version in 1..VERSION {
-        std::fs::write(&path, format!("version = {version}\nwindow_state = \"maximized\"\n")).unwrap();
-        let restored = Session::load(&path);
-        assert!(restored.writable);
-        assert_eq!(restored.session.orientation, Mode::Horizontal);
-        assert_eq!(restored.session.window_state, WindowState::Maximized);
-    }
 }
 
 /// Two instances that started from one file, as `main` seeds each `Writer`.

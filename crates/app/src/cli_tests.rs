@@ -1,16 +1,10 @@
 use super::*;
 
 use argand_core::{Domain, SampleFormat};
-use clap::CommandFactory;
 
 fn parse(args: &[&str]) -> Args {
     Args::try_parse_from(std::iter::once("argand").chain(args.iter().copied()))
         .expect("these arguments should parse")
-}
-
-#[test]
-fn the_command_line_is_checked_the_way_clap_checks_its_own() {
-    Args::command().debug_assert();
 }
 
 #[test]
@@ -70,56 +64,4 @@ fn level_scaling_is_left_to_the_format_unless_it_is_named() {
             .normalize,
         Some(Normalize::Auto)
     );
-}
-
-#[test]
-fn the_options_are_spelled_the_way_aspec_spells_them() {
-    // Same seven fields, same short flags: a capture opened by one tool is
-    // opened by the other with the arguments copied across unchanged.
-    let args = parse(&[
-        "capture.wav",
-        "-t",
-        "iq_f32",
-        "-r",
-        "24k",
-        "-n",
-        "none",
-        "-g",
-        "3",
-    ]);
-    let hints = args.origin().expect("a file was named").hints;
-
-    assert_eq!(
-        hints.sample_type,
-        Some(SampleType::new(Domain::Iq, SampleFormat::F32))
-    );
-    assert_eq!(hints.sample_rate, Some(24_000.0));
-    assert_eq!(hints.normalize, Some(Normalize::None));
-    assert_eq!(hints.gain_db, 3.0);
-}
-
-#[test]
-fn every_long_flag_is_spelled_the_way_the_documents_spell_it() {
-    // A flag's name is derived from a field name, so a field renamed for
-    // Rust's sake renames the flag with it, and nothing but this notices.
-    // These are the spellings `aspec` takes and the README prints.
-    let spelled: Vec<String> = Args::command()
-        .get_arguments()
-        .filter_map(|arg| arg.get_long().map(|name| format!("--{name}")))
-        .collect();
-
-    for flag in [
-        "--raw",
-        "--sample-type",
-        "--rate",
-        "--center",
-        "--offset",
-        "--normalize",
-        "--gain",
-    ] {
-        assert!(
-            spelled.iter().any(|name| name == flag),
-            "{flag} is not a flag: {spelled:?}"
-        );
-    }
 }

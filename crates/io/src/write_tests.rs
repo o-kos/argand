@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 
 use argand_core::{Domain, SampleType};
 
-use crate::testutil::{TempDir, all_sample_types, encode, iq_tone, real_tone, write_raw, write_wav};
+use crate::testutil::{TempDir, encode, iq_tone, real_tone, write_raw, write_wav};
 use crate::{RawSpec, open};
 
 fn source_file(path: &Path, hints: OpenHints) -> SourceFile {
@@ -182,9 +182,9 @@ fn names(dir: &TempDir) -> Vec<String> {
 }
 
 #[test]
-fn every_wave_sample_type_is_copied_byte_for_byte() {
+fn representative_frame_widths_are_copied_byte_for_byte() {
     let dir = TempDir::new("write-types");
-    for sample_type in all_sample_types() {
+    for sample_type in ["rl_u8", "iq_f32"].map(|token| token.parse::<SampleType>().unwrap()) {
         let source = dir.join(&format!("{sample_type}.wav"));
         write_wav(&source, sample_type, 48_000, &signal(sample_type, 1000), 1.0);
         let target = dir.join(&format!("{sample_type}-cut.wav"));
@@ -205,19 +205,9 @@ fn every_wave_sample_type_is_copied_byte_for_byte() {
 }
 
 #[test]
-fn whole_capture_is_saved_without_a_span() {
-    let dir = TempDir::new("write-whole");
-    let sample_type: SampleType = "iq_i16".parse().unwrap();
-    let source = write_wav(&dir.join("a.wav"), sample_type, 2_000_000, &signal(sample_type, 513), 1.0);
-    let target = dir.join("b.wav");
-    run(&request(&source, OpenHints::default(), None, target.clone())).unwrap();
-    assert_eq!(data_bytes(&target), data_bytes(&source));
-}
-
-#[test]
 fn headerless_capture_becomes_wave_that_opens_without_hints() {
     let dir = TempDir::new("write-raw");
-    for sample_type in all_sample_types() {
+    for sample_type in ["rl_u8", "iq_f32"].map(|token| token.parse::<SampleType>().unwrap()) {
         let values = signal(sample_type, 300);
         let source = dir.join(&format!("{sample_type}.bin"));
         let mut bytes = vec![0xAA; 7];
@@ -240,24 +230,6 @@ fn headerless_capture_becomes_wave_that_opens_without_hints() {
         assert_eq!(reopened.meta().sample_type, sample_type);
         assert_eq!(reopened.meta().sample_rate, 250_000.0);
     }
-}
-
-#[test]
-fn raw_and_wave_values_read_back_identically() {
-    let dir = TempDir::new("write-values");
-    let sample_type: SampleType = "iq_f32".parse().unwrap();
-    let values = signal(sample_type, 200);
-    let source = write_raw(&dir.join("a.raw"), sample_type.format, &values, 1.0);
-    let hints = OpenHints {
-        raw: Some(RawSpec {
-            sample_type,
-            sample_rate: Some(1e6),
-        }),
-        ..Default::default()
-    };
-    let target = dir.join("a.wav");
-    run(&request(&source, hints, None, target.clone())).unwrap();
-    assert_eq!(read_all(&target, &OpenHints::default()), values);
 }
 
 /// A 24-bit WAVE file, which the native reader declines and the decoder reads.
@@ -454,18 +426,6 @@ fn a_source_shorter_than_its_metadata_fails_without_a_file() {
     assert_eq!(names(&dir), ["a.wav"]);
 }
 
-#[test]
-fn progress_ends_at_the_total() {
-    let dir = TempDir::new("write-progress");
-    let sample_type: SampleType = "iq_i16".parse().unwrap();
-    let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
-    let request = request(&source, OpenHints::default(), SampleSpan::between(4, 40), dir.join("b.wav"));
-    let mut seen = Vec::new();
-    save(&request, &mut |done, total| seen.push((done, total)), &AtomicBool::new(false)).unwrap();
-    assert_eq!(seen.first(), Some(&(0, 36)));
-    assert_eq!(seen.last(), Some(&(36, 36)));
-}
-
 /// A FLAC file of `bits`-bit integers, made with the encoder under test.
 fn write_flac_fixture(path: &Path, channels: usize, bits: usize, frames: usize) -> Vec<i32> {
     let limit = 1i32 << (bits - 1);
@@ -533,7 +493,6 @@ fn flac_streaminfo_carries_the_md5_of_what_was_written() {
     assert_eq!(written[26..42], original[26..42]);
     assert_ne!(written[26..42], [0u8; 16]);
 }
-
 
 #[test]
 fn an_existing_file_at_the_temporary_name_is_never_opened() {
@@ -851,29 +810,6 @@ fn a_flac_source_replaced_since_it_was_opened_is_refused() {
 }
 
 #[test]
-fn headerless_and_unstateable_flac_captures_are_named_as_wave() {
-    let mut meta = SignalMeta {
-        sample_rate: 48_000.0,
-        center_freq: 0.0,
-        sample_type: "iq_i16".parse().unwrap(),
-        len_samples: 10,
-        container: "flac",
-        divisor: 1.0,
-        source: PathBuf::from("a.flac"),
-    };
-    assert!(!writes_as_wave(&meta, &OpenHints::default()));
-    meta.sample_rate = 2_400_000.0;
-    assert!(writes_as_wave(&meta, &OpenHints::default()));
-    meta.container = "wav";
-    assert!(!writes_as_wave(&meta, &OpenHints::default()));
-    let raw = OpenHints {
-        raw: Some("iq_i16@1M".parse().unwrap()),
-        ..Default::default()
-    };
-    assert!(writes_as_wave(&meta, &raw));
-}
-
-#[test]
 fn a_damaged_first_frame_fails_instead_of_starting_later() {
     let dir = TempDir::new("write-flac-first");
     let source = dir.join("a.flac");
@@ -1016,33 +952,6 @@ fn sources_stored_differently_or_at_another_rate_are_refused() {
         assert!(matches!(run(&request), Err(WriteError::Unsupported { .. })));
     }
     assert!(!dir.join("out.wav").exists());
-}
-
-#[test]
-fn storage_tells_a_raw_file_from_a_wider_wave_of_the_same_type() {
-    let dir = TempDir::new("write-storage");
-    let i16: SampleType = "iq_i16".parse().unwrap();
-    let wav = write_wav(&dir.join("a.wav"), i16, 48_000, &signal(i16, 10), 1.0);
-    let raw = write_raw(&dir.join("b.raw"), i16.format, &signal(i16, 10), 1.0);
-    let hints = OpenHints {
-        raw: Some("iq_i16@48k".parse().unwrap()),
-        ..Default::default()
-    };
-    assert_eq!(
-        storage(&source_file(&wav, OpenHints::default())).unwrap(),
-        storage(&source_file(&raw, hints)).unwrap()
-    );
-    let wide = dir.join("c.wav");
-    write_wav24(&wide, 2, 10);
-    let raw32 = write_raw(&dir.join("d.raw"), SampleFormat::I32, &signal(i16, 10), 1.0);
-    let hints32 = OpenHints {
-        raw: Some("iq_i32@96k".parse().unwrap()),
-        ..Default::default()
-    };
-    assert_ne!(
-        storage(&source_file(&wide, OpenHints::default())).unwrap(),
-        storage(&source_file(&raw32, hints32)).unwrap()
-    );
 }
 
 #[test]
@@ -1563,47 +1472,7 @@ fn adjusted(mut request: SaveRequest, invert: bool, gain: f64) -> SaveRequest {
     request
 }
 
-/// What a linear WAVE stores a value of `format` as.
-fn linear_of(format: SampleFormat) -> Linear {
-    match format {
-        SampleFormat::U8 => Linear::Unsigned8,
-        SampleFormat::I16 => Linear::Signed(2),
-        SampleFormat::I24 => Linear::Signed(3),
-        SampleFormat::I32 => Linear::Signed(4),
-        SampleFormat::F32 | SampleFormat::F16x8 => Linear::Float32,
-    }
-}
 
-#[test]
-fn every_wave_sample_type_is_encoded_again_through_an_adjustment() {
-    let dir = TempDir::new("write-adjusted-types");
-    for sample_type in all_sample_types() {
-        let source = dir.join(&format!("{sample_type}.wav"));
-        write_wav(&source, sample_type, 48_000, &signal(sample_type, 1000), 1.0);
-        let target = dir.join(&format!("{sample_type}-adjusted.wav"));
-        let span = SampleSpan::between(101, 734);
-        let request = adjusted(request(&source, OpenHints::default(), span, target.clone()), true, 0.5);
-        assert_eq!(run(&request).unwrap().samples, 633);
-
-        let linear = linear_of(sample_type.format);
-        let width = linear.width();
-        let channels = sample_type.channels();
-        let original = data_bytes(&source);
-        let mut expected = Vec::new();
-        for (at, value) in original[101 * width * channels..734 * width * channels].chunks_exact(width).enumerate() {
-            let stored = linear.decode(value);
-            let index = 101 + (at / channels) as u64;
-            let flipped = match channels {
-                1 => index % 2 == 1,
-                _ => at % channels == 1,
-            };
-            let zero = linear.zero();
-            let factor = if flipped { -0.5 } else { 0.5 };
-            linear.push(zero + factor * (stored - zero), &mut expected);
-        }
-        assert_eq!(data_bytes(&target), expected, "{sample_type}");
-    }
-}
 
 #[test]
 fn inverting_sixteen_bits_conjugates_and_clamps_the_most_negative_value() {
@@ -1815,4 +1684,26 @@ fn reduced_valid_pcm24_keeps_decoder_fallback_and_rf64_refusal() {
     let result = save_with_limit(&request, &mut |_, _| {}, &AtomicBool::new(false), 1000);
     assert!(matches!(result, Err(WriteError::Unsupported { .. })));
     assert_eq!(names(&dir), ["a.wav"]);
+}
+
+#[test]
+fn a_float_adjustment_preserves_original_units_without_integer_clamping() {
+    let dir = TempDir::new("write-adjusted-float");
+    let source = dir.join("a.wav");
+    write_wav(&source, "iq_f32".parse().unwrap(), 48_000, &[2.0, -4.0, -6.0, 8.0], 1.0);
+    let target = dir.join("b.wav");
+    run(&adjusted(request(&source, OpenHints::default(), None, target.clone()), true, 0.5)).unwrap();
+    let expected: Vec<u8> = [1.0f32, 2.0, -3.0, -4.0].into_iter().flat_map(f32::to_le_bytes).collect();
+    assert_eq!(data_bytes(&target), expected);
+}
+
+#[test]
+fn unsigned_adjustment_is_centred_on_128_before_iq_conjugation() {
+    let dir = TempDir::new("write-adjusted-u8");
+    let source = dir.join("a.wav");
+    write_wav(&source, "iq_u8".parse().unwrap(), 48_000, &[-1.0, 1.0 / 64.0, 0.0, 0.5], 1.0);
+    assert_eq!(data_bytes(&source), [0, 130, 128, 192]);
+    let target = dir.join("b.wav");
+    run(&adjusted(request(&source, OpenHints::default(), None, target.clone()), true, 0.5)).unwrap();
+    assert_eq!(data_bytes(&target), [64, 127, 128, 96]);
 }

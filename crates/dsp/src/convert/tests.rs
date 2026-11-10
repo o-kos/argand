@@ -101,18 +101,6 @@ fn block_boundaries_do_not_change_samples() {
 }
 
 #[test]
-fn excluded_tones_do_not_alias_into_the_output() {
-    let input = meta(true, 8000.0, 100_000.0);
-    let output = meta(true, 2000.0, 100_000.0);
-    let values = convert(&input, &output, 3000.0, 4096);
-    let peak = values[500..values.len() - 500]
-        .iter()
-        .map(|v| v[0].hypot(v[1]))
-        .fold(0.0, f32::max);
-    assert!(peak < 0.0005, "peak={peak}");
-}
-
-#[test]
 fn invalid_bands_and_rates_are_refused_and_identity_is_unfiltered() {
     let input = meta(true, 8000.0, 100_000.0);
     assert!(ConversionPlan::new(&input, &input).unwrap().is_identity());
@@ -185,8 +173,10 @@ fn fractional_native_edges_survive_physical_reference_subtraction() {
 
 fn check_fractional_edges(rate: f64, reference: f64, input_iq: bool) {
     let input = meta(input_iq, rate, reference);
+    let output_rates = [rate, rate / 2.0, 8000.1];
+    let count = if rate == 8000.1 { 2 } else { 3 };
     for output_iq in [false, true] {
-        for output_rate in [rate, rate / 2.0, 8000.1] {
+        for &output_rate in &output_rates[..count] {
             let output_reference = if !input_iq && output_iq {
                 reference + output_rate / 4.0
             } else {

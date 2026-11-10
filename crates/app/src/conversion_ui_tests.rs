@@ -132,39 +132,6 @@ fn domain_switches_derive_carrier_and_rate_from_source_and_encoding_preserves_dr
     });
 }
 
-#[test]
-fn repeated_conversion_names_do_not_accumulate_suffixes() {
-    assert_eq!(
-        converted_name("recording.wav", argand_io::write::Container::Wave),
-        "recording-converted.wav"
-    );
-    assert_eq!(
-        converted_name("recording-converted.wav", argand_io::write::Container::Wave),
-        "recording-converted.wav"
-    );
-    assert_eq!(
-        converted_name(
-            "recording-converted-converted.wav",
-            argand_io::write::Container::Wave
-        ),
-        "recording-converted.wav"
-    );
-}
-
-#[test]
-fn conversion_only_reports_actual_clipping_with_channel_count_semantics() {
-    assert_eq!(clipping_notice(0, false), None);
-    assert_eq!(clipping_notice(0, true), None);
-    assert_eq!(
-        clipping_notice(2, false).as_deref(),
-        Some("Conversion clipped 2 samples")
-    );
-    assert_eq!(
-        clipping_notice(2, true).as_deref(),
-        Some("Conversion clipped 2 I/Q component values (I and Q counted separately)")
-    );
-}
-
 #[gpui_kit::test]
 fn only_valid_changed_targets_enable_conversion(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);

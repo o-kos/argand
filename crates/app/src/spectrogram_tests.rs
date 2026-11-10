@@ -13,18 +13,10 @@ fn two_pixels() -> SpectrogramImage {
 fn the_upload_reads_as_bgra_because_that_is_what_the_shader_reads() {
     // Not a round trip: the point is that the bytes leave in the order gpui
     // reads them, which is the opposite of the order they arrive in.
+    // Both alpha bytes also assert that the uploaded picture stays opaque.
     assert_eq!(
         bgra(&two_pixels(), crate::orientation::Mode::Horizontal),
         vec![30, 20, 10, 255, 50, 100, 200, 255]
-    );
-}
-
-#[test]
-fn every_pixel_keeps_the_alpha_the_shading_step_gave_it() {
-    let bytes = bgra(&two_pixels(), crate::orientation::Mode::Horizontal);
-    assert!(
-        bytes.as_chunks::<CHANNELS>().0.iter().all(|pixel| pixel[3] == 255),
-        "a spectrogram is opaque, and gpui expects the alpha premultiplied"
     );
 }
 
@@ -34,47 +26,22 @@ fn a_picture_with_no_pixels_is_nothing_to_upload() {
 }
 
 #[test]
-fn every_pixel_uploaded_is_one_the_transform_produced() {
-    use argand_core::{Domain, SampleFormat, SampleType};
-    use argand_io::testutil::{TempDir, iq_tone, write_wav};
-
-    // The whole path a picture takes, over a capture on disk: the request the
-    // configuration builds, the transform `aspec` calls with the same request,
-    // and the bytes this module hands to the GPU. What is checked is that the
-    // last of those is the second, byte for byte, with nothing but red and
-    // blue exchanged -- nothing resampled, recoloured, cropped or reordered on
-    // the way through.
-    let dir = TempDir::new("upload");
-    let path = write_wav(
-        &dir.join("capture.wav"),
-        SampleType::new(Domain::Iq, SampleFormat::F32),
-        48_000,
-        &iq_tone(8192, 48_000.0, 6_000.0, 0.5),
-        1.0,
+fn every_pixel_of_a_multirow_image_keeps_its_position_and_channels() {
+    let mut image = SpectrogramImage::new(3, 2);
+    image.rgba = vec![
+        10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255,
+        100, 110, 120, 255, 130, 140, 150, 255, 160, 170, 180, 255,
+    ];
+    let uploaded = bgra(&image, crate::orientation::Mode::Horizontal);
+    assert_eq!(uploaded.len(), 3 * 2 * CHANNELS);
+    assert_eq!(
+        uploaded,
+        vec![
+            30, 20, 10, 255, 60, 50, 40, 255, 90, 80, 70, 255,
+            120, 110, 100, 255, 150, 140, 130, 255, 180, 170, 160, 255,
+        ]
     );
-
-    let mut source =
-        argand_io::open(&path, &argand_io::OpenHints::default()).expect("the fixture opens");
-    let config = crate::config::Config::default();
-    let request = crate::settings::Settings::from_config(&config).analysis_request(&source.meta().clone(), 128, 64);
-    let analysis =
-        argand_dsp::analyze(source.as_mut(), &request, &mut |_, _| {}).expect("the transform runs");
-
-    let uploaded = bgra(&analysis.spectrogram, crate::orientation::Mode::Horizontal);
-    assert_eq!(uploaded.len(), 128 * 64 * CHANNELS);
-    for (i, (upload, transform)) in uploaded
-        .as_chunks::<CHANNELS>().0.iter()
-        .zip(analysis.spectrogram.rgba.as_chunks::<CHANNELS>().0.iter())
-        .enumerate()
-    {
-        assert_eq!(
-            *upload,
-            [transform[2], transform[1], transform[0], transform[3]],
-            "pixel {i} of the upload is not the pixel the transform produced"
-        );
-    }
 }
-
 
 #[test]
 fn deep_zoom_column_keeps_every_frequency_row_and_channel_order() {

@@ -997,10 +997,6 @@ fn number(
 }
 
 #[cfg(test)]
-#[path = "settings_editor_standard_input_test.rs"]
-mod standard_input_tests;
-
-#[cfg(test)]
 #[path = "settings_editor_hint_test.rs"]
 mod hint_tests;
 

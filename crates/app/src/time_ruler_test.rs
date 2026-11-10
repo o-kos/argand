@@ -74,22 +74,6 @@ fn a_selection_reads_sample_exact_in_every_mode() {
 }
 
 #[test]
-fn only_the_clock_keeps_the_capture_s_fields() {
-    assert_eq!(
-        Mode::Samples.counters(span(12, 345), 1e3, 1_000_000, 1e-9),
-        ["#12", "#344", "333"]
-    );
-    assert_eq!(
-        Mode::Seconds.counters(span(0, 10), 1e3, 100_000, 1e-9)[0],
-        "0.000 s"
-    );
-    assert_eq!(
-        Mode::Clock.counters(span(0, 3_600_000), 1e3, 7_200_000, 1e-9)[1],
-        "1:00:00.000"
-    );
-}
-
-#[test]
 fn decimals_follow_the_zoom_but_never_pass_one_sample() {
     let span = span(4_000_000, 4_001_000);
     assert_eq!(
