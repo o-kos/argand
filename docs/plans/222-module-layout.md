@@ -4,8 +4,9 @@ Resolves [#222](https://github.com/o-kos/argand/issues/222).
 
 ## Overview and roles
 
-Finish the production-layout portion of #222 without changing behavior, logical
-module ownership, visibility, public APIs, dependencies or the toolkit graph.
+Finish the production-layout portion of #222 without changing behavior, effective
+visibility, public APIs, dependencies or the toolkit graph. Internal module
+namespaces/imports may change to represent coherent subsystems.
 The owner requested starting this Issue after its two test phases had merged.
 
 - Class A: mechanical changes across more than five code files, including files
@@ -33,73 +34,87 @@ currently attach physically unrelated sibling files through production `#[path]`
 Other root modules deliberately provide shared toolkit-neutral services or
 rendering adapters; their filenames alone do not establish a new hierarchy.
 
-## Selected tree and decisions
+## Revised subsystem layout and decisions
 
-Use ordinary Rust directory modules for existing owners, preserving logical paths:
+The first mechanical owner-directory stage alone left 69 root Rust files and the
+same 37 root module declarations. It made existing parent-child ownership visible
+but did not adequately group related root services or the large Shell plot cluster.
+The owner requested continuing. This revision supersedes the earlier categorical
+rejection of new internal namespaces; #222 explicitly permits import updates.
 
 ```text
-crates/app/src/
-  main.rs
-  analysis/
-    mod.rs                 # existing analysis.rs
-    progress.rs            # existing analysis_progress.rs
-    analysis_test.rs, analysis_support_test.rs, progress_test.rs
-  axes/
-    mod.rs                 # existing axes.rs
-    cursor_guides.rs, selection_badges.rs
-    axes_test.rs, axes_support_test.rs, cursor_guides_test.rs, selection_badges_test.rs
-  numbers/
-    mod.rs                 # existing numbers.rs
-    system.rs              # existing numeric_locale.rs; logical name already system
-    numbers_test.rs, system_test.rs
+src/
+  processing/
+    mod.rs
+    conversion.rs, extraction.rs, suppression.rs, levelling.rs, saving.rs
+    ...sibling tests and support
+  navigation/
+    mod.rs                    # existing time-navigation model
+    frequency.rs, orientation.rs, time_ruler.rs, selection_entry.rs
+    ...sibling tests and support
   shell/
-    mod.rs                 # existing shell.rs
-    app_menu_ui.rs, shortcuts.rs, backdrop.rs, badge_entry.rs
-    conversion_ui.rs, disk_change_ui.rs, editing_ui.rs, hints.rs, levelling_ui.rs
-    navigation_ui.rs, plot_ui.rs, plot_view.rs, replace_ui.rs
-    numeric_editor.rs, property_advice.rs, saving_ui.rs
-    selection_gestures.rs, selection_panel.rs, statistics_ui.rs, suppression_ui.rs
-    settings_ui/
-      mod.rs               # existing settings_ui.rs
-      editor.rs            # existing settings_editor.rs
-      settings_ui_test.rs, settings_ui_support_test.rs
-      editor_hint_test.rs, editor_support_test.rs
-    ...existing child-owned *_test.rs and *_support_test.rs
-    shell_analysis_hint_test.rs, shell_frame_observer_test.rs
-  ...remaining existing root production modules and their sibling *_test.rs
+    mod.rs
+    plot/
+      mod.rs                  # subsystem declarations, no compatibility facade
+      plot_view.rs, plot_ui.rs, navigation_ui.rs
+      selection_gestures.rs, selection_panel.rs
+      ...sibling tests and support
+    settings_ui/{mod.rs,editor.rs,...sibling tests and support}
+    ...remaining Shell-owned operation views/shared controls
+  analysis/{mod.rs,progress.rs,execution.rs,cpu.rs,...sibling tests and support}
+  axes/{mod.rs,cursor_guides.rs,selection_badges.rs,...sibling tests and support}
+  numbers/{mod.rs,system.rs,...sibling tests and support}
+  ...explicitly retained root services below
 ```
 
-Each test/support file moves with its production owner. Normalize remaining
-`*_tests.rs` to `*_test.rs`; keep every logical test module identifier, test name,
-cfg/platform/feature gate and private access. Move `conversion/tests.rs` to the
-sibling `conversion_test.rs` without changing the logical `conversion::tests`.
-Replace include-only test module bodies with cfg-gated sibling module declarations
-where equivalent. Retain cfg-only support includes where original-scope associated
-implementations or instrumentation require them; document those concrete exceptions.
-Keep plot-view nested context-menu test scope and original fixture lifetimes.
+Processing groups actual computed-capture/publication workflows: conversion uses
+extraction and levelling, suppression/levelling share saving Job/Update and source
+helpers, and saving coordinates conversion/extraction. These remain toolkit-neutral.
+Consumers import `crate::processing::{...}`; no old root reexports hide the new tree.
 
-`#[path]` remains appropriate for descriptive sibling test filenames that differ
-from logical module identifiers. Remove production path redirections made obsolete
-by the ordinary directories. Review include paths and rustdoc links individually,
-especially analysis's FLAC fixture and config's distributed default TOML.
+Navigation groups physical/sample viewport models, orientation, ruler coordinates
+and typed selection entry. Selection entry owns Field/Scale parsing and formatting,
+uses numbers/time-ruler units, and is consumed by plot/selection UI; it does not
+perform history edits. Models remain independent of GPUI; views remain in Shell.
 
-Do not group toolkit-neutral workers under Shell merely to place similarly named
-model/UI files together. Extraction, suppression, conversion and levelling share
-saving job/source services and document ownership across multiple consumers;
-changing their logical parents would introduce a different architectural refactor.
-Likewise, shared settings/navigation models remain independent of their GUI views.
-The GPUI Kit guide's capability-crate recommendation does not justify creating
-new crates or moving feature ownership in this strictly mechanical Issue.
+Shell's plot group owns the retained plot entity, snapshot/drawing, navigation
+input, selection gestures and selection overlay. Existing Shell/PlotView impls,
+state, actions, focus and texture ownership do not change. Plot child modules use
+explicit ancestor imports for Shell context, rather than reexporting Shell through
+a compatibility facade. Visibility originally restricted to Shell remains exactly
+`pub(in crate::shell)` where one extra nesting level requires spelling the original
+boundary; no `pub(crate)` widening is authorized for those GUI internals.
+
+Remaining root responsibilities are intentional: document/open_file/editing and
+source-change state have multiple analysis/UI/processing consumers; minimap and
+sample_statistics provide independently owned full-capture tasks/caches; scratch
+is shared by editing and processing. Execution/cpu belong under analysis: execution owns the per-document compute
+pool/batch/affinity policy, analysis is its only runtime consumer, and cpu is used
+only by execution. Config stores `analysis::execution::Settings`; the setting and
+serialized configuration remain unchanged. Config/session/settings/recent remain distinct
+configuration, shared persistence, effective analysis settings and history-menu
+contracts. Bootstrap/assets/theme/chrome/profiling/release are shared application,
+platform or resource services. No requirement eliminates every root leaf module.
+
+Unit tests stay beside their owner in sibling `*_test.rs`; no test removal,
+consolidation, algorithm/fixture change or integration-test conversion. Preserve
+case names, gates, private access and fixture lifetimes. Fully qualified names
+intentionally change with subsystem namespaces: record an explicit old/new module
+mapping and compare discovery through that mapping. Source-only checks are not
+compiled-discovery evidence. Preserve cfg-only associated support includes and the
+plot context-menu nested test scope. Review include paths, source-location macros,
+module visibility and Windows/macOS cfg branches explicitly.
 
 ## Rejected alternatives
 
-- Generic `ui/`, `models/` or `views/` directories scatter capability ownership.
-- New prefix-based processing/settings/selection namespaces require new logical
-  boundaries, import/visibility changes and invented ownership beyond this scope.
-- One directory per leaf module adds artificial nesting without owned children.
-- Renaming every `_ui` module or splitting large files does not improve this
-  ownership mapping and increases the non-mechanical review surface.
-- Repeating #238's audit or reducing test counts adds no evidence for file moves.
+- Generic ui/models/views dumping grounds scatter capability ownership.
+- Keeping all logical root namespaces through path overrides or compatibility
+  reexports merely hides the flat tree and defeats ordinary Rust module layout.
+- Moving neutral models beneath GPUI views would weaken the toolkit boundary.
+- Splitting production algorithms/types, creating feature crates or changing
+  ownership/lifetimes is unnecessary for this physical/module organization task.
+- One directory per leaf or renaming all UI files adds churn without a boundary.
+- Repeating #238 test pruning or using a target count provides no layout evidence.
 
 ## Implementation steps
 
@@ -107,15 +122,16 @@ new crates or moving feature ownership in this strictly mechanical Issue.
   module declarations, relevant architecture and GPUI Kit Coding Guides.
 - [x] Verify installed-toolchain selection and shared build configuration without
   invoking a Rust proxy or compiling dependencies.
-- [ ] Commit this plan and open an early Draft PR before implementation.
+- [x] Commit this plan and open early Draft PR #239 before implementation.
 - [ ] Record old-to-new file/module/test/include mapping and current executable
   discovery, including platform-gated source declarations, outside the worktree.
-- [ ] Move production children and their tests/support to the selected owner
+- [ ] Complete revised production subsystems and move their tests/support to the selected owner
   directories; preserve all function bodies, ownership and logical paths.
-- [ ] Normalize remaining app sibling test filenames and equivalent test wiring.
+- [x] Normalize remaining app sibling test filenames and equivalent test wiring.
 - [ ] Verify content/token equivalence with an explicit path/wiring-only allowlist;
-  compare exact executable test-name and ignored sets, not just counts.
-- [ ] Update current architecture, UI inventory and AGENTS routing references to
+  compare executable test-name and ignored sets through the explicit namespace
+  mapping, not just counts.
+- [x] Update current architecture, UI inventory and AGENTS routing references to
   resulting paths; leave completed historical plans unchanged.
 - [ ] Complete required local validation and exact-revision independent review;
   resolve findings within three rounds and obtain coordinator assessment.
@@ -141,8 +157,8 @@ No new worktree, cache, dependencies, features, flags, profiles or benchmarks.
 | Criterion | Verification | Result / limits |
 | --- | --- | --- |
 | Physical tree matches actual ownership | Per-owner old/new mapping, no obsolete production path overrides | Planned |
-| Production behavior/API/lifetimes unchanged | Exact logical paths, visibility and body/token equivalence; independent review | Pending |
-| Existing audit coverage preserved | Accepted #237/#238 dispositions plus exact before/after discovery, ignored and platform source sets | Prior audit accepted; branch evidence pending |
+| Production behavior/API/lifetimes unchanged | Mapped logical paths, effective visibility and body/token equivalence; independent review | Pending |
+| Existing audit coverage preserved | Accepted #237/#238 dispositions plus mapped before/after discovery, ignored and platform source sets | Prior audit accepted; branch evidence pending |
 | Toolkit-neutral boundary preserved | Same imports/dependency graph and ownership; worker/model files stay independent | Planned |
 | Current docs and routing match tree | Current-path/link searches; no historical plan rewrites | Pending |
 | Cross-platform validation | Local gate and current Ready Linux/Windows/macOS ci/full | Not run |
@@ -158,6 +174,26 @@ This mechanical layout change has no intended UI or DSP semantic change. No nati
 UI acceptance, performance improvement or server-CI success is inferred from
 source equivalence or a test count. If inspection reveals a behavior change is
 needed, report it and apply the existing triage/owner-decision policy first.
+
+## Current evidence and validation blocker
+
+The first owner-directory stage accounted for all 135 application Rust files:
+84 relocated/renamed, 28 with
+reviewed path/module wiring edits. A normalized byte comparison across every mapped
+file permits only module attributes, include-only test wiring and reviewed include
+paths; all bodies match. Literal include targets are unchanged, including the FLAC
+fixture. No compiled discovery equivalence or Rust gate is claimed.
+
+Automatic approval review rejected the initial guarded `cargo test --locked
+--no-run --message-format=json` before execution, citing absent explicit owner
+approval in the current transcript for dependency-baseline compilation/shared-cache
+mutation. Historical plans record approval and the existing guard blocks dependency
+compilation, but that does not override the rejection. Do not retry or bypass it.
+Round-one review of the first owner-directory stage was clean, but it does not
+validate this broadened subsystem snapshot. Two rounds remain under the review
+limit; the next review must assess subsystem sufficiency as well as preservation.
+Source moves, documentation and read-only review proceed independently; executing
+the guarded local gate requires resolution with the owner. Draft remains pending.
 
 ## Post-completion
 
