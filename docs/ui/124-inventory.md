@@ -22,7 +22,7 @@ Source paths name the registry `gpui-component-0.9.1`, `gpui-base-0.9.1` and
 | R4 application menu | Standard PopupMenu in controlled Popover retained for application digits, focus restoration and outside-input isolation. `menu/popup_menu.rs:887` confirms through activate; `:923` selects a submenu. Owner approved Enter plus Right. | Menu keyboard/row/digit/outside-click/wheel tests; Space remains inert. |
 | R5 splitter | Remains removed; no migration reason to reintroduce resizable UI. | Existing minimap layout checks. |
 | R7 numeric editing | Existing shared NumericEditor retains standard Input/Button behavior and the approved press/repeat transaction. Base `number_input.rs:266` and `:277` still step on click. Base now exposes button decorators (`:188`, `:194`), but Component internally owns those decorators in `input/number_input.rs:151`, `:184`; no component-level press/repeat contract is supplied. Replacing the existing shared editor is unnecessary for this migration. | Existing repeat, commit, locale, disabled and both property-panel regressions; native consumers still require checks. |
-| R8 ruler menu | Stock ContextMenu retained. `menu/context_menu.rs:508` now uses a Weak subscription, fixing the old retention cycle. PlotView bookkeeping remains for pointer/focus restoration, not to compensate for a leak. | Native menu lifecycle still requires acceptance; the historical prohibition on headless context-menu testing no longer applies. |
+| R8 ruler menu | Stock ContextMenu retained. `menu/context_menu.rs:513` uses a Weak subscription, fixing the old retention cycle. PlotView bookkeeping remains for pointer/focus restoration, not to compensate for a leak. | `plot_view_context_menu_test.rs` exercises real ruler/spectrum menus, keyboard isolation/recovery and popup release on window close. Native menu appearance and OS interaction are not established by these headless tests. |
 | R9 hints/keycaps | Standard Tooltip/Popover/Kbd remain. Base `popover.rs:376` introduces PopoverContent with Escape handling, while Enter belongs to the trigger (`:343`) and PopoverContent explicitly blocks it with NoAction (`:27`). PinnedHint therefore explicitly binds/handles Confirm to preserve its approved Enter-close contract; child inputs/selects consume Confirm first. | Pinned lifecycle, nested selection, numeric commit and focus tests. |
 | R10 ready-input observer | Retained: GPUI `window.rs:5704` asserts paint phase for on_mouse_event. The existing canvas is still required to register the non-consuming window observer. | Ready dismissal and input passthrough tests. |
 | R11 symbolic keys | Retained plot-scoped interceptor; GPUI `app.rs:2705`, `:2720` still registers global observers/interceptors. | Exact-focus and multiwindow isolation tests. |
@@ -396,20 +396,26 @@ transaction. Native row S1.
 
 ### R8 Ruler context menu
 
-**Retained, and already standard.** `navigation_ui.rs:917` opens a stock `PopupMenu`
-through the toolkit's `.context_menu`. The only custom part is bookkeeping: the popup menu
-entity is retained by a toolkit reference cycle, so `PlotView` tracks it and matches its
-`DismissEvent` to clear the menu and restore the pointer (`plot_view.rs:140`). That is
-lifecycle tracking, not a control, and it cannot be composed away.
+**Retained, and already standard.** `PlotView::time_context_menu` and
+`PlotView::spectrum_context_menu` in `navigation_ui.rs` open stock `PopupMenu`s
+through the toolkit's `.context_menu`. GPUI Component 0.9.1
+`menu/context_menu.rs:513` captures a Weak reference in its dismiss subscription,
+removing the retention cycle recorded in #144. PlotView's weak menu handle and
+`DismissEvent` subscription still clear menu state and restore the pointer; this
+is application lifecycle tracking, not a replacement control.
 
 Covering tests: `an_overlay_on_the_plot_hides_its_pointer_until_the_first_move_back`,
 `an_overlay_on_the_plot_takes_its_wheel_clicks_and_drags`,
 `a_drag_keeps_tracking_over_a_hint_on_the_plot` and
-`a_new_orientation_keeps_a_resting_pointer` (`plot_view.rs:820`, `:849`, `:1017`, `:942`)
-drive an occluding layer over the plot and read the pointer and the intents, which is the
-same contract the menu's own hitbox has to keep. The popup entity's own retention and
-dismissal cannot be opened in a headless test (toolkit reference cycle, #144), so its
-dismissal is a native row: F3 and P1.
+`a_new_orientation_keeps_a_resting_pointer` in `plot_view.rs` drive an occluding
+layer over the plot and read the pointer and intents. The UI integration tests
+in `plot_view_context_menu_test.rs` additionally open the production menus with
+real right-click events. They check ruler-menu focus and isolation of Ctrl+G,
+time/frequency zoom and Home, Escape focus restoration and command recovery,
+reopening, and release of time/spectrum popup entities after closing their
+windows without dismissing them. Lifetime assertions use WeakEntity directly;
+they do not rely on the optional GPUI leak detector. Native appearance, pointer
+transitions and OS interaction remain outside this automated evidence.
 
 ### R9 Metadata, analysis and shortcut hints, and keycaps
 
