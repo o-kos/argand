@@ -1,4 +1,5 @@
 use super::*;
+use crate::shell::plot::navigation_ui;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{InputEvent, TestAppContext, WindowHandle};
 

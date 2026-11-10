@@ -254,7 +254,8 @@ The branch returned to Draft before integrating the accepted upstream work.
 
 The merge had one conflict, solely in Shell module declarations. It retains
 ordinary `mod about_ui;` and moves the new About view and sibling test into Shell;
-both files are byte-identical to accepted upstream. About model, build metadata,
+the view is byte-identical to accepted upstream and the test adds only an explicit
+import of the relocated plot navigation module. About model, build metadata,
 assets/tests, build script and package metadata are retained byte-identically.
 Rename-aware merge preserves upstream additions in the already relocated menu,
 conversion, hints, selection/settings and Shell files. No new About behavior,
@@ -267,7 +268,8 @@ final release must be built after the integration commit and evidence updates mu
 not silently invalidate that identity.
 
 - [x] ➕ Integrate accepted upstream and resolve only the module-declaration conflict.
-- [x] ➕ Place new About view/tests beside Shell, preserving upstream bodies.
+- [x] ➕ Place new About view/tests beside Shell, preserving upstream bodies;
+  compile-driven test wiring names the actual plot navigation module.
 - [ ] ➕ Refresh exact new-base/current executable discovery and guarded local gate.
 - [ ] ➕ Refresh metadata-aware release identity and current full CI.
 - [ ] ➕ Obtain coordinator assessment of the bounded integration and current evidence;
