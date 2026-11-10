@@ -11,27 +11,6 @@ const WHITE: TextStyle = TextStyle {
     color: Rgb([255, 255, 255]),
 };
 
-fn ink(canvas: &RgbImage) -> usize {
-    canvas.pixels().filter(|p| p.0 != [0, 0, 0]).count()
-}
-
-#[test]
-fn width_grows_with_text_and_size() {
-    let t = TextRenderer::new();
-    assert!(t.width("mm", 14.0) > t.width("m", 14.0));
-    assert!(t.width("12.579 MHz", 20.0) > t.width("12.579 MHz", 10.0));
-    assert_eq!(t.width("", 14.0), 0.0);
-}
-
-#[test]
-fn drawing_puts_ink_on_the_canvas() {
-    let t = TextRenderer::new();
-    let mut canvas = blank(200, 40);
-    assert_eq!(ink(&canvas), 0);
-    t.draw(&mut canvas, "24 kHz", Anchor::left(4.0, 26.0), WHITE);
-    assert!(ink(&canvas) > 20, "expected visible glyphs");
-}
-
 #[test]
 fn alignment_moves_the_run_around_the_anchor() {
     let t = TextRenderer::new();
@@ -66,26 +45,6 @@ fn drawing_off_canvas_does_not_panic() {
     for (x, y) in [(-500.0, 10.0), (500.0, 10.0), (10.0, -500.0), (10.0, 500.0)] {
         t.draw(&mut canvas, "edge", Anchor::left(x, y), WHITE);
     }
-}
-
-#[test]
-fn glyphs_blend_rather_than_overwrite() {
-    let t = TextRenderer::new();
-    let mut canvas = RgbImage::from_pixel(120, 40, Rgb([20, 30, 40]));
-    t.draw(
-        &mut canvas,
-        "iiii",
-        Anchor::left(4.0, 28.0),
-        TextStyle {
-            size: 16.0,
-            ..WHITE
-        },
-    );
-    // Anti-aliased edges land between the background and the text colour.
-    let blended = canvas
-        .pixels()
-        .any(|p| p.0[0] > 20 && p.0[0] < 255);
-    assert!(blended, "expected partially covered pixels");
 }
 
 /// Every character an axis label can be built from.

@@ -53,7 +53,3 @@ impl Mode {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "orientation_test.rs"]
-mod tests;

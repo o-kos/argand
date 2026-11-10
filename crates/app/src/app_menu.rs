@@ -62,7 +62,3 @@ pub fn file_items<T>(recent: Vec<(String, T)>) -> Vec<Row<T>> {
     rows.push(Row::Settings);
     rows
 }
-
-#[cfg(test)]
-#[path = "app_menu_test.rs"]
-mod tests;

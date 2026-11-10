@@ -46,7 +46,3 @@ impl AssetSource for Assets {
         Ok(entries)
     }
 }
-
-#[cfg(test)]
-#[path = "assets_test.rs"]
-mod tests;

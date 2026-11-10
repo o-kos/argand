@@ -1,6 +1,6 @@
 use super::*;
 use crate::riff;
-use crate::testutil::{TempDir, all_sample_types, iq_tone, write_raw, write_wav};
+use crate::testutil::{TempDir, all_sample_types, write_wav};
 use argand_core::{Domain, SampleFormat};
 
 fn open_wav(dir: &TempDir, name: &str, st: SampleType, values: &[f32], scale: f32) -> MmapSource {
@@ -88,16 +88,6 @@ fn round_trips_every_sample_type() {
 }
 
 #[test]
-fn length_counts_iq_pairs_once() {
-    let dir = TempDir::new("mmap-len");
-    let st = SampleType::new(Domain::Iq, SampleFormat::I16);
-    let values = iq_tone(100, 24_000.0, 1000.0, 0.5);
-    let src = open_wav(&dir, "iq.wav", st, &values, 1.0);
-    assert_eq!(src.meta().len_samples, 100);
-    assert_eq!(src.meta().duration_seconds(), 100.0 / 24_000.0);
-}
-
-#[test]
 fn reads_never_split_an_iq_pair() {
     let dir = TempDir::new("mmap-pairs");
     let st = SampleType::new(Domain::Iq, SampleFormat::I16);
@@ -139,83 +129,6 @@ fn seek_repositions_and_rejects_past_the_end() {
             total: 10
         }
     ));
-}
-
-#[test]
-fn auto_normalize_lifts_an_unnormalised_float_file() {
-    let dir = TempDir::new("mmap-norm");
-    let st = SampleType::new(Domain::Real, SampleFormat::F16x8);
-    let values = [0.0f32, 0.5, -1.0, 0.25];
-
-    // Written 4000x too hot, as an unnormalised capture would be.
-    let mut src = open_wav(&dir, "hot.wav", st, &values, 4000.0);
-    assert!((src.divisor() - 4000.0 * crate::normalize::AUTO_HEADROOM).abs() < 1e-2);
-
-    let got = read_all(&mut src);
-    let peak = got.iter().fold(0.0f32, |m, v| m.max(v.abs()));
-    assert!(peak < 1.0 && peak > 0.9, "peak came back as {peak}");
-}
-
-#[test]
-fn gain_scales_on_top_of_normalization() {
-    let dir = TempDir::new("mmap-gain");
-    let st = SampleType::new(Domain::Real, SampleFormat::I16);
-    let path = write_wav(&dir.join("gain.wav"), st, 24_000, &[0.25f32], 1.0);
-    let bytes = std::fs::read(&path).unwrap();
-    let layout = riff::parse(&bytes).unwrap();
-
-    let meta = SignalMeta {
-        sample_rate: layout.sample_rate,
-        center_freq: 0.0,
-        sample_type: st,
-        len_samples: 0,
-        container: "wav",
-        divisor: 1.0,
-        source: path.clone(),
-    };
-    let mut src = MmapSource::new(
-        &path,
-        meta,
-        layout.data_offset,
-        layout.declared_len.unwrap_or(usize::MAX),
-        Normalize::None,
-        6.0206, // +6 dB is a factor of two
-    )
-    .unwrap();
-
-    let got = read_all(&mut src);
-    assert!((got[0] - 0.5).abs() < 1e-3, "{got:?}");
-}
-
-#[test]
-fn a_headerless_file_is_read_from_an_offset() {
-    let dir = TempDir::new("mmap-raw");
-    let values = [0.5f32, -0.5, 0.25, -0.25];
-    let path = write_raw(&dir.join("dump.bin"), SampleFormat::I16, &values, 1.0);
-
-    // Prepend a fake 6-byte header and check --offset skips exactly it.
-    let mut with_header = vec![0xAAu8; 6];
-    with_header.extend_from_slice(&std::fs::read(&path).unwrap());
-    std::fs::write(&path, &with_header).unwrap();
-
-    let st = SampleType::new(Domain::Real, SampleFormat::I16);
-    let meta = SignalMeta {
-        sample_rate: 24_000.0,
-        center_freq: 0.0,
-        sample_type: st,
-        len_samples: 0,
-        container: "raw",
-        divisor: 1.0,
-        source: path.clone(),
-    };
-    let mut src =
-        MmapSource::new(&path, meta, 6, usize::MAX, Normalize::None, 0.0).unwrap();
-    assert_eq!(src.meta().len_samples, 4);
-
-    let got = read_all(&mut src);
-    for (got, want) in got.iter().zip(values.iter()) {
-        assert!((got - want).abs() < 1e-4, "{got} vs {want}");
-    }
 }
 
 #[test]

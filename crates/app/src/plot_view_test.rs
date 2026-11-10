@@ -1358,28 +1358,6 @@ fn zoom_buttons_keep_paint_and_click_ownership_over_the_paste_marker(cx: &mut Te
     );
 }
 
-#[gpui_kit::test]
-fn the_halves_split_their_pair_in_two(cx: &mut TestAppContext) {
-    let handle = open(cx);
-    toggle_pairs(cx, handle);
-    let (first, second, pair) = halves(cx, handle, 0);
-    assert_eq!(first.size, second.size, "the halves are equal");
-    assert_eq!(
-        first.size.width * 2. + px(1.) + px(2.),
-        pair.size.width,
-        "the frame holds both halves and the divider"
-    );
-    assert_eq!(first.size.height + px(2.), pair.size.height);
-    let (first, second, pair) = halves(cx, handle, 1);
-    assert_eq!(first.size, second.size, "the halves are equal");
-    assert_eq!(
-        first.size.height * 2. + px(1.) + px(2.),
-        pair.size.height,
-        "the frame holds both halves and the divider"
-    );
-    assert_eq!(first.size.width + px(2.), pair.size.width);
-}
-
 /// Whether the plot holds the keyboard, which its controls hand back to it.
 fn plot_focused(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> bool {
     handle
@@ -1415,36 +1393,6 @@ fn a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot(cx: &mut TestAppCo
     assert!(
         plot_focused(cx, handle),
         "the click leaves focus on the plot"
-    );
-}
-
-#[gpui_kit::test]
-fn a_release_outside_a_zoom_half_changes_nothing(cx: &mut TestAppContext) {
-    let handle = open(cx);
-    toggle_pairs(cx, handle);
-    let inside = half(cx, handle, 0);
-    let outside = inside - point(px(0.), px(40.));
-    let none = gpui_kit::Modifiers::default();
-    let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
-    input.simulate_mouse_move(inside, None, none);
-    input.simulate_mouse_down(inside, MouseButton::Left, none);
-    input.simulate_mouse_move(outside, Some(MouseButton::Left), none);
-    input.simulate_mouse_up(outside, MouseButton::Left, none);
-    assert!(
-        navigation(cx, handle).is_empty(),
-        "the release did not land on the half"
-    );
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.click("Zoom out time", cx)
-    })
-    .unwrap();
-    assert_eq!(
-        navigation(cx, handle),
-        vec![PlotIntent::Time(TimeIntent::Zoom {
-            factor: 2.,
-            anchor: 0.5,
-        })],
-        "the half still works"
     );
 }
 

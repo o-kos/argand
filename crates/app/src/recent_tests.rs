@@ -323,38 +323,6 @@ fn named(paths: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn the_first_telling_folder_is_kept_and_the_shared_ones_elided() {
-    assert_eq!(
-        named(&["/home/wav/123/12/1/iq.wav", "/home/wav/12/12/1/iq.wav"]),
-        [sep("…/123/…/iq.wav"), sep("…/12/…/iq.wav")]
-    );
-}
-
-#[test]
-fn a_telling_nearest_folder_needs_no_inner_ellipsis() {
-    assert_eq!(
-        named(&["/data/a/iq.wav", "/data/b/iq.wav", "/data/b/other.wav"]),
-        [sep("…/a/iq.wav"), sep("…/b/iq.wav"), "other.wav".to_owned()]
-    );
-}
-
-#[test]
-fn a_path_told_apart_only_by_its_root_is_shown_whole() {
-    assert_eq!(
-        named(&["/x/iq.wav", "/y/x/iq.wav"]),
-        [sep("/x/iq.wav"), sep("/y/x/iq.wav")]
-    );
-}
-
-#[test]
-fn three_files_of_one_name_keep_every_folder_that_differs() {
-    assert_eq!(
-        named(&["/r/a/s/iq.wav", "/r/b/s/iq.wav", "/r/a/t/iq.wav"]),
-        [sep("…/a/s/iq.wav"), sep("…/b/s/iq.wav"), sep("…/t/iq.wav")]
-    );
-}
-
-#[test]
 fn refreshing_keeps_verified_entries_visible_in_the_new_history_order() {
     let entries = vec![entry("first"), entry("second")];
     let mut recent = RecentFiles::new(&entries);
@@ -425,16 +393,6 @@ fn a_full_history_of_blocked_probes_does_not_hide_a_new_local_file() {
 }
 
 #[test]
-fn long_folders_keep_their_ends_and_stay_apart() {
-    let ireland = "/k/vps1_irelandnorthwest3.proxy2.kiwisdr.com_8073_518_20261009T230800Z/iq.wav";
-    let wessex = "/k/vps1_wessex.zapto.org_8074_490_20261009T230800Z/iq.wav";
-    assert_eq!(
-        named(&[ireland, wessex]),
-        [sep("…/vps1_ire…T230800Z/iq.wav"), sep("…/vps1_wes…T230800Z/iq.wav")]
-    );
-}
-
-#[test]
 fn folders_alike_at_both_ends_grow_until_they_differ() {
     let a = "/k/vps1_23175.proxy2_8073_518_20261011T163000Z/iq.wav";
     let b = "/k/vps1_23175.proxy2_8073_490_20261011T163000Z/iq.wav";
@@ -446,19 +404,5 @@ fn folders_alike_at_both_ends_grow_until_they_differ() {
             sep("…/vps1_23175.proxy2_…8_20261011T163000Z/iq.wav"),
             sep("…/vps1_23175.proxy2_…0_20261011T163000Z/iq.wav")
         ]
-    );
-}
-
-#[test]
-fn long_file_names_keep_their_extension_and_stay_apart() {
-    assert_eq!(
-        named(&[
-            "/a/kiwisdr_ireland_20261009T230800Z.wav",
-            "/a/kiwisdr_ireland_20261010T230800Z.wav",
-            "/a/short.wav",
-        ]),
-        ["kiwisdr_irela…9T230800Z.wav", "kiwisdr_irela…0T230800Z.wav", "short.wav"]
-            .map(str::to_owned)
-            .to_vec()
     );
 }

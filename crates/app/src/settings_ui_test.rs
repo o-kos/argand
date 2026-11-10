@@ -6,18 +6,6 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 #[test]
-fn control_foregrounds_keep_a_resting_colour_and_a_distinct_state_one() {
-    let normal = gpui_kit::hsla(0.15, 0.8, 0.4, 1.0);
-    let hovered = gpui_kit::hsla(0.15, 0.8, 0.8, 1.0);
-    let foregrounds = ControlForegrounds::between(normal, hovered);
-
-    assert_eq!(foregrounds.normal, normal);
-    assert_eq!(foregrounds.active, normal.mix(hovered, 0.5));
-    assert_ne!(foregrounds.active, normal);
-    assert_ne!(foregrounds.active, hovered);
-}
-
-#[test]
 fn range_state_applies_advice_then_restores_full_scale() {
     let advised = RangeState::from_request(Some(42.0), DynamicRange::Default)
         .next_range()

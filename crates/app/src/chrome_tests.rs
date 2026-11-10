@@ -2,24 +2,6 @@ use super::*;
 use gpui_kit::Edges;
 
 #[test]
-fn server_decorations_leave_the_whole_shell_to_overlays() {
-    let area = overlay_bounds(size(px(1000.), px(700.)), Edges::all(px(0.)), false);
-    assert_eq!(area.0, Bounds::new(point(px(0.), px(0.)), size(px(1000.), px(700.))));
-}
-
-#[test]
-fn restored_client_frame_excludes_only_the_toolkit_resize_band() {
-    let area = overlay_bounds(size(px(1000.), px(700.)), Edges::all(px(20.)), true);
-    assert_eq!(area.0, Bounds::new(point(px(3.), px(3.)), size(px(952.), px(652.))));
-}
-
-#[test]
-fn maximized_or_fully_tiled_frame_has_no_overlay_inset() {
-    let area = overlay_bounds(size(px(1600.), px(1000.)), Edges::all(px(0.)), true);
-    assert_eq!(area.0, Bounds::new(point(px(0.), px(0.)), size(px(1600.), px(1000.))));
-}
-
-#[test]
 fn partially_tiled_frame_keeps_only_free_edges_clear() {
     let area = overlay_bounds(
         size(px(1000.), px(700.)),

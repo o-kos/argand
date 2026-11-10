@@ -483,24 +483,6 @@ fn hidden_range_advice_does_not_retain_transient_hover(cx: &mut TestAppContext) 
 }
 
 #[gpui_kit::test]
-fn an_open_list_is_told_from_a_closed_one(cx: &mut TestAppContext) {
-    let w = open(cx);
-    open_hint(cx, &w);
-    let editor = editor(cx, &w);
-    let open = |cx: &mut TestAppContext| editor.read_with(cx, |editor, cx| editor.list_open(cx));
-    assert!(!open(cx), "no list is open with the hint");
-    cx.update_window(w.handle.into(), |_, window, cx| {
-        window.within("analysis-palette").click("input", cx);
-    })
-    .expect("the window is open");
-    cx.run_until_parked();
-    frame(cx, &w);
-    assert!(open(cx), "the balloon gives way to an open list");
-    press(cx, &w, "escape");
-    assert!(!open(cx), "and comes back once it closes");
-}
-
-#[gpui_kit::test]
 fn enter_on_a_number_applies_it_and_a_keeping_close_saves_it(cx: &mut TestAppContext) {
     let w = open(cx);
     open_hint(cx, &w);

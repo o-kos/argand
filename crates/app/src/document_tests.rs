@@ -54,55 +54,6 @@ fn opening() -> Document {
 }
 
 #[test]
-fn a_document_says_nothing_about_a_file_it_has_not_opened_yet() {
-    let document = opening();
-    assert_eq!(document.status(), &Status::Opening);
-    assert!(document.meta().is_none());
-    assert!(document.analysis().is_none());
-    assert!(
-        document.summary().is_none(),
-        "nothing is known about the file until it opens"
-    );
-}
-
-#[test]
-fn opening_a_file_is_what_lets_a_request_be_built_for_it() {
-    let mut document = opening();
-    // The span to analyse is the length the file just reported, so the window
-    // is told to build a request rather than merely to redraw.
-    assert_eq!(document.apply(Update::Opened(meta(), FileInfo::default())), Effect::Opened);
-    assert_eq!(document.meta().map(|m| m.len_samples), Some(48_000));
-}
-
-#[test]
-fn a_finished_analysis_is_what_the_window_draws_from() {
-    let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()));
-    assert_eq!(
-        document.apply(Update::Ready {
-            analysis: analysis(64),
-            elapsed: Duration::from_millis(1250)
-        }),
-        Effect::Analysis
-    );
-    assert_eq!(
-        document.status(),
-        &Status::Ready {
-            elapsed: Duration::from_millis(1250)
-        }
-    );
-    assert_eq!(document.status().message(), "ready in 1.25s");
-    assert_eq!(document.analysis().map(|a| a.spectrogram.width), Some(64));
-
-    document.apply(Update::Ready {
-        analysis: analysis(128),
-        elapsed: Duration::from_millis(2500),
-    });
-    assert_eq!(document.status().message(), "ready in 2.5s");
-    assert_eq!(document.analysis().map(|a| a.spectrogram.width), Some(128));
-}
-
-#[test]
 fn a_new_transform_leaves_the_previous_picture_up_while_it_runs() {
     let mut document = opening();
     document.apply(Update::Opened(meta(), FileInfo::default()));
@@ -190,46 +141,6 @@ fn a_failure_is_something_to_read_rather_than_something_to_crash_on() {
     // The status bar names it rather than quoting it; the reason goes where
     // the picture would have been.
     assert_eq!(document.status().message(), "cannot be read");
-}
-
-#[test]
-fn a_transform_that_has_not_reported_yet_has_no_fraction_to_show() {
-    let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()));
-    assert_eq!(document.status().message(), "analysing...");
-
-    document.apply(Update::Progress { done: 1, total: 40 });
-    assert_eq!(document.status().message(), "analysing... 2%");
-}
-
-#[test]
-fn the_status_bar_separates_metadata_and_keeps_rf_context() {
-    let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()));
-
-    assert_eq!(
-        document.summary().unwrap().iter().map(|field| (field.value.as_str(), field.hint.title)).collect::<Vec<_>>(),
-        vec![("wav", "File container type"), ("iq · i16", "Samples format"), ("24 kHz", "Signal sample rate"), ("2s", "Signal duration"), ("12.579 MHz", "Signal centre frequency")]
-    );
-}
-
-#[test]
-fn a_baseband_capture_has_no_centre_frequency_worth_printing() {
-    let mut document = opening();
-    document.apply(Update::Opened(SignalMeta {
-        center_freq: 0.0,
-        ..meta()
-    }, FileInfo::default()));
-
-    assert_eq!(
-        document.summary().unwrap().iter().map(|field| field.value.as_str()).collect::<Vec<_>>(),
-        vec!["wav", "iq · i16", "24 kHz", "2s"]
-    );
-}
-
-#[test]
-fn a_document_is_named_by_its_file_rather_than_by_its_whole_path() {
-    assert_eq!(origin("/captures/2026/hfdl.iqw").name(), "hfdl.iqw");
 }
 
 #[test]

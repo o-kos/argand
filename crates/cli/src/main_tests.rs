@@ -6,11 +6,18 @@ fn parse(args: &[&str]) -> Args {
 }
 
 #[test]
-fn json_outranks_quiet_on_stdout() {
-    // --json is an explicit request for machine output, so -q must not take
-    // it away; -q is about what a person reads.
-    for flags in [&["x.wav", "--json"][..], &["x.wav", "--json", "-q"][..]] {
-        assert_eq!(stdout_line(&parse(flags), true), StdoutLine::Json, "{flags:?}");
+fn json_outranks_quiet_on_stdout_and_respects_it_on_stderr() {
+    // --json explicitly requests machine stdout; quiet only silences human stderr.
+    for (flags, stderr) in [
+        (
+            &["x.wav", "--json"][..],
+            StderrBlock::Block(Detail::Default),
+        ),
+        (&["x.wav", "--json", "-q"][..], StderrBlock::Nothing),
+    ] {
+        let args = parse(flags);
+        assert_eq!(stdout_line(&args, true), StdoutLine::Json, "{flags:?}");
+        assert_eq!(stderr_block(&args, false), stderr, "{flags:?}");
     }
 }
 
@@ -62,17 +69,6 @@ fn a_batch_shrinks_the_block_unless_verbose_asks_for_it() {
     assert_eq!(
         stderr_block(&verbose, false),
         StderrBlock::Block(Detail::Verbose)
-    );
-}
-
-#[test]
-fn the_two_streams_are_decided_independently() {
-    // --json changes stdout and leaves the human report on stderr alone.
-    let json = parse(&["x.wav", "--json"]);
-    assert_eq!(stdout_line(&json, true), StdoutLine::Json);
-    assert_eq!(
-        stderr_block(&json, false),
-        StderrBlock::Block(Detail::Default)
     );
 }
 

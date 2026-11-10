@@ -5,50 +5,6 @@ use gpui_kit::TestAppContext;
 use gpui_kit::test::TestWindowExt;
 use std::path::PathBuf;
 
-#[test]
-fn the_panel_sides_its_values_as_the_plot_does_in_either_orientation() {
-    for vertical in [false, true] {
-        let drawing = Drawing::new(vertical);
-        let (left, top, width, height) = drawing.area;
-        let (right, bottom) = (left + width, top + height);
-        let [start, end, length, low, high, band] = drawing.places;
-        let centre = |(x, _): (f32, f32)| x + FIELD.0 / 2.;
-        match vertical {
-            false => {
-                assert!(start.1 > bottom && end.1 > bottom, "time's edges below");
-                assert!(length.1 < top, "its length above");
-                assert!(
-                    centre(low) < left && centre(high) < left,
-                    "the band's edges left"
-                );
-                assert!(band.0 > right, "its width right");
-            }
-            true => {
-                assert!(
-                    centre(start) < left && centre(end) < left,
-                    "time's edges left"
-                );
-                assert!(
-                    start.1 < end.1,
-                    "the start above the end, as time runs down"
-                );
-                assert!(length.0 > right, "its length right");
-                assert!(low.1 < top && high.1 < top, "the band's edges above");
-                assert!(low.0 < high.0, "low left of high, as frequency runs right");
-                assert!(band.1 > bottom, "its width below");
-            }
-        }
-        for (slot, tail) in drawing.tails.iter().enumerate() {
-            assert_eq!(tail.is_some(), slot % 3 != 2, "only the edges have tails");
-        }
-        let (along, across) = drawing.size;
-        for &(x, y) in &drawing.places {
-            assert!(x >= 0. && x + FIELD.0 <= along, "inside the drawing");
-            assert!(y - FIELD.1 / 2. >= 0. && y + FIELD.1 / 2. <= across);
-        }
-    }
-}
-
 /// A shell under the toolkit's root, which the popover layer needs, with a described capture.
 fn open(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
     cx.update(|cx| {

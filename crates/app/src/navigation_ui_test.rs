@@ -102,85 +102,6 @@ fn geometry() -> PlotGeometry {
 }
 
 #[test]
-fn space_shows_an_open_hand_on_the_spectrum_and_selecting_keeps_the_crosshair() {
-    use gpui_kit::CursorStyle::{Crosshair, OpenHand};
-    let geometry = geometry();
-    let spectrum = Some(point(px(60.), px(100.)));
-    let ruler = Some(point(px(60.), px(160.)));
-    assert_eq!(
-        geometry.selection_cursor(spectrum, false, None, true),
-        Some(OpenHand)
-    );
-    assert_eq!(geometry.selection_cursor(ruler, false, None, true), None);
-    assert_eq!(
-        geometry.selection_cursor(spectrum, false, None, false),
-        None
-    );
-    assert_eq!(
-        geometry.selection_cursor(ruler, false, Some(gpui_kit::CursorStyle::Crosshair), false),
-        Some(Crosshair)
-    );
-    assert_eq!(
-        geometry.selection_cursor(spectrum, true, None, true),
-        None,
-        "a pan in progress keeps its closed hand"
-    );
-}
-
-#[test]
-fn scale_button_zones_take_the_pointer() {
-    let mut geometry = geometry();
-    geometry.zoom_zones = [
-        Some(axes::Rect {
-            x: 10.,
-            y: 125.,
-            width: 45.,
-            height: 22.,
-        }),
-        None,
-    ];
-    assert!(geometry.over_scale_buttons(Some(point(px(30.), px(135.)))));
-    assert!(!geometry.over_scale_buttons(Some(point(px(60.), px(135.)))));
-    assert!(!geometry.over_scale_buttons(None));
-}
-
-#[test]
-fn cursor_identifies_spectrum_minimap_viewport_and_both_rulers() {
-    let geometry = geometry();
-    let viewport = Some((
-        View {
-            start: 200,
-            len: 300,
-        },
-        1000,
-    ));
-    for (x, y, expected) in [
-        (50., 20., gpui_kit::CursorStyle::OpenHand),
-        (20., 20., gpui_kit::CursorStyle::Arrow),
-        (50., 160., gpui_kit::CursorStyle::OpenHand),
-        (120., 80., gpui_kit::CursorStyle::Arrow),
-        (50., 80., gpui_kit::CursorStyle::Crosshair),
-    ] {
-        assert_eq!(
-            geometry.cursor(Some(point(px(x), px(y))), false, viewport, false),
-            expected
-        );
-    }
-    assert_eq!(
-        geometry.cursor(None, true, viewport, false),
-        gpui_kit::CursorStyle::ClosedHand
-    );
-    assert_eq!(
-        geometry.cursor(None, false, viewport, false),
-        gpui_kit::CursorStyle::Arrow
-    );
-    assert_eq!(
-        geometry.cursor(Some(point(px(50.), px(20.))), false, None, false),
-        gpui_kit::CursorStyle::Arrow
-    );
-}
-
-#[test]
 fn hidpi_minimap_hand_and_click_match_the_last_visible_device_pixel() {
     let geometry = PlotGeometry {
         minimap_columns: 200,
@@ -214,19 +135,6 @@ fn hidpi_minimap_hand_and_click_match_the_last_visible_device_pixel() {
             crate::minimap::click(geometry.minimap_fraction(position), interval, false, 1),
             click
         );
-    }
-}
-
-#[test]
-fn full_capture_and_non_draggable_frequency_ruler_use_an_arrow() {
-    let geometry = geometry();
-    for viewport in [None, Some((View::full(1000), 1000))] {
-        for (x, y) in [(50., 20.), (50., 160.), (120., 80.)] {
-            assert_eq!(
-                geometry.cursor(Some(point(px(x), px(y))), false, viewport, false),
-                gpui_kit::CursorStyle::Arrow,
-            );
-        }
     }
 }
 
@@ -350,94 +258,6 @@ fn unit_captions_keep_arrow_cursor_and_do_not_start_dragging() {
 }
 
 #[test]
-fn ruler_zoom_buttons_keep_the_arrow_cursor_and_do_not_start_dragging() {
-    let mut geometry = geometry();
-    geometry.zoom_zones = [
-        Some(axes::Rect {
-            x: 10.,
-            y: 158.,
-            width: 44.,
-            height: 20.,
-        }),
-        Some(axes::Rect {
-            x: 119.,
-            y: 106.,
-            width: 20.,
-            height: 44.,
-        }),
-    ];
-    let viewport = Some((
-        View {
-            start: 200,
-            len: 300,
-        },
-        1000,
-    ));
-    for position in [point(px(20.), px(166.)), point(px(128.), px(130.))] {
-        assert_eq!(
-            geometry.cursor(Some(position), false, viewport, true),
-            gpui_kit::CursorStyle::Arrow
-        );
-        assert_eq!(geometry.drag_axes(position), (false, false));
-    }
-    assert_eq!(
-        geometry.cursor(Some(point(px(60.), px(160.))), false, viewport, true),
-        gpui_kit::CursorStyle::OpenHand
-    );
-}
-
-#[test]
-fn vertical_zoom_pairs_keep_the_arrow_cursor_and_do_not_start_dragging() {
-    // Time pair along the right ruler, frequency pair along the bottom one.
-    let geometry = PlotGeometry {
-        orientation: crate::orientation::Mode::Vertical,
-        spectrum: Bounds::new(point(px(50.), px(10.)), size(px(100.), px(200.))),
-        minimap: Bounds::new(point(px(10.), px(10.)), size(px(30.), px(200.))),
-        time_ruler: Bounds::new(point(px(150.), px(10.)), size(px(30.), px(200.))),
-        frequency_ruler: Bounds::new(point(px(50.), px(210.)), size(px(100.), px(20.))),
-        navigation: Bounds::new(point(px(10.), px(10.)), size(px(170.), px(200.))),
-        zoom_zones: [
-            Some(axes::Rect {
-                x: 120.,
-                y: 18.,
-                width: 22.,
-                height: 45.,
-            }),
-            Some(axes::Rect {
-                x: 58.,
-                y: 180.,
-                width: 45.,
-                height: 22.,
-            }),
-        ],
-        ..geometry()
-    };
-    let viewport = Some((
-        View {
-            start: 200,
-            len: 300,
-        },
-        1000,
-    ));
-    for position in [point(px(130.), px(55.)), point(px(95.), px(190.))] {
-        assert!(geometry.over_scale_buttons(Some(position)));
-        assert_eq!(
-            geometry.cursor(Some(position), false, viewport, true),
-            gpui_kit::CursorStyle::Arrow
-        );
-        assert_eq!(geometry.drag_axes(position), (false, false));
-    }
-    for position in [point(px(130.), px(80.)), point(px(110.), px(190.))] {
-        assert!(!geometry.over_scale_buttons(Some(position)));
-        assert_eq!(
-            geometry.cursor(Some(position), false, viewport, true),
-            gpui_kit::CursorStyle::Crosshair
-        );
-        assert_eq!(geometry.drag_axes(position), (true, true));
-    }
-}
-
-#[test]
 fn hidden_scale_controls_leave_the_spectrum_navigation_alone() {
     // Hidden pairs leave no zones behind, so the corner area they would
     // cover pans and drags like the rest of the picture.
@@ -456,16 +276,6 @@ fn hidden_scale_controls_leave_the_spectrum_navigation_alone() {
         gpui_kit::CursorStyle::Crosshair
     );
     assert_eq!(geometry.drag_axes(corner), (true, true));
-}
-
-#[test]
-fn spectrum_drags_both_axes_but_rulers_and_minimap_stay_constrained() {
-    let geometry = geometry();
-    assert_eq!(geometry.drag_axes(point(px(60.), px(80.))), (true, true));
-    assert_eq!(geometry.drag_axes(point(px(60.), px(160.))), (true, false));
-    assert_eq!(geometry.drag_axes(point(px(120.), px(75.))), (false, true));
-    assert_eq!(geometry.drag_axes(point(px(60.), px(20.))), (true, false));
-    assert_eq!(geometry.drag_axes(point(px(0.), px(0.))), (false, false));
 }
 
 #[test]

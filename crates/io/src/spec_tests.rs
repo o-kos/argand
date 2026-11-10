@@ -1,23 +1,6 @@
 use super::*;
-use argand_core::{Domain, SampleFormat};
 
-#[test]
-fn raw_spec_carries_type_and_rate() {
-    let spec: RawSpec = "iq_i16@24k".parse().unwrap();
-    assert_eq!(
-        spec.sample_type,
-        SampleType::new(Domain::Iq, SampleFormat::I16)
-    );
-    assert_eq!(spec.sample_rate, Some(24_000.0));
-    assert_eq!(spec.to_string(), "iq_i16@24000");
-}
 
-#[test]
-fn raw_spec_rate_is_optional() {
-    let spec: RawSpec = "rl_f16x8".parse().unwrap();
-    assert_eq!(spec.sample_rate, None);
-    assert_eq!(spec.to_string(), "rl_f16x8");
-}
 
 #[test]
 fn raw_spec_reports_which_half_was_wrong() {

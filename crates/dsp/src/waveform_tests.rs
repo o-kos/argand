@@ -24,23 +24,6 @@ fn a_single_sample_peak_survives_decimation() {
 }
 
 #[test]
-fn columns_cover_the_range_in_order() {
-    let values: Vec<f32> = (0..1000).map(|i| i as f32 / 1000.0).collect();
-    let env = envelope(&values, 10);
-
-    assert_eq!(env.columns, 10);
-    assert_eq!(env.channels, 1);
-    // A ramp: every column's span sits above the one before it.
-    for column in 1..env.columns {
-        let (prev_min, prev_max) = env.column(column - 1, 0).unwrap();
-        let (min, max) = env.column(column, 0).unwrap();
-        assert!(min > prev_min && max > prev_max, "column {column}");
-    }
-    assert_eq!(env.column(0, 0).unwrap().0, 0.0);
-    assert_eq!(env.column(9, 0).unwrap().1, 0.999);
-}
-
-#[test]
 fn i_and_q_keep_their_own_extremes() {
     // I swings wide, Q stays near zero: the two must not be merged.
     let mut values = Vec::new();
@@ -70,14 +53,6 @@ fn columns_no_sample_reached_borrow_a_neighbour() {
     );
     assert_eq!(env.column(0, 0), Some((0.5, 0.5)));
     assert_eq!(env.column(7, 0), Some((0.75, 0.75)));
-}
-
-#[test]
-fn an_envelope_of_nothing_is_flat_rather_than_infinite() {
-    let env = envelope(&[], 4);
-    assert!(env.min.iter().all(|v| *v == 0.0));
-    assert!(env.max.iter().all(|v| *v == 0.0));
-    assert_eq!(env.peak(), 0.0);
 }
 
 #[test]

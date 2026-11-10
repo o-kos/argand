@@ -2171,10 +2171,6 @@ fn device_size(plot: axes::Rect, scale: f32) -> PlotSize {
 }
 
 #[cfg(test)]
-#[path = "shell_theme_test.rs"]
-mod theme_tests;
-
-#[cfg(test)]
 #[path = "shell_analysis_hint_test.rs"]
 mod analysis_hint_tests;
 

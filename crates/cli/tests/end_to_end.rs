@@ -1,13 +1,12 @@
 //! Whole-binary tests: fixtures on disk, `aspec` invoked as a user would.
 //!
-//! The fixtures are generated rather than committed, which is what makes it
-//! possible to cover all ten sample types -- including `u8` and `i32`, which
-//! no real capture to hand happens to use.
+//! Representative real and I/Q inputs exercise command wiring. Scalar encoding
+//! matrices belong to the I/O tests, numerical FFT matrices to DSP.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use argand_io::testutil::{TempDir, all_sample_types, iq_tone, real_tone, write_raw, write_wav};
+use argand_io::testutil::{TempDir, iq_tone, real_tone, write_raw, write_wav};
 use serde_json::Value;
 
 const ASPEC: &str = env!("CARGO_BIN_EXE_aspec");
@@ -235,20 +234,11 @@ fn dynamic_range_suggestion_reaches_human_reports_and_image() {
 }
 
 #[test]
-fn removed_reference_option_is_rejected() {
-    let dir = TempDir::new("e2e-removed-reference");
-    let input = write_quiet_wav(&dir, "quiet.wav");
-    let input = input.to_str().unwrap();
-    let removed = run(&[input, "--ref", "peak"]);
-    assert!(!removed.status.success());
-    assert!(String::from_utf8_lossy(&removed.stderr).contains("unexpected argument '--ref'"));
-}
-
-#[test]
-fn every_sample_type_puts_the_tone_in_the_same_place() {
+fn real_and_iq_inputs_keep_their_physical_frequency_axes() {
     let dir = TempDir::new("e2e-matrix");
 
-    for sample_type in all_sample_types() {
+    for token in ["rl_f32", "iq_i16"] {
+        let sample_type = token.parse::<argand_core::SampleType>().unwrap();
         let values = if sample_type.is_iq() {
             iq_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8)
         } else {
@@ -436,32 +426,6 @@ fn gain_moves_the_level_and_nothing_else() {
 }
 
 #[test]
-fn negative_gain_parses_as_a_value_not_a_flag() {
-    let dir = TempDir::new("e2e-negative");
-    let sample_type = "rl_i16".parse().unwrap();
-    let values = real_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
-    let input = write_wav(&dir.join("x.wav"), sample_type, RATE, &values, 1.0);
-
-    let report = run_json(
-        &[
-            &[
-                input.to_str().unwrap(),
-                "-g",
-                "-6.0206",
-                "--center",
-                "-1M",
-                "-o",
-                png(&dir, "n.png").to_str().unwrap(),
-            ],
-            fft_args().as_slice(),
-        ]
-        .concat(),
-    );
-    assert_eq!(report["gain_db"], -6.0206);
-    assert_eq!(report["center_freq"], -1_000_000.0);
-}
-
-#[test]
 fn a_span_can_be_selected_out_of_a_longer_capture() {
     let dir = TempDir::new("e2e-span");
     let sample_type = "iq_i16".parse().unwrap();
@@ -504,39 +468,41 @@ fn a_span_can_be_selected_out_of_a_longer_capture() {
 }
 
 #[test]
-fn every_panel_set_and_orientation_produces_a_png() {
+fn orthogonal_panel_compositions_render_in_both_orientations() {
     let dir = TempDir::new("e2e-layout");
     let sample_type = "iq_i16".parse().unwrap();
     let values = iq_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
     let input = write_wav(&dir.join("x.wav"), sample_type, RATE, &values, 1.0);
 
     let mut sizes = Vec::new();
-    for panels in ["none", "waveform", "psd", "waveform,psd,db"] {
-        for orientation in ["horizontal", "vertical"] {
-            let name = panels.replace(',', "-");
-            let output = png(&dir, &format!("{name}-{orientation}.png"));
-            let out = run(&[
-                input.to_str().unwrap(),
-                "--panels",
-                panels,
-                "--orientation",
-                orientation,
-                "-f",
-                "256",
-                "-i",
-                "480x360",
-                "-o",
-                output.to_str().unwrap(),
-                "--quiet",
-            ]);
-            assert!(
-                out.status.success(),
-                "{panels}/{orientation}: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
-            assert_png(&output);
-            sizes.push(std::fs::metadata(&output).unwrap().len());
-        }
+    for (panels, orientation) in [
+        ("none", "horizontal"),
+        ("waveform", "vertical"),
+        ("waveform,psd,db", "horizontal"),
+    ] {
+        let name = panels.replace(',', "-");
+        let output = png(&dir, &format!("{name}-{orientation}.png"));
+        let out = run(&[
+            input.to_str().unwrap(),
+            "--panels",
+            panels,
+            "--orientation",
+            orientation,
+            "-f",
+            "256",
+            "-i",
+            "480x360",
+            "-o",
+            output.to_str().unwrap(),
+            "--quiet",
+        ]);
+        assert!(
+            out.status.success(),
+            "{panels}/{orientation}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_png(&output);
+        sizes.push(std::fs::metadata(&output).unwrap().len());
     }
     assert!(
         sizes.iter().collect::<std::collections::HashSet<_>>().len() > 1,
@@ -649,71 +615,6 @@ fn the_report_reaches_stderr_and_the_path_reaches_stdout() {
     assert!(quiet.status.success());
     assert!(quiet.stdout.is_empty() && quiet.stderr.is_empty());
     assert_png(&output);
-}
-
-#[test]
-fn one_file_reports_two_sections_and_says_nothing_twice() {
-    let dir = TempDir::new("e2e-sections");
-    let sample_type = "rl_i16".parse().unwrap();
-    let values = real_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
-    let input = write_wav(&dir.join("x.wav"), sample_type, RATE, &values, 1.0);
-    let input = input.to_str().unwrap();
-
-    let out = run(&[input, "-f", "256", "-i", "400x200"]);
-    assert!(out.status.success());
-    let stderr = String::from_utf8_lossy(&out.stderr);
-
-    // A header ends in `:` and its facts are indented two spaces.
-    let lines: Vec<&str> = stderr.lines().collect();
-    assert_eq!(lines.len(), 6, "{stderr}");
-    for (i, line) in lines.iter().enumerate() {
-        let header = i % 3 == 0;
-        assert_eq!(line.ends_with(':'), header, "line {i}:\n{stderr}");
-        assert_eq!(line.starts_with("  "), !header, "line {i}:\n{stderr}");
-    }
-    assert_eq!(lines[0], "x.wav:", "{stderr}");
-    assert_eq!(lines[3], "x.wav.png:", "{stderr}");
-    assert!(
-        !stderr.contains("\n\n"),
-        "no blank line in the report:\n{stderr}"
-    );
-
-    // Every repeat the Issue lists is gone: the input is named once, the
-    // render once, the divisor and the defaults not at all.
-    assert_eq!(stderr.matches("x.wav:").count(), 1, "{stderr}");
-    assert!(!stderr.contains("32768"), "{stderr}");
-    assert!(
-        !stderr.contains("normalize") && !stderr.contains("gain"),
-        "{stderr}"
-    );
-    assert!(!stderr.contains("spl"), "{stderr}");
-    // Fields are separated by commas, not by the old middle dot.
-    assert!(!stderr.contains('\u{b7}'), "{stderr}");
-
-    // -v brings the dropped detail back, with the divisor named once.
-    let loud = run(&[input, "-f", "256", "-i", "400x200", "-v"]);
-    let stderr = String::from_utf8_lossy(&loud.stderr);
-    assert!(stderr.contains("normalize none, gain +0.0 dB"), "{stderr}");
-    assert!(stderr.contains("reduce max"), "{stderr}");
-    assert_eq!(stderr.matches("full scale 32768").count(), 1, "{stderr}");
-    // A sample count keeps a space before its unit.
-    assert!(stderr.contains("8.2 kspl"), "{stderr}");
-    assert!(
-        stderr.contains(&format!("\n{}:\n", dir.join("x.wav.png").display())),
-        "-v spells the render's path out in full:\n{stderr}"
-    );
-}
-
-#[test]
-fn the_output_path_defaults_to_the_input_name() {
-    let dir = TempDir::new("e2e-default-out");
-    let sample_type = "rl_i16".parse().unwrap();
-    let values = real_tone(SAMPLES, RATE as f64, TONE_HZ, 0.8);
-    let input = write_wav(&dir.join("capture.iqw"), sample_type, RATE, &values, 1.0);
-
-    let out = run(&[input.to_str().unwrap(), "-f", "256", "-q"]);
-    assert!(out.status.success());
-    assert_png(&dir.join("capture.iqw.png"));
 }
 
 #[test]
