@@ -1563,8 +1563,9 @@ impl Shell {
         } else {
             gpui_kit::component::TITLE_BAR_HEIGHT * 3.
         };
+        let about_width = window.rem_size() * 2.;
         let margin = (leading + app_menu_ui::toolbar_width(window, cx, self.view.is_some()))
-            .max(controls)
+            .max(controls + about_width)
             + window.rem_size() * 0.75;
         div()
             .flex()
@@ -1588,7 +1589,18 @@ impl Shell {
                     .text_center()
                     .child(self.file_name()),
             )
-            .child(div().w(margin - controls).flex_shrink_0())
+            .child(
+                div()
+                    .w(margin - controls)
+                    .flex_shrink_0()
+                    .flex()
+                    .justify_end()
+                    .pr_1()
+                    .child(app_menu_ui::title_control(
+                        "title-about-control",
+                        self.about_button(cx),
+                    )),
+            )
     }
 
     fn content(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {

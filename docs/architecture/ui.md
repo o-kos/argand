@@ -31,9 +31,10 @@ The analysis settings hint selects Peak (MAX) or Mean power, including subsequen
 
 ## About Argand (#107)
 
-A permanent Info button in the main toolbar and a direct About Argand application
-menu item open one retained `PinnedHint`, anchored below the toolbar like the
-selection panel and styled like File information. There is no command shortcut
+A permanent standard ghost Info button at the right end of the title bar before
+window controls and a direct About Argand application-menu item open one retained
+`PinnedHint`, anchored beneath the right title-bar button toward the window interior
+and styled like File information. There is no command shortcut
 and hover only shows the build-identity tooltip. `about_ui.rs` composes the
 existing pinned helper, standard Button and keyboard-accessible Base Link. The
 repository Link opens its URL and closes About; every other panel click closes

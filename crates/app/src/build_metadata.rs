@@ -10,15 +10,40 @@ pub struct Metadata {
     pub tag: String,
 }
 
+// Repository-local variables reported by `git rev-parse --local-env-vars`, plus namespace.
+const REPOSITORY_ENV: &[&str] = &[
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_NAMESPACE",
+];
+
+pub(super) fn command(root: &Path) -> Command {
+    let mut command = Command::new("git");
+    command.current_dir(root);
+    for name in REPOSITORY_ENV {
+        command.env_remove(name);
+    }
+    command
+}
+
 fn git(root: &Path, args: &[&str]) -> Option<String> {
     if !root.join(".git").exists() {
         return None;
     }
-    let output = Command::new("git")
-        .current_dir(root)
-        .args(args)
-        .output()
-        .ok()?;
+    let output = command(root).args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }

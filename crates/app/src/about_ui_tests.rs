@@ -187,6 +187,23 @@ fn themes_and_menu_transitions_keep_the_same_standard_panel(cx: &mut TestAppCont
                 )
             })
             .expect("window");
+        cx.update_window(h.window.into(), |_, window, _| {
+            let trigger = window.find("about-button").bounds();
+            let menu = window.find("application-menu-button").bounds();
+            assert!(
+                trigger.left() > menu.right(),
+                "About occupies the trailing title region"
+            );
+            assert!(
+                panel.top() >= trigger.bottom(),
+                "the panel opens below its trigger"
+            );
+            assert!(
+                panel.right() <= trigger.right(),
+                "the panel opens toward the window interior"
+            );
+        })
+        .expect("window");
         assert!(
             panel.contains(&link.origin) && panel.contains(&link.bottom_right()),
             "repository fits the panel"

@@ -545,7 +545,6 @@ impl Shell {
                 "title-app-control",
                 self.application_menu_popover(app, cx),
             ))
-            .child(title_control("title-about-control", self.about_button(cx)))
             // Without a document these act on nothing, and each consumes only
             // its own box, so the gaps between them stay bare title-bar pixels.
             .when(self.view.is_some(), |bar| {
@@ -960,7 +959,7 @@ fn recent_row(number: Option<u8>, label: String, muted: gpui_kit::Hsla) -> impl 
 
 /// The width the title reserves for the toolbar.
 pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App, document: bool) -> Pixels {
-    let app = app_button_width(window, cx) + window.rem_size() * 2.;
+    let app = app_button_width(window, cx);
     if !document {
         return app;
     }
@@ -1020,7 +1019,10 @@ pub(super) fn keeps_focus(
 /// One toolbar control's box, which consumes its own left press and double
 /// click so neither arms the title-bar drag that the bare pixels around it,
 /// including the toolbar's gaps, fall through to.
-fn title_control(id: &'static str, child: impl IntoElement) -> gpui_kit::Stateful<gpui_kit::Div> {
+pub(super) fn title_control(
+    id: &'static str,
+    child: impl IntoElement,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
     keeps_focus(id, child)
         .on_mouse_down(MouseButton::Left, |_, _, cx| {
             cx.stop_propagation();
@@ -1099,7 +1101,7 @@ mod tests {
     use gpui_kit::{TestAppContext, WindowHandle};
     use std::path::{Path, PathBuf};
 
-    /// The controls the toolbar offers, in the order they are drawn.
+    /// The title-bar controls, with the permanent controls listed first.
     const CONTROLS: [&str; 5] = [
         "application-menu-button",
         "about-button",
@@ -1189,8 +1191,8 @@ mod tests {
         };
         assert_eq!(
             reserved(cx, false),
-            app + px(32.),
-            "application and About buttons remain available without a document"
+            app,
+            "the left toolbar reserves only its application button without a document"
         );
         open_document(cx, handle);
         // The first and the last control touch the toolbar's own edges.
@@ -1584,10 +1586,10 @@ mod tests {
             shell.read_with(cx, |shell, _| shell.title_drag_pending)
         };
 
-        // The pixels between the About button and the orientation group
+        // The pixels between the application button and the orientation group
         // hold a gap, the separator and its margins, all bare title-bar pixels.
         let gap = cx.update(|window, _| {
-            let first = window.find("about-button").bounds();
+            let first = window.find("application-menu-button").bounds();
             let second = window.find("orientation-horizontal").bounds();
             gpui_kit::point((first.right() + second.origin.x) / 2., first.center().y)
         });

@@ -577,8 +577,8 @@ only automated behavior, not desktop interaction.
 
 ## About panel (#107)
 
-`about_ui.rs` adds a standard toolbar Button, direct PopupMenu command and the
-existing `hints::pinned` composition over standard Popover. It adds no replacement
+`about_ui.rs` adds a standard ghost Info Button at the right end of the title bar,
+a direct PopupMenu command and the existing `hints::pinned` composition over standard Popover. It adds no replacement
 widget. Shell retains one `PinnedHint` and its scoped focus-out subscription;
 window deactivation closes it through the existing activation observer. Surface
 click dismissal is application panel policy. The repository uses the toolkit's

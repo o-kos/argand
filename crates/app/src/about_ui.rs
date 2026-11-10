@@ -3,7 +3,7 @@
 use super::*;
 use crate::about;
 use gpui_kit::base::Link;
-use gpui_kit::component::Icon;
+use gpui_kit::component::{Icon, Selectable};
 use gpui_kit::{Anchor, AnyElement, img};
 
 actions!(about_panel, [ShowAbout]);
@@ -107,15 +107,28 @@ impl Render for About {
                             .flex()
                             .flex_col()
                             .gap_1()
-                            .child(div().font_weight(FontWeight::SEMIBOLD).child(about::NAME))
-                            .child(format!("Version {}", about::VERSION)),
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(about::NAME),
+                            )
+                            .child(
+                                div()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Version {}", about::VERSION)),
+                            ),
                     ),
             )
             .child(about::DESCRIPTION)
             .child(settings_ui::detail_row("Licence", about::LICENSE, cx))
             .child(settings_ui::detail_row("Tag", about::TAG, cx))
             .child(settings_ui::detail_row("Commit", about::HASH, cx))
-            .child(settings_ui::detail_row("Commit date", about::DATE, cx))
+            .child(settings_ui::detail_row(
+                "Commit date",
+                about::display_date(about::DATE),
+                cx,
+            ))
             .child(
                 div()
                     .id("about-repository")
@@ -199,22 +212,15 @@ impl Shell {
 
     pub(super) fn about_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let open = self.about.hint.read(cx).is_open();
-        let state = if open {
-            app_menu_ui::ToolbarState::On
-        } else {
-            app_menu_ui::ToolbarState::Off
-        };
         let mut button = Button::new("about-button")
             .accessibility_label("About Argand")
             .tab_stop(false)
             .small()
             .w_7()
             .h_7()
-            .custom(app_menu_ui::toolbar_style(state, cx))
-            .when_some(app_menu_ui::on_surface(state, cx), |button, surface| {
-                button.bg(surface)
-            })
-            .child(Icon::new(gpui_kit::assets::IconName::Info).small())
+            .ghost()
+            .open(open)
+            .child(Icon::new(gpui_kit::assets::IconName::Info).size_5())
             .on_click(cx.listener(|shell, _, window, cx| shell.show_about(&ShowAbout, window, cx)));
         let hint = self.about.hint.downgrade();
         button.interactivity().tooltip(move |_, cx| {
@@ -228,7 +234,7 @@ impl Shell {
             "about-popover",
             &self.about.hint,
             button,
-            Anchor::TopLeft,
+            Anchor::TopRight,
             cx,
         )
     }

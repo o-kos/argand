@@ -5,7 +5,7 @@ Resolves #107: https://github.com/o-kos/argand/issues/107.
 ## Overview
 
 Add a compact About panel, composed like File information, with a permanent
-main-toolbar button and a direct application-menu command. Show the approved
+right title-bar button before the window controls and a direct application-menu command. Show the approved
 icon, product name, Cargo version, description, MIT licence, repository URL and
 build commit identity. No keyboard shortcut or independent application window.
 
@@ -28,8 +28,8 @@ the owner explicitly authorized a separate worktree after its branch changed.
 
 ## Decisions
 
-- Toolbar button and main-menu command open one retained panel. No shortcut.
-- Hover shows a tooltip containing exact HEAD tag (or `untagged`), short hash and
+- Right title-bar Info button and main-menu command open one retained panel. No shortcut.
+- Hover shows a tooltip containing the package version, exact HEAD tag (or `untagged`), short hash and
   commit timestamp. Hover does not open the panel.
 - The panel closes on any click within it (the repository Link also opens its
   URL), Escape, focus leaving its entire subtree, or window deactivation.
@@ -39,9 +39,13 @@ the owner explicitly authorized a separate worktree after its branch changed.
   in ISO 8601 with offset, exact tag or `untagged`. No nearest-tag substitution.
 - Rebuild tracking covers worktree HEAD, its symbolic ref, shared refs/tags and
   packed refs; missing Git/source archive data has explicit unavailable labels.
-- Native input is unavailable in this environment. Do not bypass native access
-  restrictions. Record native acceptance as incomplete and retain Draft status;
-  dispatch full remote CI separately if Ready acceptance cannot be established.
+- Owner correction: use a standard compact ghost Info Button at the right end of
+  the title bar, a right-anchored panel, an emphasized product heading and secondary
+  version. Format the commit date with a space instead of `T`, preserving its timezone.
+- A production-binary run on an isolated Xvfb X11 display verified the earlier UI.
+  The owner requested the visual corrections above after inspecting that evidence;
+  rebuild and refresh native acceptance for the changed UI. Physical Wayland and
+  other-platform acceptance are not established by the X11 run.
 
 ## Rejected alternatives
 
@@ -119,3 +123,32 @@ Native acceptance remains incomplete.
 
 Merge is not authorized by this task. Native acceptance must be completed before
 Ready/merge under the repository policy. Preserve the independent main checkout.
+
+## Current validation refresh
+
+The earlier 1,169-test gate predates the accepted round-2 Git-environment isolation
+finding and the owner's subsequent UI correction. It is historical evidence, not
+validation of the current source. Round 2 accepted one Git-environment isolation
+finding, with no rejected findings. Both production metadata commands and fixture
+commands now clear repository-local Git environment variables. A subprocess
+regression verifies that hostile inherited settings cannot redirect fixture writes
+or change the caller repository.
+
+After that correction and the title-bar refinement, ordinary `cargo fmt --all --
+--check`, `cargo clippy --all-targets --locked` and `cargo test --locked` pass in the
+owner-approved shared baseline. Current workspace results: 1171 tests passed,
+with no failures and 1 ignored tests. These include the isolation regression,
+readable commit-date and version-tooltip assertions, and the production-path About
+pointer, keyboard, focus, dismissal and right-anchored geometry scenarios.
+
+The normal commands use the installed toolchain and stock rustup auto-install
+setting disabled; no executable selectors, shell dispatch functions, PATH changes
+or compiler wrappers are needed. Saved compiler diagnostics from an earlier
+thiserror build can replay channel-sync/download text; that text alone does not
+establish a new rustup installation attempt.
+
+A production release from the committed source, refreshed native acceptance for
+right placement, tooltip, themes and narrow-window layout, final independent round
+3 and full remote CI remain pending. Keep the Pull Request Draft while these
+requirements are incomplete. Exact snapshot, artifact and current check evidence
+are retained in the external handoff and Pull Request.

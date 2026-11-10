@@ -9,8 +9,16 @@ pub const HASH: &str = env!("ARGAND_GIT_HASH");
 pub const DATE: &str = env!("ARGAND_GIT_DATE");
 pub const TAG: &str = env!("ARGAND_GIT_TAG");
 
+pub fn display_date(date: &str) -> String {
+    // Git supplies RFC 3339; keep the offset and unavailable labels intact.
+    date.replacen('T', " ", 1)
+}
+
 pub fn tooltip() -> String {
-    format!("About {NAME}\n{TAG} · {HASH}\n{DATE}")
+    format!(
+        "About {NAME} {VERSION}\n{TAG} · {HASH}\n{}",
+        display_date(DATE)
+    )
 }
 
 #[cfg(test)]
