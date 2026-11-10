@@ -1036,10 +1036,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         #[cfg(test)]
-        if std::mem::take(&mut self.conversion.fail_reader_open) {
-            std::fs::remove_file(&origin.path)
-                .expect("remove published scratch before reader preparation");
-        }
+        remove_reader_for_test(&mut self.conversion.fail_reader_open, &origin.path);
         self.conversion.next_reader += 1;
         let token = self.conversion.next_reader;
         let adopted = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -1186,3 +1183,6 @@ impl Shell {
 #[cfg(test)]
 #[path = "conversion_ui_tests.rs"]
 pub(super) mod tests;
+
+#[cfg(test)]
+include!("conversion_ui_support_test.rs");

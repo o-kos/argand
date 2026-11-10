@@ -76,17 +76,6 @@ pub(super) struct BadgeEntry {
     _events: Subscription,
 }
 
-#[cfg(test)]
-impl BadgeEntry {
-    pub fn text(&self, cx: &gpui_kit::App) -> String {
-        self.input.read(cx).value().to_string()
-    }
-
-    pub fn invalid(&self, cx: &gpui_kit::App) -> bool {
-        self.marked(cx)
-    }
-}
-
 impl BadgeEntry {
     fn marked(&self, cx: &gpui_kit::App) -> bool {
         self.refused
@@ -333,3 +322,6 @@ fn typed(
     }
     Some(selection)
 }
+
+#[cfg(test)]
+include!("badge_entry_support_test.rs");

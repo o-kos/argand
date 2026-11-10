@@ -21,7 +21,7 @@ fn tone(input: &SignalMeta, frequency: f64) -> Vec<f32> {
         .flat_map(|n| {
             let phase = std::f64::consts::TAU * frequency * n as f64 / input.sample_rate;
             let values = [0.5 * phase.cos() as f32, 0.5 * phase.sin() as f32];
-            values[..input.channels()].to_vec()
+            values.into_iter().take(input.channels())
         })
         .collect()
 }
@@ -170,56 +170,6 @@ fn cropped_real_output_stops_a_tone_just_outside_its_target_band() {
         .map(|v| v[0].abs())
         .fold(0.0, f32::max);
     assert!(peak < 0.0005, "peak={peak}");
-}
-
-#[test]
-#[ignore = "manual release-mode conversion cost measurement"]
-fn conversion_cost_for_one_million_input_frames() {
-    for (iq, output_rate, reference) in [
-        (true, 50_000.0, 0.0),
-        (true, 1_000_000.0, 100_000.0),
-        (false, 1_000_000.0, 250_000.0),
-    ] {
-        let mut input = meta(iq, 1_000_000.0, 0.0);
-        input.len_samples = 1_000_000;
-        let output = meta(true, output_rate, reference);
-        let started = std::time::Instant::now();
-        let plan = ConversionPlan::new(&input, &output).unwrap();
-        let mut stream = plan.stream(input.len_samples).unwrap();
-        let prepared = started.elapsed();
-        let block = vec![0.125; 4096 * input.channels()];
-        let mut count = 0u64;
-        let mut sink = |values: &[[f32; 2]]| -> Result<(), ()> {
-            count += values.len() as u64;
-            Ok(())
-        };
-        let mut remaining = input.len_samples as usize;
-        while remaining > 0 {
-            let take = remaining.min(4096);
-            stream
-                .push(
-                    &block[..take * input.channels()],
-                    input.channels(),
-                    &mut sink,
-                )
-                .unwrap();
-            remaining -= take;
-        }
-        stream.finish(&mut sink).unwrap();
-        assert_eq!(count, plan.samples);
-        eprintln!(
-            "input IQ={iq}, output {output_rate} Hz ref={reference}: prepare={prepared:?}, total={:?}, frames={count}",
-            started.elapsed()
-        );
-    }
-    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-        for line in status
-            .lines()
-            .filter(|line| line.starts_with("VmHWM:") || line.starts_with("VmRSS:"))
-        {
-            eprintln!("{line}");
-        }
-    }
 }
 
 #[test]
