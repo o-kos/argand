@@ -85,6 +85,37 @@ follow entry intent. The standard HoverCard has public delays but no controlled
 open/close API in this version. Do not invent private APIs or replace either
 control with custom behavior; stop and discuss any unresolved toolkit limitation.
 
+## Toolkit limitation and proposed adapter (owner decision required)
+
+The locked public Popover takes focus unconditionally when opened
+(`gpui-base 0.9.1`, `popover.rs`, `PopoverState::transition_to`). Its surface owns
+the dialog role, tab group and Escape dismissal. Redirecting `track_focus` to an
+external handle does not express the contract, fails when no element is focused,
+and is not an accepted workaround. HoverCard owns hover scheduling but exposes
+only `HoverCardState::is_open`; its state mutation/cancellation methods are private.
+
+The public `gpui_kit::base::Popup` is the standard anchored host used by both. Its
+source explicitly delegates open state and interaction to callers. It supplies
+measurement, placement, deferred rendering and occlusion, but not panel focus,
+Escape, outside dismissal or hover cancellation. Using it would require replacing
+those responsibilities of the current Popover composition in shared application
+code. Under CONTRIBUTING's component-selection policy, extending the existing
+shared element does not itself authorize that nonstandard behavior.
+
+Proposed single adapter: extend the existing shared hint infrastructure around
+standard Popup, keeping existing panel content and standard Input/Select/Button
+and Tooltip. The application would own reveal/close timers and invalidation,
+per-window ownership, focus entry/restoration, nested dismissal coordination,
+Tab entry and external-help suppression. Validate all three panels, no-current-focus
+opening, keyboard/pointer entry, nested Select, outside target focus, independent
+windows and deactivation with automated regressions plus production Xvfb scenarios.
+This is a lifecycle maintenance obligation, not merely a visual wrapper.
+
+**Owner decision: pending.** No adapter/application code has been implemented.
+Alternative: owner-approved toolkit public-API work in the shared dependency graph;
+no dependency change or registry patch is authorized by this plan. Do not weaken
+the accepted UX to fit existing APIs without another owner decision.
+
 ## Proposed implementation sequence
 
 - [x] Read repository policy, inspect current consumers and locked public APIs.
