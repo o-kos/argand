@@ -10,9 +10,9 @@ warning balloon while the status-bar Range tooltip repeats the same explanation.
 Establish one application-wide policy with independent state for each window,
 retaining standard toolkit controls and the existing shared hint infrastructure.
 
-This initial plan records investigation only. No proposed UX decision below is
-accepted, and no application behavior or runtime validation has changed. Agree
-the policy with the owner before implementing it. Compact status-control geometry
+The owner approved the lifecycle policy below for implementation. Runtime
+validation remains pending. Work takes place in the explicitly requested linked
+worktree, preserving the independent main-checkout work. Compact status-control geometry
 accepted in #225 is outside this task.
 
 ## Roles and risk
@@ -49,24 +49,47 @@ accepted in #225 is outside this task.
   Existing controls are the starting point, not evidence that a replacement
   widget is approved. No toolkit/dependency upgrade or registry patch is planned.
 
-## Pending owner decisions
+## Accepted owner policy
 
-1. Whether About remains click-only or gains File/Analysis-style hover preview.
-2. How hover preview becomes pinned; pointer leave, outside click, Escape and
-   window deactivation behavior for each state.
-3. Whether Range advice remains automatic or becomes hover help with its inline
-   warning retained.
-4. Which help is allowed inside the current panel and which external tooltips
-   are suppressed.
-5. Shared show/hide delays and transitions between neighboring triggers.
+- File, Analysis and About share hover behavior: reveal after 600 ms without
+  taking keyboard focus. The earlier provisional click-only About decision is
+  superseded. There is no pinned state.
+- Leaving the union of trigger and panel closes after 300 ms unless genuine
+  focus remains inside the panel or its nested child. Re-entering cancels close.
+- Explicit click, menu command or keyboard command opens and transfers focus
+  into the panel. Tab on a visible hover preview enters its first enabled stop;
+  Shift+Tab enters its last, then ordinary scoped traversal applies.
+- Escape dismisses the topmost nested surface before the panel, preserving
+  existing editor revert semantics and appropriate pre-entry focus restoration.
+  Outside clicks close while allowing the target to take focus.
+- Deactivation closes panels/tooltips and cancels pending reveals. Activation
+  alone must not resurrect them; a new interaction is required.
+- Neighboring triggers start the shared hover delay, with at most one panel.
+  Focus genuinely inside the current panel prevents hover replacement; explicit
+  invocation can switch. Each window owns independent state.
+- Keep Range advice content and automatic visibility unchanged. While a panel
+  owns pointer or focus, suppress external tooltips, dismiss visible external
+  help and invalidate pending requests. No stale reveal without fresh interaction.
+  Internal field help remains available.
+- Preserve Analysis keep/revert, File conversion drafts, nested Select behavior,
+  keyboard commands and source safety. No menu renaming, extra toolbar Tab stops,
+  toolkit graph changes or new custom widget is approved.
 
-Record accepted decisions here and in the Issue before implementation. Do not
-infer acceptance from existing behavior or toolkit defaults.
+## Framework composition check
+
+The locked standard Popover always focuses its configured `track_focus` handle
+on opening; it has no public autofocus-disable option. Investigate retaining the
+existing focused handle during hover while content keeps its own separate scope,
+then using ordinary focus entry for explicit invocation. Editor autofocus must
+follow entry intent. The standard HoverCard has public delays but no controlled
+open/close API in this version. Do not invent private APIs or replace either
+control with custom behavior; stop and discuss any unresolved toolkit limitation.
 
 ## Proposed implementation sequence
 
 - [x] Read repository policy, inspect current consumers and locked public APIs.
-- [ ] Agree the five pending owner decisions and complete the consumer inventory.
+- [x] Agree the owner lifecycle decisions.
+- [ ] Complete the consumer inventory.
 - [ ] Document the accepted transition table, ownership, dismissal reasons,
   suppression boundaries and lifecycle acceptance scenarios.
 - [ ] Verify the remaining public toolkit seams; select the smallest extension
@@ -84,15 +107,15 @@ infer acceptance from existing behavior or toolkit defaults.
 
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
-| One documented policy governs identified consumers | Consumer inventory and accepted transition table matched to code | Pending owner decisions | Investigation only |
+| One documented policy governs identified consumers | Consumer inventory and accepted transition table matched to code | Accepted policy; implementation pending | Runtime checks pending |
 | Analysis and status Range do not compete | Open warned Analysis, hover status Range, traverse permitted nested help | Pending | Production interaction not run |
 | Delayed requests cannot reveal stale surfaces | Leave before delay; switch, dismiss, remove trigger, deactivate and close window; require fresh interaction | Pending | Automated and production scenarios required |
 | Windows and transactions remain independent | Two windows; Analysis keep/revert; File draft; focus return; nested Select Escape before panel dismissal | Pending | No runtime validation yet |
 | Standard controls use verified public APIs | Locked-source audit and independent review of final implementation | Partial investigation | Suppression/cancellation seam still to verify |
 | Opening, switching, pinning and permitted nested help follow policy | Current production binary in isolated Xvfb, appearance and pointer/keyboard interactions | Pending | Native Wayland, Windows and macOS UI evidence unperformed |
 
-Expected results for undecided interactions must be filled in after owner decisions;
-tests and observations must not silently establish product behavior.
+Use the accepted policy above as the expected result for each interaction; tests
+and observations must not silently change product behavior.
 
 ## Resources and validation
 
