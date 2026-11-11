@@ -33,12 +33,13 @@ fn current_identity() {
 
 #[test]
 fn compile_time_negative_control() {
-    assert_eq!(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).canonicalize().unwrap(),
-        std::env::current_dir().unwrap());
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_checkout-identity-regression"))
-        .output().unwrap();
-    assert!(output.status.success());
-    assert_eq!(output.stdout, std::fs::read("fixture").unwrap());
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let executable = std::path::Path::new(env!("CARGO_BIN_EXE_checkout-identity-regression"));
+    let current_source = std::env::var_os("CARGO_MANIFEST_DIR").unwrap();
+    let current_executable = std::env::var_os("CARGO_BIN_EXE_checkout-identity-regression").unwrap();
+    assert!(source == std::path::Path::new(&current_source)
+        && executable == std::path::Path::new(&current_executable),
+        "STALE_COMPILE_TIME_PATHS: source={} executable={}", source.display(), executable.display());
 }
 '''
 
@@ -52,8 +53,23 @@ def invoke(cargo, root, *args, succeeds=True):
     return result.stdout
 
 
+def harness_identity(output):
+    messages = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
+    artifact = next(message for message in messages
+                    if message.get("reason") == "compiler-artifact"
+                    and message["target"]["name"] == "identity")
+    path = Path(artifact["executable"])
+    return path, hashlib.sha256(path.read_bytes()).hexdigest(), artifact["fresh"]
+
+
 def main():
-    cargo = os.environ.get("CARGO", "cargo")
+    # Resolve outside the temporary packages; never let their cwd select another
+    # rustup default instead of the repository's installed toolchain.
+    for variable in ["CARGO", "RUSTC", "RUSTDOC"]:
+        value = os.environ.get(variable, "")
+        if not value or not Path(value).is_absolute() or Path(value).resolve().stem == "rustup":
+            raise AssertionError(f"set {variable} to an absolute installed toolchain executable")
+    cargo = os.environ["CARGO"]
     with tempfile.TemporaryDirectory(prefix="argand-checkout-identity-") as tmp:
         base = Path(tmp)
         old, current = base / "old checkout", base / "current checkout"
@@ -77,39 +93,47 @@ def main():
         if build_dir.is_relative_to(base):
             raise AssertionError("configure the existing common build.build-dir first")
         invoke(cargo, old, "--version")
-        invoke(cargo, old, "test", "--offline", "--", "--nocapture")
-        artifacts = invoke(cargo, old, "test", "--offline", "--test", "identity",
-                           "--no-run", "--message-format=json")
-        messages = [json.loads(line) for line in artifacts.splitlines() if line.startswith("{")]
-        harness = next(Path(message["executable"]) for message in messages
-                       if message.get("reason") == "compiler-artifact"
-                       and message["target"]["name"] == "identity")
-        harness_hash = hashlib.sha256(harness.read_bytes()).hexdigest()
+        output = invoke(cargo, old, "test", "--offline", "--message-format=json",
+                        "--", "--nocapture")
+        previous = harness_identity(output)
+        observed_reuse = 0
+
+        def transition(*args):
+            nonlocal previous, observed_reuse
+            output = invoke(cargo, current, "test", "--offline", "--message-format=json",
+                            *args, "--", "current_identity", "--nocapture")
+            active = harness_identity(output)
+            reused = active[0:2] == previous[0:2] and active[2]
+            if active[2] and active[0] == previous[0]:
+                assert active[1] == previous[1], "fresh harness content changed"
+            observed_reuse += reused
+            print(f"active_harness={active[0]}; sha256={active[1]}; fresh={active[2]}; reused={reused}")
+            previous = active
+
         for selection in [("--workspace",), ("-p", "checkout-identity-regression"),
                           ("--test", "identity")]:
-            invoke(cargo, current, "test", "--offline", *selection, "--",
-                   "current_identity", "--nocapture")
-        # On affected Cargo versions the same artifact still contains old paths.
+            transition(*selection)
         control = subprocess.run([cargo, "test", "--offline", "--test", "identity", "--",
                                   "compile_time_negative_control", "--nocapture"],
                                  cwd=current, text=True, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT)
-        print("Compile-time negative control (failure demonstrates relocation bug):")
+        print("Compile-time negative control:")
         print(control.stdout, end="")
-        print(f"negative_control_exit={control.returncode}")
-        print(f"harness={harness}; sha256={harness_hash}")
+        if control.returncode:
+            assert control.returncode == 101 and "STALE_COMPILE_TIME_PATHS:" in control.stdout, (
+                "negative control failed for an unexpected Cargo/test error")
+            assert observed_reuse, "stale compile-time paths without observed harness reuse"
+        print(f"negative_control_exit={control.returncode}; observed_reuse={observed_reuse}")
         print(f"common_build_dir={build_dir}")
         print("source_sha256=" + hashlib.sha256(TEST.encode()).hexdigest())
         shutil.rmtree(old)
-        invoke(cargo, current, "test", "--offline", "--test", "identity", "--",
-               "current_identity", "--nocapture")
-        # Changing final outputs without moving sources must retain current paths too.
+        transition("--test", "identity")
+        # The new marker must reject the previous current/target executable too.
         alternate = current / "alternate final outputs"
         (alternate / "debug").mkdir(parents=True)
-        (alternate / "debug/binary-marker").write_text("current", encoding="utf-8")
-        invoke(cargo, current, "test", "--offline", "--target-dir", str(alternate),
-               "--test", "identity", "--", "current_identity", "--nocapture")
-        assert hashlib.sha256(harness.read_bytes()).hexdigest() == harness_hash, "harness changed"
+        (alternate / "debug/binary-marker").write_text("alternate", encoding="utf-8")
+        (current / "fixture").write_text("alternate", encoding="utf-8")
+        transition("--target-dir", str(alternate), "--test", "identity")
         print("PASS: workspace/package/test selection, live/removed old checkout, final-output transition")
 
 

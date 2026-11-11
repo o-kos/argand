@@ -389,7 +389,8 @@ test harness directly requires the same explicit Cargo environment; missing path
 fail rather than falling back to a guessed binary or another source tree.
 The dependency-free `.github/scripts/test-checkout-identity.py` exercises runtime
 paths with live and removed prior checkouts and changed final-output directories.
-Run it with the installed Cargo and existing common `build.build-dir`; it creates
+Run it with explicit direct installed `CARGO`, `RUSTC` and `RUSTDOC` executable
+paths and the existing common `build.build-dir`; it creates
 temporary source packages and local final outputs, never another build cache.
 
 The commands are not restated in the workflow with different flags. Formatting and lint configuration lives in the repository, where `cargo` finds it on its own, so what runs locally and what blocks the merge cannot drift apart. Tighten a rule by changing that configuration, not the workflow.

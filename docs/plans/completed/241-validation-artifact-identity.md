@@ -72,11 +72,15 @@ do not guess a target directory or borrow a source location. The owned source au
 found no other compile-time test uses of these checkout-dependent Cargo variables.
 The build script already reads its manifest directory at runtime; About is excluded.
 
-The regression checks a reused harness's SHA256, native paths containing spaces,
+The regression records the active JSON-reported harness path, SHA256 and freshness
+at every transition, accepting correct rebuilding while checking observed reuse.
+It checks native paths containing spaces,
 workspace/package/test target selection, distinct binary/fixture markers, a live
 then removed old source directory, and a final-output-only directory transition.
 The compile-time negative control reports failure on the affected Cargo version;
-the runtime checks pass. Temporary packages have no dependencies and share the
+the runtime checks pass. Alternate final outputs use a distinct executable marker
+and expected fixture value, rejecting the previous current-output executable too.
+Temporary packages have no dependencies and share the
 existing common intermediate directory; no separate cache is created or cleared.
 
 The two probes become explicit `harness = false`, `test = false` benches without
@@ -104,14 +108,14 @@ checks them; ordinary tests do not select them. No feature graph changes are nee
   without changing its gate or PATH. This resolves a publication blocker: Cargo
   subcommand discovery reached a rustup proxy despite direct Cargo/Rustc selection.
 - [ ] Complete current-revision validation and independent review.
-- [ ] Move this plan to `completed/` before final review.
+- [x] Move this plan to `completed/` before final review.
 
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, last after other checks pass
+- [ ] Final post-review `cargo build --release --locked`, last after other checks pass
 - [x] Identity reproduction/regression and probe-target selection checks
 - [ ] Independent review and coordinator assessment
 
@@ -145,3 +149,28 @@ An earlier direct-Cargo invocation discovered a subcommand rustup proxy and logg
 an attempted rust-src download. No rust-src directory/component was installed;
 the installed-component manifest retained its earlier timestamp. Subsequent
 commands use direct subcommand executables and preserve PATH/toolchain settings.
+
+The initial release build passed after the genuine local gate and before the
+Python/CI review corrections below, rebuilding only the application in 4m19s.
+Its source revision and output hashes are retained in the external handoff rather
+than in this plan. A final post-review build remains pending.
+
+## Independent review dispositions
+
+Round 1 raised three substantive findings, all accepted:
+
+- Explicitly preserve the installed repository toolchain when invoking Cargo
+  from temporary source directories. CI resolves Cargo/Rustc/Rustdoc in the
+  repository before starting the script; local execution requires absolute direct
+  installed-tool paths and rejects rustup proxies.
+- Distinguish alternate output identity from the previous current output. The
+  alternate executable marker and expected fixture value are now both `alternate`,
+  while the previous current-output marker remains `current`.
+- Observe each transition's actual active harness and permit correct rebuilding.
+  JSON artifact records provide its current path/freshness; each active file is
+  hashed rather than repeatedly inspecting the original path. Only a fresh
+  same-path artifact is required to retain its content. The negative control
+  distinguishes its explicit stale-path panic from an unexpected Cargo error.
+
+The corrected dependency-free regression passes with observed harness reuse on
+the installed Cargo. Round 2 and the final coordinator assessment remain pending.

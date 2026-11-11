@@ -64,7 +64,11 @@ jobs:
         # Reuse the runner's ordinary build directory across the temporary packages.
         env:
           CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/target
-        run: python3 .github/scripts/test-checkout-identity.py
+        run: |
+          CARGO="$(rustup which cargo)" \
+          RUSTC="$(rustup which rustc)" \
+          RUSTDOC="$(rustup which rustdoc)" \
+          python3 .github/scripts/test-checkout-identity.py
 
       # Draft feedback stops after linting; Ready and main retain the full gate.
       - name: Check formatting
