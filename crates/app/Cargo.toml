@@ -11,6 +11,11 @@ repository = "https://github.com/o-kos/argand"
 name = "argand"
 path = "src/main.rs"
 
+[[bench]]
+name = "fft_scheduling"
+harness = false
+test = false
+
 [lints]
 workspace = true
 

@@ -275,9 +275,15 @@ platforms, thermal feedback and runtime latency-driven adaptation remain proposa
 A portable window-free benchmark of the implemented path is included:
 
 ```sh
-CARGO_TARGET_DIR=/tmp/argand-67/target cargo build -p argand --release --locked --example fft_scheduling
-/tmp/argand-67/target/release/examples/fft_scheduling tests/signals/m39-repeat-1GB.wav 8 1024
+cargo build -p argand --release --locked --bench fft_scheduling --message-format=json
 ```
+
+Run the `executable` reported for the benchmark target with
+`tests/signals/m39-repeat-1GB.wav 8 1024`. Use Cargo's actual artifact path (including
+the native suffix on Windows); with split build-dir it is an intermediate benchmark
+harness, not a shipped application binary. The common intermediate build directory
+remains configured separately. Ordinary tests skip
+the probe, while all-target Clippy deliberately checks it in local and CI gates.
 
 It prints opening and analysis times separately, first publication, update count,
 FFT count and final grid hash. It does not warm/evict caches or pin CPUs for you.

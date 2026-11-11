@@ -17,8 +17,8 @@ run() {
     }
 }
 
-run cargo fmt --all -- --check
-run cargo clippy --all-targets --locked
-run cargo test --locked
+run "${CARGO_FMT:-${CARGO:-cargo}}" fmt --all -- --check
+run "${CARGO_CLIPPY:-${CARGO:-cargo}}" clippy --all-targets --locked
+run "${CARGO:-cargo}" test --locked
 
 echo "pre-push: all checks passed"
