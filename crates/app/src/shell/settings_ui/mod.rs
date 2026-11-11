@@ -638,7 +638,6 @@ impl Shell {
         div()
             .flex()
             .items_center()
-            .gap_2()
             .child(
                 div()
                     .id("analysis-summary")

@@ -34,30 +34,50 @@ external-compilation guard. Stop before unapproved dependency rebuilding.
 
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
-| Equal FFT text insets | Measure resting, hovered and pinned summary against both separators in light/dark themes and normal/high display scaling | Pending | Native appearance evidence required |
-| Hint and keyboard behavior retained | Left click, Ctrl+,, Escape; compare the neighboring File control | Pending | Native interaction required |
-| Independent Range action retained | Click recommended Range and use Ctrl+R; check pending/disabled state | Pending | Requires a suitable capture |
-| Layout remains usable | Long FFT/window labels and narrow window | Pending | Native appearance required |
+| Equal FFT text insets | Measure resting, hovered and pinned summary against both separators in light/dark themes and normal/high display scaling | Incomplete | Native APIs unavailable; no appearance measurement performed |
+| Hint and keyboard behavior retained | Left click, Ctrl+,, Escape; compare the neighboring File control | Incomplete | Native APIs unavailable; interaction not exercised |
+| Independent Range action retained | Click recommended Range and use Ctrl+R; check pending/disabled state | Incomplete | Native interaction and suitable capture scenario unperformed |
+| Layout remains usable | Long FFT/window labels and narrow window | Incomplete | Native appearance not exercised |
 
 ## Implementation steps
 
 - [x] Inspect the current implementation, policy and toolkit behavior.
-- [ ] Remove the redundant analysis-group gap and add an Unreleased changelog entry.
-- [ ] Complete current-revision local validation and production UI acceptance.
-- [ ] Complete independent review and coordinator assessment.
+- [x] Remove the redundant analysis-group gap and add an Unreleased changelog entry.
+- [x] Complete current-code local validation.
+- [ ] ⚠️ Complete production UI acceptance: native computer control is unavailable.
+- [x] Complete independent review and coordinator assessment.
 - [ ] Move this plan to `completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the other checks pass
-- [ ] Record production binary identity, native observations and remaining limits.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the other checks pass
+- [x] Record production binary identity and remaining native-validation limits.
 
 No implementation-mirroring test is planned for this local spacing correction.
 Existing interaction coverage, the full local gate and production UI checks remain
 required. Unavailable native interaction leaves acceptance incomplete and the PR Draft.
+
+### Local results and acceptance limits
+
+The required formatting, Clippy, test and final release commands passed using the
+approved installed compiler and common cache. Tests reported 883 passing cases;
+optional real-capture fixture branches are not claimed exercised. The existing
+compilation guard, scoped to this worktree, allowed no external compilation.
+The exact launched CLI integration and I/O harnesses embed this worktree's binary
+and source paths. Raw command logs and the release binary digest are retained in
+the external review handoff, outside the worktree.
+
+Independent review by `gpt-6.1-sol` high returned no substantive findings in its
+first round. The coordinator assessed the exact implementation and evidence; no
+finding dispositions were required.
+
+Native APIs are disabled in the available computer tool; discovery found no other
+permitted native interaction capability. No production UI scenario or separator
+measurement was performed. All native acceptance criteria remain incomplete and
+the Pull Request remains Draft. The plan stays active until acceptance completes.
 
 ## Post-completion
 
