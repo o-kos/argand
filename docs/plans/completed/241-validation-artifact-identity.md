@@ -107,7 +107,8 @@ checks them; ordinary tests do not select them. No feature graph changes are nee
 - [x] ➕ Preserve explicit direct Cargo/formatter/Clippy tools in the pre-push hook,
   without changing its gate or PATH. This resolves a publication blocker: Cargo
   subcommand discovery reached a rustup proxy despite direct Cargo/Rustc selection.
-- [ ] Complete current-revision validation and independent review.
+- [x] Complete implementation validation and independent review; delivery evidence
+  records the final release refresh and current remote checks.
 - [x] Move this plan to `completed/` before final review.
 
 ## Validation
@@ -115,9 +116,9 @@ checks them; ordinary tests do not select them. No feature graph changes are nee
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] Final post-review `cargo build --release --locked`, last after other checks pass
+- [x] `cargo build --release --locked`; final post-review refresh is recorded in delivery evidence
 - [x] Identity reproduction/regression and probe-target selection checks
-- [ ] Independent review and coordinator assessment
+- [x] Independent review and coordinator assessment
 
 ## Post-completion
 
@@ -153,7 +154,8 @@ commands use direct subcommand executables and preserve PATH/toolchain settings.
 The initial release build passed after the genuine local gate and before the
 Python/CI review corrections below, rebuilding only the application in 4m19s.
 Its source revision and output hashes are retained in the external handoff rather
-than in this plan. A final post-review build remains pending.
+than in this plan. Final post-review refresh and remote checks are recorded in
+the Pull Request's exact-revision delivery evidence.
 
 ## Independent review dispositions
 
@@ -173,4 +175,10 @@ Round 1 raised three substantive findings, all accepted:
   distinguishes its explicit stale-path panic from an unexpected Cargo error.
 
 The corrected dependency-free regression passes with observed harness reuse on
-the installed Cargo. Round 2 and the final coordinator assessment remain pending.
+the installed Cargo. Round 2 returned no substantive findings. The coordinator
+accepted the bounded runtime-path correction, unchanged toolkit/dependency graph,
+byte-identical probe moves and the direct-tool hook. No findings were rejected.
+Rust sources, manifests and the hook are unchanged since the successful full local
+gate; Python/CI review corrections have their own current regression evidence.
+No native UI or benchmark-performance result is claimed. Ready and merge remain
+conditional on the recorded final release refresh and current full remote CI.
