@@ -34,8 +34,9 @@ Retain the standard actionable Range Button and nonactionable text container;
 retain hover/pinned hints, focus wrappers, tooltips and action entry points.
 No custom widget, optical pixel offset or architecture invariant change is needed.
 
-The owner visually accepted the compact layout and authorized a local commit.
-Pushes, PR edits, Ready and merge remain unauthorized. Preserve the local UI skill
+The owner visually accepted the compact layout and initially requested a local
+commit without push, then authorized publication, full CI, merge and safe cleanup.
+Preserve the local UI skill
 clarification and concurrent #241/#240 work. Use the agreed direct Rust 1.98.1,
 shared intermediate cache and workspace-local final outputs. The dependency guard
 must refuse unapproved external compilation. UI launches use verified isolated
@@ -58,7 +59,7 @@ Xvfb/X11 only, with child display/backend and config/session/cache isolation.
 - [x] Complete current-code local gate, release last.
 - [x] Exercise actual production UI in verified isolated Xvfb; record unperformed transient cases.
 - [x] Complete independent review and coordinator assessment for this revision.
-- [ ] Move plan to `completed/` only after acceptance and final-review authorization.
+- [x] Move this accepted plan to `completed/` for final publication.
 
 ## Validation
 
@@ -95,10 +96,12 @@ findings; no finding dispositions were required.
 Transient pending/conversion-busy interactions remain unperformed; no unrelated
 conversion was manufactured. Xvfb does not establish Wayland or platform-specific
 behavior. The owner visually accepted the result with these recorded validation
-limits and requested a local commit without a push. The plan remains active for
-the separately authorized final publication lifecycle.
+limits, initially requested a local commit without a push, then authorized the
+final publication lifecycle. Tooltip/panel lifecycle unification is separate
+Issue #246; no new tooltip behavior is part of this completed spacing task.
 
 ## Post-completion
 
-Publication and merge remain subject to the owner's explicit authorization and
-current required CI. Preserve unrelated data during eventual cleanup.
+After current full CI succeeds, squash-merge the accepted PR and remove its branch
+and task worktree with the documented exact-head checks. Preserve unrelated work
+in the concurrent main checkout.
