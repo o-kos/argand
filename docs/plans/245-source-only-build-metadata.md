@@ -26,7 +26,9 @@ Git identity reading and embedding unchanged.
   and its owned libraries refresh it. Git-only changes do not invalidate it.
   This does not promise a callback on every compiler invocation.
 - Preserve source archive isolation and inherited Git environment sanitization.
-- Preserve the unrelated UI-acceptance skill edit. No changes to PR #243.
+- Preserve the unrelated UI-acceptance skill edit. At the owner's direction,
+  include this fix in PR #243 together with #240/#241; retain this plan for the
+  additional source-only invalidation scope.
 - Use the installed toolchain and existing common intermediate build-dir; no
   dependency, feature, profile, cache-layout or toolchain changes.
 
@@ -85,3 +87,33 @@ Merge and branch cleanup require the normal accepted-PR workflow.
   reviewable result. No hook, proxy installation or server CI was invoked.
 - Early Draft publication remains deferred: the ordinary push hook runs the full
   gate. It has not been bypassed or run solely to publish the initial plan.
+
+## Combined branch handoff
+
+At the owner's direction, the implementation branch was merged locally into
+`fix/241-validation-artifact-identity` for PR #243. Inclusion of the implementation
+commits was verified before deleting the separate local branch. No corresponding
+remote branch existed. Issue #245 remains open and is closed through PR #243.
+
+The independent read-only review of the pre-merge implementation snapshot returned
+no substantive findings. The exact patch/revision and content digests were recorded
+in the external handoff packet. Production and test sources are unchanged after
+the merge; the review conclusion therefore covers this source-only addition in the
+combined branch. No findings were declined.
+
+Direct release timing after the merge used the installed Cargo/rustc/rustdoc,
+existing common build-dir and workspace-local outputs, without hooks, compiler
+wrappers, new flags or configuration changes:
+
+- First build: 181.171 seconds; only `argand` was compiled.
+- Immediate repeat: 342.808 seconds, contaminated by waiting for the shared build
+  lock while the #225 worktree built, then recompiling this checkout's application.
+- One final unchanged repeat: 0.647 seconds wall time (Cargo reported 0.60s), with
+  no compilation or lock-wait messages.
+
+All three commands succeeded. No external dependency compilation was reported.
+These are diagnostic release builds, not the required release-after-full-gate.
+The measured source state precedes this documentation-only evidence commit.
+The new commits remain local; the ordinary publication hook has not been bypassed.
+PR #243 is Draft and describes this pending publication/validation state. No server
+CI was inspected for this step. The unrelated skill edit remains uncommitted.
