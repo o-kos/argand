@@ -53,6 +53,8 @@ promise applies to.
 
 ### Fixed
 
+- File, FFT and Range status controls use compact, consistent spacing between their highlighted surfaces and separators (#225).
+
 - Corner zoom buttons stay attached to the plot while the window is resized, without waiting for deferred plot measurements (#226).
 
 - Truncated FLAC captures with a declared length and unsupported decoder resets report a read error instead of ending silently; incomplete saves remain unpublished (#230).
