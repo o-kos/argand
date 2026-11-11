@@ -41,17 +41,17 @@ Git identity reading and embedding unchanged.
 
 | Criterion | Verification | Result | Limits |
 | --- | --- | --- | --- |
-| Git-only commit leaves app fresh | Dependency-free Cargo fixture | Passed, 0.01s | Linux installed toolchain |
-| App source refreshes snapshot | Same fixture | Passed, 0.08s | Build-script snapshot semantics |
-| Owned dependency source refreshes snapshot | Same fixture | Passed, 0.10s, changed dependency output and current snapshot | No external dependencies |
-| Git identity reading remains correct | Existing focused metadata tests | Pending | No GUI interaction changes |
-| No Git rebuild inputs remain | Diff and source-input tests | Pending | No per-compiler-invocation guarantee |
+| Git-only commit leaves app fresh | Dependency-free Cargo fixture | Passed, 0.01s; commit/tag/remote/checkpoint/packed refs changed | Linux installed toolchain |
+| App source refreshes snapshot | Same fixture | Passed, 0.09s | Build-script snapshot semantics |
+| Owned dependency source refreshes snapshot | Same fixture | Passed, 0.12s, changed dependency output and current snapshot | No external dependencies |
+| Git identity reading remains correct | Existing focused metadata tests | 7 passed via direct rustc --test -Dwarnings | No GUI interaction changes |
+| No Git rebuild inputs remain | Diff and source-input tests | Passed | No per-compiler-invocation guarantee |
 
 ## Implementation steps
 
 - [x] Reproduce default Cargo behavior and validate short source-only inputs.
-- [ ] Replace Git inputs, retain Git reading and relevant tests.
-- [ ] Update current architecture documentation.
+- [x] Replace Git inputs, retain Git reading and relevant tests.
+- [x] Update current architecture documentation.
 - [ ] Complete focused and required local validation within approved baseline.
 - [ ] Independent review and coordinator assessment.
 - [ ] Move plan to completed before final review.
@@ -71,3 +71,17 @@ reviewable result; outstanding workflow requirements will be reported explicitly
 ## Post-completion
 
 Merge and branch cleanup require the normal accepted-PR workflow.
+
+## Local review snapshot
+
+- Direct installed rustfmt checked all changed Rust files.
+- Direct installed rustc compiled the existing metadata test module with
+  `--edition=2024 --test -Dwarnings`; all seven tests passed. Package/Git constants
+  were supplied explicitly to this standalone harness; this is not a workspace gate.
+- The dependency-free Cargo fixture copied the current production build script and
+  metadata module, used the existing common build-dir, and checked fresh Git-only
+  state plus changed app and path-dependency sources. No external crates compiled.
+- Full workspace fmt/Clippy/tests and final release remain unrun for this local
+  reviewable result. No hook, proxy installation or server CI was invoked.
+- Early Draft publication remains deferred: the ordinary push hook runs the full
+  gate. It has not been bypassed or run solely to publish the initial plan.
