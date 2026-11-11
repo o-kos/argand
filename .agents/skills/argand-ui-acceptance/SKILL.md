@@ -41,6 +41,28 @@ the owner's running application; if safe isolation cannot be established, report
 that limitation rather than changing the working setup. Keep host-specific setup
 outside shared repository instructions.
 
+### Isolate the display with Xvfb
+
+Run all UI acceptance launches and interaction checks of the production application
+on an isolated Xvfb virtual X11 display. Never launch on the owner's desktop or
+physical monitors, including either the main or a secondary monitor. Do not inherit
+the desktop's `DISPLAY` or `WAYLAND_DISPLAY` into the application child: set its
+`DISPLAY` to the verified Xvfb server, unset its Wayland selector, and verify the
+application's supported backend selection will use X11. Apply these changes only
+to task-owned child processes; leave the owner's desktop environment unchanged.
+
+Before launching, verify the Xvfb server's identity and readiness, the child display
+and backend selection, and supported isolation of configuration, session and cache.
+For example, inheriting `DISPLAY=:0` while isolating only settings is not display
+isolation. If Xvfb is missing, the isolated display is unavailable, or the X11
+backend cannot run, report the affected checks blocked/incomplete. Do not fall back
+to a visible desktop or install packages automatically. On cleanup, stop only
+verified task-owned application, helper and Xvfb processes.
+
+Record actual production rendering and interaction in Xvfb separately from GPUI
+tests, other headless checks and simulations. An Xvfb run does not establish native
+Wayland behavior or other platform-specific acceptance; report those limits.
+
 Discover available, permitted display and input capabilities; neither a tool nor
 native access is guaranteed. Permission to view screenshots is not permission to
 inject input. Respect denied input/remote-control routes and never bypass a denial

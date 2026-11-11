@@ -470,6 +470,7 @@ impl Shell {
             .items_center()
             .gap_2()
             .px_2()
+            .when(has_file, |bar| bar.pl_0p5())
             .h_6()
             .flex_shrink_0()
             .rounded_bl(corners.bottom_left)
@@ -479,13 +480,21 @@ impl Shell {
             .bg(cx.theme().status_bar)
             .text_xs()
             .text_color(cx.theme().muted_foreground)
-            .when_some(file, |bar, field| {
-                bar.child(self.file_control(field.value, cx))
+            .when(has_file, |bar| {
+                bar.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_0p5()
+                        .when_some(file, |items, field| {
+                            items.child(self.file_control(field.value, cx))
+                        })
+                        .children(self.analysis_controls(cx)),
+                )
             })
             .when(!has_file, |bar| {
                 bar.child(div().px_2().whitespace_nowrap().child("No signal loaded"))
             })
-            .when(has_file, |bar| bar.child(self.analysis_control(cx)))
             .children(self.adjustment_item(cx))
             .child(div().flex_1().min_w_0())
             .when_some(self.cursor_readout(cx), |bar, (text, level)| {
@@ -608,10 +617,7 @@ impl Shell {
                 .into_any_element()
         };
         let range_hint = range_hint(range_state);
-        div()
-            .id("analysis-range-item")
-            .border_l_1()
-            .border_color(cx.theme().border)
+        separated_status_item("analysis-range-item", cx)
             .tooltip(move |_, cx| {
                 let action =
                     actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
@@ -620,7 +626,7 @@ impl Shell {
             .child(range_content)
     }
 
-    fn analysis_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn analysis_controls(&self, cx: &mut Context<Self>) -> [AnyElement; 2] {
         let displayed = self
             .file
             .as_ref()
@@ -635,17 +641,12 @@ impl Shell {
             ),
             cx,
         );
-        div()
-            .flex()
-            .items_center()
-            .child(
-                div()
-                    .id("analysis-summary")
-                    .border_l_1()
-                    .border_color(cx.theme().border)
-                    .child(summary),
-            )
-            .child(self.range_control(displayed, cx))
+        [
+            separated_status_item("analysis-summary", cx)
+                .child(summary)
+                .into_any_element(),
+            self.range_control(displayed, cx).into_any_element(),
+        ]
     }
 
     /// Open the analysis hint with the keyboard in it, or close it keeping its values.
@@ -657,6 +658,19 @@ impl Shell {
     ) {
         self.open_status_panel(StatusPanel::Analysis, true, window, cx);
     }
+}
+
+fn separated_status_item(
+    id: &'static str,
+    cx: &gpui_kit::App,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .border_l_1()
+        .border_color(cx.theme().border)
+        .pl_0p5()
 }
 
 pub(super) fn detail_row(

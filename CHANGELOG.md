@@ -53,7 +53,7 @@ promise applies to.
 
 ### Fixed
 
-- FFT summary text has equal spacing to the neighboring status-bar separators (#225).
+- File, FFT and Range status controls use compact, consistent spacing between their highlighted surfaces and separators (#225).
 
 - Corner zoom buttons stay attached to the plot while the window is resized, without waiting for deferred plot measurements (#226).
 
