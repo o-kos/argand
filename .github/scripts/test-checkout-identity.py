@@ -22,7 +22,7 @@ MAIN = r'''fn main() {
 TEST = r'''#[test]
 fn current_identity() {
     let root = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    assert_eq!(root.canonicalize().unwrap(), std::env::current_dir().unwrap());
+    assert_eq!(root.canonicalize().unwrap(), std::env::current_dir().unwrap().canonicalize().unwrap());
     let exe = std::env::var_os("CARGO_BIN_EXE_checkout-identity-regression").unwrap();
     let output = std::process::Command::new(&exe).output().unwrap();
     assert!(output.status.success());
@@ -65,13 +65,16 @@ def harness_identity(output):
 def main():
     # Resolve outside the temporary packages; never let their cwd select another
     # rustup default instead of the repository's installed toolchain.
+    rustup = shutil.which("rustup")
     for variable in ["CARGO", "RUSTC", "RUSTDOC"]:
         value = os.environ.get(variable, "")
-        if not value or not Path(value).is_absolute() or Path(value).resolve().stem == "rustup":
+        if (not value or not Path(value).is_absolute() or not Path(value).is_file()
+                or Path(value).resolve().stem == "rustup"
+                or (rustup and Path(value).samefile(rustup))):
             raise AssertionError(f"set {variable} to an absolute installed toolchain executable")
     cargo = os.environ["CARGO"]
     with tempfile.TemporaryDirectory(prefix="argand-checkout-identity-") as tmp:
-        base = Path(tmp)
+        base = Path(tmp).resolve()
         old, current = base / "old checkout", base / "current checkout"
         old.mkdir()
         (old / "src").mkdir()

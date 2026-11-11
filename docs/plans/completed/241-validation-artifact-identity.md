@@ -182,3 +182,11 @@ Rust sources, manifests and the hook are unchanged since the successful full loc
 gate; Python/CI review corrections have their own current regression evidence.
 No native UI or benchmark-performance result is claimed. Ready and merge remain
 conditional on the recorded final release refresh and current full remote CI.
+
+A subsequent narrow portability audit canonicalizes both sides of the generated
+Rust test's source-root comparison (including Windows verbatim-path handling),
+resolves the Python temporary root consistently, and detects hardlinked rustup
+proxies through file identity as well as symlink resolution. The corrected Linux
+regression and a no-execution hardlink-proxy rejection check pass. The retained
+reviewer's final round and exact release provenance are recorded in delivery
+evidence; no production Rust, manifest, hook or probe source changed in this delta.
