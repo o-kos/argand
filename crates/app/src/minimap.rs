@@ -323,6 +323,5 @@ pub fn center(view: View, fraction: f64, total: u64) -> View {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("minimap_tests.rs");
-}
+#[path = "minimap_test.rs"]
+mod tests;

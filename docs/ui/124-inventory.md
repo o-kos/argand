@@ -16,13 +16,13 @@ Source paths name the registry `gpui-component-0.9.1`, `gpui-base-0.9.1` and
 
 | Row | Current disposition and exact-source evidence | Coverage / limits |
 | --- | --- | --- |
-| R1 frame | Replaced by standard Root/WindowBorder. Component `root.rs:711` registers overlay/frame presentation, `:734` wraps the surface. `window_border.rs:109` exposes paddings, `:199` and `:227` still use reported bounds. Owner approved the configured preview, including shadow inset 20 and radius 8. | `chrome_tests.rs` checks local/global backdrop geometry for restored, fully/partly tiled and server-decorated windows. Runtime compositor resize/maximize/restore still needs native acceptance. |
+| R1 frame | Replaced by standard Root/WindowBorder. Component `root.rs:711` registers overlay/frame presentation, `:734` wraps the surface. `window_border.rs:109` exposes paddings, `:199` and `:227` still use reported bounds. Owner approved the configured preview, including shadow inset 20 and radius 8. | `chrome_test.rs` checks local/global backdrop geometry for restored, fully/partly tiled and server-decorated windows. Runtime compositor resize/maximize/restore still needs native acceptance. |
 | R1 captions, R2 title gestures | Retained separately from the frame. Component `title_bar.rs:250` keeps WindowControls private; Linux click handler `:234` zooms directly. No public replacement of that subtree. Existing shared Argand controls/gestures are preserved, as approved in the preview. | Existing caption/toolbar gesture and focus tests; native double-click/drag checks remain required. |
 | R3, R6 buttons | Continue standard Button/ButtonGroup composition; no replacement control introduced. | Existing pressed/selected/disabled/focus tests. |
 | R4 application menu | Standard PopupMenu in controlled Popover retained for application digits, focus restoration and outside-input isolation. `menu/popup_menu.rs:887` confirms through activate; `:923` selects a submenu. Owner approved Enter plus Right. | Menu keyboard/row/digit/outside-click/wheel tests; Space remains inert. |
 | R5 splitter | Remains removed; no migration reason to reintroduce resizable UI. | Existing minimap layout checks. |
 | R7 numeric editing | Existing shared NumericEditor retains standard Input/Button behavior and the approved press/repeat transaction. Base `number_input.rs:266` and `:277` still step on click. Base now exposes button decorators (`:188`, `:194`), but Component internally owns those decorators in `input/number_input.rs:151`, `:184`; no component-level press/repeat contract is supplied. Replacing the existing shared editor is unnecessary for this migration. | Existing repeat, commit, locale, disabled and both property-panel regressions; native consumers still require checks. |
-| R8 ruler menu | Stock ContextMenu retained. `menu/context_menu.rs:513` uses a Weak subscription, fixing the old retention cycle. PlotView bookkeeping remains for pointer/focus restoration, not to compensate for a leak. | `plot_view_context_menu_test.rs` exercises real ruler/spectrum menus, keyboard isolation/recovery and popup release on window close. Native menu appearance and OS interaction are not established by these headless tests. |
+| R8 ruler menu | Stock ContextMenu retained. `menu/context_menu.rs:513` uses a Weak subscription, fixing the old retention cycle. PlotView bookkeeping remains for pointer/focus restoration, not to compensate for a leak. | `shell/plot/plot_view_context_menu_test.rs` exercises real ruler/spectrum menus, keyboard isolation/recovery and popup release on window close. Native menu appearance and OS interaction are not established by these headless tests. |
 | R9 hints/keycaps | Standard Tooltip/Popover/Kbd remain. Base `popover.rs:376` introduces PopoverContent with Escape handling, while Enter belongs to the trigger (`:343`) and PopoverContent explicitly blocks it with NoAction (`:27`). PinnedHint therefore explicitly binds/handles Confirm to preserve its approved Enter-close contract; child inputs/selects consume Confirm first. | Pinned lifecycle, nested selection, numeric commit and focus tests. |
 | R10 ready-input observer | Retained: GPUI `window.rs:5704` asserts paint phase for on_mouse_event. The existing canvas is still required to register the non-consuming window observer. | Ready dismissal and input passthrough tests. |
 | R11 symbolic keys | Retained plot-scoped interceptor; GPUI `app.rs:2705`, `:2720` still registers global observers/interceptors. | Exact-focus and multiwindow isolation tests. |
@@ -91,7 +91,7 @@ rg -n 'pub fn render' crates/app/src
 
 `\.tooltip\(` covers both the element method and `interactivity().tooltip(`,
 which is why the control hints in I35 appear alongside the content hints in I19.
-One production hit is deliberately absent: `hints.rs:471` builds the passive hint
+One production hit is deliberately absent: `shell/hints.rs:471` builds the passive hint
 inside `#[cfg(test)] mod tests` and is scaffolding, not an entry point.
 
 Toolkit-neutral models (`navigation`, `frequency`, `panels`, `time_ruler`,
@@ -104,11 +104,11 @@ commits leave behind.
 
 | # | Location | What it renders | Parent row |
 | --- | --- | --- | --- |
-| E00 | `shell.rs:1421` | The Argand frame's content: title bar, panels, status bar | R1, R6, R12 |
-| E01 | `plot_view.rs:291` | The plot surface, its rulers, its overlays and the corner zoom pairs | R3, R8, R9, R12 |
-| E02 | `hints.rs:128` | The pinned hint's open state; the hint body is a stock `Popover` | R9 |
-| E03 | `settings_editor.rs:373` | The analysis settings editor the pinned FFT hint shows (#108) | R7 |
-| E04 | `app_menu_ui.rs:815` | `NoTooltip`, the empty view that stands in for the pressed application button's hint | R4 |
+| E00 | `shell/mod.rs:1421` | The Argand frame's content: title bar, panels, status bar | R1, R6, R12 |
+| E01 | `shell/plot/plot_view.rs:291` | The plot surface, its rulers, its overlays and the corner zoom pairs | R3, R8, R9, R12 |
+| E02 | `shell/hints.rs:128` | The pinned hint's open state; the hint body is a stock `Popover` | R9 |
+| E03 | `shell/settings_ui/editor.rs:373` | The analysis settings editor the pinned FFT hint shows (#108) | R7 |
+| E04 | `shell/app_menu_ui.rs:815` | `NoTooltip`, the empty view that stands in for the pressed application button's hint | R4 |
 | E05 | `chrome.rs:135` | `Frame::render`: insets, rounded corners, border, shadow, resize regions | R1 |
 
 ## Input entry points
@@ -120,64 +120,64 @@ commits leave behind.
 | I01 | `chrome.rs:54` | Linux caption control press: `prevent_default` and `stop_propagation` so a control never starts a window move | R1 | Retained |
 | I02 | `chrome.rs:58` | Linux minimize, zoom and close clicks | R1 | Retained |
 | I03 | `chrome.rs:178` | Per-edge resize hitbox press, which calls `start_window_resize` | R1 | Retained |
-| I04 | `shell.rs:1101` | Bare-title double click zooms the window | R2 | Retained |
-| I05 | `shell.rs:1102`, `shell.rs:1103`, `shell.rs:1107`, `shell.rs:1111` | Title drag: arm on press, disarm on release or a press outside, start the move on the first move | R2 | Retained |
-| I06 | `shell.rs:1122` | Title right click opens the platform window menu | R2 | Retained |
-| I07 | `app_menu_ui.rs:405`, `app_menu_ui.rs:816` to `:819`, `app_menu_ui.rs:827`, `:828`, `:830` | Each toolbar control consumes its own left press and double click through `title_control`, the container keeps its right-press stop, and `keeps_focus` prevents the focusing default in the capture phase for a press that is not the left one, so a control never reaches the title gestures and never takes the keyboard from a right or middle press while the gaps between them do carry the drag | R2, R4 | Retained (#158, #156) |
+| I04 | `shell/mod.rs:1101` | Bare-title double click zooms the window | R2 | Retained |
+| I05 | `shell/mod.rs:1102`, `shell/mod.rs:1103`, `shell/mod.rs:1107`, `shell/mod.rs:1111` | Title drag: arm on press, disarm on release or a press outside, start the move on the first move | R2 | Retained |
+| I06 | `shell/mod.rs:1122` | Title right click opens the platform window menu | R2 | Retained |
+| I07 | `shell/app_menu_ui.rs:405`, `shell/app_menu_ui.rs:816` to `:819`, `shell/app_menu_ui.rs:827`, `:828`, `:830` | Each toolbar control consumes its own left press and double click through `title_control`, the container keeps its right-press stop, and `keeps_focus` prevents the focusing default in the capture phase for a press that is not the left one, so a control never reaches the title gestures and never takes the keyboard from a right or middle press while the gaps between them do carry the drag | R2, R4 | Retained (#158, #156) |
 
 ### Plot gestures and keyboard
 
 | # | Location | What it does | Parent row | Disposition |
 | --- | --- | --- | --- | --- |
-| I08 | `plot_view.rs:310` | Wheel over the plot, routed to the dominant axis | R12 | Retained |
-| I09 | `plot_view.rs:311`, `plot_view.rs:313`, `plot_view.rs:314` | Press, release and release-outside begin and end a pan | R12 | Retained |
-| I10 | `plot_view.rs:312` | Pointer move updates the readout and continues a drag | R12 | Retained |
-| I11 | `plot_view.rs:317` | Hover, in input-modality-independent mode, takes and clears the pointer | R12 | Retained |
-| I12 | `plot_view.rs:352` | The drag tracker's window-level move listener, which follows a drag beyond the plot's hitbox | R12 | Retained |
-| I13 | `plot_view.rs:219` to `plot_view.rs:286` | Sixteen navigation actions on the plot's own key context | R11, R12 | Retained |
-| I14 | `plot_view.rs:372` | The symbolic-key interceptor, gated by window id and the plot's exact focus handle | R11 | Retained |
-| I15 | `shell.rs:1451` | Modifier change repaints, which the Alt guides read while painting | R9, R12 | Retained |
+| I08 | `shell/plot/plot_view.rs:310` | Wheel over the plot, routed to the dominant axis | R12 | Retained |
+| I09 | `shell/plot/plot_view.rs:311`, `shell/plot/plot_view.rs:313`, `shell/plot/plot_view.rs:314` | Press, release and release-outside begin and end a pan | R12 | Retained |
+| I10 | `shell/plot/plot_view.rs:312` | Pointer move updates the readout and continues a drag | R12 | Retained |
+| I11 | `shell/plot/plot_view.rs:317` | Hover, in input-modality-independent mode, takes and clears the pointer | R12 | Retained |
+| I12 | `shell/plot/plot_view.rs:352` | The drag tracker's window-level move listener, which follows a drag beyond the plot's hitbox | R12 | Retained |
+| I13 | `shell/plot/plot_view.rs:219` to `shell/plot/plot_view.rs:286` | Sixteen navigation actions on the plot's own key context | R11, R12 | Retained |
+| I14 | `shell/plot/plot_view.rs:372` | The symbolic-key interceptor, gated by window id and the plot's exact focus handle | R11 | Retained |
+| I15 | `shell/mod.rs:1451` | Modifier change repaints, which the Alt guides read while painting | R9, R12 | Retained |
 
 ### Menus, hints and keycaps
 
 | # | Location | What it does | Parent row | Disposition |
 | --- | --- | --- | --- | --- |
-| I16 | `navigation_ui.rs:917` | `.context_menu` on the time ruler, which builds a stock `PopupMenu` | R8 | Retained |
-| I17 | `hints.rs:157` | The pinned hint's `Popover` open change, which is how the hint opens and closes | R9 | Retained |
-| I18 | `hints.rs:173` | `Cancel` inside the pinned hint's own key context, which closes it and asks for a revert | R9 | Retained |
-| I19 | `settings_ui.rs:283`, `settings_ui.rs:328`, `settings_ui.rs:410`, `plot_ui.rs:289` | Passive `Tooltip` metadata, range, shortcut and unit hints over content | R9 | Retained |
-| I20 | `settings_ui.rs:433` | The analysis summary's hover, which starts the pinned hint's open delay | R9 | Retained |
-| I35 | `app_menu_ui.rs:383` | The application button's hint, which yields to `NoTooltip` while the menu is open | R4, R9 | Retained |
-| I36 | `app_menu_ui.rs:496`, `app_menu_ui.rs:528` | The orientation segment's and the grid toggle's framed shortcut hints | R6, R9 | Retained |
-| I37 | `plot_ui.rs:568` | A zoom half's framed shortcut hint, naming the axis and its binding | R3, R9 | Retained |
-| I38 | `shell.rs:1298`, `shell.rs:1328` | The start-page recent rows' and the chooser's hints, the rows carrying their digit binding | R6, R9 | Retained |
+| I16 | `shell/plot/navigation_ui.rs:917` | `.context_menu` on the time ruler, which builds a stock `PopupMenu` | R8 | Retained |
+| I17 | `shell/hints.rs:157` | The pinned hint's `Popover` open change, which is how the hint opens and closes | R9 | Retained |
+| I18 | `shell/hints.rs:173` | `Cancel` inside the pinned hint's own key context, which closes it and asks for a revert | R9 | Retained |
+| I19 | `shell/settings_ui/mod.rs:283`, `shell/settings_ui/mod.rs:328`, `shell/settings_ui/mod.rs:410`, `shell/plot/plot_ui.rs:289` | Passive `Tooltip` metadata, range, shortcut and unit hints over content | R9 | Retained |
+| I20 | `shell/settings_ui/mod.rs:433` | The analysis summary's hover, which starts the pinned hint's open delay | R9 | Retained |
+| I35 | `shell/app_menu_ui.rs:383` | The application button's hint, which yields to `NoTooltip` while the menu is open | R4, R9 | Retained |
+| I36 | `shell/app_menu_ui.rs:496`, `shell/app_menu_ui.rs:528` | The orientation segment's and the grid toggle's framed shortcut hints | R6, R9 | Retained |
+| I37 | `shell/plot/plot_ui.rs:568` | A zoom half's framed shortcut hint, naming the axis and its binding | R3, R9 | Retained |
+| I38 | `shell/mod.rs:1298`, `shell/mod.rs:1328` | The start-page recent rows' and the chooser's hints, the rows carrying their digit binding | R6, R9 | Retained |
 
 ### Toolbar, status bar and start page
 
 | # | Location | What it does | Parent row | Disposition |
 | --- | --- | --- | --- | --- |
-| I21 | `app_menu_ui.rs:448` | The orientation `ButtonGroup` reports its selected segment | R6 | Replaced (#130) |
-| I22 | `app_menu_ui.rs:524` | The grid `Button` dispatches `ToggleGrid` | R6 | Replaced (#130) |
-| I23 | `plot_ui.rs:564` | A zoom half dispatches its registered zoom action and hands focus back to the plot | R3 | Replaced (#130) |
-| I24 | `settings_ui.rs:377` | The actionable range item dispatches `UseRecommendedRange`, wrapped by `keeps_focus` so no press takes the keyboard from the plot; the informational item has no handler | R6 | Retained (#156) |
-| I25 | `settings_ui.rs:428` | The analysis summary opens the settings hint with the keyboard in it (#108), wrapped by `keeps_focus` so no press takes the keyboard from the plot | R6 | Retained (#156) |
-| I26 | `settings_editor.rs` (`range_readout`) | The hint's recommendation and edit buttons are gone (#108); the warned Range value and its balloon apply the recommendation on a click | R9 | Removed |
-| I27 | `shell.rs:1287` | A recent row opens its capture | R6 | Retained |
-| I28 | `shell.rs:1327` | The start page's chooser dispatches `ChooseFile` | R6 | Retained |
-| I29 | `app_menu_ui.rs:109` | A recent row inside the File branch opens its capture | R4 | Replaced (#131) |
-| I30 | `app_menu_ui.rs:357` | The application `Popover` follows the menu's own open state | R4 | Replaced (#131) |
-| I31 | `app_menu_ui.rs:622`, `app_menu_ui.rs:626` | The `ApplicationMenu` key context carries F10, Tab and the File rows' digits | R4 | Replaced (#131) |
+| I21 | `shell/app_menu_ui.rs:448` | The orientation `ButtonGroup` reports its selected segment | R6 | Replaced (#130) |
+| I22 | `shell/app_menu_ui.rs:524` | The grid `Button` dispatches `ToggleGrid` | R6 | Replaced (#130) |
+| I23 | `shell/plot/plot_ui.rs:564` | A zoom half dispatches its registered zoom action and hands focus back to the plot | R3 | Replaced (#130) |
+| I24 | `shell/settings_ui/mod.rs:377` | The actionable range item dispatches `UseRecommendedRange`, wrapped by `keeps_focus` so no press takes the keyboard from the plot; the informational item has no handler | R6 | Retained (#156) |
+| I25 | `shell/settings_ui/mod.rs:428` | The analysis summary opens the settings hint with the keyboard in it (#108), wrapped by `keeps_focus` so no press takes the keyboard from the plot | R6 | Retained (#156) |
+| I26 | `shell/settings_ui/editor.rs` (`range_readout`) | The hint's recommendation and edit buttons are gone (#108); the warned Range value and its balloon apply the recommendation on a click | R9 | Removed |
+| I27 | `shell/mod.rs:1287` | A recent row opens its capture | R6 | Retained |
+| I28 | `shell/mod.rs:1327` | The start page's chooser dispatches `ChooseFile` | R6 | Retained |
+| I29 | `shell/app_menu_ui.rs:109` | A recent row inside the File branch opens its capture | R4 | Replaced (#131) |
+| I30 | `shell/app_menu_ui.rs:357` | The application `Popover` follows the menu's own open state | R4 | Replaced (#131) |
+| I31 | `shell/app_menu_ui.rs:622`, `shell/app_menu_ui.rs:626` | The `ApplicationMenu` key context carries F10, Tab and the File rows' digits | R4 | Replaced (#131) |
 
 ### Settings hint (#108, which replaced the settings window)
 
 | # | Location | What it does | Parent row | Disposition |
 | --- | --- | --- | --- | --- |
-| I32 | `settings_editor.rs` (`range_readout`) | The recommendation button left the hint; its Range row marks a warned range and explains it in a balloon with a pointer | R7 | Removed |
-| I33 | `settings_editor.rs:401`, `settings_editor.rs:405` | `UseRecommendedRange`, and `Confirm` taken before the popover so Enter keeps an unusable number open | R7 | Retained |
-| I34 | `settings_editor.rs:319` | Defaults | R7 | Retained |
-| I39 | `settings_editor.rs` (`traverse`, `arrow`, `defaults`) | Tab and Shift+Tab bounded to the hint's focus scope, Up and Down stepping a focused number, and Enter on Reset to defaults' own focus place (#169) | R7 | Retained |
-| I40 | `chrome.rs` (`Frame::render`), `shell.rs` (`edge_pressed`, the title bar's capture press) | Backdrops cover only the frame's free area; the resize edges and the title bar close the overlay themselves and keep their press (#170) | R4, R9 | Retained |
-| I39 | `settings_editor.rs:547`, `settings_editor.rs:568`, `settings_editor.rs:579` | The standard select's confirm, the input's Enter and blur, and the number steppers preview a value | R7 | Retained |
+| I32 | `shell/settings_ui/editor.rs` (`range_readout`) | The recommendation button left the hint; its Range row marks a warned range and explains it in a balloon with a pointer | R7 | Removed |
+| I33 | `shell/settings_ui/editor.rs:401`, `shell/settings_ui/editor.rs:405` | `UseRecommendedRange`, and `Confirm` taken before the popover so Enter keeps an unusable number open | R7 | Retained |
+| I34 | `shell/settings_ui/editor.rs:319` | Defaults | R7 | Retained |
+| I39 | `shell/settings_ui/editor.rs` (`traverse`, `arrow`, `defaults`) | Tab and Shift+Tab bounded to the hint's focus scope, Up and Down stepping a focused number, and Enter on Reset to defaults' own focus place (#169) | R7 | Retained |
+| I40 | `chrome.rs` (`Frame::render`), `shell/mod.rs` (`edge_pressed`, the title bar's capture press) | Backdrops cover only the frame's free area; the resize edges and the title bar close the overlay themselves and keep their press (#170) | R4, R9 | Retained |
+| I39 | `shell/settings_ui/editor.rs:547`, `shell/settings_ui/editor.rs:568`, `shell/settings_ui/editor.rs:579` | The standard select's confirm, the input's Enter and blur, and the number steppers preview a value | R7 | Retained |
 
 ### Infrastructure observers and adapters
 
@@ -185,17 +185,17 @@ These are recorded separately from ordinary controls, as the parent plan require
 
 | # | Location | What it does | Parent row | Disposition |
 | --- | --- | --- | --- | --- |
-| A01 | `shell.rs:405` | Window bounds, which drive session geometry | A05 | Retained |
-| A02 | `shell.rs:406` | Window activation, which refreshes the recent list and ends the plot's gestures | A05 | Retained |
-| A03 | `shell.rs:416` | Window appearance, which re-syncs the interface theme | A05 | Retained |
-| A04 | `shell.rs:419` | `App::observe_keystrokes`, which dismisses the ready status in whichever window the key arrived | R10 | Retained |
-| A05 | `shell.rs:507`, `shell.rs:513` | `Window::on_mouse_event` for move and exit, which follow whether the mouse is in the window | R10 | Retained |
-| A06 | `shell.rs:540`, `shell.rs:546` | `Window::on_mouse_event` for press and wheel, which dismiss the ready status | R10 | Retained |
-| A07 | `shell.rs:975`, `shell.rs:984`, `shell.rs:993` | App-level `ChooseFile`, `UseRecommendedRange` and `EditAnalysis`, deferred so popup focus releases first | A01 | Retained |
-| A08 | `shell.rs:1452`, `shell.rs:1453`, `shell.rs:1454`, `shell.rs:1455` | The shell's own action handlers, reached by bubbling from the plot and by global dispatch | R4, R6 | Retained |
-| A09 | `shell.rs:1459`, `shell.rs:1464` | Tab traversal, held while a pinned hint holds the keyboard | R9 | Retained |
-| A10 | `shell.rs:1471` | A capture dropped on the window opens | A05 | Retained |
-| A12 | `navigation_ui.rs:600` to `navigation_ui.rs:619` | Six session commands, which change the session rather than the view | R6, R12 | Retained |
+| A01 | `shell/mod.rs:405` | Window bounds, which drive session geometry | A05 | Retained |
+| A02 | `shell/mod.rs:406` | Window activation, which refreshes the recent list and ends the plot's gestures | A05 | Retained |
+| A03 | `shell/mod.rs:416` | Window appearance, which re-syncs the interface theme | A05 | Retained |
+| A04 | `shell/mod.rs:419` | `App::observe_keystrokes`, which dismisses the ready status in whichever window the key arrived | R10 | Retained |
+| A05 | `shell/mod.rs:507`, `shell/mod.rs:513` | `Window::on_mouse_event` for move and exit, which follow whether the mouse is in the window | R10 | Retained |
+| A06 | `shell/mod.rs:540`, `shell/mod.rs:546` | `Window::on_mouse_event` for press and wheel, which dismiss the ready status | R10 | Retained |
+| A07 | `shell/mod.rs:975`, `shell/mod.rs:984`, `shell/mod.rs:993` | App-level `ChooseFile`, `UseRecommendedRange` and `EditAnalysis`, deferred so popup focus releases first | A01 | Retained |
+| A08 | `shell/mod.rs:1452`, `shell/mod.rs:1453`, `shell/mod.rs:1454`, `shell/mod.rs:1455` | The shell's own action handlers, reached by bubbling from the plot and by global dispatch | R4, R6 | Retained |
+| A09 | `shell/mod.rs:1459`, `shell/mod.rs:1464` | Tab traversal, held while a pinned hint holds the keyboard | R9 | Retained |
+| A10 | `shell/mod.rs:1471` | A capture dropped on the window opens | A05 | Retained |
+| A12 | `shell/plot/navigation_ui.rs:600` to `shell/plot/navigation_ui.rs:619` | Six session commands, which change the session rather than the view | R6, R12 | Retained |
 
 ## Final disposition of every parent inventory row
 
@@ -237,12 +237,12 @@ Covering tests: `resize_regions_leave_all_content_to_its_own_cursor`,
 `resize_grips_are_reachable_inside_the_visible_frame`,
 `expanded_windows_have_no_resize_regions_or_corners`,
 `only_free_tiled_edges_can_resize_or_round`, `native_decorations_do_not_get_a_second_frame`
-(`chrome_tests.rs`, included at `chrome.rs:234`). Native rows R1 to R3 in the Linux matrix.
+(`chrome_test.rs`, included at `chrome.rs:234`). Native rows R1 to R3 in the Linux matrix.
 
 ### R2 Title-bar drag and double-click handlers
 
-**Retained** for Linux, where `shell.rs:1089` builds the bar; Windows and macOS already use
-the stock `TitleBar` (`shell.rs:1131`).
+**Retained** for Linux, where `shell/mod.rs:1089` builds the bar; Windows and macOS already use
+the stock `TitleBar` (`shell/mod.rs:1131`).
 
 The standard alternative is gpui-component's `TitleBar`, and the production bar is its
 composition: the same `TITLE_BAR_HEIGHT`, the same `title_bar_border` and `title_bar`
@@ -254,7 +254,7 @@ Verified limitation: `TitleBar` cannot be composed without its private caption c
 (`:232`) and take their hover and active colours from the global secondary tokens
 (`:168` to `:191`) with no per-control style hook. The production bar additionally carries
 a filename region centred on the full window. Each control in the toolbar consumes its own
-left press and double click through `title_control` (`app_menu_ui.rs:767` to `:771`), and
+left press and double click through `title_control` (`shell/app_menu_ui.rs:767` to `:771`), and
 the container keeps only its right-press stop, so the gaps between controls stay bare
 title-bar pixels that carry the drag and the double click (#158).
 
@@ -274,7 +274,7 @@ Cancel composition fails the one-click assertion.
 ### R3 Zoom halves and `pressed_zoom`
 
 **Replaced (#130).** Each half is a gpui-component `Button` in a shared frame
-(`plot_ui.rs:525` to `:577`); the component owns press, disabled and click, and
+(`shell/plot/plot_ui.rs:525` to `:577`); the component owns press, disabled and click, and
 `pressed_zoom`, `release_press` and the `ToggleScaleUi` repair are gone.
 
 Covering tests: `a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot` and
@@ -284,11 +284,11 @@ stock-button outside-release smoke checks were retired in #222.
 ### R4 Main cascading menu
 
 **Replaced (#131).** One stock `PopupMenu` drawn by a controlled `Popover`
-(`app_menu_ui.rs:350`). Escape now closes the whole chain, which the owner accepted in
+(`shell/app_menu_ui.rs:350`). Escape now closes the whole chain, which the owner accepted in
 place of the one-level behaviour of the former custom menu, because
 `PopupMenu::dismiss` in the locked source dismisses the entire parent chain
 (`gpui-component-0.6.6/src/menu/popup_menu.rs:1052` to `:1081`) and there is no supported
-option to stop it. `NoTooltip` (`app_menu_ui.rs:815`) is the one remaining adapter: an empty
+option to stop it. `NoTooltip` (`shell/app_menu_ui.rs:815`) is the one remaining adapter: an empty
 view that stands in for the trigger's hint while the menu holds it, because the trigger
 `Button` is a stock component whose tooltip cannot be suppressed.
 
@@ -305,7 +305,7 @@ Covering tests: `the_button_and_the_key_open_the_menu_with_the_keyboard_in_it`,
 `enter_runs_no_branch_where_the_stock_menu_ignores_one`,
 `the_keys_reach_the_menu_after_a_hover_drops_the_focused_branch`,
 `an_action_row_draws_the_shared_keycap_when_its_binding_resolves`,
-`a_long_recent_name_keeps_the_file_branch_within_its_width` (`app_menu_ui.rs:1185` to
+`a_long_recent_name_keeps_the_file_branch_within_its_width` (`shell/app_menu_ui.rs:1185` to
 `:1526`).
 
 ### R5 Waveform/spectrum splitter
@@ -328,7 +328,7 @@ session-version literal checks were retired in #222; configuration behavior is u
 grid toggle and the zoom halves are gpui-component `Button` and `ButtonGroup`; the range
 item, the FFT summary, the start-page chooser and the recent rows were already standard
 `Button`s and stay. The custom variant paints no border, so `toolbar_style` supplies the
-surfaces (`app_menu_ui.rs:773`).
+surfaces (`shell/app_menu_ui.rs:773`).
 
 **No locked-toolkit limitation is claimed for the status items.** They are standard
 `Button`s with a custom variant, and the audit found no custom press, hover or focus
@@ -343,7 +343,7 @@ composition snapshots were retired in #222.
 
 **Retained, and already standard; moved into the FFT hint by #108.** The settings are
 gpui-component `Select` and `Input` drawn with `appearance(false)` in the pinned hint's
-popover (`settings_editor.rs`), plus standard `Button`s for the steppers and Reset to
+popover (`shell/settings_ui/editor.rs`), plus standard `Button`s for the steppers and Reset to
 defaults. The separate `Root`-backed window with Reset, Cancel and OK is gone. There is
 no custom editing, focus or validation machinery; the numeric policy is a small
 application-value adapter on the standard `InputEvent`, and the editor takes `Confirm`
@@ -358,7 +358,7 @@ a hold-to-repeat; the steppers are not tab stops, the keyboard steps through the
 own arrows, and the repeat stops on an unusable value, on Reset to defaults, on the
 recommendation and once its stepper is no longer shown.
 
-Range and sample-format warnings share `property_advice.rs`: measured side placement,
+Range and sample-format warnings share `shell/property_advice.rs`: measured side placement,
 a standard close Button, the retained triangular pointer drawing, and ordinary Tooltip
 fallback only when neither side has a readable width. After dismissal, a fresh marker
 entry reopens the same anchored balloon when room permits. The format warning
@@ -386,7 +386,7 @@ transaction. Native row S1.
 ### R8 Ruler context menu
 
 **Retained, and already standard.** `PlotView::time_context_menu` and
-`PlotView::spectrum_context_menu` in `navigation_ui.rs` open stock `PopupMenu`s
+`PlotView::spectrum_context_menu` in `shell/plot/navigation_ui.rs` open stock `PopupMenu`s
 through the toolkit's `.context_menu`. GPUI Component 0.9.1
 `menu/context_menu.rs:513` captures a Weak reference in its dismiss subscription,
 removing the retention cycle recorded in #144. PlotView's weak menu handle and
@@ -396,9 +396,9 @@ is application lifecycle tracking, not a replacement control.
 Covering tests: `an_overlay_on_the_plot_hides_its_pointer_until_the_first_move_back`,
 `an_overlay_on_the_plot_takes_its_wheel_clicks_and_drags`,
 `a_drag_keeps_tracking_over_a_hint_on_the_plot` and
-`a_new_orientation_keeps_a_resting_pointer` in `plot_view.rs` drive an occluding
+`a_new_orientation_keeps_a_resting_pointer` in `shell/plot/plot_view.rs` drive an occluding
 layer over the plot and read the pointer and intents. The UI integration tests
-in `plot_view_context_menu_test.rs` additionally open the production menus with
+in `shell/plot/plot_view_context_menu_test.rs` additionally open the production menus with
 real right-click events. They check ruler-menu focus and isolation of Ctrl+G,
 time/frequency zoom and Home, Escape focus restoration and command recovery,
 reopening, and release of time/spectrum popup entities after closing their
@@ -410,7 +410,7 @@ transitions and OS interaction remain outside this automated evidence.
 
 **Retained, and already standard.** Passive hints are the stock `Tooltip`; the pinned hint
 is the stock `Popover`; keycaps are `Kbd` with a shared text refinement and a measured
-width (`shortcuts.rs`). `hints.rs` centralizes the surface contracts, not the controls.
+width (`shell/shortcuts.rs`). `shell/hints.rs` centralizes the surface contracts, not the controls.
 
 Every passive hint registration in the production tree is I19 for the hints over content
 and I35 to I38 for the hints attached to a control: the application button, the
@@ -424,12 +424,12 @@ Verified limitations, both already met in code:
 - The popover's own key context binds `space` to `Confirm`
   (`gpui-base-0.6.6/src/popover.rs:21`). A pinned hint must not close on Space, so
   `hints::init` binds `space` to `NoAction` in the `PinnedHint` context
-  (`hints.rs:31`). This is a binding, not a control.
+  (`shell/hints.rs:31`). This is a binding, not a control.
 - `HitboxBehavior::BlockMouse`, which `.occlude()` sets, makes every hitbox behind it
   report `should_handle_scroll() == false`
   (`gpui-pre-0.3.6/src/window.rs:879` to `:898`). A passive hint must not take the wheel
-  from the plot, so `hints::passive` (`hints.rs:38`) uses a plain `.tooltip` and never
-  occludes, while the pinned hint's backdrop (`hints.rs:184` to `:196`) does occlude,
+  from the plot, so `hints::passive` (`shell/hints.rs:38`) uses a plain `.tooltip` and never
+  occludes, while the pinned hint's backdrop (`shell/hints.rs:184` to `:196`) does occlude,
   because while it is open the plot must get no wheel at all.
 
 Covering tests: `a_short_hover_opens_nothing`, `leaving_the_trigger_keeps_the_hint_open`,
@@ -437,7 +437,7 @@ Covering tests: `a_short_hover_opens_nothing`, `leaving_the_trigger_keeps_the_hi
 `a_click_outside_closes_the_hint_and_goes_no_further`,
 `enter_closes_the_hint_and_keeps_the_values`, `space_leaves_the_hint_open`,
 `escape_closes_the_hint_and_reverts`,
-`a_passive_hint_leaves_its_trigger_the_click` (`hints.rs:337` to `:481`);
+`a_passive_hint_leaves_its_trigger_the_click` (`shell/hints.rs:337` to `:481`);
 `the_shell_follows_the_mouse_into_and_out_of_the_window`,
 `edit_analysis_opens_the_hint_and_closes_it_keeping_the_values`. Duplicate
 settings-model close-policy checks were retired in #222; the real form and event
@@ -460,13 +460,13 @@ other mechanism has resolved.
 
 Covering tests: `a_disabled_hint_opens_neither_on_hover_nor_on_a_right_click` and
 `an_open_hint_keeps_the_plot_from_input` show the observer never consumes and never
-navigates; `key_presses_keep_the_pointer_over_the_plot` (`plot_view.rs:883`) shows a key
+navigates; `key_presses_keep_the_pointer_over_the_plot` (`shell/plot/plot_view.rs:883`) shows a key
 press does not clear the plot. Native row O1.
 
 ### R11 Global symbolic-key interceptor
 
 **Retained as a scoped adapter.** `navigation_ui::init` binds key bindings but registers
-no interceptor. `plot_view.rs:366` to `:387` registers one interceptor per `PlotView`,
+no interceptor. `shell/plot/plot_view.rs:366` to `:387` registers one interceptor per `PlotView`,
 keeps it in a field so dropping the subscription drops with the plot, and returns before
 recognizing anything unless the event's window is the plot's own window and
 `focus.is_focused(window)` holds.
@@ -482,7 +482,7 @@ there is no supported registration that would make it narrower.
 
 Covering tests: `every_navigation_key_emits_exactly_one_intent`,
 `plot_keys_need_the_plot_itself_focused`, `another_window_never_reaches_the_plot`,
-`a_replaced_plot_stops_intercepting` (`plot_view.rs:538`, `:649`, `:663`, `:686`).
+`a_replaced_plot_stops_intercepting` (`shell/plot/plot_view.rs:538`, `:649`, `:663`, `:686`).
 Native row F2.
 
 ### R12 Spectrogram, waveform, axes, minimap and cursor badges
@@ -502,10 +502,10 @@ locale, or reports the gutter it needs, which `argand_core::axis` and the measur
 `LabelMeasure` do. `Shape` supplies line, area and arc paths, not a two-sided
 `-Fs/2` to `+Fs/2` domain, a per-frame min/max envelope, or a full-capture minimap.
 
-Covering tests: `axes_tests.rs`, `navigation_tests.rs`, `spectrogram_tests.rs`,
-`minimap_tests.rs`, `document_tests.rs`, the plot-view gesture tests
-(`plot_view.rs:779` to `:1014`) and `retirement_clears_the_snapshot_first`
-(`plot_view.rs:708`). Native rows F1, G1 and the orientation rows.
+Covering tests: `axes/axes_test.rs`, `navigation_test.rs`, `spectrogram_test.rs`,
+`minimap_test.rs`, `document_test.rs`, the plot-view gesture tests
+(`shell/plot/plot_view.rs:779` to `:1014`) and `retirement_clears_the_snapshot_first`
+(`shell/plot/plot_view.rs:708`). Native rows F1, G1 and the orientation rows.
 
 ### R13 Rejected numeric editor in PR #106
 
@@ -561,7 +561,7 @@ warned range with Ctrl+R and verifies that only a fresh entry reopens the balloo
 
 ## Sample format options (#192)
 
-File information and whole-capture conversion retain `conversion_ui.rs`'s shared
+File information and whole-capture conversion retain `shell/conversion_ui.rs`'s shared
 standard Select. WAVE offers the canonical twelve core sample types, including
 Real / I/Q Int 24-bit; FLAC keeps the existing U8/I16 filter and fallback. Document
 format hints identify signed 24-bit integers. Raw opening hints and CLI/configuration
@@ -572,7 +572,7 @@ only automated behavior, not desktop interaction.
 
 ## About panel (#107)
 
-`about_ui.rs` adds a standard ghost outline-Tag/version Button at the right end of the title bar,
+`shell/about_ui.rs` adds a standard ghost outline-Tag/version Button at the right end of the title bar,
 a direct PopupMenu command and the existing `hints::pinned` composition over standard Popover. It adds no replacement
 widget. Shell retains one `PinnedHint` and its scoped focus-out subscription;
 window deactivation closes it through the existing activation observer. Surface

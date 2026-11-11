@@ -96,6 +96,5 @@ fn hz(s: &str) -> Result<f64, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("cli_tests.rs");
-}
+#[path = "cli_test.rs"]
+mod tests;

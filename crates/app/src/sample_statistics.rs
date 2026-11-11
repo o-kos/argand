@@ -157,7 +157,7 @@ pub struct Request {
 /// Only partial source cells require IO; full cells merge through the tree.
 pub fn measure(request: &Request, cache: &Cache, active: &dyn Fn() -> bool) -> Result<Metrics> {
     ensure!(!request.capture.is_empty(), "empty capture");
-    crate::extraction::unchanged(&request.sources)?;
+    crate::processing::extraction::unchanged(&request.sources)?;
     let mut energy = 0.;
     let mut peak: f64 = 0.;
     let gain = request.adjustment.gain().abs();
@@ -211,7 +211,7 @@ pub fn measure(request: &Request, cache: &Cache, active: &dyn Fn() -> bool) -> R
         peak = peak.max(value.peak * scale);
         energy += value.energy * scale * scale;
     }
-    crate::extraction::unchanged(&request.sources)?;
+    crate::processing::extraction::unchanged(&request.sources)?;
     let rms = (energy / request.capture.len() as f64).sqrt();
     ensure!(
         peak.is_finite() && rms.is_finite(),
@@ -242,7 +242,7 @@ fn boundary(
     }
     #[cfg(test)]
     record_read_for_test(cache, end - first);
-    let mut reader = crate::extraction::reopen(file)?;
+    let mut reader = crate::processing::extraction::reopen(file)?;
     reader.seek(first)?;
     let mut left = end - first;
     let mut buffer = vec![0.; BLOCK_VALUES];
@@ -275,7 +275,7 @@ fn boundary(
 }
 
 #[cfg(test)]
-#[path = "sample_statistics_tests.rs"]
+#[path = "sample_statistics_test.rs"]
 mod tests;
 
 #[cfg(test)]

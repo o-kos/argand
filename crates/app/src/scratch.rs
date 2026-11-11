@@ -145,6 +145,5 @@ impl Drop for Scratch {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("scratch_tests.rs");
-}
+#[path = "scratch_test.rs"]
+mod tests;

@@ -1,0 +1,45 @@
+//! Shared keycap colours and measurement, preserving the toolkit typography.
+
+use gpui_kit::component::{ActiveTheme, kbd::Kbd};
+use gpui_kit::{Action, App, Keystroke, Styled, relative};
+
+/// Uniform keycap names for the symbol zoom keys.
+///
+/// A literal `+` or `-` formats as "Ctrl++" and reads as noise, so the four
+/// zoom commands display named keys instead: Ctrl+Plus, Ctrl+Shift+Plus,
+/// Ctrl+Minus, Ctrl+Shift+Minus.
+pub(super) fn zoom_keycap(action: &dyn Action) -> Option<Kbd> {
+    zoom_key_stroke(action).map(Kbd::new)
+}
+
+fn zoom_key_stroke(action: &dyn Action) -> Option<Keystroke> {
+    use super::plot::navigation_ui::{FrequencyZoomIn, FrequencyZoomOut, ZoomIn, ZoomOut};
+    let stroke = if action.as_any().is::<ZoomIn>() {
+        "ctrl-plus"
+    } else if action.as_any().is::<ZoomOut>() {
+        "ctrl-minus"
+    } else if action.as_any().is::<FrequencyZoomIn>() {
+        "ctrl-shift-plus"
+    } else if action.as_any().is::<FrequencyZoomOut>() {
+        "ctrl-shift-minus"
+    } else {
+        return None;
+    };
+    Keystroke::parse(stroke).ok()
+}
+
+pub(super) fn keycap(shortcut: Kbd, cx: &App) -> Kbd {
+    let theme = cx.theme();
+    // Kbd replaces its whole text refinement: retain all of its text defaults.
+    shortcut
+        .text_center()
+        .line_height(relative(1.))
+        .text_xs()
+        .whitespace_normal()
+        .text_color(theme.muted_foreground.blend(theme.foreground.opacity(0.2)))
+        .border_color(theme.border.blend(theme.foreground.opacity(0.15)))
+}
+
+#[cfg(test)]
+#[path = "shortcuts_test.rs"]
+mod tests;

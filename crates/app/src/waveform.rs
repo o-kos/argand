@@ -122,7 +122,7 @@ fn along(length: f32, (from, to): (f64, f64), scale: f32) -> (f32, f32) {
 
 pub fn time_band(
     bounds: Bounds<Pixels>,
-    orientation: crate::orientation::Mode,
+    orientation: crate::navigation::orientation::Mode,
     (from, to): (f64, f64),
     scale: f32,
 ) -> Bounds<Pixels> {
@@ -151,7 +151,7 @@ pub struct Selected {
 /// The part of `bounds` a selection covers, at least one device pixel along each axis.
 pub fn selected_rect(
     bounds: Bounds<Pixels>,
-    orientation: crate::orientation::Mode,
+    orientation: crate::navigation::orientation::Mode,
     selected: Selected,
     scale: f32,
 ) -> Bounds<Pixels> {

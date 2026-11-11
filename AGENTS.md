@@ -116,3 +116,7 @@ pending work. Inspect the current code before relying on a mutable implementatio
 
 The detailed spectrum window remains a requirement; the plugin/worker design is
 planned and deferred in the roadmap. Do not infer implemented support from a plan.
+
+Application source directories follow subsystem responsibilities; see
+[Application module layout](docs/architecture/overview.md#application-module-layout).
+Keep sibling `*_test.rs` files and test support beside their production owner.

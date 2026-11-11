@@ -77,7 +77,7 @@ pub struct Config {
     pub dynamic_range: DynamicRange,
     pub aggregation: Aggregation,
     pub stft: Stft,
-    pub analysis: crate::execution::Settings,
+    pub analysis: crate::analysis::execution::Settings,
     /// The minimap's fixed size and a legacy proportion kept for compatibility.
     pub panels: Panels,
 }
@@ -96,7 +96,7 @@ impl Default for Config {
             dynamic_range: DynamicRange::Default,
             aggregation: Aggregation::default(),
             stft: Stft::default(),
-            analysis: crate::execution::Settings::default(),
+            analysis: crate::analysis::execution::Settings::default(),
             panels: Panels::default(),
         }
     }
@@ -319,6 +319,5 @@ impl Config {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("config_tests.rs");
-}
+#[path = "config_test.rs"]
+mod tests;
