@@ -66,29 +66,22 @@ pub fn read(root: &Path) -> Metadata {
 }
 
 pub fn inputs(root: &Path) -> Vec<PathBuf> {
-    let marker = root.join(".git");
-    let mut paths = Vec::new();
-    if marker.is_file() {
-        paths.push(marker);
-    }
-    if let Some(common) = git(root, &["rev-parse", "--git-common-dir"]) {
-        let common = root.join(common);
-        for name in ["refs", "packed-refs"] {
-            let path = common.join(name);
-            if path.exists() {
-                paths.push(path);
-            }
-        }
-        // Shared refs cover first tags and loose-ref removal when packed-refs is created.
-        if let Some(branch) = git(root, &["symbolic-ref", "-q", "HEAD"]) {
-            let path = common.join(branch);
-            if path.exists() {
-                paths.push(path);
-            }
-        }
-    }
-    if let Some(head) = git(root, &["rev-parse", "--git-path", "HEAD"]) {
-        paths.push(root.join(head));
-    }
-    paths
+    [
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/app/build.rs",
+        "crates/app/Cargo.toml",
+        "crates/app/src",
+        "crates/app/assets",
+        "crates/core/Cargo.toml",
+        "crates/core/src",
+        "crates/dsp/Cargo.toml",
+        "crates/dsp/src",
+        "crates/edit/Cargo.toml",
+        "crates/edit/src",
+        "crates/io/Cargo.toml",
+        "crates/io/src",
+    ]
+    .map(|path| root.join(path))
+    .into()
 }

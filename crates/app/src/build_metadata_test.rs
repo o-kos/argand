@@ -1,7 +1,7 @@
 #[path = "build_metadata.rs"]
 mod metadata;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 struct Repository(PathBuf);
@@ -95,15 +95,31 @@ fn tags_are_exact_and_the_date_is_the_commit_date_including_offset() {
     assert_eq!(metadata::read(&repo.0).tag, tagged.tag);
 }
 
-fn watched(paths: &[PathBuf], path: &Path) -> bool {
-    let path = path.canonicalize().expect("existing input");
-    paths
-        .iter()
-        .any(|input| input.canonicalize().ok().as_ref() == Some(&path))
+#[test]
+fn rebuild_inputs_are_sources_and_manifests_not_git_state() {
+    let repo = Repository::initialized();
+    let inputs = metadata::inputs(&repo.0);
+    assert!(
+        inputs
+            .iter()
+            .all(|path| !path.starts_with(repo.0.join(".git")))
+    );
+    for name in ["app", "core", "dsp", "edit", "io"] {
+        let package = repo.0.join("crates").join(name);
+        assert!(inputs.contains(&package.join("src")));
+        assert!(inputs.contains(&package.join("Cargo.toml")));
+    }
+    assert!(inputs.contains(&repo.0.join("Cargo.toml")));
+    assert!(inputs.contains(&repo.0.join("Cargo.lock")));
+    assert!(inputs.contains(&repo.0.join("crates/app/build.rs")));
+    assert!(inputs.contains(&repo.0.join("crates/app/assets")));
+    repo.git(&["tag", "new-tag"]);
+    repo.git(&["pack-refs", "--all"]);
+    assert_eq!(metadata::inputs(&repo.0), inputs);
 }
 
 #[test]
-fn linked_worktrees_track_their_head_and_shared_refs_and_tags() {
+fn linked_worktrees_read_their_head_and_shared_tags() {
     let repo = Repository::initialized();
     let worktree = Repository::new();
     repo.git(&[
@@ -113,19 +129,6 @@ fn linked_worktrees_track_their_head_and_shared_refs_and_tags() {
         worktree.0.to_str().expect("temporary path"),
         "HEAD",
     ]);
-    let inputs = metadata::inputs(&worktree.0);
-    let head = metadata::command(&worktree.0)
-        .args(["rev-parse", "--git-path", "HEAD"])
-        .output()
-        .expect("Git path");
-    let head = PathBuf::from(String::from_utf8(head.stdout).expect("path").trim());
-    assert!(watched(&inputs, &worktree.0.join(".git")));
-    assert!(watched(&inputs, &head));
-    assert!(watched(&inputs, &repo.0.join(".git/refs")));
-    assert!(
-        !watched(&inputs, &repo.0.join(".git")),
-        "never scan objects, logs or index"
-    );
     assert_eq!(
         metadata::read(&worktree.0).hash,
         metadata::read(&repo.0).hash
@@ -135,10 +138,6 @@ fn linked_worktrees_track_their_head_and_shared_refs_and_tags() {
     repo.git(&["pack-refs", "--all"]);
     repo.git(&["tag", "-d", "v0.2.0"]);
     assert_eq!(metadata::read(&worktree.0).tag, "untagged");
-    assert!(watched(
-        &metadata::inputs(&worktree.0),
-        &repo.0.join(".git/packed-refs")
-    ));
 }
 
 #[test]
@@ -168,10 +167,6 @@ fn inherited_repository_environment_cannot_redirect_git() {
             repo.0.canonicalize().expect("fixture root")
         );
         assert_eq!(repo.git(&["config", "--local", "core.bare"]), "false");
-        assert!(watched(
-            &metadata::inputs(&repo.0),
-            &repo.0.join(".git/HEAD")
-        ));
         return;
     }
     let caller = Repository::initialized();
