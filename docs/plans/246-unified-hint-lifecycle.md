@@ -75,16 +75,6 @@ accepted in #225 is outside this task.
   keyboard commands and source safety. No menu renaming, extra toolbar Tab stops,
   toolkit graph changes or new custom widget is approved.
 
-## Framework composition check
-
-The locked standard Popover always focuses its configured `track_focus` handle
-on opening; it has no public autofocus-disable option. Investigate retaining the
-existing focused handle during hover while content keeps its own separate scope,
-then using ordinary focus entry for explicit invocation. Editor autofocus must
-follow entry intent. The standard HoverCard has public delays but no controlled
-open/close API in this version. Do not invent private APIs or replace either
-control with custom behavior; stop and discuss any unresolved toolkit limitation.
-
 ## Toolkit limitation and proposed adapter (owner decision required)
 
 The locked public Popover takes focus unconditionally when opened
@@ -109,6 +99,21 @@ per-window ownership, focus entry/restoration, nested dismissal coordination,
 Tab entry and external-help suppression. Validate all three panels, no-current-focus
 opening, keyboard/pointer entry, nested Select, outside target focus, independent
 windows and deactivation with automated regressions plus production Xvfb scenarios.
+The retained coordinator belongs to the existing Shell/hint owner in each
+window, never an application-global panel singleton. Requests carry monotonically
+changing ownership/generation tokens; close, switch, trigger removal, deactivation
+and owner drop invalidate delayed callbacks. Old close events cannot clear a newer
+owner. Keep capture/history and processing state out of this coordinator.
+
+Record pre-entry focus only when explicit invocation or Tab actually enters;
+hover preview does not change focus. Restore only a still-live same-window handle
+when dismissal owns focus; outside clicks must not overwrite focus gained by their
+target. Read actual focus containment including standard nested Select content,
+not a flag inferred from the last open action. Preserve topmost nested Escape
+handling and the editor's existing transaction callbacks. Suppression invalidates
+both visible and pending external help, and requires fresh eligible trigger entry
+before revealing again.
+
 This is a lifecycle maintenance obligation, not merely a visual wrapper.
 
 **Owner decision: pending.** No adapter/application code has been implemented.
