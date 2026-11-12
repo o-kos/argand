@@ -365,6 +365,29 @@ The aggregate `ci/full` is the required check after the staged protection migrat
 
 No runner has a GPU, so no job opens a window. What the three of them cover is that the workspace builds on every supported platform and that everything not needing a window passes; the application's own configuration and geometry logic is written to be testable without one.
 
+Performance probes are explicit `[[bench]]` targets with `harness = false` and
+`test = false`. Ordinary `cargo test --locked` does not build them. The
+`cargo clippy --all-targets --locked` gate intentionally compiles/checks them;
+it does not run measurements. Build a probe explicitly with `cargo build
+--release --locked -p <package> --bench <name> --message-format=json` and run the
+`executable` reported for that benchmark target by Cargo. Benchmark/test artifacts
+and shipped application/CLI binaries stay in the workspace-local `target/`. The
+maintained probes are
+`argand`'s `fft_scheduling` and `argand-dsp`'s `snapshot_cost` and `conversion_cost`.
+
+Tests obtain checkout-dependent executable and fixture paths from Cargo's runtime
+`CARGO_BIN_EXE_*` and `CARGO_MANIFEST_DIR` variables using native OS strings.
+Do not embed these paths with `env!`: Cargo can reuse a test executable across
+checkouts reusing copied build artifacts without refreshing those strings. Running a
+test harness directly requires the same explicit Cargo environment; missing paths
+fail rather than falling back to a guessed binary or another source tree.
+The dependency-free `.github/scripts/test-checkout-identity.py` exercises runtime
+paths with live and removed prior checkouts and changed final-output directories.
+Run it with ordinary installed Cargo on PATH. It copies the repository toolchain
+pin into dependency-free temporary packages, preserves copied local-target artifact
+mtimes and checks their exact content identity. No shared build directory, compiler
+overrides or new dependencies are needed.
+
 The commands are not restated in the workflow with different flags. Formatting and lint configuration lives in the repository, where `cargo` finds it on its own, so what runs locally and what blocks the merge cannot drift apart. Tighten a rule by changing that configuration, not the workflow.
 
 The exact toolchain comes from `rust-toolchain.toml`; the workspace's minimum Rust version is declared in `Cargo.toml` and repeated in the Rust badge in `README.md`. The declared minimum and the badge must agree with the toolchain's major and minor version. Tests that need real captures skip when `tests/signals/` is absent, so a clean CI checkout runs the rest of the suite.

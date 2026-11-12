@@ -5,7 +5,7 @@ for: every render and input entry point in `crates/app/src`, the parent inventor
 belongs to, and a final disposition for every parent row.
 
 Scope: the production application tree. The #126 compatibility fixture was removed in this
-stage, so `crates/app/examples` holds only the `fft_scheduling` benchmark; the fixture's
+stage; the `fft_scheduling` performance probe lives under `crates/app/benches`; the fixture's
 history stays in [126-compatibility](126-compatibility/).
 
 ## Current 0.9.1 reassessment (#226)

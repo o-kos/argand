@@ -56,12 +56,17 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Test CI result policy
-        run: python3 .github/scripts/test-ci-result.py
+        run: |
+          python3 .github/scripts/test-ci-result.py
+
+      - name: Test checkout artifact identity
+        run: python3 .github/scripts/test-checkout-identity.py
 
       # Draft feedback stops after linting; Ready and main retain the full gate.
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      # All targets deliberately includes opt-in performance benches for compile coverage.
       # Strictness lives in [workspace.lints], not in a flag here.
       - name: Lint
         run: cargo clippy --all-targets --locked --features source-toolkit,toolkit-test-support

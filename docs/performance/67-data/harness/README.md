@@ -4,7 +4,11 @@ These are the exact temporary harness sources used for the recorded experiment,
 not installed application code or a portable benchmark suite. They intentionally
 record the reference host's CPU masks, file paths and `/tmp/argand-67` layout.
 Do not run them unchanged on another host. The maintained portable current-path
-benchmark is `crates/app/examples/fft_scheduling.rs`.
+benchmark is `crates/app/benches/fft_scheduling.rs`. Build it explicitly with
+`cargo build -p argand --release --locked --bench fft_scheduling --message-format=json`,
+then run the target's reported `executable` with `PATH [WORKERS] [BATCH]`. Use the
+reported path, including the native executable suffix on Windows. Ordinary tests do not build this probe; the
+all-target Clippy gate deliberately checks it without executing measurements.
 
 To reconstruct the historical DSP comparison, export baseline revision b8482cd to
 an isolated scratch directory, retain its core/io/dsp crates and locked workspace
