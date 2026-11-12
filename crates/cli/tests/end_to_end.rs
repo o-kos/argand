@@ -11,7 +11,6 @@ use std::process::{Command, Output};
 use argand_io::testutil::{TempDir, iq_tone, real_tone, write_raw, write_wav};
 use serde_json::Value;
 
-const ASPEC: &str = env!("CARGO_BIN_EXE_aspec");
 const RATE: u32 = 24_000;
 const FFT: usize = 256;
 /// Exactly on a bin, so quantisation cannot nudge the peak next door.
@@ -20,7 +19,7 @@ const TONE_HZ: f64 = TONE_BIN as f64 * RATE as f64 / FFT as f64;
 const SAMPLES: usize = 8192;
 
 fn run(args: &[&str]) -> Output {
-    Command::new(ASPEC)
+    Command::new(std::env::var_os("CARGO_BIN_EXE_aspec").expect("Cargo test executable path"))
         .args(args)
         .output()
         .expect("aspec should be runnable")
@@ -649,7 +648,9 @@ fn failures_are_reported_and_exit_non_zero() {
 fn real_captures_render_end_to_end() {
     // The repository's own fixture directory first, then an override, then
     // the sibling sgvr checkout the captures originally came from.
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo test source path"))
+            .join("../..");
     let mut bases = vec![repo.join("tests/signals")];
     if let Ok(extra) = std::env::var("ARGAND_EXTRA_FIXTURES") {
         bases.push(PathBuf::from(extra));
@@ -696,8 +697,9 @@ fn real_captures_render_end_to_end() {
 
 #[test]
 fn the_half_hour_capture_renders_end_to_end() {
-    let input = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/signals/12.579000_25_08_26_06_09_10.iqw");
+    let input =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo test source path"))
+            .join("../../tests/signals/12.579000_25_08_26_06_09_10.iqw");
     if !input.exists() {
         eprintln!("skipping: no {}", input.display());
         return;

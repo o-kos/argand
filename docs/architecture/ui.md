@@ -49,8 +49,12 @@ compile-time metadata. `build.rs` captures the short HEAD hash, commit timestamp
 in ISO 8601 with offset and an exact HEAD tag (`untagged` otherwise), with explicit
 `unavailable` values when Git identity cannot be obtained. The displayed time is
 the commit time, never the build time. No Git process runs at application startup.
-Rebuild inputs include worktree HEAD and shared refs/tags/packed refs. A source
-archive without its own `.git` never borrows an enclosing repository's identity.
+Build-script inputs cover the application's sources and assets, its owned
+workspace library sources, their manifests and the workspace manifest/lockfile.
+Git-only changes do not invalidate the build. Metadata is a snapshot from the last
+build-script execution; a cached binary retains that snapshot. This is not a
+callback on every compiler invocation. A source archive without its own `.git`
+never borrows an enclosing repository's identity.
 The tooltip contains tag, hash and commit date; the panel adds package details
 and the existing approved application artwork.
 

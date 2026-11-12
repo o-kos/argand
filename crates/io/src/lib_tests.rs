@@ -3,7 +3,7 @@ use crate::testutil::{TempDir, all_sample_types, iq_tone, write_raw, write_wav};
 use argand_core::{Domain, SampleFormat};
 
 fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
+    PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo test source path"))
         .join("../..")
         .canonicalize()
         .expect("repo root")
