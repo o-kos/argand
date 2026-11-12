@@ -828,6 +828,7 @@ impl Shell {
     ) {
         match *event {
             hints::Pinned::Opened => {
+                self.suppress_external_tooltips();
                 self.close_about(cx);
                 // The panel freezes the plot as the analysis hint does.
                 self.interrupt_plot(cx);

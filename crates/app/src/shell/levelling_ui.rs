@@ -233,7 +233,9 @@ impl Shell {
                 .border_color(cx.theme().border)
                 .flex_shrink_0()
                 .whitespace_nowrap()
-                .tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
+                .when(self.external_tooltips_allowed(cx), |element| {
+                    element.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
+                })
                 .child(text)
                 .into_any_element(),
         )

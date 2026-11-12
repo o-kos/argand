@@ -27,6 +27,7 @@ pub(in crate::shell) struct PlotSnapshot {
     pub frequency_scheme: Option<argand_core::axis::TickScheme>,
     pub frequency: crate::navigation::frequency::View,
     pub show_grid: bool,
+    pub tooltips_allowed: bool,
     pub show_scale_ui: bool,
     /// The mouse position counts only while this holds, since it goes stale once the pointer leaves.
     pub pointer_in_window: bool,

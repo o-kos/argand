@@ -17,6 +17,8 @@ pub enum Row<T> {
         label: String,
         origin: T,
     },
+    /// Opens capture properties and conversion options.
+    Information,
     /// Opens the analysis settings.
     Settings,
     Separator,
@@ -44,6 +46,7 @@ pub fn file_items<T>(recent: Vec<(String, T)>) -> Vec<Row<T>> {
         Row::Save,
         Row::SaveAs,
         Row::SaveSelectionAs,
+        Row::Information,
         Row::Separator,
     ];
     if !recent.is_empty() {

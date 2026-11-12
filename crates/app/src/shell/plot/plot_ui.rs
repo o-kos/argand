@@ -46,6 +46,7 @@ impl Shell {
             frequency_scheme: self.frequency_scheme,
             frequency: self.frequency,
             show_grid: self.session.show_grid,
+            tooltips_allowed: self.external_tooltips_allowed(cx),
             show_scale_ui: self.session.show_scale_ui,
             pointer_in_window: self.pointer_in_window,
             selection: self.selected(),
@@ -322,7 +323,14 @@ impl PlotView {
             .as_ref()
             .and_then(WeakEntity::upgrade)
             .is_some();
-        if self.pan.is_some() || self.frequency_pan.is_some() || menu_open {
+        if self.pan.is_some()
+            || self.frequency_pan.is_some()
+            || menu_open
+            || !self
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.tooltips_allowed)
+        {
             return None;
         }
         let hint = self.geometry?.unit_hints[index]?;
@@ -442,6 +450,10 @@ impl PlotView {
             .size_full()
             .child(zoom_pair(
                 ZoomPair {
+                    tooltips_allowed: self
+                        .snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| snapshot.tooltips_allowed),
                     horizontal: !orientation.vertical(),
                     zoom_in: "Zoom in time",
                     zoom_out: "Zoom out time",
@@ -453,6 +465,10 @@ impl PlotView {
             ))
             .child(zoom_pair(
                 ZoomPair {
+                    tooltips_allowed: self
+                        .snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| snapshot.tooltips_allowed),
                     horizontal: orientation.vertical(),
                     zoom_in: "Zoom in frequency",
                     zoom_out: "Zoom out frequency",
@@ -765,6 +781,7 @@ fn corner_zones(
 }
 
 struct ZoomPair {
+    tooltips_allowed: bool,
     horizontal: bool,
     zoom_in: &'static str,
     zoom_out: &'static str,
@@ -807,7 +824,7 @@ fn zoom_pair(
         IconName::Plus,
         pair.zoom_in,
         in_action,
-        enabled,
+        (enabled, pair.tooltips_allowed),
         horizontal,
         true,
         cx,
@@ -816,7 +833,7 @@ fn zoom_pair(
         IconName::Minus,
         pair.zoom_out,
         out_action,
-        enabled,
+        (enabled, pair.tooltips_allowed),
         horizontal,
         false,
         cx,
@@ -874,7 +891,7 @@ fn half_button(
     icon: IconName,
     hint: &'static str,
     action: impl Action + 'static,
-    enabled: bool,
+    (enabled, tooltips_allowed): (bool, bool),
     horizontal: bool,
     leading: bool,
     cx: &mut Context<PlotView>,
@@ -913,15 +930,17 @@ fn half_button(
             window.focus(&plot.focus, cx);
             window.dispatch_action(click.boxed_clone(), cx);
         }));
-    half.interactivity().tooltip(move |_, cx| {
-        shortcut_tooltip(
-            hint.to_owned(),
-            Some(tooltip_action.boxed_clone()),
-            "Plot",
-            px(240.),
-            cx,
-        )
-    });
+    if tooltips_allowed {
+        half.interactivity().tooltip(move |_, cx| {
+            shortcut_tooltip(
+                hint.to_owned(),
+                Some(tooltip_action.boxed_clone()),
+                "Plot",
+                px(240.),
+                cx,
+            )
+        });
+    }
     half
 }
 

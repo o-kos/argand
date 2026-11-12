@@ -59,6 +59,7 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
 #[derive(Clone, Copy)]
 struct FileCommands {
     settings: bool,
+    information: bool,
     save_over: bool,
     save: bool,
     save_selection: bool,
@@ -79,6 +80,7 @@ impl Shell {
         let recent = app_menu::file_items(self.recent_entries());
         let enabled = FileCommands {
             settings: self.file.is_some(),
+            information: self.status_panel_available(settings_ui::StatusPanel::File),
             save_over: self.can_save_over().is_ok()
                 || (self
                     .file
@@ -134,7 +136,11 @@ impl Shell {
             )
             .disabled(!enabled.save_selection),
             // Analysis settings belong to a document, so there are none to edit without one.
-            Row::Settings => action_row("Settings", Box::new(EditAnalysis), false, focus)
+            Row::Information => {
+                action_row("File information…", Box::new(ConvertCapture), false, focus)
+                    .disabled(!enabled.information)
+            }
+            Row::Settings => action_row("Analysis settings…", Box::new(EditAnalysis), false, focus)
                 .disabled(!enabled.settings),
             Row::Separator => PopupMenuItem::separator(),
             Row::Recent {
@@ -164,7 +170,6 @@ impl Shell {
     ) -> Entity<PopupMenu> {
         let can = self.edit_commands_available();
         let select = self.entry_scale().is_some();
-        let convert = self.can_save(false) && !self.capture_changed();
         PopupMenu::build(window, cx, move |menu, _, _| {
             let row = |label: &str, action: Box<dyn Action>, enabled: bool| {
                 action_row(label, action, false, focus.clone()).disabled(!enabled)
@@ -212,8 +217,6 @@ impl Shell {
                     Box::new(editing_ui::NormalizeLevel),
                     can.normalize,
                 ))
-                .item(PopupMenuItem::separator())
-                .item(row("Convert to...", Box::new(ConvertCapture), convert))
         })
     }
 
@@ -343,6 +346,7 @@ impl Shell {
         if self.conversion_active() || self.application_menu.is_some() {
             return;
         }
+        self.suppress_external_tooltips();
         self.close_hints(cx);
         self.interrupt_plot(cx);
         self.recent_files.refresh(&self.session.recent);
@@ -517,15 +521,8 @@ impl Shell {
             .h(px(TOOLBAR_HEIGHT))
             .child(img("argand/app.png").size(px(22.)))
             .child(div().text_color(cx.theme().foreground).child(TITLE));
-        // The button is pressed while the menu is open, so it shows no hint.
-        let shell = cx.entity().downgrade();
-        app.interactivity().tooltip(move |_, cx| {
-            let open = shell
-                .upgrade()
-                .is_some_and(|shell| shell.read(cx).application_menu.is_some());
-            if open {
-                gpui_kit::AnyView::from(cx.new(|_| NoTooltip))
-            } else {
+        if self.external_tooltips_allowed(cx) {
+            app.interactivity().tooltip(move |_, cx| {
                 shortcut_tooltip(
                     "Application menu".to_owned(),
                     Some(Box::new(OpenApplicationMenu)),
@@ -533,8 +530,8 @@ impl Shell {
                     px(240.),
                     cx,
                 )
-            }
-        });
+            });
+        }
         div()
             .id("title-toolbar")
             .flex()
@@ -563,7 +560,7 @@ impl Shell {
     /// The two orientation segments in one frame, with the mode in force selected.
     fn orientation_segments(&self, cx: &mut Context<Self>) -> ButtonGroup {
         let vertical = self.session.orientation.vertical();
-        let horizontal = Self::orientation_segment(
+        let horizontal = self.orientation_segment(
             "orientation-horizontal",
             Lucide::PanelTop.path(),
             Mode::Horizontal,
@@ -571,7 +568,7 @@ impl Shell {
             false,
             cx,
         );
-        let vertical = Self::orientation_segment(
+        let vertical = self.orientation_segment(
             "orientation-vertical",
             Lucide::PanelLeft.path(),
             Mode::Vertical,
@@ -600,6 +597,7 @@ impl Shell {
 
     /// One orientation segment, which is an action for the mode it names.
     fn orientation_segment(
+        &self,
         id: &'static str,
         icon: gpui_kit::SharedString,
         mode: Mode,
@@ -634,10 +632,12 @@ impl Shell {
         // Only the segment that changes the mode offers Ctrl+T.
         let other = !current;
         let hint = format!("{} orientation", mode.label());
-        segment.interactivity().tooltip(move |_, cx| {
-            let action = other.then(|| Box::new(ToggleOrientation) as Box<dyn Action>);
-            shortcut_tooltip(hint.clone(), action, "Plot", px(360.), cx)
-        });
+        if self.external_tooltips_allowed(cx) {
+            segment.interactivity().tooltip(move |_, cx| {
+                let action = other.then(|| Box::new(ToggleOrientation) as Box<dyn Action>);
+                shortcut_tooltip(hint.clone(), action, "Plot", px(360.), cx)
+            });
+        }
         segment
     }
 
@@ -688,9 +688,11 @@ impl Shell {
                         "Both" => "Select time and band".to_owned(),
                         label => format!("Select {}", label.to_lowercase()),
                     };
-                    segment.interactivity().tooltip(move |_, cx| {
-                        shortcut_tooltip(hint.clone(), None, "Plot", px(360.), cx)
-                    });
+                    if self.external_tooltips_allowed(cx) {
+                        segment.interactivity().tooltip(move |_, cx| {
+                            shortcut_tooltip(hint.clone(), None, "Plot", px(360.), cx)
+                        });
+                    }
                     segment
                 });
         let group = ButtonGroup::new("selection-segments")
@@ -734,15 +736,17 @@ impl Shell {
                 window.focus(&shell.focus_target(cx), cx);
                 window.dispatch_action(Box::new(ToggleGrid), cx);
             }));
-        button.interactivity().tooltip(move |_, cx| {
-            shortcut_tooltip(
-                hint.to_owned(),
-                Some(Box::new(ToggleGrid)),
-                "Plot",
-                px(360.),
-                cx,
-            )
-        });
+        if self.external_tooltips_allowed(cx) {
+            button.interactivity().tooltip(move |_, cx| {
+                shortcut_tooltip(
+                    hint.to_owned(),
+                    Some(Box::new(ToggleGrid)),
+                    "Plot",
+                    px(360.),
+                    cx,
+                )
+            });
+        }
         button
     }
 
@@ -1081,15 +1085,6 @@ fn frame_colour(cx: &gpui_kit::App) -> gpui_kit::Hsla {
     cx.theme()
         .title_bar
         .blend(cx.theme().foreground.opacity(0.24))
-}
-
-/// The tooltip stand-in for the pressed application button: renders nothing.
-pub(super) struct NoTooltip;
-
-impl gpui_kit::Render for NoTooltip {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        gpui_kit::div()
-    }
 }
 
 #[cfg(test)]

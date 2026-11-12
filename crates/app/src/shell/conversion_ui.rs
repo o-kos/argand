@@ -1147,19 +1147,21 @@ impl Shell {
                 .text_xs()
                 .min_w_0()
                 .max_w(px(420.))
-                .tooltip({
-                    let text = text.clone();
-                    move |_, cx| {
-                        metadata_tooltip(
-                            MetadataHint {
-                                title: "Conversion",
-                                value: text.clone(),
-                                explanation: String::new(),
-                                rows: Vec::new(),
-                            },
-                            cx,
-                        )
-                    }
+                .when(self.external_tooltips_allowed(cx), |element| {
+                    element.tooltip({
+                        let text = text.clone();
+                        move |_, cx| {
+                            metadata_tooltip(
+                                MetadataHint {
+                                    title: "Conversion",
+                                    value: text.clone(),
+                                    explanation: String::new(),
+                                    rows: Vec::new(),
+                                },
+                                cx,
+                            )
+                        }
+                    })
                 })
                 .child(
                     div()

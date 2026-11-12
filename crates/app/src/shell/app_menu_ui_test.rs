@@ -643,10 +643,10 @@ fn a_click_on_a_recent_row_opens_that_capture(cx: &mut TestAppContext) {
     open_capture(cx, &shell);
     recent(cx, &shell, "/captures/beacon.iqw");
     press(cx, "f10");
-    // The File branch is on screen, and its sixth row is the first capture.
+    // The File branch is on screen, and its seventh row is the first capture.
     press(cx, "down right");
     assert!(file_focused(cx, &shell));
-    let capture = row(cx, 5);
+    let capture = row(cx, 6);
     cx.simulate_click(capture, gpui_kit::Modifiers::default());
     draw(cx);
     assert!(!menu_open(cx, &shell), "the menu closed");

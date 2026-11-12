@@ -492,9 +492,10 @@ impl Shell {
                 .min_w_0()
                 .max_w(px(360.))
                 .when(failed, |item| item.text_color(cx.theme().danger))
-                .when_some(failure, |item, hint| {
-                    item.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
-                })
+                .when_some(
+                    failure.filter(|_| self.external_tooltips_allowed(cx)),
+                    |item, hint| item.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx)),
+                )
                 .child(
                     div()
                         .min_w_0()

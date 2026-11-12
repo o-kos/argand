@@ -11,6 +11,10 @@ promise applies to.
 
 ## [Unreleased]
 
+### Changed
+
+- File information and Analysis settings open explicitly instead of appearing on hover. Their status-bar buttons explain the available controls and shortcuts; matching menu entries use the same names. Information panels suppress competing external tooltips and close on window deactivation (#246).
+
 ### Added
 
 - About Argand opens from a version button in the title bar or the application menu and shows package details, the repository link and build commit identity. Its tooltip identifies the version, exact tag, commit and commit date (#107).

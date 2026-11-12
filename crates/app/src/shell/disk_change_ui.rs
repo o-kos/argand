@@ -139,7 +139,9 @@ impl Shell {
                 .gap_1()
                 .min_w_0()
                 .text_color(cx.theme().danger)
-                .tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
+                .when(self.external_tooltips_allowed(cx), |element| {
+                    element.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
+                })
                 .child(
                     div()
                         .min_w_0()

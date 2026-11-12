@@ -925,7 +925,7 @@ fn hover_about(cx: &mut gpui_kit::VisualTestContext) {
 }
 
 #[gpui_kit::test]
-fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAppContext) {
+fn property_panels_are_mutually_exclusive_for_explicit_commands(cx: &mut TestAppContext) {
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!("argand-panel-switch-{}.wav", std::process::id()));
@@ -964,12 +964,13 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
         frame(cx);
     }
     shell.update_in(cx, |shell, window, cx| {
-        shell
-            .analysis_hint
-            .update(cx, |hint, cx| hint.hover(true, window, cx))
+        shell.open_status_panel(
+            super::super::settings_ui::StatusPanel::Analysis,
+            false,
+            window,
+            cx,
+        )
     });
-    cx.executor()
-        .advance_clock(std::time::Duration::from_secs(1));
     frame(cx);
     assert_property_panels(cx, &shell, false, true);
     hover_about(cx);
@@ -983,15 +984,14 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
         );
     });
     assert_property_panels(cx, &shell, false, true);
-    std::thread::sleep(std::time::Duration::from_millis(450));
     shell.update_in(cx, |shell, window, cx| {
-        shell
-            .conversion
-            .hint
-            .update(cx, |hint, cx| hint.hover(true, window, cx))
+        shell.open_status_panel(
+            super::super::settings_ui::StatusPanel::File,
+            false,
+            window,
+            cx,
+        )
     });
-    cx.executor()
-        .advance_clock(std::time::Duration::from_secs(1));
     frame(cx);
     assert_property_panels(cx, &shell, true, false);
     hover_about(cx);
@@ -1028,7 +1028,7 @@ fn property_panels_are_mutually_exclusive_for_hover_and_keyboard(cx: &mut TestAp
 }
 
 #[gpui_kit::test]
-fn pointer_hover_crosses_adjacent_status_triggers_above_the_plot_backdrop(cx: &mut TestAppContext) {
+fn status_triggers_show_help_without_opening_then_click_opens(cx: &mut TestAppContext) {
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!("argand-panel-hover-{}.wav", std::process::id()));
@@ -1044,16 +1044,20 @@ fn pointer_hover_crosses_adjacent_status_triggers_above_the_plot_backdrop(cx: &m
     frame(cx);
     let file = cx.update(|window, _| window.find("file-information").bounds().center());
     let analysis = cx.update(|window, _| window.find("analysis-settings").bounds().center());
-    for (point, file_open, analysis_open) in [
-        (file, true, false),
-        (analysis, false, true),
-        (file, true, false),
-    ] {
-        // The production rehover guard uses wall time, whereas the hover timer uses the executor.
-        std::thread::sleep(std::time::Duration::from_millis(450));
-        cx.simulate_mouse_move(point, None, gpui_kit::Modifiers::default());
+    for position in [file, analysis, file] {
+        cx.simulate_mouse_move(position, None, gpui_kit::Modifiers::default());
         cx.executor()
-            .advance_clock(std::time::Duration::from_secs(1));
+            .advance_clock(std::time::Duration::from_secs(2));
+        frame(cx);
+        assert_property_panels(cx, &shell, false, false);
+    }
+    cx.simulate_mouse_down(analysis, MouseButton::Left, gpui_kit::Modifiers::default());
+    cx.simulate_mouse_up(analysis, MouseButton::Left, gpui_kit::Modifiers::default());
+    frame(cx);
+    assert_property_panels(cx, &shell, false, true);
+    for (position, file_open, analysis_open) in [(file, true, false), (analysis, false, true)] {
+        cx.simulate_mouse_down(position, MouseButton::Left, gpui_kit::Modifiers::default());
+        cx.simulate_mouse_up(position, MouseButton::Left, gpui_kit::Modifiers::default());
         frame(cx);
         assert_property_panels(cx, &shell, file_open, analysis_open);
     }
@@ -1979,4 +1983,171 @@ fn format_advice_reuses_range_close_hover_and_list_suppression(cx: &mut TestAppC
             )
         });
     }
+}
+
+#[gpui_kit::test]
+fn external_tooltips_are_cancelled_on_panel_open_and_do_not_resurrect(cx: &mut TestAppContext) {
+    let (shell, cx) = panel_window(cx);
+    cx.update(|window, _| window.activate_window());
+    frame(cx);
+    let position = cx.update(|window, _| window.find("about-button").bounds().center());
+    for wait in [200, 1000] {
+        cx.simulate_mouse_move(
+            point(px(500.), px(400.)),
+            None,
+            gpui_kit::Modifiers::default(),
+        );
+        frame(cx);
+        cx.simulate_mouse_move(position, None, gpui_kit::Modifiers::default());
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(wait));
+        frame(cx);
+        if wait == 1000 {
+            assert!(cx.update(|window, _| window.try_find("about-tooltip").is_some()));
+        }
+        shell.update_in(cx, |shell, window, cx| {
+            shell.show_about(&super::super::about_ui::ShowAbout, window, cx);
+        });
+        frame(cx);
+        assert!(cx.update(|window, _| window.try_find("about-tooltip").is_none()));
+        shell.update(cx, |shell, cx| shell.close_about(cx));
+        frame(cx);
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(2));
+        frame(cx);
+        assert!(
+            cx.update(|window, _| window.try_find("about-tooltip").is_none()),
+            "closing under a resting pointer must not resurrect visible or pending help"
+        );
+        cx.simulate_mouse_move(position, None, gpui_kit::Modifiers::default());
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        frame(cx);
+        assert!(
+            cx.update(|window, _| window.try_find("about-tooltip").is_some()),
+            "the first fresh motion after panel close can show help again"
+        );
+    }
+    cx.update(|window, _| window.activate_window());
+    frame(cx);
+    cx.deactivate_window();
+    frame(cx);
+    assert!(cx.update(|window, _| window.try_find("about-tooltip").is_none()));
+    cx.update(|window, _| window.activate_window());
+    frame(cx);
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(2));
+    frame(cx);
+    assert!(cx.update(|window, _| window.try_find("about-tooltip").is_none()));
+}
+
+#[gpui_kit::test]
+fn deactivation_closes_both_property_panels_without_reopening(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let path = std::env::temp_dir().join(format!(
+        "argand-panel-deactivate-{}.wav",
+        std::process::id()
+    ));
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path.clone()), window, cx)
+    });
+    wait_until(cx, &shell, "deactivation source", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described())
+    });
+    let analysis_key = if cfg!(target_os = "macos") {
+        "cmd-,"
+    } else {
+        "ctrl-,"
+    };
+    for (key, file, analysis) in [("f11", true, false), (analysis_key, false, true)] {
+        cx.update(|window, _| window.activate_window());
+        cx.simulate_keystrokes(key);
+        frame(cx);
+        assert_property_panels(cx, &shell, file, analysis);
+        cx.deactivate_window();
+        frame(cx);
+        assert_property_panels(cx, &shell, false, false);
+        cx.update(|window, _| window.activate_window());
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(2));
+        frame(cx);
+        assert_property_panels(cx, &shell, false, false);
+    }
+    std::fs::remove_file(path).unwrap();
+}
+
+#[gpui_kit::test]
+fn rapid_reactivation_cancels_pending_and_visible_help_before_fresh_motion(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx) = panel_window(cx);
+    cx.update(|window, _| window.activate_window());
+    frame(cx);
+    let position = cx.update(|window, _| window.find("about-button").bounds().center());
+    for wait in [200, 1000] {
+        cx.simulate_mouse_move(
+            point(px(500.), px(400.)),
+            None,
+            gpui_kit::Modifiers::default(),
+        );
+        frame(cx);
+        cx.simulate_mouse_move(position, None, gpui_kit::Modifiers::default());
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(wait));
+        frame(cx);
+        if wait == 1000 {
+            assert!(cx.update(|window, _| window.try_find("about-tooltip").is_some()));
+        }
+        // deactivate_window drains scheduled draws. Exercise the same suspension
+        // and the active callback atomically, before any prepaint can retire help.
+        shell.update_in(cx, |shell, window, cx| {
+            shell.suppress_external_tooltips();
+            shell.activation_changed(window, cx);
+            assert_eq!(shell.external_help_cleared_epoch, None);
+            shell.pointer_moved(cx);
+            assert!(
+                shell.external_help_suppressed,
+                "motion before teardown must not release stale native state"
+            );
+        });
+        frame(cx);
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(2));
+        frame(cx);
+        assert!(cx.update(|window, _| window.try_find("about-tooltip").is_none()));
+        cx.simulate_mouse_move(position, None, gpui_kit::Modifiers::default());
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        frame(cx);
+        assert!(
+            cx.update(|window, _| window.try_find("about-tooltip").is_some()),
+            "the first fresh motion after teardown restores normal help"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn an_old_teardown_acknowledgement_cannot_clear_a_new_suppression(cx: &mut TestAppContext) {
+    let (shell, cx) = panel_window(cx);
+    frame(cx);
+    cx.update(|window, cx| {
+        shell.update(cx, |shell, _| shell.suppress_external_tooltips());
+        Shell::acknowledge_tooltip_teardown(shell.downgrade(), window, cx);
+        shell.update(cx, |shell, _| shell.suppress_external_tooltips());
+    });
+    assert_eq!(
+        shell.read_with(cx, |shell, _| shell.external_help_cleared_epoch),
+        None
+    );
+    frame(cx);
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(
+            shell.external_help_cleared_epoch,
+            Some(shell.external_help_epoch)
+        )
+    });
 }

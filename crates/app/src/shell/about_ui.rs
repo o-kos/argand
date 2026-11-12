@@ -173,12 +173,17 @@ fn tooltip_content(window: &mut Window, cx: &mut gpui_kit::App) -> AnyElement {
         .flex()
         .flex_col()
         .gap_1()
-        .child(about::title())
+        .child("About Argand")
         .child(
             div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child(format!("{} · {}", about::TAG, about::HASH)),
+                .child(format!(
+                    "{} · {} · {}",
+                    about::title(),
+                    about::TAG,
+                    about::HASH
+                )),
         )
         .child(
             div()
@@ -234,6 +239,7 @@ impl Shell {
     ) {
         match event {
             hints::Pinned::Opened => {
+                self.suppress_external_tooltips();
                 self.close_analysis_hint(cx);
                 self.close_selection_hint(cx);
                 self.conversion
@@ -267,24 +273,11 @@ impl Shell {
             .icon(Icon::new(gpui_kit::assets::IconName::Tag))
             .label(about::VERSION)
             .on_click(cx.listener(|shell, _, window, cx| shell.show_about(&ShowAbout, window, cx)));
-        let panels = [
-            &self.analysis_hint,
-            &self.selection_hint,
-            &self.conversion.hint,
-            &self.about.hint,
-        ]
-        .map(Entity::downgrade);
-        button.interactivity().tooltip(move |_, cx| {
-            if panels.iter().any(|panel| {
-                panel
-                    .upgrade()
-                    .is_some_and(|panel| panel.read(cx).is_open())
-            }) {
-                cx.new(|_| app_menu_ui::NoTooltip).into()
-            } else {
-                hints::passive(cx, |_| Tooltip::element(tooltip_content))
-            }
-        });
+        if self.external_tooltips_allowed(cx) {
+            button
+                .interactivity()
+                .tooltip(move |_, cx| hints::passive(cx, |_| Tooltip::element(tooltip_content)));
+        }
         hints::pinned(
             "about-popover",
             &self.about.hint,

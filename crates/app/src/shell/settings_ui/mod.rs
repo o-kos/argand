@@ -159,7 +159,7 @@ impl Shell {
         }
     }
 
-    fn status_panel_available(&self, panel: StatusPanel) -> bool {
+    pub(super) fn status_panel_available(&self, panel: StatusPanel) -> bool {
         if self.conversion_active() {
             return false;
         }
@@ -183,6 +183,7 @@ impl Shell {
         }
         match event {
             hints::Pinned::Opened if open => {
+                self.suppress_external_tooltips();
                 // Choose the new owner before closing the old editor and emitting its Closed event.
                 self.close_about(cx);
                 self.status_panel_request += 1;
@@ -268,22 +269,23 @@ impl Shell {
         };
         let hint = self.status_hint(panel);
         let lit = self.status_panel == Some(panel) && hint.read(cx).is_open();
-        let button = status_control(id, group, text, lit, cx)
+        let mut button = status_control(id, group, text, lit, cx)
             .disabled(!self.status_panel_available(panel))
-            .on_hover(cx.listener(move |shell, hovered, window, cx| {
-                if !shell.status_panel_available(panel) {
-                    return;
-                }
-                shell
-                    .status_hint(panel)
-                    .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
-            }))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |shell, _, window, cx| {
                     shell.open_status_panel(panel, panel == StatusPanel::Analysis, window, cx);
                 }),
             );
+        if self.external_tooltips_allowed(cx) {
+            button.interactivity().tooltip(move |_, cx| {
+                let (title, description, action): (_, _, Box<dyn Action>) = match panel {
+                    StatusPanel::File => ("File information", "View sample rate, reference frequency, sample type and format; convert the capture", Box::new(ConvertCapture)),
+                    StatusPanel::Analysis => ("Analysis settings", "Adjust FFT, window function and display range", Box::new(EditAnalysis)),
+                };
+                shortcut_tooltip(format!("{title}\n{description}"), Some(action), "Shell", px(420.), cx)
+            });
+        }
         super::app_menu_ui::keeps_focus(
             focus,
             hints::pinned(popover, &hint, button, gpui_kit::Anchor::BottomLeft, cx),
@@ -528,9 +530,12 @@ impl Shell {
                             .id("analysis-status")
                             .min_w_0()
                             .max_w(px(140.))
-                            .when_some(hint, |status, hint| {
-                                status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
-                            })
+                            .when_some(
+                                hint.filter(|_| self.external_tooltips_allowed(cx)),
+                                |status, hint| {
+                                    status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
+                                },
+                            )
                             .child(
                                 div()
                                     .overflow_hidden()
@@ -618,10 +623,12 @@ impl Shell {
         };
         let range_hint = range_hint(range_state);
         separated_status_item("analysis-range-item", cx)
-            .tooltip(move |_, cx| {
-                let action =
-                    actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
-                shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
+            .when(self.external_tooltips_allowed(cx), |element| {
+                element.tooltip(move |_, cx| {
+                    let action = actionable
+                        .then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
+                    shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
+                })
             })
             .child(range_content)
     }
