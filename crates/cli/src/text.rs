@@ -4,9 +4,9 @@
 //! binary, and a plot whose labels depend on the machine's font configuration
 //! is not the same plot on Linux, Windows and macOS.
 
+use crate::image::{Rgb, RgbImage};
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
 use argand_core::LabelMeasure;
-use image::{Rgb, RgbImage};
 
 const FONT_DATA: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
 

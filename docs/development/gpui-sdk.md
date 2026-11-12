@@ -53,8 +53,8 @@ selection operation yourself rather than expecting Cargo to rebuild it.
 
 CI has no machine configuration or SDK. Source dependencies retain their own
 Cargo names and are exposed to the application through explicit crate aliases.
-The source feature takes precedence even when local SDK flags are present; for
-an entirely SDK-independent source graph, first remove only generated selection:
+For an entirely SDK-independent source graph, first remove the generated SDK
+selection so its injected externs cannot participate in import resolution:
 
 ```sh
 python3 tools/gpui-sdk/sdk.py source-mode
@@ -75,4 +75,6 @@ versions alone do not give Rust types the same identity. In particular, the app 
 passes image types into GPUI. The CLI shares no GPUI types: its own aliased image
 dependency is always built from source, including the bitcode needed by release
 Thin LTO. The CLI does not require an SDK installation. Do not substitute
-arbitrary similarly named libraries from another Cargo build.
+arbitrary similarly named libraries from another Cargo build. CLI modules qualify
+`crate::image` explicitly so nested imports cannot load the injected SDK image
+while LLVM collects release bitcode.

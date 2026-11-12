@@ -6,10 +6,10 @@
 //! one. Nothing is resampled, which is what keeps a single-frame carrier one
 //! pixel wide instead of a smear.
 
+use crate::image::{Rgb, RgbImage};
 use argand_core::axis::{self, Axis, AxisKind, LabelMeasure, LabelMetrics, LabelRun, Tick};
 use argand_core::{Colormap, Psd, SpectrogramImage, WaveformEnvelope};
 use argand_dsp::{Analysis, DynamicRange};
-use image::{Rgb, RgbImage};
 
 use crate::text::{Anchor, TextRenderer, TextStyle};
 

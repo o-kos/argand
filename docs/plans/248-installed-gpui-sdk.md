@@ -100,3 +100,12 @@ The focused release correction received a clean independent review. The final
 normal workspace release is run after this correction is committed; its result
 and binary provenance are recorded in the task handoff rather than another
 source-changing commit. The installed SDK is not rebuilt.
+
+### Release import-resolution follow-up
+
+The initial always-source alias alone did not prevent the compiler from loading
+the injected SDK image during nested `use image::...` resolution. Exact compiler
+LTO logging identified the SDK archive object as the missing-bitcode input. A
+dependency-free control reproduced the failure with a nested use declaration;
+`use crate::image::...` passed under the same Thin LTO inputs. Both CLI module
+imports now explicitly name the source image alias. No SDK/profile changes.
