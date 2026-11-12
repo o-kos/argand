@@ -7,8 +7,8 @@ description: Prepare and assess an independent Argand review handoff for an exac
 
 Follow the canonical [external review policy](../../../CONTRIBUTING.md#external-review)
 and [scoped non-code workflow](../../../CONTRIBUTING.md#roles-and-workflow-scope).
-The coordinator directs the executor to prepare this handoff without requiring the
-owner to name the skill. It adds no approval, publication or review-waiver authority.
+The primary agent prepares this handoff without requiring the owner to name the
+skill. It adds no approval, publication or review-waiver authority.
 
 ## Fix the review snapshot
 
@@ -31,15 +31,16 @@ carry a clean conclusion onto a different diff.
 
 Give the retained reviewer a neutral task, agreed decisions/criteria, exact snapshot,
 repository rules and raw validation results with commands, revision/local-diff identity
-and limits. Require read-only review of that submitted state. Exclude the executor's
-discussion, self-assessment and predicted findings. Do not pre-label the patch safe
-or ask the reviewer to confirm the executor's conclusions.
+and limits. Keep the handoff focused on these artifacts and relevant decisions, not
+the whole conversation history. Require read-only review of that submitted state.
+Exclude the implementing agent's discussion, self-assessment and predicted findings. Do not pre-label the patch safe
+or ask the reviewer to confirm the implementing agent's conclusions.
 
 Keep the same reviewer assignment under the canonical policy. For later rounds,
-include previous findings and the coordinator's explicit dispositions: accepted with
+include previous findings and the primary agent's explicit dispositions: accepted with
 resolution evidence, or rejected with reasons and evidence. Ask the reviewer to
 challenge rejection reasoning; do not omit a declined finding from the next handoff.
-The coordinator resolves technical disagreements; owner decisions and the round
+The primary agent resolves technical disagreements; owner decisions and the round
 limit remain governed by policy. A desk check is not independent review.
 
 ## Match evidence and report
@@ -47,11 +48,11 @@ limit remain governed by policy. A desk check is not independent review.
 Map current validation to the reviewed snapshot and acceptance criteria. Identify
 unrun checks and results from earlier revisions. Refresh evidence when later changes
 affect it. For actual UI claims, verify the production binary's current code/local
-diff and required checks/build through the executor; automated or static evidence
-does not prove native interaction. Use proportionate documentation/link/skill checks
+diff identity and required checks/build from recorded evidence. Automated or static
+evidence does not prove native interaction. Use proportionate documentation/link/skill checks
 for prose-only work under the scoped workflow, not an arbitrary extra gate.
 
 Return the snapshot identity, findings/dispositions and current validation limits to
-the coordinator for assessment. A clean reviewer report does not replace that
+the primary agent for assessment. A clean reviewer report does not replace that
 assessment or owner acceptance, waive required checks, or trigger commits, pushes,
 Ready, merge or release actions.
