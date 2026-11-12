@@ -10,10 +10,11 @@ warning balloon while the status-bar Range tooltip repeats the same explanation.
 Establish one application-wide policy with independent state for each window,
 retaining standard toolkit controls and the existing shared hint infrastructure.
 
-The owner approved the lifecycle policy below for implementation. The full local
-gate and isolated production Xvfb scenarios passed. Independent review completed
-in three rounds with no substantive finding in the final round; the coordinator
-accepted both lifecycle fixes and the final in-scope result. Work takes place in the explicitly requested linked
+The owner approved the lifecycle policy below for implementation. The original
+explicit-panel snapshot passed its local gate, Xvfb acceptance and three review
+rounds. Later owner-requested corrections below remain active pending owner
+acceptance and independent-review disposition; the original clean review does not
+cover those later changes. Work takes place in the explicitly requested linked
 worktree, preserving the independent main-checkout work. Compact status-control geometry
 accepted in #225 is outside this task.
 
@@ -435,3 +436,172 @@ but there are no old intermediate artifacts to reuse. No Rust command was run
 under the exception. Validation remains blocked until the owner supplies/restores
 the approved cache or authorizes a different dependency/SDK baseline. Do not create
 a fresh cache and describe its inevitable dependency compilation as ordinary reuse.
+
+
+## SDK integration and owner-approved local dependency baseline
+
+The owner approved rebasing this branch onto the current main SDK consumer
+integration, preserving the UI changes. The rebase completed without conflicts;
+the eight local commits retain identical patches. Upstream SDK integration and
+its locked graph remain unchanged. Backup refs and a binary patch preserve the
+pre-rebase state. The existing immutable GPUI Kit SDK and its 1,098 artifact hashes
+were verified against the installed direct Rust 1.98.1 compiler.
+
+The owner explicitly approved initial ordinary application/CLI dependency
+compilation for debug/test, check/Clippy and release in this worktree's local
+`target/`, consuming that SDK without rebuilding it. This supersedes the temporary
+old shared-cache exception; no shared build-dir or scratch cache is used. Existing
+SDK selection uses the upstream consumer configuration. No toolkit producer,
+toolchain installation, dependency graph change, publication or fourth review is
+authorized. Current source validation and production menu acceptance remain
+pending; historical test counts do not validate this snapshot.
+
+
+### Standard Recent files submenu correction
+
+Production acceptance found a native scrollbar on a fitting one-history File
+menu. The public scrollable switch couples its indicator, overflow and max-height,
+so removing only the indicator is not supported. The coordinator approved the
+standard Recent files submenu composition instead of scroll geometry heuristics.
+Recent history is capped at ten single-line rows. File and Recent menus use native
+submenu sizing without scrollable layers, preserving the frozen history snapshot,
+1–9/0 shortcuts and native actions. Empty history omits that submenu and retains
+one separator between Open and Save. Acceptance must cover ten entries at the
+supported 640×400 minimum as well as the owner's eight-entry case.
+
+
+Native production diagnosis of the complete menu matrix found one additional
+applicability issue: the toolkit's disabled submenu row still renders children
+on pointer hover. Without a document, Time scale format now uses a standard
+disabled item with the same label; with a document it remains the standard
+submenu. A regression asserts no child submenu is drawn on hover and unavailable
+parent clicks remain inert. Recent 1/7/8/10 geometry and actions, including ten
+rows at 640×400, and loaded Edit commands after File/Analysis focus passed the
+bounded diagnosis before this final correction. Final current-source validation
+and production confirmation follow below; no toolkit patch or new control exists.
+
+
+### Current menu correction validation
+
+- [x] Format, all-target locked Clippy and the full locked test gate passed:
+  893 tests, including 524 application tests.
+- [x] The last release build passed after all checks, recompiling only the
+  application against the unchanged installed SDK and local baseline.
+- [x] Isolated production X11/Xvfb checks confirmed root/File zero-history edge
+  hover, fitting Recent 1/7, eight and ten rows at supported 640×400, native
+  keyboard selection/digit 0 and actual File information pointer activation.
+- [x] No-file View commands are visibly disabled and inert; Time scale format
+  draws no child on hover; Theme remains functional. Edit registered labels
+  remain visible without a file and after File/Analysis focus. Actual Selection
+  menu activation and Ctrl+E after each panel both work.
+- [ ] Owner acceptance and independent-review disposition for the corrected
+  snapshot. No fourth reviewer round, publication or merge was performed.
+
+The standard Recent submenu supersedes the earlier inline-history scrolling
+proposal and its pending fitting-history checks. Production identity and bounded
+evidence are retained in the task acceptance artifacts. These checks establish
+Linux X11/Xvfb behavior, not native Wayland, Windows or macOS, below-minimum window
+heights, or a new exhaustive review of every information-panel transaction. The
+working source and demonstrated binary remain bound by their recorded production
+diff and binary hashes; documentation-only acceptance recording does not require
+another build.
+
+
+### Owner follow-up: guarded Close and Quit (active)
+
+Add Quit Argand after About and a separator, with registered Ctrl+Q (Cmd+Q on
+macOS). The application currently opens one window per process; Quit requests
+that window's existing close transaction rather than bypassing it with app quit.
+Retained Shell focus dispatch addresses caption Close without moving actual
+focus. App-level shortcut fallback is scoped to its registered owning window.
+Only the existing caption controls remain live above the menu backdrop; toolbar
+and drag surfaces remain protected. No toolkit or dependency changes are needed.
+
+Acceptance: the first caption Close click reaches the guarded transaction with
+each File/Analysis/About panel and application/File/Edit/View/Recent menu open;
+Cancel preserves dirty document identity/version and edits. Clean Close, menu
+Quit and Ctrl/Cmd+Q remove the window. Existing conversion cancellation and save
+protection remain authoritative. Verify targeted regressions, the required local
+gate, then the same cases in the isolated production release. This follow-up is
+not covered by the earlier independent-review snapshot; publication remains
+unauthorized.
+
+Validation is currently blocked before a new production binary exists. Formatting
+completed and git diff whitespace checks passed. The initial targeted compile
+found local compile errors, which were corrected but have not been revalidated.
+A matching workspace test command with the project-only refusal guard then stopped
+on missing ordinary dependency artifacts (including console, moxcms and host
+serde_json build scripts). The release attempt also stopped before dependency
+compilation: all 131 target library artifacts exist, but the host release build
+scripts and proc-macro support artifacts are absent. The stopped release requests
+include unicode-ident, autocfg, quote, proc-macro2, crossbeam-utils/epoch/deque,
+thiserror, serde/serde_core, version_check and libc.
+
+No new Close/Quit regression or running-app acceptance has passed for this source.
+The previous 893-test result and demonstrated binary belong to the previous menu
+snapshot. Required owner approval is limited to restoring ordinary application
+dependency artifacts in this worktree-local target for debug/test, check/Clippy
+and release using the unchanged installed compiler, lock and SDK selection.
+Rebuilding the installed GPUI Kit SDK, changing the dependency graph/toolchain or
+using shared intermediate caches is excluded. Builds remain stopped pending that
+decision; publication and another independent-review round remain unauthorized.
+
+The owner explicitly approved restoring the ordinary application dependency
+baseline for debug/test, check/Clippy and release in this worktree-local target.
+The installed SDK remains excluded from compilation; the unchanged direct
+compiler, lock, SDK selection and default workspace feature inputs are retained.
+The prior blocked state above records the investigation, not the current owner
+authorization. Validation now resumes under this bounded approval.
+
+Production acceptance found that Ctrl+Q reached the unsaved guard while deferred
+About/menu overlays could still cover the confirmation. All Pending::Close
+routes now dismiss nested Select, menus and information panels with their usual
+keep semantics before invoking the unchanged conversion/unsaved guards. The
+regression matrix asserts those overlays are absent when the prompt opens, then
+Cancel preserves document identity/version/length and does not reveal a second
+prompt. The earlier runtime captures diagnose this failure; final acceptance
+must use the rebuilt corrected snapshot.
+
+Final Close/Quit gate passed: fmt, all-target Clippy, 896 workspace tests (527 app),
+then release. SDK/toolkit source compilation invocations: zero. Production
+X11/Xvfb verified clean first-caption-click Close for File/Analysis/About and
+application/File/Edit/View/Recent menus; dirty caption and Ctrl+Q for each, plus
+menu Quit, showed an unobscured confirmation. Escape/Cancel retained dirty and
+Inverted state and unchanged source bytes; pointer Cancel also retained state
+after its dismissal animation. Clean Ctrl+Q and menu Quit removed the window.
+Tests additionally establish document identity/version/length, no second prompt,
+owning-window isolation and conversion cancellation safeguards. File information
+was verified through production readers and the existing nested Select regression,
+not the synthetic metadata matrix.
+
+Final binary SHA256: e3b02d84fcbddeece94927e8f7c9f54f11f48266ab5ba7069d2c341ed4df576b.
+HEAD f20ba6c plus unstaged production patch SHA256:
+411dae912c828e9dbaf4f754336131e381d5977b61ef75633afa48229d712b70.
+Report: task artifact sdk-close-report.md; identity: sdk-close-source-identity.json.
+Linux X11/Xvfb only; native Wayland/macOS/Windows runtime and live long-running
+conversion are unverified (conversion guard is test-covered). This snapshot has
+no new independent review; the original three rounds concern older snapshots.
+Plan remains active pending owner acceptance/review disposition. No publication,
+push, merge, new review round or local commit was performed.
+
+### Accepted review follow-up: Windows caption hit testing
+
+The owner directed immediate correction of the accepted P2: the menu backdrop
+reserved caption controls on Linux only and occluded standard Windows native
+window-control hitboxes. Use the locked TitleBar's actual TITLE_BAR_HEIGHT
+control width and supported minimize/maximize flags plus Close. Preserve Linux
+and macOS behavior, add a Linux-executable Windows-style hitbox regression, run
+the required gate/release and relevant Linux first-click Close/dirty acceptance,
+then resubmit the exact corrected snapshot to the retained reviewer. No toolkit
+patch, new widget, graph change, commit or publication is in scope. Windows
+runtime remains unavailable and must not be inferred from the regression.
+
+Submitted P2 resolution: the shared caption-width selector now includes Windows
+standard Close and supported minimize/maximize at TITLE_BAR_HEIGHT each, while
+retaining Linux/macOS geometry. The existing backdrop composition is shared from
+chrome geometry code. A Linux-executable Windows-style window_control_area
+regression covers all four supported-control combinations and blocked adjacent
+input. Fmt, all-target Clippy, all 897 tests (528 app) and release passed.
+Windows runtime remains unavailable; current Linux menu acceptance evidence is
+recorded separately with the demonstrated binary identity. The corrected snapshot
+is submitted to the retained reviewer; it is not yet declared clean or accepted.

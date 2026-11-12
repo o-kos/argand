@@ -370,16 +370,32 @@ help under a resting pointer. Internal field help and automatic Range/format adv
 retain their existing behavior. Standard Popover focus, nested Select dismissal,
 Analysis keep/revert and File drafts remain the existing contracts.
 
-The variable-history File branch uses standard PopupMenu scrolling and a public
-max-height derived from the current viewport below the titlebar. Short root and
-fixed branches do not enable scrolling; zero-history File omits the scroll layer. File groups Open,
-optional Recent, Save commands and final File information; Analysis settings is a
-separate final View group. Permanent commands remain drawn and unavailable commands
-are disabled; empty Recent is omitted. Analysis remains document-dependent because
-its standard Popover is anchored to the document status summary. A full history or
-a short window must preserve pointer-scroll and keyboard access to the final row.
+File groups Open, optional standard Recent files submenu, Save commands and final
+File information; Analysis settings is a separate final View group. Recent files
+contains at most ten single-line rows and uses native submenu sizing, as do the
+fixed command branches. Menus do not mount a scroll layer. Empty Recent is omitted
+and one separator remains between Open and Save. The frozen recent snapshot and
+1–9/0 shortcuts apply while File or Recent files holds focus. Permanent commands
+remain drawn and unavailable commands are disabled. Analysis remains
+document-dependent because its standard Popover is anchored to the document status
+summary. At the supported 640×400 minimum, File information and all ten Recent rows
+must remain pointer- and keyboard-reachable without unnecessary scrollbars.
 
 Without a document, View's grid/scale/orientation/time-format commands remain
-visible but disabled; Theme remains available. Edit keycap labels resolve the
+visible but disabled; unavailable Time scale format is a plain disabled item
+without an expandable child. Theme remains available. Edit keycap labels resolve the
 registered Plot bindings even for disabled empty-window commands, while native
 menu dispatch keeps the actual focus target and existing command guards.
+
+Caption Close targets the retained Shell action path without changing actual
+focus. The menu backdrop reserves Linux's existing caption controls and Windows'
+standard Close plus supported minimize/maximize controls, each at the toolkit's
+TITLE_BAR_HEIGHT width. macOS adds no app-painted caption reservation. Toolbar
+and drag surfaces remain blocked. Quit Argand and Ctrl+Q (Cmd+Q on macOS)
+use the same window close request, including conversion cancellation and unsaved
+Save/Discard/Cancel protection. The overlay shortcut fallback is registered for
+its owning window, not an application-wide unconditional quit.
+
+Before close confirmation, the existing close transaction dismisses nested
+Select, menus and information panels with keep semantics so deferred overlays
+cannot cover the unsaved dialog. Conversion/replacement guards remain in force.

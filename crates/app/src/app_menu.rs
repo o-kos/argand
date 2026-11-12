@@ -1,6 +1,6 @@
-//! Toolkit-independent shape of the File submenu.
+//! Toolkit-independent File command order, with recent rows grouped by the UI.
 
-/// One row of the File submenu, in the order it is drawn.
+/// One command in File order; consecutive recent rows form the Recent files submenu.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Row<T> {
     /// Asks the desktop for a file.

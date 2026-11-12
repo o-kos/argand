@@ -10,8 +10,7 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::{Disableable, Selectable};
 use gpui_kit::{
-    Anchor, AnyElement, App, CursorStyle, DismissEvent, Entity, Focusable, IntoElement, KeyBinding,
-    Styled, deferred, img,
+    Anchor, AnyElement, App, DismissEvent, Entity, Focusable, IntoElement, KeyBinding, Styled, img,
 };
 
 actions!(
@@ -75,9 +74,8 @@ impl Shell {
         focus: FocusHandle,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> (Entity<PopupMenu>, Vec<Origin>) {
+    ) -> (Entity<PopupMenu>, Option<FocusHandle>, Vec<Origin>) {
         let entries = self.recent_entries();
-        let scrollable = !entries.is_empty();
         let recent = app_menu::file_items(entries);
         let enabled = FileCommands {
             information: self.status_panel_available(settings_ui::StatusPanel::File),
@@ -102,17 +100,44 @@ impl Shell {
             })
             .collect();
         let owner = cx.entity().downgrade();
-        let menu = PopupMenu::build(window, cx, move |menu, window, _| {
-            let menu = fit_menu(menu, window);
-            let menu = menu
-                .action_context(focus.clone())
-                .max_w(px(420.))
-                .scrollable(scrollable);
-            recent.into_iter().fold(menu, |menu, row| {
-                menu.item(Shell::file_row(row, enabled, focus.clone(), owner.clone()))
+        let history: Vec<_> = recent
+            .iter()
+            .filter(|row| matches!(row, Row::Recent { .. }))
+            .cloned()
+            .collect();
+        let recent_menu = (!history.is_empty()).then(|| {
+            let focus = focus.clone();
+            let owner = owner.clone();
+            PopupMenu::build(window, cx, move |menu, _, _| {
+                history.into_iter().fold(
+                    menu.action_context(focus.clone()).max_w(px(420.)),
+                    |menu, row| {
+                        menu.item(Shell::file_row(row, enabled, focus.clone(), owner.clone()))
+                    },
+                )
             })
         });
-        (menu, digits)
+        let recent_focus = recent_menu
+            .as_ref()
+            .map(|menu| menu.read(cx).focus_handle(cx));
+        let menu = PopupMenu::build(window, cx, move |menu, _, _| {
+            let menu = menu.action_context(focus.clone()).max_w(px(420.));
+            let mut history_added = false;
+            recent.into_iter().fold(menu, |menu, row| {
+                if !matches!(row, Row::Recent { .. }) {
+                    return menu.item(Shell::file_row(row, enabled, focus.clone(), owner.clone()));
+                }
+                if history_added {
+                    return menu;
+                }
+                history_added = true;
+                menu.item(PopupMenuItem::submenu(
+                    "Recent files",
+                    recent_menu.as_ref().expect("history submenu").clone(),
+                ))
+            })
+        });
+        (menu, recent_focus, digits)
     }
 
     fn file_row(
@@ -168,8 +193,7 @@ impl Shell {
     ) -> Entity<PopupMenu> {
         let can = self.edit_commands_available();
         let select = self.entry_scale().is_some();
-        PopupMenu::build(window, cx, move |menu, window, _| {
-            let menu = fit_menu(menu, window);
+        PopupMenu::build(window, cx, move |menu, _, _| {
             let row = |label: &str, action: Box<dyn Action>, enabled: bool| {
                 edit_action_row(label, action, false, focus.clone()).disabled(!enabled)
             };
@@ -221,7 +245,7 @@ impl Shell {
 
     /// The branch that carries the session's own choices.
     ///
-    /// Shown with and without a document, which only the fitting rows need.
+    /// All commands stay visible; document-specific choices are disabled without one.
     fn view_menu(
         &self,
         focus: FocusHandle,
@@ -235,17 +259,11 @@ impl Shell {
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
         let analysis = self.status_panel_available(settings_ui::StatusPanel::Analysis);
-        PopupMenu::build(window, cx, move |menu, window, _| {
-            let menu = fit_menu(menu, window);
+        PopupMenu::build(window, cx, move |menu, _, _| {
             menu.action_context(focus.clone())
                 .item(
-                    action_row(
-                        "Show grid",
-                        Box::new(ToggleGrid),
-                        show_grid,
-                        focus.clone(),
-                    )
-                    .disabled(!document),
+                    action_row("Show grid", Box::new(ToggleGrid), show_grid, focus.clone())
+                        .disabled(!document),
                 )
                 .item(
                     action_row(
@@ -280,7 +298,11 @@ impl Shell {
                     .disabled(!document),
                 )
                 .item(PopupMenuItem::separator())
-                .item(PopupMenuItem::submenu("Time scale format", scale).disabled(!document))
+                .item(if document {
+                    PopupMenuItem::submenu("Time scale format", scale)
+                } else {
+                    PopupMenuItem::new("Time scale format").disabled(true)
+                })
                 .item(PopupMenuItem::submenu("Theme", theme))
                 .item(PopupMenuItem::separator())
                 .item(
@@ -298,8 +320,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
         let theme = self.theme();
-        PopupMenu::build(window, cx, move |menu, window, _| {
-            let menu = fit_menu(menu, window);
+        PopupMenu::build(window, cx, move |menu, _, _| {
             menu.action_context(focus.clone())
                 .item(action_row(
                     "System",
@@ -330,8 +351,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
         let ruler = self.session.time_ruler;
-        PopupMenu::build(window, cx, move |menu, window, _| {
-            let menu = fit_menu(menu, window);
+        PopupMenu::build(window, cx, move |menu, _, _| {
             use crate::navigation::time_ruler::Mode;
             menu.action_context(focus.clone())
                 .item(action_row(
@@ -368,12 +388,11 @@ impl Shell {
         self.interrupt_plot(cx);
         self.recent_files.refresh(&self.session.recent);
         let focus = self.focus_target(cx);
-        let (file, digits) = self.file_menu(focus.clone(), window, cx);
+        let (file, recent_focus, digits) = self.file_menu(focus.clone(), window, cx);
         let edit = self.edit_menu(focus.clone(), window, cx);
         let view = self.view_menu(focus.clone(), window, cx);
         let branch = file.clone();
-        let menu = PopupMenu::build(window, cx, move |menu, window, _| {
-            let menu = fit_menu(menu, window);
+        let menu = PopupMenu::build(window, cx, move |menu, _, _| {
             menu.action_context(focus.clone())
                 .item(PopupMenuItem::submenu("File", branch))
                 .item(PopupMenuItem::submenu("Edit", edit))
@@ -383,6 +402,13 @@ impl Shell {
                     "About Argand…",
                     Box::new(about_ui::ShowAbout),
                     false,
+                    focus.clone(),
+                ))
+                .item(PopupMenuItem::separator())
+                .item(action_row(
+                    "Quit Argand",
+                    Box::new(chrome::CloseWindow),
+                    false,
                     focus,
                 ))
         });
@@ -390,6 +416,7 @@ impl Shell {
             Some(cx.subscribe_in(&menu, window, Self::application_menu_dismissed));
         self.application_menu_focus = Some(cx.on_focus_lost(window, Self::recover_menu_focus));
         self.application_file_menu = Some(file);
+        self.application_recent_focus = recent_focus;
         self.application_file_rows = Some(digits);
         self.application_menu = Some(menu.clone());
         self.title_drag_pending = false;
@@ -403,6 +430,7 @@ impl Shell {
             return;
         }
         self.application_file_menu = None;
+        self.application_recent_focus = None;
         self.application_file_rows = None;
         self.application_menu_dismissed = None;
         self.application_menu_focus = None;
@@ -452,16 +480,20 @@ impl Shell {
         }
     }
 
-    /// Opens the recent capture a digit names, but only from the File branch.
+    /// Opens the recent capture a digit names, but only from File or its Recent files branch.
     ///
-    /// The digits belong to the File rows, so a digit typed while the menu bar
+    /// The digits belong to the frozen recent rows, so a digit typed while the menu bar
     /// itself holds the keyboard is no recent row and does nothing.
     fn open_recent_row(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let in_file = self
             .application_file_menu
             .as_ref()
             .is_some_and(|file| file.read(cx).focus_handle(cx).is_focused(window));
-        if !in_file {
+        let in_recent = self
+            .application_recent_focus
+            .as_ref()
+            .is_some_and(|focus| focus.is_focused(window));
+        if !in_file && !in_recent {
             return;
         }
         let Some(origin) = self
@@ -480,17 +512,12 @@ impl Shell {
     /// Drawn below the menu, which the toolkit paints at the window's topmost
     /// priority.
     /// Covers `area` while the menu is open, leaving the frame's resize edges beyond it live.
-    pub(super) fn application_menu_backdrop(&self, area: gpui_kit::Bounds<Pixels>) -> AnyElement {
-        let cover = div()
-            .id("application-menu-backdrop")
-            .absolute()
-            .left(area.origin.x)
-            .top(area.origin.y)
-            .w(area.size.width)
-            .h(area.size.height)
-            .occlude()
-            .cursor(CursorStyle::Arrow);
-        deferred(cover).with_priority(1).into_any_element()
+    pub(super) fn application_menu_backdrop(
+        &self,
+        area: gpui_kit::Bounds<Pixels>,
+        window: &Window,
+    ) -> AnyElement {
+        chrome::menu_backdrop(area, chrome::menu_caption_width(window))
     }
 
     /// The popover that carries the menu, which only the shell opens or closes.
@@ -892,7 +919,7 @@ fn dismiss_from(owner: &WeakEntity<Shell>, window: &mut Window, cx: &mut App) {
     });
 }
 
-/// Opens the recent row a digit names, but only from the File branch.
+/// Opens the recent row a digit names, but only from File or its Recent files branch.
 fn open_recent_from(owner: &WeakEntity<Shell>, index: usize, window: &mut Window, cx: &mut App) {
     with_shell(owner, window, cx, move |shell, window, cx| {
         shell.open_recent_row(index, window, cx);
@@ -917,18 +944,6 @@ fn open_from(owner: &WeakEntity<Shell>, open: bool, window: &mut Window, cx: &mu
     });
 }
 
-/// Use the viewport below the titlebar; the toolkit owns scrolling and anchoring.
-fn fit_menu(menu: PopupMenu, window: &Window) -> PopupMenu {
-    let available = window.viewport_size().height - px(TOOLBAR_HEIGHT) - window.rem_size() * 2.;
-    menu.max_h(available.max(px(0.)))
-}
-
-/// A command row that keeps the stock dispatch and carries the shared keycap.
-///
-/// The stock menu paints its own keycaps, borderless and transparent, where every
-/// other shortcut in the application uses the framed one. The row is an element
-/// for that reason alone, and keeps `.action(..)` and `.checked(..)` so the menu
-/// still dispatches, checks, selects and navigates it.
 fn action_row(
     label: &str,
     action: Box<dyn Action>,

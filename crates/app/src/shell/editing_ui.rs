@@ -413,8 +413,15 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if matches!(pending, Pending::Close) && self.close_after_conversion(window, cx) {
-            return false;
+        if matches!(pending, Pending::Close) {
+            // Deferred popovers must not cover the unsaved-edits question.
+            // Dismiss with their usual keep semantics, without bypassing guards.
+            self.cancel_status_select(window, cx);
+            self.dismiss_application_menu(window, cx);
+            self.close_hints(cx);
+            if self.close_after_conversion(window, cx) {
+                return false;
+            }
         }
         if self.conversion_active() || self.refuse_while_replacing(cx) {
             return false;

@@ -668,7 +668,7 @@ pub(in crate::shell) fn panel_window(
     let mut shell = None;
     let (_, cx) = cx.add_window_view(|window, cx| {
         let view = cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
-        Shell::bind_choose_file(view.downgrade(), cx);
+        Shell::bind_choose_file(view.downgrade(), window.window_handle(), cx);
         shell = Some(view.clone());
         Root::new(view, window, cx)
     });

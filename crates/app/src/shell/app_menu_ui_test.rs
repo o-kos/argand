@@ -10,6 +10,7 @@ fn open(cx: &mut TestAppContext) -> WindowHandle<Shell> {
     cx.update(|cx| {
         gpui_kit::init(cx);
         settings_ui::init(cx);
+        editing_ui::init(cx);
         crate::shell::plot::navigation_ui::init(cx);
         hints::init(cx);
         app_menu_ui::init(cx);
@@ -95,6 +96,7 @@ fn open_window(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::Visual
     cx.update(|cx| {
         gpui_kit::init(cx);
         settings_ui::init(cx);
+        editing_ui::init(cx);
         crate::shell::plot::navigation_ui::init(cx);
         hints::init(cx);
         app_menu_ui::init(cx);
@@ -237,13 +239,7 @@ fn recheck(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>, path: &s
 
 /// Where a stock menu row is, which the toolkit records under its index.
 fn row(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Point<gpui_kit::Pixels> {
-    cx.update(|window, _| {
-        window
-            .within("submenu")
-            .find(gpui_kit::ElementId::Integer(index))
-            .bounds()
-            .center()
-    })
+    branch_row_bounds(cx, index).center()
 }
 
 /// The analysis settings hint the menu's Settings row opens.
@@ -263,6 +259,36 @@ fn opened(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> Option
 
 fn grid(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> bool {
     shell.read_with(cx, |shell, _| shell.session.show_grid)
+}
+
+/// Select the first branch even when pointer hover also draws a nested submenu.
+fn branch_row_bounds(
+    cx: &mut gpui_kit::VisualTestContext,
+    index: u64,
+) -> gpui_kit::Bounds<gpui_kit::Pixels> {
+    branch_row_bounds_at(cx, index, 1)
+}
+
+fn branch_row_bounds_at(
+    cx: &mut gpui_kit::VisualTestContext,
+    index: u64,
+    depth: usize,
+) -> gpui_kit::Bounds<gpui_kit::Pixels> {
+    cx.update(|window, _| {
+        let rows: Vec<_> = window
+            .find_all(gpui_kit::ElementId::Integer(index))
+            .into_iter()
+            .filter(|row| {
+                row.path()
+                    .iter()
+                    .filter(|id| **id == gpui_kit::ElementId::Name("submenu".into()))
+                    .count()
+                    == depth
+            })
+            .collect();
+        assert_eq!(rows.len(), 1, "one row in the first menu branch");
+        rows[0].bounds()
+    })
 }
 
 #[gpui_kit::test]
@@ -606,7 +632,7 @@ fn a_recent_row_opens_its_capture(cx: &mut TestAppContext) {
     // Into File, past the command and its separator, onto the capture.
     press(cx, "down right");
     assert!(file_focused(cx, &shell));
-    press(cx, "down enter");
+    press(cx, "down enter enter");
     draw(cx);
     assert!(!menu_open(cx, &shell), "the menu closed");
     assert_eq!(
@@ -637,7 +663,8 @@ fn a_click_on_a_recent_row_opens_that_capture(cx: &mut TestAppContext) {
     // Open and its separator precede the first recent capture.
     press(cx, "down right");
     assert!(file_focused(cx, &shell));
-    let capture = row(cx, 2);
+    press(cx, "down right");
+    let capture = branch_row_bounds_at(cx, 0, 2).center();
     cx.simulate_click(capture, gpui_kit::Modifiers::default());
     draw(cx);
     assert!(!menu_open(cx, &shell), "the menu closed");
@@ -690,12 +717,9 @@ fn enter_and_right_each_enter_a_submenu_before_running_its_row(cx: &mut TestAppC
     }
 }
 
-/// The View row of the menu bar, found while it is the only menu on screen.
-fn view_row(cx: &mut gpui_kit::VisualTestContext) -> gpui_kit::Point<gpui_kit::Pixels> {
-    cx.update(|window, _| {
-        let menu = window.find("popup-menu").bounds();
-        menu.center() + gpui_kit::point(px(0.), menu.size.height / 4.)
-    })
+/// The last actionable root row, so Down wraps from Quit back to File.
+fn quit_row(cx: &mut gpui_kit::VisualTestContext) -> gpui_kit::Point<gpui_kit::Pixels> {
+    branch_row_bounds_at(cx, 6, 0).center()
 }
 
 #[gpui_kit::test]
@@ -704,10 +728,10 @@ fn the_keys_reach_the_menu_after_a_hover_drops_the_focused_branch(cx: &mut TestA
     open_capture(cx, &shell);
     for key in ["f10", "tab", "escape"] {
         press(cx, "f10");
-        let row = view_row(cx);
+        let row = quit_row(cx);
         press(cx, "down right");
         assert!(file_focused(cx, &shell), "{key} found the File branch");
-        // Crossing to View stops drawing File while its handle keeps the focus.
+        // Crossing to Quit stops drawing File while its handle keeps the focus.
         cx.simulate_mouse_move(row, None, gpui_kit::Modifiers::default());
         draw(cx);
         press(cx, "down right");
@@ -736,24 +760,12 @@ fn row_width(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Pixe
     })
 }
 
-/// How tall a stock menu row is, which grows when a label wraps.
-fn row_height(cx: &mut gpui_kit::VisualTestContext, index: u64) -> gpui_kit::Pixels {
-    cx.update(|window, _| {
-        window
-            .within("submenu")
-            .find(gpui_kit::ElementId::Integer(index))
-            .bounds()
-            .size
-            .height
-    })
-}
-
 /// The View submenu's "Vertical orientation" row, the first index only the
 /// View branch has.
 const ORIENTATION_ROW: u64 = 2;
 
 /// The File submenu's separator, which spans the whole menu.
-const FILE_SEPARATOR: u64 = 4;
+const FILE_SEPARATOR: u64 = 1;
 
 #[gpui_kit::test]
 fn an_action_row_draws_the_shared_keycap_when_its_binding_resolves(cx: &mut TestAppContext) {
@@ -802,9 +814,10 @@ fn a_long_recent_name_keeps_the_file_branch_within_its_width(cx: &mut TestAppCon
         "a name too long for its row leaves the menu at its own maximum"
     );
 
+    press(cx, "down right");
     assert!(
-        row_height(cx, 2) <= px(26.),
-        "and the long name truncates in one line instead of wrapping"
+        branch_row_bounds_at(cx, 0, 2).size.height <= px(26.),
+        "the recent name truncates on one line"
     );
 }
 
@@ -974,26 +987,16 @@ fn permanent_menu_commands_stay_drawn_and_analysis_follows_document_availability
         }
         press(cx, "f10");
         press(cx, "down right");
-        cx.update(|window, _| {
-            for index in [0, 2, 3, 4, 6] {
-                let row = window
-                    .within("submenu")
-                    .find(gpui_kit::ElementId::Integer(index));
-                assert!(
-                    row.bounds().size.height > px(0.),
-                    "permanent File row exists"
-                );
-            }
-        });
+        for index in [0, 2, 3, 4, 6] {
+            assert!(
+                branch_row_bounds(cx, index).size.height > px(0.),
+                "permanent File row exists"
+            );
+        }
         press(cx, "escape escape");
         press(cx, "f10");
         press(cx, "down down down right");
-        cx.update(|window, _| {
-            let analysis = window
-                .within("submenu")
-                .find(gpui_kit::ElementId::Integer(10));
-            assert!(analysis.bounds().size.height > px(0.));
-        });
+        assert!(branch_row_bounds(cx, 10).size.height > px(0.));
         if loaded {
             press(cx, "up enter");
             assert!(settings_open(cx, &shell));
@@ -1010,34 +1013,30 @@ fn permanent_menu_commands_stay_drawn_and_analysis_follows_document_availability
 }
 
 #[gpui_kit::test]
-fn eight_recent_rows_keep_final_file_information_keyboard_reachable_in_small_window(
+fn ten_recent_rows_and_final_file_information_are_reachable_at_minimum_height(
     cx: &mut TestAppContext,
 ) {
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let _fixture = describe(cx, &shell);
-    cx.update(|_, cx| Shell::bind_choose_file(shell.downgrade(), cx));
-    let paths: Vec<_> = (0..8)
+    cx.update(|window, cx| Shell::bind_choose_file(shell.downgrade(), window.window_handle(), cx));
+    let paths: Vec<_> = (0..crate::session::RECENT_LIMIT)
         .map(|n| format!("/captures/recent-{n}.wav"))
         .collect();
     available_recent(cx, &shell, &paths, true);
-    cx.simulate_resize(gpui_kit::size(px(800.), px(360.)));
+    cx.simulate_resize(gpui_kit::size(px(640.), px(400.)));
     draw(cx);
-    press(cx, "f10");
-    press(cx, "down right");
-    // From Open, Up wraps to the final enabled command and native scrolling reveals it.
-    press(cx, "up");
-    draw(cx);
-    cx.update(|window, _| {
-        let last = window
-            .within("submenu")
-            .find(gpui_kit::ElementId::Integer(15));
-        let bounds = last.bounds();
-        assert!(bounds.origin.y >= px(0.));
-        assert!(bounds.bottom() <= window.viewport_size().height);
-    });
+    press(cx, "f10 down right up");
+    let last = branch_row_bounds(cx, 8);
+    assert!(last.origin.y >= px(0.) && last.bottom() <= px(400.));
     press(cx, "enter");
     assert!(shell.read_with(cx, |shell, cx| shell.conversion.hint.read(cx).is_open()));
+    press(cx, "escape f10 down right down right");
+    let last = branch_row_bounds_at(cx, 9, 2);
+    assert!(last.origin.y >= px(0.) && last.bottom() <= px(400.));
+    press(cx, "0");
+    assert!(!menu_open(cx, &shell));
+    assert_eq!(opened(cx, &shell).as_deref(), Some(Path::new(&paths[9])));
 }
 
 #[gpui_kit::test]
@@ -1048,12 +1047,26 @@ fn empty_view_commands_are_inert_while_edit_shortcuts_keep_registered_plot_bindi
     let before = shell.read_with(cx, |shell, _| shell.session.clone());
     press(cx, "f10");
     press(cx, "down down down right");
+    let time_format = row(cx, 7);
+    cx.simulate_mouse_move(time_format, None, gpui_kit::Modifiers::default());
+    draw(cx);
+    assert_eq!(
+        cx.update(|window, _| window.find_all("submenu").len()),
+        1,
+        "hovering unavailable Time scale format draws no child submenu"
+    );
     for index in [0, 1, 2, 4, 5, 7, 10] {
         let target = row(cx, index);
         cx.simulate_click(target, gpui_kit::Modifiers::default());
         draw(cx);
-        assert!(menu_open(cx, &shell), "an unavailable row does not activate");
-        assert_eq!(shell.read_with(cx, |shell, _| shell.session.clone()), before);
+        assert!(
+            menu_open(cx, &shell),
+            "an unavailable row does not activate"
+        );
+        assert_eq!(
+            shell.read_with(cx, |shell, _| shell.session.clone()),
+            before
+        );
     }
     cx.update(|window, _| {
         let actions: Vec<Box<dyn Action>> = vec![
@@ -1077,9 +1090,14 @@ fn empty_view_commands_are_inert_while_edit_shortcuts_keep_registered_plot_bindi
 #[gpui_kit::test]
 fn edit_menu_and_shortcut_dispatch_after_information_panel_focus(cx: &mut TestAppContext) {
     let (shell, cx) = open_window(cx);
+    // Native focus restoration requires an active window, as in production.
+    cx.update(|window, _| window.activate_window());
     open_capture(cx, &shell);
     let _fixture = describe(cx, &shell);
-    cx.update(|_, cx| Shell::bind_choose_file(shell.downgrade(), cx));
+    // The fixture applies metadata directly; production also attaches its Plot.
+    shell.update_in(cx, |shell, window, cx| shell.attach_plot(window, cx));
+    draw(cx);
+    cx.update(|window, cx| Shell::bind_choose_file(shell.downgrade(), window.window_handle(), cx));
     let analysis = if cfg!(target_os = "macos") {
         "cmd-,"
     } else {

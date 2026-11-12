@@ -277,3 +277,259 @@ fn undo_reaches_a_capture_edited_down_to_nothing(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(length(cx, &shell), Some(48_000));
 }
+
+fn quit_shortcut() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "cmd-q"
+    } else {
+        "ctrl-q"
+    }
+}
+
+fn dirty_close_fixture(
+    cx: &mut gpui_kit::VisualTestContext,
+    shell: &Entity<Shell>,
+) -> (argand_io::testutil::TempDir, PathBuf) {
+    let dir = argand_io::testutil::TempDir::new("close-guard");
+    let path = dir.join("capture.wav");
+    argand_io::testutil::write_wav(
+        &path,
+        SampleType::new(Domain::Iq, SampleFormat::I16),
+        24_000,
+        &vec![0.0; 96_000],
+        1.0,
+    );
+    let recent = dir.join("recent.wav");
+    std::fs::copy(&path, &recent).unwrap();
+    described(cx, shell, path.to_str().unwrap());
+    shell.update_in(cx, |shell, _, cx| {
+        shell
+            .file
+            .as_mut()
+            .unwrap()
+            .state
+            .document
+            .apply(Update::Opened(
+                SignalMeta {
+                    sample_rate: 24_000.0,
+                    center_freq: 0.0,
+                    sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
+                    len_samples: 48_000,
+                    container: "wav",
+                    divisor: 32_768.0,
+                    source: path.clone(),
+                },
+                FileInfo {
+                    stamp: argand_io::write::SourceStamp::of(&path).ok(),
+                    ..FileInfo::default()
+                },
+            ));
+        shell.start_editing(cx);
+    });
+    select(cx, shell, 0, 100);
+    shell.update_in(cx, |shell, window, cx| shell.delete_selection(window, cx));
+    (dir, recent)
+}
+
+fn assert_close_overlay(
+    cx: &mut gpui_kit::VisualTestContext,
+    shell: &Entity<Shell>,
+    overlay: &str,
+) {
+    use gpui_kit::Focusable;
+    shell.update_in(cx, |shell, window, cx| match overlay {
+        "Analysis" => assert!(shell.analysis_hint.read(cx).is_open()),
+        "About" => assert!(shell.about.hint.read(cx).is_open()),
+        "Recent menu" => assert!(
+            shell
+                .application_recent_focus
+                .as_ref()
+                .unwrap()
+                .is_focused(window)
+        ),
+        "File menu" => assert!(
+            shell
+                .application_file_menu
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .focus_handle(cx)
+                .is_focused(window)
+        ),
+        _ => assert!(shell.application_menu.is_some()),
+    });
+}
+
+/// Caption dispatch must survive both overlay focus and an outside-dismiss frame.
+#[cfg(target_os = "linux")]
+#[gpui_kit::test]
+fn first_caption_close_and_quit_preserve_dirty_documents_under_supported_overlays(
+    cx: &mut TestAppContext,
+) {
+    use gpui_kit::test::TestWindowExt;
+    let (shell, cx) = open_window(cx);
+    let (_dir, recent) = dirty_close_fixture(cx, &shell);
+    cx.update(|window, cx| {
+        window.activate_window();
+        Shell::bind_choose_file(shell.downgrade(), window.window_handle(), cx);
+    });
+    let identity = shell.read_with(cx, |shell, _| {
+        (
+            shell.file.as_ref().unwrap().id,
+            shell.editing().unwrap().version(),
+            shell.sample_count(),
+        )
+    });
+    // File information's editor requires the production reader fixture; its
+    // first-click Close and dirty Cancel are verified in release acceptance.
+    for overlay in [
+        "Analysis",
+        "About",
+        "application",
+        "File menu",
+        "Edit menu",
+        "View menu",
+        "Recent menu",
+    ] {
+        for quit_key in [false, true] {
+            shell.update_in(cx, |shell, window, cx| {
+                shell.close_hints(cx);
+                shell.dismiss_application_menu(window, cx);
+                match overlay {
+                    "Analysis" => shell.edit_analysis(&EditAnalysis, window, cx),
+                    "About" => shell.show_about(&about_ui::ShowAbout, window, cx),
+                    _ => {
+                        shell.session.recent = vec![crate::session::Recent {
+                            path: recent.clone(),
+                            hints: Default::default(),
+                        }];
+                        shell.recent_files.refresh(&shell.session.recent);
+                        shell.recent_files.apply(recent.clone(), true);
+                        shell.open_application_menu(window, cx);
+                    }
+                }
+            });
+            cx.run_until_parked();
+            cx.update(|window, cx| window.render_frame(cx));
+            let keys = match overlay {
+                "File menu" => "down right",
+                "Edit menu" => "down down right",
+                "View menu" => "down down down right",
+                "Recent menu" => "down right down right",
+                _ => "",
+            };
+            cx.simulate_keystrokes(keys);
+            cx.run_until_parked();
+            cx.update(|window, cx| window.render_frame(cx));
+            assert_close_overlay(cx, &shell, overlay);
+            if quit_key {
+                cx.simulate_keystrokes(quit_shortcut());
+            } else {
+                let at = cx.update(|window, _| {
+                    let half = gpui_kit::component::TITLE_BAR_HEIGHT / 2.;
+                    gpui_kit::point(window.viewport_size().width - half, half)
+                });
+                cx.simulate_click(at, gpui_kit::Modifiers::default());
+            }
+            cx.run_until_parked();
+            assert!(
+                cx.has_pending_prompt(),
+                "first close reaches dirty guard: {overlay}, key={quit_key}"
+            );
+            shell.read_with(cx, |shell, cx| {
+                assert!(
+                    shell.application_menu.is_none(),
+                    "menu must not cover close confirmation"
+                );
+                for panel in hints::Panel::ALL {
+                    assert!(
+                        !shell.information_hint(panel).read(cx).is_open(),
+                        "panel must not cover close confirmation"
+                    );
+                }
+            });
+            cx.simulate_prompt_answer("Cancel");
+            cx.run_until_parked();
+            assert!(
+                !cx.has_pending_prompt(),
+                "one close request, not duplicate delivery: {overlay}"
+            );
+            assert_eq!(
+                identity,
+                shell.read_with(cx, |shell, _| (
+                    shell.file.as_ref().unwrap().id,
+                    shell.editing().unwrap().version(),
+                    shell.sample_count()
+                )),
+                "Cancel preserves document: {overlay}"
+            );
+            assert!(shell.read_with(cx, |shell, _| shell.editing().unwrap().is_dirty()));
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[gpui_kit::test]
+fn clean_caption_shortcut_and_menu_quit_remove_the_window(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt;
+    for route in ["caption", "shortcut", "menu"] {
+        let (shell, cx) = open_window(cx);
+        cx.update(|window, cx| {
+            window.activate_window();
+            Shell::bind_choose_file(shell.downgrade(), window.window_handle(), cx);
+        });
+        shell.update_in(cx, |shell, window, cx| {
+            if route == "menu" {
+                shell.open_application_menu(window, cx);
+            } else {
+                shell.show_about(&about_ui::ShowAbout, window, cx);
+            }
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| window.render_frame(cx));
+        match route {
+            "caption" => {
+                let at = cx.update(|window, _| {
+                    let half = gpui_kit::component::TITLE_BAR_HEIGHT / 2.;
+                    gpui_kit::point(window.viewport_size().width - half, half)
+                });
+                cx.simulate_click(at, gpui_kit::Modifiers::default());
+            }
+            "shortcut" => cx.simulate_keystrokes(quit_shortcut()),
+            _ => cx.simulate_keystrokes("down down down down down enter"),
+        }
+        cx.run_until_parked();
+        assert!(
+            cx.cx.windows().is_empty(),
+            "clean {route} closes its window"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn overlay_quit_fallback_only_closes_its_active_owning_window(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt;
+    let (first, first_cx) = open_window(cx);
+    let owner = first_cx.update(|window, cx| {
+        Shell::bind_choose_file(first.downgrade(), window.window_handle(), cx);
+        window.window_handle()
+    });
+    let mut another_context = first_cx.cx.clone();
+    let (second, cx) = open_window(&mut another_context);
+    cx.update(|window, cx| {
+        window.activate_window();
+        Shell::bind_choose_file(second.downgrade(), window.window_handle(), cx);
+    });
+    second.update_in(cx, |shell, window, cx| {
+        shell.show_about(&about_ui::ShowAbout, window, cx)
+    });
+    cx.run_until_parked();
+    cx.update(|window, cx| window.render_frame(cx));
+    cx.simulate_keystrokes(quit_shortcut());
+    cx.run_until_parked();
+    assert_eq!(
+        cx.cx.windows(),
+        vec![owner],
+        "another window's fallback propagates without closing it"
+    );
+}

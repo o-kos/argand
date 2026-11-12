@@ -103,6 +103,15 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     cx.bind_keys([
         KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
         KeyBinding::new("f11", ConvertCapture, None),
+        KeyBinding::new(
+            if cfg!(target_os = "macos") {
+                "cmd-q"
+            } else {
+                "ctrl-q"
+            },
+            chrome::CloseWindow,
+            None,
+        ),
         KeyBinding::new("tab", FocusNext, Some("FileInformation")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("FileInformation")),
         KeyBinding::new("tab", FocusNext, Some("Shell")),
@@ -205,8 +214,8 @@ pub fn run(config: Config, saved: Session, writer: Option<Saver>, opening: Optio
                 // whose error nobody reads would end it silently: there is nothing
                 // else this program does.
                 match &opened {
-                    Ok((_, shell)) => {
-                        cx.update(|cx| Shell::bind_choose_file(shell.downgrade(), cx))
+                    Ok((window, shell)) => {
+                        cx.update(|cx| Shell::bind_choose_file(shell.downgrade(), *window, cx))
                     }
                     Err(error) => {
                         tracing::error!(%error, "cannot open a window");
@@ -468,6 +477,7 @@ struct Shell {
     application_menu: Option<Entity<PopupMenu>>,
     /// The File branch, whose keyboard focus a digit row belongs to.
     application_file_menu: Option<Entity<PopupMenu>>,
+    application_recent_focus: Option<FocusHandle>,
     /// The captures its numbered rows name, as drawn when the menu opened.
     application_file_rows: Option<Vec<Origin>>,
     application_menu_dismissed: Option<Subscription>,
@@ -592,6 +602,7 @@ impl Shell {
             focus,
             application_menu: None,
             application_file_menu: None,
+            application_recent_focus: None,
             application_file_rows: None,
             application_menu_dismissed: None,
             application_menu_focus: None,
@@ -1370,7 +1381,25 @@ impl Shell {
     ///
     /// Updates go through the weak shell inside its own window; a closed
     /// window or a dropped shell makes the action a no-op.
-    fn bind_choose_file(shell: WeakEntity<Self>, cx: &mut gpui_kit::App) {
+    fn bind_choose_file(
+        shell: WeakEntity<Self>,
+        owner: gpui_kit::AnyWindowHandle,
+        cx: &mut gpui_kit::App,
+    ) {
+        // Overlays have their own focus path. Close still belongs to the window
+        // that registered this shell, and always uses its unsaved/conversion guard.
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &chrome::CloseWindow, cx| {
+                if cx.active_window() != Some(owner) {
+                    cx.propagate();
+                    return;
+                }
+                cx.stop_propagation();
+                let shell = shell.clone();
+                cx.defer(move |cx| Self::close_owning_window(shell, owner, cx));
+            }
+        });
         // Popup focus sits outside the shell subtree; defer until dispatch releases the window.
         cx.on_action({
             let shell = shell.clone();
@@ -1437,6 +1466,19 @@ impl Shell {
                     let _ = shell.update_in(cx, Self::deferred_edit_analysis);
                 });
             }
+        });
+    }
+
+    fn close_owning_window(
+        shell: WeakEntity<Self>,
+        owner: gpui_kit::AnyWindowHandle,
+        cx: &mut gpui_kit::App,
+    ) {
+        let _ = shell.update_in(cx, |shell, window, cx| {
+            if window.window_handle() != owner {
+                return;
+            }
+            shell.request_close(window, cx);
         });
     }
 
@@ -1582,7 +1624,12 @@ impl Shell {
                         .min_w_0()
                         .child(self.title_contents(window, cx)),
                 )
-                .child(chrome::controls(corners.top_right, window, cx))
+                .child(chrome::controls(
+                    corners.top_right,
+                    self.focus.clone(),
+                    window,
+                    cx,
+                ))
                 .into_any_element()
         } else {
             TitleBar::new()
@@ -2011,7 +2058,7 @@ impl Render for Shell {
         let menu_backdrop = self
             .application_menu
             .is_some()
-            .then(|| self.application_menu_backdrop(free));
+            .then(|| self.application_menu_backdrop(free, window));
         div()
             .relative()
             .size_full()
