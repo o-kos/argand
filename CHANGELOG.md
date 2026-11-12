@@ -55,6 +55,9 @@ promise applies to.
 
 ### Changed
 
+- Selection bandwidth shows its own Hz/kHz/MHz unit, independent of absolute
+  frequency labels, and accepts that unit when edited (#185).
+
 - Upgrade to GPUI Kit 0.9.1 and its standard window frame, retaining Argand's colours and rounded corners. The Linux frame has a wider shadow inset, leaving 16 fewer logical pixels of content per axis at the same window size. Enter now opens application-menu submenus as Right does (#226).
 
 - Building from source now requires Rust 1.98 or later; the pinned toolchain is stable Rust 1.98.1 (#233).
@@ -64,6 +67,7 @@ promise applies to.
 ### Fixed
 
 - Center the start-page recent files block horizontally and vertically.
+- Keep the Reference frequency label on one line in File information (#185).
 
 - File, FFT and Range status controls use compact, consistent spacing between their highlighted surfaces and separators (#225).
 

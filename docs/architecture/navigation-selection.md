@@ -211,7 +211,11 @@ the other axis therefore has its badges at the plot's edges. `time_ruler::Mode::
 in the ruler's mode with the decimals one pixel of the visible time tells apart, as the Alt
 badges do, never more than one sample needs, the clock with the fields the capture's own
 length needs; `Scale::band_texts` gives the band's as numbers in the frequency ruler's unit, which
-only the ruler names. The extent badge sits on a dimension line (`selection_badges::Dimension`),
+only the ruler names for its edges. The width independently chooses Hz/kHz/MHz and
+includes the unit, also in its badge input and selection-panel field. Its bare
+input and last-digit step use that displayed unit; an explicit frequency suffix
+selects its own unit. Width precision retains the ruler's hertz resolution.
+The extent badge sits on a dimension line (`selection_badges::Dimension`),
 a paper stroke around an ink core like the Alt guides, running from edge to edge of the
 visible selection with an arrowhead at each edge in view. Where the badge and its arrowheads do
 not fit between the edges, the arrowheads stand outside them pointing in, the line runs on past

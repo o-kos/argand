@@ -178,8 +178,8 @@ fn band_fields_move_one_edge_and_hold_to_the_capture() {
     assert_eq!(typed(Field::BandLow, "-9"), Some(band(-500., 100.)));
     assert_eq!(typed(Field::BandHigh, "0.3 kHz"), Some(band(-100., 300.)));
     assert_eq!(typed(Field::BandHigh, "0.3khz"), Some(band(-100., 300.)));
-    assert_eq!(typed(Field::BandWidth, "0.05"), Some(band(-100., -50.)));
-    assert_eq!(typed(Field::BandWidth, "9"), Some(band(-100., 500.)));
+    assert_eq!(typed(Field::BandWidth, "50"), Some(band(-100., -50.)));
+    assert_eq!(typed(Field::BandWidth, "9 kHz"), Some(band(-100., 500.)));
     assert_eq!(typed(Field::BandWidth, "0"), None);
     assert_eq!(typed(Field::BandHigh, "-0.1"), None);
     assert_eq!(typed(Field::BandHigh, "-0.2"), Some(band(-200., -100.)));
@@ -191,7 +191,7 @@ fn band_texts_read_back_as_the_same_band() {
     let scale = scale(Mode::Clock);
     let selected = band(-123.456, 234.6);
     let texts = scale.band_texts(selected);
-    assert_eq!(texts, ["-0.123", "0.235", "0.358"]);
+    assert_eq!(texts, ["-0.123", "0.235", "358 Hz"]);
     for (field, text) in Field::BAND.into_iter().zip(&texts) {
         let read = scale.band_in(&en(), selected, field, text).expect("a band");
         assert!(
@@ -256,7 +256,11 @@ fn a_step_moves_one_field_by_the_last_digit_it_shows() {
     let selected = band(-100., 100.);
     let step = |field, text, steps| band_scale.band_step_in(&en(), selected, field, text, steps);
     assert_eq!(step(Field::BandLow, "-0.100", 1), Some(band(-99., 100.)));
-    assert_eq!(step(Field::BandWidth, "0.20", -1), Some(band(-100., 90.)));
+    assert_eq!(step(Field::BandWidth, "200", -1), Some(band(-100., 99.)));
+    assert_eq!(
+        step(Field::BandWidth, "0.20 kHz", -1),
+        Some(band(-100., 90.))
+    );
     assert_eq!(step(Field::BandHigh, "0.1", 5), None);
 }
 
@@ -266,7 +270,7 @@ fn frequency_display_offset_roundtrips_edges_without_shifting_width_or_bins() {
     let mut scale = scale(Mode::Seconds);
     scale.frequency_offset = 1_000_000.;
     let texts = scale.band_texts(selected);
-    assert_eq!(texts, ["999.800", "1,000.300", "0.500"]);
+    assert_eq!(texts, ["999.800", "1,000.300", "500 Hz"]);
     for (field, text) in Field::BAND.into_iter().zip(texts) {
         assert_eq!(scale.band_in(&en(), selected, field, &text), Some(selected));
     }
@@ -275,4 +279,98 @@ fn frequency_display_offset_roundtrips_edges_without_shifting_width_or_bins() {
         scale.band_in(&en(), selected, Field::BandLow, "-0.200"),
         Some(selected)
     );
+}
+
+#[test]
+fn megahertz_edges_have_a_kilohertz_width_with_matching_input_and_steps() {
+    let scale = Scale {
+        unit: "MHz",
+        divisor: 1e6,
+        decimals: 5,
+        band: (10e6, 11e6),
+        ..scale(Mode::Seconds)
+    };
+    let selected = band(10_099_170., 10_100_750.);
+    assert_eq!(
+        scale.band_texts(selected),
+        ["10.09917", "10.10075", "1.58 kHz"]
+    );
+    assert_eq!(
+        scale.band_in(&en(), selected, Field::BandWidth, "1.58 kHz"),
+        Some(selected)
+    );
+    for text in ["2", "2000 Hz", "0.002 MHz"] {
+        assert_eq!(
+            scale.band_in(&en(), selected, Field::BandWidth, text),
+            Some(band(10_099_170., 10_101_170.)),
+            "{text}"
+        );
+    }
+    assert_eq!(
+        scale.band_step_in(&en(), selected, Field::BandWidth, "1.58 kHz", 1),
+        Some(band(10_099_170., 10_100_760.))
+    );
+    assert_eq!(
+        scale.band_in(
+            &Numbers::new("ru-RU"),
+            selected,
+            Field::BandWidth,
+            "1,58 kHz"
+        ),
+        Some(selected)
+    );
+    assert_eq!(
+        scale.band_in(&en(), selected, Field::BandWidth, "1 ms"),
+        None
+    );
+}
+
+#[test]
+fn width_units_follow_bandwidth_instead_of_carrier_and_preserve_resolution() {
+    let scale = Scale {
+        unit: "MHz",
+        divisor: 1e6,
+        decimals: 9,
+        band: (-10e6, 10e6),
+        frequency_offset: 100e6,
+        ..scale(Mode::Seconds)
+    };
+    for (width, expected) in [
+        (0.25, "0.250 Hz"),
+        (999., "999.000 Hz"),
+        (1_000., "1.000000 kHz"),
+        (1_580., "1.580000 kHz"),
+        (1_000_000., "1.000000000 MHz"),
+    ] {
+        let selected = band(-100., width - 100.);
+        let text = scale.band_texts(selected)[2].clone();
+        assert_eq!(text, expected);
+        assert_eq!(
+            scale.band_in(&en(), selected, Field::BandWidth, &text),
+            Some(selected)
+        );
+    }
+}
+
+#[test]
+fn a_width_draft_keeps_its_unit_when_reading_it_crosses_a_unit_boundary() {
+    let scale = Scale {
+        band: (-10e6, 10e6),
+        ..scale(Mode::Seconds)
+    };
+    for (width, draft, expected_width) in [
+        (2_000., "0.5", 600.),
+        (2_000_000., "0.5", 600_000.),
+        (500., "2000", 2_001.),
+    ] {
+        let selected = band(0., width);
+        let step_text = scale.band_step_text(selected, Field::BandWidth, draft);
+        let read = scale
+            .band_in(&en(), selected, Field::BandWidth, draft)
+            .unwrap();
+        assert_eq!(
+            scale.band_step_in(&en(), read, Field::BandWidth, &step_text, 1),
+            Some(band(0., expected_width))
+        );
+    }
 }

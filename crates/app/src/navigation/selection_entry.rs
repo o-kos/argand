@@ -1,7 +1,7 @@
 //! A selection's values as text a person types, read and written without a toolkit.
 //!
-//! Time is written in the time ruler's mode and frequency in the frequency
-//! ruler's unit, both with the numeric locale, and read back the same way.
+//! Time follows its ruler's mode and band edges its frequency unit. Band width
+//! chooses its own unit. All use the numeric locale and read back the same way.
 
 use crate::navigation::time_ruler::Mode;
 use crate::numbers::Numbers;
@@ -62,14 +62,28 @@ impl Scale {
             .counters(span, self.rate, self.total, self.seconds_per_pixel)
     }
 
-    /// A band's low edge, high edge and width in the ruler's unit.
+    /// A band's edges in the ruler's unit and its width with an independent unit.
     pub fn band_texts(&self, band: FrequencyBand) -> [String; 3] {
+        let edge = |hertz| {
+            crate::numbers::text(&format!(
+                "{:.*}",
+                self.decimals,
+                (hertz + self.frequency_offset) / self.divisor
+            ))
+        };
+        let (unit, divisor) = width_unit(band);
+        let decimals = (self.decimals as i32 + (divisor / self.divisor).log10().round() as i32)
+            .max(0) as usize;
+        let width = crate::numbers::text(&format!(
+            "{:.*}",
+            decimals,
+            (band.high() - band.low()) / divisor
+        ));
         [
-            band.low() + self.frequency_offset,
-            band.high() + self.frequency_offset,
-            band.high() - band.low(),
+            edge(band.low()),
+            edge(band.high()),
+            format!("{width} {unit}"),
         ]
-        .map(|hertz| crate::numbers::text(&format!("{:.*}", self.decimals, hertz / self.divisor)))
     }
 
     /// `span` with the time `field` typed as `text`, none where the text gives no span.
@@ -102,6 +116,17 @@ impl Scale {
         steps: i64,
     ) -> Option<FrequencyBand> {
         self.band_step_in(crate::numbers::current(), band, field, text, steps)
+    }
+
+    /// Bind a bare width draft to the unit shown before reading it changes the band.
+    pub fn band_step_text(&self, band: FrequencyBand, field: Field, text: &str) -> String {
+        let trimmed = text.trim();
+        let (number, _) = frequency_text(trimmed, self.band_divisor(band, field));
+        if field == Field::BandWidth && number == trimmed {
+            format!("{trimmed} {}", width_unit(band).0)
+        } else {
+            text.to_owned()
+        }
     }
 
     fn time_step_in(
@@ -143,7 +168,8 @@ impl Scale {
         text: &str,
         steps: i64,
     ) -> Option<FrequencyBand> {
-        let unit = steps as f64 * 10_f64.powi(-(decimals(numbers, text) as i32)) * self.divisor;
+        let (_, divisor) = frequency_text(text.trim(), self.band_divisor(band, field));
+        let unit = steps as f64 * 10_f64.powi(-(decimals(numbers, text) as i32)) * divisor;
         let (low, high) = match field {
             Field::BandLow => (band.low() + unit, band.high()),
             Field::BandHigh | Field::BandWidth => (band.low(), band.high() + unit),
@@ -232,14 +258,8 @@ impl Scale {
         field: Field,
         text: &str,
     ) -> Option<FrequencyBand> {
-        let text = text.trim();
-        let text = match text.len().checked_sub(self.unit.len()) {
-            Some(at) if text.is_char_boundary(at) && text[at..].eq_ignore_ascii_case(self.unit) => {
-                &text[..at]
-            }
-            _ => text,
-        };
-        let hertz = number(numbers, text)? * self.divisor;
+        let (text, divisor) = frequency_text(text.trim(), self.band_divisor(band, field));
+        let hertz = number(numbers, text)? * divisor;
         if !hertz.is_finite() {
             return None;
         }
@@ -254,6 +274,37 @@ impl Scale {
             _ => None,
         }
     }
+
+    fn band_divisor(&self, band: FrequencyBand, field: Field) -> f64 {
+        if field == Field::BandWidth {
+            width_unit(band).1
+        } else {
+            self.divisor
+        }
+    }
+}
+
+fn width_unit(band: FrequencyBand) -> (&'static str, f64) {
+    let width = band.high() - band.low();
+    if width >= 1e6 {
+        ("MHz", 1e6)
+    } else if width >= 1e3 {
+        ("kHz", 1e3)
+    } else {
+        ("Hz", 1.)
+    }
+}
+
+fn frequency_text(text: &str, default_divisor: f64) -> (&str, f64) {
+    for (unit, divisor) in [("GHz", 1e9), ("MHz", 1e6), ("kHz", 1e3), ("Hz", 1.)] {
+        if let Some(at) = text.len().checked_sub(unit.len())
+            && text.is_char_boundary(at)
+            && text[at..].eq_ignore_ascii_case(unit)
+        {
+            return (text[..at].trim_end(), divisor);
+        }
+    }
+    (text, default_divisor)
 }
 
 /// How many digits `text` shows after its decimal mark, none without one.

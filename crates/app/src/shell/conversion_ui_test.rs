@@ -1678,6 +1678,70 @@ fn sample_choices_fit_and_flac_filters_without_resetting_drafts(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
+fn reference_label_and_full_value_fit_at_default_and_enlarged_font(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        settings_ui::init(cx);
+    });
+    for rem in [16., 24.] {
+        cx.update(|cx| {
+            gpui_kit::component::theme::Theme::update(cx, |theme| theme.font_size = px(rem));
+        });
+        let mut reference = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let mut request = request();
+            request.input.center_freq = 14_074_000.25;
+            let editor = cx.new(|cx| Editor::new(request, window, cx));
+            reference = Some(
+                editor
+                    .read(cx)
+                    .physical_reference
+                    .read(cx)
+                    .input
+                    .entity_id(),
+            );
+            Root::new(editor, window, cx)
+        });
+        let reference = reference.unwrap();
+        cx.simulate_resize(size(px(1000.), px(1000.)));
+        frame(cx);
+        cx.update(|window, cx| {
+            assert_eq!(window.rem_size(), px(rem));
+            let down = window.find("physical-reference-down").bounds();
+            let up = window.find("physical-reference-up").bounds();
+            let input = window.find(("input", reference)).bounds();
+            let label = "Reference frequency";
+            let style = gpui_kit::TextStyle {
+                font_family: cx.theme().font_family.clone(),
+                ..Default::default()
+            };
+            let text = window.text_system().shape_line(
+                label.into(),
+                px(rem * 0.875),
+                &[style.to_run(label.len())],
+                None,
+            );
+            assert!(down.left() >= px(rem * 0.75) + text.width);
+            let value = crate::numbers::number(14_074_000.25);
+            let value_text = window.text_system().shape_line(
+                value.clone().into(),
+                px(rem * 0.875),
+                &[style.to_run(value.len())],
+                None,
+            );
+            assert!(
+                input.size.width
+                    >= value_text.width + gpui_kit::component::Size::Small.input_px() * 2.,
+                "the full reference and input padding must fit: rem={rem}, input={input:?}, text={:?}, padding={:?}",
+                value_text.width,
+                gpui_kit::component::Size::Small.input_px() * 2.
+            );
+            assert!(up.right() <= window.viewport_size().width);
+        });
+    }
+}
+
+#[gpui_kit::test]
 fn format_tooltip_disappears_for_open_select_and_returns_after_close(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);
     let mut editor = None;
