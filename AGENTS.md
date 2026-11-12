@@ -80,9 +80,9 @@ Before any Rust command, dependency change or worktree operation, follow
 owner-approved installed Rust, one agreed Argand/Wireroom toolkit graph,
 workspace-local intermediate and final artifacts in `target/`, a separately
 installed shared SDK, and the prescribed worktree location. Stop on a missing or conflicting
-setup; never auto-install a toolchain. Follow the policy's explicit owner approval
-for initial dependency compilation and dependency rebuilds beyond the agreed
-debug/test, release and check/Clippy baseline. The owner alone controls disk budgeting.
+setup; never auto-install a toolchain. Initial dependency compilation and ordinary
+rebuilds within the agreed setup do not require separate owner approval.
+The owner alone controls disk budgeting.
 
 ## Workflow and access
 

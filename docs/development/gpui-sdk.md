@@ -9,8 +9,9 @@ separate; do not select another toolkit version to integrate it.
 ## Build and install explicitly
 
 First follow the [local resource policy](../../CONTRIBUTING.md#local-rust-and-build-resources):
-verify the approved installed compiler and workspace-local Cargo target directory, and obtain any
-required dependency compilation approval. The commands never install Rust.
+verify the approved installed compiler and workspace-local Cargo target directory.
+Dependency compilation within the agreed setup needs no separate owner approval.
+The commands never install Rust.
 
 ```sh
 python3 tools/gpui-sdk/sdk.py build-install
