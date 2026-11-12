@@ -286,6 +286,7 @@ fn quit_shortcut() -> &'static str {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn dirty_close_fixture(
     cx: &mut gpui_kit::VisualTestContext,
     shell: &Entity<Shell>,
@@ -331,6 +332,7 @@ fn dirty_close_fixture(
     (dir, recent)
 }
 
+#[cfg(target_os = "linux")]
 fn assert_close_overlay(
     cx: &mut gpui_kit::VisualTestContext,
     shell: &Entity<Shell>,
