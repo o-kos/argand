@@ -94,3 +94,7 @@ workspace dependency: local Cargo commands consume its prebuilt library and exac
 shared image types through machine-local target configuration. Optional aliased
 source dependencies provide portable builds, selected by the `source-toolkit`
 feature; tests additionally enable `toolkit-test-support`. See [SDK setup](../development/gpui-sdk.md).
+
+The CLI image renderer always uses its own source dependency through an explicit
+crate alias. It shares no image types with GPUI and does not require the SDK. This
+keeps CLI release Thin LTO independent of the SDK development artifact format.

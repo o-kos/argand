@@ -44,7 +44,8 @@ Git hook, modified PATH or automatic SDK dependency participates.
 
 With that explicit target, the application is `target/x86_64-unknown-linux-gnu/debug/argand`
 and the CLI is `target/x86_64-unknown-linux-gnu/debug/aspec`. Intermediate artifacts
-still use the agreed common build-dir. SDK mode includes toolkit test support.
+still use the agreed common build-dir. SDK mode includes toolkit test support. Ordinary `cargo build --release --locked`
+keeps the app linked to the SDK while building the CLI independently from source.
 A missing/incompatible SDK produces an explicit error; run the installation or
 selection operation yourself rather than expecting Cargo to rebuild it.
 
@@ -70,6 +71,8 @@ new artifact variants and remains subject to the resource policy.
 
 The SDK is a development artifact, not a portable distribution or stable ABI.
 Installed compilation metadata is as important as the runtime `.so`: equal crate
-versions alone do not give Rust types the same identity. In particular, app and
-CLI SDK mode use the SDK's exact `image` artifact. Do not substitute arbitrary
-similarly named libraries from another Cargo build.
+versions alone do not give Rust types the same identity. In particular, the app must use the SDK's exact `image` artifact because it
+passes image types into GPUI. The CLI shares no GPUI types: its own aliased image
+dependency is always built from source, including the bitcode needed by release
+Thin LTO. The CLI does not require an SDK installation. Do not substitute
+arbitrary similarly named libraries from another Cargo build.

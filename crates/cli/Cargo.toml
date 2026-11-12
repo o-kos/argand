@@ -15,7 +15,7 @@ workspace = true
 
 [features]
 default = []
-source-toolkit = ["dep:source-image"]
+source-toolkit = []
 
 [dependencies]
 argand-core.workspace = true
@@ -24,7 +24,7 @@ argand-io.workspace = true
 ab_glyph.workspace = true
 anyhow.workspace = true
 clap.workspace = true
-source-image = { package = "image", version = "0.25", default-features = false, features = ["png"], optional = true }
+source-image = { package = "image", version = "0.25", default-features = false, features = ["png"] }
 indicatif.workspace = true
 serde.workspace = true
 serde_json.workspace = true

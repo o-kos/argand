@@ -79,3 +79,24 @@ outputs. An initial task-created installation mistakenly included system-library
 search-directory contents. It was replaced by a corrected closure installation and
 removed after verifying no active process/config/final-binary references. No shared
 cache or other SDK version was removed. The final independent review was clean after three rounds; all findings were accepted and resolved.
+
+## SDK workspace release correction
+
+The owner requested ordinary workspace release builds with the SDK selected. The
+CLI had consumed the SDK debug image rlib, which lacks LLVM bitcode required by
+Thin LTO. Argand itself can consume the SDK dylib unchanged. Keep CLI image as an
+always-source dependency under its distinct Cargo alias; it shares no GPUI image
+types. Remove the now-unneeded CLI SDK validation build script. Preserve the
+release profile, toolkit graph, installed SDK and common intermediate directory.
+
+- [x] Make CLI and integration-test image aliases unconditional.
+- [x] Verify 74 CLI tests, workspace all-target Clippy, CLI all-features and
+  CLI default all-target check without SDK configuration.
+- [x] Independently review the focused correction and commit without push.
+- [ ] Run ordinary workspace release as the final build; verify CLI has no SDK
+  runtime dependency and app still consumes the selected installed SDK.
+
+The focused release correction received a clean independent review. The final
+normal workspace release is run after this correction is committed; its result
+and binary provenance are recorded in the task handoff rather than another
+source-changing commit. The installed SDK is not rebuilt.
