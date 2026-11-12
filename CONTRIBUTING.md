@@ -31,7 +31,7 @@ Preserve unrelated work and leave completed historical plans unchanged.
 
 ## Engineering and dependency conventions
 
-- After the GUI scaffold exists, run it with `cargo run -p argand --locked`; build releases with `cargo build --release --locked`.
+- Local Linux development uses the separately installed [GPUI Kit SDK](docs/development/gpui-sdk.md). After explicit SDK selection, ordinary `cargo build`, `cargo test`, `cargo clippy` and `cargo run -p argand --locked` consume it without building it. Portable source releases use `cargo build --release --locked --features source-toolkit`; source tests and all-target Clippy also select `toolkit-test-support`.
 - Take the GUI toolkit as one crates.io dependency, `gpui-kit`, with the version requirement in `Cargo.toml`, and let the committed `Cargo.lock` fix the exact graph. `gpui-kit` selects and re-exports the compatible GPUI 0.3.x family, gpui-component and the toolkit assets; do not add direct `gpui`, `gpui-component` or `gpui-component-assets` dependencies beside it, because a type from one copy of the graph is not that type from the other.
 
   This rule used to name `gpui` and `gpui-component` separately on crates.io, and before that, fixed Git revisions. The separate selections drifted out of compatibility, which is the mistake `gpui-kit` exists to prevent. Do not go back to naming the layers, and do not `[patch]` the registry source without a reason that names what is only available at tip.

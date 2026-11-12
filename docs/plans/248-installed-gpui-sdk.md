@@ -36,36 +36,46 @@ Git hooks, cache clearing, remote validation or publication are part of this tas
 
 ## Implementation steps
 
-- [ ] Verify alias/mode selection with a dependency-free bounded preflight.
-- [ ] Add standalone locked SDK producer and explicit immutable installer.
-- [ ] Verify installed compilation/runtime closure without temporary/cache paths.
-- [ ] Add local/source mode dependencies, machine selection and clear validation.
-- [ ] Document setup, compiler/toolkit identity, static mode and limitations.
-- [ ] Validate ordinary workspace commands and actual captures on current code.
-- [ ] Record isolated production-app rendering and independent review.
-- [ ] Commit the reviewed result without push; publication remains out of scope.
+- [x] Verify alias/mode selection with a dependency-free bounded preflight.
+- [x] Add standalone locked SDK producer and explicit immutable installer.
+- [x] Verify installed compilation/runtime closure without temporary/cache paths.
+- [x] Add local/source mode dependencies, machine selection and clear validation.
+- [x] Document setup, compiler/toolkit identity, static mode and limitations.
+- [x] Validate ordinary workspace commands and actual captures on current code.
+- [x] Record isolated production-app rendering and independent review (final round clean).
+- [x] Commit the reviewed result without push; publication remains out of scope.
 
 ## Acceptance criteria and evidence
 
 | Criterion | Verification | Result | Limits |
 | --- | --- | --- | --- |
-| SDK compilation is separate | Missing SDK and normal command tests | Pending | Linux local mode |
-| Installed SDK is self-contained | Hide producer/cache during a consumer compile/run | Pending | Matching installed compiler and OS libraries |
-| Ordinary local Cargo works | Build, tests, all-target Clippy | Pending | No wrappers/hooks |
-| Source mode remains portable | Manifest/selection checks and appropriate local check | Pending | Server CI not executed |
-| Capture/UI behavior remains intact | Real-capture tests and isolated Xvfb app | Pending | No native Wayland/other OS claim |
+| SDK compilation is separate | Five dependency-free Cargo validation cases and ordinary app build | Passed | Linux local mode |
+| Installed SDK is self-contained | Real macro/image consumer compiled and ran with producer/cache/tmp hidden | Passed | Matching installed compiler and OS libraries |
+| Ordinary local Cargo works | Build, 883 workspace tests, all-target Clippy | Passed | No wrappers/hooks |
+| Source mode remains portable | All-target source check without local SDK configuration | Passed; final static release pending | Server CI/other platforms not executed |
+| Capture/UI behavior remains intact | Original capture inputs present in full tests; isolated Xvfb signal and About interaction | Passed | No native Wayland/other OS claim |
 
 ## Validation
 
-- [ ] Installer/mode/missing SDK regression checks.
-- [ ] cargo fmt --all -- --check.
-- [ ] cargo clippy --all-targets --locked.
-- [ ] cargo test --locked, including original real-capture fixtures.
+- [x] Five installer safety regressions and five mode/missing SDK Cargo cases.
+- [x] cargo fmt --all -- --check.
+- [x] cargo clippy --all-targets --locked.
+- [x] cargo test --locked, including original real-capture fixtures (883 passed).
 - [ ] Appropriate final release validation after preceding checks; source graph
   rebuilds beyond approved experiment require a concrete resource assessment.
-- [ ] Independent review and coordinator assessment of exact snapshot.
+- [x] Independent review and coordinator assessment of exact snapshot.
 
 ## Post-completion
 
 Push/PR lifecycle and eventual integration into main require the owner's separate
 publication direction. No merge or release is authorized by this implementation.
+
+## Review corrections
+
+Accepted review findings: preflight installed Rust before proxy invocation, including
+hardlinked proxies; track SDK removal for Cargo freshness; validate immutable build
+identity and approved lock graph; package only explicitly linked native build
+outputs. An initial task-created installation mistakenly included system-library
+search-directory contents. It was replaced by a corrected closure installation and
+removed after verifying no active process/config/final-binary references. No shared
+cache or other SDK version was removed. The final independent review was clean after three rounds; all findings were accepted and resolved.

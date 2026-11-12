@@ -3,6 +3,9 @@
 //! Representative real and I/Q inputs exercise command wiring. Scalar encoding
 //! matrices belong to the I/O tests, numerical FFT matrices to DSP.
 
+#[cfg(feature = "source-toolkit")]
+extern crate source_image as image;
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 

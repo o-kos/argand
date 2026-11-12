@@ -85,3 +85,12 @@ The window's size and state are restored wherever the toolkit reports the window
 The current implementation focus is display, editing, and spectrum analysis: phases 0 through 6 in [roadmap](../plans/IMPLEMENTATION_PLAN.md).
 
 The plugin and worker design is deferred to the final section of [roadmap](../plans/IMPLEMENTATION_PLAN.md).
+
+## Development SDK boundary
+
+The standalone `tools/gpui-sdk` workspace builds the approved GPUI Kit facade into
+an explicitly installed immutable Linux development SDK. It is not an application
+workspace dependency: local Cargo commands consume its prebuilt library and exact
+shared image types through machine-local target configuration. Optional aliased
+source dependencies provide portable builds, selected by the `source-toolkit`
+feature; tests additionally enable `toolkit-test-support`. See [SDK setup](../development/gpui-sdk.md).

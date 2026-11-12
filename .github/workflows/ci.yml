@@ -64,15 +64,15 @@ jobs:
 
       # Strictness lives in [workspace.lints], not in a flag here.
       - name: Lint
-        run: cargo clippy --all-targets --locked
+        run: cargo clippy --all-targets --locked --features source-toolkit,toolkit-test-support
 
       - name: Test
         if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-        run: cargo test --locked
+        run: cargo test --locked --features source-toolkit,toolkit-test-support
 
       - name: Build release
         if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-        run: cargo build --release --locked
+        run: cargo build --release --locked --features source-toolkit
 
   # The application is the reason these two exist. A runner has no GPU, so
   # nothing here opens a window: what is covered is that the workspace builds
@@ -92,10 +92,10 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Test
-        run: cargo test --locked
+        run: cargo test --locked --features source-toolkit,toolkit-test-support
 
       - name: Build release
-        run: cargo build --release --locked
+        run: cargo build --release --locked --features source-toolkit
 
   macos:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
@@ -112,10 +112,10 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Test
-        run: cargo test --locked
+        run: cargo test --locked --features source-toolkit,toolkit-test-support
 
       - name: Build release
-        run: cargo build --release --locked
+        run: cargo build --release --locked --features source-toolkit
 
   result:
     # Draft success must not satisfy the required full-validation context.
