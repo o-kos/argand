@@ -620,10 +620,9 @@ fn the_settings_hint_opens_from_the_menu_itself(cx: &mut TestAppContext) {
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     press(cx, "f10");
-    // Down to File, right into it, then past the command to Settings.
-    press(cx, "down right");
-    assert!(file_focused(cx, &shell));
-    press(cx, "down enter");
+    // Into View, then up from its first row to its final Analysis settings row.
+    press(cx, "down down down right");
+    press(cx, "up enter");
     draw(cx);
     assert!(!menu_open(cx, &shell), "the menu closed");
     assert!(settings_open(cx, &shell), "and the settings hint opened");
@@ -635,10 +634,10 @@ fn a_click_on_a_recent_row_opens_that_capture(cx: &mut TestAppContext) {
     open_capture(cx, &shell);
     recent(cx, &shell, "/captures/beacon.iqw");
     press(cx, "f10");
-    // The File branch is on screen, and its seventh row is the first capture.
+    // Open and its separator precede the first recent capture.
     press(cx, "down right");
     assert!(file_focused(cx, &shell));
-    let capture = row(cx, 6);
+    let capture = row(cx, 2);
     cx.simulate_click(capture, gpui_kit::Modifiers::default());
     draw(cx);
     assert!(!menu_open(cx, &shell), "the menu closed");
@@ -925,4 +924,184 @@ fn a_saved_notice_goes_with_the_next_press_or_move_and_a_failure_stays(cx: &mut 
     cx.simulate_mouse_move(outside(), None, gpui_kit::Modifiers::default());
     draw(cx);
     assert_eq!(notice(cx), "failed");
+}
+
+#[test]
+fn file_menu_groups_history_before_save_and_finishes_with_information() {
+    use crate::app_menu::{Row, file_items};
+
+    let commands = vec![
+        Row::Save,
+        Row::SaveAs,
+        Row::SaveSelectionAs,
+        Row::Separator,
+        Row::Information,
+    ];
+    let mut empty = vec![Row::Open, Row::Separator];
+    empty.extend(commands.clone());
+    assert_eq!(file_items::<usize>(vec![]), empty);
+
+    let mut populated = vec![
+        Row::Open,
+        Row::Separator,
+        Row::Recent {
+            number: Some(1),
+            label: "first.wav".into(),
+            origin: 17,
+        },
+        Row::Recent {
+            number: Some(2),
+            label: "second.wav".into(),
+            origin: 29,
+        },
+        Row::Separator,
+    ];
+    populated.extend(commands);
+    assert_eq!(
+        file_items(vec![("first.wav".into(), 17), ("second.wav".into(), 29)]),
+        populated
+    );
+}
+
+#[gpui_kit::test]
+fn permanent_menu_commands_stay_drawn_and_analysis_follows_document_availability(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx) = open_window(cx);
+    for loaded in [false, true] {
+        if loaded {
+            open_capture(cx, &shell);
+        }
+        press(cx, "f10");
+        press(cx, "down right");
+        cx.update(|window, _| {
+            for index in [0, 2, 3, 4, 6] {
+                let row = window
+                    .within("submenu")
+                    .find(gpui_kit::ElementId::Integer(index));
+                assert!(
+                    row.bounds().size.height > px(0.),
+                    "permanent File row exists"
+                );
+            }
+        });
+        press(cx, "escape escape");
+        press(cx, "f10");
+        press(cx, "down down down right");
+        cx.update(|window, _| {
+            let analysis = window
+                .within("submenu")
+                .find(gpui_kit::ElementId::Integer(10));
+            assert!(analysis.bounds().size.height > px(0.));
+        });
+        if loaded {
+            press(cx, "up enter");
+            assert!(settings_open(cx, &shell));
+            press(cx, "escape");
+        } else {
+            let unavailable = row(cx, 10);
+            cx.simulate_click(unavailable, gpui_kit::Modifiers::default());
+            draw(cx);
+            assert!(menu_open(cx, &shell), "disabled row does not activate");
+            assert!(!settings_open(cx, &shell));
+            press(cx, "escape escape");
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn eight_recent_rows_keep_final_file_information_keyboard_reachable_in_small_window(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx) = open_window(cx);
+    open_capture(cx, &shell);
+    let _fixture = describe(cx, &shell);
+    cx.update(|_, cx| Shell::bind_choose_file(shell.downgrade(), cx));
+    let paths: Vec<_> = (0..8)
+        .map(|n| format!("/captures/recent-{n}.wav"))
+        .collect();
+    available_recent(cx, &shell, &paths, true);
+    cx.simulate_resize(gpui_kit::size(px(800.), px(360.)));
+    draw(cx);
+    press(cx, "f10");
+    press(cx, "down right");
+    // From Open, Up wraps to the final enabled command and native scrolling reveals it.
+    press(cx, "up");
+    draw(cx);
+    cx.update(|window, _| {
+        let last = window
+            .within("submenu")
+            .find(gpui_kit::ElementId::Integer(15));
+        let bounds = last.bounds();
+        assert!(bounds.origin.y >= px(0.));
+        assert!(bounds.bottom() <= window.viewport_size().height);
+    });
+    press(cx, "enter");
+    assert!(shell.read_with(cx, |shell, cx| shell.conversion.hint.read(cx).is_open()));
+}
+
+#[gpui_kit::test]
+fn empty_view_commands_are_inert_while_edit_shortcuts_keep_registered_plot_bindings(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx) = open_window(cx);
+    let before = shell.read_with(cx, |shell, _| shell.session.clone());
+    press(cx, "f10");
+    press(cx, "down down down right");
+    for index in [0, 1, 2, 4, 5, 7, 10] {
+        let target = row(cx, index);
+        cx.simulate_click(target, gpui_kit::Modifiers::default());
+        draw(cx);
+        assert!(menu_open(cx, &shell), "an unavailable row does not activate");
+        assert_eq!(shell.read_with(cx, |shell, _| shell.session.clone()), before);
+    }
+    cx.update(|window, _| {
+        let actions: Vec<Box<dyn Action>> = vec![
+            Box::new(editing_ui::Undo),
+            Box::new(editing_ui::Redo),
+            Box::new(editing_ui::CutSelection),
+            Box::new(editing_ui::CopySelection),
+            Box::new(editing_ui::PasteClipboard),
+            Box::new(editing_ui::DeleteSelection),
+            Box::new(editing_ui::EditSelection),
+            Box::new(editing_ui::SuppressBand),
+            Box::new(editing_ui::InvertSpectrum),
+            Box::new(editing_ui::NormalizeLevel),
+        ];
+        for action in actions {
+            assert!(Kbd::binding_for_action(action.as_ref(), Some("Plot"), window).is_some());
+        }
+    });
+}
+
+#[gpui_kit::test]
+fn edit_menu_and_shortcut_dispatch_after_information_panel_focus(cx: &mut TestAppContext) {
+    let (shell, cx) = open_window(cx);
+    open_capture(cx, &shell);
+    let _fixture = describe(cx, &shell);
+    cx.update(|_, cx| Shell::bind_choose_file(shell.downgrade(), cx));
+    let analysis = if cfg!(target_os = "macos") {
+        "cmd-,"
+    } else {
+        "ctrl-,"
+    };
+    let selection = if cfg!(target_os = "macos") {
+        "cmd-e"
+    } else {
+        "ctrl-e"
+    };
+    for panel in ["f11", analysis] {
+        press(cx, panel);
+        click(cx, "application-menu-button");
+        press(cx, "down down right");
+        let target = row(cx, 8);
+        cx.simulate_click(target, gpui_kit::Modifiers::default());
+        draw(cx);
+        assert!(!menu_open(cx, &shell));
+        assert!(shell.read_with(cx, |shell, cx| shell.selection_hint.read(cx).is_open()));
+        press(cx, "escape");
+        press(cx, selection);
+        assert!(shell.read_with(cx, |shell, cx| shell.selection_hint.read(cx).is_open()));
+        press(cx, "escape");
+    }
 }

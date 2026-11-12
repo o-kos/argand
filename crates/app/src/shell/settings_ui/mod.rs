@@ -677,7 +677,7 @@ fn status_panel_tooltip(panel: StatusPanel, cx: &mut gpui_kit::App) -> gpui_kit:
     let (title, description, action): (_, _, Box<dyn Action>) = match panel {
         StatusPanel::File => (
             "File information",
-            "View sample rate, reference frequency, sample type and format; convert the capture",
+            "View file properties and conversion options",
             Box::new(ConvertCapture),
         ),
         StatusPanel::Analysis => (

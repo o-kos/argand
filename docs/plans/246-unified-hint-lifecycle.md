@@ -292,3 +292,146 @@ browser launch were not runtime-validated. Link keyboard activation remains cove
 by the automated URL-opening mock tests. The corrected snapshot has no independent
 review; coordinator/owner disposition and owner acceptance remain pending. The plan
 stays active. External publication remains blocked; no push or PR edit is attempted.
+
+## Owner-requested File menu grouping follow-up
+
+Reorder File as Open, separator, Recent entries when present, separator, Save /
+Save as / Save selection as, separator, Analysis settings, separator, and final
+File information. An empty Recent list contributes no empty group or duplicate
+separator. Keep Analysis settings in File and preserve its existing action and
+shortcut; it opens the panel containing FFT size. Tooltip copy is unchanged until
+the owner approves revised wording. This remains local, without publication or a
+new independent review. Validate populated/empty recent-list ordering and formatting;
+current-production acceptance for this new menu snapshot remains pending until a
+required fresh release build and isolated Xvfb check.
+
+- [x] Apply the agreed menu grouping and verify populated/empty history cases.
+
+Formatting and the targeted menu-order regression passed. Only the project crate
+compiled under the existing refusal guard. No full gate or release was rerun for
+this small intermediate change; combine fresh production validation with the
+pending owner-approved tooltip wording change. The existing release binary does
+not include this new menu order.
+
+The owner approved File tooltip wording: “View file properties and conversion
+options”. Apply that exact text without changing title, typography or shortcut.
+The application menu is the logo/Argand button at the upper left (F10), whose File
+submenu contains Analysis settings; FFT size is inside that panel, not a separate
+FFT menu entry. Combine the approved copy and grouping in one fresh project-only
+release and bounded Xvfb menu/tooltip acceptance. Reuse the previously passed full
+lifecycle suite for this narrow delta; run formatting, Clippy and the populated/empty
+menu-order regression, without claiming the earlier full gate covers this revision.
+Independent review and owner acceptance remain pending.
+
+Combined follow-up validation: formatting, all-target Clippy, populated/empty menu
+model regression and the final project-only release passed under the dependency
+refusal guard. The full suite was not repeated for this narrow menu/copy delta.
+Fresh isolated production captures in dark/light show the approved tooltip and
+empty-history File menu with exactly one separator between Open and Save. Actual
+light-theme menu clicks opened Analysis settings (FFT size visible) and final File
+information. Coordinator assessment confirmed the light captures. Populated Recent
+ordering is covered by the model regression, not a new runtime history scenario.
+Evidence and exact source/binary identity are retained in
+`/tmp/argand-246-xvfb/menu-source-identity.json` and `menu-{light,dark}/`.
+The delta remains local and uncommitted; no publication or additional independent
+review. The plan remains active pending review disposition and owner acceptance.
+
+## Owner correction: menu discoverability and populated-history accessibility
+
+Move Analysis settings from File to a final separate View group. Preserve the
+existing document-dependent applicability: the row stays visible but disabled
+without a file or during conversion. Do not add a no-file status anchor or extend
+global settings capability. Permanent File/Edit/View commands remain present;
+only an empty Recent group is omitted. Verify actual rendered no-file and loaded
+menus instead of inferring visibility from the menu model.
+
+The standard PopupMenu defaults to half the window height with a 28.125rem cap.
+File already enables native scrolling, but the populated-history case was missed
+by prior runtime acceptance. Use public max_h from the viewport minus titlebar
+and standard edge allowance, with native scrolling for every application-menu
+branch. Preserve standard anchoring, scrollbar, pointer and keyboard selection.
+Do not introduce custom controls or modify the toolkit.
+
+- [x] Move Analysis to View and verify visible/disabled applicability.
+- [x] Bound standard menu branches to available viewport with native scrolling.
+- [x] Verify no-file/loaded, zero/eight Recent and small-window production menus,
+  including pointer and keyboard access to final File information.
+
+Current menu correction validation: formatting, all-target Clippy, all 891 tests
+and the final release build passed; only project code compiled under the refusal
+guard. The affected menu module has 25 passing tests. Isolated production Xvfb
+compared File/Edit/View with no file and with a loaded capture, each with zero and
+eight visible Recent rows at 960×640. Permanent rows remained rendered; no-file
+unavailable rows were visibly disabled. Analysis was absent from File and present
+in View, inert without a file and opening the editor with one. At 960×360, native
+wheel scrolling revealed final File information for empty and loaded windows with
+eight Recent; a pointer click and native keyboard wrap/Enter each opened it in the
+loaded window. At 640px height all eight history rows and final File information
+fit together. The loaded fixture stores nine entries because the current capture
+is intentionally excluded from the visible Recent list; the initial seven-row
+fixture was retained separately and not counted as eight-row acceptance.
+
+This evidence covers menu reachability, not a new review of property-panel layout
+at forced below-normal window heights. Current source/binary identity and captures
+are retained under `/tmp/argand-246-xvfb/availability-source-identity.json`,
+`availability-report.md` and `availability-{empty,loaded}{0,8}/`. No native Wayland,
+Windows or macOS runtime claim. The corrected snapshot remains independently
+unreviewed; owner acceptance and review disposition remain pending. No fourth
+review, external publication or additional commit was performed for this delta.
+
+## Owner correction: scrolling, no-file View applicability and Edit shortcuts
+
+The previous blanket scrollable helper introduced native scrollbar layers on the
+short root and fixed branches; a short File edge-hover also showed an unwanted
+native scrollbar. These are standard toolkit layers, not new widgets. Remove
+blanket scrolling and keep the variable-history File branch's public max-height;
+zero-history File must not mount a scroll layer. Native overflow behavior for
+populated but fitting history remains a required runtime check, not an assumption.
+Fixed Edit/View/Theme/time branches fit the supported 640×400 minimum window.
+
+Without a document, disable grid, scale controls, orientation and Time scale format
+alongside the existing document commands. Keep Theme available. Their handlers
+previously persisted session preferences without an immediate no-file visual
+result; the owner now requires applicability-based menu disabling.
+
+Edit bindings, focus_target, action_context and the existing focus-based keycap
+lookup predate this Issue unchanged. Most Edit bindings belong to Plot, while an
+empty window has Shell/StartPage context. Use standard registered Plot-context Kbd
+lookup for Edit labels so disabled commands keep their documented shortcuts; do
+not hardcode key strings or alter dispatch mappings. Keep PopupMenu.action_context
+on the real focus target and verify loaded actual activation after panel focus.
+Mouse application-menu opening after File and Analysis focus showed all registered
+Edit keycaps in the previous binary. F10 inside these panels did not open the menu;
+that existing Shell-scoped route is recorded separately, not expanded silently.
+
+- [x] Apply the bounded source changes and meaningful regression tests (unexecuted).
+- [ ] Validate short root/File edge-hover, populated File overflow, no-file/loaded
+  View applicability and stable Edit labels/actual actions in current production.
+
+Validation is blocked by the new owner resource policy. The common build-dir was
+removed from the global Cargo configuration. This old worktree lacks the current
+main branch's immutable SDK consumer integration and local dependency baseline;
+its target directories contain final outputs from the earlier shared setup.
+Do not run Rust, migrate caches, select SDK flags or change the dependency graph
+until the owner/coordinator resolves integration onto the approved current basis.
+Earlier 891 passing tests and release evidence are historical, not validation of
+this new source delta. No fourth review or external publication is authorized.
+
+Pending runtime cases explicitly include one through seven Recent entries when
+all entries fit, in addition to zero-history and eight-history overflow cases.
+The standard native scrollbar's observed false-overflow behavior must not be
+called fixed for those fitting populated histories. The available change removes
+scrolling from fixed short branches and zero-history File only. No newly edited
+source was formatted, compiled, tested or demonstrated after the resource-policy
+change; git diff --check is the only completed check for this latest delta.
+
+The owner subsequently granted a temporary exception to continue using the old
+shared-cache scheme for this correction, without authorizing toolchain/toolkit
+changes or new dependency compilation. Read-only verification found that the
+previously approved `/home/xokc/.cache/cargo-target` is no longer present. This
+worktree has only final outputs and no local dependency/fingerprint baseline.
+The direct installed compiler remains available and no SDK/flag overrides apply,
+but there are no old intermediate artifacts to reuse. No Rust command was run
+under the exception. Validation remains blocked until the owner supplies/restores
+the approved cache or authorizes a different dependency/SDK baseline. Do not create
+a fresh cache and describe its inevitable dependency compilation as ordinary reuse.

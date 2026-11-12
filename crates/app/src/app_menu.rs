@@ -19,8 +19,6 @@ pub enum Row<T> {
     },
     /// Opens capture properties and conversion options.
     Information,
-    /// Opens the analysis settings.
-    Settings,
     Separator,
 }
 
@@ -39,16 +37,9 @@ pub fn digit(index: usize) -> Option<u8> {
 /// The rows of the File submenu, in the order they are drawn.
 ///
 /// The recent rows keep the order they arrive in. An empty list leaves one
-/// separator, between the two commands and nothing else.
+/// separator between Open and Save, without an empty history group.
 pub fn file_items<T>(recent: Vec<(String, T)>) -> Vec<Row<T>> {
-    let mut rows = vec![
-        Row::Open,
-        Row::Save,
-        Row::SaveAs,
-        Row::SaveSelectionAs,
-        Row::Information,
-        Row::Separator,
-    ];
+    let mut rows = vec![Row::Open, Row::Separator];
     if !recent.is_empty() {
         rows.extend(
             recent
@@ -62,6 +53,12 @@ pub fn file_items<T>(recent: Vec<(String, T)>) -> Vec<Row<T>> {
         );
         rows.push(Row::Separator);
     }
-    rows.push(Row::Settings);
+    rows.extend([
+        Row::Save,
+        Row::SaveAs,
+        Row::SaveSelectionAs,
+        Row::Separator,
+        Row::Information,
+    ]);
     rows
 }
