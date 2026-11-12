@@ -8,7 +8,8 @@ Separate the explicit Linux development SDK build/install from Argand compilatio
 Local ordinary Cargo commands consume an immutable ready SDK; portable source mode
 retains the approved toolkit graph for release and CI. Wireroom adoption is deferred.
 No automatic SDK build, toolchain changes, registry upgrades, compiler wrappers,
-Git hooks, cache clearing, remote validation or publication are part of this task.
+Git hooks or cache clearing are part of this task. The owner subsequently authorized
+publication and integration conditional on the current full CI result.
 
 ## Roles and risk
 
@@ -43,7 +44,8 @@ Git hooks, cache clearing, remote validation or publication are part of this tas
 - [x] Document setup, compiler/toolkit identity, static mode and limitations.
 - [x] Validate ordinary workspace commands and actual captures on current code.
 - [x] Record isolated production-app rendering and independent review (final round clean).
-- [x] Commit the reviewed result without push; publication remains out of scope.
+- [x] Commit the independently reviewed implementation and focused release correction.
+- [x] Prepare publication under the owner's conditional merge authorization.
 
 ## Acceptance criteria and evidence
 
@@ -52,7 +54,7 @@ Git hooks, cache clearing, remote validation or publication are part of this tas
 | SDK compilation is separate | Five dependency-free Cargo validation cases and ordinary app build | Passed | Linux local mode |
 | Installed SDK is self-contained | Real macro/image consumer compiled and ran with producer/cache/tmp hidden | Passed | Matching installed compiler and OS libraries |
 | Ordinary local Cargo works | Build, 883 workspace tests, all-target Clippy | Passed | No wrappers/hooks |
-| Source mode remains portable | All-target source check without local SDK configuration | Passed; final static release pending | Server CI/other platforms not executed |
+| Source mode remains portable | All-target source check without local SDK configuration | Passed, including final static release | Server CI/other platforms not executed |
 | Capture/UI behavior remains intact | Original capture inputs present in full tests; isolated Xvfb signal and About interaction | Passed | No native Wayland/other OS claim |
 
 ## Validation
@@ -61,14 +63,16 @@ Git hooks, cache clearing, remote validation or publication are part of this tas
 - [x] cargo fmt --all -- --check.
 - [x] cargo clippy --all-targets --locked.
 - [x] cargo test --locked, including original real-capture fixtures (883 passed).
-- [ ] Appropriate final release validation after preceding checks; source graph
-  rebuilds beyond approved experiment require a concrete resource assessment.
+- [x] Source release and ordinary SDK workspace release after preceding checks;
+  Argand consumes the SDK and CLI has no SDK runtime dependency.
 - [x] Independent review and coordinator assessment of exact snapshot.
 
 ## Post-completion
 
-Push/PR lifecycle and eventual integration into main require the owner's separate
-publication direction. No merge or release is authorized by this implementation.
+The owner authorized push and a Pull Request, with squash merge conditional on
+current full CI success. Run the full local gate manually without Git hooks, as
+requested by the owner. After merge, delete only the accepted task branch; preserve
+other branches, worktrees, the installed SDK and shared intermediate cache.
 
 ## Review corrections
 
@@ -93,13 +97,12 @@ release profile, toolkit graph, installed SDK and common intermediate directory.
 - [x] Verify 74 CLI tests, workspace all-target Clippy, CLI all-features and
   CLI default all-target check without SDK configuration.
 - [x] Independently review the focused correction and commit without push.
-- [ ] Run ordinary workspace release as the final build; verify CLI has no SDK
+- [x] Run ordinary workspace release as the final build; verify CLI has no SDK
   runtime dependency and app still consumes the selected installed SDK.
 
 The focused release correction received a clean independent review. The final
-normal workspace release is run after this correction is committed; its result
-and binary provenance are recorded in the task handoff rather than another
-source-changing commit. The installed SDK is not rebuilt.
+normal workspace release passed after the correction was committed; its result
+and binary provenance are recorded in the task handoff. The installed SDK is not rebuilt.
 
 ### Release import-resolution follow-up
 
