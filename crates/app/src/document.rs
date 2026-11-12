@@ -365,6 +365,18 @@ impl Document {
         }
     }
 
+    /// Rebase a retained picture when the same samples acquire a new file reference.
+    pub fn shift_frequency_basis(&mut self, offset: f64) {
+        let Some(snapshot) = self.analysis.as_mut() else {
+            return;
+        };
+        let result = &mut snapshot.result;
+        result.db.f0 += offset;
+        result.db.f1 += offset;
+        result.spectrogram.f0 += offset;
+        result.spectrogram.f1 += offset;
+    }
+
     pub fn analysis(&self) -> Option<&Analysis> {
         self.analysis
             .as_ref()
@@ -460,7 +472,7 @@ impl Document {
                     "Samples format" => "Sample format",
                     "Signal sample rate" => "Sample rate",
                     "Signal duration" => "Duration",
-                    _ => "Centre frequency",
+                    _ => "Reference frequency",
                 };
                 (label.to_owned(), field.hint.value)
             })
@@ -544,11 +556,11 @@ impl Document {
                 ),
             ),
         ];
-        if meta.center_freq != 0.0 {
+        {
             fields.push(MetadataField::new(
                 format_hz(meta.center_freq),
                 MetadataHint::new(
-                    "Signal centre frequency",
+                    "Signal reference frequency",
                     format_hz(meta.center_freq),
                     "This is the frequency represented by zero in the baseband signal",
                 ),

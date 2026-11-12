@@ -256,6 +256,7 @@ impl Shell {
         let theme = self.theme_menu(focus.clone(), window, cx);
         let document = self.view.is_some();
         let show_grid = self.session.show_grid;
+        let baseband = self.session.baseband_frequencies;
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
         let analysis = self.status_panel_available(settings_ui::StatusPanel::Analysis);
@@ -283,6 +284,12 @@ impl Shell {
                     )
                     .disabled(!document),
                 )
+                .item(action_row(
+                    "Baseband frequencies",
+                    Box::new(ToggleBaseband),
+                    baseband,
+                    focus.clone(),
+                ))
                 .item(PopupMenuItem::separator())
                 .item(
                     action_row("Fit time", Box::new(FitCapture), false, focus.clone())

@@ -52,6 +52,7 @@ pub struct Scale {
     pub decimals: usize,
     /// The capture's band in hertz.
     pub band: (f64, f64),
+    pub frequency_offset: f64,
 }
 
 impl Scale {
@@ -63,9 +64,12 @@ impl Scale {
 
     /// A band's low edge, high edge and width in the ruler's unit.
     pub fn band_texts(&self, band: FrequencyBand) -> [String; 3] {
-        [band.low(), band.high(), band.high() - band.low()].map(|hertz| {
-            crate::numbers::text(&format!("{:.*}", self.decimals, hertz / self.divisor))
-        })
+        [
+            band.low() + self.frequency_offset,
+            band.high() + self.frequency_offset,
+            band.high() - band.low(),
+        ]
+        .map(|hertz| crate::numbers::text(&format!("{:.*}", self.decimals, hertz / self.divisor)))
     }
 
     /// `span` with the time `field` typed as `text`, none where the text gives no span.
@@ -240,7 +244,7 @@ impl Scale {
             return None;
         }
         let (floor, ceiling) = self.band;
-        let at = hertz.clamp(floor, ceiling);
+        let at = (hertz - self.frequency_offset).clamp(floor, ceiling);
         match field {
             Field::BandLow => FrequencyBand::between(at, band.high()),
             Field::BandHigh => FrequencyBand::between(band.low(), at),

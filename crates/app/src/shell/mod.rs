@@ -1269,6 +1269,7 @@ impl Shell {
             },
             seconds: self.view?.seconds(meta.sample_rate),
             hertz: self.frequency.hertz(meta.frequency_span()),
+            frequency_offset: self.frequency_offset(),
         })
     }
 

@@ -132,6 +132,23 @@ Alt guides and cursor feedback available without a mouse move after dismissal.
 
 ## Frequency navigation (#80)
 
+Reference editing (#185) separates source-frequency coordinates from their
+presentation. The document worker, retained grids and internal selected bands
+keep the opened source's frequency basis. `Extents::frequency_offset` translates
+only ruler labels, cursor/Alt readouts and typed selection values. In physical
+mode the offset is effective reference minus source reference; in baseband mode
+it is minus source reference. Selection widths and processing bins do not change.
+The normalized viewport survives either change, without an FFT request.
+`selection_entry::Scale` applies the offset to edge formatting and removes it on
+entry, leaving widths unchanged. File information always shows the physical
+reference, including in baseband mode.
+
+After a successful save rebind, the new file becomes the source basis. The held
+foreground grid/image frequency bounds and selected band are translated by the
+new source reference minus the previous source reference; their sample/bin
+identity stays unchanged. Old worker deliveries remain gated by the reader swap.
+The old wider/deep previews are retired through their existing owners.
+
 `navigation/frequency.rs` owns a normalized, bounded frequency viewport independent of the time
 range. Each file opening resets it. Its minimum span is one retained frequency
 cell, with at most 2048 cells across the capture band and a physical-coordinate

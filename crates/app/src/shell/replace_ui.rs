@@ -290,11 +290,34 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Replacement { start, then } = replacement;
+        let Replacement { mut start, then } = replacement;
         self.saving = None;
         self.replacement_active = false;
         let to = match committed {
-            Ok(saved) => self.adopted(&saved),
+            Ok(saved) => {
+                let reopen = self.file.as_ref().and_then(|file| {
+                    let editing = file.editing.as_ref()?;
+                    let mut origin = file.state.document.origin().clone();
+                    let restart = origin
+                        .hints
+                        .center_freq
+                        .is_some_and(|reference| reference != editing.reference());
+                    origin.hints.center_freq = Some(editing.reference());
+                    Some((origin, restart))
+                });
+                if let Some((origin, restart)) = reopen {
+                    if let Some(file) = self.file.as_mut() {
+                        file.state.document.set_origin(origin.clone());
+                    }
+                    if restart
+                        && let Some((saved_start, _unstarted)) =
+                            self.swap_readers(&origin, window, cx)
+                    {
+                        start = saved_start;
+                    }
+                }
+                self.adopted(&saved)
+            }
             Err((error, kept)) => self.kept_edits(&error, &kept, window, cx),
         };
         if let Some(file) = self.file.as_mut() {
@@ -374,6 +397,21 @@ impl Shell {
         }
         match to {
             Rebind::Fresh(previous) => {
+                let offset = self
+                    .file
+                    .as_ref()
+                    .and_then(|file| file.state.document.meta())
+                    .map_or(0., |meta| {
+                        meta.center_freq - previous.file().meta.center_freq
+                    });
+                if let Some(file) = self.file.as_mut() {
+                    file.state.document.shift_frequency_basis(offset);
+                }
+                self.band = self.band.and_then(|band| {
+                    argand_core::FrequencyBand::between(band.low() + offset, band.high() + offset)
+                });
+                self.release_backdrop(window, cx);
+                self.release_deep_preview(window, cx);
                 // The samples now come from the saved file, not from the files that changed.
                 if let Some(file) = self.file.as_mut() {
                     file.state.document.clear_changed();

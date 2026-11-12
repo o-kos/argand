@@ -4,6 +4,7 @@ const RATE: f64 = 1_000.;
 
 fn scale(mode: Mode) -> Scale {
     Scale {
+        frequency_offset: 0.,
         mode,
         rate: RATE,
         total: 100_000,
@@ -257,4 +258,21 @@ fn a_step_moves_one_field_by_the_last_digit_it_shows() {
     assert_eq!(step(Field::BandLow, "-0.100", 1), Some(band(-99., 100.)));
     assert_eq!(step(Field::BandWidth, "0.20", -1), Some(band(-100., 90.)));
     assert_eq!(step(Field::BandHigh, "0.1", 5), None);
+}
+
+#[test]
+fn frequency_display_offset_roundtrips_edges_without_shifting_width_or_bins() {
+    let selected = band(-200., 300.);
+    let mut scale = scale(Mode::Seconds);
+    scale.frequency_offset = 1_000_000.;
+    let texts = scale.band_texts(selected);
+    assert_eq!(texts, ["999.800", "1,000.300", "0.500"]);
+    for (field, text) in Field::BAND.into_iter().zip(texts) {
+        assert_eq!(scale.band_in(&en(), selected, field, &text), Some(selected));
+    }
+    scale.frequency_offset = 0.;
+    assert_eq!(
+        scale.band_in(&en(), selected, Field::BandLow, "-0.200"),
+        Some(selected)
+    );
 }

@@ -17,6 +17,11 @@ promise applies to.
 
 ### Added
 
+- Edit the capture's reference frequency directly in File information, undo or redo
+  the change, and write it with Save or Save As. View → Baseband frequencies shows
+  frequencies relative to zero while retaining the physical reference and selected
+  signal band, without recomputing the FFT (#185).
+
 - About Argand opens from a version button in the title bar or the application menu and shows package details, the repository link and build commit identity. Its tooltip identifies the version, exact tag, commit and commit date (#107).
 
 - Packed signed 24-bit PCM opens natively in real and I/Q RIFF/RF64/BW64 and raw captures (`rl_i24` / `iq_i24`). Supported 24-bit WAVE saves can use RF64, with normalization, gain and original integer units preserved. File information and WAVE conversion offer Int 24-bit (#192).

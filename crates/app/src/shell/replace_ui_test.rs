@@ -228,6 +228,7 @@ fn a_selected_band_saves_as_a_complex_capture_at_a_lower_rate(cx: &mut TestAppCo
             },
             cx,
         );
+        assert!(shell.set_reference(14_074_000., window, cx));
         assert!(shell.can_save(true));
         shell.save_as(true, window, cx);
     });
@@ -269,4 +270,239 @@ fn nothing_opens_or_closes_while_the_file_is_replaced(cx: &mut TestAppContext) {
         shell.save_notice,
         Some(saving_ui::Notice::Failed("Please wait", _))
     )));
+}
+
+#[gpui_kit::test]
+fn reference_edit_and_save_rebase_the_picture_and_band_without_changing_samples(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx) = open_window(cx);
+    let dir = argand_io::testutil::TempDir::new("reference-save-rebind");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 48_000);
+    shell.update_in(cx, |shell, window, cx| {
+        let mut origin = Origin::new(path.clone());
+        origin.hints.center_freq = Some(0.);
+        shell.open(origin, window, cx);
+    });
+    wait_until(cx, &shell, "ready reference fixture", |shell| {
+        shell.editing().is_some_and(Editing::is_described)
+            && shell
+                .file
+                .as_ref()
+                .is_some_and(|file| matches!(file.state.document.status(), Status::Ready { .. }))
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.band = argand_core::FrequencyBand::between(-100., 100.);
+        let before = shell
+            .file
+            .as_ref()
+            .unwrap()
+            .state
+            .document
+            .analysis()
+            .unwrap()
+            .db
+            .values
+            .as_ptr();
+        let view = shell.frequency;
+        assert!(shell.set_reference(1_000_000.25, window, cx));
+        assert_eq!(
+            shell
+                .file
+                .as_ref()
+                .unwrap()
+                .state
+                .document
+                .analysis()
+                .unwrap()
+                .db
+                .values
+                .as_ptr(),
+            before
+        );
+        assert_eq!(shell.frequency, view);
+        assert_eq!(shell.extents().unwrap().frequency_offset, 1_000_000.25);
+        assert_eq!(shell.band.unwrap().low(), -100.);
+        shell.save_over(window, cx);
+    });
+    wait_until(cx, &shell, "saved reference rebound", |shell| {
+        shell.saving.is_none()
+            && shell
+                .editing()
+                .is_some_and(|editing| !editing.is_dirty() && editing.reference() == 1_000_000.25)
+    });
+    shell.read_with(cx, |shell, _| {
+        let document = &shell.file.as_ref().unwrap().state.document;
+        assert_eq!(document.meta().unwrap().center_freq, 1_000_000.25);
+        assert_eq!(document.analysis().unwrap().db.f0, 988_000.25);
+        assert_eq!(shell.band.unwrap().low(), 999_900.25);
+        assert_eq!(shell.extents().unwrap().frequency_offset, 0.);
+        assert_eq!(
+            shell.editing().unwrap().written_source().hints.center_freq,
+            Some(1_000_000.25)
+        );
+    });
+    let mut source = argand_io::open(&path, &argand_io::OpenHints::default()).unwrap();
+    assert_eq!(source.meta().center_freq, 1_000_000.25);
+    assert_eq!(source.meta().len_samples, 48_000);
+    let mut samples = vec![0.; 96_000];
+    assert_eq!(source.read(&mut samples).unwrap(), samples.len());
+    for (n, pair) in samples.as_chunks::<2>().0.iter().enumerate() {
+        assert_eq!(pair, &[(n % 30_000) as f32 / 32768.; 2]);
+    }
+}
+
+#[gpui_kit::test]
+fn baseband_and_metadata_undo_keep_analysis_and_selected_bins(cx: &mut TestAppContext) {
+    let (shell, cx) = open_window(cx);
+    let dir = argand_io::testutil::TempDir::new("reference-baseband");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 48_000);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path), window, cx)
+    });
+    wait_until(cx, &shell, "ready baseband fixture", |shell| {
+        shell
+            .file
+            .as_ref()
+            .is_some_and(|file| matches!(file.state.document.status(), Status::Ready { .. }))
+    });
+    let generation = shell.read_with(cx, |shell, _| {
+        shell
+            .file
+            .as_ref()
+            .unwrap()
+            .state
+            .analyst
+            .generation_for_test()
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.band = argand_core::FrequencyBand::between(-200., 300.);
+        assert!(shell.set_reference(100_000., window, cx));
+        window.dispatch_action(
+            Box::new(crate::shell::plot::navigation_ui::ToggleBaseband),
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    shell.read_with(cx, |shell, _| {
+        assert!(shell.session.baseband_frequencies);
+        assert_eq!(shell.extents().unwrap().frequency_offset, 0.);
+        assert_eq!(shell.editing().unwrap().reference(), 100_000.);
+    });
+    shell.update_in(cx, |_, window, cx| {
+        window.dispatch_action(Box::new(editing_ui::Undo), cx)
+    });
+    cx.run_until_parked();
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.editing().unwrap().reference(), 0.);
+        assert_eq!(shell.band.unwrap().low(), -200.);
+        assert!(!shell.editing().unwrap().is_dirty());
+        assert_eq!(
+            shell
+                .file
+                .as_ref()
+                .unwrap()
+                .state
+                .analyst
+                .generation_for_test(),
+            generation
+        );
+    });
+}
+
+#[gpui_kit::test]
+fn failed_reference_publication_keeps_original_reader_basis_for_navigation_and_suppression(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx) = open_window(cx);
+    let dir = argand_io::testutil::TempDir::new("reference-failed-publication");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 48_000);
+    shell.update_in(cx, |shell, window, cx| {
+        let mut origin = Origin::new(path.clone());
+        origin.hints.center_freq = Some(0.);
+        shell.open(origin, window, cx);
+    });
+    wait_until(cx, &shell, "original reference analysis", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described() && editing.can_compute())
+            && shell
+                .file
+                .as_ref()
+                .is_some_and(|file| matches!(file.state.document.status(), Status::Ready { .. }))
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.band = argand_core::FrequencyBand::between(1000., 3000.);
+        assert!(shell.set_reference(1_000_000., window, cx));
+        let origin = shell.file.as_ref().unwrap().state.document.origin().clone();
+        assert_eq!(
+            origin.hints.center_freq,
+            Some(0.),
+            "reader hints describe the unchanged source"
+        );
+        let (start, _old) = shell.swap_readers(&origin, window, cx).unwrap();
+        shell.replaced(
+            Err(("publication refused".into(), dir.join("kept.wav"))),
+            Replacement { start, then: None },
+            window,
+            cx,
+        );
+    });
+    wait_until(cx, &shell, "original file rebound after refusal", |shell| {
+        shell
+            .file
+            .as_ref()
+            .is_some_and(|file| file.rebinding.is_none())
+    });
+    shell.update_in(cx, |shell, _, cx| {
+        assert_eq!(
+            shell
+                .file
+                .as_ref()
+                .unwrap()
+                .state
+                .document
+                .meta()
+                .unwrap()
+                .center_freq,
+            0.
+        );
+        assert_eq!(shell.editing().unwrap().reference(), 1_000_000.);
+        assert_eq!(shell.band.unwrap().low(), 1000.);
+        shell.frequency = shell.frequency.zoom(0.5, 0.5, 2048);
+        shell.ask_for_a_picture();
+        cx.notify();
+    });
+    wait_until(
+        cx,
+        &shell,
+        "navigation on original frequency basis",
+        |shell| {
+            shell
+                .file
+                .as_ref()
+                .and_then(|file| file.state.document.analysis())
+                .is_some_and(|analysis| analysis.db.f0 == -6000.)
+        },
+    );
+    shell.update_in(cx, |shell, window, cx| shell.suppress_band(window, cx));
+    wait_until(
+        cx,
+        &shell,
+        "suppression after publication refusal",
+        |shell| {
+            shell.suppressing.is_none()
+                && shell.editing().is_some_and(|editing| {
+                    editing.capture().sources() != [argand_edit::SourceId(0)]
+                })
+        },
+    );
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.editing().unwrap().reference(), 1_000_000.);
+        assert_eq!(shell.band.unwrap().low(), 1000.);
+        assert!(shell.editing().unwrap().is_dirty());
+    });
 }

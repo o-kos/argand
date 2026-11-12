@@ -308,6 +308,16 @@ The start page and the inline recent rows in File share `recent.rs`'s toolkit-ne
 
 ## File information and conversion (#189)
 
+The upper metadata section includes a Reference frequency numeric editor (#185),
+using the existing NumericEditor and Hz units. It includes zero and remains
+physical when View > Baseband frequencies is checked. Valid Enter/blur/step
+commits are undoable metadata edits; invalid text leaves the document unchanged
+and shows an inline error. Escape from a changed reference draft restores its
+last committed value; otherwise it follows the panel's existing dismissal.
+Save/Save As writes the committed reference. Conversion's separate Carrier
+frequency field retains its domain-conversion meaning and draft transaction.
+The baseband View preference persists with other session display preferences.
+
 `processing/conversion.rs` converts a whole immutable edited-capture snapshot into a new WAVE/RF64;
 selection is ignored. `shell/conversion_ui.rs` composes the file information status Button,
 PinnedHint panel, Input, Select and Convert Button. File > File information… and F11 open

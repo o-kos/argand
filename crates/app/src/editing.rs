@@ -253,10 +253,16 @@ impl std::fmt::Display for PasteError {
 
 impl std::error::Error for PasteError {}
 
+#[derive(Clone, Copy)]
+struct VersionState {
+    selection: Selection,
+    reference: f64,
+}
+
 /// One document's sources, edit history and source envelopes.
 pub struct Editing {
     sources: Vec<Source>,
-    history: History<Selection>,
+    history: History<VersionState>,
     envelopes: Vec<Option<Arc<Snapshot>>>,
     /// Sources whose envelope is being built, so a second edit does not start another scan.
     building: Vec<bool>,
@@ -282,9 +288,16 @@ impl Editing {
     /// The file as it was opened, with nothing edited.
     pub fn new(meta: SignalMeta, hints: OpenHints) -> Self {
         let capture = Capture::whole(SourceId(0), meta.len_samples);
+        let reference = meta.center_freq;
         Self {
             sources: vec![Source::new(meta, hints)],
-            history: History::new(capture.clone(), Selection::default()),
+            history: History::new(
+                capture.clone(),
+                VersionState {
+                    selection: Selection::default(),
+                    reference,
+                },
+            ),
             envelopes: vec![None],
             building: vec![true],
             failed_statistics: vec![false],
@@ -298,7 +311,7 @@ impl Editing {
     /// Start an unsaved document from an already encoded temporary file.
     pub fn unsaved(meta: SignalMeta, hints: OpenHints, backing: Arc<Scratch>) -> Self {
         let mut editing = Self::new(meta, hints);
-        editing.history = History::unsaved(editing.capture().clone(), Selection::default());
+        editing.history = History::unsaved(editing.capture().clone(), *editing.history.state());
         editing.sources[0].backing = Some(backing);
         editing
     }
@@ -368,13 +381,62 @@ impl Editing {
 
     /// Everything the current version left selected, which undo and redo bring back.
     pub fn marked(&self) -> Selection {
-        *self.history.state()
+        self.history.state().selection
+    }
+
+    pub fn reference(&self) -> f64 {
+        self.history.state().reference
+    }
+
+    pub fn output_meta(&self) -> SignalMeta {
+        let mut meta = self.file().meta.clone();
+        meta.center_freq = self.reference();
+        meta.len_samples = self.len();
+        meta
+    }
+
+    fn remember_selection(&mut self, selection: Selection) {
+        self.history.set_state(VersionState {
+            selection,
+            reference: self.reference(),
+        });
+    }
+
+    fn apply_version(&mut self, capture: Capture, selection: Selection) {
+        self.history.apply(
+            capture,
+            VersionState {
+                selection,
+                reference: self.reference(),
+            },
+        );
+    }
+
+    pub fn set_reference(&mut self, reference: f64, selection: Selection) -> bool {
+        if !reference.is_finite() || reference == self.reference() {
+            return false;
+        }
+        let mut meta = self.output_meta();
+        meta.center_freq = reference;
+        let (low, high) = meta.frequency_span();
+        if !low.is_finite() || !high.is_finite() || low >= high {
+            return false;
+        }
+        self.remember_selection(selection);
+        self.history.apply(
+            self.capture().clone(),
+            VersionState {
+                selection,
+                reference,
+            },
+        );
+        true
     }
 
     /// Remove `span`, leaving nothing selected.
     pub fn delete(&mut self, span: SampleSpan) {
         let capture = self.capture().delete(span);
-        self.history.apply(capture, Selection::default());
+        self.apply_version(capture, Selection::default());
     }
 
     /// Put the computed samples of `computed` from its sample `offset` in place of `span`, keeping the length and `selection` selected.
@@ -406,8 +468,8 @@ impl Editing {
         self.envelopes.push(None);
         self.building.push(false);
         self.failed_statistics.push(false);
-        self.history.set_state(selection);
-        self.history.apply(capture, selection);
+        self.remember_selection(selection);
+        self.apply_version(capture, selection);
         true
     }
 
@@ -432,8 +494,8 @@ impl Editing {
             return false;
         }
         let capture = self.capture().with_adjustment(adjustment);
-        self.history.set_state(selection);
-        self.history.apply(capture, selection);
+        self.remember_selection(selection);
+        self.apply_version(capture, selection);
         true
     }
 
@@ -498,7 +560,7 @@ impl Editing {
         self.failed_statistics
             .resize(self.sources.len() + added.len(), false);
         self.sources.extend(added);
-        self.history.apply(capture, Selection::time(pasted));
+        self.apply_version(capture, Selection::time(pasted));
         Ok(pasted)
     }
 
@@ -552,11 +614,12 @@ impl Editing {
     /// The file as it will be once the current version is written over it, its stamp still unknown.
     pub fn written_source(&self) -> Source {
         let file = self.file();
-        let mut meta = file.meta.clone();
-        meta.len_samples = self.len();
+        let meta = self.output_meta();
+        let mut hints = file.hints.clone();
+        hints.center_freq = Some(meta.center_freq);
         Source {
             meta,
-            hints: file.hints.clone(),
+            hints,
             stamp: None,
             storage: file.storage,
             computed: None,
@@ -779,9 +842,8 @@ impl Editing {
                 })
             })
             .collect::<Option<Vec<_>>>()?;
-        let file = self.file();
         Some(SaveRequest {
-            meta: file.meta.clone(),
+            meta: self.output_meta(),
             format: Some(self.format.clone()?),
             sources: used
                 .iter()

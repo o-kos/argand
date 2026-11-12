@@ -108,6 +108,7 @@ fn a_session_survives_the_round_trip() {
     let dir = TempDir::new("roundtrip");
     let path = dir.join("session.toml");
     let session = Session {
+        baseband_frequencies: false,
         show_grid: false,
         show_scale_ui: true,
         theme: Some(crate::config::Theme::Dark),
@@ -165,6 +166,7 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
     let path = dir.join("session.toml");
 
     let first = Session {
+        baseband_frequencies: false,
         show_grid: true,
         show_scale_ui: true,
         theme: None,
@@ -227,6 +229,7 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
 
     let at = |ms: u64| Instant::now() + Duration::from_millis(ms);
     let moved = |x: f32| Session {
+        baseband_frequencies: false,
         show_grid: true,
         show_scale_ui: true,
         theme: None,
@@ -289,6 +292,7 @@ fn a_position_that_has_not_changed_is_not_written_again() {
     let dir = TempDir::new("idle");
     let path = dir.join("session.toml");
     let held = Session {
+        baseband_frequencies: false,
         show_grid: true,
         show_scale_ui: true,
         theme: None,
@@ -323,6 +327,7 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
 
     let start = Instant::now();
     let moved = |x: f32| Session {
+        baseband_frequencies: false,
         show_grid: true,
         show_scale_ui: true,
         theme: None,
@@ -356,6 +361,7 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
     let dir = TempDir::new("returned");
     let path = dir.join("session.toml");
     let at = |x: f32| Session {
+        baseband_frequencies: false,
         show_grid: true,
         show_scale_ui: true,
         theme: None,
@@ -398,6 +404,7 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
 
     let mut writer = Writer::new(path.clone(), Session::default());
     let moved = Session {
+        baseband_frequencies: false,
         show_grid: true,
         show_scale_ui: true,
         theme: None,
@@ -456,6 +463,7 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
     let mut writer = Writer::new(path.clone(), Session::default());
     let start = Instant::now();
     let at = |x: f32| Session {
+        baseband_frequencies: false,
         show_grid: true,
         show_scale_ui: true,
         theme: None,
@@ -676,7 +684,7 @@ fn a_hint_this_version_cannot_read_costs_the_flag_and_not_the_entry() {
     let stored = Hints {
         raw: Some("iq_q7@2M".to_owned()),
         sample_type: Some("not-a-type".to_owned()),
-        center_freq: 12_579_000.0,
+        center_freq: Some(12_579_000.0),
         ..Hints::default()
     };
     let hints = stored.to_open_hints();
@@ -1298,4 +1306,28 @@ fn a_stored_zero_frequency_leaves_the_file_to_decide() {
         Hints::from(&explicit).to_open_hints().center_freq,
         Some(-1_000_000.0)
     );
+}
+
+#[test]
+fn explicit_zero_and_baseband_survive_current_sessions_but_legacy_zero_is_absent() {
+    let dir = TempDir::new("reference-session");
+    let path = dir.join(FILE_NAME);
+    let mut session = Session {
+        baseband_frequencies: true,
+        ..Session::default()
+    };
+    session.remember(
+        std::path::Path::new("capture.wav"),
+        &OpenHints {
+            center_freq: Some(0.),
+            ..Default::default()
+        },
+    );
+    let text = toml::to_string(&session).unwrap();
+    let loaded = Session::parse_payload(&path, &text).unwrap();
+    assert!(loaded.baseband_frequencies);
+    assert_eq!(loaded.recent[0].hints.to_open_hints().center_freq, Some(0.));
+    let legacy = text.replace("version = 12", "version = 11");
+    let loaded = Session::parse_payload(&path, &legacy).unwrap();
+    assert_eq!(loaded.recent[0].hints.to_open_hints().center_freq, None);
 }

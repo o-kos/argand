@@ -69,6 +69,7 @@ fn snapshot() -> PlotSnapshot {
     let ink = gpui_kit::rgb(0x808080);
     PlotSnapshot {
         extents: axes::Extents {
+            frequency_offset: 0.,
             orientation: crate::navigation::orientation::Mode::Horizontal,
             time: crate::navigation::time_ruler::Ruler {
                 mode: crate::navigation::time_ruler::Mode::Seconds,
@@ -1449,6 +1450,7 @@ fn show_selection(
 fn show_badges(cx: &mut TestAppContext, handle: WindowHandle<Harness>, start: u64, end: u64) {
     let selected = span(start, end).unwrap();
     let scale = crate::navigation::selection_entry::Scale {
+        frequency_offset: 0.,
         mode: crate::navigation::time_ruler::Mode::Seconds,
         rate: 1e6,
         total: 1_000_000,

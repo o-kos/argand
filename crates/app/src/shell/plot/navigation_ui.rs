@@ -7,6 +7,7 @@ actions!(
     navigation,
     [
         ToggleGrid,
+        ToggleBaseband,
         ToggleScaleUi,
         ToggleOrientation,
         ClockRuler,
@@ -562,7 +563,8 @@ impl Shell {
     ) -> Option<crate::navigation::selection_entry::Scale> {
         let meta = self.file.as_ref()?.state.document.meta()?;
         let view = self.view?;
-        let (low, high) = self.extents()?.hertz;
+        let extents = self.extents()?;
+        let (low, high) = extents.displayed_hertz();
         let (unit, divisor) = axes::frequency_unit((low, high));
         let plot = self.plot;
         let columns = plot.map_or(1, |plot| plot.width.max(1));
@@ -576,6 +578,7 @@ impl Shell {
             divisor,
             decimals: crate::navigation::time_precision((high - low) / rows as f64 / divisor),
             band: self.capture_band()?,
+            frequency_offset: self.frequency_offset(),
         })
     }
 
@@ -725,6 +728,12 @@ impl Shell {
             .on_action(cx.listener(|shell, _: &ToggleOrientation, window, cx| {
                 shell.toggle_orientation(window, cx);
             }))
+            .on_action(cx.listener(|shell, _: &ToggleBaseband, _, cx| {
+                shell.session.baseband_frequencies = !shell.session.baseband_frequencies;
+                shell.frequency_scheme = None;
+                shell.save();
+                cx.notify();
+            }))
             .on_action(cx.listener(|shell, _: &ToggleGrid, _, cx| {
                 shell.session.show_grid = !shell.session.show_grid;
                 shell.save();
@@ -839,6 +848,18 @@ impl Shell {
             self.band = band;
             cx.notify();
         }
+    }
+
+    pub(in crate::shell) fn frequency_offset(&self) -> f64 {
+        let Some(editing) = self.editing() else {
+            return 0.;
+        };
+        let reference = if self.session.baseband_frequencies {
+            0.
+        } else {
+            editing.reference()
+        };
+        reference - editing.file().meta.center_freq
     }
 
     /// The capture's band in physical hertz, around its reference when complex and above it when real.

@@ -69,7 +69,19 @@ frequency, `f64` sample rate) before `data`, because `riff::parse` reads only th
 FLAC gets the Vorbis comments `ARGAND_REFERENCE_FREQUENCY` and `ARGAND_SAMPLE_RATE`.
 Opening prefers `argd`, then `auxi`, then the comment, also for a WAVE layout the decoder
 reads, and an exact rate only while it agrees with the header's within 1 Hz. `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins, and a
-session hint of 0 means none.
+session hint distinguishes explicit zero from an absent override. Session version
+12 migrates legacy zero hints to absent overrides while retaining new explicit
+zeros. CLI opening hints still take precedence over file metadata.
+
+Reference frequency is versioned document metadata (#185), alongside the
+selection in the existing capture history. Metadata edits advance the same serial
+used by dirty state and asynchronous save guards, without modifying the immutable
+source description or requesting an FFT. Undo/Redo over unchanged captures updates
+metadata and presentation only. Save requests use the effective reference;
+source metadata, source stamps and source reading hints remain unchanged.
+Successful saved-source descriptions use the saved reference as their explicit
+opening hint, so an older CLI override cannot defeat the written metadata.
+Discard restores the original opening reference hint in Recent.
 
 `processing/saving.rs` runs one save on its own thread with 4 MiB buffers, progress at most every
 100 ms through a bounded channel and a cancel flag; dropping the `Job` cancels it and waits

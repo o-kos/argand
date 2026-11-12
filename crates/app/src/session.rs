@@ -74,14 +74,14 @@ pub const RECENT_LIMIT: usize = 10;
 /// whatever that version was recording. The number goes up whenever the layout
 /// gains something, so that an older binary sees a number it does not know and
 /// leaves the file rather than quietly rewriting it without what it could not
-/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility; version 9 adds orientation; version 10 adds scale UI visibility; version 11 adds the interface theme chosen in the menu.
-pub const VERSION: u32 = 11;
+/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility; version 9 adds orientation; version 10 adds scale UI visibility; version 11 adds the interface theme chosen in the menu; version 12 preserves explicit zero reference hints and adds baseband presentation.
+pub const VERSION: u32 = 12;
 
 /// Every layout this program can read, oldest first.
 ///
 /// An older file is read into the current shape and written back at
 /// [`VERSION`]: missing fields have defaults; legacy dynamic range values are ignored.
-const READABLE: [u32; 11] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION];
+const READABLE: [u32; 12] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, VERSION];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -183,8 +183,8 @@ pub struct Hints {
     pub raw: Option<String>,
     pub sample_type: Option<String>,
     pub sample_rate: Option<f64>,
-    /// `--center`, where 0 means the file decides.
-    pub center_freq: f64,
+    /// An explicit reference override, including zero.
+    pub center_freq: Option<f64>,
     pub byte_offset: u64,
     pub normalize: Option<String>,
     pub gain_db: f32,
@@ -196,7 +196,7 @@ impl From<&OpenHints> for Hints {
             raw: hints.raw.map(|spec| spec.to_string()),
             sample_type: hints.sample_type.map(|kind| kind.to_string()),
             sample_rate: hints.sample_rate,
-            center_freq: hints.center_freq.unwrap_or(0.0),
+            center_freq: hints.center_freq,
             byte_offset: hints.byte_offset,
             normalize: hints.normalize.map(|mode| mode.to_string()),
             gain_db: hints.gain_db,
@@ -212,7 +212,7 @@ impl Hints {
             raw: parsed("raw", &self.raw),
             sample_type: parsed("sample_type", &self.sample_type),
             sample_rate: self.sample_rate,
-            center_freq: (self.center_freq != 0.0).then_some(self.center_freq),
+            center_freq: self.center_freq,
             byte_offset: self.byte_offset,
             normalize: parsed("normalize", &self.normalize),
             gain_db: self.gain_db,
@@ -252,6 +252,8 @@ pub struct Recent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
     #[serde(default)]
+    pub baseband_frequencies: bool,
+    #[serde(default)]
     pub orientation: crate::navigation::orientation::Mode,
     #[serde(default = "default_grid_visibility")]
     pub show_grid: bool,
@@ -286,6 +288,7 @@ impl Default for Session {
     fn default() -> Self {
         Self {
             version: VERSION,
+            baseband_frequencies: false,
             show_grid: true,
             show_scale_ui: true,
             orientation: crate::navigation::orientation::Mode::default(),
@@ -409,6 +412,13 @@ impl Session {
     fn parse_payload(path: &Path, text: &str) -> Option<Session> {
         match toml::from_str::<Self>(text) {
             Ok(mut session) => {
+                if session.version < 12 {
+                    session
+                        .recent
+                        .iter_mut()
+                        .filter(|entry| entry.hints.center_freq == Some(0.))
+                        .for_each(|entry| entry.hints.center_freq = None);
+                }
                 session.version = VERSION;
                 Some(session)
             }
@@ -540,6 +550,11 @@ pub fn merge(base: &Session, mine: &Session, theirs: &Session) -> Session {
     recent.truncate(RECENT_LIMIT);
     Session {
         orientation: pick(&base.orientation, &mine.orientation, &theirs.orientation),
+        baseband_frequencies: pick(
+            &base.baseband_frequencies,
+            &mine.baseband_frequencies,
+            &theirs.baseband_frequencies,
+        ),
         show_grid: pick(&base.show_grid, &mine.show_grid, &theirs.show_grid),
         show_scale_ui: pick(
             &base.show_scale_ui,

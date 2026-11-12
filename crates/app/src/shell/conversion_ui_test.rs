@@ -2254,3 +2254,91 @@ fn information_buttons_share_toggle_internal_click_and_six_switch_routes(cx: &mu
     }
     std::fs::remove_file(path).unwrap();
 }
+
+#[gpui_kit::test]
+fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_after_save(
+    cx: &mut TestAppContext,
+) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let dir = argand_io::testutil::TempDir::new("reference-panel-rebind");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 48_000);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path), window, cx)
+    });
+    wait_until(cx, &shell, "reference panel fixture", |shell| {
+        shell
+            .editing()
+            .is_some_and(crate::editing::Editing::is_described)
+    });
+    shell.update_in(cx, |shell, window, cx| shell.convert_dialog(window, cx));
+    frame(cx);
+    let editor = shell.read_with(cx, |shell, cx| {
+        shell
+            .conversion
+            .hint
+            .read(cx)
+            .view()
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap()
+    });
+    let input = editor.read_with(cx, |editor, cx| {
+        editor.physical_reference.read(cx).input.clone()
+    });
+    input.update_in(cx, |input, window, cx| {
+        window.focus(&input.focus_handle(cx), cx);
+        input.set_value("bad", window, cx);
+    });
+    frame(cx);
+    cx.simulate_keystrokes("escape");
+    frame(cx);
+    assert!(shell.read_with(cx, |shell, cx| shell.conversion.hint.read(cx).is_open()));
+    assert_eq!(
+        input.read_with(cx, |input, _| input.value().to_string()),
+        "0"
+    );
+    assert!(!editor.read_with(cx, |editor, _| editor.reference_error));
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(1_000_000., window, cx));
+    });
+    frame(cx);
+    let old_stamp = editor.read_with(cx, |editor, _| editor.source_stamp);
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-s"
+    } else {
+        "ctrl-s"
+    });
+    wait_until(
+        cx,
+        &shell,
+        "save while File information remains open",
+        |shell| {
+            shell.saving.is_none()
+                && shell
+                    .editing()
+                    .is_some_and(|editing| !editing.is_dirty() && editing.reference() == 1_000_000.)
+        },
+    );
+    wait_until(cx, &shell, "saved source description", |shell| {
+        shell
+            .editing()
+            .is_some_and(crate::editing::Editing::is_described)
+    });
+    frame(cx);
+    editor.read_with(cx, |editor, cx| {
+        assert_ne!(editor.source_stamp, old_stamp);
+        let request = editor.request(cx).unwrap();
+        assert_eq!(request.input.center_freq, 1_000_000.);
+        assert_eq!(request.copy.as_ref().unwrap().meta.center_freq, 1_000_000.);
+        assert_eq!(
+            request.sources[0].as_ref().unwrap().stamp,
+            editor.source_stamp
+        );
+        assert_eq!(
+            request.copy.as_ref().unwrap().sources[0].stamp,
+            editor.source_stamp
+        );
+    });
+}
