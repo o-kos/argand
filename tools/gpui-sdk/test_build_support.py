@@ -11,7 +11,6 @@ SPEC = importlib.util.spec_from_file_location("sdk", HERE / "sdk.py")
 sdk = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(sdk)
 sdk.safe_selection(Path.cwd())
-sdk.common_cache()
 configuration = __import__("tomllib").loads((sdk.ROOT / ".cargo/config.toml").read_text())
 installed = Path(configuration["env"]["GPUI_KIT_SDK"])
 results = []

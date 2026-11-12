@@ -9,7 +9,7 @@ separate; do not select another toolkit version to integrate it.
 ## Build and install explicitly
 
 First follow the [local resource policy](../../CONTRIBUTING.md#local-rust-and-build-resources):
-verify the approved installed compiler and common Cargo build-dir, and obtain any
+verify the approved installed compiler and workspace-local Cargo target directory, and obtain any
 required dependency compilation approval. The commands never install Rust.
 
 ```sh
@@ -23,8 +23,8 @@ cargo run --locked -p argand
 
 `build-install` is the only operation that builds the SDK. The standalone
 `tools/gpui-sdk` workspace takes its exact graph from its committed lock file;
-it is not an application workspace member or dependency. It uses the existing
-common intermediate directory and its own local `target/` for final outputs.
+it is not an application workspace member or dependency. Its intermediate artifacts
+and final outputs stay in its own `tools/gpui-sdk/target/`.
 Its explicit root-only dynamic standard-library selection does not change the
 compiler flags of the toolkit dependencies.
 
@@ -44,7 +44,9 @@ Git hook, modified PATH or automatic SDK dependency participates.
 
 With that explicit target, the application is `target/x86_64-unknown-linux-gnu/debug/argand`
 and the CLI is `target/x86_64-unknown-linux-gnu/debug/aspec`. Intermediate artifacts
-still use the agreed common build-dir. SDK mode includes toolkit test support. Ordinary `cargo build --release --locked`
+also stay in the workspace-local `target/`; projects and worktrees do not share a
+Cargo build directory. The installed SDK remains shared and is independent of those
+local build artifacts. SDK mode includes toolkit test support. Ordinary `cargo build --release --locked`
 keeps the app linked to the SDK while building the CLI independently from source.
 A missing/incompatible SDK produces an explicit error; run the installation or
 selection operation yourself rather than expecting Cargo to rebuild it.

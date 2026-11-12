@@ -77,9 +77,9 @@ code; classify its actual risk rather than assuming class C from its extension.
 
 Before any Rust command, dependency change or worktree operation, follow
 [the local resource policy](CONTRIBUTING.md#local-rust-and-build-resources): one
-owner-approved installed Rust, one agreed Argand/Wireroom toolkit graph, a common
-intermediate build-dir outside worktrees, workspace-local final artifacts in
-target-dir, and the prescribed worktree location. Stop on a missing or conflicting
+owner-approved installed Rust, one agreed Argand/Wireroom toolkit graph,
+workspace-local intermediate and final artifacts in `target/`, a separately
+installed shared SDK, and the prescribed worktree location. Stop on a missing or conflicting
 setup; never auto-install a toolchain. Follow the policy's explicit owner approval
 for initial dependency compilation and dependency rebuilds beyond the agreed
 debug/test, release and check/Clippy baseline. The owner alone controls disk budgeting.

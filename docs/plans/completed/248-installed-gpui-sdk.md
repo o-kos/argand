@@ -30,7 +30,8 @@ publication and integration conditional on the current full CI result.
   source-mode features; preflight alias precedence before adopting it.
 - Missing/incompatible SDK fails clearly without rebuilding it. A source mode does
   not require an installed SDK and supports portable CI/static releases.
-- Preserve common intermediates and workspace-local final outputs. No historical
+- Keep intermediates and final outputs workspace-local; share only the installed
+  SDK. No historical
   timing claims substitute for measurements of current implementation.
 - Base main retains older test-path and metadata behavior; do not reimplement
   independent changes from PR243 in this SDK task.
@@ -112,3 +113,22 @@ LTO logging identified the SDK archive object as the missing-bitcode input. A
 dependency-free control reproduced the failure with a nested use declaration;
 `use crate::image::...` passed under the same Thin LTO inputs. Both CLI module
 imports now explicitly name the source image alias. No SDK/profile changes.
+
+## Owner-requested local artifact isolation
+
+After initial publication, the owner withheld acceptance pending removal of the
+shared Cargo build directory. Remove the global `build.build-dir` setting and the
+SDK producer's common-cache prerequisite. Each workspace, linked worktree and
+standalone SDK producer uses its ordinary local `target/`. Keep the installed SDK.
+Synchronize current policies; completed historical plans remain historical.
+
+- [x] Remove the shared-cache prerequisite from SDK tooling and current documentation.
+- [x] Apply the owner-approved machine configuration and standing policy transition.
+- [x] Remove only the retired common build artifacts after checking active users.
+- [x] Validate the focused change and obtain independent review before renewed acceptance.
+
+The focused independent review was clean. Python safety checks and formatting
+passed. The owner approved cold local compilation of non-SDK dependencies for the
+full manual gate; record its final results in the Pull Request. Merge remains
+withheld until renewed owner acceptance.
+No compiler, dependency version, feature, profile or installed SDK changes.

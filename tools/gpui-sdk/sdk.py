@@ -80,13 +80,6 @@ def compiler():
     return version, host
 
 
-def common_cache():
-    config = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")) / "config.toml"
-    build = tomllib.loads(config.read_text()).get("build", {}).get("build-dir")
-    if not build or not Path(build).is_absolute() or not Path(build).is_dir():
-        raise ValueError("Configure the owner-approved shared Cargo build.build-dir before building the SDK")
-
-
 def copy_artifact(source, directory, records):
     destination = directory / source.name
     checksum = digest(source)
@@ -130,7 +123,6 @@ def approved_graph():
 
 def build_install(prefix):
     approved_graph()
-    common_cache()
     version, host = compiler()
     log = HERE / "target" / "sdk-build.jsonl"
     log.parent.mkdir(exist_ok=True)
