@@ -13,6 +13,10 @@ path = "src/main.rs"
 [lints]
 workspace = true
 
+[features]
+default = []
+source-toolkit = []
+
 [dependencies]
 argand-core.workspace = true
 argand-dsp.workspace = true
@@ -20,7 +24,7 @@ argand-io.workspace = true
 ab_glyph.workspace = true
 anyhow.workspace = true
 clap.workspace = true
-image.workspace = true
+source-image = { package = "image", version = "0.25", default-features = false, features = ["png"] }
 indicatif.workspace = true
 serde.workspace = true
 serde_json.workspace = true
