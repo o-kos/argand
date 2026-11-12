@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Exercise Cargo-owned runtime paths with a shared, existing build directory.
+"""Exercise Cargo-owned runtime paths with copied checkout-local artifacts.
 
-Use the configured common build.build-dir; do not create or clear build caches.
-Temporary packages have no dependencies and final target outputs stay local.
+Temporary dependency-free packages use ordinary local target directories and the
+repository's installed toolchain pin. No shared cache or compiler overrides.
 """
 
 import hashlib
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -63,16 +62,10 @@ def harness_identity(output):
 
 
 def main():
-    # Resolve outside the temporary packages; never let their cwd select another
-    # rustup default instead of the repository's installed toolchain.
-    rustup = shutil.which("rustup")
-    for variable in ["CARGO", "RUSTC", "RUSTDOC"]:
-        value = os.environ.get(variable, "")
-        if (not value or not Path(value).is_absolute() or not Path(value).is_file()
-                or Path(value).resolve().stem == "rustup"
-                or (rustup and Path(value).samefile(rustup))):
-            raise AssertionError(f"set {variable} to an absolute installed toolchain executable")
-    cargo = os.environ["CARGO"]
+    cargo = shutil.which("cargo")
+    if not cargo:
+        raise AssertionError("installed Cargo is required on PATH")
+    pin = Path(__file__).resolve().parents[2] / "rust-toolchain.toml"
     with tempfile.TemporaryDirectory(prefix="argand-checkout-identity-") as tmp:
         base = Path(tmp).resolve()
         old, current = base / "old checkout", base / "current checkout"
@@ -85,6 +78,7 @@ def main():
             '[workspace]\nmembers=["."]\n', encoding="utf-8")
         (old / "src/main.rs").write_text(MAIN, encoding="utf-8")
         (old / "tests/identity.rs").write_text(TEST, encoding="utf-8")
+        shutil.copy2(pin, old / "rust-toolchain.toml")
         shutil.copytree(old, current, copy_function=shutil.copy2)
         for root, label in [(old, "old"), (current, "current")]:
             (root / "fixture").write_text(label, encoding="utf-8")
@@ -93,12 +87,17 @@ def main():
         metadata = json.loads(invoke(cargo, current, "metadata", "--offline", "--no-deps",
                                      "--format-version=1"))
         build_dir = Path(metadata["build_directory"]).resolve()
-        if build_dir.is_relative_to(base):
-            raise AssertionError("configure the existing common build.build-dir first")
+        if build_dir != current / "target":
+            raise AssertionError("regression requires ordinary checkout-local target artifacts")
         invoke(cargo, old, "--version")
         output = invoke(cargo, old, "test", "--offline", "--message-format=json",
                         "--", "--nocapture")
         previous = harness_identity(output)
+        # Preserve artifact mtimes as a copied checkout/cache would, but distinguish
+        # executable contents at the destination through its own runtime marker.
+        shutil.copytree(old / "target", current / "target", dirs_exist_ok=True,
+                        copy_function=shutil.copy2)
+        (current / "target/debug/binary-marker").write_text("current", encoding="utf-8")
         observed_reuse = 0
 
         def transition(*args):
@@ -106,7 +105,7 @@ def main():
             output = invoke(cargo, current, "test", "--offline", "--message-format=json",
                             *args, "--", "current_identity", "--nocapture")
             active = harness_identity(output)
-            reused = active[0:2] == previous[0:2] and active[2]
+            reused = active[1] == previous[1] and active[2]
             if active[2] and active[0] == previous[0]:
                 assert active[1] == previous[1], "fresh harness content changed"
             observed_reuse += reused
@@ -127,13 +126,13 @@ def main():
                 "negative control failed for an unexpected Cargo/test error")
             assert observed_reuse, "stale compile-time paths without observed harness reuse"
         print(f"negative_control_exit={control.returncode}; observed_reuse={observed_reuse}")
-        print(f"common_build_dir={build_dir}")
+        print(f"local_build_dir={build_dir}")
         print("source_sha256=" + hashlib.sha256(TEST.encode()).hexdigest())
         shutil.rmtree(old)
         transition("--test", "identity")
         # The new marker must reject the previous current/target executable too.
         alternate = current / "alternate final outputs"
-        (alternate / "debug").mkdir(parents=True)
+        shutil.copytree(current / "target", alternate, copy_function=shutil.copy2)
         (alternate / "debug/binary-marker").write_text("alternate", encoding="utf-8")
         (current / "fixture").write_text("alternate", encoding="utf-8")
         transition("--target-dir", str(alternate), "--test", "identity")

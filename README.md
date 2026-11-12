@@ -55,6 +55,8 @@ sha256sum --check --ignore-missing SHA256SUMS
 
 ## Build
 
+For local Linux development, first [build/install and select the separate GPUI Kit SDK](docs/development/gpui-sdk.md). Ordinary Cargo commands then reuse it. Portable source builds select `--features source-toolkit`; source tests and all-target Clippy also select `toolkit-test-support`.
+
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked

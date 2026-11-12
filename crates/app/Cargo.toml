@@ -19,6 +19,11 @@ test = false
 [lints]
 workspace = true
 
+[features]
+default = []
+source-toolkit = ["dep:source-image", "dep:source-gpui-kit"]
+toolkit-test-support = ["source-toolkit", "source-gpui-kit/test-support"]
+
 [dependencies]
 argand-core.workspace = true
 argand-dsp.workspace = true
@@ -28,8 +33,8 @@ anyhow.workspace = true
 async-channel.workspace = true
 clap.workspace = true
 dirs.workspace = true
-gpui-kit.workspace = true
-image.workspace = true
+source-gpui-kit = { package = "gpui-kit", version = "0.9.1", optional = true }
+source-image = { package = "image", version = "0.25", default-features = false, features = ["png"], optional = true }
 icu_decimal.workspace = true
 icu_provider.workspace = true
 icu_locale_core.workspace = true
@@ -42,7 +47,6 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 argand-core = { workspace = true, features = ["testutil"] }
 argand-io = { workspace = true, features = ["testutil"] }
-gpui-kit = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc.workspace = true

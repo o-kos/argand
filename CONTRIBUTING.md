@@ -31,7 +31,7 @@ Preserve unrelated work and leave completed historical plans unchanged.
 
 ## Engineering and dependency conventions
 
-- After the GUI scaffold exists, run it with `cargo run -p argand --locked`; build releases with `cargo build --release --locked`.
+- Local Linux development uses the separately installed [GPUI Kit SDK](docs/development/gpui-sdk.md). After explicit SDK selection, ordinary `cargo build`, `cargo test`, `cargo clippy` and `cargo run -p argand --locked` consume it without building it. Portable source releases use `cargo build --release --locked --features source-toolkit`; source tests and all-target Clippy also select `toolkit-test-support`.
 - Take the GUI toolkit as one crates.io dependency, `gpui-kit`, with the version requirement in `Cargo.toml`, and let the committed `Cargo.lock` fix the exact graph. `gpui-kit` selects and re-exports the compatible GPUI 0.3.x family, gpui-component and the toolkit assets; do not add direct `gpui`, `gpui-component` or `gpui-component-assets` dependencies beside it, because a type from one copy of the graph is not that type from the other.
 
   This rule used to name `gpui` and `gpui-component` separately on crates.io, and before that, fixed Git revisions. The separate selections drifted out of compatibility, which is the mistake `gpui-kit` exists to prevent. Do not go back to naming the layers, and do not `[patch]` the registry source without a reason that names what is only available at tip.
@@ -88,26 +88,26 @@ Argand and Wireroom use one agreed GPUI Kit version and compatible locked backen
 graph. Do not independently change toolkit/backend versions, toolkit features or
 locked toolkit dependencies. Stop and discuss incompatibilities with the owner.
 
-Use one explicitly configured common Cargo `build.build-dir` outside all project
-worktrees across projects and worktrees for intermediate artifacts and the build
-cache. Keep final outputs in each workspace's local `target/` (`build.target-dir`);
-do not set a shared global target-dir. Do not create per-worktree intermediate build
-caches or scratch build caches. If the common build-dir is not known or configured,
-stop before building. Preserve existing intermediate artifacts when configuring the
-split; do not move or clear them just to change the final-output directory.
-The owner-approved baseline covers debug/test, release and check/Clippy artifacts. Before initial dependency
-compilation, agree the installed toolchain and common cache with the owner and obtain
+Keep Cargo intermediate artifacts and final outputs in each workspace's local
+`target/`, using Cargo's ordinary default layout. Do not configure a shared
+`build.build-dir` or global target-dir. Projects and linked worktrees build their
+own application dependencies; the separately installed immutable GPUI Kit SDK is
+the shared development artifact and is never rebuilt automatically by an app.
+The standalone SDK producer also uses its own workspace-local `target/`.
+
+The owner-approved baseline covers debug/test, release and check/Clippy artifacts.
+Before initial dependency compilation, agree the installed toolchain and obtain
 explicit approval to build that baseline. Ordinary recompilation of changed project
-code is allowed within the agreed setup. If GPUI Kit or other dependencies need to be
-rebuilt beyond that baseline, stop before rebuilding, explain the concrete cause of
-artifact invalidation, and obtain explicit owner approval. Required validation does
-not waive this approval. Avoid unnecessary feature, profile, compiler, target or
-RUSTFLAGS changes and repeated builds; different compilation inputs can invalidate
-dependency artifacts even when GPUI source is unchanged. Keep final binary paths
-local to their workspace and verify the exact built revision before use; a path
-alone does not identify the source revision. Do not clear the common intermediate
-cache while another project or task may use it. Configuration or metadata checks
-do not prove that Cargo will reuse every dependency artifact without rebuilding.
+code is allowed within the agreed setup. If GPUI Kit or other dependencies need to
+be rebuilt beyond that baseline, stop before rebuilding, explain the concrete cause
+of artifact invalidation, and obtain explicit owner approval. Required validation
+does not waive this approval. Changing from a shared build directory to local
+artifacts can require cold dependency compilation even with unchanged source.
+Avoid unnecessary feature, profile, compiler, target or RUSTFLAGS changes and
+repeated builds. Keep final binary paths local to their workspace and verify the
+exact built revision before use; a path alone does not identify the source revision.
+Never delete build artifacts while another project or task uses them. Configuration
+or metadata checks do not prove dependency artifact reuse without rebuilding.
 
 Only the owner controls the disk budget. Do not add quotas, monitoring scripts,
 periodic measurements or extra budget-management procedures.
@@ -132,9 +132,9 @@ Use the repository's main working directory by default. Create an additional
 worktree outside it only when the project owner explicitly asks for one; do not
 infer that request from parallel work, isolation, or convenience.
 Place every requested linked worktree under the sibling `argand.worktrees`
-directory (`../argand.worktrees/<task>` from the main checkout). Use the common Cargo
-intermediate build-dir outside all worktrees and keep final target-dir outputs local
-to each workspace. The intermediate cache can hold multiple legitimate compiler,
+directory (`../argand.worktrees/<task>` from the main checkout). Keep Cargo
+intermediate and final artifacts in each worktree's local `target/`. Its build
+artifacts can hold multiple legitimate compiler,
 feature and profile variants; verify the built revision before demonstrating an
 artifact.
 Remove completed linked worktrees using the safe completion checks below; do not
@@ -289,12 +289,6 @@ The first three checks also run as a `pre-push` hook. Install it once per clone:
 git config core.hooksPath .githooks
 ```
 
-To use installed toolchain executables directly without changing PATH, set
-`CARGO` to its `cargo`, `CARGO_FMT` to its `cargo-fmt`, `CARGO_CLIPPY` to its
-`cargo-clippy`, and `RUSTC`, `RUSTDOC`, `RUSTFMT` to their sibling tools. The hook
-preserves these selections and the compilation guard; without explicit selections
-it runs the ordinary Cargo commands above.
-
 `git push --no-verify` skips it. Code changes still require the full local gate
 before every push. A scoped decision for work without code does not alter the hook;
 if it justifies skipping the hook, record why in the Pull Request or task response.
@@ -376,22 +370,23 @@ Performance probes are explicit `[[bench]]` targets with `harness = false` and
 `cargo clippy --all-targets --locked` gate intentionally compiles/checks them;
 it does not run measurements. Build a probe explicitly with `cargo build
 --release --locked -p <package> --bench <name> --message-format=json` and run the
-`executable` reported for that benchmark target by Cargo. With a split build-dir,
-bench/test harnesses remain intermediate artifacts in the common build directory;
-the shipped application/CLI binaries remain workspace-local. The maintained probes are
+`executable` reported for that benchmark target by Cargo. Benchmark/test artifacts
+and shipped application/CLI binaries stay in the workspace-local `target/`. The
+maintained probes are
 `argand`'s `fft_scheduling` and `argand-dsp`'s `snapshot_cost` and `conversion_cost`.
 
 Tests obtain checkout-dependent executable and fixture paths from Cargo's runtime
 `CARGO_BIN_EXE_*` and `CARGO_MANIFEST_DIR` variables using native OS strings.
 Do not embed these paths with `env!`: Cargo can reuse a test executable across
-checkouts sharing a build directory without refreshing those strings. Running a
+checkouts reusing copied build artifacts without refreshing those strings. Running a
 test harness directly requires the same explicit Cargo environment; missing paths
 fail rather than falling back to a guessed binary or another source tree.
 The dependency-free `.github/scripts/test-checkout-identity.py` exercises runtime
 paths with live and removed prior checkouts and changed final-output directories.
-Run it with explicit direct installed `CARGO`, `RUSTC` and `RUSTDOC` executable
-paths and the existing common `build.build-dir`; it creates
-temporary source packages and local final outputs, never another build cache.
+Run it with ordinary installed Cargo on PATH. It copies the repository toolchain
+pin into dependency-free temporary packages, preserves copied local-target artifact
+mtimes and checks their exact content identity. No shared build directory, compiler
+overrides or new dependencies are needed.
 
 The commands are not restated in the workflow with different flags. Formatting and lint configuration lives in the repository, where `cargo` finds it on its own, so what runs locally and what blocks the merge cannot drift apart. Tighten a rule by changing that configuration, not the workflow.
 

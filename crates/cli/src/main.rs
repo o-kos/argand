@@ -6,6 +6,8 @@
 //! consume exactly the same outputs, so anything that leaks image handling
 //! into the core here would leak toolkit types there.
 
+extern crate source_image as image;
+
 mod cli;
 mod inputs;
 mod mask;

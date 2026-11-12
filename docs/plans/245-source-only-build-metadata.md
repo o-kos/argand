@@ -117,3 +117,25 @@ The measured source state precedes this documentation-only evidence commit.
 The new commits remain local; the ordinary publication hook has not been bypassed.
 PR #243 is Draft and describes this pending publication/validation state. No server
 CI was inspected for this step. The unrelated skill edit remains uncommitted.
+
+## Current PR #243 reconciliation
+
+Continue the owner-approved combined #240/#241/#245 work on current main. Class A;
+coordinator gpt-6-astra medium, executor gpt-6.1-sol medium, independent reviewer
+gpt-6.1-sol high. Preserve existing local commits and the owner's isolated-Xvfb
+skill. Current SDK architecture and workspace-local artifact policy supersede
+the earlier common-cache/direct-tool requirements above.
+
+- [x] Merge current main without rewriting preserved commits; retain SDK validation,
+  source-mode CI features and the CLI's independent source image.
+- [x] Adapt checkout-identity regression to copied workspace-local artifacts and
+  normal pinned Cargo commands; remove obsolete direct-tool hook additions.
+- [ ] Verify explicit probes: ordinary tests do not build them; all-target Clippy
+  still checks them, with no feature/profile/dependency graph changes.
+- [ ] Run current focused checks and manual fmt/Clippy/tests/release-last gate.
+- [ ] Independent review, current PR publication and full CI. No merge without
+  explicit owner acceptance of PR #243.
+
+Use existing installed SDK and workspace-local target artifacts. No hooks, compiler
+wrappers, PATH overrides or toolchain installation. Historical measurements above
+remain historical; current evidence is recorded in the review and PR handoff.
