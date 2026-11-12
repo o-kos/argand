@@ -17,52 +17,37 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
     )]);
 }
 
-pub(super) struct About {
-    hint: WeakEntity<hints::PinnedHint>,
-}
+pub(super) struct About;
 
 fn hint(cx: &mut Context<hints::PinnedHint>) -> hints::PinnedHint {
-    let hint = cx.weak_entity();
-    hints::PinnedHint::new(
-        move |_, cx| cx.new(|_| About { hint: hint.clone() }).into(),
-        cx,
-    )
+    hints::PinnedHint::new(move |_, cx| cx.new(|_| About).into(), cx)
 }
 
 pub(super) struct State {
     pub(super) hint: Entity<hints::PinnedHint>,
-    pub(super) request: u64,
     _events: Subscription,
-    _focus: Subscription,
 }
 
 impl State {
-    pub(super) fn new(window: &mut Window, cx: &mut Context<Shell>) -> Self {
+    pub(super) fn new(cx: &mut Context<Shell>) -> Self {
         let hint = cx.new(hint);
-        let events = cx.subscribe_in(&hint, window, Shell::about_changed);
-        let focus = cx.on_focus_out(&hint.read(cx).focus_handle(), window, |shell, _, _, cx| {
-            shell.close_about(cx)
+        let events = cx.subscribe(&hint, |shell, _, event, cx| {
+            shell.information_panel_changed(hints::Panel::About, *event, cx);
         });
         Self {
             hint,
-            request: 0,
             _events: events,
-            _focus: focus,
         }
     }
 }
 
 impl Render for About {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let clicked = self.hint.clone();
-        let linked = self.hint.clone();
-        let other_click = self.hint.clone();
         let link = Link::new("repository-link")
             .accessibility_label("Argand repository")
             .key_context("AboutRepository")
             .href(about::REPOSITORY)
             .open_with(|url, _, _, cx| cx.open_url(url))
-            .on_activate(move |_, _, cx| close(&linked, cx))
             .text_color(cx.theme().link)
             .underline()
             .cursor_pointer()
@@ -91,12 +76,6 @@ impl Render for About {
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .shadow_md()
-            .on_click(move |_, _, cx| close(&clicked, cx))
-            .on_any_mouse_down(move |event, _, cx| {
-                if event.button != MouseButton::Left {
-                    close(&other_click, cx);
-                }
-            })
             .child(
                 div()
                     .flex()
@@ -179,8 +158,8 @@ fn tooltip_content(window: &mut Window, cx: &mut gpui_kit::App) -> AnyElement {
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child(format!(
-                    "{} · {} · {}",
-                    about::title(),
+                    "Version {} · {} · {}",
+                    about::VERSION,
                     about::TAG,
                     about::HASH
                 )),
@@ -194,13 +173,9 @@ fn tooltip_content(window: &mut Window, cx: &mut gpui_kit::App) -> AnyElement {
         .into_any_element()
 }
 
-fn close(hint: &WeakEntity<hints::PinnedHint>, cx: &mut gpui_kit::App) {
-    let _ = hint.update(cx, |hint, cx| hint.close(false, cx));
-}
-
 impl Shell {
     pub(super) fn close_about(&mut self, cx: &mut Context<Self>) {
-        self.about.request += 1;
+        self.information_panel_request += 1;
         self.about.hint.update(cx, |hint, cx| hint.close(false, cx));
     }
 
@@ -210,52 +185,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.about.hint.read(cx).is_open() {
-            return;
-        }
-        self.close_hints(cx);
-        self.dismiss_application_menu(window, cx);
-        self.interrupt_plot(cx);
-        let request = self.about.request;
-        let owner = cx.entity().downgrade();
-        window.defer(cx, move |window, cx| {
-            let _ = owner.update(cx, |shell, cx| {
-                if shell.about.request == request {
-                    shell
-                        .about
-                        .hint
-                        .update(cx, |hint, cx| hint.open(window, cx));
-                }
-            });
-        });
-    }
-
-    pub(super) fn about_changed(
-        &mut self,
-        _: &Entity<hints::PinnedHint>,
-        event: &hints::Pinned,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match event {
-            hints::Pinned::Opened => {
-                self.suppress_external_tooltips();
-                self.close_analysis_hint(cx);
-                self.close_selection_hint(cx);
-                self.conversion
-                    .hint
-                    .update(cx, |hint, cx| hint.close(false, cx));
-                self.dismiss_application_menu(window, cx);
-                self.interrupt_plot(cx);
-            }
-            hints::Pinned::Closed { .. } => {
-                let focus = self.about.hint.read(cx).focus_handle();
-                if focus.contains_focused(window, cx) {
-                    window.focus(&self.focus_target(cx), cx);
-                }
-            }
-        }
-        cx.notify();
+        self.activate_information_panel(hints::Panel::About, window, cx);
     }
 
     pub(super) fn about_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -271,8 +201,7 @@ impl Shell {
             .font_weight(FontWeight::NORMAL)
             .text_color(cx.theme().muted_foreground)
             .icon(Icon::new(gpui_kit::assets::IconName::Tag))
-            .label(about::VERSION)
-            .on_click(cx.listener(|shell, _, window, cx| shell.show_about(&ShowAbout, window, cx)));
+            .label(about::VERSION);
         if self.external_tooltips_allowed(cx) {
             button
                 .interactivity()

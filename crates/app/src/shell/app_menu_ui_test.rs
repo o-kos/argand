@@ -471,10 +471,7 @@ fn a_right_or_middle_press_on_a_chrome_button_keeps_the_plot_focused(cx: &mut Te
     };
     assert!(plot_focused(cx), "the plot holds the keyboard first");
 
-    // The middle and the right press on every chrome button leave the plot
-    // holding the keyboard. The summary's right press is handled below,
-    // because it opens the pinned hint, which takes the keyboard while it
-    // is open by design.
+    // Non-left presses keep focus and never open an information panel.
     for (name, button) in [
         ("middle", gpui_kit::MouseButton::Middle),
         ("right", gpui_kit::MouseButton::Right),
@@ -486,9 +483,6 @@ fn a_right_or_middle_press_on_a_chrome_button_keeps_the_plot_focused(cx: &mut Te
             "analysis-range",
             "analysis-settings",
         ] {
-            if id == "analysis-settings" && name == "right" {
-                continue;
-            }
             let at = at(cx, id);
             cx.simulate_mouse_down(at, button, none);
             draw(cx);
@@ -518,8 +512,7 @@ fn a_right_or_middle_press_on_a_chrome_button_keeps_the_plot_focused(cx: &mut Te
         "Grid still acts on a left click"
     );
 
-    // The summary's right press still toggles the pinned hint through the
-    // wrapper, and the plot has the keyboard back once the hint closes.
+    // The summary has no separate right-button Popover activation route.
     let hint_open = |cx: &mut gpui_kit::VisualTestContext| {
         shell.read_with(cx, |shell, cx| shell.analysis_hint.read(cx).is_open())
     };
@@ -527,12 +520,11 @@ fn a_right_or_middle_press_on_a_chrome_button_keeps_the_plot_focused(cx: &mut Te
     cx.simulate_mouse_down(summary_at, gpui_kit::MouseButton::Right, none);
     draw(cx);
     assert!(
-        hint_open(cx),
-        "the right press still toggles the pinned hint through the wrapper"
+        !hint_open(cx),
+        "the right press does not bypass the common left-trigger policy"
     );
-    press(cx, "escape");
+    cx.simulate_mouse_up(summary_at, gpui_kit::MouseButton::Right, none);
     draw(cx);
-    assert!(!hint_open(cx), "and escape closes it again");
 
     // The harness has no PlotView, so the focus target here is the shell
     // handle itself rather than a plot surface; what the assertions prove

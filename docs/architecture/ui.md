@@ -37,12 +37,12 @@ window controls and a direct About Argand application-menu item open one retaine
 and styled like File information. There is no command shortcut
 and hover only shows the build-identity tooltip. `shell/about_ui.rs` composes the
 existing pinned helper, standard Button and keyboard-accessible Base Link. The
-repository Link opens its URL and closes About; every other panel click closes
-it too. Escape, focus leaving the whole popover subtree and window deactivation
-close it. Focus moving to the Link within About does not count as leaving.
-Opening another application panel/menu closes About. Deferred open requests are
-invalidated when another transition closes it, and repeated opening retains one
-content entity.
+repository Link opens its URL through the standard control; neither Link activation
+nor prose/empty-space clicks add a special panel dismissal. About uses the same
+information-panel owner, native left trigger, repeated-entry toggle, outside
+backdrop, Escape and window-deactivation policy as File/Analysis. Ordinary focus
+changes add no About-specific dismissal. Opening another application panel/menu
+closes About, and one shared generation invalidates deferred open requests.
 
 `about.rs` reads the version, description, licence and repository from Cargo
 compile-time metadata. `build.rs` captures the short HEAD hash, commit timestamp
@@ -310,9 +310,9 @@ PinnedHint panel, Input, Select and Convert Button. File > File information… a
 the same panel. File and Analysis summaries share `settings_ui::status_control`;
 both property editors share `settings_editor` row, numeric, Select and outlined-action
 presentation over standard controls. Numeric initialization and Enter/blur formatting share
-one event handler, while each editor keeps its own preview/draft transaction. One `StatusPanel` owner and shared trigger/popover
-composition route both editors through the same opening/closing lifecycle; choosing
-a new owner closes the previous panel, and stale close events cannot clear it. On a real/IQ domain change, target sample rate and conversion carrier defaults are derived from the source: IQ to real doubles Fs with carrier FsIQ/2; real to IQ halves Fs with carrier FsReal/4. Subsequent numeric edits remain explicit; changing target Fs does not move the carrier. Drafts do not mutate the current document; Escape discards them.
+one event handler, while each editor keeps its own preview/draft transaction. One `hints::Panel` owner and shared trigger/popover composition route File,
+Analysis and About through the same opening/closing lifecycle; choosing a new
+owner closes the previous panel, and stale close events cannot clear it. On a real/IQ domain change, target sample rate and conversion carrier defaults are derived from the source: IQ to real doubles Fs with carrier FsIQ/2; real to IQ halves Fs with carrier FsReal/4. Subsequent numeric edits remain explicit; changing target Fs does not move the carrier. Drafts do not mutate the current document; Escape discards them.
 
 `shell/property_advice.rs` shares measured callout placement, dismissal, standard close
 Button and hover reopening of the same balloon between Range and automatic sample-format changes; stock hover fallback is used only without side room. Format
@@ -339,6 +339,14 @@ handling is introduced. See the current [control inventory](../ui/124-inventory.
 File information, Analysis settings and About Argand open explicitly through their
 standard buttons, menu entries or existing shortcuts, taking normal Popover focus.
 No panel hover timers, hover previews or additional toolbar Tab stops exist.
+The standard Popover owns native left-button trigger activation and Confirm;
+there is no separate right-button activation or per-button open callback. Repeating
+any own trigger/menu/registered shortcut closes its panel; another trigger switches
+the owner. A shared content backdrop and bubbling status-bar outside press handler
+close panels while native trigger propagation keeps neighbor switches live. Internal
+empty clicks and non-left presses do not add About-specific dismissal. File draft
+and Analysis preview/keep/revert remain content transactions, not separate lifecycle
+controllers.
 File > File information… and F11 open the same properties/conversion panel; the
 Convert button inside performs conversion. File > Analysis settings… uses Ctrl+,
 (Cmd+, on macOS). Status-button tooltips describe the corresponding fields and

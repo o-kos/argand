@@ -573,9 +573,10 @@ only automated behavior, not desktop interaction.
 
 `shell/about_ui.rs` adds a standard ghost outline-Tag/version Button at the right end of the title bar,
 a direct PopupMenu command and the existing `hints::pinned` composition over standard Popover. It adds no replacement
-widget. Shell retains one `PinnedHint` and its scoped focus-out subscription;
-window deactivation closes it through the existing activation observer. Surface
-click dismissal is application panel policy. The repository uses the toolkit's
+widget. Shell retains one `PinnedHint` under the common File/Analysis/About
+information-panel owner; no separate About focus-out or surface-click dismissal
+exists. Native left trigger, repeat toggle, outside backdrop and window deactivation
+follow the common adapter policy. The repository uses the toolkit's
 standard `gpui_kit::base::Link`, whose 0.9.1 public re-export supports keyboard,
 focus and accessibility, with application theme styling and external URL opening.
 A scoped Link key context suppresses the PinnedHint Enter binding so the standard
@@ -595,4 +596,6 @@ opening label. Existing conversion controls and domain advice are retained.
 External hints are conditionally registered through shared per-window eligibility;
 visible and pending native hints are retired when registration is removed. No
 custom PopoverPanel or toolkit change is introduced. Production regressions cover
-explicit switching, long hover without opening and visible/pending cancellation.
+all six actual-button switches, repeated triggers, internal clicks, long hover
+without opening and visible/pending cancellation. Secondary tooltip descriptions
+use the same small muted typography as About's Version/build line.

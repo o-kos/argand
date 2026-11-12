@@ -379,8 +379,8 @@ struct Shell {
     /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
     about: about_ui::State,
-    status_panel: Option<settings_ui::StatusPanel>,
-    status_panel_request: u64,
+    information_panel: Option<hints::Panel>,
+    information_panel_request: u64,
     external_help_suppressed: bool,
     external_help_epoch: u64,
     external_help_cleared_epoch: Option<u64>,
@@ -527,7 +527,7 @@ impl Shell {
             )
         });
         let pinned = cx.subscribe(&analysis_hint, |shell, _, event, cx| {
-            shell.status_panel_changed(settings_ui::StatusPanel::Analysis, *event, cx);
+            shell.information_panel_changed(hints::Panel::Analysis, *event, cx);
         });
         let panel_owner = cx.entity().downgrade();
         let selection_hint = cx.new(|cx| {
@@ -537,14 +537,14 @@ impl Shell {
             )
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
-        let about = about_ui::State::new(window, cx);
+        let about = about_ui::State::new(cx);
         Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
             about,
-            status_panel: None,
-            status_panel_request: 0,
+            information_panel: None,
+            information_panel_request: 0,
             external_help_suppressed: false,
             external_help_epoch: 0,
             external_help_cleared_epoch: Some(0),
@@ -2017,7 +2017,6 @@ impl Render for Shell {
             .size_full()
             .child(content)
             .children(menu_backdrop)
-            .children(hints::backdrop(&self.about.hint, hint_area, cx))
             .children(self.conversion_cover(gpui_kit::Bounds::new(
                 hint_area.origin,
                 gpui_kit::size(
@@ -2025,7 +2024,7 @@ impl Render for Shell {
                     (hint_area.size.height - window.rem_size() * 1.5).max(px(0.)),
                 ),
             )))
-            .children(self.status_panel_backdrop(
+            .children(self.information_panel_backdrop(
                 gpui_kit::Bounds::new(
                     hint_area.origin,
                     gpui_kit::size(

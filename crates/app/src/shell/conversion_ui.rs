@@ -115,7 +115,7 @@ impl State {
             hints::PinnedHint::new(move |window, cx| panel(owner.clone(), window, cx), cx)
         });
         let subscription = cx.subscribe(&hint, |shell, _, event, cx| {
-            shell.status_panel_changed(settings_ui::StatusPanel::File, *event, cx);
+            shell.information_panel_changed(hints::Panel::File, *event, cx);
         });
         Self {
             running: None,
@@ -651,6 +651,7 @@ impl Render for Editor {
             .filter(|request| self.changed(request));
         div()
             .id("file-information-panel")
+            .map(gpui_kit::TestSupportExt::test_support)
             .relative()
             .child(self.format_advice.sheet(cx.entity_id()))
             .key_context("FileInformation")
@@ -883,7 +884,7 @@ impl Shell {
     }
 
     pub(super) fn convert_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_status_panel(settings_ui::StatusPanel::File, false, window, cx);
+        self.activate_information_panel(hints::Panel::File, window, cx);
     }
 
     fn convert_draft(

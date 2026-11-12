@@ -2,8 +2,8 @@ use super::*;
 use gpui_kit::component::button::Button;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
-    Bounds, Modifiers, ScrollDelta, ScrollEvent, StatefulInteractiveElement, Subscription,
-    TestAppContext, TestSupportExt, VisualTestContext, point, px, size,
+    Bounds, Modifiers, MouseButton, ScrollDelta, ScrollEvent, StatefulInteractiveElement,
+    Subscription, TestAppContext, TestSupportExt, VisualTestContext, point, px, size,
 };
 use std::time::Duration;
 
@@ -26,11 +26,7 @@ struct Harness {
 
 impl Render for Harness {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let hint = self.hint.clone();
-        let trigger = Button::new("trigger")
-            .tab_stop(false)
-            .label("FFT")
-            .on_click(move |_, window, cx| hint.update(cx, |hint, cx| hint.open(window, cx)));
+        let trigger = Button::new("trigger").tab_stop(false).label("FFT");
         div()
             .size_full()
             .relative()

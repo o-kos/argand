@@ -964,12 +964,7 @@ fn property_panels_are_mutually_exclusive_for_explicit_commands(cx: &mut TestApp
         frame(cx);
     }
     shell.update_in(cx, |shell, window, cx| {
-        shell.open_status_panel(
-            super::super::settings_ui::StatusPanel::Analysis,
-            false,
-            window,
-            cx,
-        )
+        shell.activate_information_panel(hints::Panel::Analysis, window, cx)
     });
     frame(cx);
     assert_property_panels(cx, &shell, false, true);
@@ -977,20 +972,15 @@ fn property_panels_are_mutually_exclusive_for_explicit_commands(cx: &mut TestApp
     assert!(cx.update(|window, _| window.try_find("about-tooltip").is_none()));
     assert_property_panels(cx, &shell, false, true);
     shell.update(cx, |shell, cx| {
-        shell.status_panel_changed(
-            super::super::settings_ui::StatusPanel::File,
+        shell.information_panel_changed(
+            hints::Panel::File,
             hints::Pinned::Closed { revert: false },
             cx,
         );
     });
     assert_property_panels(cx, &shell, false, true);
     shell.update_in(cx, |shell, window, cx| {
-        shell.open_status_panel(
-            super::super::settings_ui::StatusPanel::File,
-            false,
-            window,
-            cx,
-        )
+        shell.activate_information_panel(hints::Panel::File, window, cx)
     });
     frame(cx);
     assert_property_panels(cx, &shell, true, false);
@@ -1180,13 +1170,13 @@ fn assert_property_panels(
 ) {
     shell.read_with(cx, |shell, cx| {
         let owner = if file {
-            Some(super::super::settings_ui::StatusPanel::File)
+            Some(hints::Panel::File)
         } else if analysis {
-            Some(super::super::settings_ui::StatusPanel::Analysis)
+            Some(hints::Panel::Analysis)
         } else {
             None
         };
-        assert_eq!(shell.status_panel, owner, "property panel owner");
+        assert_eq!(shell.information_panel, owner, "property panel owner");
         assert_eq!(shell.conversion.hint.read(cx).is_open(), file, "File panel");
         assert_eq!(
             shell.analysis_hint.read(cx).is_open(),
@@ -2150,4 +2140,117 @@ fn an_old_teardown_acknowledgement_cannot_clear_a_new_suppression(cx: &mut TestA
             Some(shell.external_help_epoch)
         )
     });
+}
+
+const INFORMATION_PANELS: [(hints::Panel, &str, &str); 3] = [
+    (
+        hints::Panel::File,
+        "file-information",
+        "file-information-panel",
+    ),
+    (
+        hints::Panel::Analysis,
+        "analysis-settings",
+        "analysis-editor",
+    ),
+    (hints::Panel::About, "about-button", "about-panel"),
+];
+
+fn assert_information_owner(
+    cx: &mut gpui_kit::VisualTestContext,
+    shell: &Entity<Shell>,
+    expected: Option<hints::Panel>,
+) {
+    cx.update(|window, cx| {
+        let state = shell.read(cx);
+        assert_eq!(state.information_panel, expected);
+        for panel in hints::Panel::ALL {
+            let hint = state.information_hint(panel);
+            assert_eq!(
+                hint.read(cx).is_open(),
+                expected == Some(panel),
+                "{panel:?}"
+            );
+        }
+        if let Some(panel) = expected {
+            assert!(
+                state
+                    .information_hint(panel)
+                    .read(cx)
+                    .focus_handle()
+                    .contains_focused(window, cx)
+            );
+        }
+    });
+}
+
+fn information_click(cx: &mut gpui_kit::VisualTestContext, id: &str) {
+    cx.update(|window, cx| window.click(id.to_owned(), cx));
+    frame(cx);
+}
+
+#[gpui_kit::test]
+fn information_buttons_share_toggle_internal_click_and_six_switch_routes(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let path = std::env::temp_dir().join(format!(
+        "argand-information-matrix-{}.wav",
+        std::process::id()
+    ));
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path.clone()), window, cx)
+    });
+    wait_until(cx, &shell, "information matrix", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described())
+    });
+    cx.update(|window, _| window.activate_window());
+    frame(cx);
+    for (panel, trigger, content) in INFORMATION_PANELS {
+        let at = cx.update(|window, _| window.find(trigger.to_owned()).bounds().center());
+        cx.simulate_mouse_move(at, None, gpui_kit::Modifiers::default());
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(2));
+        frame(cx);
+        assert_information_owner(cx, &shell, None);
+        // Linux About's titlebar Right press opens the native window menu,
+        // unsupported by TestWindow; it is not a panel activation route.
+        let non_left = if panel == hints::Panel::About {
+            MouseButton::Middle
+        } else {
+            MouseButton::Right
+        };
+        cx.simulate_mouse_down(at, non_left, gpui_kit::Modifiers::default());
+        cx.simulate_mouse_up(at, non_left, gpui_kit::Modifiers::default());
+        frame(cx);
+        assert_information_owner(cx, &shell, None);
+        information_click(cx, trigger);
+        assert_information_owner(cx, &shell, Some(panel));
+        let inside =
+            cx.update(|window, _| window.find(content).bounds().origin + point(px(8.), px(8.)));
+        for button in [MouseButton::Left, MouseButton::Right] {
+            cx.simulate_mouse_down(inside, button, gpui_kit::Modifiers::default());
+            cx.simulate_mouse_up(inside, button, gpui_kit::Modifiers::default());
+            frame(cx);
+            assert_information_owner(cx, &shell, Some(panel));
+        }
+        information_click(cx, trigger);
+        assert_information_owner(cx, &shell, None);
+        for (next, next_trigger, _) in INFORMATION_PANELS {
+            if next == panel {
+                continue;
+            }
+            information_click(cx, trigger);
+            information_click(cx, next_trigger);
+            assert_information_owner(cx, &shell, Some(next));
+            frame(cx);
+            assert_information_owner(cx, &shell, Some(next));
+            cx.simulate_keystrokes("escape");
+            frame(cx);
+            assert_information_owner(cx, &shell, None);
+        }
+    }
+    std::fs::remove_file(path).unwrap();
 }

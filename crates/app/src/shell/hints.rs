@@ -6,8 +6,8 @@ use gpui_kit::component::popover::Popover;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     Anchor, AnyElement, AnyView, App, AppContext, Context, CursorStyle, Entity, EventEmitter,
-    FocusHandle, InteractiveElement, IntoElement, KeyBinding, MouseButton, NoAction, ParentElement,
-    Render, Styled, Window, deferred, div,
+    FocusHandle, InteractiveElement, IntoElement, KeyBinding, NoAction, ParentElement, Render,
+    Styled, Window, deferred, div,
 };
 
 /// The key context of a pinned hint's content, inside the popover's own.
@@ -27,6 +27,18 @@ pub(super) fn passive(
     build: impl FnOnce(&mut Context<Tooltip>) -> Tooltip,
 ) -> AnyView {
     cx.new(build).into()
+}
+
+/// The information panel that owns interaction in one window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Panel {
+    File,
+    Analysis,
+    About,
+}
+
+impl Panel {
+    pub(super) const ALL: [Self; 3] = [Self::File, Self::Analysis, Self::About];
 }
 
 /// What a pinned hint tells its owner.
@@ -108,7 +120,7 @@ pub(super) fn pinned(
 ) -> AnyElement {
     let state = hint.read(cx);
     let content = state.content.clone();
-    let focus = state.focus.clone();
+    let focus = state.focus_handle();
     let changed = hint.downgrade();
     let cancelled = hint.downgrade();
     let confirmed = hint.downgrade();
@@ -117,8 +129,6 @@ pub(super) fn pinned(
         .appearance(false)
         // The backdrop closes the hint, so a part of it drawn outside its panel is not outside it.
         .overlay_closable(false)
-        // The left click keeps its own meaning on the trigger.
-        .mouse_button(MouseButton::Right)
         .open(content.is_some())
         .track_focus(&focus)
         .on_open_change(move |open, window, cx| {

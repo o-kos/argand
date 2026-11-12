@@ -143,7 +143,7 @@ fn linked_worktrees_track_their_head_and_shared_refs_and_tags() {
 
 #[test]
 fn package_metadata_identifies_the_application() {
-    assert_eq!(super::title(), format!("Argand {}", super::VERSION));
+    assert_eq!(super::NAME, "Argand");
     assert_eq!(super::VERSION, env!("CARGO_PKG_VERSION"));
     assert_eq!(super::LICENSE, "MIT");
     assert_eq!(super::REPOSITORY, "https://github.com/o-kos/argand");

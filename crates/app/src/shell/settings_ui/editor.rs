@@ -611,6 +611,7 @@ impl Render for Editor {
             .key_context(CONTEXT)
             .track_focus(&self.scope)
             .map(|editor| Self::arrows(editor, cx))
+            .map(gpui_kit::TestSupportExt::test_support)
             .on_action(cx.listener(|editor, _: &UseRecommendedRange, window, cx| {
                 editor.toggle_range(window, cx)
             }))
