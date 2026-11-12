@@ -54,16 +54,18 @@ Git identity reading and embedding unchanged.
 - [x] Reproduce default Cargo behavior and validate short source-only inputs.
 - [x] Replace Git inputs, retain Git reading and relevant tests.
 - [x] Update current architecture documentation.
-- [ ] Complete focused and required local validation within approved baseline.
-- [ ] Independent review and coordinator assessment.
-- [ ] Move plan to completed before final review.
+- [x] Complete focused checks and workspace formatting, Clippy and tests within the approved baseline.
+- [x] Independent review and coordinator assessment.
+- [x] Move plan to completed before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after required checks
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- Final publication gate: `cargo build --release --locked` runs after committed
+  review corrections and all preceding checks; its result and exact binary
+  provenance are recorded in the PR handoff.
 - [x] Dependency-free source-only invalidation fixture.
 
 The owner excludes CI investigation from this task. No server validation is claimed.
@@ -130,12 +132,30 @@ the earlier common-cache/direct-tool requirements above.
   source-mode CI features and the CLI's independent source image.
 - [x] Adapt checkout-identity regression to copied workspace-local artifacts and
   normal pinned Cargo commands; remove obsolete direct-tool hook additions.
-- [ ] Verify explicit probes: ordinary tests do not build them; all-target Clippy
+- [x] Verify explicit probes: ordinary tests do not build them; all-target Clippy
   still checks them, with no feature/profile/dependency graph changes.
-- [ ] Run current focused checks and manual fmt/Clippy/tests/release-last gate.
-- [ ] Independent review, current PR publication and full CI. No merge without
-  explicit owner acceptance of PR #243.
+- [x] Run current focused checks and manual fmt/Clippy/tests; schedule release last.
+- Independent review, current PR publication and full CI precede owner acceptance.
+  No merge without explicit owner acceptance of PR #243.
 
 Use existing installed SDK and workspace-local target artifacts. No hooks, compiler
 wrappers, PATH overrides or toolchain installation. Historical measurements above
 remain historical; current evidence is recorded in the review and PR handoff.
+
+### Current validation evidence
+
+- Normal installed Cargo regression reused copied checkout-local test harnesses,
+  rejected stale compile-time paths through the expected negative control and
+  passed runtime-path checks with old checkouts alive/removed and changed outputs.
+- A fresh dependency-free fixture used current production metadata inputs/read:
+  Git-only commit/tag/remote/checkpoint/packed-ref changes retained identical
+  binary bytes and snapshot; app and owned dependency source changes refreshed it.
+- Formatting and all-target Clippy passed. All 884 workspace tests passed without
+  failures, ignored or filtered tests, including original real captures.
+- Cargo compiler-artifact JSON showed all three benchmark targets checked by
+  Clippy as rmeta only, with no executable; ordinary tests emitted no example or
+  benchmark target. No new features or dependency versions were introduced.
+- The current reconciliation review identified one outdated current performance
+  instruction about the common build directory; it was corrected to local target.
+  The follow-up independent review was clean with no remaining findings. Final
+  release/CI results and exact binary provenance belong to the PR handoff.

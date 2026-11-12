@@ -280,9 +280,9 @@ cargo build -p argand --release --locked --bench fft_scheduling --message-format
 
 Run the `executable` reported for the benchmark target with
 `tests/signals/m39-repeat-1GB.wav 8 1024`. Use Cargo's actual artifact path (including
-the native suffix on Windows); with split build-dir it is an intermediate benchmark
-harness, not a shipped application binary. The common intermediate build directory
-remains configured separately. Ordinary tests skip
+the native suffix on Windows); it is a benchmark harness under the workspace-local
+`target/`, not a shipped application binary. No shared build directory is needed.
+Ordinary tests skip
 the probe, while all-target Clippy deliberately checks it in local and CI gates.
 
 It prints opening and analysis times separately, first publication, update count,
