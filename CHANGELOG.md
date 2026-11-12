@@ -57,6 +57,8 @@ promise applies to.
 
 ### Fixed
 
+- Center the start-page recent files block horizontally and vertically.
+
 - File, FFT and Range status controls use compact, consistent spacing between their highlighted surfaces and separators (#225).
 
 - Corner zoom buttons stay attached to the plot while the window is resized, without waiting for deferred plot measurements (#226).

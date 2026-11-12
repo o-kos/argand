@@ -42,31 +42,43 @@ Button controls already own all interaction. The list owns overflow.
 
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
-| Whole group centered on both axes | Production bounds regression and Xvfb rendering with short/mixed names | Pending | Native Wayland, Windows and macOS not available locally |
-| Common internal alignment retained | Compare heading/or and filename/chooser coordinates | Pending | Pixel rounding tolerance: one rendered pixel |
-| Long rows remain bounded and middle-truncated | Narrow window and long/disambiguated labels | Pending | Keep extension and recovery tooltip |
-| Opening and keyboard paths unchanged | Recent click, Alt+digit, chooser and Ctrl+O, cancel and return | Pending | Production X11/Xvfb evidence separate from headless tests |
-| Empty and full histories remain usable | Zero/one/ten rows, small height, scroll, both themes | Pending | No new state or interaction machinery |
+| Whole group centered on both axes | Production bounds regression and Xvfb rendering with short/mixed names | Passed: production geometry regression and Xvfb scenarios | Native Wayland, Windows and macOS not available locally |
+| Common internal alignment retained | Compare heading/or and filename/chooser coordinates | Passed: shared edges preserved | Pixel rounding tolerance: one rendered pixel |
+| Long rows remain bounded and middle-truncated | Narrow window and long/disambiguated labels | Passed: production narrow-window rendering and bounds regression | Keep extension and recovery tooltip |
+| Opening and keyboard paths unchanged | Recent click, Alt+digit, chooser and Ctrl+O, cancel and return | Passed: click, Alt+0, chooser, Ctrl+O, Enter and Escape | Production X11/Xvfb evidence separate from headless tests |
+| Empty and full histories remain usable | Zero/one/ten rows, small height, scroll, both themes | Passed: empty/full history, both themes, scroll and 125% display scale | No new state or interaction machinery |
 
 ## Implementation steps
 
 - [x] Inspect current layout, standard controls and existing contracts.
-- [ ] Compose one centered content-sized group with bounded list overflow.
-- [ ] Add a focused production layout regression where useful.
-- [ ] Update UI contract and changelog.
-- [ ] Exercise the current production binary on isolated Xvfb with disposable data.
+- [x] Compose one centered content-sized group with bounded list overflow.
+- [x] Add a focused production layout regression where useful.
+- [x] Update UI contract and changelog.
+- [x] Exercise the current production binary on isolated Xvfb with disposable data.
 - [ ] Complete local validation and independent review; record findings/dispositions.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the preceding checks
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the preceding checks
 - [ ] Production UI scenarios above and independent review
 
 ## Post-completion
 
 After owner acceptance and current full CI, merge through the protected PR and
 remove the accepted worktree/branch only after the prescribed data-safety checks.
+
+## Results and owner feedback
+
+Implementation and the full local gate passed. See the
+[acceptance record](../ui/221-start-page-acceptance.md) for production scenarios,
+source/binary identity and platform limits. Independent review round 1 was clean;
+final evidence review is pending. The separate inherited tooltip observation is
+tracked in [#253](https://github.com/o-kos/argand/issues/253).
+
+The PR stays Draft for owner feedback. Move this plan to completed and request
+full CI only when the agreed implementation is ready for final review under the
+normal PR lifecycle; no release or merge is performed by this preparation.
