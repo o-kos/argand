@@ -506,3 +506,143 @@ fn failed_reference_publication_keeps_original_reader_basis_for_navigation_and_s
         assert!(shell.editing().unwrap().is_dirty());
     });
 }
+
+fn raw_fixture<'a>(
+    cx: &'a mut TestAppContext,
+    name: &str,
+) -> (
+    Entity<Shell>,
+    &'a mut gpui_kit::VisualTestContext,
+    argand_io::testutil::TempDir,
+) {
+    let (shell, cx) = open_window(cx);
+    let dir = argand_io::testutil::TempDir::new(name);
+    let path = dir.join("capture.raw");
+    let samples: Vec<u8> = (0..9600i16).flat_map(i16::to_le_bytes).collect();
+    std::fs::write(&path, samples).unwrap();
+    shell.update_in(cx, |shell, window, cx| {
+        let mut origin = Origin::new(path);
+        origin.hints.raw = Some("iq_i16@24k".parse().unwrap());
+        origin.hints.center_freq = Some(0.);
+        shell.open(origin, window, cx);
+    });
+    wait_until(cx, &shell, "RAW description", |shell| {
+        shell.editing().is_some_and(Editing::is_described)
+    });
+    (shell, cx, dir)
+}
+
+#[gpui_kit::test]
+fn raw_reference_save_cancel_and_wave_rebind_preserve_source(cx: &mut TestAppContext) {
+    let (shell, cx, dir) = raw_fixture(cx, "raw-reference-wave");
+    let raw = dir.join("capture.raw");
+    let original = std::fs::read(&raw).unwrap();
+    shell.update_in(cx, |shell, window, cx| {
+        shell.band = argand_core::FrequencyBand::between(-100., 100.);
+        assert!(shell.set_reference(1_000_000.25, window, cx));
+        assert_eq!(shell.can_save_over(), Err(Unsavable::RawReference));
+        assert!(shell.save_needs_new_path() && shell.can_save(false));
+        let source = shell.editing().unwrap().file();
+        assert_eq!(
+            saving::suggested_name(&source.meta, true, None),
+            "capture.wav"
+        );
+        shell.save_over(window, cx);
+    });
+    wait_for_save_chooser(cx);
+    cx.simulate_new_path_selection(|_| None);
+    cx.run_until_parked();
+    shell.read_with(cx, |shell, _| {
+        assert!(shell.editing().unwrap().is_dirty());
+        assert_eq!(
+            shell.file.as_ref().unwrap().state.document.origin().path,
+            raw
+        );
+        assert!(shell.saving.is_none());
+    });
+    assert_eq!(std::fs::read(&raw).unwrap(), original);
+    shell.update_in(cx, |shell, window, cx| shell.save_over(window, cx));
+    wait_for_save_chooser(cx);
+    let wave = dir.join("capture.wav");
+    cx.simulate_new_path_selection(|_| Some(wave.clone()));
+    wait_until(cx, &shell, "RAW to saved WAVE", |shell| {
+        shell.saving.is_none()
+            && shell.editing().is_some_and(|editing| {
+                editing.file().meta.source == wave && !editing.is_dirty() && editing.is_described()
+            })
+    });
+    shell.read_with(cx, |shell, _| {
+        let editing = shell.editing().unwrap();
+        assert_eq!(editing.reference(), 1_000_000.25);
+        assert!(editing.file().hints.raw.is_none());
+        assert_eq!(shell.band.unwrap().low(), 999_900.25);
+        let recent = shell
+            .session
+            .recent
+            .iter()
+            .find(|entry| entry.path == wave)
+            .unwrap();
+        let reopened = argand_io::open(&wave, &recent.hints.to_open_hints()).unwrap();
+        assert_eq!(reopened.meta().center_freq, 1_000_000.25);
+    });
+    assert_eq!(std::fs::read(&raw).unwrap(), original);
+    let mut reopened = argand_io::open(&wave, &argand_io::OpenHints::default()).unwrap();
+    assert_eq!(reopened.meta().center_freq, 1_000_000.25);
+    let mut samples = vec![0.; 9600];
+    assert_eq!(reopened.read(&mut samples).unwrap(), samples.len());
+    for (index, sample) in samples.into_iter().enumerate() {
+        assert_eq!(sample, index as f32 / 32768.);
+    }
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(2_000_000., window, cx));
+        assert!(!shell.save_needs_new_path());
+        assert_eq!(shell.can_save_over(), Ok(()));
+    });
+}
+
+#[gpui_kit::test]
+fn raw_reference_undo_retains_headerless_sample_save_and_prompt_cancel(cx: &mut TestAppContext) {
+    let (shell, cx, dir) = raw_fixture(cx, "raw-reference-undo");
+    let raw = dir.join("capture.raw");
+    shell.update_in(cx, |shell, window, cx| {
+        shell.selection = argand_core::SampleSpan::between(0, 2400);
+        window.dispatch_action(Box::new(editing_ui::DeleteSelection), cx);
+    });
+    cx.run_until_parked();
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(100., window, cx));
+        window.dispatch_action(Box::new(editing_ui::Undo), cx);
+    });
+    cx.run_until_parked();
+    shell.update_in(cx, |shell, window, cx| {
+        assert_eq!(shell.editing().unwrap().reference(), 0.);
+        assert_eq!(shell.can_save_over(), Ok(()));
+        assert!(!shell.save_needs_new_path());
+        shell.save_over(window, cx);
+    });
+    wait_until(cx, &shell, "ordinary headerless save", |shell| {
+        shell.saving.is_none()
+            && shell.editing().is_some_and(|editing| {
+                !editing.is_dirty() && editing.is_described() && editing.len() == 2400
+            })
+    });
+    assert_eq!(std::fs::read(&raw).unwrap().len(), 9600);
+    let second = dir.join("second.wav");
+    write_wave(&second, 4800);
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(100., window, cx));
+        shell.open(Origin::new(second.clone()), window, cx);
+    });
+    cx.simulate_prompt_answer("Save");
+    wait_for_save_chooser(cx);
+    cx.simulate_new_path_selection(|_| None);
+    cx.run_until_parked();
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(
+            shell.file.as_ref().unwrap().state.document.origin().path,
+            raw
+        );
+        assert!(shell.editing().unwrap().is_dirty());
+    });
+    assert!(!cx.has_pending_prompt());
+}

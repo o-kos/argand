@@ -80,11 +80,7 @@ impl Shell {
         let enabled = FileCommands {
             information: self.status_panel_available(settings_ui::StatusPanel::File),
             save_over: self.can_save_over().is_ok()
-                || (self
-                    .file
-                    .as_ref()
-                    .is_some_and(|file| file.unsaved.is_some())
-                    && self.can_save(false)),
+                || (self.save_needs_new_path() && self.can_save(false)),
             save: self.can_save(false),
             save_selection: self.can_save(true),
         };

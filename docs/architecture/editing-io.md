@@ -148,7 +148,12 @@ File → Save (Ctrl+S, Cmd+S) writes the edited capture over its own file (`shel
 `write::stage` writes the temporary file while the original is still read and returns a
 `Staged` that `commit` moves into place or, dropped, removes; `SaveRequest::replacing` lets
 the target be the replaced file, whose stamp `commit` checks just before the rename, and a
-headerless capture is written headerless after its preamble (`Output::Headerless`). Every
+headerless capture with unchanged reference is written headerless after its preamble
+(`Output::Headerless`). When its effective reference differs from the opened source
+baseline, ordinary Save instead opens the existing Save As chooser proposing WAVE,
+because RAW cannot store reference metadata. The unsaved prompt follows the same
+route; Cancel retains the dirty document and the original RAW. Undo restoring the
+baseline reference restores ordinary headerless Save-over. Every
 thread reading the open file (the analysis worker, the minimap and the envelopes of pasted
 files) holds a `release::Lease`; once the file is staged the window puts unstarted readers of
 the same path in their place (`Shell::swap_readers`), waits on `Released` for the old ones to

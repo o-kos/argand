@@ -20,7 +20,8 @@ promise applies to.
 - Edit the capture's reference frequency directly in File information, undo or redo
   the change, and write it with Save or Save As. View → Baseband frequencies shows
   frequencies relative to zero while retaining the physical reference and selected
-  signal band, without recomputing the FFT (#185).
+  signal band, without recomputing the FFT. Saving a changed reference from RAW
+  proposes a new WAVE file and leaves the RAW original untouched (#185).
 
 - About Argand opens from a version button in the title bar or the application menu and shows package details, the repository link and build commit identity. Its tooltip identifies the version, exact tag, commit and commit date (#107).
 

@@ -20,6 +20,8 @@ pub(super) enum Unsavable {
     Unchecked,
     /// The file is FLAC at a rate its encoder cannot state, so only Save as can write it.
     FlacRate,
+    /// Headerless files cannot store an edited reference frequency.
+    RawReference,
 }
 
 impl Unsavable {
@@ -29,6 +31,7 @@ impl Unsavable {
             Self::Busy => "another save is running",
             Self::Empty => "the capture is empty",
             Self::Unchecked => "the file is still being checked",
+            Self::RawReference => "RAW cannot store the reference frequency, use Save as",
             Self::FlacRate => "the FLAC encoder cannot write this sample rate, use Save as",
         }
     }
@@ -92,9 +95,26 @@ impl Shell {
             && argand_io::write::writes_as_wave(&file.meta, &file.hints)
         {
             Err(Unsavable::FlacRate)
+        } else if self.raw_reference_changed() {
+            Err(Unsavable::RawReference)
         } else {
             Ok(())
         }
+    }
+
+    fn raw_reference_changed(&self) -> bool {
+        self.editing().is_some_and(|editing| {
+            editing.file().hints.raw.is_some()
+                && editing.reference() != editing.file().meta.center_freq
+        })
+    }
+
+    pub(super) fn save_needs_new_path(&self) -> bool {
+        self.raw_reference_changed()
+            || self
+                .file
+                .as_ref()
+                .is_some_and(|file| file.unsaved.is_some())
     }
 
     /// Refuse what would open or close a file while the open one is being replaced.
@@ -120,11 +140,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self
-            .file
-            .as_ref()
-            .is_some_and(|file| file.unsaved.is_some())
-        {
+        if self.save_needs_new_path() {
             self.save_as_then(false, then, window, cx);
             return;
         }
