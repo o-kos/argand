@@ -58,8 +58,11 @@ from the headless regression above.
 ## Review and limits
 
 Independent `gpt-6.1-sol` high read-only review found no substantive layout,
-overflow, behavior, component, test or policy defect in round 1. A final handoff
-also covers this acceptance record and the exact submitted state.
+overflow, behavior, component, test or policy defect in round 1. Round 2 was also
+clean: it verified this acceptance record, raw gate results, source/binary identity,
+production screenshots, platform limits and the routing of the tooltip observation.
+There were no rejected findings. Final bookkeeping only records these results;
+production and test source remain identical to the reviewed and demonstrated state.
 
 An already visible recent-row tooltip can retain its former text when scrolling
 moves another row beneath a stationary pointer. Leaving and re-entering refreshes

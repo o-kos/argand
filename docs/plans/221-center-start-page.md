@@ -55,7 +55,7 @@ Button controls already own all interaction. The list owns overflow.
 - [x] Add a focused production layout regression where useful.
 - [x] Update UI contract and changelog.
 - [x] Exercise the current production binary on isolated Xvfb with disposable data.
-- [ ] Complete local validation and independent review; record findings/dispositions.
+- [x] Complete local validation and independent review; record findings/dispositions.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
@@ -64,7 +64,7 @@ Button controls already own all interaction. The list owns overflow.
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the preceding checks
-- [ ] Production UI scenarios above and independent review
+- [x] Production UI scenarios above and independent review
 
 ## Post-completion
 
@@ -75,8 +75,10 @@ remove the accepted worktree/branch only after the prescribed data-safety checks
 
 Implementation and the full local gate passed. See the
 [acceptance record](../ui/221-start-page-acceptance.md) for production scenarios,
-source/binary identity and platform limits. Independent review round 1 was clean;
-final evidence review is pending. The separate inherited tooltip observation is
+source/binary identity and platform limits. Independent review rounds 1 and 2 were clean;
+there were no substantive findings or rejected findings. Round 2 verified the full
+gate, source/binary identity, production screenshots and the separate routing of
+the tooltip observation. The separate inherited tooltip observation is
 tracked in [#253](https://github.com/o-kos/argand/issues/253).
 
 The PR stays Draft for owner feedback. Move this plan to completed and request
