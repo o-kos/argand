@@ -103,6 +103,15 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     cx.bind_keys([
         KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
         KeyBinding::new("f11", ConvertCapture, None),
+        KeyBinding::new(
+            if cfg!(target_os = "macos") {
+                "cmd-q"
+            } else {
+                "ctrl-q"
+            },
+            chrome::CloseWindow,
+            None,
+        ),
         KeyBinding::new("tab", FocusNext, Some("FileInformation")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("FileInformation")),
         KeyBinding::new("tab", FocusNext, Some("Shell")),
@@ -205,8 +214,8 @@ pub fn run(config: Config, saved: Session, writer: Option<Saver>, opening: Optio
                 // whose error nobody reads would end it silently: there is nothing
                 // else this program does.
                 match &opened {
-                    Ok((_, shell)) => {
-                        cx.update(|cx| Shell::bind_choose_file(shell.downgrade(), cx))
+                    Ok((window, shell)) => {
+                        cx.update(|cx| Shell::bind_choose_file(shell.downgrade(), *window, cx))
                     }
                     Err(error) => {
                         tracing::error!(%error, "cannot open a window");
@@ -379,8 +388,11 @@ struct Shell {
     /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
     about: about_ui::State,
-    status_panel: Option<settings_ui::StatusPanel>,
-    status_panel_request: u64,
+    information_panel: Option<hints::Panel>,
+    information_panel_request: u64,
+    external_help_suppressed: bool,
+    external_help_epoch: u64,
+    external_help_cleared_epoch: Option<u64>,
     /// What the analysis hint opened with, which Escape restores.
     hint_opening: Option<HintOpening>,
     /// The selection panel under the toolbar's selection segments.
@@ -465,6 +477,7 @@ struct Shell {
     application_menu: Option<Entity<PopupMenu>>,
     /// The File branch, whose keyboard focus a digit row belongs to.
     application_file_menu: Option<Entity<PopupMenu>>,
+    application_recent_focus: Option<FocusHandle>,
     /// The captures its numbered rows name, as drawn when the menu opened.
     application_file_rows: Option<Vec<Origin>>,
     application_menu_dismissed: Option<Subscription>,
@@ -524,7 +537,7 @@ impl Shell {
             )
         });
         let pinned = cx.subscribe(&analysis_hint, |shell, _, event, cx| {
-            shell.status_panel_changed(settings_ui::StatusPanel::Analysis, *event, cx);
+            shell.information_panel_changed(hints::Panel::Analysis, *event, cx);
         });
         let panel_owner = cx.entity().downgrade();
         let selection_hint = cx.new(|cx| {
@@ -534,14 +547,17 @@ impl Shell {
             )
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
-        let about = about_ui::State::new(window, cx);
+        let about = about_ui::State::new(cx);
         Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
             about,
-            status_panel: None,
-            status_panel_request: 0,
+            information_panel: None,
+            information_panel_request: 0,
+            external_help_suppressed: false,
+            external_help_epoch: 0,
+            external_help_cleared_epoch: Some(0),
             hint_opening: None,
             selection_hint,
             selection_opening: None,
@@ -586,6 +602,7 @@ impl Shell {
             focus,
             application_menu: None,
             application_file_menu: None,
+            application_recent_focus: None,
             application_file_rows: None,
             application_menu_dismissed: None,
             application_menu_focus: None,
@@ -599,12 +616,71 @@ impl Shell {
         }
     }
 
+    fn external_tooltips_allowed(&self, cx: &gpui_kit::App) -> bool {
+        !self.external_help_suppressed
+            && self.application_menu.is_none()
+            && [
+                &self.analysis_hint,
+                &self.conversion.hint,
+                &self.selection_hint,
+                &self.about.hint,
+            ]
+            .iter()
+            .all(|panel| !panel.read(cx).is_open())
+    }
+
+    fn suppress_external_tooltips(&mut self) {
+        self.external_help_suppressed = true;
+        self.external_help_epoch += 1;
+        self.external_help_cleared_epoch = None;
+    }
+
+    fn acknowledge_tooltip_teardown(
+        shell: WeakEntity<Self>,
+        window: &Window,
+        cx: &mut gpui_kit::App,
+    ) {
+        let Some(owner) = shell.upgrade() else { return };
+        let state = owner.read(cx);
+        if !state.external_help_suppressed
+            || state.external_help_cleared_epoch == Some(state.external_help_epoch)
+        {
+            return;
+        }
+        let epoch = state.external_help_epoch;
+        // Paint follows all prepaint, including deferred plot controls. Defer the
+        // acknowledgement until draw unwinds, after old tooltip listeners retire.
+        let handle = window.window_handle();
+        cx.defer(move |cx| {
+            let _ = handle.update(cx, |_, window, cx| {
+                let _ = shell.update(cx, |shell, cx| {
+                    shell.complete_external_tooltip_teardown(epoch, window.is_window_active(), cx);
+                });
+            });
+        });
+    }
+
+    fn complete_external_tooltip_teardown(
+        &mut self,
+        epoch: u64,
+        active: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if self.external_help_epoch != epoch {
+            return;
+        }
+        self.external_help_cleared_epoch = Some(epoch);
+        self.restore_external_tooltip_builders(active, cx);
+    }
+
     fn activation_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if window.is_window_active() {
+            self.restore_external_tooltip_builders(true, cx);
             self.recent_files.refresh(&self.session.recent);
             self.check_disk(window, cx);
         } else {
-            self.close_about(cx);
+            self.suppress_external_tooltips();
+            self.close_hints(cx);
             if let Some(plot) = self.plot_entity() {
                 // The release may happen in another window and never arrive here.
                 plot.update(cx, |plot, cx| plot.end_gestures(cx));
@@ -654,12 +730,14 @@ impl Shell {
     fn pointer_presence(shell: WeakEntity<Self>) -> impl IntoElement {
         canvas(
             |_, _, _| (),
-            move |_, _, window, _| {
+            move |_, _, window, cx| {
+                Self::acknowledge_tooltip_teardown(shell.clone(), window, cx);
                 let moved = shell.clone();
                 window.on_mouse_event(move |_: &gpui_kit::MouseMoveEvent, phase, _, cx| {
-                    if phase == gpui_kit::DispatchPhase::Capture {
-                        let _ = moved.update(cx, Self::pointer_moved);
+                    if phase != gpui_kit::DispatchPhase::Capture {
+                        return;
                     }
+                    let _ = moved.update(cx, |shell, cx| shell.pointer_moved(cx));
                 });
                 let left = shell.clone();
                 window.on_mouse_event(move |_: &gpui_kit::MouseExitEvent, phase, _, cx| {
@@ -684,6 +762,16 @@ impl Shell {
             shell.close_hints(cx);
             shell.dismiss_application_menu(window, cx);
         });
+    }
+
+    fn restore_external_tooltip_builders(&mut self, active: bool, cx: &mut Context<Self>) {
+        if active
+            && self.external_help_suppressed
+            && self.external_help_cleared_epoch == Some(self.external_help_epoch)
+        {
+            self.external_help_suppressed = false;
+            cx.notify();
+        }
     }
 
     fn pointer_moved(&mut self, cx: &mut Context<Self>) {
@@ -1293,7 +1381,25 @@ impl Shell {
     ///
     /// Updates go through the weak shell inside its own window; a closed
     /// window or a dropped shell makes the action a no-op.
-    fn bind_choose_file(shell: WeakEntity<Self>, cx: &mut gpui_kit::App) {
+    fn bind_choose_file(
+        shell: WeakEntity<Self>,
+        owner: gpui_kit::AnyWindowHandle,
+        cx: &mut gpui_kit::App,
+    ) {
+        // Overlays have their own focus path. Close still belongs to the window
+        // that registered this shell, and always uses its unsaved/conversion guard.
+        cx.on_action({
+            let shell = shell.clone();
+            move |_: &chrome::CloseWindow, cx| {
+                if cx.active_window() != Some(owner) {
+                    cx.propagate();
+                    return;
+                }
+                cx.stop_propagation();
+                let shell = shell.clone();
+                cx.defer(move |cx| Self::close_owning_window(shell, owner, cx));
+            }
+        });
         // Popup focus sits outside the shell subtree; defer until dispatch releases the window.
         cx.on_action({
             let shell = shell.clone();
@@ -1360,6 +1466,19 @@ impl Shell {
                     let _ = shell.update_in(cx, Self::deferred_edit_analysis);
                 });
             }
+        });
+    }
+
+    fn close_owning_window(
+        shell: WeakEntity<Self>,
+        owner: gpui_kit::AnyWindowHandle,
+        cx: &mut gpui_kit::App,
+    ) {
+        let _ = shell.update_in(cx, |shell, window, cx| {
+            if window.window_handle() != owner {
+                return;
+            }
+            shell.request_close(window, cx);
         });
     }
 
@@ -1505,7 +1624,12 @@ impl Shell {
                         .min_w_0()
                         .child(self.title_contents(window, cx)),
                 )
-                .child(chrome::controls(corners.top_right, window, cx))
+                .child(chrome::controls(
+                    corners.top_right,
+                    self.focus.clone(),
+                    window,
+                    cx,
+                ))
                 .into_any_element()
         } else {
             TitleBar::new()
@@ -1647,6 +1771,7 @@ impl Shell {
         label: String,
         index: usize,
         width: Pixels,
+        tooltips_allowed: bool,
         cx: &mut Context<Self>,
     ) -> Button {
         let directory = entry
@@ -1703,18 +1828,20 @@ impl Shell {
                     cx,
                 );
             }));
-        button.interactivity().tooltip(move |_, cx| {
-            let action = crate::app_menu::digit(index)
-                .map(|_| Box::new(OpenRecent { index }) as Box<dyn Action>);
-            recent_hint(
-                hint.clone(),
-                directory.clone(),
-                action,
-                "StartPage",
-                width,
-                cx,
-            )
-        });
+        if tooltips_allowed {
+            button.interactivity().tooltip(move |_, cx| {
+                let action = crate::app_menu::digit(index)
+                    .map(|_| Box::new(OpenRecent { index }) as Box<dyn Action>);
+                recent_hint(
+                    hint.clone(),
+                    directory.clone(),
+                    action,
+                    "StartPage",
+                    width,
+                    cx,
+                )
+            });
+        }
         button
     }
 
@@ -1734,15 +1861,17 @@ impl Shell {
             .cursor_pointer()
             .label("Open a signal file…")
             .on_click(|_, window, cx| window.dispatch_action(Box::new(ChooseFile), cx));
-        chooser.interactivity().tooltip(move |_, cx| {
-            shortcut_tooltip(
-                "Open a signal file".to_owned(),
-                Some(Box::new(ChooseFile)),
-                "Shell",
-                width,
-                cx,
-            )
-        });
+        if self.external_tooltips_allowed(cx) {
+            chooser.interactivity().tooltip(move |_, cx| {
+                shortcut_tooltip(
+                    "Open a signal file".to_owned(),
+                    Some(Box::new(ChooseFile)),
+                    "Shell",
+                    width,
+                    cx,
+                )
+            });
+        }
         div()
             .flex_1()
             .min_h_0()
@@ -1774,7 +1903,14 @@ impl Shell {
                         .gap_1()
                         .children(recent.into_iter().zip(labels).enumerate().map(
                             |(index, (entry, label))| {
-                                Self::recent_button(entry, label, index, width, cx)
+                                Self::recent_button(
+                                    entry,
+                                    label,
+                                    index,
+                                    width,
+                                    self.external_tooltips_allowed(cx),
+                                    cx,
+                                )
                             },
                         )),
                 )
@@ -1922,13 +2058,12 @@ impl Render for Shell {
         let menu_backdrop = self
             .application_menu
             .is_some()
-            .then(|| self.application_menu_backdrop(free));
+            .then(|| self.application_menu_backdrop(free, window));
         div()
             .relative()
             .size_full()
             .child(content)
             .children(menu_backdrop)
-            .children(hints::backdrop(&self.about.hint, hint_area, cx))
             .children(self.conversion_cover(gpui_kit::Bounds::new(
                 hint_area.origin,
                 gpui_kit::size(
@@ -1936,7 +2071,7 @@ impl Render for Shell {
                     (hint_area.size.height - window.rem_size() * 1.5).max(px(0.)),
                 ),
             )))
-            .children(self.status_panel_backdrop(
+            .children(self.information_panel_backdrop(
                 gpui_kit::Bounds::new(
                     hint_area.origin,
                     gpui_kit::size(
@@ -1966,6 +2101,8 @@ fn shortcut_tooltip(
                     .or_else(|| Kbd::binding_for_action(action, Some(context), window))
             });
             div()
+                .id("shortcut-tooltip")
+                .map(gpui_kit::TestSupportExt::test_support)
                 .max_w(width.min(window.viewport_size().width - px(48.)))
                 .flex()
                 .items_center()

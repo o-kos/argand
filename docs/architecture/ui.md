@@ -25,7 +25,7 @@ captures no strong Shell entity. Global key/pointer observers use the same
 Root-to-Shell ownership boundary. Dialogs, sheets and notifications are hosted
 automatically by the toolkit plugin; Shell draws no manual dialog layer.
 
-Linux title-bar controls paint their own rounded hover/press backgrounds; Windows and macOS retain toolkit controls. File uses the same small text size as popup menus. The status bar places File, FFT and Range in one compact group with shared gaps and separator insets, keeping equal external space around their standard control surfaces without changing other status readouts. It has a combined file group and the analysis settings hint (#108), with compact duration units in the bar and h:mm:ss.mmm in the file hint. The worker reports file bytes and the reader's optional `original_sample_units` affine conversion (including gain and codec bit depth); whole-current-capture Peak and RMS use centered stored amplitude, including current capture gain (IQ RMS counts pairs). A per-source statistics tree of at most 8192 32-byte nodes is accumulated only by the sequential minimap scan, independently of edit versions. Background queries merge complete cells and read partial piece boundaries with a bounded cache; current SourceFile encoding resolves computed-source units. Source stamps, retained source scratches and document/capture signatures protect publication. Pending or invalid metrics never fall back to channel extrema. Settings and validation live in toolkit-neutral `settings.rs`; `shell/settings_ui/mod.rs` renders the status and hover hints; `shell/settings_ui/editor.rs` owns the editor the pinned FFT hint shows: standard selects and inputs drawn with `appearance(false)` in the hint's look. Ctrl+, (Cmd+, on macOS), File → Settings and a left click on the FFT summary open it pinned; Ctrl+, again closes it keeping the values. Tab/Shift+Tab traverse its values and Reset to defaults, Enter or the arrows open a focused list, the arrows step a focused number, and Escape closes an open list before reverting. Ctrl+R (Cmd+R on macOS) applies available range advice, restores the full range from an explicit range when no advice remains, and does nothing on the full or automatic range, from the main window or the hint. The shared `numeric_editor::NumericEditor` owns the standard `Input`, standard `Button` steppers, configured units/steps/bounds, locale commit formatting and Up/Down handling for both property panels. Unlike click-only `NumberInput` steppers, its steppers act at the press and repeat every 80 ms after 400 ms while held (the retained owner-approved press/repeat exception, `NumericEditor::start_repeat`). Numeric edits commit on Enter, blur or a step; Analysis previews the commit and File information retains a conversion draft. Enter in a number applies it and keeps the hint open, an unusable number shows its error, and Enter elsewhere closes the hint keeping the values, because the editor handles `Confirm` before the popover does. The editor observes its owner so recommendations, effective values and the pending state refresh while it remains open. `document.rs` supplies toolkit-neutral hint titles, current values and optional explanations; `shell/mod.rs` preserves heading typography, renders aligned file-hint values with muted labels, and uses smaller muted explanations of one sentence without terminal periods. File hints use a viewport-bounded 330-pixel content width with aligned rows. Other metadata hints measure their definite width with GPUI using the rendered font sizes and weights; keep text blocks non-shrinking so wrapped text contributes its full height. The ready-state timing hint describes the latest analysis including sample reads, transforms and CPU image preparation, excluding file opening and window drawing; it is absent for other states. The whole ready status and its timing hint are transient and disappear on a mouse button press, a key press, a wheel event or the cursor readout appearing. Pointer motion outside the readout area, activation and focus changes do not dismiss them. Each accepted ready update resets dismissal without discarding the elapsed time. Window-level capture listeners observe mouse presses and wheel events, and a retained keystroke subscription covers bound actions with direct dismissal in the two existing key interceptors. Dismissal never consumes input. The cursor readout shows frequency before time and places the level in its own status-bar field. No status group is shown before a file is open. Cursor coordinates share the Alt badge formatter, following the time-ruler mode, frequency-axis unit and device-pixel precision. The minimap uses full-capture time and sample extents.
+Linux title-bar controls paint their own rounded hover/press backgrounds; Windows and macOS retain toolkit controls. File uses the same small text size as popup menus. The status bar places File, FFT and Range in one compact group with shared gaps and separator insets, keeping equal external space around their standard control surfaces without changing other status readouts. It has a combined file group and the analysis settings hint (#108), with compact duration units in the bar and h:mm:ss.mmm in the file hint. The worker reports file bytes and the reader's optional `original_sample_units` affine conversion (including gain and codec bit depth); whole-current-capture Peak and RMS use centered stored amplitude, including current capture gain (IQ RMS counts pairs). A per-source statistics tree of at most 8192 32-byte nodes is accumulated only by the sequential minimap scan, independently of edit versions. Background queries merge complete cells and read partial piece boundaries with a bounded cache; current SourceFile encoding resolves computed-source units. Source stamps, retained source scratches and document/capture signatures protect publication. Pending or invalid metrics never fall back to channel extrema. Settings and validation live in toolkit-neutral `settings.rs`; `shell/settings_ui/mod.rs` renders the status and explicit information panels; `shell/settings_ui/editor.rs` owns the editor the Analysis settings panel shows: standard selects and inputs drawn with `appearance(false)` in the hint's look. Ctrl+, (Cmd+, on macOS), View → Analysis settings… and a left click on the FFT summary open the panel; Ctrl+, again closes it keeping the values. Tab/Shift+Tab traverse its values and Reset to defaults, Enter or the arrows open a focused list, the arrows step a focused number, and Escape closes an open list before reverting. Ctrl+R (Cmd+R on macOS) applies available range advice, restores the full range from an explicit range when no advice remains, and does nothing on the full or automatic range, from the main window or the hint. The shared `numeric_editor::NumericEditor` owns the standard `Input`, standard `Button` steppers, configured units/steps/bounds, locale commit formatting and Up/Down handling for both property panels. Unlike click-only `NumberInput` steppers, its steppers act at the press and repeat every 80 ms after 400 ms while held (the retained owner-approved press/repeat exception, `NumericEditor::start_repeat`). Numeric edits commit on Enter, blur or a step; Analysis previews the commit and File information retains a conversion draft. Enter in a number applies it and keeps the hint open, an unusable number shows its error, and Enter elsewhere closes the hint keeping the values, because the editor handles `Confirm` before the popover does. The editor observes its owner so recommendations, effective values and the pending state refresh while it remains open. `document.rs` supplies toolkit-neutral hint titles, current values and optional explanations; `shell/mod.rs` preserves heading typography, renders aligned file-hint values with muted labels, and uses smaller muted explanations of one sentence without terminal periods. File hints use a viewport-bounded 330-pixel content width with aligned rows. Other metadata hints measure their definite width with GPUI using the rendered font sizes and weights; keep text blocks non-shrinking so wrapped text contributes its full height. The ready-state timing hint describes the latest analysis including sample reads, transforms and CPU image preparation, excluding file opening and window drawing; it is absent for other states. The whole ready status and its timing hint are transient and disappear on a mouse button press, a key press, a wheel event or the cursor readout appearing. Pointer motion outside the readout area, activation and focus changes do not dismiss them. Each accepted ready update resets dismissal without discarding the elapsed time. Window-level capture listeners observe mouse presses and wheel events, and a retained keystroke subscription covers bound actions with direct dismissal in the two existing key interceptors. Dismissal never consumes input. The cursor readout shows frequency before time and places the level in its own status-bar field. No status group is shown before a file is open. Cursor coordinates share the Alt badge formatter, following the time-ruler mode, frequency-axis unit and device-pixel precision. The minimap uses full-capture time and sample extents.
 
 The analysis settings hint selects Peak (MAX) or Mean power, including subsequent files; saved effective settings override configuration defaults after a restart. The current session persists transform/palette settings, the time-ruler format, grid visibility, orientation, scale-control visibility and interface theme. `session::VERSION` and `session::READABLE` define the written and supported versions; legacy dynamic range is ignored. Range and its mode reset to configuration defaults on file opening. Changes in the hint preview without altering saved session settings; a keeping close (click outside, Enter, Ctrl+, again, F10, Ctrl+O, opening a file) saves them, while Escape restores the settings, time view and frequency view the hint opened with (`HintOpening`). Reset to defaults, below the values, applies the configuration values and keeps the hint open. Window and colour-scheme names are title-cased in the interface (`editor::display_name`, which parses back unchanged), and each value looks its own width, right-aligned, with lists opening wider than any value they offer. Changes use the same cancellable worker and retain the old picture until the new one is complete (see [Time navigation (#30)](navigation-selection.md#time-navigation-30): every analysis after a file's first is a final-only replacement). Mean power accumulates squared, tone-calibrated spectral amplitudes in cached bin/frame cells and weights their overlap with display pixels before taking dB; it is not integrated band power. Temporal power sums use f64 and count every frame once, including preview frames. CLI `mean` retains its legacy dB average after frequency MAX. Neither reducer changes the waveform envelope, PSD, transform lattice, or normalization. The displayed settings are tracked separately from requested settings so pending work cannot mislabel the retained picture. The recommended range is the same measured value as the CLI; the GUI warning specifically requires a nonzero signal whose spectral peak is in the lower half of the absolute full-scale colour window. It is suppressed for peak-relative/auto modes; obsolete or failed deliveries never create a warning, while a failed re-analysis retains the presentation of the last accepted picture without an action. A narrower recommendation alone is not a warning. The transform summary is the settings button and owns the analysis hint. The range is a separate hinted status item with warned, corrected and full states. Its effective number, requested mode and recommendation are derived together when the accepted analysis snapshot enters the document, so the displayed state never combines parts of different updates. Warned and corrected states use the same default cursor, hover background and shared toggle action as Ctrl+R / Cmd+R; full and automatic ranges are informational only. The action retains the stricter requested-settings check. While the displayed and requested settings differ, or while re-analysis is failed, the level keeps the displayed appearance but offers no action, keycap or hover affordance.
 
@@ -37,12 +37,12 @@ window controls and a direct About Argand application-menu item open one retaine
 and styled like File information. There is no command shortcut
 and hover only shows the build-identity tooltip. `shell/about_ui.rs` composes the
 existing pinned helper, standard Button and keyboard-accessible Base Link. The
-repository Link opens its URL and closes About; every other panel click closes
-it too. Escape, focus leaving the whole popover subtree and window deactivation
-close it. Focus moving to the Link within About does not count as leaving.
-Opening another application panel/menu closes About. Deferred open requests are
-invalidated when another transition closes it, and repeated opening retains one
-content entity.
+repository Link opens its URL through the standard control; neither Link activation
+nor prose/empty-space clicks add a special panel dismissal. About uses the same
+information-panel owner, native left trigger, repeated-entry toggle, outside
+backdrop, Escape and window-deactivation policy as File/Analysis. Ordinary focus
+changes add no About-specific dismissal. Opening another application panel/menu
+closes About, and one shared generation invalidates deferred open requests.
 
 `about.rs` reads the version, description, licence and repository from Cargo
 compile-time metadata. `build.rs` captures the short HEAD hash, commit timestamp
@@ -108,10 +108,11 @@ hover-based, so any blocking layer above it wins.
   clicks. Blocking it would take clicks from its own trigger, because a GPUI
   tooltip opens 13 pixels from the pointer and can cover the trigger.
 - The analysis hint is a pinned hint (`hints::PinnedHint`) and the only analysis
-  settings surface (#108). Hovering the FFT summary for 500 ms opens it as a
-  standard gpui-component `Popover` anchored above the summary, drawn in the
-  `Tooltip` look (`appearance(false)`); a right click toggles it, and a left
-  click, Ctrl+, and File → Settings open it with the keyboard in it. Moving the
+  settings surface (#108). It is a standard gpui-component `Popover` anchored above
+  the summary, drawn in the `Tooltip` look (`appearance(false)`); a right click
+  toggles it, and a left click, Ctrl+, and View → Analysis settings… open it with
+  the keyboard in it. Hover only shows informative help and the registered shortcut;
+  it never opens an information panel. Moving the
   pointer away does not close it. Only a press outside (taken by the backdrop), Enter (keeps
   the values), Escape (reverts to the settings and views at opening), Ctrl+, again,
   F10, Ctrl+O and opening a file close it. `PinnedHint` holds any view; Shell opens
@@ -309,13 +310,13 @@ The start page and the inline recent rows in File share `recent.rs`'s toolkit-ne
 
 `processing/conversion.rs` converts a whole immutable edited-capture snapshot into a new WAVE/RF64;
 selection is ignored. `shell/conversion_ui.rs` composes the file information status Button,
-PinnedHint panel, Input, Select and Convert Button. Edit > Convert to... and F11 open
+PinnedHint panel, Input, Select and Convert Button. File > File information… and F11 open
 the same panel. File and Analysis summaries share `settings_ui::status_control`;
 both property editors share `settings_editor` row, numeric, Select and outlined-action
 presentation over standard controls. Numeric initialization and Enter/blur formatting share
-one event handler, while each editor keeps its own preview/draft transaction. One `StatusPanel` owner and shared trigger/popover
-composition route both editors through the same opening/closing lifecycle; choosing
-a new owner closes the previous panel, and stale close events cannot clear it. On a real/IQ domain change, target sample rate and conversion carrier defaults are derived from the source: IQ to real doubles Fs with carrier FsIQ/2; real to IQ halves Fs with carrier FsReal/4. Subsequent numeric edits remain explicit; changing target Fs does not move the carrier. Drafts do not mutate the current document; Escape discards them.
+one event handler, while each editor keeps its own preview/draft transaction. One `hints::Panel` owner and shared trigger/popover composition route File,
+Analysis and About through the same opening/closing lifecycle; choosing a new
+owner closes the previous panel, and stale close events cannot clear it. On a real/IQ domain change, target sample rate and conversion carrier defaults are derived from the source: IQ to real doubles Fs with carrier FsIQ/2; real to IQ halves Fs with carrier FsReal/4. Subsequent numeric edits remain explicit; changing target Fs does not move the carrier. Drafts do not mutate the current document; Escape discards them.
 
 `shell/property_advice.rs` shares measured callout placement, dismissal, standard close
 Button and hover reopening of the same balloon between Range and automatic sample-format changes; stock hover fallback is used only without side room. Format
@@ -336,3 +337,69 @@ only U8/I16 and its existing domain-preserving fallback. The document format hin
 identifies signed 24-bit integers; raw opening hints, configuration/session tokens,
 CLI help and reports use the same parsed core sample type. No new widget or input
 handling is introduced. See the current [control inventory](../ui/124-inventory.md).
+
+## Shared information-panel and tooltip policy (#246)
+
+File information, Analysis settings and About Argand open explicitly through their
+standard buttons, menu entries or existing shortcuts, taking normal Popover focus.
+No panel hover timers, hover previews or additional toolbar Tab stops exist.
+The standard Popover owns native left-button trigger activation and Confirm;
+there is no separate right-button activation or per-button open callback. Repeating
+any own trigger/menu/registered shortcut closes its panel; another trigger switches
+the owner. A shared content backdrop and bubbling status-bar outside press handler
+close panels while native trigger propagation keeps neighbor switches live. Internal
+empty clicks and non-left presses do not add About-specific dismissal. File draft
+and Analysis preview/keep/revert remain content transactions, not separate lifecycle
+controllers.
+File > File information… and F11 open the same properties/conversion panel; the
+Convert button inside performs conversion. View > Analysis settings… uses Ctrl+,
+(Cmd+, on macOS). Status-button tooltips describe the corresponding fields and
+show the same registered shortcut. About retains its logo/branding and uses
+About Argand as its accessible name and tooltip title.
+
+`Shell::external_tooltips_allowed` supplies one per-window eligibility check to
+external toolbar, plot, status and recent-file tooltip registrations. An open
+information/selection panel or application menu removes those registrations;
+deactivation also disables them and closes panels, invalidating deferred opens.
+A suppression epoch is acknowledged from the existing pointer-observer canvas
+after a frame has retired the native registrations, including deferred controls.
+After that epoch is cleared, the active owning window may register fresh native
+builders; an inactive window waits for activation. Fresh registration starts no
+tooltip timer, so the first subsequent pointer motion can show normal help without
+resurrecting old help under a resting pointer. Stale acknowledgements cannot
+release a newer suppression.
+The native GPUI tooltip lifecycle drops active/pending state when its builder is
+removed on the next render. Re-enabling registration alone must not reveal stale
+help under a resting pointer. Internal field help and automatic Range/format advice
+retain their existing behavior. Standard Popover focus, nested Select dismissal,
+Analysis keep/revert and File drafts remain the existing contracts.
+
+File groups Open, optional standard Recent files submenu, Save commands and final
+File information; Analysis settings is a separate final View group. Recent files
+contains at most ten single-line rows and uses native submenu sizing, as do the
+fixed command branches. Menus do not mount a scroll layer. Empty Recent is omitted
+and one separator remains between Open and Save. The frozen recent snapshot and
+1–9/0 shortcuts apply while File or Recent files holds focus. Permanent commands
+remain drawn and unavailable commands are disabled. Analysis remains
+document-dependent because its standard Popover is anchored to the document status
+summary. At the supported 640×400 minimum, File information and all ten Recent rows
+must remain pointer- and keyboard-reachable without unnecessary scrollbars.
+
+Without a document, View's grid/scale/orientation/time-format commands remain
+visible but disabled; unavailable Time scale format is a plain disabled item
+without an expandable child. Theme remains available. Edit keycap labels resolve the
+registered Plot bindings even for disabled empty-window commands, while native
+menu dispatch keeps the actual focus target and existing command guards.
+
+Caption Close targets the retained Shell action path without changing actual
+focus. The menu backdrop reserves Linux's existing caption controls and Windows'
+standard Close plus supported minimize/maximize controls, each at the toolkit's
+TITLE_BAR_HEIGHT width. macOS adds no app-painted caption reservation. Toolbar
+and drag surfaces remain blocked. Quit Argand and Ctrl+Q (Cmd+Q on macOS)
+use the same window close request, including conversion cancellation and unsaved
+Save/Discard/Cancel protection. The overlay shortcut fallback is registered for
+its owning window, not an application-wide unconditional quit.
+
+Before close confirmation, the existing close transaction dismisses nested
+Select, menus and information panels with keep semantics so deferred overlays
+cannot cover the unsaved dialog. Conversion/replacement guards remain in force.

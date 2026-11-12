@@ -14,10 +14,6 @@ pub fn display_date(date: &str) -> String {
     date.replacen('T', " ", 1)
 }
 
-pub fn title() -> String {
-    format!("{NAME} {VERSION}")
-}
-
 #[cfg(test)]
 #[path = "build_metadata_test.rs"]
 mod tests;

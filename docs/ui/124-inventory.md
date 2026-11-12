@@ -146,7 +146,7 @@ commits leave behind.
 | I17 | `shell/hints.rs:157` | The pinned hint's `Popover` open change, which is how the hint opens and closes | R9 | Retained |
 | I18 | `shell/hints.rs:173` | `Cancel` inside the pinned hint's own key context, which closes it and asks for a revert | R9 | Retained |
 | I19 | `shell/settings_ui/mod.rs:283`, `shell/settings_ui/mod.rs:328`, `shell/settings_ui/mod.rs:410`, `shell/plot/plot_ui.rs:289` | Passive `Tooltip` metadata, range, shortcut and unit hints over content | R9 | Retained |
-| I20 | `shell/settings_ui/mod.rs:433` | The analysis summary's hover, which starts the pinned hint's open delay | R9 | Retained |
+| I20 | `shell/settings_ui/mod.rs:433` | The analysis summary's informative tooltip; panel opens explicitly (#246) | R9 | Retained |
 | I35 | `shell/app_menu_ui.rs:383` | The application button's hint, which yields to `NoTooltip` while the menu is open | R4, R9 | Retained |
 | I36 | `shell/app_menu_ui.rs:496`, `shell/app_menu_ui.rs:528` | The orientation segment's and the grid toggle's framed shortcut hints | R6, R9 | Retained |
 | I37 | `shell/plot/plot_ui.rs:568` | A zoom half's framed shortcut hint, naming the axis and its binding | R3, R9 | Retained |
@@ -288,9 +288,8 @@ stock-button outside-release smoke checks were retired in #222.
 place of the one-level behaviour of the former custom menu, because
 `PopupMenu::dismiss` in the locked source dismisses the entire parent chain
 (`gpui-component-0.6.6/src/menu/popup_menu.rs:1052` to `:1081`) and there is no supported
-option to stop it. `NoTooltip` (`shell/app_menu_ui.rs:815`) is the one remaining adapter: an empty
-view that stands in for the trigger's hint while the menu holds it, because the trigger
-`Button` is a stock component whose tooltip cannot be suppressed.
+option to stop it. External tooltip registration is now conditional on the shared
+per-window eligibility check (#246); no empty-view tooltip substitute remains.
 
 Covering tests: `the_button_and_the_key_open_the_menu_with_the_keyboard_in_it`,
 `a_click_on_the_button_closes_the_menu_and_leaves_it_closed`,
@@ -432,7 +431,7 @@ Verified limitations, both already met in code:
   occludes, while the pinned hint's backdrop (`shell/hints.rs:184` to `:196`) does occlude,
   because while it is open the plot must get no wheel at all.
 
-Covering tests: `a_short_hover_opens_nothing`, `leaving_the_trigger_keeps_the_hint_open`,
+Covering tests: `even_a_long_hover_never_opens_a_panel`, `leaving_the_trigger_keeps_the_hint_open`,
 `an_open_hint_keeps_the_plot_from_input`,
 `a_click_outside_closes_the_hint_and_goes_no_further`,
 `enter_closes_the_hint_and_keeps_the_values`, `space_leaves_the_hint_open`,
@@ -574,9 +573,10 @@ only automated behavior, not desktop interaction.
 
 `shell/about_ui.rs` adds a standard ghost outline-Tag/version Button at the right end of the title bar,
 a direct PopupMenu command and the existing `hints::pinned` composition over standard Popover. It adds no replacement
-widget. Shell retains one `PinnedHint` and its scoped focus-out subscription;
-window deactivation closes it through the existing activation observer. Surface
-click dismissal is application panel policy. The repository uses the toolkit's
+widget. Shell retains one `PinnedHint` under the common File/Analysis/About
+information-panel owner; no separate About focus-out or surface-click dismissal
+exists. Native left trigger, repeat toggle, outside backdrop and window deactivation
+follow the common adapter policy. The repository uses the toolkit's
 standard `gpui_kit::base::Link`, whose 0.9.1 public re-export supports keyboard,
 focus and accessibility, with application theme styling and external URL opening.
 A scoped Link key context suppresses the PinnedHint Enter binding so the standard
@@ -585,3 +585,17 @@ The older `component::link::Link` is pointer-only in the locked version and is n
 used. `about_ui_test.rs` covers menu/button opening, repeated invocation, Escape,
 pointer and keyboard Link activation, focus subtree boundaries, window activation
 and themes. Native interaction and appearance remain a separate acceptance gate.
+
+## Explicit information panels (#246)
+
+File/Analysis/About continue using the existing standard Popover composition.
+Hover opening and its timers are removed. File information, Analysis settings and
+About Argand are shared meaningful labels for tooltips, panels and menu entries;
+File information is reached from File instead of the misleading Edit conversion
+opening label. Existing conversion controls and domain advice are retained.
+External hints are conditionally registered through shared per-window eligibility;
+visible and pending native hints are retired when registration is removed. No
+custom PopoverPanel or toolkit change is introduced. Production regressions cover
+all six actual-button switches, repeated triggers, internal clicks, long hover
+without opening and visible/pending cancellation. Secondary tooltip descriptions
+use the same small muted typography as About's Version/build line.

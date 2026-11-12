@@ -100,6 +100,7 @@ fn snapshot() -> PlotSnapshot {
         frequency_scheme: None,
         frequency: crate::navigation::frequency::View::default(),
         show_grid: true,
+        tooltips_allowed: true,
         show_scale_ui: false,
         pointer_in_window: true,
         selection: None,

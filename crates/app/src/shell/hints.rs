@@ -1,17 +1,4 @@
-//! Hints: passive ones that follow the pointer, and pinned ones that stay until dismissed.
-//!
-//! A passive hint (`.tooltip`) lives only while its trigger is hovered, so the
-//! pointer is never inside it anywhere but over the trigger, and the trigger
-//! keeps the pointer and its clicks.
-//!
-//! A pinned hint is a standard `Popover` that opens when its trigger has been
-//! hovered for a moment and then stays open until a click outside, Enter or
-//! Escape closes it. While it is open it owns the input: it holds keyboard
-//! focus, and a transparent backdrop covers everything else, so the plot gets
-//! no pointer, clicks or wheel, and the click that closes the hint goes no
-//! further. Escape also asks its owner to revert what changed while it was open.
-
-use std::time::{Duration, Instant};
+//! Standard tooltips and explicitly opened information popovers.
 
 use gpui_kit::base::actions::{Cancel, Confirm};
 use gpui_kit::component::Selectable;
@@ -19,8 +6,8 @@ use gpui_kit::component::popover::Popover;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     Anchor, AnyElement, AnyView, App, AppContext, Context, CursorStyle, Entity, EventEmitter,
-    FocusHandle, InteractiveElement, IntoElement, KeyBinding, MouseButton, NoAction, ParentElement,
-    Render, Styled, Task, Window, deferred, div,
+    FocusHandle, InteractiveElement, IntoElement, KeyBinding, NoAction, ParentElement, Render,
+    Styled, Window, deferred, div,
 };
 
 /// The key context of a pinned hint's content, inside the popover's own.
@@ -34,18 +21,24 @@ pub(super) fn init(cx: &mut App) {
     ]);
 }
 
-/// How long the trigger must be hovered before a pinned hint opens, as for a tooltip.
-const OPEN_DELAY: Duration = Duration::from_millis(500);
-
-/// How soon after closing a hover counts as the trigger uncovered, not a new approach.
-const REHOVER_GRACE: Duration = Duration::from_millis(400);
-
 /// The view a `.tooltip` builder returns.
 pub(super) fn passive(
     cx: &mut App,
     build: impl FnOnce(&mut Context<Tooltip>) -> Tooltip,
 ) -> AnyView {
     cx.new(build).into()
+}
+
+/// The information panel that owns interaction in one window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Panel {
+    File,
+    Analysis,
+    About,
+}
+
+impl Panel {
+    pub(super) const ALL: [Self; 3] = [Self::File, Self::Analysis, Self::About];
 }
 
 /// What a pinned hint tells its owner.
@@ -65,9 +58,6 @@ pub(super) struct PinnedHint {
     build: Build,
     content: Option<AnyView>,
     focus: FocusHandle,
-    pending: Option<Task<()>>,
-    /// When the hint last closed, so the trigger uncovered beneath a still pointer does not reopen it.
-    closed_at: Option<Instant>,
 }
 
 impl EventEmitter<Pinned> for PinnedHint {}
@@ -81,8 +71,6 @@ impl PinnedHint {
             build: Box::new(build),
             content: None,
             focus: cx.focus_handle(),
-            pending: None,
-            closed_at: None,
         }
     }
 
@@ -99,20 +87,7 @@ impl PinnedHint {
         self.content.clone()
     }
 
-    /// Open after the trigger has been hovered for a moment, unless the pointer leaves first.
-    pub(super) fn hover(&mut self, hovered: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if !hovered || self.is_open() || self.just_closed() {
-            self.pending = None;
-            return;
-        }
-        self.pending = Some(cx.spawn_in(window, async move |hint, cx| {
-            cx.background_executor().timer(OPEN_DELAY).await;
-            let _ = hint.update_in(cx, |hint, window, cx| hint.open(window, cx));
-        }));
-    }
-
     pub(super) fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.pending = None;
         if self.is_open() {
             return;
         }
@@ -121,16 +96,8 @@ impl PinnedHint {
         cx.notify();
     }
 
-    /// Whether a hover now is the trigger reappearing under the pointer that just closed the hint.
-    fn just_closed(&self) -> bool {
-        self.closed_at
-            .is_some_and(|closed| closed.elapsed() < REHOVER_GRACE)
-    }
-
     pub(super) fn close(&mut self, revert: bool, cx: &mut Context<Self>) {
-        self.pending = None;
         if self.content.take().is_some() {
-            self.closed_at = Some(Instant::now());
             cx.emit(Pinned::Closed { revert });
             cx.notify();
         }
@@ -153,7 +120,7 @@ pub(super) fn pinned(
 ) -> AnyElement {
     let state = hint.read(cx);
     let content = state.content.clone();
-    let focus = state.focus.clone();
+    let focus = state.focus_handle();
     let changed = hint.downgrade();
     let cancelled = hint.downgrade();
     let confirmed = hint.downgrade();
@@ -162,8 +129,6 @@ pub(super) fn pinned(
         .appearance(false)
         // The backdrop closes the hint, so a part of it drawn outside its panel is not outside it.
         .overlay_closable(false)
-        // The left click keeps its own meaning on the trigger.
-        .mouse_button(MouseButton::Right)
         .open(content.is_some())
         .track_focus(&focus)
         .on_open_change(move |open, window, cx| {

@@ -2,9 +2,9 @@
 
 use gpui_kit::component::{ActiveTheme, Icon, IconName, Sizable};
 use gpui_kit::{
-    App, Bounds, Decorations, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    Pixels, StatefulInteractiveElement, Styled, Window, div, point, prelude::FluentBuilder, px,
-    size,
+    App, Bounds, Decorations, FocusHandle, Hsla, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Pixels, StatefulInteractiveElement, Styled, Window, div, point,
+    prelude::FluentBuilder, px, size,
 };
 
 /// The title bar's colours, muted while the window is not the active one.
@@ -39,8 +39,79 @@ impl TitlePalette {
     }
 }
 
+const CAPTION_ICONS: [IconName; 3] = [
+    IconName::WindowMinimize,
+    IconName::WindowMaximize,
+    IconName::WindowClose,
+];
+
+/// The native-caption-sized controls share their reserved backdrop width.
+pub fn controls_width() -> Pixels {
+    gpui_kit::component::TITLE_BAR_HEIGHT * CAPTION_ICONS.len()
+}
+
+/// Width reserved for the controls actually painted by the window's title bar.
+pub fn menu_caption_width(window: &Window) -> Pixels {
+    caption_width(std::env::consts::OS, window.window_controls())
+}
+
+fn caption_width(platform: &str, controls: gpui_kit::WindowControls) -> Pixels {
+    match platform {
+        "linux" => controls_width(),
+        "windows" => {
+            let count = 1 + usize::from(controls.minimize) + usize::from(controls.maximize);
+            gpui_kit::component::TITLE_BAR_HEIGHT * count
+        }
+        _ => px(0.),
+    }
+}
+
+/// Covers menu-dismissal input while leaving the title bar's caption controls live.
+pub fn menu_backdrop(area: Bounds<Pixels>, caption_width: Pixels) -> gpui_kit::AnyElement {
+    let caption = if caption_width > px(0.) {
+        gpui_kit::component::TITLE_BAR_HEIGHT
+    } else {
+        px(0.)
+    };
+    let cover = |id, left, top, width, height| {
+        div()
+            .id(id)
+            .absolute()
+            .left(left)
+            .top(top)
+            .w(width)
+            .h(height)
+            .occlude()
+            .cursor(gpui_kit::CursorStyle::Arrow)
+    };
+    let backdrop = div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .child(cover(
+            "application-menu-backdrop",
+            area.origin.x,
+            area.origin.y + caption,
+            area.size.width,
+            area.size.height - caption,
+        ))
+        .when(caption > px(0.), |backdrop| {
+            backdrop.child(cover(
+                "application-menu-title-backdrop",
+                area.origin.x,
+                area.origin.y,
+                (area.size.width - caption_width).max(px(0.)),
+                caption,
+            ))
+        });
+    gpui_kit::deferred(backdrop)
+        .with_priority(1)
+        .into_any_element()
+}
+
 /// Linux controls paint their own corners; GPUI only clips children rectangularly.
-pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
+pub fn controls(corner: Pixels, focus: FocusHandle, window: &Window, cx: &App) -> impl IntoElement {
     let palette = TitlePalette::for_window(window, cx);
     let maximize_icon = if window.is_maximized() {
         IconName::WindowRestore
@@ -49,13 +120,14 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
     };
     div().flex().h_full().flex_shrink_0().children(
         [
-            IconName::WindowMinimize,
+            CAPTION_ICONS[0].clone(),
             maximize_icon,
-            IconName::WindowClose,
+            CAPTION_ICONS[2].clone(),
         ]
         .into_iter()
         .enumerate()
         .map(|(index, icon)| {
+            let focus = focus.clone();
             let close = index == 2;
             let [resting, hovered, held] = palette.icon;
             // Close keeps its danger surface, with its icon dimmed while held like the others.
@@ -96,7 +168,7 @@ pub fn controls(corner: Pixels, window: &Window, cx: &App) -> impl IntoElement {
                         0 => window.minimize_window(),
                         1 => window.zoom_window(),
                         // The window decides whether it may close, which unsaved edits can refuse.
-                        _ => window.dispatch_action(Box::new(CloseWindow), cx),
+                        _ => focus.dispatch_action(&CloseWindow, window, cx),
                     }
                 })
                 .child(Icon::new(icon).small())

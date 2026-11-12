@@ -68,25 +68,14 @@ fn toolbar_and_main_menu_open_one_panel_and_escape_restores_focus(cx: &mut TestA
     let h = open(cx);
     click(cx, &h, "about-button");
     assert!(shown(cx, &h));
-    let first = h.shell.read_with(cx, |shell, cx| {
-        shell.about.hint.read(cx).view().expect("About").entity_id()
-    });
     cx.update_window(h.window.into(), |_, window, cx| {
         h.shell
             .update(cx, |shell, cx| shell.show_about(&ShowAbout, window, cx));
     })
     .expect("window");
     frame(cx, &h);
-    assert_eq!(
-        h.shell.read_with(cx, |shell, cx| shell
-            .about
-            .hint
-            .read(cx)
-            .view()
-            .expect("About")
-            .entity_id()),
-        first
-    );
+    assert!(!shown(cx, &h), "repeating the action toggles closed");
+    click(cx, &h, "about-button");
     keys(cx, &h, "escape");
     assert!(!shown(cx, &h));
     assert!(
@@ -106,22 +95,21 @@ fn toolbar_and_main_menu_open_one_panel_and_escape_restores_focus(cx: &mut TestA
 }
 
 #[gpui_kit::test]
-fn panel_clicks_and_repository_activation_dismiss_without_reaching_the_workspace(
-    cx: &mut TestAppContext,
-) {
+fn panel_clicks_and_repository_activation_stay_inside_the_panel(cx: &mut TestAppContext) {
     let h = open(cx);
     click(cx, &h, "about-button");
     click(cx, &h, "about-panel");
-    assert!(!shown(cx, &h));
-    click(cx, &h, "about-button");
+    assert!(shown(cx, &h));
     click(cx, &h, "about-repository");
-    assert!(!shown(cx, &h));
+    assert!(shown(cx, &h));
     assert_eq!(cx.opened_url().as_deref(), Some(about::REPOSITORY));
     assert!(h.shell.read_with(cx, |shell, _| !shell.title_drag_pending));
 }
 
 #[gpui_kit::test]
-fn focus_within_the_link_is_retained_and_keyboard_activation_dismisses(cx: &mut TestAppContext) {
+fn focus_within_the_link_is_retained_and_keyboard_activation_opens_the_url(
+    cx: &mut TestAppContext,
+) {
     let h = open(cx);
     for key in ["enter", "space"] {
         click(cx, &h, "about-button");
@@ -129,20 +117,13 @@ fn focus_within_the_link_is_retained_and_keyboard_activation_dismisses(cx: &mut 
         assert!(shown(cx, &h), "Tab to the repository stays inside About");
         keys(cx, &h, key);
         assert_eq!(cx.opened_url().as_deref(), Some(about::REPOSITORY));
-        assert!(!shown(cx, &h));
-        assert!(
-            cx.update_window(h.window.into(), |_, window, cx| h
-                .shell
-                .read(cx)
-                .focus
-                .is_focused(window))
-                .expect("window")
-        );
+        assert!(shown(cx, &h));
+        keys(cx, &h, "escape");
     }
 }
 
 #[gpui_kit::test]
-fn leaving_the_focus_subtree_or_activating_another_window_dismisses(cx: &mut TestAppContext) {
+fn focus_elsewhere_retains_the_panel_but_deactivation_dismisses(cx: &mut TestAppContext) {
     let h = open(cx);
     click(cx, &h, "about-button");
     cx.update_window(h.window.into(), |_, window, cx| {
@@ -151,8 +132,10 @@ fn leaving_the_focus_subtree_or_activating_another_window_dismisses(cx: &mut Tes
     })
     .expect("window");
     frame(cx, &h);
-    assert!(!shown(cx, &h), "focus left the whole About subtree");
-    click(cx, &h, "about-button");
+    assert!(
+        shown(cx, &h),
+        "ordinary focus change follows the shared Popover policy"
+    );
     let other = cx.add_window(|window, _| {
         window.activate_window();
         Empty

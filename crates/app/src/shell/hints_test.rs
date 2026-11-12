@@ -2,9 +2,10 @@ use super::*;
 use gpui_kit::component::button::Button;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
-    Bounds, Modifiers, ScrollDelta, ScrollEvent, StatefulInteractiveElement, Subscription,
-    TestAppContext, TestSupportExt, VisualTestContext, point, px, size,
+    Bounds, Modifiers, MouseButton, ScrollDelta, ScrollEvent, StatefulInteractiveElement,
+    Subscription, TestAppContext, TestSupportExt, VisualTestContext, point, px, size,
 };
+use std::time::Duration;
 
 gpui_kit::actions!(hint_tests, [Nudge]);
 
@@ -25,13 +26,7 @@ struct Harness {
 
 impl Render for Harness {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let hint = self.hint.clone();
-        let trigger = Button::new("trigger")
-            .tab_stop(false)
-            .label("FFT")
-            .on_hover(move |hovered, window, cx| {
-                hint.update(cx, |hint, cx| hint.hover(*hovered, window, cx))
-            });
+        let trigger = Button::new("trigger").tab_stop(false).label("FFT");
         div()
             .size_full()
             .relative()
@@ -116,9 +111,10 @@ fn open_window(cx: &mut TestAppContext) -> (Entity<Harness>, &mut VisualTestCont
 /// Hovers the trigger long enough to open the hint, then moves away from it.
 fn open_and_leave(cx: &mut TestAppContext) -> (Entity<Harness>, &mut VisualTestContext) {
     let (harness, cx) = open_window(cx);
-    cx.simulate_mouse_move(at(TRIGGER), None, Modifiers::default());
-    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.simulate_mouse_down(at(TRIGGER), MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(at(TRIGGER), MouseButton::Left, Modifiers::default());
     frame(cx);
+    harness.update(cx, |harness, _| harness.presses = 0);
     cx.simulate_mouse_move(at(OUTSIDE), None, Modifiers::default());
     cx.executor().advance_clock(Duration::from_secs(1));
     frame(cx);
@@ -147,9 +143,13 @@ fn nudge(cx: &mut VisualTestContext, harness: &Entity<Harness>) -> usize {
 }
 
 #[gpui_kit::test]
-fn a_short_hover_opens_nothing(cx: &mut TestAppContext) {
+fn even_a_long_hover_never_opens_a_panel(cx: &mut TestAppContext) {
     let (harness, cx) = open_window(cx);
     cx.simulate_mouse_move(at(TRIGGER), None, Modifiers::default());
+    cx.executor().advance_clock(Duration::from_secs(2));
+    frame(cx);
+    assert!(!is_open(cx, &harness));
+    assert_eq!(nudge(cx, &harness), 1, "hover keeps plot focus");
     cx.simulate_mouse_move(at(OUTSIDE), None, Modifiers::default());
     cx.executor().advance_clock(Duration::from_secs(1));
     frame(cx);

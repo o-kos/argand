@@ -107,6 +107,15 @@ pub(super) enum StatusPanel {
     Analysis,
 }
 
+impl From<StatusPanel> for hints::Panel {
+    fn from(panel: StatusPanel) -> Self {
+        match panel {
+            StatusPanel::File => Self::File,
+            StatusPanel::Analysis => Self::Analysis,
+        }
+    }
+}
+
 /// The hover group each status control publishes for its own text.
 const SUMMARY_HOVER: &str = "analysis-summary-hover";
 const RANGE_HOVER: &str = "analysis-range-hover";
@@ -152,93 +161,101 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
 }
 
 impl Shell {
-    fn status_hint(&self, panel: StatusPanel) -> Entity<hints::PinnedHint> {
+    pub(super) fn information_hint(&self, panel: hints::Panel) -> Entity<hints::PinnedHint> {
         match panel {
-            StatusPanel::File => self.conversion.hint.clone(),
-            StatusPanel::Analysis => self.analysis_hint.clone(),
+            hints::Panel::File => self.conversion.hint.clone(),
+            hints::Panel::Analysis => self.analysis_hint.clone(),
+            hints::Panel::About => self.about.hint.clone(),
         }
     }
 
-    fn status_panel_available(&self, panel: StatusPanel) -> bool {
+    fn information_panel_available(&self, panel: hints::Panel) -> bool {
+        if panel == hints::Panel::About {
+            return true;
+        }
         if self.conversion_active() {
             return false;
         }
         match panel {
-            StatusPanel::File => self.conversion_request().is_some(),
-            StatusPanel::Analysis => self.file.is_some(),
+            hints::Panel::File => self.conversion_request().is_some(),
+            hints::Panel::Analysis => self.file.is_some(),
+            hints::Panel::About => true,
         }
     }
 
-    pub(super) fn status_panel_changed(
+    pub(super) fn status_panel_available(&self, panel: StatusPanel) -> bool {
+        self.information_panel_available(panel.into())
+    }
+
+    pub(super) fn information_panel_changed(
         &mut self,
-        panel: StatusPanel,
+        panel: hints::Panel,
         event: hints::Pinned,
         cx: &mut Context<Self>,
     ) {
-        let open = self.status_hint(panel).read(cx).is_open();
-        if open && !self.status_panel_available(panel) {
-            self.status_hint(panel)
+        let open = self.information_hint(panel).read(cx).is_open();
+        if open && !self.information_panel_available(panel) {
+            self.information_hint(panel)
                 .update(cx, |hint, cx| hint.close(false, cx));
             return;
         }
         match event {
             hints::Pinned::Opened if open => {
-                // Choose the new owner before closing the old editor and emitting its Closed event.
-                self.close_about(cx);
-                self.status_panel_request += 1;
-                self.status_panel = Some(panel);
-                let other = match panel {
-                    StatusPanel::File => StatusPanel::Analysis,
-                    StatusPanel::Analysis => StatusPanel::File,
-                };
-                self.status_hint(other)
-                    .update(cx, |hint, cx| hint.close(false, cx));
+                self.suppress_external_tooltips();
+                self.information_panel_request += 1;
+                // Choose the new owner before closing the old editor and delivering Closed.
+                self.information_panel = Some(panel);
+                self.close_other_information_panels(panel, cx);
                 self.close_selection_hint(cx);
+                self.interrupt_plot(cx);
             }
             hints::Pinned::Closed { .. } if !open => {
-                if self.status_panel == Some(panel) {
-                    self.status_panel = None;
+                if self.information_panel == Some(panel) {
+                    self.information_panel = None;
                 }
             }
             _ => return,
         }
-        if panel == StatusPanel::Analysis {
+        if panel == hints::Panel::Analysis {
             self.analysis_panel_changed(event, cx);
         }
         cx.notify();
     }
 
-    pub(super) fn open_status_panel(
+    fn close_other_information_panels(&mut self, panel: hints::Panel, cx: &mut Context<Self>) {
+        for other in hints::Panel::ALL {
+            if other != panel {
+                self.information_hint(other)
+                    .update(cx, |hint, cx| hint.close(false, cx));
+            }
+        }
+    }
+
+    pub(super) fn activate_information_panel(
         &mut self,
-        panel: StatusPanel,
-        toggle: bool,
+        panel: hints::Panel,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.status_panel_available(panel) {
+        if !self.information_panel_available(panel) {
             return;
         }
-        self.close_about(cx);
         self.dismiss_application_menu(window, cx);
-        self.status_panel_request += 1;
-        let request = self.status_panel_request;
-        let hint = self.status_hint(panel);
-        if toggle && hint.read(cx).is_open() {
+        self.information_panel_request += 1;
+        let request = self.information_panel_request;
+        let hint = self.information_hint(panel);
+        if hint.read(cx).is_open() {
             hint.update(cx, |hint, cx| hint.close(false, cx));
             return;
         }
-        let other = match panel {
-            StatusPanel::File => StatusPanel::Analysis,
-            StatusPanel::Analysis => StatusPanel::File,
-        };
-        self.status_hint(other)
-            .update(cx, |hint, cx| hint.close(false, cx));
+        self.close_other_information_panels(panel, cx);
         self.close_selection_hint(cx);
         let owner = cx.entity().downgrade();
         window.defer(cx, move |window, cx| {
             let current = owner.upgrade().is_some_and(|owner| {
                 let shell = owner.read(cx);
-                shell.status_panel_request == request && shell.status_panel_available(panel)
+                shell.information_panel_request == request
+                    && shell.information_panel_available(panel)
             });
             if current {
                 hint.update(cx, |hint, cx| hint.open(window, cx));
@@ -266,24 +283,15 @@ impl Shell {
                 "fft-summary-keeps-focus",
             ),
         };
-        let hint = self.status_hint(panel);
-        let lit = self.status_panel == Some(panel) && hint.read(cx).is_open();
-        let button = status_control(id, group, text, lit, cx)
-            .disabled(!self.status_panel_available(panel))
-            .on_hover(cx.listener(move |shell, hovered, window, cx| {
-                if !shell.status_panel_available(panel) {
-                    return;
-                }
-                shell
-                    .status_hint(panel)
-                    .update(cx, |hint, cx| hint.hover(*hovered, window, cx));
-            }))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |shell, _, window, cx| {
-                    shell.open_status_panel(panel, panel == StatusPanel::Analysis, window, cx);
-                }),
-            );
+        let hint = self.information_hint(panel.into());
+        let lit = self.information_panel == Some(panel.into()) && hint.read(cx).is_open();
+        let mut button =
+            status_control(id, group, text, lit, cx).disabled(!self.status_panel_available(panel));
+        if self.external_tooltips_allowed(cx) {
+            button
+                .interactivity()
+                .tooltip(move |_, cx| status_panel_tooltip(panel, cx));
+        }
         super::app_menu_ui::keeps_focus(
             focus,
             hints::pinned(popover, &hint, button, gpui_kit::Anchor::BottomLeft, cx),
@@ -291,13 +299,13 @@ impl Shell {
         .into_any_element()
     }
 
-    pub(super) fn status_panel_backdrop(
+    pub(super) fn information_panel_backdrop(
         &self,
         area: gpui_kit::Bounds<Pixels>,
         cx: &gpui_kit::App,
     ) -> Option<AnyElement> {
-        self.status_panel
-            .and_then(|panel| hints::backdrop(&self.status_hint(panel), area, cx))
+        self.information_panel
+            .and_then(|panel| hints::backdrop(&self.information_hint(panel), area, cx))
     }
 
     fn set_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
@@ -360,13 +368,12 @@ impl Shell {
     }
 
     pub(super) fn close_hints(&mut self, cx: &mut Context<Self>) {
-        self.close_about(cx);
-        self.status_panel_request += 1;
-        self.close_analysis_hint(cx);
+        self.information_panel_request += 1;
+        for panel in hints::Panel::ALL {
+            self.information_hint(panel)
+                .update(cx, |hint, cx| hint.close(false, cx));
+        }
         self.close_selection_hint(cx);
-        self.conversion
-            .hint
-            .update(cx, |hint, cx| hint.close(false, cx));
     }
 
     /// Close the analysis hint, keeping what was changed while it was open.
@@ -466,6 +473,7 @@ impl Shell {
                 .presentation(self.ready_status_dismissed)
         });
         div()
+            .on_any_mouse_down(cx.listener(|shell, _, _, cx| shell.close_hints(cx)))
             .flex()
             .items_center()
             .gap_2()
@@ -528,9 +536,12 @@ impl Shell {
                             .id("analysis-status")
                             .min_w_0()
                             .max_w(px(140.))
-                            .when_some(hint, |status, hint| {
-                                status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
-                            })
+                            .when_some(
+                                hint.filter(|_| self.external_tooltips_allowed(cx)),
+                                |status, hint| {
+                                    status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
+                                },
+                            )
                             .child(
                                 div()
                                     .overflow_hidden()
@@ -618,10 +629,12 @@ impl Shell {
         };
         let range_hint = range_hint(range_state);
         separated_status_item("analysis-range-item", cx)
-            .tooltip(move |_, cx| {
-                let action =
-                    actionable.then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
-                shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
+            .when(self.external_tooltips_allowed(cx), |element| {
+                element.tooltip(move |_, cx| {
+                    let action = actionable
+                        .then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
+                    shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
+                })
             })
             .child(range_content)
     }
@@ -656,8 +669,52 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_status_panel(StatusPanel::Analysis, true, window, cx);
+        self.activate_information_panel(hints::Panel::Analysis, window, cx);
     }
+}
+
+fn status_panel_tooltip(panel: StatusPanel, cx: &mut gpui_kit::App) -> gpui_kit::AnyView {
+    let (title, description, action): (_, _, Box<dyn Action>) = match panel {
+        StatusPanel::File => (
+            "File information",
+            "View file properties and conversion options",
+            Box::new(ConvertCapture),
+        ),
+        StatusPanel::Analysis => (
+            "Analysis settings",
+            "Adjust FFT, window function and display range",
+            Box::new(EditAnalysis),
+        ),
+    };
+    hints::passive(cx, |_| {
+        Tooltip::element(move |window, cx| {
+            div()
+                .id("shortcut-tooltip")
+                .map(gpui_kit::TestSupportExt::test_support)
+                .max_w(px(420.).min(window.viewport_size().width - px(48.)))
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(title)
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(description),
+                        ),
+                )
+                .when_some(
+                    Kbd::binding_for_action(action.as_ref(), Some("Shell"), window),
+                    |hint, shortcut| hint.child(shortcuts::keycap(shortcut, cx)),
+                )
+        })
+    })
 }
 
 fn separated_status_item(
