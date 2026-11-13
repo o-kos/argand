@@ -22,9 +22,10 @@ promise applies to.
   frequencies relative to zero while retaining the physical reference and selected
   signal band, without recomputing the FFT. Saving a changed reference from RAW
   proposes a new WAVE file and leaves the RAW original untouched (#185).
-- Toggle baseband frequencies with Ctrl+B or the frequency-zero toolbar icon.
+- Toggle baseband frequencies with Ctrl+B or the toolbar icon with arrows toward an axis and a dot below.
   The button/menu/shortcut are unavailable at zero reference, where the scales
-  coincide; the tooltip names the next relative/absolute display action. Committed
+  coincide. The disabled control is unchecked and its tooltip requires a nonzero
+  reference. Enabled tooltips name the next relative/absolute display action. Committed
   reference changes also enable Convert until saved or undone (#185).
 - Reference edits stay in document history until Save and do not update Recent.
   After WAVE/FLAC Save, reopening reads the reference from the file (#185).

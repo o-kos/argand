@@ -41,6 +41,11 @@ project communication are in English: code comments, UI messages, logs, document
 branch and commit names, Issues, Pull Requests and releases. Never state or imply in
 commits, Pull Requests, Issues or releases that an AI tool was used in development.
 
+Tooltip text must never contain semicolons or complex phrasing that calls for one.
+Simplify the message instead of replacing the semicolon with other punctuation.
+For example, use "A nonzero reference frequency is required", not
+"Reference frequency is 0 Hz; both scales are identical".
+
 ## Agent roles and model selection
 
 The owner has approved these defaults; do not ask for model approval again for

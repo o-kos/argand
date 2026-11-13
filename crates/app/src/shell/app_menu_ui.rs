@@ -252,8 +252,8 @@ impl Shell {
         let theme = self.theme_menu(focus.clone(), window, cx);
         let document = self.view.is_some();
         let show_grid = self.session.show_grid;
-        let baseband = self.session.baseband_frequencies;
         let baseband_available = self.can_toggle_baseband();
+        let baseband = baseband_available && self.session.baseband_frequencies;
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
         let analysis = self.status_panel_available(settings_ui::StatusPanel::Analysis);
@@ -807,7 +807,7 @@ impl Shell {
     fn baseband_button(&self, cx: &mut Context<Self>) -> Button {
         let id = "toggle-baseband";
         let enabled = self.can_toggle_baseband();
-        let show = self.session.baseband_frequencies;
+        let show = enabled && self.session.baseband_frequencies;
         let state = match (enabled, show) {
             (false, _) => ToolbarState::Disabled,
             (true, true) => ToolbarState::On,
@@ -820,7 +820,7 @@ impl Shell {
                 "Show frequencies relative to reference"
             }
         } else if self.editing().is_some() {
-            "Reference frequency is 0 Hz; both scales are identical"
+            "A nonzero reference frequency is required"
         } else {
             "Reference frequency is unavailable"
         };

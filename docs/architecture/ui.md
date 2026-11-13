@@ -207,12 +207,13 @@ appears with and without a file and
 contains grid, scale
 controls, orientation, Fit time, Fit frequency (both disabled without a file), Time scale format and Theme; pan/zoom
 commands remain available through keys and gestures rather than menu rows.
-With a document open, the toolbar's frequency-zero spectrum icon beside Grid and Ctrl+B in the plot
-invoke the same Baseband frequencies action as View. The pressed state reflects
-the saved presentation preference. With a zero or unavailable reference, the
+With a document open, the toolbar's FoldHorizontal icon with a filled circle below its axis beside Grid and Ctrl+B in the plot
+invoke the same Baseband frequencies action as View. The check/pressed state reflects
+the saved presentation preference only while the command is available. With a zero or unavailable reference, the
 button and menu item are disabled and the action is inert, retaining the saved
 preference. The tooltip names the next relative/absolute frequency action and
-shortcut, or explains why both scales coincide at zero reference.
+shortcut. At zero reference it reads `A nonzero reference frequency is required`
+without a shortcut.
 The menu is the toolkit's own `PopupMenu`, drawn by a controlled `Popover` on the
 application button, whose tracked focus handle is the menu's own so that the
 popover's open leaves the keyboard inside the menu.

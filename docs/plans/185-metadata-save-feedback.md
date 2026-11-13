@@ -83,9 +83,9 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - [x] Verify icon/disabled/tooltip appearance and behavior in production, full
   local gate and a focused independent review of this owner feedback.
 
-- [ ] Apply the selected tooltip wording and hide inactive baseband checks,
+- [x] Apply the selected tooltip wording and hide inactive baseband checks,
   preserving the saved preference and verifying zero/nonzero/Undo transitions.
-- [ ] Record the tooltip writing rule and complete local gate, production
+- [x] Record the tooltip writing rule and complete local gate, production
   acceptance and independent review of this bounded GUI follow-up (Class B,
   with the existing primary/reviewer assignments).
 
@@ -228,6 +228,28 @@ progress/evidence text changed afterward.
   against the reviewed snapshot; only plan progress/results changed afterward.
 - Owner acceptance of icon appearance remains pending. Native Wayland/Windows/
   macOS remain unperformed; the persistent Saving100 report remains unresolved.
+
+## Selected icon and inactive check follow-up
+
+- Owner chose FoldHorizontal with a filled circle below its central axis. The
+  adapted SVG retains its ISC notice and uses currentColor for every shape.
+  The circle is centered at (12,21), radius 2.5 in the existing 24-unit viewBox.
+- Zero/unavailable reference hides the menu check and toolbar pressed state,
+  while preserving the saved preference. Undo restoring a nonzero reference
+  restores the check and pressed presentation. Enabled action semantics stay intact.
+- At zero reference the tooltip reads "A nonzero reference frequency is required"
+  without an inactive shortcut. Added the owner's general tooltip writing rule
+  to AGENTS.md without including unrelated resource-policy edits.
+- Full fmt/Clippy/907 tests passed, followed by release last. Production X11/Xvfb
+  verified the circle at 20px, enabled next-action tooltips, zero-reference text,
+  unchecked disabled menu, inert button/menu/shortcut with preference retained,
+  Undo restoring checked state, and a 700x600 light theme without clipping.
+- The independent reviewer (gpt-6.1-sol, high) found no substantive findings and
+  checked the exact patch, staged rule, binary identity, screenshots and persisted
+  preference assertions. No findings were rejected. The primary assessed the
+  current source against that snapshot; only this progress/result text changed.
+- Native Wayland/Windows/macOS were not exercised. Appearance remains for owner
+  feedback in Draft; persistent Saving100 remains unresolved.
 
 ## Validation and limits
 
