@@ -22,6 +22,12 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - Owner chose whole Fs for WAVE export: use the standard header's rounded integer
   rate on standalone reopening, retaining exact private DSP metadata in hints.
 - Keep this work in the current Draft PR. Preserve unrelated policy edits.
+- Follow-up owner feedback authorizes Convert after a reference-only edit.
+- Add a Baseband frequencies toolbar toggle beside Grid and a Ctrl+B shortcut,
+  sharing the existing menu action and checked state. Keep numeric input key
+  handling unchanged. The toolbar toggle uses the existing standard Button style.
+- Session reference-override persistence is under discussion. Do not change it
+  as part of this follow-up without an owner decision.
 
 ## Acceptance
 
@@ -32,6 +38,8 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   saved file can be reopened and its samples/reference verified.
 - Failed/cancelled saves and publication/source identity protections remain intact.
 - Convert behavior is explained and any agreed correction verified in production.
+- Baseband toolbar, menu and Ctrl+B stay synchronized; switching preserves the
+  physical reference, capture/history, selection and analysis generation.
 
 ## Tasks
 
@@ -42,6 +50,13 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - [x] Full local fmt/Clippy/test/release-last gate.
 - [x] Metadata/input production acceptance on isolated Xvfb with disposable data/settings.
 - [x] Independent metadata review and current-snapshot assessment.
+- [ ] Enable Convert for committed reference changes relative to the source file;
+  verify conversion, Undo and Save/rebind availability transitions.
+- [ ] Add and exercise Baseband toolbar and shortcut, including tooltip, focus,
+  narrow-window layout and both orientations.
+- [ ] Run a new focused review cycle for the newly authorized Convert/baseband
+  changes, after the local gate and production acceptance. The previous three
+  rounds cover the completed metadata snapshot, not this subsequent scope.
 
 ## Investigation so far
 
@@ -53,9 +68,9 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   have been requested; no speculative save-state correction has been made.
 - IQW is detected by RIFF/WAVE content, not its extension. The existing recording
   contains metadata chunks; no headerless conversion route is needed for it.
-- Convert deliberately ignores metadata-only reference commits. Its active
-  criteria are container, output sample rate, output center and sample type.
-  No product-semantic change to Convert has been authorized or implemented.
+- Convert currently ignores metadata-only reference commits because committing
+  updates both input and output references. The owner has since requested that
+  these edits enable Convert; compare against the opened source baseline too.
 - Stock Input preserves draft text; the numeric wrapper rounds Reference frequency
   on commit/step. Space-grouped editing tolerates changed integer group lengths.
 - Focused regressions passed for integer reference formatting, edited whitespace
