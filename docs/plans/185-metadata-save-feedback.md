@@ -35,9 +35,12 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   standard toolbar Button. Disable the button, View command and shortcut action
   when there is no active capture/reference or the effective reference is zero.
   Keep the saved baseband preference; do not reset it on zero-reference files.
-- Baseband tooltip names the next action: relative-to-reference or absolute
-  frequencies. When unavailable, explain zero reference/identical scales or
-  unavailable reference instead of advertising an action.
+- Baseband tooltip names the next action when enabled. At zero reference use
+  the owner-selected text: "A nonzero reference frequency is required".
+- Hide the Baseband check/pressed state when switching is unavailable, retaining
+  the saved preference so a nonzero reference restores its presentation.
+- Tooltip copy must not contain semicolons or sentence structures that need them.
+  Simplify the message rather than replacing the punctuation.
 
 ## Acceptance
 
@@ -76,6 +79,12 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   pointer/menu/shortcut, including zero/nonzero/Undo and retained preference.
 - [x] Verify icon/disabled/tooltip appearance and behavior in production, full
   local gate and a focused independent review of this owner feedback.
+
+- [ ] Apply the selected tooltip wording and hide inactive baseband checks,
+  preserving the saved preference and verifying zero/nonzero/Undo transitions.
+- [ ] Record the tooltip writing rule and complete local gate, production
+  acceptance and independent review of this bounded GUI follow-up (Class B,
+  with the existing primary/reviewer assignments).
 
 ## Investigation so far
 
