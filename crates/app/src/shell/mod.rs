@@ -1873,64 +1873,71 @@ impl Shell {
             });
         }
         div()
+            .id("start-page")
+            .map(gpui_kit::TestSupportExt::test_support)
             .flex_1()
             .min_h_0()
             .flex()
             .flex_col()
             .items_center()
+            .justify_center()
             .p_4()
-            .gap_2()
-            .when(empty, |page| page.justify_center())
-            .when(!empty, |page| {
-                page.child(
-                    div()
-                        .w(width)
-                        .flex_shrink_0()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Recent files"),
-                )
-                .child(
-                    div()
-                        .id("start-links")
-                        .w(width)
-                        .h(list_height)
-                        .min_h_0()
-                        .overflow_y_scroll()
-                        .flex()
-                        .flex_col()
-                        .items_start()
-                        .gap_1()
-                        .children(recent.into_iter().zip(labels).enumerate().map(
-                            |(index, (entry, label))| {
-                                Self::recent_button(
-                                    entry,
-                                    label,
-                                    index,
-                                    width,
-                                    self.external_tooltips_allowed(cx),
-                                    cx,
-                                )
-                            },
-                        )),
-                )
-                .child(
-                    div()
-                        .w(width)
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("or"),
-                )
-            })
             .child(
                 div()
-                    .w(width)
+                    .id("start-block")
+                    .map(gpui_kit::TestSupportExt::test_support)
+                    .max_w(width)
+                    .min_h_0()
                     .flex()
-                    .flex_shrink_0()
-                    .when(empty, |row| row.justify_center())
-                    // Match the recent row's number column and gap; button padding is shared.
-                    .when(!empty, |row| row.pl_8())
-                    .child(chooser),
+                    .flex_col()
+                    .gap_2()
+                    .when(!empty, |page| {
+                        page.child(
+                            div()
+                                .flex_shrink_0()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Recent files"),
+                        )
+                        .child(
+                            div()
+                                .id("start-links")
+                                .max_w(width)
+                                .h(list_height)
+                                .min_h_0()
+                                .overflow_y_scroll()
+                                .flex()
+                                .flex_col()
+                                .items_start()
+                                .gap_1()
+                                .children(recent.into_iter().zip(labels).enumerate().map(
+                                    |(index, (entry, label))| {
+                                        Self::recent_button(
+                                            entry,
+                                            label,
+                                            index,
+                                            width,
+                                            self.external_tooltips_allowed(cx),
+                                            cx,
+                                        )
+                                    },
+                                )),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("or"),
+                        )
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .flex_shrink_0()
+                            // Match the recent row's number column and gap; button padding is shared.
+                            .when(!empty, |row| row.pl_8())
+                            .child(chooser),
+                    ),
             )
     }
 
@@ -2319,3 +2326,7 @@ mod analysis_hint_tests;
 #[cfg(test)]
 #[path = "shell_frame_observer_test.rs"]
 mod frame_observer_tests;
+
+#[cfg(test)]
+#[path = "shell_start_page_test.rs"]
+mod start_page_tests;

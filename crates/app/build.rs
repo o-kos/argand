@@ -5,7 +5,7 @@ mod build_metadata;
 mod sdk;
 
 fn main() {
-    sdk::validate();
+    sdk::configure();
     let manifest =
         std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_default());
     let root = manifest.join("../..");

@@ -95,14 +95,11 @@ own application dependencies; the separately installed immutable GPUI Kit SDK is
 the shared development artifact and is never rebuilt automatically by an app.
 The standalone SDK producer also uses its own workspace-local `target/`.
 
-The owner-approved baseline covers debug/test, release and check/Clippy artifacts.
-Before initial dependency compilation, agree the installed toolchain and obtain
-explicit approval to build that baseline. Ordinary recompilation of changed project
-code is allowed within the agreed setup. If GPUI Kit or other dependencies need to
-be rebuilt beyond that baseline, stop before rebuilding, explain the concrete cause
-of artifact invalidation, and obtain explicit owner approval. Required validation
-does not waive this approval. Changing from a shared build directory to local
-artifacts can require cold dependency compilation even with unchanged source.
+Initial dependency compilation and ordinary rebuilds for debug/test, release and
+check/Clippy do not require separate owner approval within the agreed toolchain,
+toolkit graph and workspace-local artifact setup. The installed GPUI Kit SDK remains
+immutable and is never rebuilt automatically by an application. Changing artifact
+directories can require cold dependency compilation even with unchanged source.
 Avoid unnecessary feature, profile, compiler, target or RUSTFLAGS changes and
 repeated builds. Keep final binary paths local to their workspace and verify the
 exact built revision before use; a path alone does not identify the source revision.

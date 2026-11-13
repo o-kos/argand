@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -13,6 +14,20 @@ SPEC.loader.exec_module(sdk)
 
 
 class SdkSafety(unittest.TestCase):
+    def test_selection_migrates_target_and_externs_to_native_metadata_namespace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / ".cargo").mkdir()
+            config = root / ".cargo/config.toml"
+            config.write_text(sdk.MARKER + '[build]\ntarget="x86_64-unknown-linux-gnu"\nrustflags=["old-sdk-flags"]\n')
+            manifest = {"artifacts": {"libimage-fixture.rlib": "fixture"}}
+            with patch.object(sdk, "ROOT", root), patch.object(sdk, "verify", return_value=(root, manifest)):
+                sdk.select(root)
+            self.assertEqual(tomllib.loads(config.read_text()), {
+                "build": {"rustflags": ["-Cmetadata=" + sdk.CONSUMER_METADATA]},
+                "env": {"GPUI_KIT_SDK": str(root)},
+            })
+
     def test_native_collection_excludes_system_catalog_and_unrequested_outputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
