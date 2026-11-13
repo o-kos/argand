@@ -340,7 +340,7 @@ fn reference_edit_and_save_rebase_the_picture_and_band_without_changing_samples(
         assert_eq!(shell.extents().unwrap().frequency_offset, 0.);
         assert_eq!(
             shell.editing().unwrap().written_source().hints.center_freq,
-            Some(1_000_000.)
+            None
         );
     });
     let mut source = argand_io::open(&path, &argand_io::OpenHints::default()).unwrap();
@@ -351,6 +351,124 @@ fn reference_edit_and_save_rebase_the_picture_and_band_without_changing_samples(
     for (n, pair) in samples.as_chunks::<2>().0.iter().enumerate() {
         assert_eq!(pair, &[(n % 30_000) as f32 / 32768.; 2]);
     }
+}
+
+#[gpui_kit::test]
+fn reference_edits_do_not_change_recent_and_saved_zero_comes_from_the_file(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx) = open_window(cx);
+    let dir = argand_io::testutil::TempDir::new("reference-recent");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path.clone()), window, cx)
+    });
+    wait_until(cx, &shell, "reference Recent fixture", |shell| {
+        shell.editing().is_some_and(Editing::is_described)
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        let recent = shell.session.recent.clone();
+        assert!(shell.set_reference(1_000_000., window, cx));
+        assert_eq!(shell.session.recent, recent);
+        let entry = &recent[0];
+        shell.open(
+            Origin {
+                path: entry.path.clone(),
+                hints: entry.hints.to_open_hints(),
+            },
+            window,
+            cx,
+        );
+    });
+    assert!(cx.has_pending_prompt());
+    cx.simulate_prompt_answer("Discard");
+    wait_until(cx, &shell, "discarded reference reopening", |shell| {
+        shell.editing().is_some_and(|editing| {
+            editing.is_described() && !editing.is_dirty() && editing.reference() == 0.
+        })
+    });
+    for reference in [1_000_000., 0.] {
+        shell.update_in(cx, |shell, window, cx| {
+            let recent = shell.session.recent.clone();
+            assert!(shell.set_reference(reference, window, cx));
+            assert_eq!(shell.session.recent, recent);
+            shell.save_over(window, cx);
+        });
+        wait_until(
+            cx,
+            &shell,
+            "saved reference without Recent override",
+            |shell| {
+                shell.saving.is_none()
+                    && shell.editing().is_some_and(|editing| {
+                        editing.is_described()
+                            && !editing.is_dirty()
+                            && editing.reference() == reference
+                    })
+            },
+        );
+        shell.read_with(cx, |shell, _| {
+            let origin = shell.file.as_ref().unwrap().state.document.origin();
+            assert_eq!(origin.hints.center_freq, None);
+            assert_eq!(shell.editing().unwrap().file().hints.center_freq, None);
+            let entry = shell
+                .session
+                .recent
+                .iter()
+                .find(|entry| entry.path == path)
+                .unwrap();
+            let hints = entry.hints.to_open_hints();
+            assert_eq!(hints.center_freq, None);
+            let reopened = argand_io::open(&entry.path, &hints).unwrap();
+            assert_eq!(reopened.meta().center_freq, reference);
+        });
+    }
+}
+
+#[gpui_kit::test]
+fn saving_before_open_clears_the_published_files_recent_reference_override(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx) = open_window(cx);
+    let dir = argand_io::testutil::TempDir::new("reference-pending-open");
+    let path = dir.join("first.wav");
+    let second = dir.join("second.wav");
+    write_wave(&path, 2400);
+    write_wave(&second, 4800);
+    shell.update_in(cx, |shell, window, cx| {
+        let mut origin = Origin::new(path.clone());
+        origin.hints.center_freq = Some(1_000_000.);
+        shell.open(origin, window, cx);
+    });
+    wait_until(cx, &shell, "CLI reference fixture", |shell| {
+        shell.editing().is_some_and(Editing::is_described)
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(0., window, cx));
+        shell.open(Origin::new(second.clone()), window, cx);
+    });
+    assert!(cx.has_pending_prompt());
+    cx.simulate_prompt_answer("Save");
+    wait_until(cx, &shell, "save then open", |shell| {
+        shell
+            .editing()
+            .is_some_and(|editing| editing.is_described() && editing.file().meta.source == second)
+    });
+    shell.read_with(cx, |shell, _| {
+        let entry = shell
+            .session
+            .recent
+            .iter()
+            .find(|entry| entry.path == path)
+            .unwrap();
+        let hints = entry.hints.to_open_hints();
+        assert_eq!(hints.center_freq, None);
+        assert_eq!(
+            argand_io::open(&path, &hints).unwrap().meta().center_freq,
+            0.
+        );
+    });
 }
 
 #[gpui_kit::test]

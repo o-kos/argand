@@ -300,15 +300,6 @@ impl Shell {
     }
 
     fn reference_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(file) = self.file.as_mut() else {
-            return;
-        };
-        let Some(editing) = file.editing.as_ref() else {
-            return;
-        };
-        let mut origin = file.state.document.origin().clone();
-        origin.hints.center_freq = Some(editing.reference());
-        self.remember_file(&origin);
         self.frequency_scheme = None;
         self.refresh_titles(window);
         cx.notify();
@@ -505,27 +496,12 @@ impl Shell {
                     shell.save_over_then(Some(pending), window, cx)
                 }
                 0 => shell.save_as_then(false, Some(pending), window, cx),
-                1 => {
-                    shell.discard_reference_hint();
-                    shell.carry_out(pending, window, cx);
-                }
+                1 => shell.carry_out(pending, window, cx),
                 _ => {}
             });
         })
         .detach();
         false
-    }
-
-    fn discard_reference_hint(&mut self) {
-        let Some(file) = self.file.as_mut() else {
-            return;
-        };
-        let Some(editing) = file.editing.as_ref() else {
-            return;
-        };
-        let mut origin = file.state.document.origin().clone();
-        origin.hints.center_freq = editing.file().hints.center_freq;
-        self.remember_file(&origin);
     }
 
     /// Ask whether to save the edits, answering 0 to save, 1 to discard and 2 to cancel.

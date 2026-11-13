@@ -303,7 +303,7 @@ impl Shell {
         written.stamp = saved.stamp;
         if matches!(saved.container, "wav" | "rf64" | "flac") {
             written.meta.center_freq = written.meta.center_freq.round();
-            written.hints.center_freq = Some(written.meta.center_freq);
+            written.hints.center_freq = None;
         }
         if matches!(saved.container, "wav" | "rf64") {
             written.meta.sample_rate = written.meta.sample_rate.round();
@@ -344,6 +344,7 @@ impl Shell {
                     if let Some(file) = self.file.as_mut() {
                         file.state.document.set_origin(origin.clone());
                     }
+                    self.remember_file(&origin);
                     if restart
                         && let Some((saved_start, _unstarted)) =
                             self.swap_readers(&origin, window, cx)

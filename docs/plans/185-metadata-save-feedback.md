@@ -60,11 +60,11 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - [x] Run a new focused review cycle for the newly authorized Convert/baseband
   changes, after the local gate and production acceptance. The previous three
   rounds cover the completed metadata snapshot, not this subsequent scope.
-- [ ] Remove Recent updates on reference edits/discard and published-file
+- [x] Remove Recent updates on reference edits/discard and published-file
   reference overrides; restore legacy session zero-as-absent representation.
-- [ ] Verify unsaved edits do not alter Recent; Save and later reopening use
+- [x] Verify unsaved edits do not alter Recent; Save and later reopening use
   file metadata, including zero, with RAW and conversion behavior preserved.
-- [ ] Full gate, production acceptance and independent review of this removal.
+- [x] Full gate, production acceptance and independent review of this removal.
 
 ## Investigation so far
 
@@ -157,6 +157,36 @@ progress/evidence text changed afterward.
   toolbar width/title-drag exclusion and supplied production evidence. The
   primary assessed the current source against that snapshot; only this result
   and progress text changed after review. Saving remains open.
+
+## Remove reference edits from session
+
+- Removed Recent writes from metadata commit/Undo/Redo and Discard. Document
+  history still owns unsaved reference changes and the ordinary save prompt.
+- Successful WAVE/FLAC publication clears the reference opening override so the
+  file is authoritative on reopening; private DSP and unchanged RAW opening
+  hints retain their existing contracts.
+- Restored the legacy session reference representation: zero means no CLI
+  override. Version 12 remains for the baseband preference alone. No heuristic
+  cleanup of older, indistinguishable CLI versus edited reference values.
+- Formatting, Clippy and all 907 tests passed, followed by release build last,
+  including actual Recent unchanged
+  assertions, Discard/reopen and nonzero/zero Save/reopen without an override.
+- Production Linux X11/Xvfb acceptance verified unchanged Recent on disk during
+  an unsaved edit and the original file reference after restart/Recent reopening.
+  Nonzero WAVE Save/reopen and explicit CLI reference -> zero -> Save-before-Close
+  -> fresh Recent reopening used file metadata without an override. All sample
+  bytes stayed identical. FLAC Save/restart/Recent used AUXI without an override
+  and retained PCM MD5. Only disposable copies/settings and owned displays used.
+- Removal review round 1 found one P2: a pending Open/Close could run before
+  rebound refreshed Recent, retaining an old CLI reference override. Accepted:
+  remember the published origin immediately after successful commit, before
+  continuing the pending operation. Added a nonzero CLI reference -> zero ->
+  Save-before-Open regression; the same ordering covers Close.
+- Round 2 found no further substantive issues. The independent reviewer checked
+  the corrected publication ordering, regression, exact production binary and
+  supplied runtime/sample evidence. No findings rejected. The primary assessed
+  the current code against that snapshot; only this progress/result text changed
+  after review. Native Wayland/Windows/macOS and Saving100 remain unverified/open.
 
 ## Validation and limits
 

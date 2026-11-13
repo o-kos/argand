@@ -684,7 +684,7 @@ fn a_hint_this_version_cannot_read_costs_the_flag_and_not_the_entry() {
     let stored = Hints {
         raw: Some("iq_q7@2M".to_owned()),
         sample_type: Some("not-a-type".to_owned()),
-        center_freq: Some(12_579_000.0),
+        center_freq: 12_579_000.0,
         ..Hints::default()
     };
     let hints = stored.to_open_hints();
@@ -1309,7 +1309,7 @@ fn a_stored_zero_frequency_leaves_the_file_to_decide() {
 }
 
 #[test]
-fn explicit_zero_and_baseband_survive_current_sessions_but_legacy_zero_is_absent() {
+fn baseband_survives_sessions_and_zero_retains_its_legacy_absent_meaning() {
     let dir = TempDir::new("reference-session");
     let path = dir.join(FILE_NAME);
     let mut session = Session {
@@ -1326,7 +1326,7 @@ fn explicit_zero_and_baseband_survive_current_sessions_but_legacy_zero_is_absent
     let text = toml::to_string(&session).unwrap();
     let loaded = Session::parse_payload(&path, &text).unwrap();
     assert!(loaded.baseband_frequencies);
-    assert_eq!(loaded.recent[0].hints.to_open_hints().center_freq, Some(0.));
+    assert_eq!(loaded.recent[0].hints.to_open_hints().center_freq, None);
     let legacy = text.replace("version = 12", "version = 11");
     let loaded = Session::parse_payload(&path, &legacy).unwrap();
     assert_eq!(loaded.recent[0].hints.to_open_hints().center_freq, None);

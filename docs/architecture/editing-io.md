@@ -72,10 +72,9 @@ Private DSP backing retains exact rate/reference through explicit opening hints.
 FLAC gets the Vorbis comment `AUXI` with a whole-Hz reference frequency and
 `ARGAND_SAMPLE_RATE` with the exact sample rate. Opening reads `auxi` for WAVE,
 including decoder-backed layouts, and `AUXI` for FLAC.
-`OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins, and a
-session hint distinguishes explicit zero from an absent override. Session version
-12 migrates legacy zero hints to absent overrides while retaining new explicit
-zeros. CLI opening hints still take precedence over file metadata.
+`OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins at opening.
+Recent retains the pre-existing CLI hints, where stored zero means no override.
+Session version 12 adds only the baseband presentation preference.
 
 Reference frequency is versioned document metadata (#185), alongside the
 selection in the existing capture history. Metadata edits advance the same serial
@@ -83,9 +82,10 @@ used by dirty state and asynchronous save guards, without modifying the immutabl
 source description or requesting an FFT. Undo/Redo over unchanged captures updates
 metadata and presentation only. Save requests use the effective reference;
 source metadata, source stamps and source reading hints remain unchanged.
-Successful saved-source descriptions use the saved reference as their explicit
-opening hint, so an older CLI override cannot defeat the written metadata.
-Discard restores the original opening reference hint in Recent.
+Reference edits, Undo/Redo and Discard do not update Recent. After a successful
+WAVE/FLAC save, the published source and Recent have no reference override:
+reopening reads the reference from the file, including zero. Unchanged headerless
+saves retain their original opening hints. Private DSP hints remain in memory.
 
 `processing/saving.rs` runs one save on its own thread with 4 MiB buffers, progress at most every
 100 ms through a bounded channel and a cancel flag; dropping the `Job` cancels it and waits

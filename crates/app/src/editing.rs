@@ -620,11 +620,9 @@ impl Editing {
     pub fn written_source(&self) -> Source {
         let file = self.file();
         let meta = self.output_meta();
-        let mut hints = file.hints.clone();
-        hints.center_freq = Some(meta.center_freq);
         Source {
             meta,
-            hints,
+            hints: file.hints.clone(),
             stamp: None,
             storage: file.storage,
             computed: None,

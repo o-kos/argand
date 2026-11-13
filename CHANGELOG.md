@@ -24,6 +24,8 @@ promise applies to.
   proposes a new WAVE file and leaves the RAW original untouched (#185).
 - Toggle baseband frequencies with Ctrl+B or the BB toolbar button. Committed
   reference changes also enable Convert until saved or undone (#185).
+- Reference edits stay in document history until Save and do not update Recent.
+  After WAVE/FLAC Save, reopening reads the reference from the file (#185).
 
 - About Argand opens from a version button in the title bar or the application menu and shows package details, the repository link and build commit identity. Its tooltip identifies the version, exact tag, commit and commit date (#107).
 

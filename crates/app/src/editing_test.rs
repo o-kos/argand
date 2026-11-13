@@ -689,7 +689,7 @@ fn reference_history_preserves_samples_selection_and_stale_save_dirty_state() {
     );
     assert_eq!(
         document.written_source().hints.center_freq,
-        Some(14_074_000.25)
+        document.file().hints.center_freq
     );
     document.delete(span(0, 10));
     assert_eq!(document.reference(), 14_074_000.25);
