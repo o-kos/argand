@@ -47,9 +47,19 @@ two distinct initial metadata values under a shared namespace. The full native
 Clippy/test/debug/release gates then passed. The namespace carries no SDK extern,
 search or linker configuration into host compilation.
 
-The validated source was the plan commit plus the submitted local changes. The
-source checksums below bind the tested code independently of later documentation
-and commit bookkeeping. Recheck affected evidence after any source/config change.
+The complete gate was repeated in the isolated `254-native-sdk-output` linked
+worktree at source revision `92372bf2ae34dbd4217e6f5caf81fe9668ff3d5d`:
+6 selection tests, 6 bounded fixtures, formatting, Clippy, 898 tests, native debug
+and release builds, cargo run help and both executable help checks in both profiles.
+Each build again reported 177 artifacts. This worktree contains no
+`target/x86_64-unknown-linux-gnu` directory. Its release app also rendered the empty
+start page on task-owned Xvfb display :273, then the app and display were stopped.
+The original checkout was restored to the parallel #185 branch and its previous
+local policy edits. Its older target-triple artifacts were retained for that task.
+
+The source checksums below bind both validation runs independently of later
+documentation and commit bookkeeping. Recheck affected evidence after any
+source/config change.
 
 | Source | SHA256 |
 | --- | --- |
@@ -67,5 +77,8 @@ bounded fixture and source aliases remain explicitly cfg-gated. Portable source
 compilation still needs the current remote platform checks. Old target-triple
 artifacts are retained while another task may use them.
 
-Independent review round 1 was clean. The plan's consultant assignment was corrected
-as requested. Final evidence review is recorded in the task/PR after it completes.
+Independent review rounds 1 and 2 returned no substantive findings. The factual
+consultant-assignment correction was accepted. Round 2 independently checked the
+source/binary hashes, raw native build/test evidence, executable paths, runtime
+linking and startup screenshot. SDK hashing was not repeated by the reviewer;
+its successful verification remains part of the primary validation evidence.

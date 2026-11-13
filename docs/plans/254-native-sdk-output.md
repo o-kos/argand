@@ -89,5 +89,5 @@ See [native SDK validation](../development/254-native-sdk-validation.md). Native
 Clippy, 898 tests, debug/release builds, cargo run help and real Xvfb startup passed.
 SDK verification confirmed the same installation. Round 1 independent review was
 clean; its factual plan correction about the consultant assignment was accepted.
-Final evidence review follows before presentation. Full source-toolkit rebuilding
+Round 2 returned no substantive findings and checked the final worktree evidence. Full source-toolkit rebuilding
 and other native platforms were not run locally.
