@@ -391,6 +391,25 @@ progress/evidence text changed afterward.
   acceptance and the persistent Saving100 report remain unverified/open. No Ready
   or merge transition is requested.
 
+## Tooltip regression and menu follow-up
+
+- Class A: shared overlay policy and command routing across more than five code
+  files. Primary gpt-6.1-sol medium and fresh read-only reviewer gpt-6.1-sol high.
+- Reproduce the reported Reference frequency tooltip over File information.
+  Audit the earlier About/property-panel regression coverage and reuse one policy
+  for passive property tooltips while File, Reference, Analysis, Selection or
+  About panels are open. Verify restoration after dismissal and an already
+  visible tooltip followed by panel opening.
+- Remove Save to file and its button-only key context. Add Edit -> Reference
+  frequency... using the common command wrapper and the same panel as the status
+  trigger. Saving uses the existing Save command, preserving metadata history.
+- Add targeted failing-before-fix interaction regressions rather than relying on
+  the total passing-test count. Check menu enablement without a document and
+  with a guarded/unavailable source, panel opening, Enter/outside/Escape and Save.
+- Run the full local gate with release last, then production X11/Xvfb transitions
+  on disposable data and isolated settings. Independent review assesses the exact
+  patch and acceptance evidence. Keep Draft and preserve unrelated policy edits.
+
 ## Validation and limits
 
 Record actual runtime observations separately from automated tests. No toolchain,
