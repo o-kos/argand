@@ -9,13 +9,17 @@
 //! rewritten as the window moves. Both are read before the window exists, and
 //! neither can stop it appearing: see [`config`] and [`session`].
 
+#[cfg(not(feature = "source-toolkit"))]
+extern crate image;
 #[cfg(feature = "source-toolkit")]
 extern crate source_image as image;
 
 #[cfg(not(feature = "source-toolkit"))]
-extern crate gpui_kit as gpui;
+extern crate gpui_kit_sdk as gpui;
 #[cfg(not(feature = "source-toolkit"))]
-extern crate gpui_kit as source_gpui_kit;
+extern crate gpui_kit_sdk as gpui_kit;
+#[cfg(not(feature = "source-toolkit"))]
+extern crate gpui_kit_sdk as source_gpui_kit;
 #[cfg(feature = "source-toolkit")]
 extern crate source_gpui_kit as gpui;
 #[cfg(feature = "source-toolkit")]
