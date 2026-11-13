@@ -39,6 +39,9 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   the owner-selected text: "A nonzero reference frequency is required".
 - Hide the Baseband check/pressed state when switching is unavailable, retaining
   the saved preference so a nonzero reference restores its presentation.
+- Owner selected the toolkit FoldHorizontal artwork with an added filled circle
+  at the bottom of its central axis. Use theme-aware currentColor for the circle,
+  retaining the existing standard Button and asset composition.
 - Tooltip copy must not contain semicolons or sentence structures that need them.
   Simplify the message rather than replacing the punctuation.
 
