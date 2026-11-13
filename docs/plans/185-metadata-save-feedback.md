@@ -78,6 +78,29 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - Validate unavailable/available transitions through actual key dispatch and menu
   activation, including Save, editing, file settings, conversion and baseband.
 
+## Status-bar reference redesign (supersedes the earlier UI decisions)
+
+- Class A: GUI/state removal across multiple modules, with existing primary and
+  fresh independent reviewer assignments above.
+- Remove ruler reference buttons/inputs and their label exclusion rectangles.
+  Remove Baseband toolbar/menu/action/shortcut, asset and session preference.
+  Restore session version 11. Frequencies always include the effective reference.
+- Insert the effective reference, including 0 Hz, between the file summary and
+  FFT summary in the status bar, independent of plot orientation. Reuse the
+  existing status control and pinned property panel, standard Input/numeric
+  editor and outlined Button. No new widget.
+- Tooltip identifies Reference frequency. Click opens its editing panel. Editing
+  accepts grouped localized numbers, normalizes to whole Hz on Enter/blur, and
+  commits to document metadata/history without recomputing analysis. Escape
+  dismisses the panel. Save to file commits valid input and invokes the existing
+  guarded Save route, preserving full-document edits and source safety.
+- Verify status-bar ordering, both orientations, light/dark/narrow layouts, panel
+  switching/dismissal, invalid values, keyboard isolation, Save/reopen and sample
+  identity, shared command guards, and version-11 serialization without BB.
+- [ ] Implement removal and status-bar panel, update current architecture.
+- [ ] Full local gate with release last, isolated production Xvfb acceptance.
+- [ ] Fresh independent review, dispositions and Draft PR publication.
+
 ## Acceptance
 
 - WAVE/IQW save writes auxi without argd; reopening uses the whole-Hz reference.
@@ -87,8 +110,8 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   saved file can be reopened and its samples/reference verified.
 - Failed/cancelled saves and publication/source identity protections remain intact.
 - Convert behavior is explained and any agreed correction verified in production.
-- Baseband toolbar, menu and Ctrl+B stay synchronized; switching preserves the
-  physical reference, capture/history, selection and analysis generation.
+- The status-bar reference replaces ruler editing and all Baseband presentation
+  controls; metadata edits retain capture samples and analysis generation.
 
 ## Tasks
 
