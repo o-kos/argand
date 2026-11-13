@@ -45,6 +45,27 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - Tooltip copy must not contain semicolons or sentence structures that need them.
   Simplify the message rather than replacing the punctuation.
 
+## Inline reference control follow-up
+
+- Owner requested direct in-place editing at the frequency-ruler corner: a button
+  with the effective reference becomes a standard Input there, with whole-Hz
+  editing, Enter/blur commit and Escape cancellation. No panel or popover.
+- File information displays only the read-only reference actually declared by the
+  user file, including explicit zero, and omits it when absent. CLI hints and
+  unsaved document edits must not appear as file metadata. Hide technical backing
+  metadata for unsaved conversion results. No session/config changes.
+- Preserve baseband presentation toggle, reference history, Save/Convert behavior,
+  source protections and no-FFT semantics. Exercise both orientations, narrow
+  windows, themes, focus and interaction with ruler gestures/selection readouts.
+- Correct the gap between the circle and the last vertical dash.
+- The Save menu and shortcut must derive availability from the same owner policy.
+  An unavailable shortcut must be inert without adding a Cannot save error.
+  Keep internal save rejection/publication guards intact.
+- Class A: reader provenance and analysis delivery, plus changes across multiple
+  modules. Existing primary/reviewer role assignments apply. Targeted consultant
+  gpt-6-astra medium advised a separate I/O opening description propagated into
+  FileInfo, preserving existing open/open_stamped/reopen compatibility and stamps.
+
 ## Acceptance
 
 - WAVE/IQW save writes auxi without argd; reopening uses the whole-Hz reference.
@@ -88,6 +109,14 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - [x] Record the tooltip writing rule and complete local gate, production
   acceptance and independent review of this bounded GUI follow-up (Class B,
   with the existing primary/reviewer assignments).
+
+- [ ] Propagate declared file reference separately from effective frequency and
+  verify native/fallback WAVE, FLAC, explicit zero, CLI overrides and RAW.
+- [ ] Move reference editing to a standard inline control at the frequency ruler;
+  remove editable reference from File information and verify file-only display.
+- [ ] Join the icon circle to the vertical dash and unify Save command availability.
+- [ ] Run full local gate/release-last, production UI acceptance and fresh review
+  for the inline-control follow-up, including Save/rebind and history transitions.
 
 ## Investigation so far
 
