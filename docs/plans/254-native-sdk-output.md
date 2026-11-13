@@ -91,3 +91,11 @@ SDK verification confirmed the same installation. Round 1 independent review was
 clean; its factual plan correction about the consultant assignment was accepted.
 Round 2 returned no substantive findings and checked the final worktree evidence. Full source-toolkit rebuilding
 and other native platforms were not run locally.
+
+## Integration disposition
+
+On 2026-11-13, the owner directed transfer into the existing #221 worktree and
+removal of the extra #254 worktree. All task commits are retained in #221. PR #252
+supersedes PR #255 and will close #254 after current full validation. The owner
+accepted retention of the documented SDK scheme; publication and merge are
+authorized while the required checks and final assessment remain green.

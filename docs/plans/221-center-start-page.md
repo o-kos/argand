@@ -84,3 +84,23 @@ tracked in [#253](https://github.com/o-kos/argand/issues/253).
 The PR stays Draft for owner feedback. Move this plan to completed and request
 full CI only when the agreed implementation is ready for final review under the
 normal PR lifecycle; no release or merge is performed by this preparation.
+
+## Accepted integration and publication
+
+On 2026-11-13, the owner accepted the start-page result and requested autonomous
+publication and merge while required checks remain green. At the owner's request,
+#254's accepted native SDK layout was integrated into this worktree and its extra
+worktree removed. The combined publication is Class A because it includes the SDK
+build integration; the retained reviewer assesses the final integration.
+
+PR #252 will close #221 and #254; PR #255 is superseded. Merge #185 first, then
+integrate current main here and refresh the affected gate, release and review
+before requesting full platform CI. Do not publish or merge an intermediate #185
+state while its independently requested corrections remain in progress.
+
+The owner's shared session was already version 12 from #185; this pre-integration
+binary understands version 11 and deliberately declines reading/writing newer
+sessions. Owner verification used a separate compatible copy. Its real Recent list
+rendered in the current release on isolated Xvfb, and hashing confirmed the shared
+session was unchanged. Integrating #185 must restore ordinary shared-session use;
+do not weaken the session version guard or downgrade the owner's file.
