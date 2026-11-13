@@ -31,6 +31,13 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   WAVE/FLAC reopening reads the saved reference from the file without an added
   reference override. Preserve original opening parameters for unchanged RAW
   files and the pre-existing CLI opening-hint behavior.
+- Replace the BB abbreviation with a frequency-zero spectrum icon in the same
+  standard toolbar Button. Disable the button, View command and shortcut action
+  when there is no active capture/reference or the effective reference is zero.
+  Keep the saved baseband preference; do not reset it on zero-reference files.
+- Baseband tooltip names the next action: relative-to-reference or absolute
+  frequencies. When unavailable, explain zero reference/identical scales or
+  unavailable reference instead of advertising an action.
 
 ## Acceptance
 
@@ -65,6 +72,10 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - [x] Verify unsaved edits do not alter Recent; Save and later reopening use
   file metadata, including zero, with RAW and conversion behavior preserved.
 - [x] Full gate, production acceptance and independent review of this removal.
+- [ ] Replace the toolbar abbreviation and unify baseband availability across
+  pointer/menu/shortcut, including zero/nonzero/Undo and retained preference.
+- [ ] Verify icon/disabled/tooltip appearance and behavior in production, full
+  local gate and a focused independent review of this owner feedback.
 
 ## Investigation so far
 
