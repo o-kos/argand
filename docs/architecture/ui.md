@@ -207,6 +207,9 @@ appears with and without a file and
 contains grid, scale
 controls, orientation, Fit time, Fit frequency (both disabled without a file), Time scale format and Theme; pan/zoom
 commands remain available through keys and gestures rather than menu rows.
+With a document open, the toolbar's BB toggle beside Grid and Ctrl+B in the plot
+invoke the same Baseband frequencies action as View. The pressed state reflects
+the saved presentation preference; the tooltip names the next action and shortcut.
 The menu is the toolkit's own `PopupMenu`, drawn by a controlled `Popover` on the
 application button, whose tracked focus handle is the menu's own so that the
 popover's open leaves the keyboard inside the menu.
@@ -319,6 +322,8 @@ and shows an inline error. Escape from a changed reference draft restores its
 last committed value; otherwise it follows the panel's existing dismissal.
 Save/Save As writes the committed reference. Conversion's separate Carrier
 frequency field retains its domain-conversion meaning and draft transaction.
+Convert also accepts a committed reference change relative to the source file;
+Save/rebind establishes the new baseline and Undo can restore the original.
 The baseband View preference persists with other session display preferences.
 
 `processing/conversion.rs` converts a whole immutable edited-capture snapshot into a new WAVE/RF64;

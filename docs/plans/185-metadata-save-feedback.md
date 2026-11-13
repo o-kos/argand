@@ -50,11 +50,11 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - [x] Full local fmt/Clippy/test/release-last gate.
 - [x] Metadata/input production acceptance on isolated Xvfb with disposable data/settings.
 - [x] Independent metadata review and current-snapshot assessment.
-- [ ] Enable Convert for committed reference changes relative to the source file;
+- [x] Enable Convert for committed reference changes relative to the source file;
   verify conversion, Undo and Save/rebind availability transitions.
-- [ ] Add and exercise Baseband toolbar and shortcut, including tooltip, focus,
+- [x] Add and exercise Baseband toolbar and shortcut, including tooltip, focus,
   narrow-window layout and both orientations.
-- [ ] Run a new focused review cycle for the newly authorized Convert/baseband
+- [x] Run a new focused review cycle for the newly authorized Convert/baseband
   changes, after the local gate and production acceptance. The previous three
   rounds cover the completed metadata snapshot, not this subsequent scope.
 
@@ -120,6 +120,34 @@ progress/evidence text changed afterward.
   active until the save-status report is resolved. Do not mark the combined task
   complete or move the PR Ready. Native Wayland/Windows/macOS acceptance is not
   established by these Xvfb checks.
+
+## Baseband and Convert follow-up
+
+- Added Ctrl+B in the Plot context and the existing standard toolbar Button
+  labelled BB beside Grid. Menu, toolbar and shortcut invoke ToggleBaseband.
+- Convert compares the effective reference with the opened source metadata as
+  well as its existing conversion options. The retained panel refreshes that
+  baseline after Save; a newly opened panel also detects an already edited source.
+- Full local formatting, Clippy and 905 tests passed; production release built
+  last. The first test run exposed an unsuitable synthetic-document focus fixture;
+  the corrected test uses a real ready I/Q capture. No product change was made
+  to accommodate that fixture.
+- Production Linux X11 on task-owned Xvfb: actual pointer and keyboard toggles,
+  tooltip/shortcut and menu check state, both orientations, a 700x600 window and
+  light/dark themes were exercised. Reference-only Convert enabled after Enter,
+  disabled after Undo and Save, and created a new unsaved capture when clicked.
+- The 30-minute IQW copy saved reference 12579011; Convert wrote 12579012 in
+  its private backing. All 172800000 sample bytes had the same SHA256. Saving
+  status disappeared after completion without further input in this X11 run.
+- The owner's Wayland-environment process journal records another completed
+  Save-over. This does not establish its visible state or explain the reported
+  stale Saving status. That defect remains unresolved; no speculative fix.
+- Session override persistence remains unchanged pending the owner's decision.
+- The independent follow-up review returned no substantive findings. It covered
+  source baseline/freshness, publication protections, shared action/focus,
+  toolbar width/title-drag exclusion and supplied production evidence. The
+  primary assessed the current source against that snapshot; only this result
+  and progress text changed after review. Saving remains open.
 
 ## Validation and limits
 

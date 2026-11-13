@@ -597,10 +597,12 @@ impl Shell {
                 let separator = div().w(px(1.)).h(px(16.)).mx_1().bg(cx.theme().border);
                 let orientation = self.orientation_segments(cx);
                 let grid = self.grid_button(cx);
+                let baseband = self.baseband_button(cx);
                 let selection = self.selection_segments(cx);
                 bar.child(separator)
                     .child(title_control("title-orientation-control", orientation))
                     .child(title_control("title-grid-control", grid))
+                    .child(title_control("title-baseband-control", baseband))
                     .child(title_control("title-selection-control", selection))
             })
     }
@@ -795,6 +797,44 @@ impl Shell {
                 )
             });
         }
+        button
+    }
+
+    fn baseband_button(&self, cx: &mut Context<Self>) -> Button {
+        let show = self.session.baseband_frequencies;
+        let state = if show {
+            ToolbarState::On
+        } else {
+            ToolbarState::Off
+        };
+        let mut button = Button::new("toggle-baseband")
+            .tab_stop(false)
+            .custom(toolbar_style(state, cx))
+            .when_some(on_surface(state, cx), |button, surface| button.bg(surface))
+            .toggled(show)
+            .small()
+            .w(px(TOOLBAR_HEIGHT))
+            .h(px(TOOLBAR_HEIGHT))
+            .px_0()
+            .label("BB")
+            .on_click(cx.listener(|shell, _, window, cx| {
+                window.focus(&shell.focus_target(cx), cx);
+                window.dispatch_action(Box::new(ToggleBaseband), cx);
+            }));
+        button.interactivity().tooltip(move |_, cx| {
+            shortcut_tooltip(
+                if show {
+                    "Show reference frequencies"
+                } else {
+                    "Show baseband frequencies"
+                }
+                .to_owned(),
+                Some(Box::new(ToggleBaseband)),
+                "Plot",
+                px(360.),
+                cx,
+            )
+        });
         button
     }
 
@@ -1032,8 +1072,8 @@ pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App, document: bool)
     if !document {
         return app;
     }
-    // The two framed segment groups and Grid, the separator, four gaps and its margins.
-    app + px(SEGMENT * 5. + 4. + TOOLBAR_HEIGHT + 1.) + window.rem_size() * 1.5
+    // The two framed segment groups, Grid and Baseband, the separator and five gaps.
+    app + px(SEGMENT * 5. + 4. + TOOLBAR_HEIGHT * 2. + 1.) + window.rem_size() * 1.75
 }
 
 fn app_button_width(window: &Window, cx: &gpui_kit::App) -> Pixels {

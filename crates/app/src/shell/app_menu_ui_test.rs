@@ -91,6 +91,38 @@ fn only_the_other_orientation_segment_switches(cx: &mut TestAppContext) {
     assert!(!vertical(cx, handle));
 }
 
+#[gpui_kit::test]
+fn baseband_button_and_shortcut_share_state_and_return_focus(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    cx.executor().allow_parking();
+    let (shell, cx) = open_window(cx);
+    cx.update(|window, _| assert!(window.try_find("toggle-baseband").is_none()));
+    let dir = argand_io::testutil::TempDir::new("baseband-controls");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path), window, cx)
+    });
+    wait_until(cx, &shell, "baseband plot", |shell| {
+        shell.file.as_ref().is_some_and(|file| {
+            matches!(
+                file.state.document.status(),
+                crate::document::Status::Ready { .. }
+            )
+        })
+    });
+    draw(cx);
+    assert!(!shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
+    click(cx, "toggle-baseband");
+    assert!(shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
+    press(cx, "ctrl-b");
+    assert!(!shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
+    press(cx, "ctrl-b");
+    assert!(shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
+    click(cx, "toggle-baseband");
+    assert!(!shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
+}
+
 /// The window as a person finds it, with the keys the window itself binds.
 fn open_window(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
     cx.update(|cx| {
@@ -442,6 +474,7 @@ fn the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not(cx: &mut TestAp
         at(cx, "orientation-horizontal"),
         frame,
         at(cx, "toggle-grid"),
+        at(cx, "toggle-baseband"),
         at(cx, "about-button"),
         at(cx, "application-menu-button"),
     ] {

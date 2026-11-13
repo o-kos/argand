@@ -2368,6 +2368,9 @@ fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_af
     );
     assert!(!editor.read_with(cx, |editor, _| editor.reference_error));
     commit_and_step_reference(&shell, &input, cx);
+    editor.read_with(cx, |editor, cx| {
+        assert!(editor.changed(&editor.request(cx).unwrap()));
+    });
     let old_stamp = editor.read_with(cx, |editor, _| editor.source_stamp);
     cx.simulate_keystrokes(if cfg!(target_os = "macos") {
         "cmd-s"
@@ -2401,6 +2404,10 @@ fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_af
         assert_ne!(editor.source_stamp, old_stamp);
         let request = editor.request(cx).unwrap();
         assert_eq!(request.input.center_freq, 1_000_000.);
+        assert!(
+            !editor.changed(&request),
+            "Save establishes the new baseline"
+        );
         assert_eq!(request.copy.as_ref().unwrap().meta.center_freq, 1_000_000.);
         assert_eq!(
             request.sources[0].as_ref().unwrap().stamp,
@@ -2411,6 +2418,56 @@ fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_af
             editor.source_stamp
         );
     });
+}
+
+#[gpui_kit::test]
+fn reference_only_convert_opens_after_edit_and_preserves_samples(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let dir = argand_io::testutil::TempDir::new("reference-only-convert");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 2400);
+    let original = std::fs::read(&path).unwrap();
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path.clone()), window, cx)
+    });
+    wait_until(cx, &shell, "reference conversion fixture", |shell| {
+        shell
+            .editing()
+            .is_some_and(crate::editing::Editing::is_described)
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(1_000_000., window, cx));
+        shell.convert_dialog(window, cx);
+    });
+    frame(cx);
+    let button = cx.update(|window, _| window.find("convert-capture").bounds().center());
+    cx.simulate_click(button, gpui_kit::Modifiers::default());
+    wait_until(cx, &shell, "reference-only converted document", |shell| {
+        shell
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+            && shell
+                .editing()
+                .is_some_and(crate::editing::Editing::is_described)
+    });
+    let backing = shell.read_with(cx, |shell, _| {
+        let editing = shell.editing().unwrap();
+        assert_eq!(editing.reference(), 1_000_000.);
+        assert_eq!(editing.len(), 2400);
+        assert!(editing.is_dirty());
+        editing.file().meta.source.clone()
+    });
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    let mut before = argand_io::open(&path, &Default::default()).unwrap();
+    let mut after = argand_io::open(&backing, &Default::default()).unwrap();
+    assert_eq!(after.meta().center_freq, 1_000_000.);
+    let mut expected = vec![0.; 4800];
+    let mut actual = vec![0.; 4800];
+    assert_eq!(before.read(&mut expected).unwrap(), 4800);
+    assert_eq!(after.read(&mut actual).unwrap(), 4800);
+    assert_eq!(actual, expected);
 }
 
 #[gpui_kit::test]

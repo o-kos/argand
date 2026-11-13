@@ -22,6 +22,8 @@ promise applies to.
   frequencies relative to zero while retaining the physical reference and selected
   signal band, without recomputing the FFT. Saving a changed reference from RAW
   proposes a new WAVE file and leaves the RAW original untouched (#185).
+- Toggle baseband frequencies with Ctrl+B or the BB toolbar button. Committed
+  reference changes also enable Convert until saved or undone (#185).
 
 - About Argand opens from a version button in the title bar or the application menu and shows package details, the repository link and build commit identity. Its tooltip identifies the version, exact tag, commit and commit date (#107).
 

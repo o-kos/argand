@@ -203,6 +203,7 @@ struct Editor {
     request: Request,
     physical_reference: Entity<NumericEditor>,
     physical_committed: f64,
+    source_reference: f64,
     source_stamp: Option<argand_io::write::SourceStamp>,
     reference_error: bool,
     rate: Entity<InputState>,
@@ -387,6 +388,7 @@ impl Editor {
         ];
         Self {
             physical_committed: request.input.center_freq,
+            source_reference: request.input.center_freq,
             source_stamp: request
                 .sources
                 .first()
@@ -487,12 +489,13 @@ impl Editor {
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
         if let Some(owner) = &self.owner
-            && let Ok(Some((reference, version, same_capture, stamp, path))) =
-                owner.read_with(cx, |shell, _| {
+            && let Ok(Some((reference, baseline, version, same_capture, stamp, path))) = owner
+                .read_with(cx, |shell, _| {
                     let file = shell.file.as_ref()?;
                     let editing = file.editing.as_ref()?;
                     (Some(file.id) == self.document).then_some((
                         editing.reference(),
+                        editing.file().meta.center_freq,
                         editing.version(),
                         editing.capture() == &self.request.capture,
                         editing.file().stamp,
@@ -500,6 +503,7 @@ impl Editor {
                     ))
                 })
         {
+            self.source_reference = baseline;
             let reference_changed = self.request.input.center_freq != reference;
             let rebound = stamp != self.source_stamp || path != self.request.input.source;
             if rebound
@@ -649,6 +653,7 @@ impl Editor {
 
     fn changed(&self, request: &Request) -> bool {
         request.container != self.request.container
+            || request.input.center_freq != self.source_reference
             || request.output.sample_rate != request.input.sample_rate
             || request.output.center_freq != request.input.center_freq
             || request.output.sample_type != request.input.sample_type
