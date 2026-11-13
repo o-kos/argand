@@ -6,6 +6,15 @@ must use the same installed Rust compiler and approved toolkit graph. Other
 platforms and portable releases use the source mode below. Wireroom adoption is
 separate; do not select another toolkit version to integrate it.
 
+## Accepted development setup
+
+On 2026-11-13, the owner confirmed retaining the separately installed immutable
+SDK for local development, ordinary workspace-local Cargo output paths without an
+explicit native build target, package-scoped SDK linking, and the fixed consumer
+metadata namespace described below. This is a deliberate project-specific build
+integration, not a general recommendation for Rust projects. Portable releases
+and CI continue to build toolkit dependencies from source.
+
 ## Build and install explicitly
 
 First follow the [local resource policy](../../CONTRIBUTING.md#local-rust-and-build-resources):
