@@ -7,7 +7,7 @@ use super::*;
 use crate::processing::conversion::{Converted, Level, Request};
 use crate::processing::saving::{Ended, Update};
 use gpui_kit::TestSupportExt;
-use gpui_kit::base::actions::{Cancel, Confirm};
+use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::IconName;
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::searchable_list::{
@@ -201,11 +201,8 @@ fn converted_name(name: &str, container: argand_io::write::Container) -> String 
 
 struct Editor {
     request: Request,
-    physical_reference: Entity<NumericEditor>,
-    physical_committed: f64,
     source_reference: f64,
     source_stamp: Option<argand_io::write::SourceStamp>,
-    reference_error: bool,
     rate: Entity<InputState>,
     rate_editor: Entity<NumericEditor>,
     reference: Entity<InputState>,
@@ -273,30 +270,6 @@ fn container_picker(
     (container, container_widths)
 }
 
-fn metadata_reference_editor(
-    reference: f64,
-    window: &mut Window,
-    cx: &mut gpui_kit::App,
-) -> Entity<NumericEditor> {
-    cx.new(|cx| {
-        NumericEditor::new(
-            crate::numbers::number(reference.round()),
-            numeric_editor::Config {
-                integer: true,
-                unit: "Hz",
-                step: 1.,
-                minimum: 0.,
-                maximum: f64::from(u32::MAX),
-                minimum_inclusive: true,
-                down: "physical-reference-down",
-                up: "physical-reference-up",
-            },
-            window,
-            cx,
-        )
-    })
-}
-
 fn sample_kind_picker(
     request: &Request,
     window: &mut Window,
@@ -321,7 +294,6 @@ fn sample_kind_picker(
 
 impl Editor {
     fn new(request: Request, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let physical_reference = metadata_reference_editor(request.input.center_freq, window, cx);
         let rate_editor = frequency_editor(
             request.output.sample_rate,
             true,
@@ -348,13 +320,6 @@ impl Editor {
             kind.read(cx).focus_handle(cx),
         ];
         let subscriptions = vec![
-            cx.subscribe_in(
-                &physical_reference,
-                window,
-                |editor, _, event: &numeric_editor::Changed, window, cx| {
-                    editor.commit_physical_reference(event.committed, window, cx);
-                },
-            ),
             cx.observe(&kind, |_, _, cx| cx.notify()),
             cx.observe(&container, |_, _, cx| cx.notify()),
             cx.subscribe(&rate_editor, |_, _, _: &numeric_editor::Changed, cx| {
@@ -387,15 +352,12 @@ impl Editor {
             ),
         ];
         Self {
-            physical_committed: request.input.center_freq,
             source_reference: request.input.center_freq,
             source_stamp: request
                 .sources
                 .first()
                 .and_then(Option::as_ref)
                 .and_then(|source| source.stamp),
-            physical_reference,
-            reference_error: false,
             closed_selects,
             reference_iq: request.output.is_iq(),
             request,
@@ -420,61 +382,10 @@ impl Editor {
         }
     }
 
-    fn commit_physical_reference(
-        &mut self,
-        commit: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let input = self.physical_reference.read(cx).input.clone();
-        let value = crate::numbers::parse::<f64>(input.read(cx).value().as_ref())
-            .ok()
-            .filter(|value| value.is_finite() && (0.0..=f64::from(u32::MAX)).contains(value))
-            .map(f64::round);
-        self.reference_error = value.is_none();
-        if commit
-            && let Some(value) = value
-            && let Some(owner) = self.owner.as_ref().and_then(|owner| owner.upgrade())
-        {
-            let document = self.document;
-            let accepted = owner.update(cx, |shell, cx| {
-                if shell.file.as_ref().map(|file| file.id) != document {
-                    return false;
-                }
-                shell.set_reference(value, window, cx);
-                shell
-                    .editing()
-                    .is_some_and(|editing| editing.reference() == value)
-            });
-            if accepted {
-                self.physical_committed = value;
-            } else {
-                self.reference_error = true;
-            }
-        }
-        cx.notify();
-    }
-
-    fn cancel_reference(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let input = self.physical_reference.read(cx).input.clone();
-        let expected = crate::numbers::number(self.physical_committed.round());
-        if input.read(cx).value().as_ref() != expected {
-            input.update(cx, |input, cx| input.set_value(expected, window, cx));
-            self.reference_error = false;
-            cx.notify();
-        } else {
-            cx.propagate();
-        }
-    }
-
     fn traverse(&self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
         numeric_editor::traverse(
             &self.scope,
-            &[
-                self.physical_reference.clone(),
-                self.rate_editor.clone(),
-                self.reference_editor.clone(),
-            ],
+            &[self.rate_editor.clone(), self.reference_editor.clone()],
             8,
             forward,
             window,
@@ -526,35 +437,28 @@ impl Editor {
                     input.set_value(crate::numbers::number(reference), window, cx)
                 });
             }
-            if reference != self.physical_committed {
-                self.physical_committed = reference;
-                self.physical_reference
-                    .read(cx)
-                    .input
-                    .clone()
-                    .update(cx, |input, cx| {
-                        input.set_value(crate::numbers::number(reference.round()), window, cx)
-                    });
-            }
         }
         if let Some(owner) = &self.owner
-            && let Ok(Some(rows)) = owner.read_with(cx, |shell, _| {
+            && let Ok(Some((rows, unsaved))) = owner.read_with(cx, |shell, _| {
                 let file = shell.file.as_ref()?;
-                (Some(file.id) == self.document)
-                    .then(|| {
-                        file.state
-                            .document
-                            .file_summary()
-                            .map(|summary| summary.hint.rows)
-                    })
-                    .flatten()
+                if Some(file.id) != self.document {
+                    return None;
+                }
+                Some((
+                    file.state.document.file_summary()?.hint.rows,
+                    file.unsaved.is_some(),
+                ))
             })
         {
-            self.details
-                .retain(|(label, _)| label != "Peak" && label != "RMS");
+            self.details.retain(|(label, _)| {
+                label != "Peak" && label != "RMS" && label != "Reference frequency"
+            });
             self.details.extend(
                 rows.into_iter()
-                    .filter(|(label, _)| label == "Peak" || label == "RMS"),
+                    .filter(|(label, _)| !unsaved || label != "Reference frequency")
+                    .filter(|(label, _)| {
+                        label == "Peak" || label == "RMS" || label == "Reference frequency"
+                    }),
             );
         }
     }
@@ -833,9 +737,6 @@ impl Render for Editor {
             .on_action(cx.listener(|editor, _: &FocusPrevious, window, cx| {
                 editor.traverse(false, window, cx);
             }))
-            .on_action(
-                cx.listener(|editor, _: &Cancel, window, cx| editor.cancel_reference(window, cx)),
-            )
             .on_action(|_: &Confirm, _, _| {})
             .flex()
             .flex_col()
@@ -858,24 +759,13 @@ impl Render for Editor {
                     .font_weight(FontWeight::SEMIBOLD)
                     .child("File information"),
             )
-            .children(
-                self.details.iter().map(|(label, value)| {
-                    settings_ui::detail_row(label.clone(), value.clone(), cx)
-                }),
-            )
-            .child(presentation::row(
-                "Reference frequency",
-                self.physical_reference.clone(),
-                cx,
-            ))
-            .when(self.reference_error, |panel| {
-                panel.child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().danger)
-                        .child("Enter a reference frequency from 0 to 4294967295 Hz"),
+            .children(self.details.iter().map(|(label, value)| {
+                presentation::row(
+                    label.clone(),
+                    div().min_w_0().text_right().child(value.clone()),
+                    cx,
                 )
-            })
+            }))
             .child(div().border_t_1().border_color(cx.theme().border))
             .child(presentation::row(
                 "Sample rate",
@@ -931,11 +821,11 @@ fn panel(
             details.retain(|(label, _)| {
                 !matches!(
                     label.as_str(),
-                    "Sample rate" | "Sample format" | "Reference frequency" | "Container"
+                    "Sample rate" | "Sample format" | "Container"
                 )
             });
             if file.unsaved.is_some() {
-                details.retain(|(label, _)| label != "File size");
+                details.retain(|(label, _)| label != "File size" && label != "Reference frequency");
             }
             Some((request, file.id, file.editing.as_ref()?.version(), details))
         })

@@ -820,7 +820,7 @@ pub(in crate::shell) fn outlined_button(
 
 /// A label and its value, in the metadata hint's layout.
 pub(in crate::shell) fn row(
-    label: &'static str,
+    label: impl Into<gpui_kit::SharedString>,
     value: impl IntoElement,
     cx: &gpui_kit::App,
 ) -> impl IntoElement {
@@ -836,7 +836,7 @@ pub(in crate::shell) fn row(
                 .flex_shrink_0()
                 .whitespace_nowrap()
                 .text_color(cx.theme().muted_foreground)
-                .child(label),
+                .child(label.into()),
         )
         .child(div().flex_1().min_w_0().flex().justify_end().child(value))
 }

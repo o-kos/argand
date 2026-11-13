@@ -41,6 +41,7 @@ mod shortcuts;
 mod backdrop;
 mod badge_entry;
 
+mod command;
 mod conversion_ui;
 mod disk_change_ui;
 mod editing_ui;
@@ -96,13 +97,14 @@ struct OpenRecent {
 pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     editing_ui::init(cx);
     badge_entry::init(cx);
+    plot::reference_ui::init(cx);
     selection_panel::init(cx);
     about_ui::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([
         KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
-        KeyBinding::new("f11", ConvertCapture, None),
+        command::binding("f11", ConvertCapture, None),
         KeyBinding::new(
             if cfg!(target_os = "macos") {
                 "cmd-q"
@@ -116,7 +118,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
         KeyBinding::new("shift-tab", FocusPrevious, Some("FileInformation")),
         KeyBinding::new("tab", FocusNext, Some("Shell")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
-        KeyBinding::new(
+        command::binding(
             if cfg!(target_os = "macos") {
                 "cmd-o"
             } else {
@@ -125,7 +127,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
             ChooseFile,
             None,
         ),
-        KeyBinding::new(
+        command::binding(
             if cfg!(target_os = "macos") {
                 "cmd-s"
             } else {
@@ -134,7 +136,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
             Save,
             None,
         ),
-        KeyBinding::new(
+        command::binding(
             if cfg!(target_os = "macos") {
                 "cmd-shift-s"
             } else {
@@ -143,7 +145,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
             SaveAs,
             None,
         ),
-        KeyBinding::new(
+        command::binding(
             if cfg!(target_os = "macos") {
                 "cmd-alt-s"
             } else {
@@ -1402,53 +1404,14 @@ impl Shell {
             }
         });
         // Popup focus sits outside the shell subtree; defer until dispatch releases the window.
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &ChooseFile, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ = shell.update_in(cx, Self::choose_file);
-                });
-            }
+        command::bind::<ChooseFile>(shell.clone(), cx, Self::choose_file);
+        command::bind::<Save>(shell.clone(), cx, Self::save_over);
+        command::bind::<SaveAs>(shell.clone(), cx, |shell, window, cx| {
+            shell.save_as(false, window, cx)
         });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &Save, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ = shell.update_in(cx, |shell, window, cx| shell.save_over(window, cx));
-                });
-            }
-        });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &SaveAs, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ =
-                        shell.update_in(cx, |shell, window, cx| shell.save_as(false, window, cx));
-                });
-            }
-        });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &ConvertCapture, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ =
-                        shell.update_in(cx, |shell, window, cx| shell.convert_dialog(window, cx));
-                });
-            }
-        });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &SaveSelectionAs, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ =
-                        shell.update_in(cx, |shell, window, cx| shell.save_as(true, window, cx));
-                });
-            }
+        command::bind::<ConvertCapture>(shell.clone(), cx, Self::convert_dialog);
+        command::bind::<SaveSelectionAs>(shell.clone(), cx, |shell, window, cx| {
+            shell.save_as(true, window, cx)
         });
         cx.on_action({
             let shell = shell.clone();
@@ -1459,15 +1422,7 @@ impl Shell {
                 });
             }
         });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &EditAnalysis, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ = shell.update_in(cx, Self::deferred_edit_analysis);
-                });
-            }
-        });
+        command::bind::<EditAnalysis>(shell, cx, Self::deferred_edit_analysis);
     }
 
     fn close_owning_window(
@@ -2034,9 +1989,9 @@ impl Render for Shell {
                 })
                 .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
                 .on_action(cx.listener(Self::toggle_application_menu))
-                .on_action(cx.listener(Self::show_about))
+                .on_action(command::listener(cx, Self::show_about))
                 .on_action(cx.listener(Self::open_recent))
-                .on_action(cx.listener(Self::edit_analysis))
+                .on_action(command::listener(cx, Self::edit_analysis))
                 .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
                     shell.use_recommended_range(cx)
                 }))

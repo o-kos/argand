@@ -2,6 +2,7 @@
 
 use super::navigation_ui::*;
 use super::plot_view::{PlotIntent, PlotSnapshot, PlotView};
+use crate::editing::Editing;
 use crate::shell::*;
 use gpui_kit::component::button::ButtonRounded;
 use gpui_kit::component::{Disableable, Icon, IconName};
@@ -35,6 +36,8 @@ impl Shell {
         let (held, first_picture) = self.first_paint_state();
         Some(PlotSnapshot {
             extents,
+            reference: self.editing().map(Editing::reference),
+            reference_enabled: self.is_reference_editable(),
             texture: self.texture.clone(),
             deep: self.deep_preview.clone(),
             backdrop: self.backdrop.clone(),
@@ -61,7 +64,7 @@ impl Shell {
                 Some(saving_ui::Notice::Saved(name)) => Some(format!("Saved {name}").into()),
                 _ => None,
             },
-            edit: self.edit_commands_available(),
+            commands: self.command_availability(),
         })
     }
 
@@ -165,7 +168,7 @@ impl PlotView {
             gutter: self.gutter_floor,
         };
         let view = cx.entity().downgrade();
-        let marks = self.marks(snapshot.selection, extents, snapshot.show_grid, cx);
+        let mut marks = self.marks(snapshot.selection, extents, snapshot.show_grid, cx);
 
         canvas(
             move |bounds, window, cx| {
@@ -239,16 +242,13 @@ impl PlotView {
                     } else {
                         paint_held(texture, plot, held, extents.picture(), orientation, window);
                     }
-                    if let Some((opened_at, painted)) = &snapshot.first_picture
-                        && !painted.swap(true, Ordering::Relaxed)
-                    {
-                        tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
-                    }
+                    mark_first_paint(&snapshot.first_picture);
                 }
                 let panel = Bounds::new(
                     spectrum_origin,
                     size(bounds.size.width - dx, bounds.size.height - dy),
                 );
+                marks.label_exclusion = overlays.reference_bounds;
                 marks.paint(&frame, panel, &labels, &placed, window, cx);
                 overlays.paint(window, cx);
             },
@@ -277,6 +277,7 @@ impl PlotView {
         cx: &Context<Self>,
     ) -> Marks {
         Marks {
+            label_exclusion: None,
             selection,
             badge_colors: [cx.theme().foreground, cx.theme().background],
             colors: axis_colors(cx, show_grid),
@@ -426,6 +427,9 @@ impl PlotView {
 
     fn overlays(&self, snapshot: &PlotSnapshot, cx: &mut Context<Self>) -> PlotOverlays {
         PlotOverlays {
+            reference_width: snapshot.reference.map(|_| self.reference_width()),
+            reference_vertical: snapshot.extents.orientation.vertical(),
+            reference_bounds: None,
             marker: self.paste_marker(snapshot, cx).map(|marker| {
                 div()
                     .relative()
@@ -625,6 +629,9 @@ impl Shell {
 }
 
 struct PlotOverlays {
+    reference_width: Option<f32>,
+    reference_vertical: bool,
+    reference_bounds: Option<Bounds<Pixels>>,
     marker: Option<gpui_kit::AnyElement>,
     controls: Option<gpui_kit::AnyElement>,
 }
@@ -638,6 +645,16 @@ impl PlotOverlays {
         window: &mut Window,
         cx: &mut gpui_kit::App,
     ) -> Self {
+        self.reference_bounds = self.reference_width.map(|width| {
+            let width = window.rem_size() * width;
+            let height = window.rem_size() * super::reference_ui::HEIGHT;
+            let origin = if self.reference_vertical {
+                point(panel.left(), panel.bottom() - height)
+            } else {
+                point(panel.right() - width, panel.top())
+            };
+            Bounds::new(origin, size(width, height))
+        });
         if let Some(marker) = &mut self.marker {
             marker.prepaint_as_root(
                 panel.origin,
@@ -667,6 +684,7 @@ impl PlotOverlays {
 
 /// What is painted over the picture, in order from the selection's tint to the Alt guides.
 struct Marks {
+    label_exclusion: Option<Bounds<Pixels>>,
     selection: Option<waveform::Selected>,
     badge_colors: [gpui_kit::Hsla; 2],
     colors: axes::Colors,
@@ -684,7 +702,15 @@ impl Marks {
         cx: &mut gpui_kit::App,
     ) {
         paint_selection(frame, panel.origin, self.selection, window, cx);
-        axes::paint(frame, panel.origin, labels, self.colors, window, cx);
+        axes::paint(
+            frame,
+            panel.origin,
+            labels,
+            self.colors,
+            self.label_exclusion,
+            window,
+            cx,
+        );
         badges.paint(frame, panel.origin, labels, self.badge_colors, window, cx);
         if let Some(guides) = &self.guides {
             guides.paint(frame, panel, labels, window, cx);
@@ -1291,3 +1317,11 @@ impl DeepPreview {
 #[cfg(test)]
 #[path = "plot_ui_test.rs"]
 mod tests;
+
+fn mark_first_paint(first: &Option<(Instant, Arc<AtomicBool>)>) {
+    if let Some((opened_at, painted)) = first
+        && !painted.swap(true, Ordering::Relaxed)
+    {
+        tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
+    }
+}

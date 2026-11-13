@@ -1681,70 +1681,6 @@ fn sample_choices_fit_and_flac_filters_without_resetting_drafts(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
-fn reference_label_and_full_value_fit_at_default_and_enlarged_font(cx: &mut TestAppContext) {
-    cx.update(|cx| {
-        gpui_kit::init(cx);
-        settings_ui::init(cx);
-    });
-    for rem in [16., 24.] {
-        cx.update(|cx| {
-            gpui_kit::component::theme::Theme::update(cx, |theme| theme.font_size = px(rem));
-        });
-        let mut reference = None;
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let mut request = request();
-            request.input.center_freq = f64::from(u32::MAX);
-            let editor = cx.new(|cx| Editor::new(request, window, cx));
-            reference = Some(
-                editor
-                    .read(cx)
-                    .physical_reference
-                    .read(cx)
-                    .input
-                    .entity_id(),
-            );
-            Root::new(editor, window, cx)
-        });
-        let reference = reference.unwrap();
-        cx.simulate_resize(size(px(1000.), px(1000.)));
-        frame(cx);
-        cx.update(|window, cx| {
-            assert_eq!(window.rem_size(), px(rem));
-            let down = window.find("physical-reference-down").bounds();
-            let up = window.find("physical-reference-up").bounds();
-            let input = window.find(("input", reference)).bounds();
-            let label = "Reference frequency";
-            let style = gpui_kit::TextStyle {
-                font_family: cx.theme().font_family.clone(),
-                ..Default::default()
-            };
-            let text = window.text_system().shape_line(
-                label.into(),
-                px(rem * 0.875),
-                &[style.to_run(label.len())],
-                None,
-            );
-            assert!(down.left() >= px(rem * 0.75) + text.width);
-            let value = crate::numbers::number(f64::from(u32::MAX));
-            let value_text = window.text_system().shape_line(
-                value.clone().into(),
-                px(rem * 0.875),
-                &[style.to_run(value.len())],
-                None,
-            );
-            assert!(
-                input.size.width
-                    >= value_text.width + gpui_kit::component::Size::Small.input_px() * 2.,
-                "the full reference and input padding must fit: rem={rem}, input={input:?}, text={:?}, padding={:?}",
-                value_text.width,
-                gpui_kit::component::Size::Small.input_px() * 2.
-            );
-            assert!(up.right() <= window.viewport_size().width);
-        });
-    }
-}
-
-#[gpui_kit::test]
 fn format_tooltip_disappears_for_open_select_and_returns_after_close(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);
     let mut editor = None;
@@ -2323,9 +2259,7 @@ fn information_buttons_share_toggle_internal_click_and_six_switch_routes(cx: &mu
 }
 
 #[gpui_kit::test]
-fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_after_save(
-    cx: &mut TestAppContext,
-) {
+fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppContext) {
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let dir = argand_io::testutil::TempDir::new("reference-panel-rebind");
@@ -2351,23 +2285,10 @@ fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_af
             .downcast::<Editor>()
             .unwrap()
     });
-    let input = editor.read_with(cx, |editor, cx| {
-        editor.physical_reference.read(cx).input.clone()
-    });
-    input.update_in(cx, |input, window, cx| {
-        window.focus(&input.focus_handle(cx), cx);
-        input.set_value("bad", window, cx);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.set_reference(1_000_000., window, cx);
     });
     frame(cx);
-    cx.simulate_keystrokes("escape");
-    frame(cx);
-    assert!(shell.read_with(cx, |shell, cx| shell.conversion.hint.read(cx).is_open()));
-    assert_eq!(
-        input.read_with(cx, |input, _| input.value().to_string()),
-        "0"
-    );
-    assert!(!editor.read_with(cx, |editor, _| editor.reference_error));
-    commit_and_step_reference(&shell, &input, cx);
     editor.read_with(cx, |editor, cx| {
         assert!(editor.changed(&editor.request(cx).unwrap()));
     });
@@ -2468,70 +2389,4 @@ fn reference_only_convert_opens_after_edit_and_preserves_samples(cx: &mut TestAp
     assert_eq!(before.read(&mut expected).unwrap(), 4800);
     assert_eq!(after.read(&mut actual).unwrap(), 4800);
     assert_eq!(actual, expected);
-}
-
-#[gpui_kit::test]
-fn reference_input_preserves_drafts_and_commits_whole_hertz(cx: &mut TestAppContext) {
-    let (_, cx) = panel_window(cx);
-    let editor = cx.update(|window, cx| metadata_reference_editor(14_074_000.4, window, cx));
-    let input = editor.read_with(cx, |editor, _| editor.input.clone());
-    assert_eq!(
-        input.read_with(cx, |input, _| input.value().to_string()),
-        crate::numbers::number(14_074_000.)
-    );
-    input.update_in(cx, |input, window, cx| {
-        input.set_value("14074000.8", window, cx);
-    });
-    assert_eq!(
-        input.read_with(cx, |input, _| input.value().to_string()),
-        "14074000.8",
-        "the draft is untouched"
-    );
-    input.update_in(cx, |_, _, cx| {
-        cx.emit(InputEvent::PressEnter {
-            secondary: false,
-            shift: false,
-        })
-    });
-    cx.run_until_parked();
-    assert_eq!(
-        input.read_with(cx, |input, _| input.value().to_string()),
-        crate::numbers::number(14_074_001.)
-    );
-}
-
-fn commit_and_step_reference(
-    shell: &Entity<Shell>,
-    input: &Entity<gpui_kit::component::input::InputState>,
-    cx: &mut gpui_kit::VisualTestContext,
-) {
-    input.update_in(cx, |input, window, cx| {
-        input.set_value("1000000.4", window, cx);
-        cx.emit(InputEvent::PressEnter {
-            secondary: false,
-            shift: false,
-        });
-    });
-    frame(cx);
-    assert_eq!(
-        shell.read_with(cx, |shell, _| shell.editing().unwrap().reference()),
-        1_000_000.
-    );
-    assert_eq!(
-        input.read_with(cx, |input, _| input.value().to_string()),
-        crate::numbers::number(1_000_000.)
-    );
-    cx.simulate_keystrokes("up");
-    frame(cx);
-    assert_eq!(
-        shell.read_with(cx, |shell, _| shell.editing().unwrap().reference()),
-        1_000_001.
-    );
-    cx.simulate_keystrokes("down");
-    frame(cx);
-    assert_eq!(
-        shell.read_with(cx, |shell, _| shell.editing().unwrap().reference()),
-        1_000_000.
-    );
-    frame(cx);
 }

@@ -70,6 +70,10 @@ pub(super) struct Readers {
 }
 
 impl Shell {
+    pub(super) fn can_save_edits(&self) -> bool {
+        self.can_save_over().is_ok() || (self.save_needs_new_path() && self.can_save(false))
+    }
+
     /// Whether Save can write the edits over the open file now.
     pub(super) fn can_save_over(&self) -> Result<(), Unsavable> {
         let Some(editing) = self.editing() else {

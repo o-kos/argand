@@ -870,3 +870,51 @@ fn headerless_save_preserves_an_unchanged_fractional_reference_hint(cx: &mut Tes
         );
     });
 }
+
+#[gpui_kit::test]
+fn disabled_save_shortcut_is_inert_and_reenables_after_a_reference_edit(cx: &mut TestAppContext) {
+    let (shell, cx) = open_window(cx);
+    cx.update(|_, cx| Shell::bind_choose_file(shell.downgrade(), cx));
+    let dir = argand_io::testutil::TempDir::new("save-shortcut-availability");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path.clone()), window, cx)
+    });
+    wait_until(cx, &shell, "save shortcut fixture", |shell| {
+        shell.editing().is_some_and(Editing::is_described)
+    });
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-s"
+    } else {
+        "ctrl-s"
+    });
+    cx.run_until_parked();
+    shell.read_with(cx, |shell, _| {
+        assert!(!shell.can_save_edits());
+        assert!(shell.save_notice.is_none());
+        assert!(shell.saving.is_none());
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.set_reference(12345., window, cx);
+    });
+    assert!(shell.read_with(cx, |shell, _| shell.can_save_edits()));
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-s"
+    } else {
+        "ctrl-s"
+    });
+    wait_until(cx, &shell, "shortcut reference save", |shell| {
+        shell.saving.is_none()
+            && shell
+                .editing()
+                .is_some_and(|e| !e.is_dirty() && e.reference() == 12345.)
+    });
+    assert_eq!(
+        argand_io::open(&path, &Default::default())
+            .unwrap()
+            .meta()
+            .center_freq,
+        12345.
+    );
+}

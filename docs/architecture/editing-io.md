@@ -20,6 +20,10 @@ continues to accept RIFF only.
 
 ## Saving (#186)
 
+The Save menu and app-level shortcut use `Shell::can_save_edits` for availability.
+An unavailable shortcut is inert; internal save continuations retain their detailed
+rejection and source/publication guards.
+
 `argand_io::write::save` writes a capture, or a `SampleSpan` of it, to a new file in the
 source's format. WAVE and headerless sources are copied byte for byte through one `File`
 handle that also reads the header, never through the mapping, under the source's own
@@ -75,6 +79,15 @@ including decoder-backed layouts, and `AUXI` for FLAC.
 `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins at opening.
 Recent retains the pre-existing CLI hints, where stored zero means no override.
 Session version 12 adds only the baseband presentation preference.
+
+`argand_io::open_described` also returns the optional reference declared by the
+file before opening overrides, alongside the reader and its existing checked
+stamp. Native/fallback WAVE reuse the probed header; FLAC retains the tag already
+read by its decoder. RAW has no declared reference. Existing `open`, `open_stamped`
+and `reopen` remain compatible. `analysis::FileInfo` carries this provenance into
+the document for read-only File information. History changes do not alter it;
+successful Save/rebind supplies the newly published file's declaration. No session
+field or extra reference probe is introduced.
 
 Reference frequency is versioned document metadata (#185), alongside the
 selection in the existing capture history. Metadata edits advance the same serial

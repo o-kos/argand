@@ -140,7 +140,7 @@ fn document_range_presentation(
 
 pub(super) fn init(cx: &mut gpui_kit::App) {
     editor::init(cx);
-    cx.bind_keys([KeyBinding::new(
+    cx.bind_keys([command::binding(
         if cfg!(target_os = "macos") {
             "cmd-,"
         } else {

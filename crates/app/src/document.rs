@@ -556,12 +556,12 @@ impl Document {
                 ),
             ),
         ];
-        {
+        if let Some(reference) = self.file_info.declared_reference_freq {
             fields.push(MetadataField::new(
-                format_hz(meta.center_freq),
+                format_hz(reference),
                 MetadataHint::new(
                     "Signal reference frequency",
-                    format_hz(meta.center_freq),
+                    format_hz(reference),
                     "This is the frequency represented by zero in the baseband signal",
                 ),
             ));

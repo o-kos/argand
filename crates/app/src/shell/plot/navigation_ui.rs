@@ -38,13 +38,13 @@ actions!(
 
 pub(in crate::shell) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys([
-        KeyBinding::new("ctrl-g", ToggleGrid, Some("Plot")),
-        KeyBinding::new("ctrl-b", ToggleBaseband, Some("Plot")),
-        KeyBinding::new("ctrl-u", ToggleScaleUi, Some("Plot")),
-        KeyBinding::new("ctrl-t", ToggleOrientation, Some("Plot")),
+        command::binding("ctrl-g", ToggleGrid, Some("Plot")),
+        command::binding("ctrl-b", ToggleBaseband, Some("Plot")),
+        command::binding("ctrl-u", ToggleScaleUi, Some("Plot")),
+        command::binding("ctrl-t", ToggleOrientation, Some("Plot")),
         KeyBinding::new("ctrl-+", ZoomIn, Some("Plot")),
         KeyBinding::new("ctrl--", ZoomOut, Some("Plot")),
-        KeyBinding::new("ctrl-0", FitCapture, Some("Plot")),
+        command::binding("ctrl-0", FitCapture, Some("Plot")),
         KeyBinding::new("left", PanLeft, Some("Plot && Horizontal")),
         KeyBinding::new("right", PanRight, Some("Plot && Horizontal")),
         KeyBinding::new("ctrl-left", PanFarLeft, Some("Plot && Horizontal")),
@@ -61,7 +61,7 @@ pub(in crate::shell) fn init(cx: &mut gpui_kit::App) {
         KeyBinding::new("end", GoEnd, Some("Plot")),
         KeyBinding::new("ctrl-shift-+", FrequencyZoomIn, Some("Plot")),
         KeyBinding::new("ctrl-shift--", FrequencyZoomOut, Some("Plot")),
-        KeyBinding::new("ctrl-shift-0", FitFrequency, Some("Plot")),
+        command::binding("ctrl-shift-0", FitFrequency, Some("Plot")),
         KeyBinding::new("up", PanUp, Some("Plot && Horizontal")),
         KeyBinding::new("down", PanDown, Some("Plot && Horizontal")),
         KeyBinding::new("ctrl-up", PanFarUp, Some("Plot && Horizontal")),
@@ -475,7 +475,7 @@ impl Shell {
     /// Act on what the plot asked for, accepting only views within this capture.
     pub(in crate::shell) fn apply_plot_intent(
         &mut self,
-        _: &gpui_kit::Entity<crate::shell::plot::plot_view::PlotView>,
+        plot: &gpui_kit::Entity<crate::shell::plot::plot_view::PlotView>,
         intent: &crate::shell::plot::plot_view::PlotIntent,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -498,6 +498,22 @@ impl Shell {
                     self.resize(plot, cx);
                 }
                 cx.notify();
+            }
+            PlotIntent::Reference {
+                value,
+                opened,
+                focus,
+            } => {
+                let accepted = self.is_reference_editable()
+                    && self
+                        .editing()
+                        .is_some_and(|editing| editing.reference() == opened);
+                if accepted {
+                    self.set_reference(value, window, cx);
+                }
+                plot.update(cx, |plot, cx| {
+                    plot.reference_committed(accepted, focus, window, cx)
+                });
             }
             PlotIntent::Select(selection) => self.select(selection.unwrap_or_default(), cx),
             PlotIntent::Pointer => {
@@ -726,44 +742,46 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> gpui_kit::Stateful<gpui_kit::Div> {
         content
-            .on_action(cx.listener(|shell, _: &ToggleOrientation, window, cx| {
-                shell.toggle_orientation(window, cx);
-            }))
-            .on_action(cx.listener(|shell, _: &ToggleBaseband, _, cx| {
-                if !shell.can_toggle_baseband() {
-                    return;
-                }
+            .on_action(command::listener(
+                cx,
+                |shell, _: &ToggleOrientation, window, cx| {
+                    shell.toggle_orientation(window, cx);
+                },
+            ))
+            .on_action(command::listener(cx, |shell, _: &ToggleBaseband, _, cx| {
                 shell.session.baseband_frequencies = !shell.session.baseband_frequencies;
                 shell.frequency_scheme = None;
                 shell.save();
                 cx.notify();
             }))
-            .on_action(cx.listener(|shell, _: &ToggleGrid, _, cx| {
+            .on_action(command::listener(cx, |shell, _: &ToggleGrid, _, cx| {
                 shell.session.show_grid = !shell.session.show_grid;
                 shell.save();
                 cx.notify();
             }))
-            .on_action(cx.listener(|shell, _: &ToggleScaleUi, _, cx| {
+            .on_action(command::listener(cx, |shell, _: &ToggleScaleUi, _, cx| {
                 shell.session.show_scale_ui = !shell.session.show_scale_ui;
                 shell.save();
                 cx.notify();
             }))
-            .on_action(cx.listener(|shell, _: &ClockRuler, _, cx| {
+            .on_action(command::listener(cx, |shell, _: &ClockRuler, _, cx| {
                 shell.set_time_ruler(crate::navigation::time_ruler::Mode::Clock, cx)
             }))
-            .on_action(cx.listener(|shell, _: &SecondsRuler, _, cx| {
+            .on_action(command::listener(cx, |shell, _: &SecondsRuler, _, cx| {
                 shell.set_time_ruler(crate::navigation::time_ruler::Mode::Seconds, cx)
             }))
-            .on_action(cx.listener(|shell, _: &SamplesRuler, _, cx| {
+            .on_action(command::listener(cx, |shell, _: &SamplesRuler, _, cx| {
                 shell.set_time_ruler(crate::navigation::time_ruler::Mode::Samples, cx)
             }))
-            .on_action(cx.listener(|shell, _: &SystemTheme, window, cx| {
-                shell.set_theme(Theme::System, window, cx)
-            }))
-            .on_action(cx.listener(|shell, _: &LightTheme, window, cx| {
-                shell.set_theme(Theme::Light, window, cx)
-            }))
-            .on_action(cx.listener(|shell, _: &DarkTheme, window, cx| {
+            .on_action(command::listener(
+                cx,
+                |shell, _: &SystemTheme, window, cx| shell.set_theme(Theme::System, window, cx),
+            ))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &LightTheme, window, cx| shell.set_theme(Theme::Light, window, cx),
+            ))
+            .on_action(command::listener(cx, |shell, _: &DarkTheme, window, cx| {
                 shell.set_theme(Theme::Dark, window, cx)
             }))
     }
@@ -1260,7 +1278,7 @@ impl crate::shell::plot::plot_view::PlotView {
         let panel = self.panel_bounds?;
         let focus = self.focus.clone();
         let owner = cx.entity().downgrade();
-        let can = snapshot.edit;
+        let commands = snapshot.commands;
         let view = snapshot.extents.time.view;
         Some(
             div()
@@ -1276,7 +1294,7 @@ impl crate::shell::plot::plot_view::PlotView {
                     let _ = owner.update(cx, |plot, cx| {
                         plot.track_spectrum_menu(&popup, at, view, window, cx);
                     });
-                    edit_items(menu.action_context(focus.clone()), can)
+                    edit_items(menu.action_context(focus.clone()), commands)
                 })
                 .into_any_element(),
         )
@@ -1308,6 +1326,7 @@ impl crate::shell::plot::plot_view::PlotView {
         let focus = self.focus.clone();
         let owner = cx.entity().downgrade();
         let mode = snapshot.extents.time.mode;
+        let commands = snapshot.commands;
         Some(
             div()
                 .id("time-scale-context")
@@ -1324,7 +1343,7 @@ impl crate::shell::plot::plot_view::PlotView {
                 .context_menu(move |menu, window, cx| {
                     let popup = cx.entity();
                     let _ = owner.update(cx, |plot, cx| plot.track_time_menu(&popup, window, cx));
-                    time_scale_items(menu.action_context(focus.clone()), mode)
+                    time_scale_items(menu.action_context(focus.clone()), mode, commands)
                 })
                 .into_any_element(),
         )
@@ -1341,65 +1360,39 @@ fn rect_contains(rect: axes::Rect, position: gpui_kit::Point<Pixels>) -> bool {
 
 fn edit_items(
     menu: gpui_kit::component::menu::PopupMenu,
-    can: crate::shell::editing_ui::EditCommands,
+    commands: command::Availability,
 ) -> gpui_kit::component::menu::PopupMenu {
     use crate::shell::editing_ui::{
         CopySelection, CutSelection, DeleteSelection, PasteClipboard, PasteHere, SuppressBand,
     };
-    menu.item(
-        PopupMenuItem::new("Cut")
-            .disabled(!can.cut)
-            .action(Box::new(CutSelection)),
-    )
-    .item(
-        PopupMenuItem::new("Copy")
-            .disabled(!can.cut)
-            .action(Box::new(CopySelection)),
-    )
-    .item(
-        PopupMenuItem::new("Paste here")
-            .disabled(!can.paste)
-            .action(Box::new(PasteHere)),
-    )
-    .item(
-        PopupMenuItem::new("Replace selection")
-            .disabled(!can.replace)
-            .action(Box::new(PasteClipboard)),
-    )
-    .item(PopupMenuItem::separator())
-    .item(
-        PopupMenuItem::new("Delete")
-            .disabled(!can.cut)
-            .action(Box::new(DeleteSelection)),
-    )
-    .item(PopupMenuItem::separator())
-    .item(
-        PopupMenuItem::new("Suppress band")
-            .disabled(!can.suppress)
-            .action(Box::new(SuppressBand)),
-    )
+    menu.item(commands.item(CutSelection, PopupMenuItem::new("Cut")))
+        .item(commands.item(CopySelection, PopupMenuItem::new("Copy")))
+        .item(commands.item(PasteHere, PopupMenuItem::new("Paste here")))
+        .item(commands.item(PasteClipboard, PopupMenuItem::new("Replace selection")))
+        .item(PopupMenuItem::separator())
+        .item(commands.item(DeleteSelection, PopupMenuItem::new("Delete")))
+        .item(PopupMenuItem::separator())
+        .item(commands.item(SuppressBand, PopupMenuItem::new("Suppress band")))
 }
 
 fn time_scale_items(
     menu: gpui_kit::component::menu::PopupMenu,
     mode: crate::navigation::time_ruler::Mode,
+    commands: command::Availability,
 ) -> gpui_kit::component::menu::PopupMenu {
     use crate::navigation::time_ruler::Mode;
-    menu.item(
-        PopupMenuItem::new("Hours, minutes, seconds (hms)")
-            .checked(mode == Mode::Clock)
-            .action(Box::new(ClockRuler)),
-    )
-    .item(
-        PopupMenuItem::new("Seconds")
-            .checked(mode == Mode::Seconds)
-            .action(Box::new(SecondsRuler)),
-    )
-    .item(
-        PopupMenuItem::new("Sample numbers")
-            .checked(mode == Mode::Samples)
-            .action(Box::new(SamplesRuler)),
-    )
+    menu.item(commands.item(
+        ClockRuler,
+        PopupMenuItem::new("Hours, minutes, seconds (hms)").checked(mode == Mode::Clock),
+    ))
+    .item(commands.item(
+        SecondsRuler,
+        PopupMenuItem::new("Seconds").checked(mode == Mode::Seconds),
+    ))
+    .item(commands.item(
+        SamplesRuler,
+        PopupMenuItem::new("Sample numbers").checked(mode == Mode::Samples),
+    ))
 }
 
 #[cfg(test)]

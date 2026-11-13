@@ -68,6 +68,8 @@ fn snapshot() -> PlotSnapshot {
     };
     let ink = gpui_kit::rgb(0x808080);
     PlotSnapshot {
+        reference: Some(0.),
+        reference_enabled: true,
         extents: axes::Extents {
             frequency_offset: 0.,
             orientation: crate::navigation::orientation::Mode::Horizontal,
@@ -110,7 +112,7 @@ fn snapshot() -> PlotSnapshot {
         badges: None,
         entry: None,
         notice: None,
-        edit: Default::default(),
+        commands: command::Availability::for_plot_test(),
     }
 }
 

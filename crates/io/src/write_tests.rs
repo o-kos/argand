@@ -1697,3 +1697,44 @@ fn unsigned_adjustment_is_centred_on_128_before_iq_conjugation() {
     run(&adjusted(request(&source, OpenHints::default(), None, target.clone()), true, 0.5)).unwrap();
     assert_eq!(data_bytes(&target), [64, 127, 128, 96]);
 }
+
+#[test]
+fn opening_description_keeps_file_reference_separate_from_overrides() {
+    let dir = TempDir::new("declared-reference");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("plain.wav"), sample_type, 24_000, &signal(sample_type, 64), 1.);
+    let overridden = OpenHints { center_freq: Some(99_000_000.), ..Default::default() };
+    assert_eq!(crate::open_described(&source, &overridden).unwrap().declared_reference_freq, None);
+    let untagged_flac = dir.join("plain.flac");
+    write_flac_fixture(&untagged_flac, 2, 16, 64);
+    assert_eq!(crate::open_described(&untagged_flac, &overridden).unwrap().declared_reference_freq, None);
+    for reference in [0., 12_579_000.] {
+        for container in [Container::Wave, Container::Flac] {
+            let target = dir.join(&format!("saved-{reference}.{}", container.extension()));
+            let mut save = request(&source, OpenHints { center_freq: Some(reference), ..Default::default() }, None, target.clone());
+            save.output = Output::Container(container);
+            run(&save).unwrap();
+            let opened = crate::open_described(&target, &overridden).unwrap();
+            assert_eq!(opened.declared_reference_freq, Some(reference));
+            assert_eq!(opened.source.meta().center_freq, 99_000_000.);
+            assert!(opened.stamp.is_some());
+        }
+    }
+    let fallback = dir.join("fallback.wav");
+    write_extensible(&fallback, 20, 32);
+    assert_eq!(crate::open_described(&fallback, &overridden).unwrap().declared_reference_freq, None);
+    let mut bytes = fs::read(&fallback).unwrap();
+    let mut auxi = vec![0u8; AUXI_LEN];
+    auxi[AUXI_CENTER..AUXI_CENTER + 4].copy_from_slice(&12_345u32.to_le_bytes());
+    let mut chunk = b"auxi".to_vec();
+    chunk.extend_from_slice(&(AUXI_LEN as u32).to_le_bytes()); chunk.extend(auxi);
+    bytes.splice(12..12, chunk); let length = (bytes.len() - 8) as u32;
+    bytes[4..8].copy_from_slice(&length.to_le_bytes()); fs::write(&fallback, bytes).unwrap();
+    let opened = crate::open_described(&fallback, &overridden).unwrap();
+    assert_eq!(opened.declared_reference_freq, Some(12_345.));
+    assert_eq!(opened.source.meta().center_freq, 99_000_000.);
+    let raw = dir.join("raw.iq");
+    write_raw(&raw, SampleFormat::I16, &[0., 0., 1., 1.], 1.);
+    let hints = OpenHints { raw: Some("iq_i16@24k".parse().unwrap()), ..overridden };
+    assert_eq!(crate::open_described(&raw, &hints).unwrap().declared_reference_freq, None);
+}

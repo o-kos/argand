@@ -27,6 +27,7 @@ pub struct DecodedSource {
     decoder: Box<dyn AudioDecoder>,
     track_id: u32,
     meta: SignalMeta,
+    declared_reference_freq: Option<f64>,
     /// Interleaved values already decoded but not yet handed to the caller.
     pending: Vec<f32>,
     pending_pos: usize,
@@ -55,6 +56,10 @@ pub struct DecodeLevels {
 }
 
 impl DecodedSource {
+    pub(crate) fn declared_reference_freq(&self) -> Option<f64> {
+        self.declared_reference_freq
+    }
+
     pub fn open(
         path: &Path,
         container: &'static str,
@@ -246,6 +251,7 @@ impl DecodedSource {
 
         let original_units = original_units(&params);
         let mut source = Self {
+            declared_reference_freq: tagged_freq,
             reader,
             decoder,
             track_id,

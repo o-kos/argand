@@ -140,8 +140,9 @@ mode the offset is effective reference minus source reference; in baseband mode
 it is minus source reference. Selection widths and processing bins do not change.
 The normalized viewport survives either change, without an FFT request.
 `selection_entry::Scale` applies the offset to edge formatting and removes it on
-entry, leaving widths unchanged. File information always shows the physical
-reference, including in baseband mode.
+entry, leaving widths unchanged. The inline reference control always shows the effective physical reference,
+including in baseband mode. File information instead shows only the optional
+read-only reference declared by the opened user file.
 
 After a successful save rebind, the new file becomes the source basis. The held
 foreground grid/image frequency bounds and selected band are translated by the

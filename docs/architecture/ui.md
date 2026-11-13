@@ -214,6 +214,16 @@ button and menu item are disabled and the action is inert, retaining the saved
 preference. The tooltip names the next relative/absolute frequency action and
 shortcut. At zero reference it reads `A nonzero reference frequency is required`
 without a shortcut.
+All Action-backed application and context-menu rows use `shell/command.rs`.
+Its typed command policy owns availability. The shared item wrapper supplies the
+stock menu's disabled state and Action, and guarded focused/deferred handlers
+recheck the same policy at execution. Shortcut bindings retain their normal GPUI
+contexts and dispatch the same Action. An unavailable command is inert, including
+when availability changed after the menu opened. Plot-owned Fit commands consume
+the Shell-supplied availability snapshot without moving focus ownership. Toolbar
+controls for the same commands use that policy too. Internal operation guards
+still protect document state and publication independently of presentation.
+
 The menu is the toolkit's own `PopupMenu`, drawn by a controlled `Popover` on the
 application button, whose tracked focus handle is the menu's own so that the
 popover's open leaves the keyboard inside the menu.
@@ -315,15 +325,21 @@ The start page and the inline recent rows in File share `recent.rs`'s toolkit-ne
 
 ## File information and conversion (#189)
 
-The upper metadata section includes a Reference frequency numeric editor (#185),
-using the existing NumericEditor and whole Hz from 0 through u32::MAX. It rounds
-on commit/step, leaving draft text and cursor untouched during typing. Numeric
-input accepts edited space grouping in the integer part and normalizes it on
-commit; decimal punctuation grouping remains strict. It includes zero and remains
-physical when View > Baseband frequencies is checked. Valid Enter/blur/step
-commits are undoable metadata edits; invalid text leaves the document unchanged
-and shows an inline error. Escape from a changed reference draft restores its
-last committed value; otherwise it follows the panel's existing dismissal.
+The frequency-ruler corner shows the effective physical reference in a standard
+Button (#185). Clicking it replaces the value in place with a standard Input,
+in whole Hz from 0 through u32::MAX, without a panel or popover. Enter/blur commits
+an undoable metadata change and restores the button; Escape discards the draft.
+Typing preserves text/cursor, including edited whitespace grouping. Invalid input
+keeps the document unchanged and the field marked. The Input sits beside the
+plot surface in the dispatch tree so numeric editing never inherits Plot shortcuts
+or Space-to-pan. Availability includes changed-source, replacement and busy guards;
+the document owner rechecks it before acknowledging a commit. Rejected or stale
+requests retain the draft. The control and reserved rectangle scale with rem. Up/Down steps the draft by one
+Hz (ten with Shift). The control follows the frequency axis in either orientation;
+its reserved rectangle excludes intersecting ruler labels rather than cutting them.
+File information shows a read-only Reference frequency only when the user file
+actually declares one, including explicit zero. It excludes opening overrides,
+unsaved edits and technical backing metadata of an unsaved conversion result.
 Save/Save As writes the committed reference. Conversion's separate Carrier
 frequency field retains its domain-conversion meaning and draft transaction.
 Convert also accepts a committed reference change relative to the source file;

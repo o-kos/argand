@@ -14,11 +14,17 @@ promise applies to.
 ### Changed
 
 - File information, Analysis settings and About use explicit panels with informative tooltips and consistent names. File information is the final File command, Analysis settings is in View, and Recent files use a submenu. Unavailable menu commands remain visible and Edit shows registered shortcuts. Quit Argand uses Ctrl+Q (Cmd+Q on macOS); Quit and the first caption Close click preserve unsaved-edit and conversion protection while panels or menus are open. Information panels suppress competing external tooltips and close on window deactivation (#246).
+### Fixed
+
+- Menu commands and their shortcuts share availability, including context menus.
+  Unavailable commands are inert, so Save no longer shows an error when there
+  are no edits (#185).
 
 ### Added
 
-- Edit the capture's reference frequency directly in File information, undo or redo
-  the change, and write it with Save or Save As. View → Baseband frequencies shows
+- Edit the capture's reference frequency directly at the frequency ruler, undo or redo
+  the change, and write it with Save or Save As. File information shows only the
+  read-only reference declared in the file, when present. View → Baseband frequencies shows
   frequencies relative to zero while retaining the physical reference and selected
   signal band, without recomputing the FFT. Saving a changed reference from RAW
   proposes a new WAVE file and leaves the RAW original untouched (#185).
@@ -34,7 +40,7 @@ promise applies to.
 
 - Packed signed 24-bit PCM opens natively in real and I/Q RIFF/RF64/BW64 and raw captures (`rl_i24` / `iq_i24`). Supported 24-bit WAVE saves can use RF64, with normalization, gain and original integer units preserved. File information and WAVE conversion offer Int 24-bit (#192).
 
-- File information edits the target sample rate, reference frequency, real/IQ sample format and WAV/FLAC file type. File → File information… (F11) opens the same panel. Conversion preserves the whole currently edited signal’s level and replaces the document only after success, without Undo. Switching real/IQ derives rate/carrier defaults from the source, applies the carrier in sample coordinates and gives the result a zero-origin frequency axis; custom choices filter frequencies outside the target band. The result is unsaved until File → Save chooses a destination; the original disk file remains unchanged. File and Analysis property panels share numeric editing and open from their status summaries (#189).
+- File information edits the target sample rate, carrier frequency, real/IQ sample format and WAV/FLAC file type. File → File information… (F11) opens the same panel. Conversion preserves the whole currently edited signal’s level and replaces the document only after success, without Undo. Switching real/IQ derives rate/carrier defaults from the source, applies the carrier in sample coordinates and gives the result a zero-origin frequency axis; custom choices filter frequencies outside the target band. The result is unsaved until File → Save chooses a destination; the original disk file remains unchanged. File and Analysis property panels share numeric editing and open from their status summaries (#189).
 
 - A selection's values can be typed. A double click on one of its badges turns it into an input holding the value; Enter applies it, Escape leaves it, and Up and Down step it by its last digit (ten with Shift). Three segments in the title bar, Time, Band and Both, select that kind and open a panel under them (also Ctrl+E) showing the time start, end and length and the band's low edge, high edge and width around a drawing of the selection; it moves the selection on the plot as values are entered, also makes one when nothing is selected, and Escape restores the selection it opened on. Time is typed in the time ruler's format (a leading `#` names a sample in any of them) and frequency in the frequency ruler's unit, both in the regional number format; a length or width moves the end, values stay inside the capture and time snaps to whole samples. Each edge's badge on the plot and each edge's field in the panel points at its edge, and the spectrogram is dimmed outside a selection as well as tinted inside it, so it shows on bright and dark pictures alike (#219).
 
@@ -58,7 +64,7 @@ promise applies to.
 
 - File → Save as… (Ctrl+Shift+S) saves the open capture as a new file, and File → Save selection as… (Ctrl+Alt+S) saves the selected time range. The output keeps the source's format: WAVE keeps its sample type and bit depth, a headerless capture becomes WAVE, FLAC is encoded again without loss, and data past 4 GB is written as RF64. Saving runs in the background with progress and a cancel button at the right end of the status bar, says when it is done in the corner of the spectrogram, and the target is replaced only by a complete file. The open file cannot be saved over.
 - A FLAC source at a sample rate above what the FLAC encoder can state (over 96 kHz) is saved as WAV of the same bit depth. A 24-bit selection larger than 4 GB cannot be saved yet, because Argand cannot open 24-bit RF64 (#192).
-- Saved files carry the reference frequency: an `auxi` chunk as SDR#, HDSDR and SDRuno write it, an exact Argand chunk, or a Vorbis comment in FLAC. Opening a file reads it back, including from `auxi` chunks other SDR software wrote.
+- Saved files carry the whole-Hz reference frequency in an `auxi` chunk as SDR#, HDSDR and SDRuno write it, or an `AUXI` Vorbis comment in FLAC. Opening a file reads it back, including from `auxi` chunks other SDR software wrote.
 
 ### Changed
 

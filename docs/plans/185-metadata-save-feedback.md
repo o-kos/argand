@@ -122,12 +122,14 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   acceptance and independent review of this bounded GUI follow-up (Class B,
   with the existing primary/reviewer assignments).
 
-- [ ] Propagate declared file reference separately from effective frequency and
+- [x] Propagate declared file reference separately from effective frequency and
   verify native/fallback WAVE, FLAC, explicit zero, CLI overrides and RAW.
-- [ ] Move reference editing to a standard inline control at the frequency ruler;
+- [x] Move reference editing to a standard inline control at the frequency ruler;
   remove editable reference from File information and verify file-only display.
-- [ ] Join the icon circle to the vertical dash and unify Save command availability.
-- [ ] Run full local gate/release-last, production UI acceptance and fresh review
+- [x] Join the icon circle to the vertical dash and unify Save command availability.
+- [x] Apply the common typed command wrapper to all Action-backed menu rows,
+  shortcut bindings and focused/deferred handlers, including context menus.
+- [x] Run full local gate/release-last, production UI acceptance and fresh review
   for the inline-control follow-up, including Save/rebind and history transitions.
 
 ## Investigation so far
@@ -291,6 +293,38 @@ progress/evidence text changed afterward.
   current source against that snapshot; only this progress/result text changed.
 - Native Wayland/Windows/macOS were not exercised. Appearance remains for owner
   feedback in Draft; persistent Saving100 remains unresolved.
+
+## Inline control and shared commands review
+
+- Round 1 identified two P2 findings, both accepted: inline Input inherited Plot
+  shortcuts, confirmed with Ctrl+B in production Xvfb; and reference availability
+  omitted changed-source/replacement guards, dropping rejected drafts.
+- Moved the focusable control beside the plot surface. Shell rechecks metadata
+  availability and opening reference before acknowledging a commit; rejected
+  requests retain the draft. The standard Input is disabled when editing is
+  unavailable. Control/exclusion dimensions scale with rem.
+- Added UI regressions for Ctrl+B/Ctrl+G/Ctrl+0 and Space isolation, stale commit
+  retention, disabled reopening and full u32 values at default/enlarged font.
+  These focused tests pass.
+- Full fmt/Clippy and all 913 tests pass, followed by release last. Native X11/Xvfb
+  verifies whole-Hz Input shortcuts, Enter/blur/Escape, maximum u32, both ruler
+  orientations, disabled baseband pointer/menu/shortcut and Undo restoration.
+- Production dark/light and 700x600 checks found and corrected a read-only
+  Reference frequency label wrap by reusing the existing property-row layout.
+  The final binary shows one-line labels and all fields/Convert in the viewport.
+- Final production scenarios verify declared/effective reference separation,
+  absence of a file reference for plain WAVE with a CLI override, disabled
+  reference after a detected source change, inert file shortcuts without a
+  document, and Save/rebind updating the file-only row and Convert baseline.
+  Saved IQW auxi is 1010001 Hz with no argd; all 172800000 sample bytes match.
+- Round 2 found no remaining substantive findings. No findings were rejected.
+  The reviewer checked the exact patch, full gate, final binary identity and
+  native evidence. The primary assessed current code against that snapshot;
+  only these plan results changed afterward. No Ready/merge requested.
+- Enlarged-font geometry is automated GPUI coverage, not native acceptance.
+  Native Wayland/Windows/macOS, owner appearance acceptance and the persistent
+  Saving100 report remain unresolved. The X11 saves remove Saving without
+  further input, which does not explain the owner's native report.
 
 ## Validation and limits
 
