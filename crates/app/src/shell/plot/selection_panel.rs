@@ -216,6 +216,13 @@ impl SelectionPanel {
             return;
         };
         let field = FIELDS[slot];
+        let step_text = (!field.is_time()).then(|| {
+            self.scale.band_step_text(
+                self.band,
+                field,
+                self.inputs[slot].read(cx).value().as_ref(),
+            )
+        });
         if !self.commit(field, window, cx) {
             return;
         }
@@ -227,7 +234,12 @@ impl SelectionPanel {
                 .map(|time| self.time = time),
             false => self
                 .scale
-                .band_step(self.band, field, &text, steps)
+                .band_step(
+                    self.band,
+                    field,
+                    step_text.as_deref().unwrap_or(&text),
+                    steps,
+                )
                 .map(|band| self.band = band),
         };
         if stepped.is_some() {

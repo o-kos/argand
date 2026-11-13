@@ -329,6 +329,11 @@ item, the FFT summary, the start-page chooser and the recent rows were already s
 `Button`s and stay. The custom variant paints no border, so `toolbar_style` supplies the
 surfaces (`shell/app_menu_ui.rs:773`).
 
+The Reference frequency status item (#185) reuses the same standard status Button,
+Tooltip and pinned-panel composition. Its editor reuses NumericEditor. The status trigger and Edit menu command share
+the common information-panel lifecycle and external-tooltip policy. Saving uses
+the existing Save command. It introduces no widget or ruler overlay.
+
 **No locked-toolkit limitation is claimed for the status items.** They are standard
 `Button`s with a custom variant, and the audit found no custom press, hover or focus
 machinery in them. The accepted warning and neutral colours are painted by that variant.

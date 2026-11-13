@@ -9,12 +9,12 @@ Describe the problem, desired outcome, and boundaries of the change.
 ## Roles and risk
 
 - Class: A / B / C, with a brief risk rationale (see `AGENTS.md`).
-- Coordinator: `gpt-6-astra` medium.
-- Executor: `gpt-6.1-sol` medium.
+- Primary: `gpt-6.1-sol` medium.
+- Consultant: `gpt-6-astra` medium only for a justified, targeted question; otherwise none.
 - Reviewer: `gpt-6.1-sol` high in a separate agent and context.
 
 These defaults are owner-approved. Record any owner-approved deviation. For work
-without code, record the coordinator's workflow and validation decisions when a
+without code, record the primary agent's workflow and validation decisions when a
 formal plan is warranted; this template does not itself require one.
 
 ## Context
@@ -79,7 +79,7 @@ Use `➕` for tasks discovered after implementation begins and `⚠️` for bloc
 ## Validation
 
 The checks below are required for code changes. For work without code, replace them
-with the coordinator's risk-based validation decision and explain omissions.
+with the primary agent's risk-based validation decision and explain omissions.
 
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --all-targets --locked` (warnings are denied in `[workspace.lints]`)

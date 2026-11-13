@@ -61,7 +61,7 @@ impl Shell {
                 Some(saving_ui::Notice::Saved(name)) => Some(format!("Saved {name}").into()),
                 _ => None,
             },
-            edit: self.edit_commands_available(),
+            commands: self.command_availability(),
         })
     }
 
@@ -239,11 +239,7 @@ impl PlotView {
                     } else {
                         paint_held(texture, plot, held, extents.picture(), orientation, window);
                     }
-                    if let Some((opened_at, painted)) = &snapshot.first_picture
-                        && !painted.swap(true, Ordering::Relaxed)
-                    {
-                        tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
-                    }
+                    mark_first_paint(&snapshot.first_picture);
                 }
                 let panel = Bounds::new(
                     spectrum_origin,
@@ -1291,3 +1287,11 @@ impl DeepPreview {
 #[cfg(test)]
 #[path = "plot_ui_test.rs"]
 mod tests;
+
+fn mark_first_paint(first: &Option<(Instant, Arc<AtomicBool>)>) {
+    if let Some((opened_at, painted)) = first
+        && !painted.swap(true, Ordering::Relaxed)
+    {
+        tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
+    }
+}

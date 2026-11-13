@@ -196,8 +196,13 @@ pub fn run(
     crate::processing::extraction::unchanged(&request.sources)?;
     let saved = file.finish(cancel)?;
     let scratch = Arc::new(Scratch::new(saved.path.clone()));
-    let (opened, stamp) = argand_io::open_stamped(&saved.path, &argand_io::OpenHints::default())
-        .map_err(|error| WriteError::Unsupported {
+    let hints = argand_io::OpenHints {
+        sample_rate: Some(request.meta.sample_rate),
+        center_freq: Some(request.meta.center_freq),
+        ..Default::default()
+    };
+    let (opened, stamp) =
+        argand_io::open_stamped(&saved.path, &hints).map_err(|error| WriteError::Unsupported {
             path: saved.path.clone(),
             reason: error.to_string(),
         })?;

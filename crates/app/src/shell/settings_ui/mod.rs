@@ -100,10 +100,11 @@ pub(super) fn status_control(
         )
 }
 
-/// The two property editors anchored in the status bar.
+/// Property editors anchored in the status bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum StatusPanel {
     File,
+    Reference,
     Analysis,
 }
 
@@ -111,6 +112,7 @@ impl From<StatusPanel> for hints::Panel {
     fn from(panel: StatusPanel) -> Self {
         match panel {
             StatusPanel::File => Self::File,
+            StatusPanel::Reference => Self::Reference,
             StatusPanel::Analysis => Self::Analysis,
         }
     }
@@ -140,7 +142,7 @@ fn document_range_presentation(
 
 pub(super) fn init(cx: &mut gpui_kit::App) {
     editor::init(cx);
-    cx.bind_keys([KeyBinding::new(
+    cx.bind_keys([command::binding(
         if cfg!(target_os = "macos") {
             "cmd-,"
         } else {
@@ -164,6 +166,7 @@ impl Shell {
     pub(super) fn information_hint(&self, panel: hints::Panel) -> Entity<hints::PinnedHint> {
         match panel {
             hints::Panel::File => self.conversion.hint.clone(),
+            hints::Panel::Reference => self.reference.hint.clone(),
             hints::Panel::Analysis => self.analysis_hint.clone(),
             hints::Panel::About => self.about.hint.clone(),
         }
@@ -180,6 +183,7 @@ impl Shell {
             hints::Panel::File => self.conversion_request().is_some(),
             hints::Panel::Analysis => self.file.is_some(),
             hints::Panel::About => true,
+            hints::Panel::Reference => self.is_reference_editable(),
         }
     }
 
@@ -276,6 +280,12 @@ impl Shell {
                 "file-information-hint",
                 "file-summary-keeps-focus",
             ),
+            StatusPanel::Reference => (
+                "reference-frequency",
+                "reference-summary-hover",
+                "reference-frequency-hint",
+                "reference-summary-keeps-focus",
+            ),
             StatusPanel::Analysis => (
                 "analysis-settings",
                 SUMMARY_HOVER,
@@ -285,8 +295,12 @@ impl Shell {
         };
         let hint = self.information_hint(panel.into());
         let lit = self.information_panel == Some(panel.into()) && hint.read(cx).is_open();
-        let mut button =
-            status_control(id, group, text, lit, cx).disabled(!self.status_panel_available(panel));
+        let mut button = status_control(id, group, text, lit, cx)
+            .tab_stop(panel == StatusPanel::Reference)
+            .when(panel == StatusPanel::Reference, |button| {
+                button.accessibility_label("Reference frequency")
+            })
+            .disabled(!self.status_panel_available(panel));
         if self.external_tooltips_allowed(cx) {
             button
                 .interactivity()
@@ -497,6 +511,7 @@ impl Shell {
                         .when_some(file, |items, field| {
                             items.child(self.file_control(field.value, cx))
                         })
+                        .children(self.reference_control(cx))
                         .children(self.analysis_controls(cx)),
                 )
             })
@@ -680,6 +695,11 @@ fn status_panel_tooltip(panel: StatusPanel, cx: &mut gpui_kit::App) -> gpui_kit:
             "View file properties and conversion options",
             Box::new(ConvertCapture),
         ),
+        StatusPanel::Reference => (
+            "Reference frequency",
+            "Adjust the capture reference frequency",
+            Box::new(EditReference),
+        ),
         StatusPanel::Analysis => (
             "Analysis settings",
             "Adjust FFT, window function and display range",
@@ -717,7 +737,7 @@ fn status_panel_tooltip(panel: StatusPanel, cx: &mut gpui_kit::App) -> gpui_kit:
     })
 }
 
-fn separated_status_item(
+pub(super) fn separated_status_item(
     id: &'static str,
     cx: &gpui_kit::App,
 ) -> gpui_kit::Stateful<gpui_kit::Div> {

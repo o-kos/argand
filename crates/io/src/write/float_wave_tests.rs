@@ -70,7 +70,7 @@ fn a_computed_real_capture_writes_one_float_channel() {
 }
 
 #[test]
-fn a_computed_capture_opens_with_its_exact_rate_and_reference_frequency() {
+fn a_standalone_computed_capture_uses_whole_hertz_wave_header_fields() {
     let dir = TempDir::new("float-iq");
     let target = dir.join("band.wav");
     let mut file = FloatWave::create(request(1000, target.clone())).unwrap();
@@ -81,7 +81,7 @@ fn a_computed_capture_opens_with_its_exact_rate_and_reference_frequency() {
     let saved = file.finish(&AtomicBool::new(false)).unwrap();
     assert_eq!((saved.samples, saved.container), (1000, "wav"));
     let (meta, values) = read_back(&target);
-    assert_eq!(meta.sample_rate, 48_000.0 / 19.0);
+    assert_eq!(meta.sample_rate, (48_000.0_f64 / 19.0).round());
     assert_eq!(meta.center_freq, 12_585_000.0);
     assert_eq!(
         meta.sample_type,

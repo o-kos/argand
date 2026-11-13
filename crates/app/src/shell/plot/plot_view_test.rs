@@ -69,6 +69,7 @@ fn snapshot() -> PlotSnapshot {
     let ink = gpui_kit::rgb(0x808080);
     PlotSnapshot {
         extents: axes::Extents {
+            frequency_offset: 0.,
             orientation: crate::navigation::orientation::Mode::Horizontal,
             time: crate::navigation::time_ruler::Ruler {
                 mode: crate::navigation::time_ruler::Mode::Seconds,
@@ -109,7 +110,7 @@ fn snapshot() -> PlotSnapshot {
         badges: None,
         entry: None,
         notice: None,
-        edit: Default::default(),
+        commands: command::Availability::for_plot_test(),
     }
 }
 
@@ -1449,6 +1450,7 @@ fn show_selection(
 fn show_badges(cx: &mut TestAppContext, handle: WindowHandle<Harness>, start: u64, end: u64) {
     let selected = span(start, end).unwrap();
     let scale = crate::navigation::selection_entry::Scale {
+        frequency_offset: 0.,
         mode: crate::navigation::time_ruler::Mode::Seconds,
         rate: 1e6,
         total: 1_000_000,
@@ -1638,6 +1640,63 @@ fn up_and_down_step_a_badge_input_and_keep_it_open(cx: &mut TestAppContext) {
         [span(391_000, 600_000)],
         "ten with Shift"
     );
+}
+
+#[gpui_kit::test]
+fn a_bare_width_draft_steps_in_its_opened_unit_before_reformatting(cx: &mut TestAppContext) {
+    use crate::navigation::selection_entry::Field;
+    let handle = open(cx);
+    cx.update(badge_entry::init);
+    show_badges(cx, handle, 400_000, 600_000);
+    handle
+        .update(cx, |harness, _, cx| {
+            harness.follow_selection = true;
+            harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                let snapshot = plot.snapshot.as_mut().unwrap();
+                let band = argand_core::FrequencyBand::between(0., 2_000.).unwrap();
+                snapshot.selected = argand_core::Selection {
+                    time: None,
+                    band: Some(band),
+                };
+                let scale = snapshot.entry.unwrap();
+                snapshot.badges = Some(axes::SelectionBadges {
+                    time: None,
+                    band: Some(axes::AxisBadges {
+                        texts: scale.band_texts(band),
+                        fields: Field::BAND,
+                        first: Some(0.5),
+                        second: Some(0.502),
+                        visible: (0.5, 0.502),
+                        around: (0., 1.),
+                        alone: true,
+                    }),
+                });
+                cx.notify();
+            });
+        })
+        .unwrap();
+    frame(cx, handle);
+    frame(cx, handle);
+    let width = badge(cx, handle, Field::BandWidth);
+    click(cx, handle, width.center(), 2);
+    type_text(cx, handle, "0 . 5 up");
+    let band = handle
+        .update(cx, |harness, _, cx| {
+            harness
+                .plot
+                .as_ref()
+                .unwrap()
+                .read(cx)
+                .snapshot
+                .as_ref()
+                .unwrap()
+                .selected
+                .band
+                .unwrap()
+        })
+        .unwrap();
+    assert_eq!((band.low(), band.high()), (0., 600.));
+    assert_eq!(typing(cx, handle), Some(("600 Hz".into(), false)));
 }
 
 #[gpui_kit::test]

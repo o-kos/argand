@@ -12,7 +12,7 @@ use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::button::ButtonCustomVariant;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
-use gpui_kit::{Entity, Focusable};
+use gpui_kit::{Entity, Focusable, rems};
 use std::rc::Rc;
 
 /// The key context of the editor inside the hint.
@@ -30,10 +30,10 @@ enum Stop {
 }
 
 /// The width of the surface, fixed so that changing values never move it.
-const WIDTH: f32 = 370.0;
+const WIDTH_REM: f32 = 26.0;
 
-/// The width of every row's label column.
-const LABEL: f32 = 110.0;
+/// Font-relative room for the longest shared property label, Reference frequency.
+const LABEL_REM: f32 = 9.0;
 
 /// The width of a list, which is wider than any value it offers.
 const LIST: f32 = 220.0;
@@ -706,11 +706,12 @@ pub(in crate::shell) fn number_control(
 }
 
 pub(in crate::shell) fn property_width(window: &Window) -> Pixels {
-    px(WIDTH).min((window.viewport_size().width - px(48.)).max(px(0.)))
+    (window.rem_size() * WIDTH_REM)
+        .min((window.viewport_size().width - window.rem_size() * 3.).max(px(0.)))
 }
 
 pub(in crate::shell) fn value_column_width(window: &Window) -> Pixels {
-    (property_width(window) - px(24. + LABEL + 16.)).max(px(0.))
+    (property_width(window) - window.rem_size() * (1.5 + LABEL_REM + 1.)).max(px(0.))
 }
 
 pub(in crate::shell) fn number_width(value: &str, window: &Window, cx: &gpui_kit::App) -> Pixels {
@@ -819,7 +820,7 @@ pub(in crate::shell) fn outlined_button(
 
 /// A label and its value, in the metadata hint's layout.
 pub(in crate::shell) fn row(
-    label: &'static str,
+    label: impl Into<gpui_kit::SharedString>,
     value: impl IntoElement,
     cx: &gpui_kit::App,
 ) -> impl IntoElement {
@@ -831,10 +832,11 @@ pub(in crate::shell) fn row(
         .min_h_7()
         .child(
             div()
-                .w(px(LABEL))
+                .w(rems(LABEL_REM))
                 .flex_shrink_0()
+                .whitespace_nowrap()
                 .text_color(cx.theme().muted_foreground)
-                .child(label),
+                .child(label.into()),
         )
         .child(div().flex_1().min_w_0().flex().justify_end().child(value))
 }
@@ -971,6 +973,7 @@ fn number(
         NumericEditor::new(
             value,
             numeric_editor::Config {
+                integer: false,
                 unit,
                 step: 1.0,
                 minimum,

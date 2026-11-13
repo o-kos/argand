@@ -41,11 +41,13 @@ mod shortcuts;
 mod backdrop;
 mod badge_entry;
 
+mod command;
 mod conversion_ui;
 mod disk_change_ui;
 mod editing_ui;
 mod hints;
 mod levelling_ui;
+mod reference_ui;
 mod replace_ui;
 
 mod numeric_editor;
@@ -82,6 +84,7 @@ actions!(
         SaveSelectionAs,
         ConvertCapture,
         EditAnalysis,
+        EditReference,
         UseRecommendedRange
     ]
 );
@@ -102,7 +105,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     cx.set_cursor_hide_mode(gpui_kit::CursorHideMode::Never);
     cx.bind_keys([
         KeyBinding::new("f10", app_menu_ui::OpenApplicationMenu, Some("Shell")),
-        KeyBinding::new("f11", ConvertCapture, None),
+        command::binding("f11", ConvertCapture, None),
         KeyBinding::new(
             if cfg!(target_os = "macos") {
                 "cmd-q"
@@ -116,7 +119,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
         KeyBinding::new("shift-tab", FocusPrevious, Some("FileInformation")),
         KeyBinding::new("tab", FocusNext, Some("Shell")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("Shell")),
-        KeyBinding::new(
+        command::binding(
             if cfg!(target_os = "macos") {
                 "cmd-o"
             } else {
@@ -125,7 +128,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
             ChooseFile,
             None,
         ),
-        KeyBinding::new(
+        command::binding(
             if cfg!(target_os = "macos") {
                 "cmd-s"
             } else {
@@ -134,7 +137,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
             Save,
             None,
         ),
-        KeyBinding::new(
+        command::binding(
             if cfg!(target_os = "macos") {
                 "cmd-shift-s"
             } else {
@@ -143,7 +146,7 @@ pub(super) fn window_keys(cx: &mut gpui_kit::App) {
             SaveAs,
             None,
         ),
-        KeyBinding::new(
+        command::binding(
             if cfg!(target_os = "macos") {
                 "cmd-alt-s"
             } else {
@@ -387,6 +390,7 @@ struct Shell {
     settings: Settings,
     /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
+    reference: reference_ui::State,
     about: about_ui::State,
     information_panel: Option<hints::Panel>,
     information_panel_request: u64,
@@ -548,10 +552,12 @@ impl Shell {
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
         let about = about_ui::State::new(cx);
+        let reference = reference_ui::State::new(window, cx);
         Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
+            reference,
             about,
             information_panel: None,
             information_panel_request: 0,
@@ -619,14 +625,10 @@ impl Shell {
     fn external_tooltips_allowed(&self, cx: &gpui_kit::App) -> bool {
         !self.external_help_suppressed
             && self.application_menu.is_none()
-            && [
-                &self.analysis_hint,
-                &self.conversion.hint,
-                &self.selection_hint,
-                &self.about.hint,
-            ]
-            .iter()
-            .all(|panel| !panel.read(cx).is_open())
+            && !self.selection_hint.read(cx).is_open()
+            && hints::Panel::ALL
+                .into_iter()
+                .all(|panel| !self.information_hint(panel).read(cx).is_open())
     }
 
     fn suppress_external_tooltips(&mut self) {
@@ -1269,6 +1271,7 @@ impl Shell {
             },
             seconds: self.view?.seconds(meta.sample_rate),
             hertz: self.frequency.hertz(meta.frequency_span()),
+            frequency_offset: self.frequency_offset(),
         })
     }
 
@@ -1401,53 +1404,14 @@ impl Shell {
             }
         });
         // Popup focus sits outside the shell subtree; defer until dispatch releases the window.
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &ChooseFile, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ = shell.update_in(cx, Self::choose_file);
-                });
-            }
+        command::bind::<ChooseFile>(shell.clone(), cx, Self::choose_file);
+        command::bind::<Save>(shell.clone(), cx, Self::save_over);
+        command::bind::<SaveAs>(shell.clone(), cx, |shell, window, cx| {
+            shell.save_as(false, window, cx)
         });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &Save, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ = shell.update_in(cx, |shell, window, cx| shell.save_over(window, cx));
-                });
-            }
-        });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &SaveAs, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ =
-                        shell.update_in(cx, |shell, window, cx| shell.save_as(false, window, cx));
-                });
-            }
-        });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &ConvertCapture, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ =
-                        shell.update_in(cx, |shell, window, cx| shell.convert_dialog(window, cx));
-                });
-            }
-        });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &SaveSelectionAs, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ =
-                        shell.update_in(cx, |shell, window, cx| shell.save_as(true, window, cx));
-                });
-            }
+        command::bind::<ConvertCapture>(shell.clone(), cx, Self::convert_dialog);
+        command::bind::<SaveSelectionAs>(shell.clone(), cx, |shell, window, cx| {
+            shell.save_as(true, window, cx)
         });
         cx.on_action({
             let shell = shell.clone();
@@ -1458,15 +1422,8 @@ impl Shell {
                 });
             }
         });
-        cx.on_action({
-            let shell = shell.clone();
-            move |_: &EditAnalysis, cx| {
-                let shell = shell.clone();
-                cx.defer(move |cx| {
-                    let _ = shell.update_in(cx, Self::deferred_edit_analysis);
-                });
-            }
-        });
+        command::bind::<EditReference>(shell.clone(), cx, Self::open_reference);
+        command::bind::<EditAnalysis>(shell, cx, Self::deferred_edit_analysis);
     }
 
     fn close_owning_window(
@@ -2033,9 +1990,10 @@ impl Render for Shell {
                 })
                 .on_modifiers_changed(cx.listener(|_, _, _, cx| cx.notify()))
                 .on_action(cx.listener(Self::toggle_application_menu))
-                .on_action(cx.listener(Self::show_about))
+                .on_action(command::listener(cx, Self::show_about))
                 .on_action(cx.listener(Self::open_recent))
-                .on_action(cx.listener(Self::edit_analysis))
+                .on_action(command::listener(cx, Self::edit_analysis))
+                .on_action(command::listener(cx, Self::edit_reference))
                 .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
                     shell.use_recommended_range(cx)
                 }))

@@ -34,25 +34,25 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
         };
     }
     let mut keys = vec![
-        KeyBinding::new(command!("z"), Undo, Some("Plot")),
-        KeyBinding::new(command!("shift-z"), Redo, Some("Plot")),
+        command::binding(command!("z"), Undo, Some("Plot")),
+        command::binding(command!("shift-z"), Redo, Some("Plot")),
         // A capture edited down to nothing shows no plot, and its edits must still be undone.
-        KeyBinding::new(command!("z"), Undo, Some("Shell")),
-        KeyBinding::new(command!("shift-z"), Redo, Some("Shell")),
-        KeyBinding::new(command!("x"), CutSelection, Some("Plot")),
-        KeyBinding::new(command!("c"), CopySelection, Some("Plot")),
-        KeyBinding::new(command!("v"), PasteClipboard, Some("Plot")),
-        KeyBinding::new("delete", DeleteSelection, Some("Plot")),
-        KeyBinding::new(command!("shift-m"), SuppressBand, Some("Plot")),
-        KeyBinding::new(command!("shift-i"), InvertSpectrum, Some("Plot")),
-        KeyBinding::new(command!("shift-n"), NormalizeLevel, Some("Plot")),
-        KeyBinding::new(command!("e"), EditSelection, Some("Plot")),
+        command::binding(command!("z"), Undo, Some("Shell")),
+        command::binding(command!("shift-z"), Redo, Some("Shell")),
+        command::binding(command!("x"), CutSelection, Some("Plot")),
+        command::binding(command!("c"), CopySelection, Some("Plot")),
+        command::binding(command!("v"), PasteClipboard, Some("Plot")),
+        command::binding("delete", DeleteSelection, Some("Plot")),
+        command::binding(command!("shift-m"), SuppressBand, Some("Plot")),
+        command::binding(command!("shift-i"), InvertSpectrum, Some("Plot")),
+        command::binding(command!("shift-n"), NormalizeLevel, Some("Plot")),
+        command::binding(command!("e"), EditSelection, Some("Plot")),
         // The panel holds the keyboard while it is open, and the same keys close it.
-        KeyBinding::new(command!("e"), EditSelection, Some("SelectionPanel")),
+        command::binding(command!("e"), EditSelection, Some("SelectionPanel")),
     ];
     if cfg!(target_os = "windows") {
-        keys.push(KeyBinding::new("ctrl-y", Redo, Some("Plot")));
-        keys.push(KeyBinding::new("ctrl-y", Redo, Some("Shell")));
+        keys.push(command::binding("ctrl-y", Redo, Some("Plot")));
+        keys.push(command::binding("ctrl-y", Redo, Some("Shell")));
     }
     cx.bind_keys(keys);
 }
@@ -254,15 +254,63 @@ impl Shell {
     }
 
     fn undo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.editing_mut().is_some_and(Editing::undo) {
-            self.edited(window, cx);
-        }
+        self.history_step(false, window, cx);
     }
 
     fn redo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.editing_mut().is_some_and(Editing::redo) {
+        self.history_step(true, window, cx);
+    }
+
+    fn history_step(&mut self, redo: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(editing) = self.editing_mut() else {
+            return;
+        };
+        let before = editing.capture().clone();
+        let changed = if redo { editing.redo() } else { editing.undo() };
+        if !changed {
+            return;
+        }
+        if *editing.capture() == before {
+            let marked = editing.marked();
+            self.selection = marked.time;
+            self.band = marked.band;
+        } else {
             self.edited(window, cx);
         }
+        self.reference_changed(window, cx);
+    }
+
+    pub(super) fn is_reference_editable(&self) -> bool {
+        !self.replacement_active
+            && !self.capture_changed()
+            && !self.computing()
+            && self.saving.is_none()
+            && self.editing().is_some_and(Editing::is_described)
+    }
+
+    pub(super) fn set_reference(
+        &mut self,
+        reference: f64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let selection = argand_core::Selection {
+            time: self.selection,
+            band: self.band,
+        };
+        let changed = self
+            .editing_mut()
+            .is_some_and(|editing| editing.set_reference(reference, selection));
+        if changed {
+            self.reference_changed(window, cx);
+        }
+        changed
+    }
+
+    fn reference_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.frequency_scheme = None;
+        self.refresh_titles(window);
+        cx.notify();
     }
 
     /// Show the current version: its length, picture, minimap, selection and titles.
@@ -590,33 +638,62 @@ impl Shell {
             .on_action(cx.listener(|shell, _: &chrome::CloseWindow, window, cx| {
                 shell.request_close(window, cx);
             }))
-            .on_action(cx.listener(|shell, _: &Undo, window, cx| shell.undo(window, cx)))
-            .on_action(cx.listener(|shell, _: &Redo, window, cx| shell.redo(window, cx)))
-            .on_action(cx.listener(|shell, _: &CutSelection, window, cx| {
-                shell.cut_selection(window, cx);
+            .on_action(command::listener(cx, |shell, _: &Undo, window, cx| {
+                shell.undo(window, cx)
             }))
-            .on_action(cx.listener(|shell, _: &CopySelection, _, cx| shell.copy_selection(cx)))
-            .on_action(cx.listener(|shell, _: &PasteClipboard, window, cx| {
-                if let Some(span) = shell.time_selection() {
-                    shell.paste(Placement::Replace(span), window, cx);
-                }
+            .on_action(command::listener(cx, |shell, _: &Redo, window, cx| {
+                shell.redo(window, cx)
             }))
-            .on_action(cx.listener(|shell, _: &PasteHere, window, cx| shell.paste_here(window, cx)))
-            .on_action(cx.listener(|shell, _: &DeleteSelection, window, cx| {
-                shell.delete_selection(window, cx);
+            .on_action(command::listener(
+                cx,
+                |shell, _: &CutSelection, window, cx| {
+                    shell.cut_selection(window, cx);
+                },
+            ))
+            .on_action(command::listener(cx, |shell, _: &CopySelection, _, cx| {
+                shell.copy_selection(cx)
             }))
-            .on_action(cx.listener(|shell, _: &SuppressBand, window, cx| {
-                shell.suppress_band(window, cx);
+            .on_action(command::listener(
+                cx,
+                |shell, _: &PasteClipboard, window, cx| {
+                    if let Some(span) = shell.time_selection() {
+                        shell.paste(Placement::Replace(span), window, cx);
+                    }
+                },
+            ))
+            .on_action(command::listener(cx, |shell, _: &PasteHere, window, cx| {
+                shell.paste_here(window, cx)
             }))
-            .on_action(cx.listener(|shell, _: &InvertSpectrum, window, cx| {
-                shell.invert_spectrum(window, cx);
-            }))
-            .on_action(cx.listener(|shell, _: &NormalizeLevel, window, cx| {
-                shell.normalize(window, cx);
-            }))
-            .on_action(cx.listener(|shell, _: &EditSelection, window, cx| {
-                shell.toggle_selection_panel(window, cx);
-            }))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &DeleteSelection, window, cx| {
+                    shell.delete_selection(window, cx);
+                },
+            ))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &SuppressBand, window, cx| {
+                    shell.suppress_band(window, cx);
+                },
+            ))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &InvertSpectrum, window, cx| {
+                    shell.invert_spectrum(window, cx);
+                },
+            ))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &NormalizeLevel, window, cx| {
+                    shell.normalize(window, cx);
+                },
+            ))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &EditSelection, window, cx| {
+                    shell.toggle_selection_panel(window, cx);
+                },
+            ))
     }
 }
 

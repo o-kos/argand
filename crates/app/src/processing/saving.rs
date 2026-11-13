@@ -114,6 +114,8 @@ fn extract_flac(
     )?;
     let hints = argand_io::OpenHints {
         normalize: Some(argand_io::Normalize::None),
+        sample_rate: Some(output.sample_rate),
+        center_freq: Some(output.center_freq),
         ..Default::default()
     };
     let (source, stamp) =

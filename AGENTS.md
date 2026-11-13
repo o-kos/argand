@@ -41,6 +41,11 @@ project communication are in English: code comments, UI messages, logs, document
 branch and commit names, Issues, Pull Requests and releases. Never state or imply in
 commits, Pull Requests, Issues or releases that an AI tool was used in development.
 
+Tooltip text must never contain semicolons or complex phrasing that calls for one.
+Simplify the message instead of replacing the semicolon with other punctuation.
+For example, use "A nonzero reference frequency is required", not
+"Reference frequency is 0 Hz; both scales are identical".
+
 ## Agent roles and model selection
 
 The owner has approved these defaults; do not ask for model approval again for
@@ -48,17 +53,25 @@ each Issue. A different role assignment requires the owner's agreement.
 
 | Role | Model and reasoning effort | Responsibility |
 | --- | --- | --- |
-| Coordinator | `gpt-6-astra` medium | Discuss analysis, architecture, plans, acceptance and disagreements directly with the owner; assess the final result. |
-| Executor | `gpt-6.1-sol` medium | Perform repository investigation and operations, code and documentation edits, Git/GitHub operations, tests and builds. |
-| Reviewer | `gpt-6.1-sol` high | Review read-only in a separate agent and context. |
+| Primary | `gpt-6.1-sol` medium | Discuss the task directly with the owner; handle analysis, investigation, edits, Git/GitHub operations, checks, plans and final assessment. |
+| Reviewer | `gpt-6.1-sol` high | Review read-only in a fresh, separate context when review is required. |
+| Consultant | `gpt-6-astra` medium | Give targeted advice on difficult architecture, DSP, data safety or unresolved technical disagreements. |
 
-The coordinator delegates investigation, edits, Git/GitHub operations, checks and
-builds to the executor, including framework evidence before a plan relies on it.
-The coordinator remains accountable for the plan, Issue and Pull Request text,
-architecture, acceptance and final assessment. The executor maintains the plan and artifacts. The reviewer is
-read-only in a separate context; the same model at different effort is intentional.
+One primary agent owns an ordinary task end to end. Delegate only justified,
+independent work; do not create a mandatory coordinator/executor relay. The primary
+maintains the plan and artifacts, evaluates review findings and checks critical
+invariants. The primary decides whether consultation is needed after focused
+investigation leaves a concrete uncertainty or technical disagreement unresolved.
+Before calling the consultant, briefly tell the owner what remains unclear and
+the specific question to be asked. No extra approval is needed under these defaults
+unless the owner requests it. Class A alone does not trigger consultation, which
+does not replace independent review or owner acceptance.
 The independent handoff, dispositions, three-round limit, owner decisions and
 current-revision evidence are governed by [External review](CONTRIBUTING.md#external-review).
+
+These instructions define role defaults, not the client's selected model. Select
+the primary model and effort in the client when starting a task; do not claim that
+editing these rules switches a running session or global settings.
 
 Record the class and role assignments in a required plan before execution begins.
 The class describes risk and the required scrutiny, not a different reviewer model:

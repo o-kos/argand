@@ -132,6 +132,23 @@ Alt guides and cursor feedback available without a mouse move after dismissal.
 
 ## Frequency navigation (#80)
 
+Reference editing (#185) separates source-frequency coordinates from their
+presentation. The document worker, retained grids and internal selected bands
+keep the opened source's frequency basis. `Extents::frequency_offset` translates
+only ruler labels, cursor/Alt readouts and typed selection values. The
+offset is effective reference minus source reference. Selection widths and processing bins do not change.
+The normalized viewport survives reference changes without an FFT request.
+`selection_entry::Scale` applies the offset to edge formatting and removes it on
+entry, leaving widths unchanged. The status-bar reference control shows the
+effective physical reference. File information instead shows only the optional
+read-only reference declared by the opened user file.
+
+After a successful save rebind, the new file becomes the source basis. The held
+foreground grid/image frequency bounds and selected band are translated by the
+new source reference minus the previous source reference; their sample/bin
+identity stays unchanged. Old worker deliveries remain gated by the reader swap.
+The old wider/deep previews are retired through their existing owners.
+
 `navigation/frequency.rs` owns a normalized, bounded frequency viewport independent of the time
 range. Each file opening resets it. Its minimum span is one retained frequency
 cell, with at most 2048 cells across the capture band and a physical-coordinate
@@ -194,7 +211,11 @@ the other axis therefore has its badges at the plot's edges. `time_ruler::Mode::
 in the ruler's mode with the decimals one pixel of the visible time tells apart, as the Alt
 badges do, never more than one sample needs, the clock with the fields the capture's own
 length needs; `Scale::band_texts` gives the band's as numbers in the frequency ruler's unit, which
-only the ruler names. The extent badge sits on a dimension line (`selection_badges::Dimension`),
+only the ruler names for its edges. The width independently chooses Hz/kHz/MHz and
+includes the unit, also in its badge input and selection-panel field. Its bare
+input and last-digit step use that displayed unit; an explicit frequency suffix
+selects its own unit. Width precision retains the ruler's hertz resolution.
+The extent badge sits on a dimension line (`selection_badges::Dimension`),
 a paper stroke around an ink core like the Alt guides, running from edge to edge of the
 visible selection with an arrowhead at each edge in view. Where the badge and its arrowheads do
 not fit between the edges, the arrowheads stand outside them pointing in, the line runs on past

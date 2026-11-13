@@ -8,7 +8,7 @@
 
 ## Plan
 
-<!-- Link the active or completed plan under docs/plans/, or explain the coordinator's scoped decision for work without code. -->
+<!-- Link the active or completed plan under docs/plans/, or explain the primary agent's scoped decision for work without code. -->
 
 ## Validation
 
@@ -16,7 +16,7 @@
 
 ## Checklist
 
-<!-- For work without code, mark non-applicable workflow items with the coordinator's
+<!-- For work without code, mark non-applicable workflow items with the primary agent's
 risk-based reason under CONTRIBUTING.md. Required checks and protected main still apply. -->
 
 - [ ] The Pull Request addresses one Issue and includes `Closes #N` below.

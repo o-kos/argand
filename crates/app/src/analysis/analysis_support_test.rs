@@ -24,6 +24,7 @@ fn open(path: PathBuf, hints: OpenHints) -> (Analyst, async_channel::Receiver<De
 }
 
 impl Analyst {
+    pub(crate) fn generation_for_test(&self) -> u64 { self.mailbox.generation.load(Ordering::Relaxed) }
     #[cfg(test)]
     pub fn request(&self, analysis: AnalysisRequest) -> bool {
         self.request_view(analysis, None)
