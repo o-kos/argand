@@ -79,13 +79,14 @@ all code pushes require the complete local gate.
 
 ## Final review and post-completion
 
-Keep Draft for owner feedback; move this plan to completed before final Ready/full
-CI under the normal lifecycle. After acceptance/full CI, merge through the protected
-PR. Preserve old target-triple artifacts used by other tasks.
+The owner accepted the SDK setup and authorized final publication with #221.
+This completed plan accompanies final integration review and full CI in PR #252.
+Merge through the protected PR after current checks pass. Preserve old artifacts
+used by other tasks.
 
 ## Results
 
-See [native SDK validation](../development/254-native-sdk-validation.md). Native
+See [native SDK validation](../../development/254-native-sdk-validation.md). Native
 Clippy, 898 tests, debug/release builds, cargo run help and real Xvfb startup passed.
 SDK verification confirmed the same installation. Round 1 independent review was
 clean; its factual plan correction about the consultant assignment was accepted.

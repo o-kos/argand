@@ -76,3 +76,22 @@ Windows, macOS, physical-display behavior or arbitrary rem/font overrides. Those
 platforms were not run locally. CI results must be assessed independently on the
 current PR revision. The PR remains Draft for owner feedback; this record does
 not imply owner acceptance or authorize release publication.
+
+## Combined native SDK publication
+
+On 2026-11-13, the accepted #254 SDK integration was transferred into #221 at the
+owner's request. Layout/test source remains unchanged from the checks above. The
+combined branch passed formatting, all-target Clippy, 899 tests and release build;
+release SHA256 is `ecc8669cc60c66be1d165d4bd02ebbd1737962e1be96cb85af9db66ddd03f9e5`.
+The binary now lives in ordinary workspace-local `target/release/argand`.
+
+The current release rendered the owner's real recent list from a separate compatible
+session copy on isolated Xvfb. The shared version-12 session was hash-checked as
+unchanged; that format belongs to independent #185, while this branch retains the
+existing version-11 reader and newer-session write protection. The owner accepted
+#221 and the SDK setup and authorized final review, full CI and protected merge.
+This additional rendering check does not repeat the original full input matrix or
+extend its platform claims. Final retained review round 3 returned no substantive findings. It checked the
+combined source/build scope, source-mode guards, source and binary hashes, 899-test
+log, current recent-list screenshot and moved documentation links. No findings
+were rejected. Current full platform CI remains the pre-merge gate.
