@@ -22,17 +22,11 @@ promise applies to.
 
 ### Added
 
-- Edit the capture's reference frequency directly at the frequency ruler, undo or redo
-  the change, and write it with Save or Save As. File information shows only the
-  read-only reference declared in the file, when present. View → Baseband frequencies shows
-  frequencies relative to zero while retaining the physical reference and selected
-  signal band, without recomputing the FFT. Saving a changed reference from RAW
-  proposes a new WAVE file and leaves the RAW original untouched (#185).
-- Toggle baseband frequencies with Ctrl+B or the toolbar icon with arrows toward an axis and a dot below.
-  The button/menu/shortcut are unavailable at zero reference, where the scales
-  coincide. The disabled control is unchecked and its tooltip requires a nonzero
-  reference. Enabled tooltips name the next relative/absolute display action. Committed
-  reference changes also enable Convert until saved or undone (#185).
+- Edit the capture's reference frequency through its status-bar value between
+  the file and FFT summaries. Its panel edits whole Hz and provides Save to file.
+  Changes support Undo/Redo and enable Convert until saved or undone. File
+  information shows only the reference declared in the file. Saving a changed
+  reference from RAW proposes a WAVE file and preserves the original (#185).
 - Reference edits stay in document history until Save and do not update Recent.
   After WAVE/FLAC Save, reopening reads the reference from the file (#185).
 

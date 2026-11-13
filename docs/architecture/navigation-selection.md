@@ -135,13 +135,12 @@ Alt guides and cursor feedback available without a mouse move after dismissal.
 Reference editing (#185) separates source-frequency coordinates from their
 presentation. The document worker, retained grids and internal selected bands
 keep the opened source's frequency basis. `Extents::frequency_offset` translates
-only ruler labels, cursor/Alt readouts and typed selection values. In physical
-mode the offset is effective reference minus source reference; in baseband mode
-it is minus source reference. Selection widths and processing bins do not change.
-The normalized viewport survives either change, without an FFT request.
+only ruler labels, cursor/Alt readouts and typed selection values. The
+offset is effective reference minus source reference. Selection widths and processing bins do not change.
+The normalized viewport survives reference changes without an FFT request.
 `selection_entry::Scale` applies the offset to edge formatting and removes it on
-entry, leaving widths unchanged. The inline reference control always shows the effective physical reference,
-including in baseband mode. File information instead shows only the optional
+entry, leaving widths unchanged. The status-bar reference control shows the
+effective physical reference. File information instead shows only the optional
 read-only reference declared by the opened user file.
 
 After a successful save rebind, the new file becomes the source basis. The held

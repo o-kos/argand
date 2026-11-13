@@ -27,7 +27,7 @@ commands! {
     editing_ui::DeleteSelection => |s| s.edit.cut, editing_ui::SuppressBand => |s| s.edit.suppress,
     editing_ui::InvertSpectrum => |s| s.edit.invert, editing_ui::NormalizeLevel => |s| s.edit.normalize,
     editing_ui::EditSelection => |s| s.selection,
-    ToggleGrid => |s| true, ToggleBaseband => |s| s.baseband,
+    ToggleGrid => |s| true,
     ToggleScaleUi => |s| true, ToggleOrientation => |s| true,
     FitCapture => |s| s.document, FitFrequency => |s| s.document,
     ClockRuler => |s| true, SecondsRuler => |s| true, SamplesRuler => |s| true,
@@ -46,7 +46,6 @@ pub(super) struct Availability {
     save_selection: bool,
     convert: bool,
     selection: bool,
-    baseband: bool,
     edit: editing_ui::EditCommands,
 }
 
@@ -81,7 +80,6 @@ impl Shell {
             save_selection: self.can_save(true),
             convert: self.can_save(false) && !self.capture_changed(),
             selection: self.entry_scale().is_some(),
-            baseband: self.can_toggle_baseband(),
             edit: self.edit_commands_available(),
         }
     }

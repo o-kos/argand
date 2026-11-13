@@ -5,5 +5,3 @@ pub(super) mod plot_ui;
 pub(super) mod plot_view;
 pub(super) mod selection_gestures;
 pub(super) mod selection_panel;
-
-pub(super) mod reference_ui;

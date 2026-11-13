@@ -558,15 +558,9 @@ pub struct Colors {
 fn paint_label(
     shaped: &gpui_kit::ShapedLine,
     at: Point<Pixels>,
-    exclusion: Option<Bounds<Pixels>>,
     window: &mut Window,
     cx: &mut App,
 ) {
-    if exclusion.is_some_and(|excluded| {
-        excluded.intersects(&Bounds::new(at, size(shaped.width, px(LINE_HEIGHT))))
-    }) {
-        return;
-    }
     let _ = shaped.paint(
         at,
         px(LINE_HEIGHT),
@@ -586,7 +580,6 @@ pub fn paint(
     origin: Point<Pixels>,
     labels: &Labels,
     colors: Colors,
-    exclusion: Option<Bounds<Pixels>>,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -642,13 +635,7 @@ pub fn paint(
             } else {
                 (x + LABEL_PAD, y + 0.5)
             };
-            paint_label(
-                &shaped,
-                at(left, labels.line_top(row, &shaped)),
-                exclusion,
-                window,
-                cx,
-            );
+            paint_label(&shaped, at(left, labels.line_top(row, &shaped)), window, cx);
         }
     }
 
@@ -670,7 +657,6 @@ pub fn paint(
             plot.right() + LABEL_PAD,
             labels.line_top(frame.time_caption_row, &shaped),
         ),
-        exclusion,
         window,
         cx,
     );
@@ -681,7 +667,7 @@ pub fn paint(
         let shaped = labels.shape(caption, colors.label);
         let left = frame.caption_x;
         let top = labels.line_top(frame.caption_row, &shaped);
-        paint_label(&shaped, at(left, top), exclusion, window, cx);
+        paint_label(&shaped, at(left, top), window, cx);
     }
 }
 

@@ -78,7 +78,7 @@ FLAC gets the Vorbis comment `AUXI` with a whole-Hz reference frequency and
 including decoder-backed layouts, and `AUXI` for FLAC.
 `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins at opening.
 Recent retains the pre-existing CLI hints, where stored zero means no override.
-Session version 12 adds only the baseband presentation preference.
+Session remains at version 11 and has no baseband presentation preference.
 
 `argand_io::open_described` also returns the optional reference declared by the
 file before opening overrides, alongside the reader and its existing checked

@@ -16,8 +16,6 @@ use gpui_kit::EventEmitter;
 #[derive(Clone)]
 pub(in crate::shell) struct PlotSnapshot {
     pub extents: axes::Extents,
-    pub reference: Option<f64>,
-    pub reference_enabled: bool,
     pub texture: Option<Arc<RenderImage>>,
     pub deep: Option<Arc<crate::shell::plot::plot_ui::DeepPreview>>,
     pub backdrop: Option<backdrop::Backdrop>,
@@ -60,11 +58,6 @@ pub(in crate::shell) enum PlotIntent {
     },
     /// The pointer, and with it the readout, changed.
     Pointer,
-    Reference {
-        value: f64,
-        opened: f64,
-        focus: bool,
-    },
     /// The selection a drag or a click left, if any.
     Select(Option<argand_core::Selection>),
     /// A drag began on these axes, whose tick schemes are held from here.
@@ -99,7 +92,6 @@ pub(in crate::shell) enum FrequencyIntent {
 }
 
 pub(in crate::shell) struct PlotView {
-    pub(in crate::shell) reference_entry: Option<super::reference_ui::ReferenceEntry>,
     pub(in crate::shell) focus: FocusHandle,
     pub(in crate::shell) snapshot: Option<PlotSnapshot>,
     pub(in crate::shell) pointer: Option<gpui_kit::Point<Pixels>>,
@@ -139,7 +131,6 @@ impl PlotView {
         let symbols = symbol_shortcuts(focus.clone(), window.window_handle().window_id(), cx);
         let blur = cx.on_blur(&focus, window, |plot, _, cx| plot.release_space(cx));
         Self {
-            reference_entry: None,
             focus,
             snapshot: None,
             pointer: None,
@@ -428,7 +419,6 @@ impl Render for PlotView {
             )
             .children(self.saved_notice(&snapshot, cx))
             .children(entry)
-            .children(self.reference_control(&snapshot, cx))
             .when(self.dragging(), |plot| {
                 plot.child(drag_tracker(cx.entity().downgrade()))
             })

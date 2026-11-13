@@ -253,8 +253,6 @@ impl Shell {
         let theme = self.theme_menu(focus.clone(), window, cx);
         let commands = self.command_availability();
         let show_grid = self.session.show_grid;
-        let baseband_available = commands.is_enabled::<ToggleBaseband>();
-        let baseband = baseband_available && self.session.baseband_frequencies;
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
         let analysis = self.status_panel_available(settings_ui::StatusPanel::Analysis);
@@ -278,13 +276,6 @@ impl Shell {
                     "Vertical orientation",
                     ToggleOrientation,
                     vertical,
-                    focus.clone(),
-                    commands,
-                ))
-                .item(action_row(
-                    "Baseband frequencies",
-                    ToggleBaseband,
-                    baseband,
                     focus.clone(),
                     commands,
                 ))
@@ -610,12 +601,10 @@ impl Shell {
                 let separator = div().w(px(1.)).h(px(16.)).mx_1().bg(cx.theme().border);
                 let orientation = self.orientation_segments(cx);
                 let grid = self.grid_button(cx);
-                let baseband = self.baseband_button(cx);
                 let selection = self.selection_segments(cx);
                 bar.child(separator)
                     .child(title_control("title-orientation-control", orientation))
                     .child(title_control("title-grid-control", grid))
-                    .child(title_control("title-baseband-control", baseband))
                     .child(title_control("title-selection-control", selection))
             })
     }
@@ -819,60 +808,6 @@ impl Shell {
         button
     }
 
-    fn baseband_button(&self, cx: &mut Context<Self>) -> Button {
-        let id = "toggle-baseband";
-        let enabled = self.command_availability().is_enabled::<ToggleBaseband>();
-        let show = enabled && self.session.baseband_frequencies;
-        let state = match (enabled, show) {
-            (false, _) => ToolbarState::Disabled,
-            (true, true) => ToolbarState::On,
-            (true, false) => ToolbarState::Off,
-        };
-        let hint = if enabled {
-            if show {
-                "Show absolute frequencies"
-            } else {
-                "Show frequencies relative to reference"
-            }
-        } else if self.editing().is_some() {
-            "A nonzero reference frequency is required"
-        } else {
-            "Reference frequency is unavailable"
-        };
-        let mut button = Button::new(id)
-            .disabled(!enabled)
-            .accessibility_label("Baseband frequencies")
-            .tab_stop(false)
-            .when(enabled, |button| button.group(id))
-            .custom(toolbar_style(state, cx))
-            .when_some(on_surface(state, cx), |button, surface| button.bg(surface))
-            .toggled(show)
-            .small()
-            .w(px(TOOLBAR_HEIGHT))
-            .h(px(TOOLBAR_HEIGHT))
-            .px_0()
-            .child(Self::toolbar_glyph(
-                id,
-                "argand/baseband.svg".into(),
-                state,
-                cx,
-            ))
-            .on_click(cx.listener(|shell, _, window, cx| {
-                window.focus(&shell.focus_target(cx), cx);
-                window.dispatch_action(Box::new(ToggleBaseband), cx);
-            }));
-        button.interactivity().tooltip(move |_, cx| {
-            shortcut_tooltip(
-                hint.to_owned(),
-                enabled.then(|| Box::new(ToggleBaseband) as Box<dyn gpui_kit::Action>),
-                "Plot",
-                px(360.),
-                cx,
-            )
-        });
-        button
-    }
-
     /// The icon of a toolbar control, which tints while an off control is hovered.
     fn toolbar_glyph(
         id: &'static str,
@@ -882,7 +817,6 @@ impl Shell {
     ) -> impl IntoElement {
         let accent = toolbar_accent(cx);
         let colour = match state {
-            ToolbarState::Disabled => cx.theme().muted_foreground.opacity(0.5),
             ToolbarState::Off => cx.theme().foreground.opacity(0.85),
             ToolbarState::On | ToolbarState::Selected => accent,
         };
@@ -1109,8 +1043,8 @@ pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App, document: bool)
     if !document {
         return app;
     }
-    // The two framed segment groups, Grid and Baseband, the separator and five gaps.
-    app + px(SEGMENT * 5. + 4. + TOOLBAR_HEIGHT * 2. + 1.) + window.rem_size() * 1.75
+    // The two framed segment groups, Grid, the separator and four gaps.
+    app + px(SEGMENT * 5. + 4. + TOOLBAR_HEIGHT + 1.) + window.rem_size() * 1.5
 }
 
 fn app_button_width(window: &Window, cx: &gpui_kit::App) -> Pixels {
@@ -1179,8 +1113,6 @@ pub(super) fn title_control(
 /// The state a toolbar control is in, which decides its whole surface.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum ToolbarState {
-    /// An unavailable command, with a muted glyph and no pointer response.
-    Disabled,
     /// An ordinary control, which tints its glyph while it is hovered.
     Off,
     /// A control that is on, which stays accent while it is pressed.
@@ -1194,11 +1126,6 @@ pub(super) enum ToolbarState {
 pub(super) fn toolbar_style(state: ToolbarState, cx: &gpui_kit::App) -> ButtonCustomVariant {
     let accent = toolbar_accent(cx);
     let (color, hover, active) = match state {
-        ToolbarState::Disabled => (
-            cx.theme().title_bar,
-            cx.theme().title_bar,
-            cx.theme().title_bar,
-        ),
         ToolbarState::Off => (
             cx.theme().title_bar.darken(0.035),
             accent.opacity(0.32),

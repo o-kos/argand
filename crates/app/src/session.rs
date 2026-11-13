@@ -74,14 +74,15 @@ pub const RECENT_LIMIT: usize = 10;
 /// whatever that version was recording. The number goes up whenever the layout
 /// gains something, so that an older binary sees a number it does not know and
 /// leaves the file rather than quietly rewriting it without what it could not
-/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility; version 9 adds orientation; version 10 adds scale UI visibility; version 11 adds the interface theme chosen in the menu; version 12 adds baseband presentation.
-pub const VERSION: u32 = 12;
+/// read. Version 2 added the recent list, version 3 the panel split, version 4 the analysis settings, and version 5 stopped persisting file-specific range, and version 6 added per-file time views, now ignored on load. Version 7 adds the time-ruler presentation; version 8 adds grid visibility; version 9 adds orientation; version 10 adds scale UI visibility; version 11 adds the interface theme chosen in the menu.
+pub const VERSION: u32 = 11;
 
 /// Every layout this program can read, oldest first.
 ///
 /// An older file is read into the current shape and written back at
 /// [`VERSION`]: missing fields have defaults; legacy dynamic range values are ignored.
-const READABLE: [u32; 12] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, VERSION];
+// Version 12 only added the removed, unreleased baseband preference.
+const READABLE: [u32; 12] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION, 12];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -252,8 +253,6 @@ pub struct Recent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
     #[serde(default)]
-    pub baseband_frequencies: bool,
-    #[serde(default)]
     pub orientation: crate::navigation::orientation::Mode,
     #[serde(default = "default_grid_visibility")]
     pub show_grid: bool,
@@ -288,7 +287,6 @@ impl Default for Session {
     fn default() -> Self {
         Self {
             version: VERSION,
-            baseband_frequencies: false,
             show_grid: true,
             show_scale_ui: true,
             orientation: crate::navigation::orientation::Mode::default(),
@@ -543,11 +541,6 @@ pub fn merge(base: &Session, mine: &Session, theirs: &Session) -> Session {
     recent.truncate(RECENT_LIMIT);
     Session {
         orientation: pick(&base.orientation, &mine.orientation, &theirs.orientation),
-        baseband_frequencies: pick(
-            &base.baseband_frequencies,
-            &mine.baseband_frequencies,
-            &theirs.baseband_frequencies,
-        ),
         show_grid: pick(&base.show_grid, &mine.show_grid, &theirs.show_grid),
         show_scale_ui: pick(
             &base.show_scale_ui,

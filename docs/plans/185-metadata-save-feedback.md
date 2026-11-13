@@ -84,7 +84,9 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   fresh independent reviewer assignments above.
 - Remove ruler reference buttons/inputs and their label exclusion rectangles.
   Remove Baseband toolbar/menu/action/shortcut, asset and session preference.
-  Restore session version 11. Frequencies always include the effective reference.
+  Restore written session version 11. Read the known version-12 payload to
+  preserve its other settings, dropping the removed preference on writing.
+  Frequencies always include the effective reference.
 - Insert the effective reference, including 0 Hz, between the file summary and
   FFT summary in the status bar, independent of plot orientation. Reuse the
   existing status control and pinned property panel, standard Input/numeric
@@ -97,9 +99,10 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - Verify status-bar ordering, both orientations, light/dark/narrow layouts, panel
   switching/dismissal, invalid values, keyboard isolation, Save/reopen and sample
   identity, shared command guards, and version-11 serialization without BB.
-- [ ] Implement removal and status-bar panel, update current architecture.
-- [ ] Full local gate with release last, isolated production Xvfb acceptance.
-- [ ] Fresh independent review, dispositions and Draft PR publication.
+- [x] Implement removal and status-bar panel, update current architecture.
+- [x] Full local gate with release last, isolated production Xvfb acceptance.
+- [x] Fresh independent review and current-source/evidence assessment.
+- Keep publication in the existing Draft PR for owner feedback.
 
 ## Acceptance
 
@@ -348,6 +351,45 @@ progress/evidence text changed afterward.
   Native Wayland/Windows/macOS, owner appearance acceptance and the persistent
   Saving100 report remain unresolved. The X11 saves remove Saving without
   further input, which does not explain the owner's native report.
+
+## Status-bar redesign validation
+
+- Removed ruler editing/exclusion rectangles and all Baseband presentation UI,
+  actions, shortcut, asset and session preference. Writes use version 11; the
+  known version-12 payload remains readable to preserve other owner settings.
+- Reference uses the existing status control/separator, Tooltip, PinnedHint,
+  NumericEditor and outlined Save to file Button. The standard button is a tab
+  stop with an accessible name. ReferenceSave suppresses the pinned Confirm
+  binding so the standard Save Button handles Enter, as the existing About Link
+  does in its own scope.
+- Initial production X11/Xvfb run checked tooltip, grouped input, direct Save,
+  zero and maximum u32, both orientations, light/dark and 700x600. The saved IQW
+  reference was 1010001 Hz, with all 172800000 sample bytes identical. Saving
+  disappeared without further input in this X11 run.
+- That run exposed discarded drafts on outside dismissal and a red unavailable
+  message during ordinary saving. Closing now retains the editor through a
+  deferred guarded commit, while Escape drops the draft. Busy state disables
+  controls without an error. Added outside/Escape and Tab/Enter Save regressions.
+- The keyboard fixture needs a complete key press/release: a bare simulated
+  keydown kept the standard Button pressed. The complete press helper passes.
+  Earlier interrupted/timeout diagnostic runs are not successful checks.
+- Final formatting, Clippy and all 913 tests plus doc tests passed, followed by
+  release last. The final production X11/Xvfb binary passed direct and Tab/Enter
+  Save, outside/Escape, keyboard opening, invalid/zero/steps/max, adjacent panels,
+  BB/Ctrl+B removal, both orientations and narrow light/dark scenarios.
+- Fresh reopening without an override displays zero. Independent file parsing
+  confirms fmt/auxi/data, reference 0, identical 172800000 sample bytes, and
+  session version 11 without the removed preference. During these X11 saves,
+  controls disable without a red error and Saving disappears without more input.
+- Independent redesign review round 1 found no substantive findings. None were
+  rejected. The reviewer verified the exact patch/new-file snapshot, production
+  digest, raw checks, screenshots and file/session proof. The primary assessed
+  the current source against that snapshot and checked source identity, guarded
+  deferred commits, unchanged staged publication, metadata history and no-FFT
+  translation. Only this plan's progress/results changed after review.
+- Native Wayland/Windows/macOS, enlarged-font native rendering, owner appearance
+  acceptance and the persistent Saving100 report remain unverified/open. No Ready
+  or merge transition is requested.
 
 ## Validation and limits
 

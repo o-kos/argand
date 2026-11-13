@@ -7,7 +7,6 @@ actions!(
     navigation,
     [
         ToggleGrid,
-        ToggleBaseband,
         ToggleScaleUi,
         ToggleOrientation,
         ClockRuler,
@@ -39,7 +38,6 @@ actions!(
 pub(in crate::shell) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys([
         command::binding("ctrl-g", ToggleGrid, Some("Plot")),
-        command::binding("ctrl-b", ToggleBaseband, Some("Plot")),
         command::binding("ctrl-u", ToggleScaleUi, Some("Plot")),
         command::binding("ctrl-t", ToggleOrientation, Some("Plot")),
         KeyBinding::new("ctrl-+", ZoomIn, Some("Plot")),
@@ -475,7 +473,7 @@ impl Shell {
     /// Act on what the plot asked for, accepting only views within this capture.
     pub(in crate::shell) fn apply_plot_intent(
         &mut self,
-        plot: &gpui_kit::Entity<crate::shell::plot::plot_view::PlotView>,
+        _: &gpui_kit::Entity<crate::shell::plot::plot_view::PlotView>,
         intent: &crate::shell::plot::plot_view::PlotIntent,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -498,22 +496,6 @@ impl Shell {
                     self.resize(plot, cx);
                 }
                 cx.notify();
-            }
-            PlotIntent::Reference {
-                value,
-                opened,
-                focus,
-            } => {
-                let accepted = self.is_reference_editable()
-                    && self
-                        .editing()
-                        .is_some_and(|editing| editing.reference() == opened);
-                if accepted {
-                    self.set_reference(value, window, cx);
-                }
-                plot.update(cx, |plot, cx| {
-                    plot.reference_committed(accepted, focus, window, cx)
-                });
             }
             PlotIntent::Select(selection) => self.select(selection.unwrap_or_default(), cx),
             PlotIntent::Pointer => {
@@ -748,12 +730,6 @@ impl Shell {
                     shell.toggle_orientation(window, cx);
                 },
             ))
-            .on_action(command::listener(cx, |shell, _: &ToggleBaseband, _, cx| {
-                shell.session.baseband_frequencies = !shell.session.baseband_frequencies;
-                shell.frequency_scheme = None;
-                shell.save();
-                cx.notify();
-            }))
             .on_action(command::listener(cx, |shell, _: &ToggleGrid, _, cx| {
                 shell.session.show_grid = !shell.session.show_grid;
                 shell.save();
@@ -872,23 +848,11 @@ impl Shell {
         }
     }
 
-    pub(in crate::shell) fn can_toggle_baseband(&self) -> bool {
-        self.view.is_some()
-            && self
-                .editing()
-                .is_some_and(|editing| editing.reference() != 0.)
-    }
-
     pub(in crate::shell) fn frequency_offset(&self) -> f64 {
         let Some(editing) = self.editing() else {
             return 0.;
         };
-        let reference = if self.session.baseband_frequencies {
-            0.
-        } else {
-            editing.reference()
-        };
-        reference - editing.file().meta.center_freq
+        editing.reference() - editing.file().meta.center_freq
     }
 
     /// The capture's band in physical hertz, around its reference when complex and above it when real.

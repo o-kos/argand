@@ -115,6 +115,9 @@ impl NumericEditor {
     }
 
     pub(super) fn set_disabled(&mut self, disabled: bool, cx: &mut Context<Self>) {
+        if self.disabled == disabled {
+            return;
+        }
         self.disabled = disabled;
         if disabled {
             self.stop_repeat();

@@ -47,6 +47,7 @@ mod disk_change_ui;
 mod editing_ui;
 mod hints;
 mod levelling_ui;
+mod reference_ui;
 mod replace_ui;
 
 mod numeric_editor;
@@ -97,7 +98,7 @@ struct OpenRecent {
 pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     editing_ui::init(cx);
     badge_entry::init(cx);
-    plot::reference_ui::init(cx);
+    reference_ui::init(cx);
     selection_panel::init(cx);
     about_ui::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
@@ -389,6 +390,7 @@ struct Shell {
     settings: Settings,
     /// The analysis settings surface, pinned open until a click outside, Enter or Escape.
     analysis_hint: gpui_kit::Entity<hints::PinnedHint>,
+    reference: reference_ui::State,
     about: about_ui::State,
     information_panel: Option<hints::Panel>,
     information_panel_request: u64,
@@ -550,10 +552,12 @@ impl Shell {
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
         let about = about_ui::State::new(cx);
+        let reference = reference_ui::State::new(window, cx);
         Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
+            reference,
             about,
             information_panel: None,
             information_panel_request: 0,

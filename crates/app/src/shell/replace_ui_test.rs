@@ -472,15 +472,15 @@ fn saving_before_open_clears_the_published_files_recent_reference_override(
 }
 
 #[gpui_kit::test]
-fn baseband_and_metadata_undo_keep_analysis_and_selected_bins(cx: &mut TestAppContext) {
+fn metadata_undo_keeps_analysis_and_selected_bins(cx: &mut TestAppContext) {
     let (shell, cx) = open_window(cx);
-    let dir = argand_io::testutil::TempDir::new("reference-baseband");
+    let dir = argand_io::testutil::TempDir::new("reference-undo");
     let path = dir.join("capture.wav");
     write_wave(&path, 48_000);
     shell.update_in(cx, |shell, window, cx| {
         shell.open(Origin::new(path), window, cx)
     });
-    wait_until(cx, &shell, "ready baseband fixture", |shell| {
+    wait_until(cx, &shell, "ready reference fixture", |shell| {
         shell
             .file
             .as_ref()
@@ -498,15 +498,10 @@ fn baseband_and_metadata_undo_keep_analysis_and_selected_bins(cx: &mut TestAppCo
     shell.update_in(cx, |shell, window, cx| {
         shell.band = argand_core::FrequencyBand::between(-200., 300.);
         assert!(shell.set_reference(100_000., window, cx));
-        window.dispatch_action(
-            Box::new(crate::shell::plot::navigation_ui::ToggleBaseband),
-            cx,
-        );
     });
     cx.run_until_parked();
     shell.read_with(cx, |shell, _| {
-        assert!(shell.session.baseband_frequencies);
-        assert_eq!(shell.extents().unwrap().frequency_offset, 0.);
+        assert_eq!(shell.extents().unwrap().frequency_offset, 100_000.);
         assert_eq!(shell.editing().unwrap().reference(), 100_000.);
     });
     shell.update_in(cx, |_, window, cx| {

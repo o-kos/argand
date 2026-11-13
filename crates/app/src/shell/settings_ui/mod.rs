@@ -100,10 +100,11 @@ pub(super) fn status_control(
         )
 }
 
-/// The two property editors anchored in the status bar.
+/// Property editors anchored in the status bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum StatusPanel {
     File,
+    Reference,
     Analysis,
 }
 
@@ -164,6 +165,7 @@ impl Shell {
     pub(super) fn information_hint(&self, panel: hints::Panel) -> Entity<hints::PinnedHint> {
         match panel {
             hints::Panel::File => self.conversion.hint.clone(),
+            hints::Panel::Reference => self.reference.hint.clone(),
             hints::Panel::Analysis => self.analysis_hint.clone(),
             hints::Panel::About => self.about.hint.clone(),
         }
@@ -180,6 +182,7 @@ impl Shell {
             hints::Panel::File => self.conversion_request().is_some(),
             hints::Panel::Analysis => self.file.is_some(),
             hints::Panel::About => true,
+            hints::Panel::Reference => self.is_reference_editable(),
         }
     }
 
@@ -275,6 +278,12 @@ impl Shell {
                 "file-summary-hover",
                 "file-information-hint",
                 "file-summary-keeps-focus",
+            ),
+            StatusPanel::Reference => (
+                "reference-frequency",
+                "reference-summary-hover",
+                "reference-frequency-hint",
+                "reference-summary-keeps-focus",
             ),
             StatusPanel::Analysis => (
                 "analysis-settings",
@@ -497,6 +506,7 @@ impl Shell {
                         .when_some(file, |items, field| {
                             items.child(self.file_control(field.value, cx))
                         })
+                        .children(self.reference_control(cx))
                         .children(self.analysis_controls(cx)),
                 )
             })
@@ -680,6 +690,11 @@ fn status_panel_tooltip(panel: StatusPanel, cx: &mut gpui_kit::App) -> gpui_kit:
             "View file properties and conversion options",
             Box::new(ConvertCapture),
         ),
+        StatusPanel::Reference => (
+            "Reference frequency",
+            "Adjust the capture reference frequency",
+            Box::new(EditReference),
+        ),
         StatusPanel::Analysis => (
             "Analysis settings",
             "Adjust FFT, window function and display range",
@@ -717,7 +732,7 @@ fn status_panel_tooltip(panel: StatusPanel, cx: &mut gpui_kit::App) -> gpui_kit:
     })
 }
 
-fn separated_status_item(
+pub(super) fn separated_status_item(
     id: &'static str,
     cx: &gpui_kit::App,
 ) -> gpui_kit::Stateful<gpui_kit::Div> {
