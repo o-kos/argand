@@ -26,8 +26,11 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - Add a Baseband frequencies toolbar toggle beside Grid and a Ctrl+B shortcut,
   sharing the existing menu action and checked state. Keep numeric input key
   handling unchanged. The toolbar toggle uses the existing standard Button style.
-- Session reference-override persistence is under discussion. Do not change it
-  as part of this follow-up without an owner decision.
+- Owner requested removal of reference-edit persistence in Recent/session.
+  Reference edits remain only in document history until explicit Save. Public
+  WAVE/FLAC reopening reads the saved reference from the file without an added
+  reference override. Preserve original opening parameters for unchanged RAW
+  files and the pre-existing CLI opening-hint behavior.
 
 ## Acceptance
 
@@ -57,6 +60,11 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - [x] Run a new focused review cycle for the newly authorized Convert/baseband
   changes, after the local gate and production acceptance. The previous three
   rounds cover the completed metadata snapshot, not this subsequent scope.
+- [ ] Remove Recent updates on reference edits/discard and published-file
+  reference overrides; restore legacy session zero-as-absent representation.
+- [ ] Verify unsaved edits do not alter Recent; Save and later reopening use
+  file metadata, including zero, with RAW and conversion behavior preserved.
+- [ ] Full gate, production acceptance and independent review of this removal.
 
 ## Investigation so far
 
@@ -142,7 +150,8 @@ progress/evidence text changed afterward.
 - The owner's Wayland-environment process journal records another completed
   Save-over. This does not establish its visible state or explain the reported
   stale Saving status. That defect remains unresolved; no speculative fix.
-- Session override persistence remains unchanged pending the owner's decision.
+- Session override persistence was unchanged in this earlier follow-up; the
+  owner has since requested removal in the next bounded change above.
 - The independent follow-up review returned no substantive findings. It covered
   source baseline/freshness, publication protections, shared action/focus,
   toolbar width/title-drag exclusion and supplied production evidence. The
