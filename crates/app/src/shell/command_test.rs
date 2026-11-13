@@ -5,7 +5,7 @@ use gpui_kit::TestAppContext;
 #[gpui_kit::test]
 fn unavailable_file_shortcuts_are_inert_and_follow_document_lifetime(cx: &mut TestAppContext) {
     let (shell, cx) = open_window(cx);
-    cx.update(|_, cx| Shell::bind_choose_file(shell.downgrade(), cx));
+    cx.update(|window, cx| Shell::bind_choose_file(shell.downgrade(), window.window_handle(), cx));
     for keys in ["ctrl-s", "ctrl-shift-s", "ctrl-alt-s", "ctrl-,", "f11"] {
         let keys = if cfg!(target_os = "macos") {
             keys.replace("ctrl-", "cmd-")
@@ -15,10 +15,14 @@ fn unavailable_file_shortcuts_are_inert_and_follow_document_lifetime(cx: &mut Te
         cx.simulate_keystrokes(&keys);
         cx.run_until_parked();
     }
+    cx.update(|window, cx| window.dispatch_action(Box::new(EditReference), cx));
+    cx.run_until_parked();
     shell.read_with(cx, |shell, cx| {
         assert!(shell.saving.is_none());
         assert!(shell.save_notice.is_none());
         assert!(!shell.analysis_hint.read(cx).is_open());
+        assert!(!shell.reference.hint.read(cx).is_open());
+        assert!(!shell.command_availability().is_enabled::<EditReference>());
         assert!(!shell.conversion.hint.read(cx).is_open());
         assert!(!shell.command_availability().is_enabled::<SaveAs>());
         assert!(!shell.command_availability().is_enabled::<EditAnalysis>());

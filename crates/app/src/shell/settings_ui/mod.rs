@@ -112,6 +112,7 @@ impl From<StatusPanel> for hints::Panel {
     fn from(panel: StatusPanel) -> Self {
         match panel {
             StatusPanel::File => Self::File,
+            StatusPanel::Reference => Self::Reference,
             StatusPanel::Analysis => Self::Analysis,
         }
     }
@@ -294,8 +295,12 @@ impl Shell {
         };
         let hint = self.information_hint(panel.into());
         let lit = self.information_panel == Some(panel.into()) && hint.read(cx).is_open();
-        let mut button =
-            status_control(id, group, text, lit, cx).disabled(!self.status_panel_available(panel));
+        let mut button = status_control(id, group, text, lit, cx)
+            .tab_stop(panel == StatusPanel::Reference)
+            .when(panel == StatusPanel::Reference, |button| {
+                button.accessibility_label("Reference frequency")
+            })
+            .disabled(!self.status_panel_available(panel));
         if self.external_tooltips_allowed(cx) {
             button
                 .interactivity()

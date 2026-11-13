@@ -395,6 +395,9 @@ progress/evidence text changed afterward.
 
 - Class A: shared overlay policy and command routing across more than five code
   files. Primary gpt-6.1-sol medium and fresh read-only reviewer gpt-6.1-sol high.
+- Owner requested updating from origin/main. Rebase preserves its explicit panel
+  controller, Recent submenu, guarded closing and native SDK layout. The installed
+  SDK migration is explicitly approved, without rebuilding the SDK.
 - Reproduce the reported Reference frequency tooltip over File information.
   Audit the earlier About/property-panel regression coverage and reuse one policy
   for passive property tooltips while File, Reference, Analysis, Selection or
@@ -409,6 +412,41 @@ progress/evidence text changed afterward.
 - Run the full local gate with release last, then production X11/Xvfb transitions
   on disposable data and isolated settings. Independent review assesses the exact
   patch and acceptance evidence. Keep Draft and preserve unrelated policy edits.
+
+## Tooltip/menu follow-up results
+
+- Rebased onto current main, retaining its common explicit panel lifecycle,
+  guarded Quit and Recent submenu. Owner policy edits already exist upstream,
+  verified by reverse-applying their saved patch in check mode; the recovery stash
+  remains available. Migrated the same installed SDK selection to main's native
+  target layout with explicit owner approval, without rebuilding the SDK.
+- The prior production release reproduced Reference help over File information.
+  Reference now participates in the common panel enum/controller and tooltip
+  teardown. Tooltip eligibility reads that central enum instead of a duplicate
+  list. The old About/tooltip tests did exist; their matrix omitted Reference.
+- Expanded the shared switch matrix to all four panels and added pending/visible
+  Reference help, all external triggers, dismissal and fresh-hover restoration.
+  Deliberately bypassing Reference suppression makes that regression fail at
+  File/reference-frequency; restoring the policy passes. The bypass is removed.
+- Removed Save to file and its button-specific key context. Edit -> Reference
+  frequency... uses the shared typed command policy and same panel. Normal Save
+  remains responsible for publication. Added menu/availability and normal-Save
+  checks, preserving whole-Hz, stale-input and outside/Escape coverage.
+- Full formatting, all-target Clippy and workspace tests passed, then release last.
+  Production X11/Xvfb verified the reported transition, File/Reference/Analysis/
+  About suppression, fresh-hover restoration, actual Edit-menu opening, compact
+  panel without Save, Enter/outside/Escape and Ctrl+S. A 700x600 panel fits.
+  Saved auxi is zero and all 172800000 sample bytes match the fixture by SHA256.
+  Isolated session writes version 11 without baseband. Only task-owned display,
+  settings and disposable data were used; app and Xvfb were stopped afterward.
+- Independent review round 1 raised two P3 findings: stale Save-button docs and
+  missing Reference accessible name. Both accepted and resolved, none rejected.
+  Round 2 found no remaining findings and assessed the exact source snapshot,
+  gate, production digest/screenshots and saved-file proof. The primary assessed
+  integration and data-safety invariants. Only these plan results changed afterward.
+- Native Wayland/Windows/macOS, light/enlarged-font follow-up acceptance and owner
+  appearance acceptance remain unperformed. Persistent Saving100 remains open;
+  X11 completion does not establish its cause. Keep Draft; no Ready/merge/release.
 
 ## Validation and limits
 

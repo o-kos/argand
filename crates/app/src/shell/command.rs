@@ -20,19 +20,25 @@ macro_rules! commands {
 commands! {
     ChooseFile => |s| true,
     Save => |s| s.save, SaveAs => |s| s.save_as, SaveSelectionAs => |s| s.save_selection,
-    EditAnalysis => |s| s.file, ConvertCapture => |s| s.convert,
+    EditAnalysis => |s| s.file, EditReference => |s| s.reference, ConvertCapture => |s| s.convert,
     editing_ui::Undo => |s| s.edit.undo, editing_ui::Redo => |s| s.edit.redo,
     editing_ui::CutSelection => |s| s.edit.cut, editing_ui::CopySelection => |s| s.edit.cut,
     editing_ui::PasteClipboard => |s| s.edit.replace, editing_ui::PasteHere => |s| s.edit.paste,
     editing_ui::DeleteSelection => |s| s.edit.cut, editing_ui::SuppressBand => |s| s.edit.suppress,
     editing_ui::InvertSpectrum => |s| s.edit.invert, editing_ui::NormalizeLevel => |s| s.edit.normalize,
     editing_ui::EditSelection => |s| s.selection,
-    ToggleGrid => |s| true,
-    ToggleScaleUi => |s| true, ToggleOrientation => |s| true,
+    ToggleGrid => |s| s.document,
+    ToggleScaleUi => |s| s.document, ToggleOrientation => |s| s.document,
     FitCapture => |s| s.document, FitFrequency => |s| s.document,
     ClockRuler => |s| true, SecondsRuler => |s| true, SamplesRuler => |s| true,
     SystemTheme => |s| true, LightTheme => |s| true, DarkTheme => |s| true,
     about_ui::ShowAbout => |s| true,
+}
+
+impl Command for chrome::CloseWindow {
+    fn is_enabled(_: Availability) -> bool {
+        true
+    }
 }
 
 /// A presentation snapshot. Execution obtains a fresh snapshot from the owner.
@@ -41,6 +47,7 @@ pub(super) struct Availability {
     pub idle: bool,
     pub document: bool,
     file: bool,
+    reference: bool,
     save: bool,
     save_as: bool,
     save_selection: bool,
@@ -75,6 +82,7 @@ impl Shell {
             idle: !self.conversion_active(),
             document: self.view.is_some(),
             file: self.file.is_some(),
+            reference: self.is_reference_editable(),
             save: self.can_save_edits(),
             save_as: self.can_save(false),
             save_selection: self.can_save(true),

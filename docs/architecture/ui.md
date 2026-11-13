@@ -31,6 +31,15 @@ The analysis settings hint selects Peak (MAX) or Mean power, including subsequen
 
 ## About Argand (#107)
 
+The Reference frequency status button and Edit → Reference frequency… open the
+same explicit panel through the common information-panel owner. The editor uses
+NumericEditor with whole-Hz commits on Enter, blur or stepping. Outside dismissal
+keeps a valid draft, while Escape drops an uncommitted draft. Changes enter document
+history and the existing Save command writes them. There is no panel-specific Save
+button. Reference participates in mutual exclusion, deactivation closing and the
+same external-tooltip suppression/teardown policy as File, Analysis and About.
+File information shows only the read-only reference declared by the file.
+
 A permanent standard ghost tag-and-version button at the right end of the title bar before
 window controls and a direct About Argand application-menu item open one retained
 `PinnedHint`, anchored beneath the right title-bar button toward the window interior
@@ -40,7 +49,7 @@ existing pinned helper, standard Button and keyboard-accessible Base Link. The
 repository Link opens its URL through the standard control; neither Link activation
 nor prose/empty-space clicks add a special panel dismissal. About uses the same
 information-panel owner, native left trigger, repeated-entry toggle, outside
-backdrop, Escape and window-deactivation policy as File/Analysis. Ordinary focus
+backdrop, Escape and window-deactivation policy as File/Reference/Analysis. Ordinary focus
 changes add no About-specific dismissal. Opening another application panel/menu
 closes About, and one shared generation invalidates deferred open requests.
 
@@ -321,14 +330,14 @@ The start page and the inline recent rows in File share `recent.rs`'s toolkit-ne
 The status bar shows the effective physical reference between the file and FFT
 summaries (#185), including 0 Hz. Its standard Button has a Reference frequency
 tooltip and opens the shared pinned property panel on click. The panel composes
-the existing NumericEditor (standard Input/steppers) and outlined Save to file
-Button. Enter/blur/steps commit whole-Hz metadata changes from 0 through u32::MAX,
+the existing NumericEditor (standard Input/steppers). Edit → Reference frequency…
+opens the same panel. Enter/blur/steps commit whole-Hz metadata changes from 0 through u32::MAX,
 without recomputing analysis; typing preserves draft text/cursor and localized
 whitespace grouping. Escape dismisses the panel. Invalid or stale input cannot
 change a different document or overwrite an external reference change. Editing
-availability includes changed-source, replacement and busy guards. Save to file
-commits valid input, rechecks the shared Save policy and uses the existing whole
-document publication route, including RAW Save As. Reference controls never cover
+availability includes changed-source, replacement and busy guards. The normal Save
+command writes committed changes through the existing whole-document publication
+route, including RAW Save As. Reference controls never cover
 the rulers or minimap, in either orientation. There is no Baseband display toggle.
 File information shows a read-only Reference frequency only when the user file
 actually declares one, including explicit zero. It excludes opening overrides,
@@ -370,9 +379,10 @@ handling is introduced. See the current [control inventory](../ui/124-inventory.
 
 ## Shared information-panel and tooltip policy (#246)
 
-File information, Analysis settings and About Argand open explicitly through their
+File information, Reference frequency, Analysis settings and About Argand open explicitly through their
 standard buttons, menu entries or existing shortcuts, taking normal Popover focus.
-No panel hover timers, hover previews or additional toolbar Tab stops exist.
+No panel hover timers or hover previews exist. The Reference status button is
+a keyboard Tab stop. Title-bar controls keep their existing Tab policy.
 The standard Popover owns native left-button trigger activation and Confirm;
 there is no separate right-button activation or per-button open callback. Repeating
 any own trigger/menu/registered shortcut closes its panel; another trigger switches

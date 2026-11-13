@@ -23,7 +23,8 @@ promise applies to.
 ### Added
 
 - Edit the capture's reference frequency through its status-bar value between
-  the file and FFT summaries. Its panel edits whole Hz and provides Save to file.
+  the file and FFT summaries. Its panel edits whole Hz and also opens from Edit → Reference frequency….
+  The existing Save command writes changes to the file.
   Changes support Undo/Redo and enable Convert until saved or undone. File
   information shows only the reference declared in the file. Saving a changed
   reference from RAW proposes a WAVE file and preserves the original (#185).

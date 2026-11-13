@@ -2145,7 +2145,7 @@ fn an_old_teardown_acknowledgement_cannot_clear_a_new_suppression(cx: &mut TestA
     });
 }
 
-const INFORMATION_PANELS: [(hints::Panel, &str, &str); 3] = [
+const INFORMATION_PANELS: [(hints::Panel, &str, &str); 4] = [
     (
         hints::Panel::File,
         "file-information",
@@ -2157,6 +2157,11 @@ const INFORMATION_PANELS: [(hints::Panel, &str, &str); 3] = [
         "analysis-editor",
     ),
     (hints::Panel::About, "about-button", "about-panel"),
+    (
+        hints::Panel::Reference,
+        "reference-frequency",
+        "reference-editor",
+    ),
 ];
 
 fn assert_information_owner(
@@ -2193,7 +2198,7 @@ fn information_click(cx: &mut gpui_kit::VisualTestContext, id: &str) {
 }
 
 #[gpui_kit::test]
-fn information_buttons_share_toggle_internal_click_and_six_switch_routes(cx: &mut TestAppContext) {
+fn information_buttons_share_toggle_internal_click_and_all_switch_routes(cx: &mut TestAppContext) {
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!(
@@ -2389,4 +2394,71 @@ fn reference_only_convert_opens_after_edit_and_preserves_samples(cx: &mut TestAp
     assert_eq!(before.read(&mut expected).unwrap(), 4800);
     assert_eq!(after.read(&mut actual).unwrap(), 4800);
     assert_eq!(actual, expected);
+}
+
+#[gpui_kit::test]
+fn all_information_panels_suppress_external_tooltips_and_restore_on_fresh_hover(
+    cx: &mut TestAppContext,
+) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let dir = argand_io::testutil::TempDir::new("information-tooltip-policy");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path), window, cx)
+    });
+    wait_until(cx, &shell, "tooltip fixture", |shell| {
+        shell.is_reference_editable()
+    });
+    cx.update(|window, _| window.activate_window());
+    frame(cx);
+    let advance = |cx: &mut gpui_kit::VisualTestContext| {
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(2));
+        frame(cx);
+    };
+    for (panel, trigger, _) in INFORMATION_PANELS {
+        // Both pending and visible reference help must be removed on opening.
+        for wait in [200, 1000] {
+            let reference =
+                cx.update(|window, _| window.find("reference-frequency").bounds().center());
+            cx.simulate_mouse_move(point(px(500.), px(300.)), None, Default::default());
+            frame(cx);
+            cx.simulate_mouse_move(reference, None, Default::default());
+            cx.executor()
+                .advance_clock(std::time::Duration::from_millis(wait));
+            frame(cx);
+            if wait == 1000 {
+                cx.update(|window, _| assert!(window.try_find("shortcut-tooltip").is_some()));
+            }
+            shell.update_in(cx, |shell, window, cx| {
+                shell.activate_information_panel(panel, window, cx)
+            });
+            frame(cx);
+            for (_, other, _) in INFORMATION_PANELS {
+                let at = cx.update(|window, _| window.find(other.to_owned()).bounds().center());
+                cx.simulate_mouse_move(at, None, Default::default());
+                advance(cx);
+                cx.update(|window, _| {
+                    assert!(
+                        window.try_find("shortcut-tooltip").is_none(),
+                        "{panel:?} / {other}"
+                    );
+                    assert!(
+                        window.try_find("about-tooltip").is_none(),
+                        "{panel:?} / {other}"
+                    );
+                });
+                assert_information_owner(cx, &shell, Some(panel));
+            }
+            information_click(cx, trigger);
+            assert_information_owner(cx, &shell, None);
+            advance(cx);
+            cx.update(|window, _| assert!(window.try_find("shortcut-tooltip").is_none()));
+            cx.simulate_mouse_move(reference, None, Default::default());
+            advance(cx);
+            cx.update(|window, _| assert!(window.try_find("shortcut-tooltip").is_some()));
+        }
+    }
 }

@@ -65,8 +65,9 @@ impl Shell {
         focus: FocusHandle,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> (Entity<PopupMenu>, Vec<Origin>) {
-        let recent = app_menu::file_items(self.recent_entries());
+    ) -> (Entity<PopupMenu>, Option<FocusHandle>, Vec<Origin>) {
+        let entries = self.recent_entries();
+        let recent = app_menu::file_items(entries);
         let commands = self.command_availability();
         let digits = recent
             .iter()
@@ -80,13 +81,21 @@ impl Shell {
             })
             .collect();
         let owner = cx.entity().downgrade();
-        let menu = PopupMenu::build(window, cx, move |menu, _, _| {
-            let menu = menu
-                .action_context(focus.clone())
-                .max_w(px(420.))
-                .scrollable(true);
-            recent.into_iter().fold(menu, |menu, row| {
-                menu.item(Shell::file_row(row, commands, focus.clone(), owner.clone()))
+        let history: Vec<_> = recent
+            .iter()
+            .filter(|row| matches!(row, Row::Recent { .. }))
+            .cloned()
+            .collect();
+        let recent_menu = (!history.is_empty()).then(|| {
+            let focus = focus.clone();
+            let owner = owner.clone();
+            PopupMenu::build(window, cx, move |menu, _, _| {
+                history.into_iter().fold(
+                    menu.action_context(focus.clone()).max_w(px(420.)),
+                    |menu, row| {
+                        menu.item(Shell::file_row(row, commands, focus.clone(), owner.clone()))
+                    },
+                )
             })
         });
         let recent_focus = recent_menu
@@ -97,7 +106,7 @@ impl Shell {
             let mut history_added = false;
             recent.into_iter().fold(menu, |menu, row| {
                 if !matches!(row, Row::Recent { .. }) {
-                    return menu.item(Shell::file_row(row, enabled, focus.clone(), owner.clone()));
+                    return menu.item(Shell::file_row(row, commands, focus.clone(), owner.clone()));
                 }
                 if history_added {
                     return menu;
@@ -127,11 +136,10 @@ impl Shell {
                 SaveSelectionAs,
                 false,
                 focus,
-            )
-            .disabled(!enabled.save_selection),
+                commands,
+            ),
             Row::Information => {
-                action_row("File information…", Box::new(ConvertCapture), false, focus)
-                    .disabled(!enabled.information)
+                action_row("File information…", ConvertCapture, false, focus, commands)
             }
             Row::Separator => PopupMenuItem::separator(),
             Row::Recent {
@@ -163,14 +171,14 @@ impl Shell {
         let inverted = self.edit_commands_available().inverted;
         PopupMenu::build(window, cx, move |menu, _, _| {
             menu.action_context(focus.clone())
-                .item(action_row(
+                .item(edit_action_row(
                     "Undo",
                     editing_ui::Undo,
                     false,
                     focus.clone(),
                     commands,
                 ))
-                .item(action_row(
+                .item(edit_action_row(
                     "Redo",
                     editing_ui::Redo,
                     false,
@@ -178,28 +186,28 @@ impl Shell {
                     commands,
                 ))
                 .item(PopupMenuItem::separator())
-                .item(action_row(
+                .item(edit_action_row(
                     "Cut",
                     editing_ui::CutSelection,
                     false,
                     focus.clone(),
                     commands,
                 ))
-                .item(action_row(
+                .item(edit_action_row(
                     "Copy",
                     editing_ui::CopySelection,
                     false,
                     focus.clone(),
                     commands,
                 ))
-                .item(action_row(
+                .item(edit_action_row(
                     "Paste",
                     editing_ui::PasteClipboard,
                     false,
                     focus.clone(),
                     commands,
                 ))
-                .item(action_row(
+                .item(edit_action_row(
                     "Delete",
                     editing_ui::DeleteSelection,
                     false,
@@ -207,15 +215,22 @@ impl Shell {
                     commands,
                 ))
                 .item(PopupMenuItem::separator())
-                .item(action_row(
+                .item(edit_action_row(
                     "Selection panel",
                     editing_ui::EditSelection,
                     false,
                     focus.clone(),
                     commands,
                 ))
-                .item(PopupMenuItem::separator())
                 .item(action_row(
+                    "Reference frequency…",
+                    EditReference,
+                    false,
+                    focus.clone(),
+                    commands,
+                ))
+                .item(PopupMenuItem::separator())
+                .item(edit_action_row(
                     "Suppress band",
                     editing_ui::SuppressBand,
                     false,
@@ -223,14 +238,14 @@ impl Shell {
                     commands,
                 ))
                 .item(PopupMenuItem::separator())
-                .item(action_row(
+                .item(edit_action_row(
                     "Invert spectrum",
                     editing_ui::InvertSpectrum,
                     inverted,
                     focus.clone(),
                     commands,
                 ))
-                .item(action_row(
+                .item(edit_action_row(
                     "Normalize level",
                     editing_ui::NormalizeLevel,
                     false,
@@ -255,7 +270,7 @@ impl Shell {
         let show_grid = self.session.show_grid;
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
-        let analysis = self.status_panel_available(settings_ui::StatusPanel::Analysis);
+        let document = commands.document;
         PopupMenu::build(window, cx, move |menu, _, _| {
             menu.action_context(focus.clone())
                 .item(action_row(
@@ -302,10 +317,13 @@ impl Shell {
                 })
                 .item(PopupMenuItem::submenu("Theme", theme))
                 .item(PopupMenuItem::separator())
-                .item(
-                    action_row("Analysis settings…", Box::new(EditAnalysis), false, focus)
-                        .disabled(!analysis),
-                )
+                .item(action_row(
+                    "Analysis settings…",
+                    EditAnalysis,
+                    false,
+                    focus,
+                    commands,
+                ))
         })
     }
 
@@ -409,11 +427,12 @@ impl Shell {
                     about_ui::ShowAbout,
                     false,
                     focus.clone(),
+                    commands,
                 ))
                 .item(PopupMenuItem::separator())
                 .item(action_row(
                     "Quit Argand",
-                    Box::new(chrome::CloseWindow),
+                    chrome::CloseWindow,
                     false,
                     focus,
                     commands,
@@ -971,6 +990,16 @@ fn action_row<A: command::Command>(
     commands: command::Availability,
 ) -> PopupMenuItem {
     command_row(label, action, checked, focus, None, commands)
+}
+
+fn edit_action_row<A: command::Command>(
+    label: &str,
+    action: A,
+    checked: bool,
+    focus: FocusHandle,
+    commands: command::Availability,
+) -> PopupMenuItem {
+    command_row(label, action, checked, focus, Some("Plot"), commands)
 }
 
 fn command_row<A: command::Command>(

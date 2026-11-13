@@ -29,6 +29,7 @@ fn opened(
     wait_until(cx, &shell, "reference fixture", |shell| {
         shell.is_reference_editable()
     });
+    cx.update(|window, cx| Shell::bind_choose_file(shell.downgrade(), window.window_handle(), cx));
     frame(cx);
     (shell, dir, cx)
 }
@@ -79,7 +80,13 @@ fn status_reference_edits_and_saves_without_changing_samples(cx: &mut TestAppCon
         assert!(shell.editing().unwrap().is_dirty());
     });
     assert!(editor.read_with(cx, |editor, _| !editor.refused));
-    cx.update(|window, cx| window.click("save-reference", cx));
+    cx.simulate_keystrokes("escape");
+    frame(cx);
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-s"
+    } else {
+        "ctrl-s"
+    });
     wait_until(cx, &shell, "reference save", |shell| {
         shell.saving.is_none() && !shell.editing().unwrap().is_dirty()
     });
@@ -168,20 +175,47 @@ fn closing_reference_commits_outside_draft_but_escape_discards_it(cx: &mut TestA
 }
 
 #[gpui_kit::test]
-fn tab_and_enter_save_from_the_reference_panel(cx: &mut TestAppContext) {
-    let (shell, dir, cx) = opened(cx);
-    cx.update(|window, cx| window.click("reference-frequency", cx));
+fn edit_menu_opens_reference_and_uses_guarded_command_availability(cx: &mut TestAppContext) {
+    let (shell, _dir, cx) = opened(cx);
+    // F10, Edit, then Selection panel followed by Reference frequency.
+    cx.simulate_keystrokes("f10 down down right");
     frame(cx);
-    let input = editor(&shell, cx).read_with(cx, |editor, _| editor.input.clone());
-    input.update_in(cx, |input, window, cx| input.set_value("123", window, cx));
-    frame(cx);
-    cx.simulate_keystrokes("tab");
-    frame(cx);
-    cx.update(|window, _| assert_eq!(window.find("save-reference").focused(), Some(true)));
-    cx.update(|window, cx| window.press("enter", cx));
-    wait_until(cx, &shell, "keyboard reference save", |shell| {
-        shell.saving.is_none() && !shell.editing().unwrap().is_dirty()
+    let at = cx.update(|window, _| {
+        window
+            .find_all(gpui_kit::ElementId::Integer(9))
+            .into_iter()
+            .find(|row| {
+                row.path()
+                    .iter()
+                    .filter(|id| **id == gpui_kit::ElementId::Name("submenu".into()))
+                    .count()
+                    == 1
+            })
+            .expect("Reference menu row")
+            .bounds()
+            .center()
     });
-    let source = argand_io::open(&dir.join("capture.wav"), &Default::default()).unwrap();
-    assert_eq!(source.meta().center_freq, 123.);
+    cx.simulate_click(at, Default::default());
+    frame(cx);
+    cx.update(|window, _| {
+        assert!(window.try_find("reference-editor").is_some());
+        assert!(window.try_find("save-reference").is_none());
+    });
+    shell.read_with(cx, |shell, cx| {
+        assert_eq!(shell.information_panel, Some(hints::Panel::Reference));
+        assert!(shell.command_availability().is_enabled::<EditReference>());
+        assert!(shell.reference.hint.read(cx).is_open());
+    });
+    cx.simulate_keystrokes("escape");
+    frame(cx);
+    shell.update(cx, |shell, cx| {
+        shell.replacement_active = true;
+        cx.notify();
+    });
+    cx.update(|window, cx| window.dispatch_action(Box::new(EditReference), cx));
+    frame(cx);
+    shell.read_with(cx, |shell, cx| {
+        assert!(!shell.command_availability().is_enabled::<EditReference>());
+        assert!(!shell.reference.hint.read(cx).is_open());
+    });
 }

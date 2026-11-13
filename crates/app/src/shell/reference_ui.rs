@@ -31,7 +31,7 @@ impl State {
                     finish_editor(shell.reference.editor.take(), *revert, window, cx);
                 }
             }
-            shell.status_panel_changed(StatusPanel::Reference, *event, cx);
+            shell.information_panel_changed(hints::Panel::Reference, *event, cx);
         });
         Self {
             hint,
@@ -176,30 +176,15 @@ impl Editor {
         cx.notify();
         accepted
     }
-
-    fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.commit(window, cx) {
-            return;
-        }
-        let _ = self.owner.update(cx, |shell, cx| {
-            if shell.command_availability().is_enabled::<Save>() {
-                shell.save_over(window, cx);
-            }
-        });
-    }
 }
 
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (editable, dirty) = self.owner.upgrade().map_or((false, false), |owner| {
-            let shell = owner.read(cx);
-            (
-                self.is_current(shell),
-                shell.command_availability().is_enabled::<Save>(),
-            )
-        });
+        let editable = self
+            .owner
+            .upgrade()
+            .is_some_and(|owner| self.is_current(owner.read(cx)));
         let valid = value(self.input.read(cx));
-        let save = editable && valid.is_some_and(|value| value != self.opened || dirty);
         self.number
             .update(cx, |number, cx| number.set_disabled(!editable, cx));
         if !self.placed {
@@ -214,6 +199,7 @@ impl Render for Editor {
         }
         div()
             .id("reference-editor")
+            .map(gpui_kit::TestSupportExt::test_support)
             .key_context("ReferenceEditor")
             .on_action(cx.listener(|editor, _: &Confirm, window, cx| {
                 editor.commit(window, cx);
@@ -245,30 +231,6 @@ impl Render for Editor {
                     "Enter a frequency from 0 to 4 294 967 295 Hz"
                 }))
             })
-            .child(
-                div().key_context("ReferenceSave").child(
-                    presentation::outlined_button(
-                        "save-reference",
-                        "save-reference-hover",
-                        "Save to file",
-                        false,
-                        save,
-                        cx,
-                    )
-                    .on_click(cx.listener(Self::save_click)),
-                ),
-            )
-    }
-}
-
-impl Editor {
-    fn save_click(
-        &mut self,
-        _: &gpui_kit::ClickEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.save(window, cx);
     }
 }
 
@@ -277,6 +239,19 @@ impl Editor {
 mod tests;
 
 impl Shell {
+    pub(super) fn edit_reference(
+        &mut self,
+        _: &EditReference,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_reference(window, cx);
+    }
+
+    pub(super) fn open_reference(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.activate_information_panel(hints::Panel::Reference, window, cx);
+    }
+
     pub(super) fn reference_control(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let reference = self.editing()?.reference();
         Some(
@@ -289,13 +264,4 @@ impl Shell {
                 .into_any_element(),
         )
     }
-}
-
-pub(super) fn init(cx: &mut gpui_kit::App) {
-    // Let the standard Button receive Enter instead of the pinned hint's Confirm.
-    cx.bind_keys([KeyBinding::new(
-        "enter",
-        gpui_kit::NoAction,
-        Some("ReferenceSave"),
-    )]);
 }

@@ -869,7 +869,7 @@ fn headerless_save_preserves_an_unchanged_fractional_reference_hint(cx: &mut Tes
 #[gpui_kit::test]
 fn disabled_save_shortcut_is_inert_and_reenables_after_a_reference_edit(cx: &mut TestAppContext) {
     let (shell, cx) = open_window(cx);
-    cx.update(|_, cx| Shell::bind_choose_file(shell.downgrade(), cx));
+    cx.update(|window, cx| Shell::bind_choose_file(shell.downgrade(), window.window_handle(), cx));
     let dir = argand_io::testutil::TempDir::new("save-shortcut-availability");
     let path = dir.join("capture.wav");
     write_wave(&path, 2400);

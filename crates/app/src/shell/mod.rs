@@ -84,6 +84,7 @@ actions!(
         SaveSelectionAs,
         ConvertCapture,
         EditAnalysis,
+        EditReference,
         UseRecommendedRange
     ]
 );
@@ -98,7 +99,6 @@ struct OpenRecent {
 pub(super) fn window_keys(cx: &mut gpui_kit::App) {
     editing_ui::init(cx);
     badge_entry::init(cx);
-    reference_ui::init(cx);
     selection_panel::init(cx);
     about_ui::init(cx);
     // The pointer is the plot's working tool, so navigation keys must not hide it.
@@ -625,14 +625,10 @@ impl Shell {
     fn external_tooltips_allowed(&self, cx: &gpui_kit::App) -> bool {
         !self.external_help_suppressed
             && self.application_menu.is_none()
-            && [
-                &self.analysis_hint,
-                &self.conversion.hint,
-                &self.selection_hint,
-                &self.about.hint,
-            ]
-            .iter()
-            .all(|panel| !panel.read(cx).is_open())
+            && !self.selection_hint.read(cx).is_open()
+            && hints::Panel::ALL
+                .into_iter()
+                .all(|panel| !self.information_hint(panel).read(cx).is_open())
     }
 
     fn suppress_external_tooltips(&mut self) {
@@ -1426,6 +1422,7 @@ impl Shell {
                 });
             }
         });
+        command::bind::<EditReference>(shell.clone(), cx, Self::open_reference);
         command::bind::<EditAnalysis>(shell, cx, Self::deferred_edit_analysis);
     }
 
@@ -1996,6 +1993,7 @@ impl Render for Shell {
                 .on_action(command::listener(cx, Self::show_about))
                 .on_action(cx.listener(Self::open_recent))
                 .on_action(command::listener(cx, Self::edit_analysis))
+                .on_action(command::listener(cx, Self::edit_reference))
                 .on_action(cx.listener(|shell, _: &UseRecommendedRange, _, cx| {
                     shell.use_recommended_range(cx)
                 }))
