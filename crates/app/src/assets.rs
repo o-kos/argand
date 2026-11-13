@@ -25,6 +25,10 @@ const ARTWORK: &[(&str, &[u8])] = &[
         "argand/grid.svg",
         include_bytes!("../assets/icons/grid.svg"),
     ),
+    (
+        "argand/baseband.svg",
+        include_bytes!("../assets/icons/baseband.svg"),
+    ),
 ];
 
 impl AssetSource for Assets {

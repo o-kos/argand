@@ -72,9 +72,9 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - [x] Verify unsaved edits do not alter Recent; Save and later reopening use
   file metadata, including zero, with RAW and conversion behavior preserved.
 - [x] Full gate, production acceptance and independent review of this removal.
-- [ ] Replace the toolbar abbreviation and unify baseband availability across
+- [x] Replace the toolbar abbreviation and unify baseband availability across
   pointer/menu/shortcut, including zero/nonzero/Undo and retained preference.
-- [ ] Verify icon/disabled/tooltip appearance and behavior in production, full
+- [x] Verify icon/disabled/tooltip appearance and behavior in production, full
   local gate and a focused independent review of this owner feedback.
 
 ## Investigation so far
@@ -198,6 +198,24 @@ progress/evidence text changed afterward.
   supplied runtime/sample evidence. No findings rejected. The primary assessed
   the current code against that snapshot; only this progress/result text changed
   after review. Native Wayland/Windows/macOS and Saving100 remain unverified/open.
+
+## Baseband icon and availability feedback
+
+- Replaced BB with a spectrum/zero SVG in the existing standard Button. Shared
+  availability uses the effective reference for toolbar, View menu and action;
+  zero or unavailable reference disables switching without resetting preference.
+- Tooltips name the next relative-to-reference or absolute action. At zero the
+  tooltip explains identical scales and omits the inactive shortcut.
+- Full formatting, Clippy and all 907 tests passed; release built last.
+- Production Linux X11/Xvfb exercised both action tooltips, disabled icon/reason,
+  inert pointer/menu/shortcut with retained preference, Undo restoring nonzero
+  availability, light/dark themes, a 700x600 window and no-capture disabled menu.
+  Only owned displays, disposable files and isolated settings were used.
+- Independent read-only review found no substantive findings and checked the
+  supplied production screenshots, preference evidence and binary identity. The primary checked the source
+  against the reviewed snapshot; only plan progress/results changed afterward.
+- Owner acceptance of icon appearance remains pending. Native Wayland/Windows/
+  macOS remain unperformed; the persistent Saving100 report remains unresolved.
 
 ## Validation and limits
 

@@ -730,6 +730,9 @@ impl Shell {
                 shell.toggle_orientation(window, cx);
             }))
             .on_action(cx.listener(|shell, _: &ToggleBaseband, _, cx| {
+                if !shell.can_toggle_baseband() {
+                    return;
+                }
                 shell.session.baseband_frequencies = !shell.session.baseband_frequencies;
                 shell.frequency_scheme = None;
                 shell.save();
@@ -849,6 +852,13 @@ impl Shell {
             self.band = band;
             cx.notify();
         }
+    }
+
+    pub(in crate::shell) fn can_toggle_baseband(&self) -> bool {
+        self.view.is_some()
+            && self
+                .editing()
+                .is_some_and(|editing| editing.reference() != 0.)
     }
 
     pub(in crate::shell) fn frequency_offset(&self) -> f64 {

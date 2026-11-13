@@ -113,6 +113,15 @@ fn baseband_button_and_shortcut_share_state_and_return_focus(cx: &mut TestAppCon
     });
     draw(cx);
     assert!(!shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
+    assert!(!shell.read_with(cx, |shell, _| shell.can_toggle_baseband()));
+    click(cx, "toggle-baseband");
+    press(cx, "ctrl-b");
+    assert!(!shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(1_000_000., window, cx));
+    });
+    draw(cx);
+    assert!(shell.read_with(cx, |shell, _| shell.can_toggle_baseband()));
     click(cx, "toggle-baseband");
     assert!(shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
     press(cx, "ctrl-b");
@@ -120,6 +129,29 @@ fn baseband_button_and_shortcut_share_state_and_return_focus(cx: &mut TestAppCon
     press(cx, "ctrl-b");
     assert!(shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
     click(cx, "toggle-baseband");
+    assert!(!shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
+    press(cx, "ctrl-b");
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(0., window, cx));
+    });
+    draw(cx);
+    assert!(!shell.read_with(cx, |shell, _| shell.can_toggle_baseband()));
+    click(cx, "toggle-baseband");
+    press(cx, "ctrl-b");
+    shell.update_in(cx, |_, window, cx| {
+        window.dispatch_action(
+            Box::new(crate::shell::plot::navigation_ui::ToggleBaseband),
+            cx,
+        );
+    });
+    draw(cx);
+    assert!(shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
+    shell.update_in(cx, |_, window, cx| {
+        window.dispatch_action(Box::new(editing_ui::Undo), cx);
+    });
+    draw(cx);
+    assert!(shell.read_with(cx, |shell, _| shell.can_toggle_baseband()));
+    press(cx, "ctrl-b");
     assert!(!shell.read_with(cx, |shell, _| shell.session.baseband_frequencies));
 }
 

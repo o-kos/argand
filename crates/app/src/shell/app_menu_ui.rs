@@ -253,6 +253,7 @@ impl Shell {
         let document = self.view.is_some();
         let show_grid = self.session.show_grid;
         let baseband = self.session.baseband_frequencies;
+        let baseband_available = self.can_toggle_baseband();
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
         let analysis = self.status_panel_available(settings_ui::StatusPanel::Analysis);
@@ -280,12 +281,15 @@ impl Shell {
                     )
                     .disabled(!document),
                 )
-                .item(action_row(
-                    "Baseband frequencies",
-                    Box::new(ToggleBaseband),
-                    baseband,
-                    focus.clone(),
-                ))
+                .item(
+                    action_row(
+                        "Baseband frequencies",
+                        Box::new(ToggleBaseband),
+                        baseband,
+                        focus.clone(),
+                    )
+                    .disabled(!baseband_available),
+                )
                 .item(PopupMenuItem::separator())
                 .item(
                     action_row("Fit time", Box::new(FitCapture), false, focus.clone())
@@ -801,14 +805,30 @@ impl Shell {
     }
 
     fn baseband_button(&self, cx: &mut Context<Self>) -> Button {
+        let id = "toggle-baseband";
+        let enabled = self.can_toggle_baseband();
         let show = self.session.baseband_frequencies;
-        let state = if show {
-            ToolbarState::On
-        } else {
-            ToolbarState::Off
+        let state = match (enabled, show) {
+            (false, _) => ToolbarState::Disabled,
+            (true, true) => ToolbarState::On,
+            (true, false) => ToolbarState::Off,
         };
-        let mut button = Button::new("toggle-baseband")
+        let hint = if enabled {
+            if show {
+                "Show absolute frequencies"
+            } else {
+                "Show frequencies relative to reference"
+            }
+        } else if self.editing().is_some() {
+            "Reference frequency is 0 Hz; both scales are identical"
+        } else {
+            "Reference frequency is unavailable"
+        };
+        let mut button = Button::new(id)
+            .disabled(!enabled)
+            .accessibility_label("Baseband frequencies")
             .tab_stop(false)
+            .when(enabled, |button| button.group(id))
             .custom(toolbar_style(state, cx))
             .when_some(on_surface(state, cx), |button, surface| button.bg(surface))
             .toggled(show)
@@ -816,20 +836,20 @@ impl Shell {
             .w(px(TOOLBAR_HEIGHT))
             .h(px(TOOLBAR_HEIGHT))
             .px_0()
-            .label("BB")
+            .child(Self::toolbar_glyph(
+                id,
+                "argand/baseband.svg".into(),
+                state,
+                cx,
+            ))
             .on_click(cx.listener(|shell, _, window, cx| {
                 window.focus(&shell.focus_target(cx), cx);
                 window.dispatch_action(Box::new(ToggleBaseband), cx);
             }));
         button.interactivity().tooltip(move |_, cx| {
             shortcut_tooltip(
-                if show {
-                    "Show reference frequencies"
-                } else {
-                    "Show baseband frequencies"
-                }
-                .to_owned(),
-                Some(Box::new(ToggleBaseband)),
+                hint.to_owned(),
+                enabled.then(|| Box::new(ToggleBaseband) as Box<dyn gpui_kit::Action>),
                 "Plot",
                 px(360.),
                 cx,
@@ -847,6 +867,7 @@ impl Shell {
     ) -> impl IntoElement {
         let accent = toolbar_accent(cx);
         let colour = match state {
+            ToolbarState::Disabled => cx.theme().muted_foreground.opacity(0.5),
             ToolbarState::Off => cx.theme().foreground.opacity(0.85),
             ToolbarState::On | ToolbarState::Selected => accent,
         };
@@ -1142,6 +1163,8 @@ pub(super) fn title_control(
 /// The state a toolbar control is in, which decides its whole surface.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum ToolbarState {
+    /// An unavailable command, with a muted glyph and no pointer response.
+    Disabled,
     /// An ordinary control, which tints its glyph while it is hovered.
     Off,
     /// A control that is on, which stays accent while it is pressed.
@@ -1155,6 +1178,11 @@ pub(super) enum ToolbarState {
 pub(super) fn toolbar_style(state: ToolbarState, cx: &gpui_kit::App) -> ButtonCustomVariant {
     let accent = toolbar_accent(cx);
     let (color, hover, active) = match state {
+        ToolbarState::Disabled => (
+            cx.theme().title_bar,
+            cx.theme().title_bar,
+            cx.theme().title_bar,
+        ),
         ToolbarState::Off => (
             cx.theme().title_bar.darken(0.035),
             accent.opacity(0.32),
