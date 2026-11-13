@@ -973,6 +973,7 @@ fn number(
         NumericEditor::new(
             value,
             numeric_editor::Config {
+                integer: false,
                 unit,
                 step: 1.0,
                 minimum,

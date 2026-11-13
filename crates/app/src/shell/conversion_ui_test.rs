@@ -836,6 +836,7 @@ fn stage_reader(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>)
             .save_presentation(&shell.editing().unwrap().file().meta)
             .1,
         output_is_iq: false,
+        opening: argand_io::OpenHints::default(),
         container: argand_io::write::Container::Wave,
         backing: Arc::new(crate::scratch::Scratch::new(path.clone())),
     };
@@ -1440,6 +1441,7 @@ fn cancellation_rejects_success_already_queued_by_the_worker(cx: &mut TestAppCon
             name: "must-not-adopt.wav".into(),
             directory: dir.clone(),
             output_is_iq: true,
+            opening: argand_io::OpenHints::default(),
             container: argand_io::write::Container::Wave,
             backing,
         });
@@ -1485,6 +1487,7 @@ fn conversion_blocks_document_actions_and_close_waits_before_unsaved_prompt(
             name: "busy-converted.wav".into(),
             directory: dir.clone(),
             output_is_iq: true,
+            opening: argand_io::OpenHints::default(),
             container: argand_io::write::Container::Wave,
             backing: file.unsaved.as_ref().unwrap().backing.clone(),
         });
@@ -1690,7 +1693,7 @@ fn reference_label_and_full_value_fit_at_default_and_enlarged_font(cx: &mut Test
         let mut reference = None;
         let (_, cx) = cx.add_window_view(|window, cx| {
             let mut request = request();
-            request.input.center_freq = 14_074_000.25;
+            request.input.center_freq = f64::from(u32::MAX);
             let editor = cx.new(|cx| Editor::new(request, window, cx));
             reference = Some(
                 editor
@@ -1722,7 +1725,7 @@ fn reference_label_and_full_value_fit_at_default_and_enlarged_font(cx: &mut Test
                 None,
             );
             assert!(down.left() >= px(rem * 0.75) + text.width);
-            let value = crate::numbers::number(14_074_000.25);
+            let value = crate::numbers::number(f64::from(u32::MAX));
             let value_text = window.text_system().shape_line(
                 value.clone().into(),
                 px(rem * 0.875),
@@ -2326,7 +2329,7 @@ fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_af
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let dir = argand_io::testutil::TempDir::new("reference-panel-rebind");
-    let path = dir.join("capture.wav");
+    let path = dir.join("capture.iqw");
     write_wave(&path, 48_000);
     shell.update_in(cx, |shell, window, cx| {
         shell.open(Origin::new(path), window, cx)
@@ -2364,10 +2367,7 @@ fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_af
         "0"
     );
     assert!(!editor.read_with(cx, |editor, _| editor.reference_error));
-    shell.update_in(cx, |shell, window, cx| {
-        assert!(shell.set_reference(1_000_000., window, cx));
-    });
-    frame(cx);
+    commit_and_step_reference(&shell, &input, cx);
     let old_stamp = editor.read_with(cx, |editor, _| editor.source_stamp);
     cx.simulate_keystrokes(if cfg!(target_os = "macos") {
         "cmd-s"
@@ -2391,6 +2391,12 @@ fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_af
             .is_some_and(crate::editing::Editing::is_described)
     });
     frame(cx);
+    cx.update(|window, _| {
+        assert!(
+            window.try_find("save-status").is_none(),
+            "a completed metadata save removes its status control"
+        )
+    });
     editor.read_with(cx, |editor, cx| {
         assert_ne!(editor.source_stamp, old_stamp);
         let request = editor.request(cx).unwrap();
@@ -2405,4 +2411,70 @@ fn inline_reference_escape_uses_stock_input_and_conversion_snapshot_refreshes_af
             editor.source_stamp
         );
     });
+}
+
+#[gpui_kit::test]
+fn reference_input_preserves_drafts_and_commits_whole_hertz(cx: &mut TestAppContext) {
+    let (_, cx) = panel_window(cx);
+    let editor = cx.update(|window, cx| metadata_reference_editor(14_074_000.4, window, cx));
+    let input = editor.read_with(cx, |editor, _| editor.input.clone());
+    assert_eq!(
+        input.read_with(cx, |input, _| input.value().to_string()),
+        crate::numbers::number(14_074_000.)
+    );
+    input.update_in(cx, |input, window, cx| {
+        input.set_value("14074000.8", window, cx);
+    });
+    assert_eq!(
+        input.read_with(cx, |input, _| input.value().to_string()),
+        "14074000.8",
+        "the draft is untouched"
+    );
+    input.update_in(cx, |_, _, cx| {
+        cx.emit(InputEvent::PressEnter {
+            secondary: false,
+            shift: false,
+        })
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        input.read_with(cx, |input, _| input.value().to_string()),
+        crate::numbers::number(14_074_001.)
+    );
+}
+
+fn commit_and_step_reference(
+    shell: &Entity<Shell>,
+    input: &Entity<gpui_kit::component::input::InputState>,
+    cx: &mut gpui_kit::VisualTestContext,
+) {
+    input.update_in(cx, |input, window, cx| {
+        input.set_value("1000000.4", window, cx);
+        cx.emit(InputEvent::PressEnter {
+            secondary: false,
+            shift: false,
+        });
+    });
+    frame(cx);
+    assert_eq!(
+        shell.read_with(cx, |shell, _| shell.editing().unwrap().reference()),
+        1_000_000.
+    );
+    assert_eq!(
+        input.read_with(cx, |input, _| input.value().to_string()),
+        crate::numbers::number(1_000_000.)
+    );
+    cx.simulate_keystrokes("up");
+    frame(cx);
+    assert_eq!(
+        shell.read_with(cx, |shell, _| shell.editing().unwrap().reference()),
+        1_000_001.
+    );
+    cx.simulate_keystrokes("down");
+    frame(cx);
+    assert_eq!(
+        shell.read_with(cx, |shell, _| shell.editing().unwrap().reference()),
+        1_000_000.
+    );
+    frame(cx);
 }

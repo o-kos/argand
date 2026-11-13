@@ -306,7 +306,7 @@ fn reference_edit_and_save_rebase_the_picture_and_band_without_changing_samples(
             .values
             .as_ptr();
         let view = shell.frequency;
-        assert!(shell.set_reference(1_000_000.25, window, cx));
+        assert!(shell.set_reference(1_000_000., window, cx));
         assert_eq!(
             shell
                 .file
@@ -322,7 +322,7 @@ fn reference_edit_and_save_rebase_the_picture_and_band_without_changing_samples(
             before
         );
         assert_eq!(shell.frequency, view);
-        assert_eq!(shell.extents().unwrap().frequency_offset, 1_000_000.25);
+        assert_eq!(shell.extents().unwrap().frequency_offset, 1_000_000.);
         assert_eq!(shell.band.unwrap().low(), -100.);
         shell.save_over(window, cx);
     });
@@ -330,21 +330,21 @@ fn reference_edit_and_save_rebase_the_picture_and_band_without_changing_samples(
         shell.saving.is_none()
             && shell
                 .editing()
-                .is_some_and(|editing| !editing.is_dirty() && editing.reference() == 1_000_000.25)
+                .is_some_and(|editing| !editing.is_dirty() && editing.reference() == 1_000_000.)
     });
     shell.read_with(cx, |shell, _| {
         let document = &shell.file.as_ref().unwrap().state.document;
-        assert_eq!(document.meta().unwrap().center_freq, 1_000_000.25);
-        assert_eq!(document.analysis().unwrap().db.f0, 988_000.25);
-        assert_eq!(shell.band.unwrap().low(), 999_900.25);
+        assert_eq!(document.meta().unwrap().center_freq, 1_000_000.);
+        assert_eq!(document.analysis().unwrap().db.f0, 988_000.);
+        assert_eq!(shell.band.unwrap().low(), 999_900.);
         assert_eq!(shell.extents().unwrap().frequency_offset, 0.);
         assert_eq!(
             shell.editing().unwrap().written_source().hints.center_freq,
-            Some(1_000_000.25)
+            Some(1_000_000.)
         );
     });
     let mut source = argand_io::open(&path, &argand_io::OpenHints::default()).unwrap();
-    assert_eq!(source.meta().center_freq, 1_000_000.25);
+    assert_eq!(source.meta().center_freq, 1_000_000.);
     assert_eq!(source.meta().len_samples, 48_000);
     let mut samples = vec![0.; 96_000];
     assert_eq!(source.read(&mut samples).unwrap(), samples.len());
@@ -539,7 +539,7 @@ fn raw_reference_save_cancel_and_wave_rebind_preserve_source(cx: &mut TestAppCon
     let original = std::fs::read(&raw).unwrap();
     shell.update_in(cx, |shell, window, cx| {
         shell.band = argand_core::FrequencyBand::between(-100., 100.);
-        assert!(shell.set_reference(1_000_000.25, window, cx));
+        assert!(shell.set_reference(1_000_000., window, cx));
         assert_eq!(shell.can_save_over(), Err(Unsavable::RawReference));
         assert!(shell.save_needs_new_path() && shell.can_save(false));
         let source = shell.editing().unwrap().file();
@@ -573,9 +573,9 @@ fn raw_reference_save_cancel_and_wave_rebind_preserve_source(cx: &mut TestAppCon
     });
     shell.read_with(cx, |shell, _| {
         let editing = shell.editing().unwrap();
-        assert_eq!(editing.reference(), 1_000_000.25);
+        assert_eq!(editing.reference(), 1_000_000.);
         assert!(editing.file().hints.raw.is_none());
-        assert_eq!(shell.band.unwrap().low(), 999_900.25);
+        assert_eq!(shell.band.unwrap().low(), 999_900.);
         let recent = shell
             .session
             .recent
@@ -583,11 +583,11 @@ fn raw_reference_save_cancel_and_wave_rebind_preserve_source(cx: &mut TestAppCon
             .find(|entry| entry.path == wave)
             .unwrap();
         let reopened = argand_io::open(&wave, &recent.hints.to_open_hints()).unwrap();
-        assert_eq!(reopened.meta().center_freq, 1_000_000.25);
+        assert_eq!(reopened.meta().center_freq, 1_000_000.);
     });
     assert_eq!(std::fs::read(&raw).unwrap(), original);
     let mut reopened = argand_io::open(&wave, &argand_io::OpenHints::default()).unwrap();
-    assert_eq!(reopened.meta().center_freq, 1_000_000.25);
+    assert_eq!(reopened.meta().center_freq, 1_000_000.);
     let mut samples = vec![0.; 9600];
     assert_eq!(reopened.read(&mut samples).unwrap(), samples.len());
     for (index, sample) in samples.into_iter().enumerate() {
@@ -645,4 +645,110 @@ fn raw_reference_undo_retains_headerless_sample_save_and_prompt_cancel(cx: &mut 
         assert!(shell.editing().unwrap().is_dirty());
     });
     assert!(!cx.has_pending_prompt());
+}
+
+#[gpui_kit::test]
+fn wave_save_rebind_uses_the_exported_whole_hertz_rate(cx: &mut TestAppContext) {
+    let (shell, cx) = open_window(cx);
+    let dir = argand_io::testutil::TempDir::new("whole-rate-rebind");
+    let path = dir.join("capture.iqw");
+    write_wave(&path, 48_000);
+    shell.update_in(cx, |shell, window, cx| {
+        let mut origin = Origin::new(path.clone());
+        origin.hints.sample_rate = Some(24_000.25);
+        shell.open(origin, window, cx);
+    });
+    wait_until(cx, &shell, "fractional-rate source", |shell| {
+        shell.editing().is_some_and(Editing::is_described)
+            && shell
+                .file
+                .as_ref()
+                .is_some_and(|file| matches!(file.state.document.status(), Status::Ready { .. }))
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.clipboard = Some(
+            shell
+                .editing()
+                .unwrap()
+                .copy(argand_core::SampleSpan::between(0, 100).unwrap()),
+        );
+        assert!(shell.set_reference(1_000_000., window, cx));
+        shell.save_over(window, cx);
+    });
+    wait_until(
+        cx,
+        &shell,
+        "whole-rate saved source and refreshed picture",
+        |shell| {
+            shell.saving.is_none()
+                && shell.editing().is_some_and(|editing| {
+                    !editing.is_dirty() && editing.file().meta.sample_rate == 24_000.
+                })
+                && shell
+                    .file
+                    .as_ref()
+                    .and_then(|file| file.state.document.analysis())
+                    .is_some_and(|analysis| analysis.db.f1 == 1_012_000.)
+        },
+    );
+    let reopened = argand_io::open(&path, &argand_io::OpenHints::default()).unwrap();
+    assert_eq!(reopened.meta().sample_rate, 24_000.);
+    assert_eq!(reopened.meta().center_freq, 1_000_000.);
+    assert_eq!(reopened.meta().len_samples, 48_000);
+    cx.update(|window, _| assert!(window.try_find("save-status").is_none()));
+    shell.update_in(cx, |shell, _, _| {
+        let clipboard = shell.clipboard.clone().unwrap();
+        assert!(
+            shell
+                .editing_mut()
+                .unwrap()
+                .paste(&clipboard, crate::editing::Placement::At(0))
+                .is_ok()
+        );
+    });
+}
+
+#[gpui_kit::test]
+fn headerless_save_preserves_an_unchanged_fractional_reference_hint(cx: &mut TestAppContext) {
+    let (shell, cx, dir) = raw_fixture(cx, "raw-fractional-reference");
+    shell.update_in(cx, |shell, window, cx| {
+        let mut origin = Origin::new(dir.join("capture.raw"));
+        origin.hints.raw = Some("iq_i16@24k".parse().unwrap());
+        origin.hints.center_freq = Some(123.25);
+        shell.open(origin, window, cx);
+    });
+    wait_until(cx, &shell, "fractional RAW reference", |shell| {
+        shell.editing().is_some_and(Editing::is_described)
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.selection = argand_core::SampleSpan::between(0, 2400);
+        window.dispatch_action(Box::new(editing_ui::DeleteSelection), cx);
+    });
+    cx.run_until_parked();
+    shell.update_in(cx, |shell, window, cx| {
+        assert_eq!(shell.editing().unwrap().len(), 2400);
+        assert_eq!(shell.can_save_over(), Ok(()));
+        shell.save_over(window, cx);
+    });
+    wait_until(cx, &shell, "saved RAW", |shell| {
+        shell.saving.is_none()
+            && shell
+                .editing()
+                .is_some_and(|editing| !editing.is_dirty() && editing.is_described())
+    });
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.editing().unwrap().reference(), 123.25);
+        assert_eq!(
+            shell
+                .file
+                .as_ref()
+                .unwrap()
+                .state
+                .document
+                .origin()
+                .hints
+                .center_freq,
+            Some(123.25)
+        );
+    });
 }

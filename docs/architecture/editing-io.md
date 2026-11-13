@@ -63,12 +63,16 @@ target; any error or cancellation removes it. The source is never a valid target
 detected).
 
 The reference frequency is the physical frequency of baseband 0 Hz for both signal kinds
-(#185). Writing puts an `auxi` chunk (164 bytes, `CenterFreq` at 32 and `ADFrequency` at
-36, written only for 1 Hz to `u32::MAX`) and an `argd` chunk (version 1, `f64`
-frequency, `f64` sample rate) before `data`, because `riff::parse` reads only the head;
-FLAC gets the Vorbis comments `ARGAND_REFERENCE_FREQUENCY` and `ARGAND_SAMPLE_RATE`.
-Opening prefers `argd`, then `auxi`, then the comment, also for a WAVE layout the decoder
-reads, and an exact rate only while it agrees with the header's within 1 Hz. `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins, and a
+(#185). WAVE/IQW writing puts an `auxi` chunk (164 bytes, `CenterFreq` at 32
+and `ADFrequency` at 36) before `data`. Its reference is rounded to whole Hz,
+including zero; public saves refuse references outside the unsigned 32-bit range.
+No `argd` chunk is written or interpreted. WAVE sample rates use the rounded
+integer Hz in the standard header; standalone reopening uses that declared rate.
+Private DSP backing retains exact rate/reference through explicit opening hints.
+FLAC gets the Vorbis comment `AUXI` with a whole-Hz reference frequency and
+`ARGAND_SAMPLE_RATE` with the exact sample rate. Opening reads `auxi` for WAVE,
+including decoder-backed layouts, and `AUXI` for FLAC.
+`OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins, and a
 session hint distinguishes explicit zero from an absent override. Session version
 12 migrates legacy zero hints to absent overrides while retaining new explicit
 zeros. CLI opening hints still take precedence over file metadata.
@@ -236,7 +240,11 @@ warning; U8/I16 remain unchanged and returning to WAV keeps the chosen format.
 First Save and selection export use the requested container; an explicit
 WAV/FLAC Save as extension overrides it. `History::unsaved` starts dirty without an Undo
 version. The first Save asks for a destination, then successful rebind clears unsaved
-identity. Temporary paths never enter Recent. `Source::backing` retains encoded
+identity. Private computed/encoded backing is opened with explicit exact sample-rate and
+reference hints from the processing request. Computed sources retain those hints
+for later analysis, clipboard and save reads; WAVE integer header fields are not
+the source of truth for internal DSP parameters.
+Temporary paths never enter Recent. `Source::backing` retains encoded
 scratch separately from computed FloatWave samples, including clipboard references,
 so it is never encoded twice. Input/output scratch ownership lasts until the job ends;
 reader leases retain backing through termination, and opening another capture cancels

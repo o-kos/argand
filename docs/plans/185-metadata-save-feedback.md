@@ -7,7 +7,8 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - Class A: capture metadata I/O and asynchronous save completion/data safety.
 - Primary: `gpt-6.1-sol` medium.
 - Reviewer: `gpt-6.1-sol` high, fresh read-only context.
-- Consultant: none unless a concrete unresolved question needs advice.
+- Consultant: `gpt-6-astra` medium, read-only targeted advice on exact private
+  scratch parameters when removing argd; public export decisions remain with owner.
 
 ## Owner decisions and scope
 
@@ -17,7 +18,9 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 - Investigate and fix persistent Saving 100% after a reference edit and Save.
 - Inspect reported Convert availability after frequency edits; distinguish reference
   metadata commits from actual carrier/domain conversion before changing semantics.
-- FLAC policy is pending the owner's clarification: it has no auxi chunk.
+- FLAC uses the Vorbis comment AUXI with an integer frequency in Hz.
+- Owner chose whole Fs for WAVE export: use the standard header's rounded integer
+  rate on standalone reopening, retaining exact private DSP metadata in hints.
 - Keep this work in the current Draft PR. Preserve unrelated policy edits.
 
 ## Acceptance
@@ -33,12 +36,75 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 ## Tasks
 
 - [ ] Reproduce the stuck save and establish the cause before correcting it.
-- [ ] Implement agreed metadata format and integer editor policy with regressions.
-- [ ] Resolve FLAC policy and verify Convert availability.
-- [ ] Update current architecture and changelog.
-- [ ] Full local fmt/Clippy/test/release-last gate.
-- [ ] Production acceptance on isolated Xvfb, with disposable data/settings.
-- [ ] Independent review and current-snapshot assessment.
+- [x] Implement agreed metadata format and integer editor policy with regressions.
+- [x] Resolve FLAC policy and verify Convert availability.
+- [x] Update current architecture and changelog.
+- [x] Full local fmt/Clippy/test/release-last gate.
+- [x] Metadata/input production acceptance on isolated Xvfb with disposable data/settings.
+- [x] Independent metadata review and current-snapshot assessment.
+
+## Investigation so far
+
+- Baseline production Linux release, isolated Xvfb: a 2-second generated WAV,
+  a 30-minute generated WAV, and a disposable copy of the owner's named IQW
+  all completed metadata Save-over and removed Saving status. The IQW was saved
+  twice with different committed references. This does not establish the cause
+  of the owner's reported persistent status. OS and actual executable selection
+  have been requested; no speculative save-state correction has been made.
+- IQW is detected by RIFF/WAVE content, not its extension. The existing recording
+  contains metadata chunks; no headerless conversion route is needed for it.
+- Convert deliberately ignores metadata-only reference commits. Its active
+  criteria are container, output sample rate, output center and sample type.
+  No product-semantic change to Convert has been authorized or implemented.
+- Stock Input preserves draft text; the numeric wrapper rounds Reference frequency
+  on commit/step. Space-grouped editing tolerates changed integer group lengths.
+- Focused regressions passed for integer reference formatting, edited whitespace
+  grouping, and FLAC AUXI integer comments. Current full gate passed 903 tests,
+  formatting and Clippy, followed by release build last.
+
+- Consultant advice accepted: preserve exact private scratch Fs/reference in the
+  existing OpenHints at initial opening and in computed-source ownership. No new
+  scratch format or generic reopen override is introduced. The owner chose whole-Hz public WAVE Fs; signed/private DSP metadata stays f64.
+
+## Review dispositions
+
+Round 1 returned three P2 findings, all accepted:
+
+- Scope rounding to WAVE/FLAC publication; unchanged RAW reference hints remain
+  fractional. Added a headerless sample-save regression.
+- Derive one saved-source description for reader restart and clipboard relocation.
+  The whole-Fs rebind regression now also pastes the preserved clipboard back.
+- Private identity-copy uses a representable neutral header reference when needed,
+  while retaining the exact signed/large value in its request/opening hints.
+  The I32 byte-copy regression covers zero, negative and above-u32 references.
+
+No findings rejected. Rounds 2 and 3 had no substantive findings. The final round
+also assessed the RAW test-harness correction (queued delete must run before Save).
+The primary verified the current patch against that reviewed snapshot and assessed
+source stamps, publication/cancellation and exact private metadata. Only this plan's
+progress/evidence text changed afterward.
+
+## Production results and remaining work
+
+- Linux X11 release on task-owned Xvfb with isolated settings, Russian numbers.
+  Actual zero deletion preserves the draft and cursor without error; Enter rounds
+  to whole Hz, Up/Down step whole Hz, and Save completes with panel open or closed.
+- Saved IQW contains only fmt/auxi/data, reference12579003 and rate24000; all
+  172800000 sample bytes match the original fixture by SHA256.
+- FLAC Save-over writes AUXI=14074000, omits the old reference tag, retains PCM MD5;
+  fresh production reopening without a center override reads that same reference.
+- Shared Analysis overlap retains its existing whole-number validation:75.5 is
+  rejected,75 commits; adjacent Select opens/dismisses. Fractional Range runtime
+  interaction was not established; its default state was not an editable stop.
+- Owner's permanent Saving100 report remains unresolved. Before rebuilding, the
+  running owner process used the prior release and a Wayland session environment;
+  no active save thread or .part handles remained at observation. This is not proof
+  of its visible UI state or of the cause. The owner was asked to confirm whether
+  the status is still visible. No speculative save-state fix has been made.
+- Metadata changes can be published in the current Draft, but this plan remains
+  active until the save-status report is resolved. Do not mark the combined task
+  complete or move the PR Ready. Native Wayland/Windows/macOS acceptance is not
+  established by these Xvfb checks.
 
 ## Validation and limits
 

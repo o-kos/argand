@@ -201,7 +201,8 @@ impl DecodedSource {
                 MetadataOptions::default(),
             )
             .map_err(decode_err)?;
-        let tagged_freq = tagged(&mut *reader, REFERENCE_TAG);
+        let tagged_freq = tagged(&mut *reader, REFERENCE_TAG)
+            .filter(|freq| freq.fract() == 0.0 && (0.0..=f64::from(u32::MAX)).contains(freq));
         let tagged_rate = tagged(&mut *reader, RATE_TAG);
         let center_freq = center_freq.or(tagged_freq);
 
@@ -451,7 +452,7 @@ impl DecodedSource {
 }
 
 /// Vorbis comment holding the physical frequency of baseband 0 Hz.
-pub(crate) const REFERENCE_TAG: &str = "ARGAND_REFERENCE_FREQUENCY";
+pub(crate) const REFERENCE_TAG: &str = "AUXI";
 /// Vorbis comment holding the exact sample rate, which STREAMINFO rounds to hertz.
 pub(crate) const RATE_TAG: &str = "ARGAND_SAMPLE_RATE";
 

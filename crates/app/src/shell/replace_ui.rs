@@ -290,12 +290,26 @@ impl Shell {
         let Some(clipboard) = &self.clipboard else {
             return true;
         };
-        let mut written = editing.written_source();
-        written.stamp = saved.stamp;
+        let written = Self::saved_source(editing, saved);
         let moved = clipboard.moved_onto(editing.file(), editing.capture(), &written);
         let kept = moved.is_some();
         self.clipboard = moved;
         kept
+    }
+
+    /// Metadata shared by the restarted readers and clipboard after publication.
+    fn saved_source(editing: &Editing, saved: &argand_io::write::Saved) -> crate::editing::Source {
+        let mut written = editing.written_source();
+        written.stamp = saved.stamp;
+        if matches!(saved.container, "wav" | "rf64" | "flac") {
+            written.meta.center_freq = written.meta.center_freq.round();
+            written.hints.center_freq = Some(written.meta.center_freq);
+        }
+        if matches!(saved.container, "wav" | "rf64") {
+            written.meta.sample_rate = written.meta.sample_rate.round();
+            written.hints.sample_rate = Some(written.meta.sample_rate);
+        }
+        written
     }
 
     /// Start the readers again on the file as it now is, the document and its picture staying.
@@ -314,11 +328,16 @@ impl Shell {
                 let reopen = self.file.as_ref().and_then(|file| {
                     let editing = file.editing.as_ref()?;
                     let mut origin = file.state.document.origin().clone();
+                    let written = Self::saved_source(editing, &saved);
                     let restart = origin
                         .hints
                         .center_freq
-                        .is_some_and(|reference| reference != editing.reference());
-                    origin.hints.center_freq = Some(editing.reference());
+                        .is_some_and(|value| value != written.meta.center_freq)
+                        || origin
+                            .hints
+                            .sample_rate
+                            .is_some_and(|value| value != written.meta.sample_rate);
+                    origin.hints = written.hints;
                     Some((origin, restart))
                 });
                 if let Some((origin, restart)) = reopen {
@@ -445,14 +464,17 @@ impl Shell {
                     .file
                     .as_ref()
                     .and_then(|file| file.state.document.meta())
-                    .is_some_and(|meta| previous.scaled_as(meta));
+                    .is_some_and(|meta| {
+                        previous.scaled_as(meta)
+                            && previous.file().meta.sample_rate == meta.sample_rate
+                    });
                 let envelope = previous.minimap().filter(|_| same).map(Arc::new);
                 if let (Some(editing), Some(envelope)) = (self.editing_mut(), envelope) {
                     editing.set_envelope(argand_edit::SourceId(0), envelope);
                 }
                 // A reused envelope does not index the newly encoded saved source.
                 self.start_minimap(true, window, cx);
-                // Samples stored on another scale make another picture, drawn before it replaces this one.
+                // A changed sample scale or rate needs a picture in the saved file's coordinates.
                 if !same {
                     self.ask_for_a_picture();
                 }

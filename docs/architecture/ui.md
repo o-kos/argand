@@ -309,7 +309,10 @@ The start page and the inline recent rows in File share `recent.rs`'s toolkit-ne
 ## File information and conversion (#189)
 
 The upper metadata section includes a Reference frequency numeric editor (#185),
-using the existing NumericEditor and Hz units. It includes zero and remains
+using the existing NumericEditor and whole Hz from 0 through u32::MAX. It rounds
+on commit/step, leaving draft text and cursor untouched during typing. Numeric
+input accepts edited space grouping in the integer part and normalizes it on
+commit; decimal punctuation grouping remains strict. It includes zero and remains
 physical when View > Baseband frequencies is checked. Valid Enter/blur/step
 commits are undoable metadata edits; invalid text leaves the document unchanged
 and shows an inline error. Escape from a changed reference draft restores its

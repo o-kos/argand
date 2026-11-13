@@ -712,3 +712,26 @@ fn reference_history_preserves_samples_selection_and_stale_save_dirty_state() {
         assert!(!document.set_reference(invalid, selected));
     }
 }
+
+#[test]
+fn computed_source_reopens_with_exact_rate_and_signed_reference_hints() {
+    let dir = argand_io::testutil::TempDir::new("computed-exact-hints");
+    let path = dir.join("scratch.wav");
+    argand_io::testutil::write_wav(
+        &path,
+        SampleType::new(Domain::Iq, SampleFormat::F32),
+        2526,
+        &[0.; 40],
+        1.0,
+    );
+    let (opened, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
+    let mut meta = opened.meta().clone();
+    drop(opened);
+    meta.sample_rate = 48_000.0 / 19.0;
+    meta.center_freq = -123.25;
+    let source = Source::computed(Arc::new(Scratch::new(path.clone())), meta, stamp);
+    let reopened = argand_io::reopen(&source.meta, &source.hints, source.stamp).unwrap();
+    assert_eq!(reopened.meta().sample_rate, 48_000.0 / 19.0);
+    assert_eq!(reopened.meta().center_freq, -123.25);
+    assert_eq!(reopened.meta().len_samples, 20);
+}

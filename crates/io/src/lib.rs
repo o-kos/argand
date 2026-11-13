@@ -206,11 +206,7 @@ fn wave_metadata(head: &[u8], hints: &OpenHints) -> OpenHints {
     let declared = riff::parse_fmt(chunks.fmt).map(|fmt| f64::from(fmt.sample_rate));
     OpenHints {
         center_freq: hints.center_freq.or(chunks.metadata.reference_freq()),
-        sample_rate: hints.sample_rate.or_else(|| {
-            declared
-                .ok()
-                .map(|rate| chunks.metadata.sample_rate_for(rate))
-        }),
+        sample_rate: hints.sample_rate.or_else(|| declared.ok()),
         ..hints.clone()
     }
 }

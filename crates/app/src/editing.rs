@@ -44,9 +44,14 @@ impl Source {
 
     /// Computed samples kept in `scratch`, which `meta` and `stamp` describe as written.
     pub fn computed(scratch: Arc<Scratch>, meta: SignalMeta, stamp: Option<SourceStamp>) -> Self {
+        let hints = OpenHints {
+            sample_rate: Some(meta.sample_rate),
+            center_freq: Some(meta.center_freq),
+            ..Default::default()
+        };
         Self {
             meta,
-            hints: OpenHints::default(),
+            hints,
             stamp,
             storage: None,
             computed: Some(scratch),

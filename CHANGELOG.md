@@ -55,6 +55,11 @@ promise applies to.
 
 ### Changed
 
+- Reference frequency editing commits whole Hz and accepts space-separated integer
+  groups after digit deletion. FLAC writes the reference as an integer `AUXI`
+  comment. WAVE/IQW uses only `auxi`, with whole-Hz reference and sample-rate
+  header fields; exact internal DSP parameters remain separate (#185).
+
 - Selection bandwidth shows its own Hz/kHz/MHz unit, independent of absolute
   frequency labels, and accepts that unit when edited (#185).
 

@@ -153,6 +153,7 @@ pub(super) struct Converting {
     name: String,
     directory: std::path::PathBuf,
     output_is_iq: bool,
+    opening: argand_io::OpenHints,
     container: argand_io::write::Container,
     backing: Arc<crate::scratch::Scratch>,
 }
@@ -237,6 +238,7 @@ fn frequency_editor(
         NumericEditor::new(
             crate::numbers::number(value),
             numeric_editor::Config {
+                integer: false,
                 unit: "Hz",
                 step: 1.,
                 minimum: 0.,
@@ -277,12 +279,13 @@ fn metadata_reference_editor(
 ) -> Entity<NumericEditor> {
     cx.new(|cx| {
         NumericEditor::new(
-            crate::numbers::number(reference),
+            crate::numbers::number(reference.round()),
             numeric_editor::Config {
+                integer: true,
                 unit: "Hz",
                 step: 1.,
-                minimum: -f64::MAX,
-                maximum: f64::MAX,
+                minimum: 0.,
+                maximum: f64::from(u32::MAX),
                 minimum_inclusive: true,
                 down: "physical-reference-down",
                 up: "physical-reference-up",
@@ -424,7 +427,8 @@ impl Editor {
         let input = self.physical_reference.read(cx).input.clone();
         let value = crate::numbers::parse::<f64>(input.read(cx).value().as_ref())
             .ok()
-            .filter(|value| value.is_finite());
+            .filter(|value| value.is_finite() && (0.0..=f64::from(u32::MAX)).contains(value))
+            .map(f64::round);
         self.reference_error = value.is_none();
         if commit
             && let Some(value) = value
@@ -451,7 +455,7 @@ impl Editor {
 
     fn cancel_reference(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let input = self.physical_reference.read(cx).input.clone();
-        let expected = crate::numbers::number(self.physical_committed);
+        let expected = crate::numbers::number(self.physical_committed.round());
         if input.read(cx).value().as_ref() != expected {
             input.update(cx, |input, cx| input.set_value(expected, window, cx));
             self.reference_error = false;
@@ -525,7 +529,7 @@ impl Editor {
                     .input
                     .clone()
                     .update(cx, |input, cx| {
-                        input.set_value(crate::numbers::number(reference), window, cx)
+                        input.set_value(crate::numbers::number(reference.round()), window, cx)
                     });
             }
         }
@@ -864,7 +868,7 @@ impl Render for Editor {
                     div()
                         .text_xs()
                         .text_color(cx.theme().danger)
-                        .child("Enter a finite reference frequency in Hz"),
+                        .child("Enter a reference frequency from 0 to 4294967295 Hz"),
                 )
             })
             .child(div().border_t_1().border_color(cx.theme().border))
@@ -1125,6 +1129,12 @@ impl Shell {
         let version = editing.version();
         let container = request.container;
         let output_is_iq = request.output.is_iq();
+        let opening = argand_io::OpenHints {
+            normalize: Some(argand_io::Normalize::None),
+            sample_rate: Some(request.output.sample_rate),
+            center_freq: Some(request.output.center_freq),
+            ..Default::default()
+        };
         let name = converted_name(
             &file.unsaved.as_ref().map_or_else(
                 || file.state.document.origin().name(),
@@ -1167,6 +1177,7 @@ impl Shell {
             name,
             directory,
             output_is_iq,
+            opening,
             container,
             backing,
         });
@@ -1214,7 +1225,7 @@ impl Shell {
                         }
                         self.conversion.result = clipping_notice(result.clipped, job.output_is_iq);
                         let mut origin = Origin::new(result.saved.path);
-                        origin.hints.normalize = Some(argand_io::Normalize::None);
+                        origin.hints = job.opening.clone();
                         self.prepare_conversion_reader(job, origin, window, cx);
                     }
                     Ended::Cancelled => {}
