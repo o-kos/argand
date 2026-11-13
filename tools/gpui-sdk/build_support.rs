@@ -1,7 +1,7 @@
-//! Validate an explicitly selected SDK; never build or install one.
+//! Validate and link an explicitly selected SDK; never build or install one.
 use std::{env, fs, path::PathBuf, process::Command};
 
-pub fn validate() {
+pub fn configure() {
     println!("cargo:rerun-if-env-changed=GPUI_KIT_SDK");
     if env::var_os("CARGO_FEATURE_SOURCE_TOOLKIT").is_some() {
         return;
@@ -47,4 +47,22 @@ pub fn validate() {
             "GPUI Kit SDK is incomplete: missing {name}; install/select it explicitly"
         );
     }
+    let libraries = directory.join("lib");
+    let images = fs::read_dir(&libraries)
+        .unwrap_or_else(|error| {
+            panic!(
+                "cannot read selected SDK libraries {}: {error}",
+                libraries.display()
+            )
+        })
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            name.starts_with("libimage-") && name.ends_with(".rlib") && entry.path().is_file()
+        })
+        .count();
+    assert_eq!(images, 1, "SDK must contain exactly one image artifact");
+    println!("cargo:rustc-link-search=all={}", libraries.display());
+    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", libraries.display());
 }

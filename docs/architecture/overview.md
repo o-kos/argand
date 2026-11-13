@@ -91,7 +91,9 @@ The plugin and worker design is deferred to the final section of [roadmap](../pl
 The standalone `tools/gpui-sdk` workspace builds the approved GPUI Kit facade into
 an explicitly installed immutable Linux development SDK. It is not an application
 workspace dependency: local Cargo commands consume its prebuilt library and exact
-shared image types through machine-local target configuration. Optional aliased
+shared image types through native crate imports and application-package build-script
+search/link directives. Machine-local configuration selects the SDK path and a consumer crate-identity namespace;
+ordinary native Cargo builds retain their default output layout. Optional aliased
 source dependencies provide portable builds, selected by the `source-toolkit`
 feature; tests additionally enable `toolkit-test-support`. See [SDK setup](../development/gpui-sdk.md).
 
