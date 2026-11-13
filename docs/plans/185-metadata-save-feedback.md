@@ -66,6 +66,18 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
   gpt-6-astra medium advised a separate I/O opening description propagated into
   FileInfo, preserving existing open/open_stamped/reopen compatibility and stamps.
 
+## Shared command availability follow-up
+
+- Owner requires a common wrapper for every Action/menu-item/shortcut combination,
+  including spectrum and time-ruler context menus. One Shell-owned policy supplies
+  presentation availability and guards execution through both focused and deferred
+  dispatch. Disabled commands are inert. Existing internal safety guards remain.
+- Keep stock menu dispatch, focus routing, key contexts and shortcut keycaps.
+  Toolbar controls for these commands consume the same policy.
+- Class A and the existing primary/reviewer assignments continue to apply.
+- Validate unavailable/available transitions through actual key dispatch and menu
+  activation, including Save, editing, file settings, conversion and baseband.
+
 ## Acceptance
 
 - WAVE/IQW save writes auxi without argd; reopening uses the whole-Hz reference.
