@@ -107,6 +107,34 @@ class PackagingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'revision mismatch'):
                 packaging.supplemental_notices(package, source)
 
+    def test_pinned_notice_bytes_survive_windows_style_checkout(self):
+        notice_path = Path('.github/scripts/notices/taffy-0.15.0.LICENSE')
+        expected = 'f97daf1a0124413dccf399a4e6626b4b74acd05282f80b6d64ac82225650b77a'
+        original = (packaging.ROOT / notice_path).read_bytes()
+        self.assertEqual(packaging.hashlib.sha256(original).hexdigest(), expected)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def git(*args):
+                return subprocess.run(['git', '-C', str(root), *args], check=True,
+                                      text=True, capture_output=True)
+            git('init', '--quiet')
+            git('config', 'core.autocrlf', 'true')
+            target = root / notice_path
+            target.parent.mkdir(parents=True)
+            target.write_bytes(original)
+            git('add', '--', notice_path.as_posix())
+            target.unlink()
+            git('checkout-index', '--all')
+            self.assertNotEqual(packaging.hashlib.sha256(target.read_bytes()).hexdigest(), expected)
+            shutil.copyfile(packaging.ROOT / '.gitattributes', root / '.gitattributes')
+            git('add', '--', '.gitattributes')
+            target.unlink()
+            git('checkout-index', '--all')
+            self.assertEqual(packaging.hashlib.sha256(target.read_bytes()).hexdigest(), expected)
+            attributes = git('check-attr', 'text', 'eol', '--', notice_path.as_posix()).stdout
+            self.assertIn('text: set', attributes)
+            self.assertIn('eol: lf', attributes)
+
     def test_pe_imports_accept_os_and_reject_non_os_in_both_tables(self):
         with tempfile.TemporaryDirectory() as temp:
             binary = Path(temp) / 'fixture.exe'
