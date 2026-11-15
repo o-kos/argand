@@ -55,6 +55,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
+      - name: Test release packaging policy
+        run: python3 .github/scripts/test-package-release.py
+
       - name: Test CI result policy
         run: |
           python3 .github/scripts/test-ci-result.py
@@ -79,6 +82,13 @@ jobs:
         if: github.event_name != 'pull_request' || !github.event.pull_request.draft
         run: cargo build --release --locked --features source-toolkit
 
+      - name: Package and smoke-test Linux release builds
+        if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+        run: |
+          python3 .github/scripts/package-release.py \
+            --binary-dir target/release --target x86_64-unknown-linux-gnu \
+            --output packaging-check
+
   # The application is the reason these two exist. A runner has no GPU, so
   # nothing here opens a window: what is covered is that the workspace builds
   # and that everything not needing one still passes.
@@ -99,8 +109,16 @@ jobs:
       - name: Test
         run: cargo test --locked --features source-toolkit,toolkit-test-support
 
-      - name: Build release
-        run: cargo build --release --locked --features source-toolkit
+      - name: Build release with static CRT
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --release --locked --features source-toolkit --target x86_64-pc-windows-msvc
+
+      - name: Package and smoke-test Windows release builds
+        run: |
+          python .github/scripts/package-release.py \
+            --binary-dir target/x86_64-pc-windows-msvc/release \
+            --target x86_64-pc-windows-msvc --output packaging-check
 
   macos:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft

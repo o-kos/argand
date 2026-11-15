@@ -27,10 +27,14 @@ changelog=${2:-"$(cd "$(dirname "$0")/../.." && pwd)/CHANGELOG.md"}
     fail "tag '$tag' is not a vX.Y.Z release tag"
 version=${tag#v}
 
-# cargo pkgid reports the version cargo will actually build, and the one
-# 'aspec --version' prints, without parsing a manifest by hand.
-pkgid=$(cargo pkgid -p argand-cli --locked)
-manifest_version=${pkgid##*@}
+# Read metadata without invoking Cargo or a toolchain proxy.
+manifest_version=$(python3 - "$(dirname "$0")/../../Cargo.toml" <<'PYTHON'
+import sys
+import tomllib
+with open(sys.argv[1], "rb") as manifest:
+    print(tomllib.load(manifest)["workspace"]["package"]["version"])
+PYTHON
+)
 
 [ "$version" = "$manifest_version" ] ||
     fail "tag '$tag' does not match workspace version '$manifest_version'"

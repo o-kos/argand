@@ -11,11 +11,15 @@ promise applies to.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-15
+
 ### Changed
 
 - File information, Analysis settings and About use explicit panels with informative tooltips and consistent names. File information is the final File command, Analysis settings is in View, and Recent files use a submenu. Unavailable menu commands remain visible and Edit shows registered shortcuts. Quit Argand uses Ctrl+Q (Cmd+Q on macOS); Quit and the first caption Close click preserve unsaved-edit and conversion protection while panels or menus are open. Information panels suppress competing external tooltips and close on window deactivation (#246).
 
 ### Added
+
+- Downloadable Argand GUI archives for Windows and Linux, alongside the separate aspec archives. Windows needs no Visual C++ Redistributable; Linux bundles native libraries and requires Ubuntu 24.04 or a compatible newer desktop and graphics driver.
 
 - About Argand opens from a version button in the title bar or the application menu and shows package details, the repository link and build commit identity. Its tooltip identifies the version, exact tag, commit and commit date (#107).
 
@@ -329,7 +333,8 @@ promise applies to.
 - A workspace-wide lint policy: ten maintainability lints with explicit
   thresholds, enforced identically on a developer's machine and in CI.
 
-[Unreleased]: https://github.com/o-kos/argand/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/o-kos/argand/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/o-kos/argand/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/o-kos/argand/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/o-kos/argand/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/o-kos/argand/compare/v0.0.1...v0.0.2
