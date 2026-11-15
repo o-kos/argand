@@ -1,0 +1,9 @@
+{
+  "taffy-0.15.0": {
+    "package_checksum": "3c8480887e8803986d96a7173729565520d4bbb721ad6b7ad6941a22897207aa",
+    "source_revision": "eb6450694f33e2b7413e40677f230ff63f0fc194",
+    "source_url": "https://raw.githubusercontent.com/DioxusLabs/taffy/eb6450694f33e2b7413e40677f230ff63f0fc194/LICENSE",
+    "license_file": "taffy-0.15.0.LICENSE",
+    "license_sha256": "f97daf1a0124413dccf399a4e6626b4b74acd05282f80b6d64ac82225650b77a"
+  }
+}
