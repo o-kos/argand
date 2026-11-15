@@ -530,7 +530,11 @@ closure plus explicitly loaded fontconfig, Wayland and Vulkan libraries, copies
 their package copyright notices and creates an application-scoped launcher. glibc,
 the ELF loader, desktop/font configuration and Vulkan drivers remain OS requirements;
 see the baseline in [README.md](README.md#install). On Windows it rejects non-OS
-DLL imports, including dynamic Visual C++ runtimes. Archives preserve embedded
+DLL imports, including dynamic Visual C++ runtimes. The Windows baseline is version
+10 1703 or newer, which supplies the `icuuc.dll` and `icuin.dll` ICU components;
+see [Microsoft's ICU documentation](https://learn.microsoft.com/en-us/windows/win32/intl/international-components-for-unicode--icu-).
+An import rejection includes the complete sorted import list for diagnosis, while
+retaining the existing acceptance rules. Archives preserve embedded
 Lucide/Feather icon and DejaVu font attribution. The packaging routine also copies
 upstream licence/notice files from downloaded locked registry sources, verifying
 the cached crate archives against Cargo.lock and indexing crate versions and

@@ -55,8 +55,9 @@ sha256sum --check --ignore-missing SHA256SUMS
 ```
 
 On Windows, extract the ZIP and run `argand.exe`. The executable uses a static
-C runtime and needs no Visual C++ Redistributable. Windows 10 or newer and a
-working graphics driver are required. Keep the executable, bundled documents and `licenses/`
+C runtime and needs no Visual C++ Redistributable. Windows 10 version 1703 or newer and a
+working graphics driver are required. Windows supplies the ICU `icuuc.dll` and
+`icuin.dll` system libraries. Keep the executable, bundled documents and `licenses/`
 together when redistributing.
 
 On Linux, extract the tarball and run `./argand` from the extracted directory.

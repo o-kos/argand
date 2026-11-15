@@ -139,13 +139,24 @@ class PackagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             binary = Path(temp) / 'fixture.exe'
             for delay in (False, True):
-                for name in ('KERNEL32.dll', 'gdiplus.dll', 'api-ms-win-core-synch-l1-2-0.dll'):
+                for name in ('KERNEL32.dll', 'gdiplus.dll', 'icuin.dll', 'icuuc.dll', 'api-ms-win-core-synch-l1-2-0.dll'):
                     binary.write_bytes(pe_fixture(name, delay))
                     self.assertEqual(packaging.check_windows(binary), [name.lower()])
                 for name in ('VCRUNTIME140.dll', 'MSVCP140.dll', 'gpui_kit_sdk.dll'):
                     binary.write_bytes(pe_fixture(name, delay))
                     with self.assertRaisesRegex(ValueError, 'non-OS DLL'):
                         packaging.check_windows(binary)
+
+    def test_pe_rejection_includes_all_sorted_actual_imports(self):
+        imports = {'kernel32.dll', 'gdiplus.dll', 'icuuc.dll', 'icuin.dll',
+                   'vcruntime140.dll', 'gpui_kit_sdk.dll', 'msvcp140.dll'}
+        with patch.object(packaging, 'windows_imports', return_value=imports):
+            with self.assertRaises(ValueError) as failure:
+                packaging.check_windows(Path('fixture.exe'))
+        message = str(failure.exception)
+        self.assertIn('requires non-OS DLL ', message)
+        self.assertIn('use a static CRT build; all PE imports: ', message)
+        self.assertEqual(message.split('all PE imports: ', 1)[1], ', '.join(sorted(imports)))
 
     def test_windows_archives_keep_names_and_identity(self):
         with tempfile.TemporaryDirectory() as temp:
