@@ -22,7 +22,7 @@ DLOPEN_LIBS = ('libfontconfig.so.1', 'libwayland-client.so.0',
                'libwayland-cursor.so.0', 'libvulkan.so.1')
 WINDOWS_LIBS = set('''advapi32 bcrypt bcryptprimitives cfgmgr32 comctl32 comdlg32
     combase crypt32 cryptbase cryptnet cryptui d2d1 d3d11 d3d12 d3dcompiler_47 dbghelp dcomp
-    dwmapi dwrite dxgi gdi32 imm32 iphlpapi kernel32 kernelbase mpr msimg32
+    dwmapi dwrite dxgi gdi32 gdiplus imm32 iphlpapi kernel32 kernelbase mpr msimg32
     msvcrt ncrypt netapi32 normaliz ntdll ole32 oleacc oleaut32 opengl32 powrprof
     propsys psapi rpcrt4 secur32 setupapi shell32 shcore shlwapi synchronization
     uiautomationcore ucrtbase user32 userenv uxtheme version windowscodecs winhttp wininet winmm

@@ -139,7 +139,7 @@ class PackagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             binary = Path(temp) / 'fixture.exe'
             for delay in (False, True):
-                for name in ('KERNEL32.dll', 'api-ms-win-core-synch-l1-2-0.dll'):
+                for name in ('KERNEL32.dll', 'gdiplus.dll', 'api-ms-win-core-synch-l1-2-0.dll'):
                     binary.write_bytes(pe_fixture(name, delay))
                     self.assertEqual(packaging.check_windows(binary), [name.lower()])
                 for name in ('VCRUNTIME140.dll', 'MSVCP140.dll', 'gpui_kit_sdk.dll'):
