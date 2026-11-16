@@ -450,6 +450,24 @@ progress/evidence text changed afterward.
 
 ## Validation and limits
 
+## Range tooltip appearance follow-up
+
+- Class B for this bounded presentation refinement in one GUI module. The parent
+  metadata/save work remains Class A.
+- Coordinator: `gpt-6-astra` medium. Executor: `gpt-6.1-sol` medium.
+- Reviewer: `gpt-6.1-sol` high in a separate read-only context.
+- Reuse the existing status tooltip presentation for Range: title `Display range`
+  above the unchanged current-state explanation in smaller muted text.
+- Preserve the conditional range action/keycap and external-tooltip suppression.
+  File, Reference and Analysis retain their existing copy and interactions.
+- [ ] Extract the existing shared status tooltip renderer and reuse it for Range.
+- [ ] Verify full/corrected/warned range descriptions and conditional shortcut,
+  comparing File, Reference and Analysis tooltip presentation and suppression.
+- [ ] Run formatting, all-target Clippy, workspace tests, then release build last.
+- [ ] Exercise production Linux X11/Xvfb on disposable data with isolated settings,
+  including full/corrected/warned range, neighboring help and overlay suppression.
+- [ ] Record exact source/binary evidence and independent review limits. Keep Draft.
+
 Record actual runtime observations separately from automated tests. No toolchain,
 SDK, dependency graph or artifact layout changes. Do not alter the owner's files.
 
