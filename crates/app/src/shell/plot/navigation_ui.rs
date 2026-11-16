@@ -116,7 +116,7 @@ impl PlotGeometry {
         pointer: Option<gpui_kit::Point<Pixels>>,
         dragging: bool,
         viewport: Option<(View, u64)>,
-        frequency_zoomed: bool,
+        _frequency_zoomed: bool,
     ) -> gpui_kit::CursorStyle {
         if dragging {
             return gpui_kit::CursorStyle::ClosedHand;
@@ -130,7 +130,9 @@ impl PlotGeometry {
         if self.spectrum.contains(&position) {
             return gpui_kit::CursorStyle::Crosshair;
         }
-        let time_ruler = self.time_ruler.contains(&position);
+        if self.time_ruler.contains(&position) || self.frequency_ruler.contains(&position) {
+            return gpui_kit::CursorStyle::Crosshair;
+        }
         let selected = self.minimap.contains(&position)
             && viewport.is_some_and(|(view, total)| {
                 let fraction = self.minimap_fraction(position);
@@ -138,9 +140,7 @@ impl PlotGeometry {
                 (left..=right).contains(&fraction)
             });
         let can_pan = viewport.is_some_and(|(view, total)| view.len < total);
-        if (can_pan && (time_ruler || selected))
-            || (frequency_zoomed && self.frequency_ruler.contains(&position))
-        {
+        if can_pan && selected {
             gpui_kit::CursorStyle::OpenHand
         } else {
             gpui_kit::CursorStyle::Arrow
@@ -162,8 +162,12 @@ impl PlotGeometry {
             return Some(cursor);
         }
         let position = pointer?;
-        (space && self.spectrum.contains(&position) && !self.controls_at(position))
-            .then_some(gpui_kit::CursorStyle::OpenHand)
+        (space
+            && (self.spectrum.contains(&position)
+                || self.time_ruler.contains(&position)
+                || self.frequency_ruler.contains(&position))
+            && !self.controls_at(position))
+        .then_some(gpui_kit::CursorStyle::OpenHand)
     }
 
     /// Whether a left press here starts a time selection rather than a pan.
@@ -248,7 +252,7 @@ impl PlotGeometry {
         let distance = f64::from(f32::from(distance));
         let width = self.time_length() as f64;
         let frequency_ruler = self.frequency_ruler.contains(&position);
-        if modifiers.shift || frequency_ruler {
+        if frequency_ruler || (modifiers.shift && !self.time_ruler.contains(&position)) {
             let height = self.frequency_length() as f64;
             return if modifiers.control {
                 Scroll::FrequencyZoom {
@@ -916,9 +920,8 @@ impl crate::shell::plot::plot_view::PlotView {
 
     /// Start the gesture a press asks for, which is decided here once.
     ///
-    /// Unless Space is held, a left press selects time on the spectrum, a
-    /// rectangle with Ctrl there, and a band on the frequency ruler. Every
-    /// other press that lands on the plot pans.
+    /// Space and the middle button pan. Left presses select or reshape on the
+    /// spectrum and rulers, with the chosen axes retained until release.
     pub(in crate::shell) fn press(
         &mut self,
         event: &gpui_kit::MouseDownEvent,
@@ -953,7 +956,8 @@ impl crate::shell::plot::plot_view::PlotView {
             return;
         }
         let on_spectrum = geometry.selects_at(event.position);
-        let on_ruler = geometry.frequency_ruler.contains(&event.position);
+        let on_frequency = geometry.frequency_ruler.contains(&event.position);
+        let on_time = geometry.time_ruler.contains(&event.position);
         let grabbed = (event.button == MouseButton::Left && !self.space)
             .then(|| self.grab_selection(event, geometry))
             .flatten();
@@ -965,13 +969,25 @@ impl crate::shell::plot::plot_view::PlotView {
             cx.notify();
             return;
         }
-        if event.button == MouseButton::Left && !self.space && (on_spectrum || on_ruler) {
+        if event.button == MouseButton::Left
+            && !self.space
+            && event.modifiers.alt
+            && (on_spectrum || on_frequency || on_time)
+        {
+            cx.notify();
+            return;
+        }
+        if event.button == MouseButton::Left
+            && !self.space
+            && (on_spectrum || on_frequency || on_time)
+        {
             let (time, frequency) = geometry.fractions(event.position);
             let view = snapshot.extents.time.view;
             self.selecting = Some(Selecting::fresh(
                 event.position,
-                on_spectrum.then(|| view.boundary(time)),
-                (on_ruler || event.modifiers.control)
+                (on_time || (on_spectrum && (!event.modifiers.shift || event.modifiers.control)))
+                    .then(|| view.boundary(time)),
+                (on_frequency || (on_spectrum && event.modifiers.shift))
                     .then(|| hertz(snapshot.extents.hertz, frequency)),
             ));
             cx.notify();

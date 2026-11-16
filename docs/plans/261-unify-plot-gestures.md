@@ -32,30 +32,46 @@ resize or adjust their own physical axis. Wheel modifiers never redirect a ruler
 
 | Criterion | Verification / scenario | Result | Limits |
 | --- | --- | --- | --- |
-| Spectrogram wheel selects time or frequency correctly | Default/Shift pan and Ctrl/Ctrl+Shift zoom in both orientations | Pending | Native platforms separate |
-| Rulers operate on their own axis | Modifier combinations for wheel, selection, resize, Alt and pan | Pending | Native platforms separate |
-| Selection creation and modification | Time, band, rectangle, no selection, edge/interior, Alt, modifier release | Pending | Capture samples remain immutable |
-| Existing navigation/focus paths remain usable | Keyboard/menu zoom, fit, arrows, Escape and Alt guides | Pending | Native interception reported separately |
-| Production UI matches the agreed scheme | Isolated Xvfb production release run with disposable fixtures and settings | Pending | Does not establish Wayland, Windows or macOS input behavior |
-| Discoverable help matches gestures | README/current navigation documentation and existing help surface | Pending | No new custom widget |
+| Spectrogram wheel selects time or frequency correctly | Default/Shift pan and Ctrl/Ctrl+Shift zoom in both orientations | Passed automated tests and production Xvfb run | Native platforms separate |
+| Rulers operate on their own axis | Modifier combinations for wheel, selection, resize, Alt and pan | Passed automated modifier matrix and production Xvfb scenarios | Native platforms separate |
+| Selection creation and modification | Time, band, rectangle, no selection, edge/interior, Alt, modifier release | Passed automated tests and fitted/zoomed production Xvfb scenarios | Disposable capture matches regenerated original bytes |
+| Existing navigation/focus paths remain usable | Keyboard/menu zoom, fit, arrows, Escape and Alt guides | Passed automated tests and production Xvfb scenarios, including Edit menu selection panel | Window-manager interception remains untested |
+| Production UI matches the agreed scheme | Isolated Xvfb production release run with disposable fixtures and settings | Passed scoped scenarios on 2026-11-16 | Does not establish Wayland, Windows or macOS input behavior or owner acceptance |
+| Discoverable help matches gestures | README/current navigation documentation and existing help surface | Updated and production selection tooltips checked | No new custom widget |
 
 ## Implementation steps
 
-- [ ] Correct wheel routing and mouse-down selection priorities.
-- [ ] Add time-ruler edge/Alt support and retain latched gesture semantics.
-- [ ] Add focused event-level and geometry regression coverage.
-- [ ] Update discoverable help, current navigation documentation and changelog.
-- [ ] Complete local gate and isolated production UI acceptance.
+- [x] Correct wheel routing and mouse-down selection priorities.
+- [x] Add time-ruler edge/Alt support and retain latched gesture semantics.
+- [x] Add focused event-level and geometry regression coverage.
+- [x] Update discoverable help, current navigation documentation and changelog.
+- [x] Complete local gate and isolated production UI acceptance.
+- [x] ➕ Preserve modified minimap navigation and Alt edge resizing after the independent review finding, then refresh affected validation.
 - [ ] Complete independent review and coordinator assessment.
 - [ ] Move this plan to completed before final review, once acceptance is complete.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the preceding checks
-- [ ] Production Xvfb interaction scenarios, bound to exact revision and binary
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked` (936 passed after the minimap correction)
+- [x] `cargo build --release --locked`, after the preceding checks
+- [x] Production Xvfb interaction scenarios, bound to exact revision and binary
+
+The production run used a disposable 1 MHz complex chirp and isolated settings,
+state, cache and X11 display. Both orientations were exercised with fitted and
+zoomed axes. Fast single-move synthetic drags did not consistently establish a
+selection in the vertical run, so those attempts are excluded from passing
+evidence. Paced drags with intermediate moves established the recorded results.
+This run does not diagnose the earlier host freeze. Independent review completed
+in two rounds, with the first finding corrected and the second round clean. The
+coordinator's assessment and owner acceptance remain pending; keep the PR Draft.
+The first review identified modifier handling that also affected the minimap.
+Restored its earlier Ctrl/Shift navigation priority and Alt navigation/edge grabs.
+A new regression failed before the correction and passed afterwards. The complete
+local gate passed again, and the rebuilt production binary passed the affected
+minimap scenarios in both orientations plus selection/Alt smoke checks. The
+unaffected broad interaction record is retained separately from this refresh.
 
 ## Post-completion
 

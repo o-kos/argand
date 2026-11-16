@@ -8,8 +8,12 @@ Physical coordinates, plot navigation and selection presentation. Read this befo
 The shell starts every opened file at its full sample range, clamps its span to
 one FFT or the shorter capture, and sends range changes through the existing
 cancellable mailbox. Size and style changes retain their previous cache semantics.
-`shell/plot/navigation_ui.rs` provides Ctrl+wheel zoom about the pointer, middle-button and Space+left-drag pan on the spectrum, left-drag pan on the time ruler, identical Ctrl+wheel zoom and wheel horizontal pan over plots and the time ruler, keyboard
-commands and the View menu. The crosshair is restricted to the spectrogram. `shell/plot/plot_ui.rs` immediately maps held spectral pictures into
+`shell/plot/navigation_ui.rs` routes spectrogram wheel pan/zoom to physical time by
+default and frequency with Shift. Ctrl chooses zoom. Each ruler always routes
+wheel input to its own axis. Middle-button and Space+left drag pan both axes on
+the spectrogram and only the ruler's own axis. Left drags select as described
+below. Keyboard commands and the View menu retain their explicit physical axes.
+`shell/plot/plot_ui.rs` immediately maps held spectral pictures into
 the requested time interval and clips the spectrogram to its plot. Cursor levels
 come from the displayed grid's own extents; uncovered time has no reported level.
 The completed full-capture minimap updates the file hint's extrema independently
@@ -67,8 +71,9 @@ If wider labels collide after a pan, the grid remains stable and colliding label
 is omitted. Left/Right pan by one measured division; Ctrl+Left/Right by five.
 `navigation::TickPan` accumulates divisions before sample rounding, preventing drift
 for nonintegral samples per division; hitting either capture edge resets its origin.
-Shift+wheel pans frequency and does not navigate in time. Unmodified wheel pans horizontally; Ctrl+wheel zooms on both
-plots and the time ruler.
+On the spectrogram, Shift+wheel pans frequency and unmodified wheel pans time.
+Ctrl+wheel zooms time and Ctrl+Shift+wheel zooms frequency. On a ruler, Shift
+does not redirect wheel input from its own axis.
 
 All time zoom keys use Control: Ctrl+Plus/Equals, Ctrl+Minus and Ctrl+0 (fit).
 Alt guides use a three-logical-pixel stroke in the theme's paper colour with a
@@ -122,7 +127,7 @@ the new mode's time labels (#148).
 Unit hints use measured caption rectangles from the axis frame. The time hint
 belongs to the ruler context-menu element so right-click handling is preserved;
 the frequency hint occupies only its visible caption beside the minimap, not the frequency ticks. Hints observe the shell and report the current view span per physical device pixel, in seconds/samples and an independently selected frequency unit (Hz through GHz)
-based on resolution magnitude, without redundant decimal zeros. Hand cursors require an available pan range; the frequency ruler supports frequency panning and zooming.
+based on resolution magnitude, without redundant decimal zeros. Rulers show a crosshair for selection and an open hand while Space is held; the frequency ruler supports frequency panning and zooming.
 Machine-readable persistence and CLI number formatting do not use this module.
 
 The time-ruler context menu retains its popup entity after closing (a toolkit
@@ -159,7 +164,7 @@ value domain on the worker; full-band rendering retains its existing reduction
 policy. Held textures, the wider backdrop and numeric level lookup use both time
 and frequency extents. Frequency panning holds the tick scheme until zoom or a
 height change. Shift+wheel pans frequency; Ctrl+Shift+wheel zooms it. The frequency
-ruler supports drag/wheel pan and Ctrl+wheel zoom. Frequency keyboard zoom uses
+ruler supports middle/Space+left drag pan, wheel pan and Ctrl+wheel zoom. Frequency keyboard zoom uses
 Ctrl+Shift+plus/minus and Ctrl+Shift+0; Up/Down and Ctrl+Up/Down pan one/five divisions. No navigation
 state is persisted, and the full-capture minimap is independent of both viewports.
 
@@ -169,10 +174,15 @@ state is persisted, and the full-capture minimap is independent of both viewport
 `SampleSpan` in whole samples (a complex sample counts once, so I and Q stay
 together) and an optional `FrequencyBand` in physical hertz (#202).
 The kinds and their later operations are phase 5 of `IMPLEMENTATION_PLAN.md`.
-`PlotView::press` decides a gesture once per press: unless Space is held, a left
-press selects time on the spectrum, a rectangle with Ctrl there and a band on the
-frequency ruler, and every other press on the plot (middle button, Space+left,
-left on the time ruler or minimap) pans as before. A pan remembers its
+`PlotView::press` decides a gesture once per press. Space+left and middle drag pan
+before selection handling. On the spectrogram, left selects time, Shift+left
+selects a band and Ctrl+Shift+left selects a rectangle. Both rulers use left drag
+to select their own physical axis. Alt+left adjusts existing nearest boundaries
+before direct edge/interior grabs, and creates no gesture without a selected axis.
+Shift and Ctrl+Shift on the spectrogram start their requested selection type before
+grabs. Unmodified presses retain edge resizing and interior movement. The minimap
+retains its existing time pan and edge-resize behavior. Changes to modifiers after
+mouse-down never change the gesture's selected axes or operation. A pan remembers its
 button (`pan_button`), because GPUI's `MouseMoveEvent::dragging` means the left
 button only. A selection's boundaries come from `View::boundary` on the time
 fraction, so it follows the time axis in both orientations and stops at the
@@ -232,16 +242,17 @@ selection stands far enough from it that the badge input opened over it keeps on
 clear (`Extent::clear`, from `badge_entry::entry_size`). The status bar shows no selection.
 
 `shell/plot/selection_gestures.rs` reshapes and moves a selection; each gesture is a `Selecting`, so
-every place that ends a gesture ends these too. A left press without Ctrl within 4 logical
+every place that ends a gesture ends these too. A left press without an explicit selection modifier within 4 logical
 pixels of an edge grabs it (`Grab::Edges`): a time edge on the spectrum along the band's
-extent and on the minimap, a band edge on the spectrum along the time extent and on the
+extent and on the time ruler or minimap, a band edge on the spectrum along the time extent and on the
 frequency ruler, both at a corner. The other edge is the anchor and the axis not grabbed is
 kept (`Selecting::keep_time`, `keep_band`), so dragging past the other edge swaps them and an
 edge laid on its partner leaves the selection as it was; a click on an edge changes nothing.
 Inside the selection on the spectrum (`Grab::Inside`) a drag moves it whole
 (`PlotView::moved_selection`), its length and width kept, held to the capture's time and band;
-a click there clears it. Shift+press moves the nearer edge of each selected axis to the
-pointer and keeps dragging it. The pointer shows the resize cursor across the grabbed axis,
+a click there clears it. Alt+press moves the nearer edge of each selected axis to the
+pointer and keeps dragging it. On a ruler only its own selected axis moves. No
+selected axis means no adjustment gesture. The pointer shows the resize cursor across the grabbed axis,
 a diagonal at a corner, an open hand inside and a closed hand while moving
 (`selection_gestures::grab_cursor`, `PlotView::hover_cursor`). Space and the middle button
 still pan everywhere.
@@ -358,7 +369,7 @@ A middle-button or Space+left drag on the spectrum pans both physical axes, incl
 time remains fitted. Rulers and minimap constrain dragging to their own axis.
 A pointer event updates both viewports before submitting one display request.
 Wheel handling uses the dominant nonzero delta component because Linux GPUI
-backends remap Shift+wheel to horizontal deltas; modifiers still select the axis.
+backends remap Shift+wheel to horizontal deltas; modifiers select the axis only on the spectrogram.
 
 Symbolic zoom keys are normalized by a keystroke interceptor that each `PlotView`
 owns and drops with itself. It runs before GPUI binding match, which is the only hook

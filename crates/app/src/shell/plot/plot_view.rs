@@ -376,7 +376,11 @@ impl Render for PlotView {
                         self.selecting.map(|selecting| selecting.cursor),
                         self.space,
                     )
-                    .or_else(|| self.hover_cursor())
+                    .or_else(|| {
+                        (!window.modifiers().shift && !window.modifiers().alt)
+                            .then(|| self.hover_cursor())
+                            .flatten()
+                    })
                     .unwrap_or_else(|| {
                         geometry.cursor(
                             self.pointer,

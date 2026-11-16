@@ -22,6 +22,8 @@ promise applies to.
 
 ### Changed
 
+- Unify spectrogram and ruler navigation and selection gestures, including Shift-drag band selection, Ctrl+Shift-drag rectangles and Alt-click boundary adjustment.
+
 - WAVE/IQW saves whole-Hz reference metadata using only `auxi`, without the
   Argand-specific `argd` chunk. FLAC uses an integer `AUXI` comment. WAVE export
   uses whole-Hz sample rates, preserving exact internal DSP parameters separately.

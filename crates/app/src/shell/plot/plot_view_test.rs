@@ -871,13 +871,14 @@ fn escape_during_a_drag_ends_the_selection_gesture(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn ctrl_drag_on_the_spectrum_selects_a_rectangle(cx: &mut TestAppContext) {
+fn ctrl_shift_drag_on_the_spectrum_selects_a_rectangle(cx: &mut TestAppContext) {
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let from = spectrum.center();
     let to = from - point(px(80.), px(30.));
     let ctrl = gpui_kit::Modifiers {
         control: true,
+        shift: true,
         ..Default::default()
     };
     left_drag(cx, handle, from, to, ctrl);
@@ -902,6 +903,7 @@ fn a_rectangle_without_height_selects_nothing(cx: &mut TestAppContext) {
     let from = spectrum(cx, handle).center();
     let ctrl = gpui_kit::Modifiers {
         control: true,
+        shift: true,
         ..Default::default()
     };
     left_drag(cx, handle, from, from - point(px(80.), px(0.)), ctrl);
@@ -1049,6 +1051,7 @@ fn a_vertical_plot_selects_a_rectangle_along_both_axes(cx: &mut TestAppContext) 
     let to = from + point(px(40.), px(80.));
     let ctrl = gpui_kit::Modifiers {
         control: true,
+        shift: true,
         ..Default::default()
     };
     left_drag(cx, handle, from, to, ctrl);
@@ -1124,7 +1127,7 @@ fn space_is_forgotten_when_the_plot_loses_focus(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_left_drag_on_the_time_ruler_still_pans(cx: &mut TestAppContext) {
+fn a_left_drag_on_the_time_ruler_selects_time(cx: &mut TestAppContext) {
     let handle = open(cx);
     let ruler = handle
         .update(cx, |harness, _, cx| {
@@ -1146,7 +1149,14 @@ fn a_left_drag_on_the_time_ruler_still_pans(cx: &mut TestAppContext) {
         from - point(px(60.), px(0.)),
         gpui_kit::Modifiers::default(),
     );
-    assert!(drag_steps(cx, handle) > 0);
+    let spectrum = spectrum(cx, handle);
+    assert_eq!(
+        selections(cx, handle).last().copied().flatten(),
+        span(
+            boundary_at(spectrum, from.x),
+            boundary_at(spectrum, from.x - px(60.))
+        )
+    );
 }
 
 #[gpui_kit::test]
@@ -1789,7 +1799,7 @@ fn a_drag_inside_moves_the_whole_selection(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn shift_click_moves_the_nearer_edge_to_the_pointer(cx: &mut TestAppContext) {
+fn alt_click_moves_the_nearer_edge_to_the_pointer(cx: &mut TestAppContext) {
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let centre = spectrum.center();
@@ -1799,11 +1809,11 @@ fn shift_click_moves_the_nearer_edge_to_the_pointer(cx: &mut TestAppContext) {
     );
     show_selection(cx, handle, span(start, end).unwrap());
     let at = centre + point(px(120.), px(0.));
-    let shift = gpui_kit::Modifiers {
-        shift: true,
+    let alt = gpui_kit::Modifiers {
+        alt: true,
         ..Default::default()
     };
-    left_drag(cx, handle, at, at, shift);
+    left_drag(cx, handle, at, at, alt);
     assert_eq!(
         selections(cx, handle).last().copied().flatten(),
         span(start, boundary_at(spectrum, at.x))
@@ -1846,39 +1856,51 @@ fn a_band_edge_drags_on_the_frequency_ruler_and_the_cursor_says_so(cx: &mut Test
 
 #[gpui_kit::test]
 fn a_rectangle_s_time_edge_drags_on_the_minimap(cx: &mut TestAppContext) {
-    let handle = open(cx);
-    let minimap = handle
-        .update(cx, |harness, _, cx| {
-            harness
-                .plot
-                .as_ref()
-                .unwrap()
-                .read(cx)
-                .geometry
-                .unwrap()
-                .minimap
-        })
-        .unwrap();
-    let total = snapshot().extents.time.total;
-    let (start, end) = (300_000, 600_000);
-    let rectangle = argand_core::Selection {
-        time: argand_core::SampleSpan::between(start, end),
-        band: band(hertz_at(0.25), hertz_at(0.75)),
-    };
-    show_selection(cx, handle, rectangle);
-    let x = |sample: u64| minimap.left() + minimap.size.width * (sample as f32 / total as f32);
-    let edge = point(x(end), minimap.center().y);
-    let to = point(x(800_000), minimap.center().y);
-    left_drag(cx, handle, edge, to, gpui_kit::Modifiers::default());
-    let fraction = f32::from(to.x - minimap.left()) as f64 / f32::from(minimap.size.width) as f64;
-    let boundary = crate::navigation::View::full(total).boundary(fraction);
-    assert_eq!(
-        selections(cx, handle).last().copied().flatten(),
-        Some(argand_core::Selection {
-            time: argand_core::SampleSpan::between(start, boundary),
-            band: rectangle.band,
-        })
-    );
+    for alt in [false, true] {
+        let handle = open(cx);
+        let minimap = handle
+            .update(cx, |harness, _, cx| {
+                harness
+                    .plot
+                    .as_ref()
+                    .unwrap()
+                    .read(cx)
+                    .geometry
+                    .unwrap()
+                    .minimap
+            })
+            .unwrap();
+        let total = snapshot().extents.time.total;
+        let (start, end) = (300_000, 600_000);
+        let rectangle = argand_core::Selection {
+            time: argand_core::SampleSpan::between(start, end),
+            band: band(hertz_at(0.25), hertz_at(0.75)),
+        };
+        show_selection(cx, handle, rectangle);
+        let x = |sample: u64| minimap.left() + minimap.size.width * (sample as f32 / total as f32);
+        let edge = point(x(end), minimap.center().y);
+        let to = point(x(800_000), minimap.center().y);
+        left_drag(
+            cx,
+            handle,
+            edge,
+            to,
+            gpui_kit::Modifiers {
+                alt,
+                ..Default::default()
+            },
+        );
+        let fraction =
+            f32::from(to.x - minimap.left()) as f64 / f32::from(minimap.size.width) as f64;
+        let boundary = crate::navigation::View::full(total).boundary(fraction);
+        assert_eq!(
+            selections(cx, handle).last().copied().flatten(),
+            Some(argand_core::Selection {
+                time: argand_core::SampleSpan::between(start, boundary),
+                band: rectangle.band,
+            })
+        );
+    }
 }
 
 #[gpui_kit::test]
@@ -1915,4 +1937,328 @@ fn a_band_edge_stops_at_the_capture_s_band(cx: &mut TestAppContext) {
             band: band(0., hertz_at(0.4)),
         })
     );
+}
+
+#[gpui_kit::test]
+fn explicit_selection_axes_override_existing_grabs_and_latch_at_press(cx: &mut TestAppContext) {
+    use crate::navigation::orientation::Mode;
+    for orientation in [Mode::Horizontal, Mode::Vertical] {
+        for (shift, control) in [(false, false), (true, false), (true, true)] {
+            let handle = open(cx);
+            handle
+                .update(cx, |harness, _, cx| {
+                    harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                        plot.snapshot.as_mut().unwrap().extents.orientation = orientation;
+                        plot.reorient(cx);
+                    });
+                })
+                .unwrap();
+            frame(cx, handle);
+            frame(cx, handle);
+            let spectrum = spectrum(cx, handle);
+            let from = spectrum.center();
+            let to = from + point(px(50.), px(40.));
+            if shift {
+                show_selection(
+                    cx,
+                    handle,
+                    argand_core::Selection {
+                        time: argand_core::SampleSpan::between(300_000, 700_000),
+                        band: band(-400_000., 400_000.),
+                    },
+                );
+            }
+            let modifiers = gpui_kit::Modifiers {
+                shift,
+                control,
+                ..Default::default()
+            };
+            let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+            input.simulate_mouse_move(from, None, modifiers);
+            input.simulate_mouse_down(from, MouseButton::Left, modifiers);
+            // Releasing the modifiers does not turn a band/rectangle into time or movement.
+            input.simulate_mouse_move(to, MouseButton::Left, gpui_kit::Modifiers::default());
+            input.simulate_mouse_up(to, MouseButton::Left, gpui_kit::Modifiers::default());
+            cx.run_until_parked();
+            let selected = selections(cx, handle).last().copied().flatten().unwrap();
+            assert_eq!(selected.time.is_some(), !shift || control);
+            assert_eq!(selected.band.is_some(), shift);
+            assert_eq!(drag_steps(cx, handle), 0);
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn alt_without_a_selection_does_not_create_or_clear_one(cx: &mut TestAppContext) {
+    let handle = open(cx);
+    let from = spectrum(cx, handle).center();
+    left_drag(
+        cx,
+        handle,
+        from,
+        from + point(px(50.), px(30.)),
+        gpui_kit::Modifiers {
+            alt: true,
+            ..Default::default()
+        },
+    );
+    assert!(selections(cx, handle).is_empty());
+    assert_eq!(drag_steps(cx, handle), 0);
+}
+
+#[gpui_kit::test]
+fn ruler_alt_needs_a_selection_on_its_own_axis(cx: &mut TestAppContext) {
+    use crate::navigation::orientation::Mode;
+    for orientation in [Mode::Horizontal, Mode::Vertical] {
+        for frequency in [false, true] {
+            let handle = open(cx);
+            handle
+                .update(cx, |harness, _, cx| {
+                    harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                        plot.snapshot.as_mut().unwrap().extents.orientation = orientation;
+                        plot.reorient(cx);
+                    });
+                })
+                .unwrap();
+            frame(cx, handle);
+            frame(cx, handle);
+            let geometry = handle
+                .update(cx, |harness, _, cx| {
+                    harness.plot.as_ref().unwrap().read(cx).geometry.unwrap()
+                })
+                .unwrap();
+            let selected = argand_core::Selection {
+                time: frequency
+                    .then(|| argand_core::SampleSpan::between(300_000, 700_000).unwrap()),
+                band: (!frequency).then(|| band(-250_000., 250_000.).unwrap()),
+            };
+            show_selection(cx, handle, selected);
+            let from = if frequency {
+                geometry.frequency_ruler
+            } else {
+                geometry.time_ruler
+            }
+            .center();
+            left_drag(
+                cx,
+                handle,
+                from,
+                from + point(px(40.), px(40.)),
+                gpui_kit::Modifiers {
+                    alt: true,
+                    ..Default::default()
+                },
+            );
+            assert!(selections(cx, handle).is_empty());
+            assert_eq!(drag_steps(cx, handle), 0);
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn ruler_alt_adjustment_and_edge_resize_keep_the_other_axis(cx: &mut TestAppContext) {
+    use crate::navigation::orientation::Mode;
+    for orientation in [Mode::Horizontal, Mode::Vertical] {
+        for frequency in [false, true] {
+            let handle = open(cx);
+            handle
+                .update(cx, |harness, _, cx| {
+                    harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                        plot.snapshot.as_mut().unwrap().extents.orientation = orientation;
+                        plot.reorient(cx);
+                    });
+                })
+                .unwrap();
+            frame(cx, handle);
+            frame(cx, handle);
+            let geometry = handle
+                .update(cx, |harness, _, cx| {
+                    harness.plot.as_ref().unwrap().read(cx).geometry.unwrap()
+                })
+                .unwrap();
+            let selected = argand_core::Selection {
+                time: argand_core::SampleSpan::between(375_000, 625_000),
+                band: band(-250_000., 250_000.),
+            };
+            show_selection(cx, handle, selected);
+            let ruler = if frequency {
+                geometry.frequency_ruler
+            } else {
+                geometry.time_ruler
+            };
+            let at = ruler.center();
+            left_drag(
+                cx,
+                handle,
+                at,
+                at,
+                gpui_kit::Modifiers {
+                    alt: true,
+                    ..Default::default()
+                },
+            );
+            let changed = selections(cx, handle).last().copied().flatten().unwrap();
+            if frequency {
+                assert_eq!(changed.time, selected.time);
+                assert_ne!(changed.band, selected.band);
+            } else {
+                assert_eq!(changed.band, selected.band);
+                assert_ne!(changed.time, selected.time);
+            }
+            show_selection(cx, handle, selected);
+            // Select the high physical time / low physical frequency edge at 3/4 of the screen axis.
+            let mut edge = ruler.center();
+            if frequency == orientation.vertical() {
+                edge.x = geometry.spectrum.left() + geometry.spectrum.size.width * 0.75;
+            } else {
+                edge.y = geometry.spectrum.top() + geometry.spectrum.size.height * 0.75;
+            }
+            let delta = if frequency == orientation.vertical() {
+                point(px(15.), px(0.))
+            } else {
+                point(px(0.), px(15.))
+            };
+            left_drag(
+                cx,
+                handle,
+                edge,
+                edge + delta,
+                gpui_kit::Modifiers::default(),
+            );
+            let changed = selections(cx, handle).last().copied().flatten().unwrap();
+            if frequency {
+                assert_eq!(changed.time, selected.time);
+                assert_ne!(changed.band, selected.band);
+            } else {
+                assert_eq!(changed.band, selected.band);
+                assert_ne!(changed.time, selected.time);
+            }
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn space_pan_wins_over_selection_modifiers_and_stays_latched(cx: &mut TestAppContext) {
+    let handle = open(cx);
+    let from = spectrum(cx, handle).center();
+    show_selection(
+        cx,
+        handle,
+        argand_core::Selection {
+            time: argand_core::SampleSpan::between(300_000, 700_000),
+            band: band(-250_000., 250_000.),
+        },
+    );
+    space(cx, handle, true);
+    let modifiers = gpui_kit::Modifiers {
+        shift: true,
+        control: true,
+        alt: true,
+        ..Default::default()
+    };
+    let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+    input.simulate_mouse_move(from, None, modifiers);
+    input.simulate_mouse_down(from, MouseButton::Left, modifiers);
+    space(cx, handle, false);
+    let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+    input.simulate_mouse_move(
+        from + point(px(30.), px(0.)),
+        MouseButton::Left,
+        gpui_kit::Modifiers::default(),
+    );
+    input.simulate_mouse_up(
+        from + point(px(60.), px(0.)),
+        MouseButton::Left,
+        gpui_kit::Modifiers::default(),
+    );
+    cx.run_until_parked();
+    let intents = handle
+        .update(cx, |harness, _, _| harness.intents.clone())
+        .unwrap();
+    assert!(
+        intents
+            .iter()
+            .any(|intent| matches!(intent, PlotIntent::Drag { time: Some(_), .. }))
+    );
+    assert!(
+        !intents
+            .iter()
+            .any(|intent| matches!(intent, PlotIntent::Select(_)))
+    );
+}
+
+#[gpui_kit::test]
+fn minimap_modifiers_keep_navigation_before_selection_grabs(cx: &mut TestAppContext) {
+    use crate::navigation::orientation::Mode;
+    for orientation in [Mode::Horizontal, Mode::Vertical] {
+        for (control, shift, alt, selected) in [
+            (true, false, false, true),
+            (false, true, false, true),
+            (false, false, true, false),
+            (true, false, true, true),
+        ] {
+            let handle = open(cx);
+            handle
+                .update(cx, |harness, _, cx| {
+                    harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                        plot.snapshot.as_mut().unwrap().extents.orientation = orientation;
+                        plot.reorient(cx);
+                    });
+                })
+                .unwrap();
+            frame(cx, handle);
+            frame(cx, handle);
+            let minimap = handle
+                .update(cx, |harness, _, cx| {
+                    harness
+                        .plot
+                        .as_ref()
+                        .unwrap()
+                        .read(cx)
+                        .geometry
+                        .unwrap()
+                        .minimap
+                })
+                .unwrap();
+            if selected {
+                show_selection(cx, handle, span(100_000, 200_000).unwrap());
+            }
+            let mut at = minimap.center();
+            if orientation.vertical() {
+                at.y = minimap.top() + minimap.size.height * 0.2;
+            } else {
+                at.x = minimap.left() + minimap.size.width * 0.2;
+            }
+            left_drag(
+                cx,
+                handle,
+                at,
+                at,
+                gpui_kit::Modifiers {
+                    control,
+                    shift,
+                    alt,
+                    ..Default::default()
+                },
+            );
+            assert!(
+                handle
+                    .read_with(cx, |harness, _| {
+                        !harness
+                            .intents
+                            .iter()
+                            .any(|intent| matches!(intent, PlotIntent::Select(_)))
+                    })
+                    .unwrap()
+            );
+            assert_eq!(
+                navigation(cx, handle),
+                [PlotIntent::Time(TimeIntent::Ticks(if control {
+                    -5
+                } else {
+                    -1
+                }))]
+            );
+        }
+    }
 }
