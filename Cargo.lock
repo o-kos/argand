@@ -290,7 +290,7 @@ dependencies = [
 
 [[package]]
 name = "argand"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "argand-core",
@@ -315,7 +315,7 @@ dependencies = [
 
 [[package]]
 name = "argand-cli"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "argand-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "hsl",
  "serde",
@@ -343,7 +343,7 @@ dependencies = [
 
 [[package]]
 name = "argand-dsp"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "argand-core",
  "rayon",
@@ -355,14 +355,14 @@ dependencies = [
 
 [[package]]
 name = "argand-edit"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "argand-core",
 ]
 
 [[package]]
 name = "argand-io"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "argand-core",
  "bytemuck",

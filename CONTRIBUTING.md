@@ -532,7 +532,51 @@ cover tags, and the workflow's own `main`-ancestor check runs from the tagged co
 it guards against a mistyped tag rather than against someone who should not be releasing
 at all. Prepare the release Pull Request as usual and hand the tagging over.
 
-The tag starts `.github/workflows/release.yml`, which verifies the tag against the workspace version and the changelog, runs the test suite, builds `aspec` for `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`, checks that each binary reports the version being released, and publishes `aspec-vX.Y.Z-<target>.tar.gz`, `aspec-vX.Y.Z-<target>.zip` and `SHA256SUMS` with the changelog section as the release description. Verification failures happen before anything is built, so a mistyped tag publishes nothing.
+The tag starts `.github/workflows/release.yml`, which verifies the tag against the
+workspace version and changelog, runs source-toolkit tests and builds both `argand`
+and `aspec` in source-toolkit mode for `x86_64-unknown-linux-gnu` on Ubuntu 24.04
+and `x86_64-pc-windows-msvc` on Windows. Windows release builds select a static CRT
+with `-C target-feature=+crt-static` and an explicit target. No installed GPUI Kit
+SDK is used by these portable builds.
+
+`.github/scripts/package-release.py` is shared with full CI, so packaging and
+headless runtime checks pass on the Ready release PR before an administrator tags
+it. It verifies both packaged binaries' versions and renders the synthetic stereo
+PCM16 2 kHz FLAC fixture with packaged aspec. On Linux it bundles the native library
+closure plus explicitly loaded fontconfig, Wayland and Vulkan libraries, copies
+their package copyright notices and creates an application-scoped launcher. glibc,
+the ELF loader, desktop/font configuration and Vulkan drivers remain OS requirements;
+see the baseline in [README.md](README.md#install). On Windows it rejects non-OS
+DLL imports, including dynamic Visual C++ runtimes. The Windows baseline is version
+10 1703 or newer, which supplies the `icuuc.dll` and `icuin.dll` ICU components;
+see [Microsoft's ICU documentation](https://learn.microsoft.com/en-us/windows/win32/intl/international-components-for-unicode--icu-).
+An import rejection includes the complete sorted import list for diagnosis, while
+retaining the existing acceptance rules. Archives preserve embedded
+Lucide/Feather icon and DejaVu font attribution. The packaging routine also copies
+upstream licence/notice files from downloaded locked registry sources, verifying
+the cached crate archives against Cargo.lock and indexing crate versions and
+licence metadata. A pinned supplemental Taffy notice restores the MIT text omitted
+from its published crate, with exact upstream revision and checksum provenance.
+This intentionally includes downloaded optional/test packages;
+unfetched packages for other platforms are not distributed. These checks do not
+replace manual GPU/desktop validation. The packaging-policy test uses existing OS binaries
+and synthetic PE data without compiling Rust.
+
+The output directory must not already exist. For a previously validated source
+release build, the standalone packaging command is:
+
+```sh
+python3 .github/scripts/package-release.py \
+  --binary-dir target/release --target x86_64-unknown-linux-gnu --output dist
+```
+
+Each platform publishes separate `argand-vX.Y.Z-<target>` and
+`aspec-vX.Y.Z-<target>` archives (tar.gz on Linux, ZIP on Windows), preserving
+existing CLI artifact names. Both include the README, MIT licence, changelog and
+`BUILD-INFO.json` recording the source commit, target, source-toolkit mode, binary
+SHA-256 and native dependencies. `SHA256SUMS` covers all four archives; the release
+body is the version's changelog section. Verification failures happen before
+building and publishing.
 
 To redo a published release, the administrator deletes it together with its tag and
 starts again:

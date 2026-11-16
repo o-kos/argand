@@ -11,33 +11,49 @@ promise applies to.
 
 ## [Unreleased]
 
+### Added
+
+- Edit reference frequency in whole Hz from its status-bar value between the file
+  and FFT summaries or Edit → Reference frequency…. Changes support Undo/Redo and
+  enable Convert until saved or undone. The existing Save command writes metadata
+  to the file. File information shows only the reference declared in the source.
+  Reference edits do not update Recent before Save. Saving a changed RAW reference
+  proposes a WAVE file and preserves the original (#185).
+
+### Changed
+
+- WAVE/IQW saves whole-Hz reference metadata using only `auxi`, without the
+  Argand-specific `argd` chunk. FLAC uses an integer `AUXI` comment. WAVE export
+  uses whole-Hz sample rates, preserving exact internal DSP parameters separately.
+  Reference input accepts edited space-separated integer groups (#185).
+- Selection bandwidth displays and accepts its own Hz/kHz/MHz unit, independent
+  of absolute frequency labels (#185).
+
+### Fixed
+
+- Menu commands and shortcuts share availability, including context menus.
+  Unavailable Save is inert rather than showing an error (#185).
+- Reference frequency shares the information-panel lifecycle and suppresses
+  competing tooltips. Display range help uses the same title and muted
+  description as neighboring status-bar tooltips (#185).
+- Keep the read-only Reference frequency label on one line in File information
+  (#185).
+
+## [0.2.0] - 2026-11-15
+
 ### Changed
 
 - File information, Analysis settings and About use explicit panels with informative tooltips and consistent names. File information is the final File command, Analysis settings is in View, and Recent files use a submenu. Unavailable menu commands remain visible and Edit shows registered shortcuts. Quit Argand uses Ctrl+Q (Cmd+Q on macOS); Quit and the first caption Close click preserve unsaved-edit and conversion protection while panels or menus are open. Information panels suppress competing external tooltips and close on window deactivation (#246).
-### Fixed
-
-- Display range help uses the same title and muted description as neighboring
-  status-bar tooltips (#185).
-- Menu commands and their shortcuts share availability, including context menus.
-  Unavailable commands are inert, so Save no longer shows an error when there
-  are no edits (#185).
 
 ### Added
 
-- Edit the capture's reference frequency through its status-bar value between
-  the file and FFT summaries. Its panel edits whole Hz and also opens from Edit → Reference frequency….
-  The existing Save command writes changes to the file.
-  Changes support Undo/Redo and enable Convert until saved or undone. File
-  information shows only the reference declared in the file. Saving a changed
-  reference from RAW proposes a WAVE file and preserves the original (#185).
-- Reference edits stay in document history until Save and do not update Recent.
-  After WAVE/FLAC Save, reopening reads the reference from the file (#185).
+- Downloadable Argand GUI archives for Windows and Linux, alongside the separate aspec archives. Windows needs no Visual C++ Redistributable; Linux bundles native libraries and requires Ubuntu 24.04 or a compatible newer desktop and graphics driver.
 
 - About Argand opens from a version button in the title bar or the application menu and shows package details, the repository link and build commit identity. Its tooltip identifies the version, exact tag, commit and commit date (#107).
 
 - Packed signed 24-bit PCM opens natively in real and I/Q RIFF/RF64/BW64 and raw captures (`rl_i24` / `iq_i24`). Supported 24-bit WAVE saves can use RF64, with normalization, gain and original integer units preserved. File information and WAVE conversion offer Int 24-bit (#192).
 
-- File information edits the target sample rate, carrier frequency, real/IQ sample format and WAV/FLAC file type. File → File information… (F11) opens the same panel. Conversion preserves the whole currently edited signal’s level and replaces the document only after success, without Undo. Switching real/IQ derives rate/carrier defaults from the source, applies the carrier in sample coordinates and gives the result a zero-origin frequency axis; custom choices filter frequencies outside the target band. The result is unsaved until File → Save chooses a destination; the original disk file remains unchanged. File and Analysis property panels share numeric editing and open from their status summaries (#189).
+- File information edits the target sample rate, reference frequency, real/IQ sample format and WAV/FLAC file type. File → File information… (F11) opens the same panel. Conversion preserves the whole currently edited signal’s level and replaces the document only after success, without Undo. Switching real/IQ derives rate/carrier defaults from the source, applies the carrier in sample coordinates and gives the result a zero-origin frequency axis; custom choices filter frequencies outside the target band. The result is unsaved until File → Save chooses a destination; the original disk file remains unchanged. File and Analysis property panels share numeric editing and open from their status summaries (#189).
 
 - A selection's values can be typed. A double click on one of its badges turns it into an input holding the value; Enter applies it, Escape leaves it, and Up and Down step it by its last digit (ten with Shift). Three segments in the title bar, Time, Band and Both, select that kind and open a panel under them (also Ctrl+E) showing the time start, end and length and the band's low edge, high edge and width around a drawing of the selection; it moves the selection on the plot as values are entered, also makes one when nothing is selected, and Escape restores the selection it opened on. Time is typed in the time ruler's format (a leading `#` names a sample in any of them) and frequency in the frequency ruler's unit, both in the regional number format; a length or width moves the end, values stay inside the capture and time snaps to whole samples. Each edge's badge on the plot and each edge's field in the panel points at its edge, and the spectrogram is dimmed outside a selection as well as tinted inside it, so it shows on bright and dark pictures alike (#219).
 
@@ -61,17 +77,9 @@ promise applies to.
 
 - File → Save as… (Ctrl+Shift+S) saves the open capture as a new file, and File → Save selection as… (Ctrl+Alt+S) saves the selected time range. The output keeps the source's format: WAVE keeps its sample type and bit depth, a headerless capture becomes WAVE, FLAC is encoded again without loss, and data past 4 GB is written as RF64. Saving runs in the background with progress and a cancel button at the right end of the status bar, says when it is done in the corner of the spectrogram, and the target is replaced only by a complete file. The open file cannot be saved over.
 - A FLAC source at a sample rate above what the FLAC encoder can state (over 96 kHz) is saved as WAV of the same bit depth. A 24-bit selection larger than 4 GB cannot be saved yet, because Argand cannot open 24-bit RF64 (#192).
-- Saved files carry the whole-Hz reference frequency in an `auxi` chunk as SDR#, HDSDR and SDRuno write it, or an `AUXI` Vorbis comment in FLAC. Opening a file reads it back, including from `auxi` chunks other SDR software wrote.
+- Saved files carry the reference frequency: an `auxi` chunk as SDR#, HDSDR and SDRuno write it, an exact Argand chunk, or a Vorbis comment in FLAC. Opening a file reads it back, including from `auxi` chunks other SDR software wrote.
 
 ### Changed
-
-- Reference frequency editing commits whole Hz and accepts space-separated integer
-  groups after digit deletion. FLAC writes the reference as an integer `AUXI`
-  comment. WAVE/IQW uses only `auxi`, with whole-Hz reference and sample-rate
-  header fields; exact internal DSP parameters remain separate (#185).
-
-- Selection bandwidth shows its own Hz/kHz/MHz unit, independent of absolute
-  frequency labels, and accepts that unit when edited (#185).
 
 - Upgrade to GPUI Kit 0.9.1 and its standard window frame, retaining Argand's colours and rounded corners. The Linux frame has a wider shadow inset, leaving 16 fewer logical pixels of content per axis at the same window size. Enter now opens application-menu submenus as Right does (#226).
 
@@ -82,7 +90,6 @@ promise applies to.
 ### Fixed
 
 - Center the start-page recent files block horizontally and vertically.
-- Keep the Reference frequency label on one line in File information (#185).
 
 - File, FFT and Range status controls use compact, consistent spacing between their highlighted surfaces and separators (#225).
 
@@ -354,7 +361,8 @@ promise applies to.
 - A workspace-wide lint policy: ten maintainability lints with explicit
   thresholds, enforced identically on a developer's machine and in CI.
 
-[Unreleased]: https://github.com/o-kos/argand/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/o-kos/argand/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/o-kos/argand/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/o-kos/argand/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/o-kos/argand/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/o-kos/argand/compare/v0.0.1...v0.0.2

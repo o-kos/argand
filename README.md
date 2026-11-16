@@ -43,15 +43,39 @@ axes with a colored spectrum trace.
 
 ## Install
 
-Every `vX.Y.Z` tag publishes archives for `x86_64-unknown-linux-gnu` and
-`x86_64-pc-windows-msvc` on the
-[releases page](https://github.com/o-kos/argand/releases/latest), each holding
-`aspec`, this README, the licence and the changelog, alongside a `SHA256SUMS`
-file covering both:
+Every `vX.Y.Z` tag publishes separate `argand-vX.Y.Z-<target>` GUI and
+`aspec-vX.Y.Z-<target>` command line archives for `x86_64-unknown-linux-gnu`
+and `x86_64-pc-windows-msvc` on the
+[releases page](https://github.com/o-kos/argand/releases/latest). Each includes
+this README, the licence, the changelog, third-party notices under `licenses/`,
+and `BUILD-INFO.json` with the source commit and binary SHA-256. `SHA256SUMS` covers all four archives:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
 ```
+
+On Windows, extract the ZIP and run `argand.exe`. The executable uses a static
+C runtime and needs no Visual C++ Redistributable. Windows 10 version 1703 or newer and a
+working graphics driver are required. Windows supplies the ICU `icuuc.dll` and
+`icuin.dll` system libraries. Keep the executable, bundled documents and `licenses/`
+together when redistributing.
+
+On Linux, extract the tarball and run `./argand` from the extracted directory.
+This launcher sets the library path only for its application process. Keep
+`argand-bin`, `lib/` and `licenses/` beside it. The package includes native runtime
+libraries and their copyright notices; it is not fully static. The baseline is
+Ubuntu 24.04 x86-64 (glibc 2.39), or a compatible newer desktop. The operating
+system must supply glibc and its ELF loader, a running X11 or Wayland desktop,
+fonts/font configuration and a working Vulkan graphics driver with its ICD.
+GPU drivers are not bundled. The package is not a promise of support for every
+Linux distribution; older glibc systems cannot run these binaries.
+
+The `aspec` archives retain their existing names and contain a standalone CLI
+executable. Linux aspec uses the same Ubuntu 24.04 glibc baseline. To open a
+stereo I/Q FLAC capture in the GUI, pass its path to `argand` or use File → Open.
+Release packaging checks exercise both binaries' `--version` and render a small
+stereo PCM16 FLAC capture through the packaged CLI; they do not exercise GUI
+rendering on a GPU.
 
 ## Build
 
@@ -349,8 +373,8 @@ file open. The choice is remembered in `session.toml` and takes precedence over
 `argand.toml`, which the menu never rewrites.
 
 Argand packages and package-manager delivery are tracked in [#86](https://github.com/o-kos/argand/issues/86),
-including shipping this template and documenting its installed location. Current
-release archives contain aspec only. System packages must not put an active
+including shipping this template and documenting its installed location. Release
+archives now include the GUI separately; they do not install this configuration template. System packages must not put an active
 default beside the executable, where it would override user configuration;
 adjacent configuration is intended for portable installations.
 
