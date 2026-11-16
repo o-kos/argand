@@ -16,6 +16,8 @@ promise applies to.
 - File information, Analysis settings and About use explicit panels with informative tooltips and consistent names. File information is the final File command, Analysis settings is in View, and Recent files use a submenu. Unavailable menu commands remain visible and Edit shows registered shortcuts. Quit Argand uses Ctrl+Q (Cmd+Q on macOS); Quit and the first caption Close click preserve unsaved-edit and conversion protection while panels or menus are open. Information panels suppress competing external tooltips and close on window deactivation (#246).
 ### Fixed
 
+- Display range help uses the same title and muted description as neighboring
+  status-bar tooltips (#185).
 - Menu commands and their shortcuts share availability, including context menus.
   Unavailable commands are inert, so Save no longer shows an error when there
   are no edits (#185).

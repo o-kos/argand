@@ -648,7 +648,7 @@ impl Shell {
                 element.tooltip(move |_, cx| {
                     let action = actionable
                         .then(|| Box::new(UseRecommendedRange) as Box<dyn gpui_kit::Action>);
-                    shortcut_tooltip(range_hint.clone(), action, "Shell", px(320.), cx)
+                    status_tooltip("Display range", range_hint.clone(), action, cx)
                 })
             })
             .child(range_content)
@@ -706,6 +706,15 @@ fn status_panel_tooltip(panel: StatusPanel, cx: &mut gpui_kit::App) -> gpui_kit:
             Box::new(EditAnalysis),
         ),
     };
+    status_tooltip(title, description.into(), Some(action), cx)
+}
+
+fn status_tooltip(
+    title: &'static str,
+    description: String,
+    action: Option<Box<dyn Action>>,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::AnyView {
     hints::passive(cx, |_| {
         Tooltip::element(move |window, cx| {
             div()
@@ -726,11 +735,13 @@ fn status_panel_tooltip(panel: StatusPanel, cx: &mut gpui_kit::App) -> gpui_kit:
                             div()
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)
-                                .child(description),
+                                .child(description.clone()),
                         ),
                 )
                 .when_some(
-                    Kbd::binding_for_action(action.as_ref(), Some("Shell"), window),
+                    action
+                        .as_deref()
+                        .and_then(|action| Kbd::binding_for_action(action, Some("Shell"), window)),
                     |hint, shortcut| hint.child(shortcuts::keycap(shortcut, cx)),
                 )
         })

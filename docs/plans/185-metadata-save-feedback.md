@@ -460,13 +460,29 @@ progress/evidence text changed afterward.
   above the unchanged current-state explanation in smaller muted text.
 - Preserve the conditional range action/keycap and external-tooltip suppression.
   File, Reference and Analysis retain their existing copy and interactions.
-- [ ] Extract the existing shared status tooltip renderer and reuse it for Range.
-- [ ] Verify full/corrected/warned range descriptions and conditional shortcut,
+- [x] Extract the existing shared status tooltip renderer and reuse it for Range.
+- [x] Verify full/corrected/warned range descriptions and conditional shortcut,
   comparing File, Reference and Analysis tooltip presentation and suppression.
-- [ ] Run formatting, all-target Clippy, workspace tests, then release build last.
-- [ ] Exercise production Linux X11/Xvfb on disposable data with isolated settings,
+- [x] Run formatting, all-target Clippy, workspace tests, then release build last.
+- [x] Exercise production Linux X11/Xvfb on disposable data with isolated settings,
   including full/corrected/warned range, neighboring help and overlay suppression.
-- [ ] Record exact source/binary evidence and independent review limits. Keep Draft.
+- [x] Record exact source/binary evidence and independent review limits. Keep Draft.
+
+- Results: formatting, all-target Clippy and all 929 workspace tests passed.
+  Existing focused Range regressions passed (14), followed by the production release
+  build. The shared renderer preserves existing descriptions and conditional keycaps.
+- Production Linux X11/Xvfb with disposable generated data and isolated XDG settings,
+  state, data and cache verified Full without a keycap, Corrected/Warned with Ctrl+R,
+  keyboard application/restoration and pointer restoration, all three neighboring
+  tooltips, Analysis suppression and fresh-hover restoration after Escape. Both
+  task-owned app and display processes were stopped. Exact snapshot, binary digest,
+  raw logs and screenshots are retained in the external review packet.
+- Independent read-only review found no remaining findings in the exact submitted
+  tooltip snapshot and validation evidence. Coordinator accepted the refinement.
+- Native Wayland, Windows/macOS, minimum-window/enlarged-font and light-theme tooltip
+  acceptance remain unperformed. The light application rendered but its tooltip was
+  absent in the captured frame, so it is not counted as passed. Owner appearance
+  acceptance remains pending. No Ready, merge or release transition is authorized.
 
 Record actual runtime observations separately from automated tests. No toolchain,
 SDK, dependency graph or artifact layout changes. Do not alter the owner's files.
