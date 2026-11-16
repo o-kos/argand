@@ -2,6 +2,28 @@
 
 Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #250.
 
+## Owner acceptance and completion decision
+
+The owner accepted the current implementation on 2026-11-16 and requested
+continuation through the normal completion workflow. This decision supersedes
+the earlier Draft-only and pending-acceptance statements below, which record the
+conditions at each feedback round.
+
+The persistent Saving 100% report is not fixed or explained by this work. Its
+original observations, reproduction requirement and data-safety acceptance are
+preserved in normal correctness [Issue #262](https://github.com/o-kos/argand/issues/262).
+It is explicitly excluded from the accepted implementation's fix claims.
+The agreed gesture redesign is separate [Issue #261](https://github.com/o-kos/argand/issues/261),
+not an implemented feature of this Pull Request.
+
+Completion is documentation and integration work under the existing Class A
+implementation. Primary: `gpt-6.1-sol` medium. Existing independent reviews by
+`gpt-6.1-sol` high remain applicable because integration with current main changes
+no application/library source. No new implementation or UI behaviour is introduced
+by closing this plan. Preserve the recorded platform/runtime limits. Re-run the
+full local gate after integration, build release last, and require current full
+remote CI before merging. No release is requested.
+
 ## Roles and risk
 
 - Class A: capture metadata I/O and asynchronous save completion/data safety.
@@ -118,7 +140,8 @@ Resolves [#185](https://github.com/o-kos/argand/issues/185), continuing Draft #2
 
 ## Tasks
 
-- [ ] Reproduce the stuck save and establish the cause before correcting it.
+- [x] Preserve the unresolved stuck-save report in normal Issue #262 at owner
+  acceptance. Reproduction and correction remain required there, not claimed here.
 - [x] Implement agreed metadata format and integer editor policy with regressions.
 - [x] Resolve FLAC policy and verify Convert availability.
 - [x] Update current architecture and changelog.
@@ -489,4 +512,7 @@ SDK, dependency graph or artifact layout changes. Do not alter the owner's files
 
 ## Post-completion
 
-Keep Draft for owner feedback; no Ready, merge or release transition authorized.
+After current full CI passes and all review conversations are resolved, squash
+merge the accepted Pull Request and clean up its exact accepted branch safely.
+Keep unresolved Saving progress in #262 and the gesture redesign in #261. No
+release or system configuration change is authorized by this completion.
