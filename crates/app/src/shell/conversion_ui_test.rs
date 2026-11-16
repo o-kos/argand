@@ -836,6 +836,7 @@ fn stage_reader(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>)
             .save_presentation(&shell.editing().unwrap().file().meta)
             .1,
         output_is_iq: false,
+        opening: argand_io::OpenHints::default(),
         container: argand_io::write::Container::Wave,
         backing: Arc::new(crate::scratch::Scratch::new(path.clone())),
     };
@@ -1440,6 +1441,7 @@ fn cancellation_rejects_success_already_queued_by_the_worker(cx: &mut TestAppCon
             name: "must-not-adopt.wav".into(),
             directory: dir.clone(),
             output_is_iq: true,
+            opening: argand_io::OpenHints::default(),
             container: argand_io::write::Container::Wave,
             backing,
         });
@@ -1485,6 +1487,7 @@ fn conversion_blocks_document_actions_and_close_waits_before_unsaved_prompt(
             name: "busy-converted.wav".into(),
             directory: dir.clone(),
             output_is_iq: true,
+            opening: argand_io::OpenHints::default(),
             container: argand_io::write::Container::Wave,
             backing: file.unsaved.as_ref().unwrap().backing.clone(),
         });
@@ -2142,7 +2145,7 @@ fn an_old_teardown_acknowledgement_cannot_clear_a_new_suppression(cx: &mut TestA
     });
 }
 
-const INFORMATION_PANELS: [(hints::Panel, &str, &str); 3] = [
+const INFORMATION_PANELS: [(hints::Panel, &str, &str); 4] = [
     (
         hints::Panel::File,
         "file-information",
@@ -2154,6 +2157,11 @@ const INFORMATION_PANELS: [(hints::Panel, &str, &str); 3] = [
         "analysis-editor",
     ),
     (hints::Panel::About, "about-button", "about-panel"),
+    (
+        hints::Panel::Reference,
+        "reference-frequency",
+        "reference-editor",
+    ),
 ];
 
 fn assert_information_owner(
@@ -2190,7 +2198,7 @@ fn information_click(cx: &mut gpui_kit::VisualTestContext, id: &str) {
 }
 
 #[gpui_kit::test]
-fn information_buttons_share_toggle_internal_click_and_six_switch_routes(cx: &mut TestAppContext) {
+fn information_buttons_share_toggle_internal_click_and_all_switch_routes(cx: &mut TestAppContext) {
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!(
@@ -2253,4 +2261,204 @@ fn information_buttons_share_toggle_internal_click_and_six_switch_routes(cx: &mu
         }
     }
     std::fs::remove_file(path).unwrap();
+}
+
+#[gpui_kit::test]
+fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let dir = argand_io::testutil::TempDir::new("reference-panel-rebind");
+    let path = dir.join("capture.iqw");
+    write_wave(&path, 48_000);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path), window, cx)
+    });
+    wait_until(cx, &shell, "reference panel fixture", |shell| {
+        shell
+            .editing()
+            .is_some_and(crate::editing::Editing::is_described)
+    });
+    shell.update_in(cx, |shell, window, cx| shell.convert_dialog(window, cx));
+    frame(cx);
+    let editor = shell.read_with(cx, |shell, cx| {
+        shell
+            .conversion
+            .hint
+            .read(cx)
+            .view()
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap()
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.set_reference(1_000_000., window, cx);
+    });
+    frame(cx);
+    editor.read_with(cx, |editor, cx| {
+        assert!(editor.changed(&editor.request(cx).unwrap()));
+    });
+    let old_stamp = editor.read_with(cx, |editor, _| editor.source_stamp);
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-s"
+    } else {
+        "ctrl-s"
+    });
+    wait_until(
+        cx,
+        &shell,
+        "save while File information remains open",
+        |shell| {
+            shell.saving.is_none()
+                && shell
+                    .editing()
+                    .is_some_and(|editing| !editing.is_dirty() && editing.reference() == 1_000_000.)
+        },
+    );
+    wait_until(cx, &shell, "saved source description", |shell| {
+        shell
+            .editing()
+            .is_some_and(crate::editing::Editing::is_described)
+    });
+    frame(cx);
+    cx.update(|window, _| {
+        assert!(
+            window.try_find("save-status").is_none(),
+            "a completed metadata save removes its status control"
+        )
+    });
+    editor.read_with(cx, |editor, cx| {
+        assert_ne!(editor.source_stamp, old_stamp);
+        let request = editor.request(cx).unwrap();
+        assert_eq!(request.input.center_freq, 1_000_000.);
+        assert!(
+            !editor.changed(&request),
+            "Save establishes the new baseline"
+        );
+        assert_eq!(request.copy.as_ref().unwrap().meta.center_freq, 1_000_000.);
+        assert_eq!(
+            request.sources[0].as_ref().unwrap().stamp,
+            editor.source_stamp
+        );
+        assert_eq!(
+            request.copy.as_ref().unwrap().sources[0].stamp,
+            editor.source_stamp
+        );
+    });
+}
+
+#[gpui_kit::test]
+fn reference_only_convert_opens_after_edit_and_preserves_samples(cx: &mut TestAppContext) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let dir = argand_io::testutil::TempDir::new("reference-only-convert");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 2400);
+    let original = std::fs::read(&path).unwrap();
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path.clone()), window, cx)
+    });
+    wait_until(cx, &shell, "reference conversion fixture", |shell| {
+        shell
+            .editing()
+            .is_some_and(crate::editing::Editing::is_described)
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(1_000_000., window, cx));
+        shell.convert_dialog(window, cx);
+    });
+    frame(cx);
+    let button = cx.update(|window, _| window.find("convert-capture").bounds().center());
+    cx.simulate_click(button, gpui_kit::Modifiers::default());
+    wait_until(cx, &shell, "reference-only converted document", |shell| {
+        shell
+            .file
+            .as_ref()
+            .is_some_and(|file| file.unsaved.is_some())
+            && shell
+                .editing()
+                .is_some_and(crate::editing::Editing::is_described)
+    });
+    let backing = shell.read_with(cx, |shell, _| {
+        let editing = shell.editing().unwrap();
+        assert_eq!(editing.reference(), 1_000_000.);
+        assert_eq!(editing.len(), 2400);
+        assert!(editing.is_dirty());
+        editing.file().meta.source.clone()
+    });
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    let mut before = argand_io::open(&path, &Default::default()).unwrap();
+    let mut after = argand_io::open(&backing, &Default::default()).unwrap();
+    assert_eq!(after.meta().center_freq, 1_000_000.);
+    let mut expected = vec![0.; 4800];
+    let mut actual = vec![0.; 4800];
+    assert_eq!(before.read(&mut expected).unwrap(), 4800);
+    assert_eq!(after.read(&mut actual).unwrap(), 4800);
+    assert_eq!(actual, expected);
+}
+
+#[gpui_kit::test]
+fn all_information_panels_suppress_external_tooltips_and_restore_on_fresh_hover(
+    cx: &mut TestAppContext,
+) {
+    use super::super::replace_ui::tests::{wait_until, write_wave};
+    let (shell, cx) = panel_window(cx);
+    let dir = argand_io::testutil::TempDir::new("information-tooltip-policy");
+    let path = dir.join("capture.wav");
+    write_wave(&path, 2400);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new(path), window, cx)
+    });
+    wait_until(cx, &shell, "tooltip fixture", |shell| {
+        shell.is_reference_editable()
+    });
+    cx.update(|window, _| window.activate_window());
+    frame(cx);
+    let advance = |cx: &mut gpui_kit::VisualTestContext| {
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(2));
+        frame(cx);
+    };
+    for (panel, trigger, _) in INFORMATION_PANELS {
+        // Both pending and visible reference help must be removed on opening.
+        for wait in [200, 1000] {
+            let reference =
+                cx.update(|window, _| window.find("reference-frequency").bounds().center());
+            cx.simulate_mouse_move(point(px(500.), px(300.)), None, Default::default());
+            frame(cx);
+            cx.simulate_mouse_move(reference, None, Default::default());
+            cx.executor()
+                .advance_clock(std::time::Duration::from_millis(wait));
+            frame(cx);
+            if wait == 1000 {
+                cx.update(|window, _| assert!(window.try_find("shortcut-tooltip").is_some()));
+            }
+            shell.update_in(cx, |shell, window, cx| {
+                shell.activate_information_panel(panel, window, cx)
+            });
+            frame(cx);
+            for (_, other, _) in INFORMATION_PANELS {
+                let at = cx.update(|window, _| window.find(other.to_owned()).bounds().center());
+                cx.simulate_mouse_move(at, None, Default::default());
+                advance(cx);
+                cx.update(|window, _| {
+                    assert!(
+                        window.try_find("shortcut-tooltip").is_none(),
+                        "{panel:?} / {other}"
+                    );
+                    assert!(
+                        window.try_find("about-tooltip").is_none(),
+                        "{panel:?} / {other}"
+                    );
+                });
+                assert_information_owner(cx, &shell, Some(panel));
+            }
+            information_click(cx, trigger);
+            assert_information_owner(cx, &shell, None);
+            advance(cx);
+            cx.update(|window, _| assert!(window.try_find("shortcut-tooltip").is_none()));
+            cx.simulate_mouse_move(reference, None, Default::default());
+            advance(cx);
+            cx.update(|window, _| assert!(window.try_find("shortcut-tooltip").is_some()));
+        }
+    }
 }

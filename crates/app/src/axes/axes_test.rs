@@ -10,6 +10,7 @@ fn panel(width: f32, height: f32) -> Size<Pixels> {
 /// The two-sided span of a 24 kHz I/Q capture tuned to 12.579 MHz, half an
 /// hour long -- the repository's own fixture.
 const HFDL: Extents = Extents {
+    frequency_offset: 0.,
     orientation: crate::navigation::orientation::Mode::Horizontal,
     time: crate::navigation::time_ruler::Ruler::CLOCK,
     seconds: (0.0, 1800.0),
@@ -60,6 +61,7 @@ fn a_real_capture_is_labelled_from_zero_up_and_a_complex_one_either_side() {
     let real = measure(
         panel(1200.0, 800.0),
         Extents {
+            frequency_offset: 0.,
             orientation: crate::navigation::orientation::Mode::Horizontal,
             time: crate::navigation::time_ruler::Ruler::CLOCK,
             seconds: (0.0, 10.0),
@@ -145,6 +147,7 @@ impl LabelMeasure for WideDigits {
 #[test]
 fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
     let extents = Extents {
+        frequency_offset: 0.,
         orientation: crate::navigation::orientation::Mode::Horizontal,
         time: crate::navigation::time_ruler::Ruler::CLOCK,
         seconds: (0.0, 30.0),

@@ -8,13 +8,13 @@ changes. Repository content and all GitHub communication must be in English.
 [Agent roles and model selection](AGENTS.md#agent-roles-and-model-selection) is the
 source of truth for role assignments and risk classes. The approved defaults need
 no repeated per-Issue approval.
-The coordinator discusses analysis, architecture, plans, acceptance and disagreements
-with the owner and assesses the result; the executor performs repository
-investigation, edits, Git/GitHub operations, tests and builds. The reviewer reads
-the assigned material without changing it. Changes to product behaviour, UX or
-acceptance criteria require the owner's decision.
+The primary agent discusses the task directly with the owner and owns investigation,
+implementation, validation and final assessment. Use optional delegation and targeted
+consultation under those role defaults. The reviewer reads the assigned material
+without changing it. Changes to product behaviour, UX or acceptance criteria require
+the owner's decision.
 
-For work without code changes, the coordinator decides whether an Issue, Pull
+For work without code changes, the primary agent decides whether an Issue, Pull
 Request, new branch, formal plan, external review, tests or the full local gate is
 needed, based on scope and risk. Record the decision and reason in the response or
 an existing artifact. A wording correction may need only a diff and link check;
@@ -185,6 +185,19 @@ the label does not itself promise that an Issue is scheduled.
 
 ## Implementing the plan
 
+Before coding, state the expected behavior and concrete acceptance criteria briefly
+in the plan or task discussion. Verify the premise in current code, framework or
+runtime evidence before relying on it. For a defect, reproduce it, test a focused
+hypothesis and make the smallest correction supported by the evidence. Do not add
+speculative wrappers, hooks or infrastructure around an unverified explanation.
+
+Continue already approved work without redundant confirmations. Honor explicit
+requests for approval at each step and all specific approval requirements here.
+Keep task-local corrections in the active task under the scope rules above; do not
+create a new Issue or branch merely to repair the branch's own mistake. If an
+approved expansion becomes separate work, keep the original task's remaining
+obligations visible and return to them before claiming completion.
+
 ### UI component selection
 
 Use only standard gpui-component controls and GPUI interaction mechanisms, or
@@ -221,10 +234,9 @@ assuming that a local field's success establishes the shared contract.
 
 ### UI acceptance
 
-For UI work, the coordinator includes acceptance in the plan, the executor reads
-and follows the repository-local [UI acceptance skill](.agents/skills/argand-ui-acceptance/SKILL.md)
-without waiting for the owner to invoke it by name, and the reviewer assesses the
-evidence. This section remains the canonical acceptance policy.
+For UI work, the primary agent includes acceptance in the plan and follows the
+repository-local [UI acceptance skill](.agents/skills/argand-ui-acceptance/SKILL.md)
+without waiting for the owner to invoke it by name. The reviewer assesses the evidence. This section remains the canonical acceptance policy.
 
 UI acceptance requires running the current production application binary and
 exercising the actual affected scenario, checking appearance and interactions.
@@ -234,8 +246,8 @@ transitions, including focus, Select open/choose/dismiss, Enter/Escape, disabled
 busy state and closing an overlay or window where the change can affect them.
 
 Code review, automated or headless tests and a static screenshot alone do not
-establish UI acceptance. Record what was exercised in the running application and
-separate that evidence from automated checks. If the application cannot be run or
+establish UI acceptance. A passing code gate does not establish it either. Record
+what was exercised in the running application and separate that evidence from automated checks. If the application cannot be run or
 the required interactions cannot be exercised, acceptance remains incomplete:
 report the limitation, do not call the UI work complete or ready for acceptance,
 and do not move its Pull Request to Ready. Locally verified partial progress may
@@ -262,7 +274,11 @@ behavior and acceptance boundaries intact. A related case that requires a produc
 or scope change needs the existing owner decision and triage process, not an
 unannounced expansion.
 
-Run relevant tests throughout implementation. For code changes, before requesting final review, run at least:
+Run relevant tests throughout implementation. Reuse evidence that still applies;
+repeat affected checks when code, environment changes or failures invalidate it,
+not reflexively after an unchanged result. This does not waive the full local gate
+before every code push, required review or current-revision validation below.
+For code changes, before requesting final review, run at least:
 
 ```sh
 cargo fmt --all -- --check
@@ -276,7 +292,7 @@ The release build comes last, after every other check has passed, so that
 demonstrate, measure, or diagnose behaviour with a binary left over from
 earlier code.
 
-Document any additional validation or explain why a standard check does not apply. For work without code, use the coordinator's scoped validation decision above; do not claim an unrun gate passed.
+Document any additional validation or explain why a standard check does not apply. For work without code, use the primary agent's scoped validation decision above; do not claim an unrun gate passed.
 
 Clippy warnings are errors. That is set in `[workspace.lints]` and inherited by every crate, so a plain `cargo clippy` is as strict on your machine as it is in CI. There is no `-D warnings` flag to remember and no way to get a laxer result by forgetting one.
 
@@ -391,7 +407,7 @@ The exact toolchain comes from `rust-toolchain.toml`; the workspace's minimum Ru
 
 ## External review
 
-For a required review, the coordinator directs the executor to prepare and update
+For a required review, the primary agent prepares and updates
 an exact, neutral handoff using the repository-local
 [review handoff skill](.agents/skills/argand-review-handoff/SKILL.md), without waiting
 for the owner to invoke it by name. This section remains the canonical review policy.
@@ -402,12 +418,14 @@ changing the defaults requires the owner's agreement.
 
 Before presenting code implementation results for owner review, including Draft
 feedback, the Pull Request goes through external review. For work without code,
-apply the coordinator's scoped decision above. Run the reviewer read-only so it
+apply the primary agent's scoped decision above. Run the reviewer read-only so it
 cannot bypass deliberate edits or the owner's approval requirements.
 
 Give the reviewer the task, agreed plan when present, exact diff and revision, and
-repository rules, without the executor's discussion or self-assessment. The executor
-prepares the prompt and runs a fresh review context, for example:
+repository rules, without the implementing agent's discussion or self-assessment.
+Keep the handoff compact and evidence-based; provide relevant decisions and exact
+artifacts rather than the whole conversation history. The primary agent prepares
+the prompt and runs a fresh review context, for example:
 
 ```sh
 codex exec -s read-only --model gpt-6.1-sol \
@@ -438,20 +456,19 @@ Write the prompt for this repository rather than asking for a general review:
 Act on the findings, then run another round naming what was fixed and what was declined,
 and ask it to challenge the reasoning behind the declines. Repeat until a round returns
 nothing substantive, with a maximum of three rounds. If substantive findings remain
-after the third, the coordinator reconsiders the task and plan instead of starting a
+after the third, the primary agent reconsiders the task and plan instead of starting a
 fourth. Later prompts may include findings and their dispositions, but must still
-exclude the executor's discussion and self-assessment. Only the owner can waive a
+exclude the implementing agent's discussion and self-assessment. Only the owner can waive a
 required round; record that waiver in the Pull Request.
 
-The coordinator arbitrates technical disagreements using the evidence; product, UX
-or acceptance changes go to the owner. The executor records the decisions. Before
-presenting the result, the coordinator assesses the exact diff, review findings and
+The primary agent arbitrates technical disagreements using the evidence and may
+seek targeted consultation under the role defaults. Product, UX or acceptance
+changes go to the owner. Record the decisions. Before presenting the result, assess the exact diff, review findings and
 validation evidence against the current revision, including local changes. Refresh
 evidence affected by later changes and identify its limits. For DSP, concurrency
-or data safety, the coordinator additionally examines the critical invariants and
-the evidence for them. A clean review does not replace this assessment. Confirm
-through the executor that any demonstrated release binary was built from the current
-code after the required checks passed.
+or data safety, the primary agent additionally examines the critical invariants and
+the evidence for them. A clean review does not replace this assessment. Confirm that any demonstrated release binary was built from the current code after
+the required checks passed.
 
 Then tell the owner which model reviewed, what was accepted and how it was addressed,
 what was rejected and why, and whether the final round was clean. A reviewer without the

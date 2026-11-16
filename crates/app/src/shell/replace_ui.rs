@@ -20,6 +20,8 @@ pub(super) enum Unsavable {
     Unchecked,
     /// The file is FLAC at a rate its encoder cannot state, so only Save as can write it.
     FlacRate,
+    /// Headerless files cannot store an edited reference frequency.
+    RawReference,
 }
 
 impl Unsavable {
@@ -29,6 +31,7 @@ impl Unsavable {
             Self::Busy => "another save is running",
             Self::Empty => "the capture is empty",
             Self::Unchecked => "the file is still being checked",
+            Self::RawReference => "RAW cannot store the reference frequency, use Save as",
             Self::FlacRate => "the FLAC encoder cannot write this sample rate, use Save as",
         }
     }
@@ -67,6 +70,10 @@ pub(super) struct Readers {
 }
 
 impl Shell {
+    pub(super) fn can_save_edits(&self) -> bool {
+        self.can_save_over().is_ok() || (self.save_needs_new_path() && self.can_save(false))
+    }
+
     /// Whether Save can write the edits over the open file now.
     pub(super) fn can_save_over(&self) -> Result<(), Unsavable> {
         let Some(editing) = self.editing() else {
@@ -92,9 +99,26 @@ impl Shell {
             && argand_io::write::writes_as_wave(&file.meta, &file.hints)
         {
             Err(Unsavable::FlacRate)
+        } else if self.raw_reference_changed() {
+            Err(Unsavable::RawReference)
         } else {
             Ok(())
         }
+    }
+
+    fn raw_reference_changed(&self) -> bool {
+        self.editing().is_some_and(|editing| {
+            editing.file().hints.raw.is_some()
+                && editing.reference() != editing.file().meta.center_freq
+        })
+    }
+
+    pub(super) fn save_needs_new_path(&self) -> bool {
+        self.raw_reference_changed()
+            || self
+                .file
+                .as_ref()
+                .is_some_and(|file| file.unsaved.is_some())
     }
 
     /// Refuse what would open or close a file while the open one is being replaced.
@@ -120,11 +144,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self
-            .file
-            .as_ref()
-            .is_some_and(|file| file.unsaved.is_some())
-        {
+        if self.save_needs_new_path() {
             self.save_as_then(false, then, window, cx);
             return;
         }
@@ -274,12 +294,26 @@ impl Shell {
         let Some(clipboard) = &self.clipboard else {
             return true;
         };
-        let mut written = editing.written_source();
-        written.stamp = saved.stamp;
+        let written = Self::saved_source(editing, saved);
         let moved = clipboard.moved_onto(editing.file(), editing.capture(), &written);
         let kept = moved.is_some();
         self.clipboard = moved;
         kept
+    }
+
+    /// Metadata shared by the restarted readers and clipboard after publication.
+    fn saved_source(editing: &Editing, saved: &argand_io::write::Saved) -> crate::editing::Source {
+        let mut written = editing.written_source();
+        written.stamp = saved.stamp;
+        if matches!(saved.container, "wav" | "rf64" | "flac") {
+            written.meta.center_freq = written.meta.center_freq.round();
+            written.hints.center_freq = None;
+        }
+        if matches!(saved.container, "wav" | "rf64") {
+            written.meta.sample_rate = written.meta.sample_rate.round();
+            written.hints.sample_rate = Some(written.meta.sample_rate);
+        }
+        written
     }
 
     /// Start the readers again on the file as it now is, the document and its picture staying.
@@ -290,11 +324,40 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Replacement { start, then } = replacement;
+        let Replacement { mut start, then } = replacement;
         self.saving = None;
         self.replacement_active = false;
         let to = match committed {
-            Ok(saved) => self.adopted(&saved),
+            Ok(saved) => {
+                let reopen = self.file.as_ref().and_then(|file| {
+                    let editing = file.editing.as_ref()?;
+                    let mut origin = file.state.document.origin().clone();
+                    let written = Self::saved_source(editing, &saved);
+                    let restart = origin
+                        .hints
+                        .center_freq
+                        .is_some_and(|value| value != written.meta.center_freq)
+                        || origin
+                            .hints
+                            .sample_rate
+                            .is_some_and(|value| value != written.meta.sample_rate);
+                    origin.hints = written.hints;
+                    Some((origin, restart))
+                });
+                if let Some((origin, restart)) = reopen {
+                    if let Some(file) = self.file.as_mut() {
+                        file.state.document.set_origin(origin.clone());
+                    }
+                    self.remember_file(&origin);
+                    if restart
+                        && let Some((saved_start, _unstarted)) =
+                            self.swap_readers(&origin, window, cx)
+                    {
+                        start = saved_start;
+                    }
+                }
+                self.adopted(&saved)
+            }
             Err((error, kept)) => self.kept_edits(&error, &kept, window, cx),
         };
         if let Some(file) = self.file.as_mut() {
@@ -374,6 +437,21 @@ impl Shell {
         }
         match to {
             Rebind::Fresh(previous) => {
+                let offset = self
+                    .file
+                    .as_ref()
+                    .and_then(|file| file.state.document.meta())
+                    .map_or(0., |meta| {
+                        meta.center_freq - previous.file().meta.center_freq
+                    });
+                if let Some(file) = self.file.as_mut() {
+                    file.state.document.shift_frequency_basis(offset);
+                }
+                self.band = self.band.and_then(|band| {
+                    argand_core::FrequencyBand::between(band.low() + offset, band.high() + offset)
+                });
+                self.release_backdrop(window, cx);
+                self.release_deep_preview(window, cx);
                 // The samples now come from the saved file, not from the files that changed.
                 if let Some(file) = self.file.as_mut() {
                     file.state.document.clear_changed();
@@ -391,14 +469,17 @@ impl Shell {
                     .file
                     .as_ref()
                     .and_then(|file| file.state.document.meta())
-                    .is_some_and(|meta| previous.scaled_as(meta));
+                    .is_some_and(|meta| {
+                        previous.scaled_as(meta)
+                            && previous.file().meta.sample_rate == meta.sample_rate
+                    });
                 let envelope = previous.minimap().filter(|_| same).map(Arc::new);
                 if let (Some(editing), Some(envelope)) = (self.editing_mut(), envelope) {
                     editing.set_envelope(argand_edit::SourceId(0), envelope);
                 }
                 // A reused envelope does not index the newly encoded saved source.
                 self.start_minimap(true, window, cx);
-                // Samples stored on another scale make another picture, drawn before it replaces this one.
+                // A changed sample scale or rate needs a picture in the saved file's coordinates.
                 if !same {
                     self.ask_for_a_picture();
                 }

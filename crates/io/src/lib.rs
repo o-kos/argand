@@ -85,11 +85,22 @@ pub enum IoError {
 }
 
 /// A source with the stamp of the file it reads, taken from the handle it reads through.
-type Stamped = (Box<dyn SampleSource>, Option<write::SourceStamp>);
+#[non_exhaustive]
+pub struct Opened {
+    pub source: Box<dyn SampleSource>,
+    pub stamp: Option<write::SourceStamp>,
+    /// The file's own reference, before opening overrides. None for headerless input.
+    pub declared_reference_freq: Option<f64>,
+}
+
+/// Open with the file's declared metadata kept separate from effective signal parameters.
+pub fn open_described(path: &Path, hints: &OpenHints) -> Result<Opened, IoError> {
+    open_impl(path, hints, None)
+}
 
 /// Open a signal file, applying `hints` on top of whatever the file declares.
 pub fn open(path: &Path, hints: &OpenHints) -> Result<Box<dyn SampleSource>, IoError> {
-    open_impl(path, hints, None).map(|(source, _)| source)
+    open_impl(path, hints, None).map(|opened| opened.source)
 }
 
 /// Open a signal file, with the stamp of what was read.
@@ -99,7 +110,7 @@ pub fn open_stamped(
     path: &Path,
     hints: &OpenHints,
 ) -> Result<(Box<dyn SampleSource>, Option<write::SourceStamp>), IoError> {
-    open_impl(path, hints, None)
+    open_impl(path, hints, None).map(|opened| (opened.source, opened.stamp))
 }
 
 /// Open an independent cursor using already resolved length and normalization.
@@ -126,16 +137,16 @@ pub fn reopen(
         ..hints.clone()
     };
     // A file replaced after the check above fails to parse as itself; that is a change too.
-    let (source, now) = open_impl(&meta.source, &hints, Some(meta)).map_err(|error| {
+    let opened = open_impl(&meta.source, &hints, Some(meta)).map_err(|error| {
         match write::SourceStamp::of(&meta.source).ok() == stamp {
             true => error,
             false => changed(),
         }
     })?;
-    if now != stamp || source.meta().len_samples != meta.len_samples {
+    if opened.stamp != stamp || opened.source.meta().len_samples != meta.len_samples {
         return Err(changed());
     }
-    Ok(source)
+    Ok(opened.source)
 }
 
 impl IoError {
@@ -155,10 +166,11 @@ fn open_impl(
     path: &Path,
     hints: &OpenHints,
     known: Option<&SignalMeta>,
-) -> Result<Stamped, IoError> {
+) -> Result<Opened, IoError> {
     let (head, head_stamp) = probe_head(path)?;
-    let (source, stamp) = open_kind(path, hints, known, &head)?;
-    Ok((source, stamp.filter(|stamp| Some(*stamp) == head_stamp)))
+    let mut opened = open_kind(path, hints, known, &head)?;
+    opened.stamp = opened.stamp.filter(|stamp| Some(*stamp) == head_stamp);
+    Ok(opened)
 }
 
 fn open_kind(
@@ -166,7 +178,7 @@ fn open_kind(
     hints: &OpenHints,
     known: Option<&SignalMeta>,
     head: &[u8],
-) -> Result<Stamped, IoError> {
+) -> Result<Opened, IoError> {
     if let Some(spec) = hints.raw {
         return open_raw(path, spec, hints);
     }
@@ -178,7 +190,11 @@ fn open_kind(
                 // A valid wav in a layout the flat reader will not touch --
                 // reduced-valid-bit PCM24, for example. The decoder may still manage it.
                 tracing::debug!("wav layout not natively supported, trying the decoder");
-                return open_decoded(path, "wav", &wave_metadata(head, hints), known);
+                let mut opened = open_decoded(path, "wav", &wave_metadata(head, hints), known)?;
+                opened.declared_reference_freq = riff::scan(head)
+                    .ok()
+                    .and_then(|chunks| chunks.metadata.reference_freq());
+                return Ok(opened);
             }
             Err(source) => {
                 return Err(IoError::Wav {
@@ -206,11 +222,7 @@ fn wave_metadata(head: &[u8], hints: &OpenHints) -> OpenHints {
     let declared = riff::parse_fmt(chunks.fmt).map(|fmt| f64::from(fmt.sample_rate));
     OpenHints {
         center_freq: hints.center_freq.or(chunks.metadata.reference_freq()),
-        sample_rate: hints.sample_rate.or_else(|| {
-            declared
-                .ok()
-                .map(|rate| chunks.metadata.sample_rate_for(rate))
-        }),
+        sample_rate: hints.sample_rate.or_else(|| declared.ok()),
         ..hints.clone()
     }
 }
@@ -249,7 +261,7 @@ fn probe_head(path: &Path) -> Result<(Vec<u8>, Option<write::SourceStamp>), IoEr
     Ok((head, stamp))
 }
 
-fn open_wave(path: &Path, layout: WavLayout, hints: &OpenHints) -> Result<Stamped, IoError> {
+fn open_wave(path: &Path, layout: WavLayout, hints: &OpenHints) -> Result<Opened, IoError> {
     let sample_type = hints.sample_type.unwrap_or(layout.sample_type);
     let meta = SignalMeta {
         sample_rate: hints.sample_rate.unwrap_or(layout.sample_rate),
@@ -274,7 +286,11 @@ fn open_wave(path: &Path, layout: WavLayout, hints: &OpenHints) -> Result<Stampe
     )
     .map(|s| {
         let stamp = s.stamp();
-        (Box::new(s) as Box<dyn SampleSource>, stamp)
+        Opened {
+            source: Box::new(s),
+            stamp,
+            declared_reference_freq: layout.reference_freq,
+        }
     })
     .map_err(|source| IoError::Source {
         path: path.to_owned(),
@@ -282,7 +298,7 @@ fn open_wave(path: &Path, layout: WavLayout, hints: &OpenHints) -> Result<Stampe
     })
 }
 
-fn open_raw(path: &Path, spec: RawSpec, hints: &OpenHints) -> Result<Stamped, IoError> {
+fn open_raw(path: &Path, spec: RawSpec, hints: &OpenHints) -> Result<Opened, IoError> {
     let sample_type = hints.sample_type.unwrap_or(spec.sample_type);
     let sample_rate =
         hints
@@ -316,7 +332,11 @@ fn open_raw(path: &Path, spec: RawSpec, hints: &OpenHints) -> Result<Stamped, Io
     )
     .map(|s| {
         let stamp = s.stamp();
-        (Box::new(s) as Box<dyn SampleSource>, stamp)
+        Opened {
+            source: Box::new(s),
+            stamp,
+            declared_reference_freq: None,
+        }
     })
     .map_err(|source| IoError::Source {
         path: path.to_owned(),
@@ -329,7 +349,7 @@ fn open_decoded(
     container: &'static str,
     hints: &OpenHints,
     known: Option<&SignalMeta>,
-) -> Result<Stamped, IoError> {
+) -> Result<Opened, IoError> {
     let wrap = |source| IoError::Source {
         path: path.to_owned(),
         source,
@@ -339,7 +359,11 @@ fn open_decoded(
         return DecodedSource::reopen(meta, hints.gain_db)
             .map(|source| {
                 let stamp = source.stamp();
-                (Box::new(source) as Box<dyn SampleSource>, stamp)
+                Opened {
+                    declared_reference_freq: source.declared_reference_freq(),
+                    source: Box::new(source),
+                    stamp,
+                }
             })
             .map_err(wrap);
     }
@@ -365,7 +389,11 @@ fn open_decoded(
         })
         .map(|source| {
             let stamp = source.stamp();
-            (Box::new(source) as Box<dyn SampleSource>, stamp)
+            Opened {
+                declared_reference_freq: source.declared_reference_freq(),
+                source: Box::new(source),
+                stamp,
+            }
         })
         .map_err(wrap)
 }

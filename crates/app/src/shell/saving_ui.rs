@@ -229,7 +229,11 @@ impl Shell {
             .as_ref()
             .map(|unsaved| unsaved.container)
             .or_else(|| (meta.container == "flac").then_some(argand_io::write::Container::Flac));
-        let mut name = saving::suggested_band_name(&display, self.selection, band);
+        let offset = editing.reference() - editing.file().meta.center_freq;
+        let named_band =
+            argand_core::FrequencyBand::between(band.low() + offset, band.high() + offset)
+                .unwrap_or(band);
+        let mut name = saving::suggested_band_name(&display, self.selection, named_band);
         if container == Some(argand_io::write::Container::Flac) {
             name = std::path::Path::new(&name)
                 .with_extension("flac")

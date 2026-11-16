@@ -11,6 +11,34 @@ promise applies to.
 
 ## [Unreleased]
 
+### Added
+
+- Edit reference frequency in whole Hz from its status-bar value between the file
+  and FFT summaries or Edit → Reference frequency…. Changes support Undo/Redo and
+  enable Convert until saved or undone. The existing Save command writes metadata
+  to the file. File information shows only the reference declared in the source.
+  Reference edits do not update Recent before Save. Saving a changed RAW reference
+  proposes a WAVE file and preserves the original (#185).
+
+### Changed
+
+- WAVE/IQW saves whole-Hz reference metadata using only `auxi`, without the
+  Argand-specific `argd` chunk. FLAC uses an integer `AUXI` comment. WAVE export
+  uses whole-Hz sample rates, preserving exact internal DSP parameters separately.
+  Reference input accepts edited space-separated integer groups (#185).
+- Selection bandwidth displays and accepts its own Hz/kHz/MHz unit, independent
+  of absolute frequency labels (#185).
+
+### Fixed
+
+- Menu commands and shortcuts share availability, including context menus.
+  Unavailable Save is inert rather than showing an error (#185).
+- Reference frequency shares the information-panel lifecycle and suppresses
+  competing tooltips. Display range help uses the same title and muted
+  description as neighboring status-bar tooltips (#185).
+- Keep the read-only Reference frequency label on one line in File information
+  (#185).
+
 ## [0.2.0] - 2026-11-15
 
 ### Changed

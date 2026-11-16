@@ -77,3 +77,23 @@ fn native_digits_roundtrip() {
     assert_eq!(numbers.canonical(&display), Ok("-12345.50".into()));
     assert_eq!(numbers.clock("0:02.050"), "٠:٠٢٫٠٥٠");
 }
+
+#[test]
+fn deleting_digits_preserves_numbers_with_space_grouping() {
+    for locale in ["ru-RU", "fr-FR"] {
+        let numbers = Numbers::new(locale);
+        for separator in [" ", "\u{a0}", "\u{202f}"] {
+            let text = format!("10{separator}100{separator}00,8");
+            assert_eq!(numbers.canonical(&text), Ok("1010000.8".into()));
+        }
+        for text in ["1 2,3 4", "1 ,5", "- 12", "1 2e1 0", "1 2,3,4"] {
+            assert!(
+                numbers
+                    .canonical(text)
+                    .and_then(|s| s.parse::<f64>().map_err(|_| ()))
+                    .is_err(),
+                "{locale}: {text}"
+            );
+        }
+    }
+}

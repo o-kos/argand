@@ -665,3 +665,73 @@ fn failed_statistics_follow_retained_sources_across_edits_and_descriptions() {
         );
     }
 }
+
+#[test]
+fn reference_history_preserves_samples_selection_and_stale_save_dirty_state() {
+    let mut document = editing("/capture.wav", 100, 1000.);
+    let original = document.capture().clone();
+    let selected = Selection {
+        time: Some(span(10, 30)),
+        band: argand_core::FrequencyBand::between(-100., 100.),
+    };
+    assert!(document.set_reference(14_074_000.25, selected));
+    let saved_version = document.version();
+    assert_eq!(*document.capture(), original);
+    assert_eq!(document.file().meta.center_freq, 0.);
+    assert_eq!(document.output_meta().center_freq, 14_074_000.25);
+    assert_eq!(
+        document
+            .save_request(None, "copy.wav".into())
+            .unwrap()
+            .meta
+            .center_freq,
+        14_074_000.25
+    );
+    assert_eq!(
+        document.written_source().hints.center_freq,
+        document.file().hints.center_freq
+    );
+    document.delete(span(0, 10));
+    assert_eq!(document.reference(), 14_074_000.25);
+    assert!(document.undo());
+    assert_eq!(document.marked(), selected);
+    assert!(document.undo());
+    assert_eq!(document.reference(), 0.);
+    assert!(!document.is_dirty());
+    assert!(document.redo());
+    assert!(document.set_reference(-125.5, selected));
+    document.mark_saved_version(saved_version);
+    assert!(
+        document.is_dirty(),
+        "an older save must not clear the newer metadata edit"
+    );
+    assert_eq!(document.reference(), -125.5);
+    assert!(document.undo());
+    assert!(!document.is_dirty());
+    for invalid in [f64::NAN, f64::INFINITY, f64::MAX] {
+        assert!(!document.set_reference(invalid, selected));
+    }
+}
+
+#[test]
+fn computed_source_reopens_with_exact_rate_and_signed_reference_hints() {
+    let dir = argand_io::testutil::TempDir::new("computed-exact-hints");
+    let path = dir.join("scratch.wav");
+    argand_io::testutil::write_wav(
+        &path,
+        SampleType::new(Domain::Iq, SampleFormat::F32),
+        2526,
+        &[0.; 40],
+        1.0,
+    );
+    let (opened, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
+    let mut meta = opened.meta().clone();
+    drop(opened);
+    meta.sample_rate = 48_000.0 / 19.0;
+    meta.center_freq = -123.25;
+    let source = Source::computed(Arc::new(Scratch::new(path.clone())), meta, stamp);
+    let reopened = argand_io::reopen(&source.meta, &source.hints, source.stamp).unwrap();
+    assert_eq!(reopened.meta().sample_rate, 48_000.0 / 19.0);
+    assert_eq!(reopened.meta().center_freq, -123.25);
+    assert_eq!(reopened.meta().len_samples, 20);
+}

@@ -177,6 +177,10 @@ impl PlotView {
             return;
         };
         let text = entry.input.read(cx).value().to_string();
+        let step_text = entry
+            .selection
+            .band
+            .map(|band| entry.scale.band_step_text(band, entry.field, &text));
         let base = match text == entry.opened {
             true => Some(entry.selection),
             false => typed(&entry.scale, entry.selection, entry.field, &text),
@@ -198,7 +202,7 @@ impl PlotView {
             false => {
                 let band = selection
                     .band
-                    .and_then(|band| scale.band_step(band, field, &text, steps));
+                    .and_then(|band| scale.band_step(band, field, step_text.as_deref()?, steps));
                 selection.band = band.or(selection.band);
                 selection.band.map(|band| scale.band_texts(band))
             }

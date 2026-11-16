@@ -81,7 +81,8 @@ pub const VERSION: u32 = 11;
 ///
 /// An older file is read into the current shape and written back at
 /// [`VERSION`]: missing fields have defaults; legacy dynamic range values are ignored.
-const READABLE: [u32; 11] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION];
+// Version 12 only added the removed, unreleased baseband preference.
+const READABLE: [u32; 12] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION, 12];
 
 /// A window rectangle in logical pixels, as the platform reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

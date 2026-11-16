@@ -202,7 +202,19 @@ impl Numbers {
             mantissa.clone()
         }
         .replace(&self.decimal, ".");
-        if grouped {
+        if grouped && self.grouping.chars().all(char::is_whitespace) {
+            let (whole, fraction) = mantissa
+                .split_once(&self.decimal)
+                .unwrap_or((&mantissa, ""));
+            if fraction.contains(&self.grouping)
+                || whole
+                    .trim_start_matches(['-', '+'])
+                    .split(&self.grouping)
+                    .any(|part| part.is_empty() || !part.chars().all(|c| c.is_ascii_digit()))
+            {
+                return Err(());
+            }
+        } else if grouped {
             let expected = self.format(&canonical, true);
             let unshaped = self
                 .ascii_digits(&expected)

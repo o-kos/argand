@@ -1299,3 +1299,50 @@ fn a_stored_zero_frequency_leaves_the_file_to_decide() {
         Some(-1_000_000.0)
     );
 }
+
+#[test]
+fn version_eleven_omits_baseband_and_zero_retains_legacy_absent_meaning() {
+    let dir = TempDir::new("reference-session");
+    let path = dir.join(FILE_NAME);
+    let mut session = Session {
+        ..Session::default()
+    };
+    session.remember(
+        std::path::Path::new("capture.wav"),
+        &OpenHints {
+            center_freq: Some(0.),
+            ..Default::default()
+        },
+    );
+    let text = toml::to_string(&session).unwrap();
+    let loaded = Session::parse_payload(&path, &text).unwrap();
+    assert_eq!(loaded.version, 11);
+    assert!(!text.contains("baseband"));
+    assert_eq!(loaded.recent[0].hints.to_open_hints().center_freq, None);
+    let legacy = text.replace("version = 11", "version = 10");
+    let loaded = Session::parse_payload(&path, &legacy).unwrap();
+    assert_eq!(loaded.recent[0].hints.to_open_hints().center_freq, None);
+}
+
+#[test]
+fn removed_baseband_version_preserves_other_session_settings() {
+    let dir = TempDir::new("retired-baseband-session");
+    let path = dir.join(FILE_NAME);
+    let session = Session {
+        show_grid: false,
+        ..Session::default()
+    };
+    let text = toml::to_string(&session)
+        .unwrap()
+        .replace("version = 11", "version = 12");
+    std::fs::write(&path, format!("baseband_frequencies = true\n{text}")).unwrap();
+    let restored = Session::load(&path);
+    assert!(restored.writable);
+    let loaded = restored.session;
+    assert_eq!(loaded.version, 11);
+    assert!(!loaded.show_grid);
+    assert!(loaded.save(&path));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("version = 11"));
+    assert!(!text.contains("baseband"));
+}

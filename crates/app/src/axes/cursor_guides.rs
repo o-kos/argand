@@ -290,11 +290,12 @@ impl Readout {
         let time_span = extents.seconds.1 - extents.seconds.0;
         let time = extents.seconds.0 + time_fraction * time_span;
         let frequency_span = extents.hertz.1 - extents.hertz.0;
-        let frequency = extents.hertz.1 - frequency_fraction * frequency_span;
+        let frequency =
+            extents.hertz.1 - frequency_fraction * frequency_span + extents.frequency_offset;
         let time_label = extents
             .time
             .readout(time, time_span, time_pixels, time_fraction);
-        let (unit, divisor) = frequency_unit(extents.hertz);
+        let (unit, divisor) = frequency_unit(extents.displayed_hertz());
         let precision =
             crate::navigation::time_precision(frequency_span / frequency_pixels / divisor);
         Self {

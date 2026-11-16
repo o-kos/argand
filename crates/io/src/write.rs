@@ -18,7 +18,7 @@ use flacenc::error::Verify;
 use flacenc::source::{Context, Fill, FrameBuf};
 
 use crate::decoder::{DecodedSource, RATE_TAG, REFERENCE_TAG};
-use crate::riff::{self, ARGD_ID, ARGD_LEN, ARGD_VERSION, AUXI_CENTER, AUXI_LEN, AUXI_RATE};
+use crate::riff::{self, AUXI_CENTER, AUXI_LEN, AUXI_RATE};
 use crate::{OpenHints, RiffError};
 
 mod float_wave;
@@ -698,6 +698,14 @@ fn protected_target<'a>(protected: &'a [Protected], target: &Path) -> Option<&'a
 
 /// Refuse a request that would write over one of its sources or read past one.
 fn check_request(request: &SaveRequest, replaces_target: bool) -> Result<(), WriteError> {
+    if !matches!(request.output, Output::Headerless { .. })
+        && !(0.0..=f64::from(u32::MAX)).contains(&request.meta.center_freq.round())
+    {
+        return Err(WriteError::Unsupported {
+            path: request.meta.source.clone(),
+            reason: "the auxi reference frequency must be between 0 and 4294967295 Hz".into(),
+        });
+    }
     if let Output::Container(container) = request.output {
         container.check(&request.meta, request.total())?;
     }
@@ -1257,7 +1265,6 @@ fn write_wave_header(
     if let Some(auxi) = auxi_body(meta) {
         chunks.push((b"auxi", auxi));
     }
-    chunks.push((ARGD_ID, argd_body(meta)));
 
     let chunk_bytes: u64 = chunks
         .iter()
@@ -1314,7 +1321,7 @@ fn padded(len: u64) -> u64 {
 /// The `auxi` body SDR software reads, written only when the frequency fits its field.
 fn auxi_body(meta: &SignalMeta) -> Option<Vec<u8>> {
     let freq = meta.center_freq.round();
-    if !(freq >= 1.0 && freq <= f64::from(u32::MAX)) {
+    if !(freq >= 0.0 && freq <= f64::from(u32::MAX)) {
         return None;
     }
     let rate = meta.sample_rate.round().clamp(0.0, f64::from(u32::MAX)) as u32;
@@ -1322,14 +1329,6 @@ fn auxi_body(meta: &SignalMeta) -> Option<Vec<u8>> {
     body[AUXI_CENTER..AUXI_CENTER + 4].copy_from_slice(&(freq as u32).to_le_bytes());
     body[AUXI_RATE..AUXI_RATE + 4].copy_from_slice(&rate.to_le_bytes());
     Some(body)
-}
-
-fn argd_body(meta: &SignalMeta) -> Vec<u8> {
-    let mut body = Vec::with_capacity(ARGD_LEN);
-    body.extend_from_slice(&ARGD_VERSION.to_le_bytes());
-    body.extend_from_slice(&meta.center_freq.to_le_bytes());
-    body.extend_from_slice(&meta.sample_rate.to_le_bytes());
-    body
 }
 
 fn copy_samples(
@@ -2009,7 +2008,7 @@ fn flac_states(rate: f64) -> bool {
 fn vorbis_comment(freq: f64, rate: f64) -> Vec<u8> {
     let vendor = b"argand";
     let entries = [
-        format!("{REFERENCE_TAG}={freq}"),
+        format!("{REFERENCE_TAG}={:.0}", freq.round()),
         format!("{RATE_TAG}={rate}"),
     ];
     let mut body = Vec::new();

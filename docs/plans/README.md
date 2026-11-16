@@ -15,7 +15,7 @@ Use the GitHub Issue number as the filename prefix, for example `42-iq-frequency
 
 1. Create and commit the plan before implementation.
 2. Link the plan to its Issue with `Resolves #<issue>`.
-3. Break the implementation into verifiable tasks.
+3. Record the risk class and current role defaults from [AGENTS.md](../../AGENTS.md); break the implementation into verifiable tasks with concrete expected behavior.
 4. Update checkboxes in the commits that complete the corresponding work whenever practical.
 5. Add newly discovered work with `➕` and blockers with `⚠️`.
 6. Keep decisions, rejected alternatives, and validation results current.

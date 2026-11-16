@@ -7,9 +7,9 @@ description: Plan and verify Argand UI changes in the running production applica
 
 This repository-local workflow implements the canonical
 [UI acceptance policy](../../../CONTRIBUTING.md#ui-acceptance); it does not replace
-that policy or authorize additional actions. The coordinator includes acceptance
-in the task plan, the executor runs this workflow without requiring the owner to
-name it, and the reviewer assesses the resulting evidence.
+that policy or authorize additional actions. The primary agent plans and runs this
+workflow without requiring the owner to name it; the independent reviewer assesses
+the resulting evidence when review is required.
 
 ## Establish the scenario
 
@@ -92,7 +92,9 @@ steps, evidence and unperformed checks. Identify platform, actual display backen
 owner-provided observations, automated/headless results and simulations. Never
 label a desk check or static capture as an executed application scenario.
 
-Report passed, failed or incomplete criteria, not just a test count. A defect is a
+Report passed, failed or incomplete criteria, not just a test count. Claim a
+scenario verified only when the recorded observations establish its expected result;
+a passing code gate does not establish UI acceptance. A defect is a
 failed criterion; unavailable execution or required interaction is incomplete.
 Neither supports calling the UI accepted/ready or moving its PR to Ready under the
 canonical policy. Identify the remaining verification needed without promising

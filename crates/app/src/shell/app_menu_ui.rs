@@ -54,15 +54,6 @@ pub(super) fn init(cx: &mut gpui_kit::App) {
     cx.bind_keys(keys);
 }
 
-/// Which File commands can act now.
-#[derive(Clone, Copy)]
-struct FileCommands {
-    information: bool,
-    save_over: bool,
-    save: bool,
-    save_selection: bool,
-}
-
 impl Shell {
     /// The branch that asks for a file, opens a recent capture, and does settings.
     ///
@@ -77,17 +68,7 @@ impl Shell {
     ) -> (Entity<PopupMenu>, Option<FocusHandle>, Vec<Origin>) {
         let entries = self.recent_entries();
         let recent = app_menu::file_items(entries);
-        let enabled = FileCommands {
-            information: self.status_panel_available(settings_ui::StatusPanel::File),
-            save_over: self.can_save_over().is_ok()
-                || (self
-                    .file
-                    .as_ref()
-                    .is_some_and(|file| file.unsaved.is_some())
-                    && self.can_save(false)),
-            save: self.can_save(false),
-            save_selection: self.can_save(true),
-        };
+        let commands = self.command_availability();
         let digits = recent
             .iter()
             .filter_map(|row| match row {
@@ -112,7 +93,7 @@ impl Shell {
                 history.into_iter().fold(
                     menu.action_context(focus.clone()).max_w(px(420.)),
                     |menu, row| {
-                        menu.item(Shell::file_row(row, enabled, focus.clone(), owner.clone()))
+                        menu.item(Shell::file_row(row, commands, focus.clone(), owner.clone()))
                     },
                 )
             })
@@ -125,7 +106,7 @@ impl Shell {
             let mut history_added = false;
             recent.into_iter().fold(menu, |menu, row| {
                 if !matches!(row, Row::Recent { .. }) {
-                    return menu.item(Shell::file_row(row, enabled, focus.clone(), owner.clone()));
+                    return menu.item(Shell::file_row(row, commands, focus.clone(), owner.clone()));
                 }
                 if history_added {
                     return menu;
@@ -142,28 +123,23 @@ impl Shell {
 
     fn file_row(
         row: Row<Origin>,
-        enabled: FileCommands,
+        commands: command::Availability,
         focus: FocusHandle,
         owner: WeakEntity<Self>,
     ) -> PopupMenuItem {
         match row {
-            Row::Open => action_row("Open file...", Box::new(ChooseFile), false, focus),
-            Row::Save => {
-                action_row("Save", Box::new(Save), false, focus).disabled(!enabled.save_over)
-            }
-            Row::SaveAs => {
-                action_row("Save as...", Box::new(SaveAs), false, focus).disabled(!enabled.save)
-            }
+            Row::Open => action_row("Open file...", ChooseFile, false, focus, commands),
+            Row::Save => action_row("Save", Save, false, focus, commands),
+            Row::SaveAs => action_row("Save as...", SaveAs, false, focus, commands),
             Row::SaveSelectionAs => action_row(
                 "Save selection as...",
-                Box::new(SaveSelectionAs),
+                SaveSelectionAs,
                 false,
                 focus,
-            )
-            .disabled(!enabled.save_selection),
+                commands,
+            ),
             Row::Information => {
-                action_row("File information…", Box::new(ConvertCapture), false, focus)
-                    .disabled(!enabled.information)
+                action_row("File information…", ConvertCapture, false, focus, commands)
             }
             Row::Separator => PopupMenuItem::separator(),
             Row::Recent {
@@ -191,54 +167,90 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
-        let can = self.edit_commands_available();
-        let select = self.entry_scale().is_some();
+        let commands = self.command_availability();
+        let inverted = self.edit_commands_available().inverted;
         PopupMenu::build(window, cx, move |menu, _, _| {
-            let row = |label: &str, action: Box<dyn Action>, enabled: bool| {
-                edit_action_row(label, action, false, focus.clone()).disabled(!enabled)
-            };
             menu.action_context(focus.clone())
-                .item(row("Undo", Box::new(editing_ui::Undo), can.undo))
-                .item(row("Redo", Box::new(editing_ui::Redo), can.redo))
+                .item(edit_action_row(
+                    "Undo",
+                    editing_ui::Undo,
+                    false,
+                    focus.clone(),
+                    commands,
+                ))
+                .item(edit_action_row(
+                    "Redo",
+                    editing_ui::Redo,
+                    false,
+                    focus.clone(),
+                    commands,
+                ))
                 .item(PopupMenuItem::separator())
-                .item(row("Cut", Box::new(editing_ui::CutSelection), can.cut))
-                .item(row("Copy", Box::new(editing_ui::CopySelection), can.cut))
-                .item(row(
+                .item(edit_action_row(
+                    "Cut",
+                    editing_ui::CutSelection,
+                    false,
+                    focus.clone(),
+                    commands,
+                ))
+                .item(edit_action_row(
+                    "Copy",
+                    editing_ui::CopySelection,
+                    false,
+                    focus.clone(),
+                    commands,
+                ))
+                .item(edit_action_row(
                     "Paste",
-                    Box::new(editing_ui::PasteClipboard),
-                    can.replace,
+                    editing_ui::PasteClipboard,
+                    false,
+                    focus.clone(),
+                    commands,
                 ))
-                .item(row(
+                .item(edit_action_row(
                     "Delete",
-                    Box::new(editing_ui::DeleteSelection),
-                    can.cut,
+                    editing_ui::DeleteSelection,
+                    false,
+                    focus.clone(),
+                    commands,
                 ))
                 .item(PopupMenuItem::separator())
-                .item(row(
+                .item(edit_action_row(
                     "Selection panel",
-                    Box::new(editing_ui::EditSelection),
-                    select,
+                    editing_ui::EditSelection,
+                    false,
+                    focus.clone(),
+                    commands,
+                ))
+                .item(action_row(
+                    "Reference frequency…",
+                    EditReference,
+                    false,
+                    focus.clone(),
+                    commands,
                 ))
                 .item(PopupMenuItem::separator())
-                .item(row(
+                .item(edit_action_row(
                     "Suppress band",
-                    Box::new(editing_ui::SuppressBand),
-                    can.suppress,
+                    editing_ui::SuppressBand,
+                    false,
+                    focus.clone(),
+                    commands,
                 ))
                 .item(PopupMenuItem::separator())
-                .item(
-                    edit_action_row(
-                        "Invert spectrum",
-                        Box::new(editing_ui::InvertSpectrum),
-                        can.inverted,
-                        focus.clone(),
-                    )
-                    .disabled(!can.invert),
-                )
-                .item(row(
+                .item(edit_action_row(
+                    "Invert spectrum",
+                    editing_ui::InvertSpectrum,
+                    inverted,
+                    focus.clone(),
+                    commands,
+                ))
+                .item(edit_action_row(
                     "Normalize level",
-                    Box::new(editing_ui::NormalizeLevel),
-                    can.normalize,
+                    editing_ui::NormalizeLevel,
+                    false,
+                    focus.clone(),
+                    commands,
                 ))
         })
     }
@@ -254,49 +266,49 @@ impl Shell {
     ) -> Entity<PopupMenu> {
         let scale = self.time_scale_menu(focus.clone(), window, cx);
         let theme = self.theme_menu(focus.clone(), window, cx);
-        let document = self.view.is_some();
+        let commands = self.command_availability();
         let show_grid = self.session.show_grid;
         let show_scale_ui = self.session.show_scale_ui;
         let vertical = self.session.orientation.vertical();
-        let analysis = self.status_panel_available(settings_ui::StatusPanel::Analysis);
+        let document = commands.document;
         PopupMenu::build(window, cx, move |menu, _, _| {
             menu.action_context(focus.clone())
-                .item(
-                    action_row("Show grid", Box::new(ToggleGrid), show_grid, focus.clone())
-                        .disabled(!document),
-                )
-                .item(
-                    action_row(
-                        "Show scale controls",
-                        Box::new(ToggleScaleUi),
-                        show_scale_ui,
-                        focus.clone(),
-                    )
-                    .disabled(!document),
-                )
-                .item(
-                    action_row(
-                        "Vertical orientation",
-                        Box::new(ToggleOrientation),
-                        vertical,
-                        focus.clone(),
-                    )
-                    .disabled(!document),
-                )
+                .item(action_row(
+                    "Show grid",
+                    ToggleGrid,
+                    show_grid,
+                    focus.clone(),
+                    commands,
+                ))
+                .item(action_row(
+                    "Show scale controls",
+                    ToggleScaleUi,
+                    show_scale_ui,
+                    focus.clone(),
+                    commands,
+                ))
+                .item(action_row(
+                    "Vertical orientation",
+                    ToggleOrientation,
+                    vertical,
+                    focus.clone(),
+                    commands,
+                ))
                 .item(PopupMenuItem::separator())
-                .item(
-                    action_row("Fit time", Box::new(FitCapture), false, focus.clone())
-                        .disabled(!document),
-                )
-                .item(
-                    action_row(
-                        "Fit frequency",
-                        Box::new(FitFrequency),
-                        false,
-                        focus.clone(),
-                    )
-                    .disabled(!document),
-                )
+                .item(action_row(
+                    "Fit time",
+                    FitCapture,
+                    false,
+                    focus.clone(),
+                    commands,
+                ))
+                .item(action_row(
+                    "Fit frequency",
+                    FitFrequency,
+                    false,
+                    focus.clone(),
+                    commands,
+                ))
                 .item(PopupMenuItem::separator())
                 .item(if document {
                     PopupMenuItem::submenu("Time scale format", scale)
@@ -305,10 +317,13 @@ impl Shell {
                 })
                 .item(PopupMenuItem::submenu("Theme", theme))
                 .item(PopupMenuItem::separator())
-                .item(
-                    action_row("Analysis settings…", Box::new(EditAnalysis), false, focus)
-                        .disabled(!analysis),
-                )
+                .item(action_row(
+                    "Analysis settings…",
+                    EditAnalysis,
+                    false,
+                    focus,
+                    commands,
+                ))
         })
     }
 
@@ -319,26 +334,30 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
+        let commands = self.command_availability();
         let theme = self.theme();
         PopupMenu::build(window, cx, move |menu, _, _| {
             menu.action_context(focus.clone())
                 .item(action_row(
                     "System",
-                    Box::new(SystemTheme),
+                    SystemTheme,
                     theme == Theme::System,
                     focus.clone(),
+                    commands,
                 ))
                 .item(action_row(
                     "Light",
-                    Box::new(LightTheme),
+                    LightTheme,
                     theme == Theme::Light,
                     focus.clone(),
+                    commands,
                 ))
                 .item(action_row(
                     "Dark",
-                    Box::new(DarkTheme),
+                    DarkTheme,
                     theme == Theme::Dark,
                     focus.clone(),
+                    commands,
                 ))
         })
     }
@@ -350,27 +369,31 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
+        let commands = self.command_availability();
         let ruler = self.session.time_ruler;
         PopupMenu::build(window, cx, move |menu, _, _| {
             use crate::navigation::time_ruler::Mode;
             menu.action_context(focus.clone())
                 .item(action_row(
                     "Hours, minutes, seconds (hms)",
-                    Box::new(ClockRuler),
+                    ClockRuler,
                     ruler == Mode::Clock,
                     focus.clone(),
+                    commands,
                 ))
                 .item(action_row(
                     "Seconds",
-                    Box::new(SecondsRuler),
+                    SecondsRuler,
                     ruler == Mode::Seconds,
                     focus.clone(),
+                    commands,
                 ))
                 .item(action_row(
                     "Sample numbers",
-                    Box::new(SamplesRuler),
+                    SamplesRuler,
                     ruler == Mode::Samples,
                     focus.clone(),
+                    commands,
                 ))
         })
     }
@@ -392,6 +415,7 @@ impl Shell {
         let edit = self.edit_menu(focus.clone(), window, cx);
         let view = self.view_menu(focus.clone(), window, cx);
         let branch = file.clone();
+        let commands = self.command_availability();
         let menu = PopupMenu::build(window, cx, move |menu, _, _| {
             menu.action_context(focus.clone())
                 .item(PopupMenuItem::submenu("File", branch))
@@ -400,16 +424,18 @@ impl Shell {
                 .item(PopupMenuItem::separator())
                 .item(action_row(
                     "About Argand…",
-                    Box::new(about_ui::ShowAbout),
+                    about_ui::ShowAbout,
                     false,
                     focus.clone(),
+                    commands,
                 ))
                 .item(PopupMenuItem::separator())
                 .item(action_row(
                     "Quit Argand",
-                    Box::new(chrome::CloseWindow),
+                    chrome::CloseWindow,
                     false,
                     focus,
+                    commands,
                 ))
         });
         self.application_menu_dismissed =
@@ -622,6 +648,11 @@ impl Shell {
             cx,
         );
         ButtonGroup::new("orientation-segments")
+            .disabled(
+                !self
+                    .command_availability()
+                    .is_enabled::<ToggleOrientation>(),
+            )
             .rounded(px(FRAME_RADIUS))
             .border_1()
             .border_color(frame_colour(cx))
@@ -635,7 +666,7 @@ impl Shell {
                 // A click on either segment hands the keyboard back to the owner.
                 window.focus(&shell.focus_target(cx), cx);
                 if next != usize::from(shell.session.orientation.vertical()) {
-                    shell.toggle_orientation(window, cx);
+                    window.dispatch_action(Box::new(ToggleOrientation), cx);
                 }
             }))
     }
@@ -767,6 +798,7 @@ impl Shell {
         };
         let hint = if show { "Hide grid" } else { "Show grid" };
         let mut button = Button::new(id)
+            .disabled(!self.command_availability().is_enabled::<ToggleGrid>())
             .tab_stop(false)
             .group(id)
             .custom(toolbar_style(state, cx))
@@ -944,56 +976,67 @@ fn open_from(owner: &WeakEntity<Shell>, open: bool, window: &mut Window, cx: &mu
     });
 }
 
-fn action_row(
+/// A command row that keeps the stock dispatch and carries the shared keycap.
+///
+/// The stock menu paints its own keycaps, borderless and transparent, where every
+/// other shortcut in the application uses the framed one. The row is an element
+/// for that reason alone, and keeps `.action(..)` and `.checked(..)` so the menu
+/// still dispatches, checks, selects and navigates it.
+fn action_row<A: command::Command>(
     label: &str,
-    action: Box<dyn Action>,
+    action: A,
     checked: bool,
     focus: FocusHandle,
+    commands: command::Availability,
 ) -> PopupMenuItem {
-    command_row(label, action, checked, focus, None)
+    command_row(label, action, checked, focus, None, commands)
 }
 
-fn edit_action_row(
+fn edit_action_row<A: command::Command>(
     label: &str,
-    action: Box<dyn Action>,
+    action: A,
     checked: bool,
     focus: FocusHandle,
+    commands: command::Availability,
 ) -> PopupMenuItem {
-    command_row(label, action, checked, focus, Some("Plot"))
+    command_row(label, action, checked, focus, Some("Plot"), commands)
 }
 
-fn command_row(
+fn command_row<A: command::Command>(
     label: &str,
-    action: Box<dyn Action>,
+    action: A,
     checked: bool,
     focus: FocusHandle,
     shortcut_context: Option<&'static str>,
+    commands: command::Availability,
 ) -> PopupMenuItem {
     let label = label.to_owned();
     let shortcut = action.boxed_clone();
-    PopupMenuItem::element(move |window, cx| {
-        let key = match shortcut_context {
-            Some(context) => Kbd::binding_for_action(shortcut.as_ref(), Some(context), window),
-            None => Kbd::binding_for_action_in(shortcut.as_ref(), &focus, window),
-        };
-        div()
-            .flex()
-            .w_full()
-            .min_w_0()
-            .gap_3()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .text_ellipsis_middle()
-                    .child(label.clone()),
-            )
-            .when_some(key, |row, key| row.child(shortcuts::keycap(key, cx)))
-    })
-    .action(action)
-    .checked(checked)
+    commands.item(
+        action,
+        PopupMenuItem::element(move |window, cx| {
+            let key = match shortcut_context {
+                Some(context) => Kbd::binding_for_action(shortcut.as_ref(), Some(context), window),
+                None => Kbd::binding_for_action_in(shortcut.as_ref(), &focus, window),
+            };
+            div()
+                .flex()
+                .w_full()
+                .min_w_0()
+                .gap_3()
+                .items_center()
+                .justify_between()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_ellipsis_middle()
+                        .child(label.clone()),
+                )
+                .when_some(key, |row, key| row.child(shortcuts::keycap(key, cx)))
+        })
+        .checked(checked),
+    )
 }
 
 /// The row one recent capture is drawn in: its digit, then its name.
@@ -1029,7 +1072,7 @@ pub(super) fn toolbar_width(window: &Window, cx: &gpui_kit::App, document: bool)
     if !document {
         return app;
     }
-    // The two framed segment groups and Grid, the separator, four gaps and its margins.
+    // The two framed segment groups, Grid, the separator and four gaps.
     app + px(SEGMENT * 5. + 4. + TOOLBAR_HEIGHT + 1.) + window.rem_size() * 1.5
 }
 

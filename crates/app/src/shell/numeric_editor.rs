@@ -46,6 +46,7 @@ pub(super) fn traverse(
 #[derive(Clone, Copy)]
 pub(super) struct Config {
     pub unit: &'static str,
+    pub integer: bool,
     pub step: f64,
     pub minimum: f64,
     pub maximum: f64,
@@ -114,6 +115,9 @@ impl NumericEditor {
     }
 
     pub(super) fn set_disabled(&mut self, disabled: bool, cx: &mut Context<Self>) {
+        if self.disabled == disabled {
+            return;
+        }
         self.disabled = disabled;
         if disabled {
             self.stop_repeat();
@@ -128,6 +132,11 @@ impl NumericEditor {
         if !self.config.accepts(value) {
             return;
         }
+        let value = if self.config.integer {
+            value.round()
+        } else {
+            value
+        };
         let shown = crate::numbers::number(value);
         if self.input.read(cx).value().as_ref() != shown {
             self.input
@@ -147,7 +156,11 @@ impl NumericEditor {
         } else {
             -self.config.step
         };
-        let value = value + delta;
+        let value = if self.config.integer {
+            value.round()
+        } else {
+            value
+        } + delta;
         if !self.config.accepts(value) {
             return false;
         }

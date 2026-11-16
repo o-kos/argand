@@ -66,7 +66,7 @@ fn retained_formats_save_computed_samples_without_the_original_file() {
             assert_eq!(fs::read(&request.target).unwrap(), baseline, "{container}: {unavailable}");
             let reopened = open(&request.target, &OpenHints::default()).unwrap();
             assert_eq!(reopened.meta().sample_rate, request.meta.sample_rate);
-            assert_eq!(reopened.meta().center_freq, request.meta.center_freq);
+            assert_eq!(reopened.meta().center_freq, request.meta.center_freq.round());
             assert_eq!(reopened.meta().channels(), 2);
             let expected: Vec<f32> = COMPUTED.iter().map(|&v| {
                 ((f64::from(v) * 32768.0).round().clamp(-32768.0, 32767.0) / 32768.0) as f32
@@ -311,7 +311,7 @@ fn riff_size_and_odd_data_are_padded_correctly() {
 }
 
 #[test]
-fn reference_frequency_survives_exactly_and_auxi_carries_whole_hertz() {
+fn reference_frequency_is_written_in_auxi_as_whole_hertz() {
     let dir = TempDir::new("write-freq");
     let sample_type: SampleType = "iq_i16".parse().unwrap();
     let source = write_wav(&dir.join("a.wav"), sample_type, 2_400_000, &signal(sample_type, 64), 1.0);
@@ -323,11 +323,11 @@ fn reference_frequency_survives_exactly_and_auxi_carries_whole_hertz() {
     run(&request(&source, hints, None, target.clone())).unwrap();
 
     let reopened = open(&target, &OpenHints::default()).unwrap();
-    assert_eq!(reopened.meta().center_freq, 433_920_000.25);
+    assert_eq!(reopened.meta().center_freq, 433_920_000.);
     let bytes = fs::read(&target).unwrap();
     let chunks = riff::scan(&bytes).unwrap();
     assert_eq!(chunks.metadata.auxi, Some(433_920_000));
-    assert_eq!(chunks.metadata.argd, Some((433_920_000.25, 2_400_000.0)));
+    assert!(!bytes.windows(4).any(|id| id == b"argd"));
 
     let overridden = OpenHints {
         center_freq: Some(-5.0),
@@ -337,19 +337,16 @@ fn reference_frequency_survives_exactly_and_auxi_carries_whole_hertz() {
 }
 
 #[test]
-fn frequency_beyond_auxi_is_kept_only_in_argd() {
+fn frequency_beyond_auxi_is_refused_without_publication() {
     let dir = TempDir::new("write-ghz");
     let sample_type: SampleType = "rl_f32".parse().unwrap();
     let source = write_wav(&dir.join("a.wav"), sample_type, 48_000, &signal(sample_type, 64), 1.0);
-    let hints = OpenHints {
-        center_freq: Some(10.5e9),
-        ..Default::default()
-    };
-    let target = dir.join("b.wav");
-    run(&request(&source, hints, None, target.clone())).unwrap();
-    let bytes = fs::read(&target).unwrap();
-    assert_eq!(riff::scan(&bytes).unwrap().metadata.auxi, None);
-    assert_eq!(open(&target, &OpenHints::default()).unwrap().meta().center_freq, 10.5e9);
+    for frequency in [-1.0, 10.5e9] {
+        let hints = OpenHints { center_freq: Some(frequency), ..Default::default() };
+        let target = dir.join("b.wav");
+        assert!(matches!(run(&request(&source, hints, None, target.clone())), Err(WriteError::Unsupported { .. })));
+        assert!(!target.exists());
+    }
 }
 
 #[test]
@@ -370,16 +367,6 @@ fn auxi_alone_gives_the_frequency_of_an_sdr_recording() {
     assert_eq!(open(&source, &OpenHints::default()).unwrap().meta().center_freq, 7_100_000.0);
 }
 
-#[test]
-fn exact_rate_from_argd_is_used_only_while_it_agrees_with_fmt() {
-    let mut metadata = riff::Metadata {
-        argd: Some((0.0, 2_399_999.75)),
-        auxi: None,
-    };
-    assert_eq!(metadata.sample_rate_for(2_400_000.0), 2_399_999.75);
-    metadata.argd = Some((0.0, 1_000.0));
-    assert_eq!(metadata.sample_rate_for(2_400_000.0), 2_400_000.0);
-}
 
 #[test]
 fn the_open_file_is_never_a_target() {
@@ -471,7 +458,10 @@ fn flac_is_re_encoded_without_loss() {
 
         let reopened = open(&target, &OpenHints::default()).unwrap();
         assert_eq!(reopened.meta().len_samples, 3321);
-        assert_eq!(reopened.meta().center_freq, 14_074_000.5);
+        assert_eq!(reopened.meta().center_freq, 14_074_001.);
+        let bytes = fs::read(&target).unwrap();
+        assert!(bytes.windows(b"AUXI=14074001".len()).any(|part| part == b"AUXI=14074001"));
+        assert!(!bytes.windows(b"ARGAND_REFERENCE_FREQUENCY".len()).any(|part| part == b"ARGAND_REFERENCE_FREQUENCY"));
         assert_eq!(
             flac_ints(&target, bits as u32),
             samples[1000 * channels..4321 * channels],
@@ -658,7 +648,7 @@ fn a_decoded_wave_reads_its_frequency_back() {
     let target = dir.join("b.wav");
     run(&request(&source, hints, None, target.clone())).unwrap();
     let reopened = open(&target, &OpenHints::default()).unwrap();
-    assert_eq!(reopened.meta().center_freq, 144_800_000.5);
+    assert_eq!(reopened.meta().center_freq, 144_800_001.);
 }
 
 #[test]
@@ -1616,7 +1606,7 @@ fn explicit_flac_preserves_wave_integer_units_and_exact_metadata() {
         assert_eq!(&fs::read(&request.target).unwrap()[..4], b"fLaC");
         let reopened = open(&request.target, &OpenHints::default()).unwrap();
         assert_eq!(reopened.meta().sample_rate, 8000.0);
-        assert_eq!(reopened.meta().center_freq, 10_000_000.25);
+        assert_eq!(reopened.meta().center_freq, 10_000_000.);
         assert_eq!(reopened.meta().sample_type, ty);
         let bits = if ty.format == SampleFormat::U8 { 8 } else { 16 };
         let scale = (1u32 << (bits - 1)) as f32;
@@ -1706,4 +1696,45 @@ fn unsigned_adjustment_is_centred_on_128_before_iq_conjugation() {
     let target = dir.join("b.wav");
     run(&adjusted(request(&source, OpenHints::default(), None, target.clone()), true, 0.5)).unwrap();
     assert_eq!(data_bytes(&target), [64, 127, 128, 96]);
+}
+
+#[test]
+fn opening_description_keeps_file_reference_separate_from_overrides() {
+    let dir = TempDir::new("declared-reference");
+    let sample_type: SampleType = "iq_i16".parse().unwrap();
+    let source = write_wav(&dir.join("plain.wav"), sample_type, 24_000, &signal(sample_type, 64), 1.);
+    let overridden = OpenHints { center_freq: Some(99_000_000.), ..Default::default() };
+    assert_eq!(crate::open_described(&source, &overridden).unwrap().declared_reference_freq, None);
+    let untagged_flac = dir.join("plain.flac");
+    write_flac_fixture(&untagged_flac, 2, 16, 64);
+    assert_eq!(crate::open_described(&untagged_flac, &overridden).unwrap().declared_reference_freq, None);
+    for reference in [0., 12_579_000.] {
+        for container in [Container::Wave, Container::Flac] {
+            let target = dir.join(&format!("saved-{reference}.{}", container.extension()));
+            let mut save = request(&source, OpenHints { center_freq: Some(reference), ..Default::default() }, None, target.clone());
+            save.output = Output::Container(container);
+            run(&save).unwrap();
+            let opened = crate::open_described(&target, &overridden).unwrap();
+            assert_eq!(opened.declared_reference_freq, Some(reference));
+            assert_eq!(opened.source.meta().center_freq, 99_000_000.);
+            assert!(opened.stamp.is_some());
+        }
+    }
+    let fallback = dir.join("fallback.wav");
+    write_extensible(&fallback, 20, 32);
+    assert_eq!(crate::open_described(&fallback, &overridden).unwrap().declared_reference_freq, None);
+    let mut bytes = fs::read(&fallback).unwrap();
+    let mut auxi = vec![0u8; AUXI_LEN];
+    auxi[AUXI_CENTER..AUXI_CENTER + 4].copy_from_slice(&12_345u32.to_le_bytes());
+    let mut chunk = b"auxi".to_vec();
+    chunk.extend_from_slice(&(AUXI_LEN as u32).to_le_bytes()); chunk.extend(auxi);
+    bytes.splice(12..12, chunk); let length = (bytes.len() - 8) as u32;
+    bytes[4..8].copy_from_slice(&length.to_le_bytes()); fs::write(&fallback, bytes).unwrap();
+    let opened = crate::open_described(&fallback, &overridden).unwrap();
+    assert_eq!(opened.declared_reference_freq, Some(12_345.));
+    assert_eq!(opened.source.meta().center_freq, 99_000_000.);
+    let raw = dir.join("raw.iq");
+    write_raw(&raw, SampleFormat::I16, &[0., 0., 1., 1.], 1.);
+    let hints = OpenHints { raw: Some("iq_i16@24k".parse().unwrap()), ..overridden };
+    assert_eq!(crate::open_described(&raw, &hints).unwrap().declared_reference_freq, None);
 }

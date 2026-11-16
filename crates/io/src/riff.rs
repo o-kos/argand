@@ -52,7 +52,7 @@ pub struct WavLayout {
     pub declared_len: Option<usize>,
     /// Which of the three WAVE flavours this was, for the report.
     pub container: &'static str,
-    /// Physical frequency of baseband 0 Hz, from `argd` or `auxi`.
+    /// Physical frequency of baseband 0 Hz, from `auxi`.
     pub reference_freq: Option<f64>,
     /// End of the RIFF body as its header states it, where later `data` chunks are looked for.
     pub riff_end: Option<u64>,
@@ -141,7 +141,7 @@ pub fn parse(bytes: &[u8]) -> Result<WavLayout, RiffError> {
     let declared_rate = fmt.sample_rate as f64;
     Ok(WavLayout {
         sample_type: fmt.sample_type()?,
-        sample_rate: chunks.metadata.sample_rate_for(declared_rate),
+        sample_rate: declared_rate,
         data_offset: chunks.data_offset,
         declared_len: chunks.declared_len,
         container: chunks.container,
@@ -241,29 +241,15 @@ impl Chunks<'_> {
     }
 }
 
-/// What the `argd` and `auxi` chunks say about the capture.
+/// Reference frequency from the SDR auxi chunk.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct Metadata {
-    /// Reference frequency and exact sample rate from `argd`.
-    pub argd: Option<(f64, f64)>,
-    /// Centre frequency from `auxi`, in whole hertz.
     pub auxi: Option<u32>,
 }
 
 impl Metadata {
-    /// The physical frequency of baseband 0 Hz, preferring the exact value.
     pub fn reference_freq(&self) -> Option<f64> {
-        self.argd
-            .map(|(freq, _)| freq)
-            .or_else(|| self.auxi.map(f64::from))
-    }
-
-    /// The exact rate from `argd` while it still agrees with the `fmt ` rate.
-    pub fn sample_rate_for(&self, declared: f64) -> f64 {
-        match self.argd {
-            Some((_, exact)) if (exact - declared).abs() < 1.0 => exact,
-            _ => declared,
-        }
+        self.auxi.map(f64::from)
     }
 }
 
@@ -299,11 +285,6 @@ pub(crate) fn scan(bytes: &[u8]) -> Result<Chunks<'_>, RiffError> {
             b"ds64" => {
                 let body_bytes = slice(bytes, body, size, "ds64 chunk")?;
                 ds64_data_len = Some(parse_ds64(body_bytes)?);
-            }
-            b"argd" => {
-                if let Ok(body_bytes) = slice(bytes, body, size, "argd chunk") {
-                    metadata.argd = parse_argd(body_bytes);
-                }
             }
             b"auxi" => {
                 if let Ok(body_bytes) = slice(bytes, body, size, "auxi chunk") {
@@ -351,11 +332,6 @@ pub(crate) fn scan(bytes: &[u8]) -> Result<Chunks<'_>, RiffError> {
     })
 }
 
-/// Argand's own chunk: version, reference frequency and sample rate.
-pub(crate) const ARGD_ID: &[u8; 4] = b"argd";
-pub(crate) const ARGD_VERSION: u32 = 1;
-pub(crate) const ARGD_LEN: usize = 20;
-
 /// Size of the `auxi` body SDR#, HDSDR and SDRuno write.
 pub(crate) const AUXI_LEN: usize = 164;
 /// Offset of `CenterFreq`, after the start and stop `SYSTEMTIME`s.
@@ -363,21 +339,10 @@ pub(crate) const AUXI_CENTER: usize = 32;
 /// Offset of `ADFrequency`, the sample rate.
 pub(crate) const AUXI_RATE: usize = 36;
 
-fn parse_argd(body: &[u8]) -> Option<(f64, f64)> {
-    if body.len() < ARGD_LEN {
-        return None;
-    }
-    let version = u32::from_le_bytes(body[0..4].try_into().ok()?);
-    let freq = f64::from_le_bytes(body[4..12].try_into().ok()?);
-    let rate = f64::from_le_bytes(body[12..20].try_into().ok()?);
-    (version == ARGD_VERSION && freq.is_finite() && rate.is_finite() && rate > 0.0)
-        .then_some((freq, rate))
-}
-
 fn parse_auxi(body: &[u8]) -> Option<u32> {
     let field = body.get(AUXI_CENTER..AUXI_CENTER + 4)?;
     let freq = u32::from_le_bytes(field.try_into().ok()?);
-    (freq > 0).then_some(freq)
+    Some(freq)
 }
 
 fn slice<'a>(

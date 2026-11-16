@@ -43,6 +43,8 @@ fn read(request: &Request) -> (SignalMeta, Vec<f32>) {
         &request.target,
         &OpenHints {
             normalize: Some(Normalize::None),
+            sample_rate: Some(request.output.sample_rate),
+            center_freq: Some(request.output.center_freq),
             ..OpenHints::default()
         },
     )
@@ -193,7 +195,7 @@ fn failures_cancellation_and_changed_sources_do_not_publish_or_modify_input() {
 }
 
 #[test]
-fn conversion_preserves_exact_fractional_rate_reference_and_duration() {
+fn conversion_keeps_exact_private_parameters_with_whole_hertz_wave_header() {
     let dir = TempDir::new("conversion-metadata");
     let values: Vec<f32> = (0..8000)
         .flat_map(|n| {
@@ -214,6 +216,9 @@ fn conversion_preserves_exact_fractional_rate_reference_and_duration() {
     assert_eq!(meta.sample_rate, 6000.125);
     assert_eq!(meta.center_freq, 123.456);
     assert_eq!(meta.len_samples, 6001);
+    let standalone = argand_io::open(&request.target, &OpenHints::default()).unwrap();
+    assert_eq!(standalone.meta().sample_rate, 6000.);
+    assert_eq!(standalone.meta().center_freq, 123.);
 }
 
 #[test]
@@ -239,14 +244,20 @@ fn identity_copy_keeps_i32_low_bits_and_full_band_endpoints_byte_exact() {
         None,
         request.target.clone(),
     ));
-    let result = run(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
-    assert_eq!(result.clipped, 0);
-    let output = std::fs::read(&request.target).unwrap();
-    let output_start = output.windows(4).position(|v| v == b"data").unwrap() + 8;
-    assert_eq!(
-        &output[output_start..output_start + 32],
-        &bytes[start..start + 32]
-    );
+    for reference in [0.0, -123.25, 10.5e9] {
+        request.input.center_freq = reference;
+        request.output.center_freq = reference;
+        request.copy.as_mut().unwrap().meta.center_freq = reference;
+        let result = run(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
+        assert_eq!(result.clipped, 0);
+        let output = std::fs::read(&request.target).unwrap();
+        let output_start = output.windows(4).position(|v| v == b"data").unwrap() + 8;
+        assert_eq!(
+            &output[output_start..output_start + 32],
+            &bytes[start..start + 32]
+        );
+        assert_eq!(read(&request).0.center_freq, reference);
+    }
 }
 
 #[test]
@@ -545,6 +556,8 @@ fn carrier_reverse_source(forward: &Request) -> Request {
         &forward.target,
         &OpenHints {
             normalize: Some(Normalize::None),
+            sample_rate: Some(forward.output.sample_rate),
+            center_freq: Some(forward.output.center_freq),
             ..OpenHints::default()
         },
     )
@@ -556,6 +569,8 @@ fn carrier_reverse_source(forward: &Request) -> Request {
         meta: reverse.input.clone(),
         hints: OpenHints {
             normalize: Some(Normalize::None),
+            sample_rate: Some(forward.output.sample_rate),
+            center_freq: Some(forward.output.center_freq),
             ..OpenHints::default()
         },
         stamp,

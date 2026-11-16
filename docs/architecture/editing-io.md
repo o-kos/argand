@@ -20,6 +20,10 @@ continues to accept RIFF only.
 
 ## Saving (#186)
 
+The Save menu and app-level shortcut use `Shell::can_save_edits` for availability.
+An unavailable shortcut is inert; internal save continuations retain their detailed
+rejection and source/publication guards.
+
 `argand_io::write::save` writes a capture, or a `SampleSpan` of it, to a new file in the
 source's format. WAVE and headerless sources are copied byte for byte through one `File`
 handle that also reads the header, never through the mapping, under the source's own
@@ -63,13 +67,38 @@ target; any error or cancellation removes it. The source is never a valid target
 detected).
 
 The reference frequency is the physical frequency of baseband 0 Hz for both signal kinds
-(#185). Writing puts an `auxi` chunk (164 bytes, `CenterFreq` at 32 and `ADFrequency` at
-36, written only for 1 Hz to `u32::MAX`) and an `argd` chunk (version 1, `f64`
-frequency, `f64` sample rate) before `data`, because `riff::parse` reads only the head;
-FLAC gets the Vorbis comments `ARGAND_REFERENCE_FREQUENCY` and `ARGAND_SAMPLE_RATE`.
-Opening prefers `argd`, then `auxi`, then the comment, also for a WAVE layout the decoder
-reads, and an exact rate only while it agrees with the header's within 1 Hz. `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins, and a
-session hint of 0 means none.
+(#185). WAVE/IQW writing puts an `auxi` chunk (164 bytes, `CenterFreq` at 32
+and `ADFrequency` at 36) before `data`. Its reference is rounded to whole Hz,
+including zero; public saves refuse references outside the unsigned 32-bit range.
+No `argd` chunk is written or interpreted. WAVE sample rates use the rounded
+integer Hz in the standard header; standalone reopening uses that declared rate.
+Private DSP backing retains exact rate/reference through explicit opening hints.
+FLAC gets the Vorbis comment `AUXI` with a whole-Hz reference frequency and
+`ARGAND_SAMPLE_RATE` with the exact sample rate. Opening reads `auxi` for WAVE,
+including decoder-backed layouts, and `AUXI` for FLAC.
+`OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins at opening.
+Recent retains the pre-existing CLI hints, where stored zero means no override.
+Session remains at version 11 and has no baseband presentation preference.
+
+`argand_io::open_described` also returns the optional reference declared by the
+file before opening overrides, alongside the reader and its existing checked
+stamp. Native/fallback WAVE reuse the probed header; FLAC retains the tag already
+read by its decoder. RAW has no declared reference. Existing `open`, `open_stamped`
+and `reopen` remain compatible. `analysis::FileInfo` carries this provenance into
+the document for read-only File information. History changes do not alter it;
+successful Save/rebind supplies the newly published file's declaration. No session
+field or extra reference probe is introduced.
+
+Reference frequency is versioned document metadata (#185), alongside the
+selection in the existing capture history. Metadata edits advance the same serial
+used by dirty state and asynchronous save guards, without modifying the immutable
+source description or requesting an FFT. Undo/Redo over unchanged captures updates
+metadata and presentation only. Save requests use the effective reference;
+source metadata, source stamps and source reading hints remain unchanged.
+Reference edits, Undo/Redo and Discard do not update Recent. After a successful
+WAVE/FLAC save, the published source and Recent have no reference override:
+reopening reads the reference from the file, including zero. Unchanged headerless
+saves retain their original opening hints. Private DSP hints remain in memory.
 
 `processing/saving.rs` runs one save on its own thread with 4 MiB buffers, progress at most every
 100 ms through a bounded channel and a cancel flag; dropping the `Job` cancels it and waits
@@ -136,7 +165,12 @@ File → Save (Ctrl+S, Cmd+S) writes the edited capture over its own file (`shel
 `write::stage` writes the temporary file while the original is still read and returns a
 `Staged` that `commit` moves into place or, dropped, removes; `SaveRequest::replacing` lets
 the target be the replaced file, whose stamp `commit` checks just before the rename, and a
-headerless capture is written headerless after its preamble (`Output::Headerless`). Every
+headerless capture with unchanged reference is written headerless after its preamble
+(`Output::Headerless`). When its effective reference differs from the opened source
+baseline, ordinary Save instead opens the existing Save As chooser proposing WAVE,
+because RAW cannot store reference metadata. The unsaved prompt follows the same
+route; Cancel retains the dirty document and the original RAW. Undo restoring the
+baseline reference restores ordinary headerless Save-over. Every
 thread reading the open file (the analysis worker, the minimap and the envelopes of pasted
 files) holds a `release::Lease`; once the file is staged the window puts unstarted readers of
 the same path in their place (`Shell::swap_readers`), waits on `Released` for the old ones to
@@ -219,7 +253,11 @@ warning; U8/I16 remain unchanged and returning to WAV keeps the chosen format.
 First Save and selection export use the requested container; an explicit
 WAV/FLAC Save as extension overrides it. `History::unsaved` starts dirty without an Undo
 version. The first Save asks for a destination, then successful rebind clears unsaved
-identity. Temporary paths never enter Recent. `Source::backing` retains encoded
+identity. Private computed/encoded backing is opened with explicit exact sample-rate and
+reference hints from the processing request. Computed sources retain those hints
+for later analysis, clipboard and save reads; WAVE integer header fields are not
+the source of truth for internal DSP parameters.
+Temporary paths never enter Recent. `Source::backing` retains encoded
 scratch separately from computed FloatWave samples, including clipboard references,
 so it is never encoded twice. Input/output scratch ownership lasts until the job ends;
 reader leases retain backing through termination, and opening another capture cancels

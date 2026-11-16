@@ -50,7 +50,10 @@ fn a_rectangle_is_suppressed_as_one_edit_and_saved_in_the_captures_format(cx: &m
     let (shell, cx) = open_window(cx);
     let path = opened(cx, &shell, "suppress-ui");
     assert!(shell.read_with(cx, |shell, _| shell.edit_commands_available().suppress));
-    shell.update_in(cx, |shell, window, cx| shell.suppress_band(window, cx));
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(shell.set_reference(14_074_000., window, cx));
+        shell.suppress_band(window, cx);
+    });
     assert!(shell.read_with(cx, |shell, _| {
         shell.suppressing.is_some()
             && !shell.can_save(false)
@@ -104,6 +107,7 @@ fn a_rectangle_is_suppressed_as_one_edit_and_saved_in_the_captures_format(cx: &m
     });
     let saved = argand_io::open(&target, &argand_io::OpenHints::default()).unwrap();
     assert_eq!(saved.meta().len_samples, 48_000);
+    assert_eq!(saved.meta().center_freq, 14_074_000.);
     assert_eq!(
         saved.meta().sample_type.format,
         argand_core::SampleFormat::I16

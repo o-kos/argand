@@ -202,7 +202,13 @@ fn compact_duration_trims_zero_units_and_fractional_zeros_after_rounding() {
 #[test]
 fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()));
+    document.apply(Update::Opened(
+        meta(),
+        FileInfo {
+            declared_reference_freq: Some(meta().center_freq),
+            ..FileInfo::default()
+        },
+    ));
     let fields = document.summary().unwrap();
     assert_eq!(fields[0].hint.value, "wav");
     assert_eq!(fields[1].hint.value, "iq · i16");
@@ -414,4 +420,24 @@ fn an_edit_moves_the_picture_columns_with_their_samples() {
     );
     let red: Vec<u8> = (0..4).map(|x| shown.spectrogram.rgba[x * 4]).collect();
     assert_eq!(red, [2, 3, 4, 0]);
+}
+
+#[test]
+fn file_summary_distinguishes_absent_reference_from_declared_zero() {
+    for declared in [None, Some(0.), Some(12345.)] {
+        let mut document = opening();
+        document.apply(Update::Opened(
+            meta(),
+            FileInfo {
+                declared_reference_freq: declared,
+                ..Default::default()
+            },
+        ));
+        let rows = document.file_summary().unwrap().hint.rows;
+        let shown = rows
+            .iter()
+            .find(|(label, _)| label == "Reference frequency")
+            .map(|(_, value)| value.clone());
+        assert_eq!(shown, declared.map(format_hz));
+    }
 }

@@ -44,7 +44,7 @@ pub(in crate::shell) struct PlotSnapshot {
     /// A finished save, said over the picture until the next input.
     pub notice: Option<gpui_kit::SharedString>,
     /// Which edit commands the spectrum's context menu can offer.
-    pub edit: crate::shell::editing_ui::EditCommands,
+    pub commands: command::Availability,
 }
 
 /// What the plot asks of the shell.
@@ -305,7 +305,9 @@ impl PlotView {
                     cx,
                 )
             }))
-            .on_action(cx.listener(|plot, _: &FitCapture, _, cx| plot.time(TimeIntent::Fit, cx)))
+            .on_action(command::plot_listener(cx, |plot, _: &FitCapture, _, cx| {
+                plot.time(TimeIntent::Fit, cx)
+            }))
             .on_action(cx.listener(|plot, _: &PanLeft, _, cx| plot.time(TimeIntent::Ticks(-1), cx)))
             .on_action(cx.listener(|plot, _: &PanRight, _, cx| plot.time(TimeIntent::Ticks(1), cx)))
             .on_action(
@@ -336,11 +338,10 @@ impl PlotView {
                     cx,
                 )
             }))
-            .on_action(
-                cx.listener(|plot, _: &FitFrequency, _, cx| {
-                    plot.frequency(FrequencyIntent::Fit, cx)
-                }),
-            )
+            .on_action(command::plot_listener(
+                cx,
+                |plot, _: &FitFrequency, _, cx| plot.frequency(FrequencyIntent::Fit, cx),
+            ))
             .on_action(
                 cx.listener(|plot, _: &PanUp, _, cx| {
                     plot.frequency(FrequencyIntent::Ticks(1.), cx)

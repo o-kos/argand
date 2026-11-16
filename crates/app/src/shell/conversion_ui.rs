@@ -153,6 +153,7 @@ pub(super) struct Converting {
     name: String,
     directory: std::path::PathBuf,
     output_is_iq: bool,
+    opening: argand_io::OpenHints,
     container: argand_io::write::Container,
     backing: Arc<crate::scratch::Scratch>,
 }
@@ -200,6 +201,8 @@ fn converted_name(name: &str, container: argand_io::write::Container) -> String 
 
 struct Editor {
     request: Request,
+    source_reference: f64,
+    source_stamp: Option<argand_io::write::SourceStamp>,
     rate: Entity<InputState>,
     rate_editor: Entity<NumericEditor>,
     reference: Entity<InputState>,
@@ -233,6 +236,7 @@ fn frequency_editor(
         NumericEditor::new(
             crate::numbers::number(value),
             numeric_editor::Config {
+                integer: false,
                 unit: "Hz",
                 step: 1.,
                 minimum: 0.,
@@ -245,6 +249,47 @@ fn frequency_editor(
             cx,
         )
     })
+}
+
+fn container_picker(
+    request: &Request,
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) -> (Entity<SelectState<Vec<Name>>>, Vec<Pixels>) {
+    let containers = vec!["WAV".to_owned(), "FLAC".to_owned()];
+    let container_widths = presentation::shown_widths(&containers, window, cx);
+    let selected = usize::from(request.container == argand_io::write::Container::Flac);
+    let container = cx.new(|cx| {
+        SelectState::new(
+            containers.into_iter().map(Name).collect::<Vec<_>>(),
+            Some(gpui_kit::component::IndexPath::new(selected)),
+            window,
+            cx,
+        )
+    });
+    (container, container_widths)
+}
+
+fn sample_kind_picker(
+    request: &Request,
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) -> (
+    Entity<SelectState<SampleChoices>>,
+    Option<String>,
+    Vec<Pixels>,
+) {
+    let kinds: Vec<String> = argand_core::SAMPLE_TYPE_TOKENS
+        .iter()
+        .map(|s| kind_label(s))
+        .collect();
+    let kind_widths = presentation::shown_widths(&kinds, window, cx);
+    let groups = sample_choices(request.container == argand_io::write::Container::Flac);
+    let initial_kind = kind_label(&request.output.sample_type.to_string());
+    let selected = groups.position(&initial_kind);
+    let unavailable_kind = selected.is_none().then_some(initial_kind);
+    let kind = cx.new(|cx| SelectState::new(groups, selected, window, cx));
+    (kind, unavailable_kind, kind_widths)
 }
 
 impl Editor {
@@ -268,27 +313,8 @@ impl Editor {
         });
         let rate = rate_editor.read(cx).input.clone();
         let reference = reference_editor.read(cx).input.clone();
-        let kinds: Vec<String> = argand_core::SAMPLE_TYPE_TOKENS
-            .iter()
-            .map(|s| kind_label(s))
-            .collect();
-        let kind_widths = presentation::shown_widths(&kinds, window, cx);
-        let groups = sample_choices(request.container == argand_io::write::Container::Flac);
-        let initial_kind = kind_label(&request.output.sample_type.to_string());
-        let selected = groups.position(&initial_kind);
-        let unavailable_kind = selected.is_none().then_some(initial_kind);
-        let kind = cx.new(|cx| SelectState::new(groups, selected, window, cx));
-        let containers = vec!["WAV".to_owned(), "FLAC".to_owned()];
-        let container_widths = presentation::shown_widths(&containers, window, cx);
-        let selected = usize::from(request.container == argand_io::write::Container::Flac);
-        let container = cx.new(|cx| {
-            SelectState::new(
-                containers.into_iter().map(Name).collect::<Vec<_>>(),
-                Some(gpui_kit::component::IndexPath::new(selected)),
-                window,
-                cx,
-            )
-        });
+        let (kind, unavailable_kind, kind_widths) = sample_kind_picker(&request, window, cx);
+        let (container, container_widths) = container_picker(&request, window, cx);
         let closed_selects = [
             container.read(cx).focus_handle(cx),
             kind.read(cx).focus_handle(cx),
@@ -326,6 +352,12 @@ impl Editor {
             ),
         ];
         Self {
+            source_reference: request.input.center_freq,
+            source_stamp: request
+                .sources
+                .first()
+                .and_then(Option::as_ref)
+                .and_then(|source| source.stamp),
             closed_selects,
             reference_iq: request.output.is_iq(),
             request,
@@ -354,7 +386,7 @@ impl Editor {
         numeric_editor::traverse(
             &self.scope,
             &[self.rate_editor.clone(), self.reference_editor.clone()],
-            7,
+            8,
             forward,
             window,
             cx,
@@ -368,23 +400,65 @@ impl Editor {
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
         if let Some(owner) = &self.owner
-            && let Ok(Some(rows)) = owner.read_with(cx, |shell, _| {
+            && let Ok(Some((reference, baseline, version, same_capture, stamp, path))) = owner
+                .read_with(cx, |shell, _| {
+                    let file = shell.file.as_ref()?;
+                    let editing = file.editing.as_ref()?;
+                    (Some(file.id) == self.document).then_some((
+                        editing.reference(),
+                        editing.file().meta.center_freq,
+                        editing.version(),
+                        editing.capture() == &self.request.capture,
+                        editing.file().stamp,
+                        editing.file().meta.source.clone(),
+                    ))
+                })
+        {
+            self.source_reference = baseline;
+            let reference_changed = self.request.input.center_freq != reference;
+            let rebound = stamp != self.source_stamp || path != self.request.input.source;
+            if rebound
+                && let Ok(Some(request)) =
+                    owner.read_with(cx, |shell, _| shell.conversion_request())
+            {
+                self.request = request;
+                self.source_stamp = stamp;
+            }
+            if same_capture || rebound {
+                self.version = version;
+            }
+            self.request.input.center_freq = reference;
+            if let Some(copy) = &mut self.request.copy {
+                copy.meta.center_freq = reference;
+            }
+            if reference_changed && self.reference_iq == self.request.input.is_iq() {
+                self.request.output.center_freq = reference;
+                self.reference.update(cx, |input, cx| {
+                    input.set_value(crate::numbers::number(reference), window, cx)
+                });
+            }
+        }
+        if let Some(owner) = &self.owner
+            && let Ok(Some((rows, unsaved))) = owner.read_with(cx, |shell, _| {
                 let file = shell.file.as_ref()?;
-                (Some(file.id) == self.document)
-                    .then(|| {
-                        file.state
-                            .document
-                            .file_summary()
-                            .map(|summary| summary.hint.rows)
-                    })
-                    .flatten()
+                if Some(file.id) != self.document {
+                    return None;
+                }
+                Some((
+                    file.state.document.file_summary()?.hint.rows,
+                    file.unsaved.is_some(),
+                ))
             })
         {
-            self.details
-                .retain(|(label, _)| label != "Peak" && label != "RMS");
+            self.details.retain(|(label, _)| {
+                label != "Peak" && label != "RMS" && label != "Reference frequency"
+            });
             self.details.extend(
                 rows.into_iter()
-                    .filter(|(label, _)| label == "Peak" || label == "RMS"),
+                    .filter(|(label, _)| !unsaved || label != "Reference frequency")
+                    .filter(|(label, _)| {
+                        label == "Peak" || label == "RMS" || label == "Reference frequency"
+                    }),
             );
         }
     }
@@ -483,6 +557,7 @@ impl Editor {
 
     fn changed(&self, request: &Request) -> bool {
         request.container != self.request.container
+            || request.input.center_freq != self.source_reference
             || request.output.sample_rate != request.input.sample_rate
             || request.output.center_freq != request.input.center_freq
             || request.output.sample_type != request.input.sample_type
@@ -599,7 +674,7 @@ impl Editor {
                 control.tooltip(move |_, cx| {
                     metadata_tooltip(
                         MetadataHint {
-                            title: "Reference",
+                            title: "Carrier frequency",
                             value: if carrier {
                                 "Carrier frequency in the real signal"
                             } else {
@@ -619,7 +694,7 @@ impl Editor {
                 })
             })
             .child(presentation::row(
-                "Reference",
+                "Carrier frequency",
                 self.reference_editor.clone(),
                 cx,
             ))
@@ -684,11 +759,13 @@ impl Render for Editor {
                     .font_weight(FontWeight::SEMIBOLD)
                     .child("File information"),
             )
-            .children(
-                self.details.iter().map(|(label, value)| {
-                    settings_ui::detail_row(label.clone(), value.clone(), cx)
-                }),
-            )
+            .children(self.details.iter().map(|(label, value)| {
+                presentation::row(
+                    label.clone(),
+                    div().min_w_0().text_right().child(value.clone()),
+                    cx,
+                )
+            }))
             .child(div().border_t_1().border_color(cx.theme().border))
             .child(presentation::row(
                 "Sample rate",
@@ -744,11 +821,11 @@ fn panel(
             details.retain(|(label, _)| {
                 !matches!(
                     label.as_str(),
-                    "Sample rate" | "Sample format" | "Centre frequency" | "Container"
+                    "Sample rate" | "Sample format" | "Container"
                 )
             });
             if file.unsaved.is_some() {
-                details.retain(|(label, _)| label != "File size");
+                details.retain(|(label, _)| label != "File size" && label != "Reference frequency");
             }
             Some((request, file.id, file.editing.as_ref()?.version(), details))
         })
@@ -852,7 +929,7 @@ impl Shell {
             return None;
         }
         let editing = self.editing()?;
-        let mut input = editing.file().meta.clone();
+        let mut input = editing.output_meta();
         input.len_samples = editing.len();
         let container = self.file.as_ref()?.unsaved.as_ref().map_or_else(
             || {
@@ -895,9 +972,26 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let Some(current) = self.conversion_request() else {
+            return;
+        };
+        let same_sources = request.sources.len() == current.sources.len()
+            && request
+                .sources
+                .iter()
+                .zip(&current.sources)
+                .all(|(left, right)| match (left, right) {
+                    (Some(left), Some(right)) => {
+                        left.stamp == right.stamp && left.meta.source == right.meta.source
+                    }
+                    (None, None) => true,
+                    _ => false,
+                });
         if self.file.as_ref().map(|file| file.id) != document
             || self.editing().map(|editing| editing.version()) != Some(version)
-            || self.conversion_request().is_none()
+            || request.capture != current.capture
+            || !same_sources
+            || request.input.center_freq != current.input.center_freq
         {
             return;
         }
@@ -930,6 +1024,12 @@ impl Shell {
         let version = editing.version();
         let container = request.container;
         let output_is_iq = request.output.is_iq();
+        let opening = argand_io::OpenHints {
+            normalize: Some(argand_io::Normalize::None),
+            sample_rate: Some(request.output.sample_rate),
+            center_freq: Some(request.output.center_freq),
+            ..Default::default()
+        };
         let name = converted_name(
             &file.unsaved.as_ref().map_or_else(
                 || file.state.document.origin().name(),
@@ -972,6 +1072,7 @@ impl Shell {
             name,
             directory,
             output_is_iq,
+            opening,
             container,
             backing,
         });
@@ -1019,7 +1120,7 @@ impl Shell {
                         }
                         self.conversion.result = clipping_notice(result.clipped, job.output_is_iq);
                         let mut origin = Origin::new(result.saved.path);
-                        origin.hints.normalize = Some(argand_io::Normalize::None);
+                        origin.hints = job.opening.clone();
                         self.prepare_conversion_reader(job, origin, window, cx);
                     }
                     Ended::Cancelled => {}

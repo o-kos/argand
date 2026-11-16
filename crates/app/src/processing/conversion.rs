@@ -183,6 +183,10 @@ fn identity_copy(
         return None;
     }
     copy.target = request.target.clone();
+    if !(0.0..=f64::from(u32::MAX)).contains(&copy.meta.center_freq.round()) {
+        // This private header cannot express the reference; its reader uses the exact opening hints.
+        copy.meta.center_freq = 0.0;
+    }
     Some(copy)
 }
 

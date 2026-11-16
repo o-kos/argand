@@ -24,6 +24,7 @@ const LEVEL_SCAN_BYTES: usize = 64 << 20;
 
 #[derive(Default)]
 pub struct FileInfo {
+    pub declared_reference_freq: Option<f64>,
     pub bytes: Option<u64>,
     pub sample_units: Option<(f64, f64)>,
     /// The file as it was opened, absent when it changed while it was being opened.
@@ -274,7 +275,7 @@ fn serve(
     mailbox: &Mailbox,
 ) {
     let opening_started = Instant::now();
-    let (source, stamp) = match argand_io::open_stamped(path, hints) {
+    let opened = match argand_io::open_described(path, hints) {
         Ok(opened) => opened,
         Err(error) => {
             let _ = updates.try_send(Delivery {
@@ -286,6 +287,8 @@ fn serve(
             return;
         }
     };
+    let source = opened.source;
+    let stamp = opened.stamp;
     tracing::debug!(elapsed = ?opening_started.elapsed(), "file opened");
     if updates
         .try_send(Delivery {
@@ -295,6 +298,7 @@ fn serve(
             update: Update::Opened(
                 source.meta().clone(),
                 FileInfo {
+                    declared_reference_freq: opened.declared_reference_freq,
                     bytes: std::fs::metadata(path).ok().map(|meta| meta.len()),
                     sample_units: source.original_sample_units(),
                     stamp,

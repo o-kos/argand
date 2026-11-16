@@ -59,9 +59,17 @@ pub struct Extents {
     pub time: crate::navigation::time_ruler::Ruler,
     pub seconds: (f64, f64),
     pub hertz: (f64, f64),
+    pub frequency_offset: f64,
 }
 
 impl Extents {
+    pub fn displayed_hertz(self) -> (f64, f64) {
+        (
+            self.hertz.0 + self.frequency_offset,
+            self.hertz.1 + self.frequency_offset,
+        )
+    }
+
     fn per_pixel(self, plot: Rect, scale: f32) -> (f64, f64) {
         let (time_pixels, frequency_pixels) = self.orientation.axes(plot.width, plot.height);
         let time_units = if self.time.mode == crate::navigation::time_ruler::Mode::Samples {
@@ -243,7 +251,7 @@ impl Frame {
         let orientation = extents.orientation;
         let vertical = orientation.vertical();
         let (t0, t1) = extents.time.bounds(extents.seconds);
-        let (f0, f1) = extents.hertz;
+        let (f0, f1) = extents.displayed_hertz();
         let caption = axis::caption(AxisKind::Frequency, f0, f1);
         let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
         let foot = bottom_band(measure);

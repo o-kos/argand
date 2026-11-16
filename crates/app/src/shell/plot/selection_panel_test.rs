@@ -145,7 +145,7 @@ fn tab_goes_round_the_panel_s_own_fields(cx: &mut TestAppContext) {
         "back on the start, six fields on"
     );
     toggle(cx, &shell);
-    keys(cx, "shift-tab 3 0 0 enter");
+    keys(cx, "shift-tab 3 0 0 h z enter");
     let band = selected(cx, &shell)
         .band
         .expect("the width selects the band");
@@ -255,6 +255,17 @@ fn up_and_down_step_the_focused_field_by_its_last_digit(cx: &mut TestAppContext)
         span(122, 200),
         "and Enter keeps it"
     );
+}
+
+#[gpui_kit::test]
+fn a_bare_width_draft_steps_in_its_opened_unit_across_the_kilohertz_boundary(
+    cx: &mut TestAppContext,
+) {
+    let (shell, cx) = open(cx);
+    toggle(cx, &shell);
+    keys(cx, "shift-tab 0 . 5 up");
+    let band = selected(cx, &shell).band.unwrap();
+    assert_eq!((band.low(), band.high()), (-500., 100.));
 }
 
 #[gpui_kit::test]

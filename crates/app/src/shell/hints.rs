@@ -33,12 +33,13 @@ pub(super) fn passive(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Panel {
     File,
+    Reference,
     Analysis,
     About,
 }
 
 impl Panel {
-    pub(super) const ALL: [Self; 3] = [Self::File, Self::Analysis, Self::About];
+    pub(super) const ALL: [Self; 4] = [Self::File, Self::Reference, Self::Analysis, Self::About];
 }
 
 /// What a pinned hint tells its owner.
