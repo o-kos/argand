@@ -13,6 +13,10 @@ default and frequency with Shift. Ctrl chooses zoom. Each ruler always routes
 wheel input to its own axis. Middle-button and Space+left drag pan both axes on
 the spectrogram and only the ruler's own axis. Left drags select as described
 below. Keyboard commands and the View menu retain their explicit physical axes.
+When a spectrum/ruler drag reaches a capture bound, that axis rebases its pointer
+anchor to the bounded view. Further overshoot is discarded, so reversing direction
+immediately moves away from the bound. Each axis rebases independently; a fitted
+axis stays fixed, and minimap drag mapping retains its full-capture behavior.
 `shell/plot/plot_ui.rs` immediately maps held spectral pictures into
 the requested time interval and clips the spectrogram to its plot. Cursor levels
 come from the displayed grid's own extents; uncovered time has no reported level.
@@ -175,11 +179,11 @@ state is persisted, and the full-capture minimap is independent of both viewport
 together) and an optional `FrequencyBand` in physical hertz (#202).
 The kinds and their later operations are phase 5 of `IMPLEMENTATION_PLAN.md`.
 `PlotView::press` decides a gesture once per press. Space+left and middle drag pan
-before selection handling. On the spectrogram, left selects time, Shift+left
-selects a band and Ctrl+Shift+left selects a rectangle. Both rulers use left drag
+before selection handling. On the spectrogram, left selects time, Shift+left or
+Ctrl+left selects a band and Ctrl+Shift+left selects a rectangle. Both rulers use left drag
 to select their own physical axis. Alt+left adjusts existing nearest boundaries
 before direct edge/interior grabs, and creates no gesture without a selected axis.
-Shift and Ctrl+Shift on the spectrogram start their requested selection type before
+Shift, Ctrl and Ctrl+Shift on the spectrogram start their requested selection type before
 grabs. Unmodified presses retain edge resizing and interior movement. The minimap
 retains its existing time pan and edge-resize behavior. Changes to modifiers after
 mouse-down never change the gesture's selected axes or operation. A pan remembers its

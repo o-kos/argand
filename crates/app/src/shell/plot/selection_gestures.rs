@@ -244,7 +244,8 @@ impl PlotView {
             return self.extend_from_nearer_edges(event, geometry, snapshot);
         }
         // Explicit selection modifiers start a fresh band or rectangle before grabs.
-        if event.modifiers.shift && geometry.selects_at(event.position) {
+        if (event.modifiers.shift || event.modifiers.control) && geometry.selects_at(event.position)
+        {
             return None;
         }
         let grabbed = grab(snapshot, geometry, event.position)?;

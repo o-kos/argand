@@ -377,9 +377,14 @@ impl Render for PlotView {
                         self.space,
                     )
                     .or_else(|| {
-                        (!window.modifiers().shift && !window.modifiers().alt)
-                            .then(|| self.hover_cursor())
-                            .flatten()
+                        (!window.modifiers().shift
+                            && !window.modifiers().alt
+                            && !(window.modifiers().control
+                                && self
+                                    .pointer
+                                    .is_some_and(|position| geometry.selects_at(position))))
+                        .then(|| self.hover_cursor())
+                        .flatten()
                     })
                     .unwrap_or_else(|| {
                         geometry.cursor(

@@ -985,9 +985,10 @@ impl crate::shell::plot::plot_view::PlotView {
             let view = snapshot.extents.time.view;
             self.selecting = Some(Selecting::fresh(
                 event.position,
-                (on_time || (on_spectrum && (!event.modifiers.shift || event.modifiers.control)))
+                (on_time || (on_spectrum && event.modifiers.shift == event.modifiers.control))
                     .then(|| view.boundary(time)),
-                (on_frequency || (on_spectrum && event.modifiers.shift))
+                (on_frequency
+                    || (on_spectrum && (event.modifiers.shift || event.modifiers.control)))
                     .then(|| hertz(snapshot.extents.hertz, frequency)),
             ));
             cx.notify();
@@ -1094,18 +1095,20 @@ impl crate::shell::plot::plot_view::PlotView {
         let held = event.pressed_button == Some(self.pan_button);
         let mut frequency = None;
         if let Some((origin, view)) = self.frequency_pan {
-            if held {
-                if let Some(geometry) = self.geometry {
-                    let fraction =
-                        geometry.fractions(event.position).1 - geometry.fractions(origin).1;
-                    frequency = Some(view.pan(fraction));
+            if held && let Some(geometry) = self.geometry {
+                let fraction = geometry.fractions(event.position).1 - geometry.fractions(origin).1;
+                let next = view.pan(fraction);
+                // Discard overshoot at a capture bound so reversing responds immediately.
+                if next.start == 0. || next.start == 1. - next.span {
+                    self.frequency_pan = Some((event.position, next));
                 }
-            } else {
+                frequency = Some(next);
+            } else if !held {
                 self.frequency_pan = None;
             }
         }
         let mut time = None;
-        if let Some(pan) = self.pan
+        if let Some(mut pan) = self.pan
             && let Some(snapshot) = &self.snapshot
         {
             if held {
@@ -1118,7 +1121,13 @@ impl crate::shell::plot::plot_view::PlotView {
                 } else {
                     f64::from(fraction)
                 };
-                time = Some(pan.view.pan(fraction, total));
+                let next = pan.view.pan(fraction, total);
+                if !pan.minimap && (next.start == 0 || next.start == total - next.len) {
+                    pan.position = event.position;
+                    pan.view = next;
+                    self.pan = Some(pan);
+                }
+                time = Some(next);
             } else {
                 self.pan = None;
             }

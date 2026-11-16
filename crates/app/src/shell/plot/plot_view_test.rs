@@ -431,6 +431,108 @@ fn spectrum(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> Bounds<Pi
 }
 
 #[gpui_kit::test]
+fn pan_reverses_immediately_after_overshooting_either_boundary(cx: &mut TestAppContext) {
+    use crate::navigation::orientation::Mode;
+    for orientation in [Mode::Horizontal, Mode::Vertical] {
+        for region in 0..3 {
+            for button in [MouseButton::Middle, MouseButton::Left] {
+                for direction in [-1., 1.] {
+                    let handle = open(cx);
+                    handle
+                        .update(cx, |harness, _, cx| {
+                            harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                                let snapshot = plot.snapshot.as_mut().unwrap();
+                                snapshot.extents.orientation = orientation;
+                                snapshot.frequency = crate::navigation::frequency::View {
+                                    start: 0.25,
+                                    span: 0.5,
+                                };
+                                plot.reorient(cx);
+                            });
+                        })
+                        .unwrap();
+                    frame(cx, handle);
+                    frame(cx, handle);
+                    let geometry = handle
+                        .read_with(cx, |harness, cx| {
+                            harness.plot.as_ref().unwrap().read(cx).geometry.unwrap()
+                        })
+                        .unwrap();
+                    let from = match region {
+                        0 => geometry.spectrum.center(),
+                        1 => geometry.time_ruler.center(),
+                        _ => geometry.frequency_ruler.center(),
+                    };
+                    let time = region != 2;
+                    let frequency = region != 1;
+                    let delta = |fraction: f32| {
+                        let along = if time {
+                            -direction * fraction * geometry.time_length()
+                        } else {
+                            0.
+                        };
+                        let across = if frequency {
+                            direction
+                                * fraction
+                                * geometry.frequency_length()
+                                * if orientation.vertical() { -1. } else { 1. }
+                        } else {
+                            0.
+                        };
+                        let (x, y) = orientation.axes(along, across);
+                        point(px(x), px(y))
+                    };
+                    if button == MouseButton::Left {
+                        space(cx, handle, true);
+                    }
+                    let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+                    let none = gpui_kit::Modifiers::default();
+                    input.simulate_mouse_move(from, None, none);
+                    input.simulate_mouse_down(from, button, none);
+                    // The pointer can leave the canvas while the held pan reaches a capture bound.
+                    input.simulate_mouse_move(from + delta(0.8), button, none);
+                    input.simulate_mouse_move(from + delta(0.75), button, none);
+                    input.simulate_mouse_up(from + delta(0.75), button, none);
+                    cx.run_until_parked();
+                    let (actual_time, actual_frequency) = handle
+                        .read_with(cx, |harness, _| {
+                            harness
+                                .intents
+                                .iter()
+                                .rev()
+                                .find_map(|intent| match intent {
+                                    PlotIntent::Drag { time, frequency } => {
+                                        Some((*time, *frequency))
+                                    }
+                                    _ => None,
+                                })
+                                .expect("pan emits a view")
+                        })
+                        .unwrap();
+                    assert_eq!(actual_time.is_some(), time);
+                    assert_eq!(actual_frequency.is_some(), frequency);
+                    let expected = if direction < 0. { 0.025 } else { 0.475 };
+                    if let Some(view) = actual_time {
+                        assert!(
+                            (view.start as f64 / 1_000_000. - expected).abs() <= 0.000001,
+                            "{orientation:?} region {region} {button:?} direction {direction}: {view:?}"
+                        );
+                        assert_eq!(view.len, 500_000);
+                    }
+                    if let Some(view) = actual_frequency {
+                        assert!(
+                            (view.start - expected).abs() < 0.000001,
+                            "{orientation:?} region {region} {button:?} direction {direction}: {view:?}"
+                        );
+                        assert_eq!(view.span, 0.5);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[gpui_kit::test]
 fn a_drag_keeps_tracking_beyond_the_plot(cx: &mut TestAppContext) {
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
@@ -1943,7 +2045,7 @@ fn a_band_edge_stops_at_the_capture_s_band(cx: &mut TestAppContext) {
 fn explicit_selection_axes_override_existing_grabs_and_latch_at_press(cx: &mut TestAppContext) {
     use crate::navigation::orientation::Mode;
     for orientation in [Mode::Horizontal, Mode::Vertical] {
-        for (shift, control) in [(false, false), (true, false), (true, true)] {
+        for (shift, control) in [(false, false), (true, false), (false, true), (true, true)] {
             let handle = open(cx);
             handle
                 .update(cx, |harness, _, cx| {
@@ -1958,7 +2060,7 @@ fn explicit_selection_axes_override_existing_grabs_and_latch_at_press(cx: &mut T
             let spectrum = spectrum(cx, handle);
             let from = spectrum.center();
             let to = from + point(px(50.), px(40.));
-            if shift {
+            if shift || control {
                 show_selection(
                     cx,
                     handle,
@@ -1981,8 +2083,8 @@ fn explicit_selection_axes_override_existing_grabs_and_latch_at_press(cx: &mut T
             input.simulate_mouse_up(to, MouseButton::Left, gpui_kit::Modifiers::default());
             cx.run_until_parked();
             let selected = selections(cx, handle).last().copied().flatten().unwrap();
-            assert_eq!(selected.time.is_some(), !shift || control);
-            assert_eq!(selected.band.is_some(), shift);
+            assert_eq!(selected.time.is_some(), shift == control);
+            assert_eq!(selected.band.is_some(), shift || control);
             assert_eq!(drag_steps(cx, handle), 0);
         }
     }
