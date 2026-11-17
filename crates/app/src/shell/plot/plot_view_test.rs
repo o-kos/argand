@@ -183,6 +183,7 @@ fn navigation(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> Vec<Plo
 
 #[gpui_kit::test]
 fn every_navigation_key_emits_exactly_one_intent(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     navigation(cx, handle);
     let zoom_in = TimeIntent::Zoom {
@@ -236,6 +237,7 @@ fn every_navigation_key_emits_exactly_one_intent(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn zooming_out_the_right_axis_releases_the_held_gutter(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let floor = |cx: &mut TestAppContext| {
         handle
@@ -287,6 +289,7 @@ fn zooming_out_the_right_axis_releases_the_held_gutter(cx: &mut TestAppContext) 
 
 #[gpui_kit::test]
 fn session_commands_bubble_from_the_focused_plot(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     press(cx, handle, "ctrl-g");
     assert_eq!(handle.update(cx, |harness, _, _| harness.grid).unwrap(), 1);
@@ -294,6 +297,7 @@ fn session_commands_bubble_from_the_focused_plot(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn plot_keys_need_the_plot_itself_focused(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     handle
         .update(cx, |harness, window, cx| window.focus(&harness.other, cx))
@@ -308,6 +312,7 @@ fn plot_keys_need_the_plot_itself_focused(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn another_window_never_reaches_the_plot(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     navigation(cx, handle);
     let other = cx.add_window(|window, cx| {
@@ -333,6 +338,7 @@ fn another_window_never_reaches_the_plot(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_replaced_plot_stops_intercepting(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let old = handle
         .update(cx, |harness, _, _| {
@@ -355,6 +361,7 @@ fn a_replaced_plot_stops_intercepting(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn retirement_clears_the_snapshot_first(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let image = spectrogram::texture(
         &argand_core::SpectrogramImage::new(2, 2),
@@ -432,6 +439,7 @@ fn spectrum(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> Bounds<Pi
 
 #[gpui_kit::test]
 fn a_drag_keeps_tracking_beyond_the_plot(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let bottom = handle
@@ -472,6 +480,7 @@ fn pointer(
 
 #[gpui_kit::test]
 fn an_overlay_on_the_plot_hides_its_pointer_until_the_first_move_back(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let covered = spectrum.center();
@@ -501,6 +510,7 @@ fn an_overlay_on_the_plot_hides_its_pointer_until_the_first_move_back(cx: &mut T
 
 #[gpui_kit::test]
 fn an_overlay_on_the_plot_takes_its_wheel_clicks_and_drags(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let covered = spectrum.center();
@@ -535,6 +545,7 @@ fn an_overlay_on_the_plot_takes_its_wheel_clicks_and_drags(cx: &mut TestAppConte
 
 #[gpui_kit::test]
 fn key_presses_keep_the_pointer_over_the_plot(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let resting = spectrum(cx, handle).center();
     let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
@@ -580,6 +591,7 @@ fn uncover_under(
 
 #[gpui_kit::test]
 fn a_plot_uncovered_under_a_still_pointer_takes_it_up(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let resting = uncover_under(cx, handle, true);
     assert_eq!(pointer(cx, handle), Some(resting));
@@ -587,6 +599,7 @@ fn a_plot_uncovered_under_a_still_pointer_takes_it_up(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_pointer_that_left_the_window_is_not_taken_up(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     uncover_under(cx, handle, false);
     assert_eq!(pointer(cx, handle), None);
@@ -594,6 +607,7 @@ fn a_pointer_that_left_the_window_is_not_taken_up(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_new_orientation_keeps_a_resting_pointer(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let resting = spectrum(cx, handle).center();
     let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
@@ -648,6 +662,7 @@ fn drag_steps(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> usize {
 
 #[gpui_kit::test]
 fn an_interrupted_drag_does_not_resume(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let (mut input, from) = start_drag(cx, handle);
     handle
@@ -669,6 +684,7 @@ fn an_interrupted_drag_does_not_resume(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_drag_keeps_tracking_over_a_hint_on_the_plot(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let from = spectrum.center();
@@ -770,6 +786,7 @@ fn space_held(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> bool {
 
 #[gpui_kit::test]
 fn a_left_drag_on_the_spectrum_selects_time_and_does_not_pan(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let from = spectrum.center();
@@ -794,6 +811,7 @@ fn a_left_drag_on_the_spectrum_selects_time_and_does_not_pan(cx: &mut TestAppCon
 
 #[gpui_kit::test]
 fn a_selection_dragged_beyond_the_plot_stops_at_the_visible_edge(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let from = spectrum.center();
@@ -808,6 +826,7 @@ fn a_selection_dragged_beyond_the_plot_stops_at_the_visible_edge(cx: &mut TestAp
 
 #[gpui_kit::test]
 fn a_click_and_escape_clear_the_selection(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let at = spectrum(cx, handle).center();
     left_drag(
@@ -828,6 +847,7 @@ fn a_click_and_escape_clear_the_selection(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_release_settles_the_far_end_of_a_selection(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let from = spectrum.center();
@@ -851,6 +871,7 @@ fn the_release_settles_the_far_end_of_a_selection(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn escape_during_a_drag_ends_the_selection_gesture(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let from = spectrum(cx, handle).center();
     let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
@@ -872,6 +893,7 @@ fn escape_during_a_drag_ends_the_selection_gesture(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn ctrl_drag_on_the_spectrum_selects_a_rectangle(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let from = spectrum.center();
@@ -898,6 +920,7 @@ fn ctrl_drag_on_the_spectrum_selects_a_rectangle(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_rectangle_without_height_selects_nothing(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let from = spectrum(cx, handle).center();
     let ctrl = gpui_kit::Modifiers {
@@ -920,6 +943,7 @@ fn frequency_ruler(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> Bo
 
 #[gpui_kit::test]
 fn a_left_drag_on_the_frequency_ruler_selects_a_band(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let ruler = frequency_ruler(cx, handle);
@@ -944,6 +968,7 @@ fn a_left_drag_on_the_frequency_ruler_selects_a_band(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_middle_drag_on_the_frequency_ruler_still_pans(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     handle
         .update(cx, |harness, _, cx| {
@@ -971,6 +996,7 @@ fn a_middle_drag_on_the_frequency_ruler_still_pans(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_vertical_plot_selects_a_band_along_its_frequency_axis(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     handle
         .update(cx, |harness, _, cx| {
@@ -1003,6 +1029,7 @@ fn a_vertical_plot_selects_a_band_along_its_frequency_axis(cx: &mut TestAppConte
 
 #[gpui_kit::test]
 fn space_and_a_left_drag_on_the_frequency_ruler_pan(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     handle
         .update(cx, |harness, _, cx| {
@@ -1031,6 +1058,7 @@ fn space_and_a_left_drag_on_the_frequency_ruler_pan(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_vertical_plot_selects_a_rectangle_along_both_axes(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     handle
         .update(cx, |harness, _, cx| {
@@ -1071,6 +1099,7 @@ fn a_vertical_plot_selects_a_rectangle_along_both_axes(cx: &mut TestAppContext) 
 
 #[gpui_kit::test]
 fn space_turns_a_left_drag_into_a_pan_until_it_is_released(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let from = spectrum.center();
@@ -1098,6 +1127,7 @@ fn space_turns_a_left_drag_into_a_pan_until_it_is_released(cx: &mut TestAppConte
 
 #[gpui_kit::test]
 fn space_released_with_a_modifier_down_is_released(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     space(cx, handle, true);
     let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
@@ -1110,6 +1140,7 @@ fn space_released_with_a_modifier_down_is_released(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn space_is_forgotten_when_the_plot_loses_focus(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     // GPUI reports focus changes only within an active window.
     cx.update_window(handle.into(), |_, window, _| window.activate_window())
@@ -1125,6 +1156,7 @@ fn space_is_forgotten_when_the_plot_loses_focus(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_left_drag_on_the_time_ruler_still_pans(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let ruler = handle
         .update(cx, |harness, _, cx| {
@@ -1151,6 +1183,7 @@ fn a_left_drag_on_the_time_ruler_still_pans(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_vertical_plot_selects_along_its_time_axis(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     handle
         .update(cx, |harness, _, cx| {
@@ -1260,6 +1293,7 @@ fn halves(
 
 #[gpui_kit::test]
 fn zoom_buttons_follow_the_painted_plot_in_the_first_resize_frame(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     for orientation in [
         crate::navigation::orientation::Mode::Horizontal,
@@ -1312,6 +1346,7 @@ fn zoom_buttons_follow_the_painted_plot_in_the_first_resize_frame(cx: &mut TestA
 
 #[gpui_kit::test]
 fn zoom_buttons_keep_paint_and_click_ownership_over_the_paste_marker(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     toggle_pairs(cx, handle);
     let button = halves(cx, handle, 0).0;
@@ -1377,6 +1412,7 @@ fn plot_focused(cx: &mut TestAppContext, handle: WindowHandle<Harness>) -> bool 
 
 #[gpui_kit::test]
 fn a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     toggle_pairs(cx, handle);
     navigation(cx, handle);
@@ -1400,6 +1436,7 @@ fn a_zoom_half_zooms_once_and_leaves_the_keyboard_on_the_plot(cx: &mut TestAppCo
 
 #[gpui_kit::test]
 fn hiding_the_pairs_during_a_press_leaves_nothing_behind(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     toggle_pairs(cx, handle);
     let inside = half(cx, handle, 1);
@@ -1552,6 +1589,7 @@ fn type_text(cx: &mut TestAppContext, handle: WindowHandle<Harness>, keys: &str)
 
 #[gpui_kit::test]
 fn a_double_click_on_a_badge_types_its_value(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use crate::navigation::selection_entry::Field;
     let handle = open(cx);
     cx.update(badge_entry::init);
@@ -1577,6 +1615,7 @@ fn a_double_click_on_a_badge_types_its_value(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_badge_input_reads_its_text_in_the_units_it_was_written_in(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use crate::navigation::selection_entry::Field;
     let handle = open(cx);
     cx.update(badge_entry::init);
@@ -1599,6 +1638,7 @@ fn a_badge_input_reads_its_text_in_the_units_it_was_written_in(cx: &mut TestAppC
 fn leaving_the_window_closes_a_badge_input_and_the_plot_keeps_the_keyboard(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use crate::navigation::selection_entry::Field;
     let handle = open(cx);
     cx.update(badge_entry::init);
@@ -1622,6 +1662,7 @@ fn leaving_the_window_closes_a_badge_input_and_the_plot_keeps_the_keyboard(
 
 #[gpui_kit::test]
 fn up_and_down_step_a_badge_input_and_keep_it_open(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use crate::navigation::selection_entry::Field;
     let handle = open(cx);
     cx.update(badge_entry::init);
@@ -1644,6 +1685,7 @@ fn up_and_down_step_a_badge_input_and_keep_it_open(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_bare_width_draft_steps_in_its_opened_unit_before_reformatting(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use crate::navigation::selection_entry::Field;
     let handle = open(cx);
     cx.update(badge_entry::init);
@@ -1701,6 +1743,7 @@ fn a_bare_width_draft_steps_in_its_opened_unit_before_reformatting(cx: &mut Test
 
 #[gpui_kit::test]
 fn a_badge_input_marks_a_bad_value_and_escape_leaves_the_selection(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use crate::navigation::selection_entry::Field;
     let handle = open(cx);
     cx.update(badge_entry::init);
@@ -1738,6 +1781,7 @@ fn x_of(spectrum: Bounds<Pixels>, sample: u64) -> Pixels {
 
 #[gpui_kit::test]
 fn dragging_an_edge_reshapes_the_selection_and_swaps_past_the_other(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let centre = spectrum.center();
@@ -1763,6 +1807,7 @@ fn dragging_an_edge_reshapes_the_selection_and_swaps_past_the_other(cx: &mut Tes
 
 #[gpui_kit::test]
 fn a_drag_inside_moves_the_whole_selection(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let centre = spectrum.center();
@@ -1790,6 +1835,7 @@ fn a_drag_inside_moves_the_whole_selection(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn shift_click_moves_the_nearer_edge_to_the_pointer(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let centre = spectrum.center();
@@ -1812,6 +1858,7 @@ fn shift_click_moves_the_nearer_edge_to_the_pointer(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_band_edge_drags_on_the_frequency_ruler_and_the_cursor_says_so(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let ruler = frequency_ruler(cx, handle);
@@ -1846,6 +1893,7 @@ fn a_band_edge_drags_on_the_frequency_ruler_and_the_cursor_says_so(cx: &mut Test
 
 #[gpui_kit::test]
 fn a_rectangle_s_time_edge_drags_on_the_minimap(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let minimap = handle
         .update(cx, |harness, _, cx| {
@@ -1883,6 +1931,7 @@ fn a_rectangle_s_time_edge_drags_on_the_minimap(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_band_edge_stops_at_the_capture_s_band(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let spectrum = spectrum(cx, handle);
     let ruler = frequency_ruler(cx, handle);

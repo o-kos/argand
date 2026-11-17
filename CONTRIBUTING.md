@@ -8,11 +8,21 @@ changes. Repository content and all GitHub communication must be in English.
 [Agent roles and model selection](AGENTS.md#agent-roles-and-model-selection) is the
 source of truth for role assignments and risk classes. The approved defaults need
 no repeated per-Issue approval.
-The primary agent discusses the task directly with the owner and owns investigation,
-implementation, validation and final assessment. Use optional delegation and targeted
-consultation under those role defaults. The reviewer reads the assigned material
-without changing it. Changes to product behaviour, UX or acceptance criteria require
-the owner's decision.
+The primary agent is the owner-facing coordinator. It discusses decisions and scope,
+delegates implementation, relays owner input, tracks progress and assesses exact
+results and validation limits without writing product code. The executor owns the
+assigned task end to end: investigation, plan, implementation, tests, and Pull Request
+preparation and operations within the authorized scope. It makes ordinary technical
+choices autonomously, reports progress and escalates blockers or owner decisions.
+Conversation with the coordinator does not pause background execution; relay relevant
+corrections promptly. Follow the role defaults for optional targeted consultation.
+The reviewer reads the assigned material without changing it. Changes to product
+behaviour, UX or acceptance criteria require the owner's decision.
+
+Separate executors may work on distinct independent tasks only in owner-authorized
+directories or worktrees. Coordinate running applications and UI acceptance so
+tasks do not interfere. This arrangement grants no additional worktree, toolchain,
+SDK, dependency, artifact-sharing, merge, release or owner-acceptance authority.
 
 For work without code changes, the primary agent decides whether an Issue, Pull
 Request, new branch, formal plan, external review, tests or the full local gate is
@@ -234,9 +244,12 @@ assuming that a local field's success establishes the shared contract.
 
 ### UI acceptance
 
-For UI work, the primary agent includes acceptance in the plan and follows the
+For UI work, the executor includes acceptance in the plan and follows the
 repository-local [UI acceptance skill](.agents/skills/argand-ui-acceptance/SKILL.md)
-without waiting for the owner to invoke it by name. The reviewer assesses the evidence. This section remains the canonical acceptance policy.
+without waiting for the owner to invoke it by name. The coordinator coordinates
+acceptance runs between executors and assesses the exact results and their limits.
+The reviewer independently assesses the evidence. This section remains the
+canonical acceptance policy.
 
 UI acceptance requires running the current production application binary and
 exercising the actual affected scenario, checking appearance and interactions.
@@ -388,6 +401,18 @@ and shipped application/CLI binaries stay in the workspace-local `target/`. The
 maintained probes are
 `argand`'s `fft_scheduling` and `argand-dsp`'s `snapshot_cost` and `conversion_cost`.
 
+Every application GPUI test creates `crate::test_context::cleanup(cx)` as its
+first local scope guard, before retained entities and window references. This
+calls the genuine `TestAppContext::quit` API after those owners drop, including
+when the test unwinds, and drains cancelled delivery tasks. The cleanup scope permits
+native I/O wakeups only during teardown through the toolkit's parking API. It does
+not clear a previously recorded test-body determinism failure. The locked toolkit's
+macro calls `App::quit` on a no-op test platform, which does not perform this
+context cleanup. Keep the application guard even for context-only tests so
+window and reader lifetimes do not depend on which helper a test uses. Ordinary
+success must propagate cleanup failures, and cleanup during a test panic must
+preserve that original failure. Installed SDK/registry sources remain immutable.
+
 Tests obtain checkout-dependent executable and fixture paths from Cargo's runtime
 `CARGO_BIN_EXE_*` and `CARGO_MANIFEST_DIR` variables using native OS strings.
 Do not embed these paths with `env!`: Cargo can reuse a test executable across
@@ -518,19 +543,19 @@ Dry-run the checks the release workflow makes before pushing anything:
 
 It fails if the tag does not match `workspace.package.version` or the changelog has no section for it, and otherwise prints the section that becomes the GitHub Release description.
 
-After the Pull Request is squash-merged, the repository administrator tags the merge
-commit on an up-to-date `main`:
+After the release Pull Request is squash-merged, the owner explicitly authorizes
+its release and tags the chosen commit in main's history:
 
 ```sh
-git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git tag -a vX.Y.Z <approved-commit-sha> -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-A ruleset restricts creating, moving and deleting `v*` tags to the administrator, so this
-step and the one below cannot be carried out by anyone else. Branch protection does not
-cover tags, and the workflow's own `main`-ancestor check runs from the tagged commit, so
-it guards against a mistyped tag rather than against someone who should not be releasing
-at all. Prepare the release Pull Request as usual and hand the tagging over.
+GitHub permissions and rulesets control tag creation and publication. The workflow
+accepts only canonical numeric `vMAJOR.MINOR.PATCH` tags without leading zeroes or
+suffixes, verifies that the tag commit is reachable from main, and builds from that
+exact verified SHA. The commit need not be main's current tip. Ordinary merges do
+not release, and the workflow adds no user-role checks or local release command.
 
 The tag starts `.github/workflows/release.yml`, which verifies the tag against the
 workspace version and changelog, runs source-toolkit tests and builds both `argand`
@@ -540,12 +565,11 @@ with `-C target-feature=+crt-static` and an explicit target. No installed GPUI K
 SDK is used by these portable builds.
 
 `.github/scripts/package-release.py` is shared with full CI, so packaging and
-headless runtime checks pass on the Ready release PR before an administrator tags
+headless runtime checks pass on the Ready release PR before an explicitly authorized tag is created for
 it. It verifies both packaged binaries' versions and renders the synthetic stereo
-PCM16 2 kHz FLAC fixture with packaged aspec. On Linux it bundles the native library
-closure plus explicitly loaded fontconfig, Wayland and Vulkan libraries, copies
-their package copyright notices and creates an application-scoped launcher. glibc,
-the ELF loader, desktop/font configuration and Vulkan drivers remain OS requirements;
+PCM16 2 kHz FLAC fixture with packaged aspec. On Linux it copies the executable directly without bundling system shared
+libraries or overriding the library path. Compatible runtime libraries, desktop
+and font configuration, and graphics drivers come from the operating system;
 see the baseline in [README.md](README.md#install). On Windows it rejects non-OS
 DLL imports, including dynamic Visual C++ runtimes. The Windows baseline is version
 10 1703 or newer, which supplies the `icuuc.dll` and `icuin.dll` ICU components;
@@ -574,13 +598,9 @@ Each platform publishes separate `argand-vX.Y.Z-<target>` and
 `aspec-vX.Y.Z-<target>` archives (tar.gz on Linux, ZIP on Windows), preserving
 existing CLI artifact names. Both include the README, MIT licence, changelog and
 `BUILD-INFO.json` recording the source commit, target, source-toolkit mode, binary
-SHA-256 and native dependencies. `SHA256SUMS` covers all four archives; the release
+SHA-256 and validated Windows native imports. `SHA256SUMS` covers all four archives; the release
 body is the version's changelog section. Verification failures happen before
 building and publishing.
 
-To redo a published release, the administrator deletes it together with its tag and
-starts again:
-
-```sh
-gh release delete vX.Y.Z --cleanup-tag
-```
+Published Releases and tags are not automatically overwritten. Recovery requires
+a separate explicit owner decision.

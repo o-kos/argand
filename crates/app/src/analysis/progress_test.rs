@@ -13,12 +13,7 @@ fn progress_counts_iq_pairs_and_never_waits_for_a_full_reply_queue() {
         1.0,
     );
     let mut input = argand_io::open(&path, &OpenHints::default()).unwrap();
-    let (analyst, updates, _start) = prepare(
-        path,
-        OpenHints::default(),
-        Default::default(),
-        crate::release::lease().0,
-    );
+    let (analyst, _requests) = analyst_for_test();
     let analysis = crate::settings::Settings::from_config(&crate::config::Config::default())
         .analysis_request(input.meta(), 10, 10);
     analyst.request(analysis);
@@ -47,5 +42,4 @@ fn progress_counts_iq_pairs_and_never_waits_for_a_full_reply_queue() {
         }
     ));
     assert!(receiver.is_empty());
-    drop(updates);
 }

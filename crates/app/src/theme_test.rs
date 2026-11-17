@@ -14,6 +14,7 @@ fn surfaces(cx: &mut TestAppContext) -> [Hsla; 4] {
 
 #[gpui_kit::test]
 fn every_switch_applies_argands_surfaces(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(|cx| {
         gpui_kit::init(cx);
         install(ThemeMode::Dark, cx);

@@ -34,7 +34,7 @@ fn open(cx: &mut TestAppContext) -> Window_ {
     let opened = window.shell.clone();
     cx.update_window(window.handle.into(), |_, win, cx| {
         opened.update(cx, |shell, cx| {
-            shell.open(Origin::new(PathBuf::from("/captures/session.iqw")), win, cx);
+            shell.open_test_document(Origin::new(PathBuf::from("/captures/session.iqw")), win, cx);
         });
     })
     .expect("the window is open");
@@ -106,6 +106,7 @@ fn type_overlap(cx: &mut TestAppContext, w: &Window_, text: &str) {
 
 #[gpui_kit::test]
 fn a_choice_in_a_list_applies_and_keeps_the_hint(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     let opening = settings(cx, &w);
@@ -127,6 +128,7 @@ fn a_choice_in_a_list_applies_and_keeps_the_hint(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_list_stays_where_it_is_while_the_keyboard_walks_it(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     let opening = settings(cx, &w);
@@ -165,6 +167,7 @@ fn a_list_stays_where_it_is_while_the_keyboard_walks_it(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn a_held_stepper_repeats_until_the_pointer_leaves_it(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     let opening = settings(cx, &w).overlap;
@@ -223,6 +226,7 @@ fn on_reset(cx: &mut TestAppContext, w: &Window_) -> bool {
 
 #[gpui_kit::test]
 fn the_keyboard_starts_on_the_first_value_and_tab_goes_round_the_hint(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     frame(cx, &w);
@@ -266,6 +270,7 @@ fn the_keyboard_starts_on_the_first_value_and_tab_goes_round_the_hint(cx: &mut T
 
 #[gpui_kit::test]
 fn a_fixed_range_is_a_stop_of_its_own(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     frame(cx, &w);
@@ -299,6 +304,7 @@ fn a_fixed_range_is_a_stop_of_its_own(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_keyboard_chooses_in_a_list_and_steps_a_number(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     frame(cx, &w);
@@ -346,6 +352,7 @@ fn the_keyboard_chooses_in_a_list_and_steps_a_number(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn enter_on_reset_to_defaults_resets_and_keeps_the_hint(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     frame(cx, &w);
@@ -382,6 +389,7 @@ fn balloon_drawn(cx: &mut TestAppContext, w: &Window_) -> bool {
 
 #[gpui_kit::test]
 fn a_warned_range_shows_its_balloon_until_a_list_opens_or_its_cross(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     warn(cx, &w);
     open_hint(cx, &w);
@@ -428,6 +436,7 @@ fn acknowledge_range(cx: &mut TestAppContext, w: &Window_) {
 
 #[gpui_kit::test]
 fn hidden_range_advice_does_not_retain_transient_hover(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     acknowledge_range(cx, &w);
     open_hint(cx, &w);
@@ -484,6 +493,7 @@ fn hidden_range_advice_does_not_retain_transient_hover(cx: &mut TestAppContext) 
 
 #[gpui_kit::test]
 fn enter_on_a_number_applies_it_and_a_keeping_close_saves_it(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     type_overlap(cx, &w, "25");
@@ -505,6 +515,7 @@ fn enter_on_a_number_applies_it_and_a_keeping_close_saves_it(cx: &mut TestAppCon
 
 #[gpui_kit::test]
 fn a_kept_range_alone_does_not_claim_the_saved_settings(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     let opening = settings(cx, &w);
@@ -528,6 +539,7 @@ fn a_kept_range_alone_does_not_claim_the_saved_settings(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn an_unusable_number_keeps_the_hint_with_its_error(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     let opening = settings(cx, &w);
@@ -541,6 +553,7 @@ fn an_unusable_number_keeps_the_hint_with_its_error(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn escape_restores_the_settings_and_views_the_hint_opened_with(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     let full = crate::navigation::View::full(1000);
     w.shell.update(cx, |shell, _| shell.view = Some(full));
@@ -573,6 +586,7 @@ fn escape_restores_the_settings_and_views_the_hint_opened_with(cx: &mut TestAppC
 
 #[gpui_kit::test]
 fn defaults_put_back_a_refused_number_even_when_nothing_changed(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     type_overlap(cx, &w, "96");
@@ -601,6 +615,7 @@ fn defaults_put_back_a_refused_number_even_when_nothing_changed(cx: &mut TestApp
 
 #[gpui_kit::test]
 fn defaults_apply_the_configuration_and_keep_the_hint(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let w = open(cx);
     open_hint(cx, &w);
     type_overlap(cx, &w, "10");

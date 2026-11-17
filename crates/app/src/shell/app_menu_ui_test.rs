@@ -54,6 +54,7 @@ fn owner_focused(cx: &mut TestAppContext, handle: WindowHandle<Shell>) -> bool {
 
 #[gpui_kit::test]
 fn only_the_other_orientation_segment_switches(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     open_document(cx, handle);
     assert!(!vertical(cx, handle), "horizontal is the default");
@@ -119,11 +120,11 @@ fn draw(cx: &mut gpui_kit::VisualTestContext) {
 
 /// A document, which is what binds the window's own keys to a focus path.
 ///
-/// The capture is nowhere near a real file and nothing analyses it, because
+/// This document has no reader or FFT worker, because
 /// only the document's existence matters to a key context.
 fn open_capture(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
     shell.update_in(cx, |shell, window, cx| {
-        shell.open(
+        shell.open_test_document(
             Origin::new(PathBuf::from("/captures/session.iqw")),
             window,
             cx,
@@ -293,6 +294,7 @@ fn branch_row_bounds_at(
 
 #[gpui_kit::test]
 fn the_button_and_the_key_open_the_menu_with_the_keyboard_in_it(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     click(cx, "application-menu-button");
@@ -308,6 +310,7 @@ fn the_button_and_the_key_open_the_menu_with_the_keyboard_in_it(cx: &mut TestApp
 
 #[gpui_kit::test]
 fn a_click_on_the_button_closes_the_menu_and_leaves_it_closed(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     press(cx, "f10");
@@ -321,6 +324,7 @@ fn a_click_on_the_button_closes_the_menu_and_leaves_it_closed(cx: &mut TestAppCo
 
 #[gpui_kit::test]
 fn the_key_escape_and_an_outside_click_each_close_the_menu(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     for key in ["f10", "tab", "escape"] {
@@ -345,6 +349,7 @@ fn the_key_escape_and_an_outside_click_each_close_the_menu(cx: &mut TestAppConte
 
 #[gpui_kit::test]
 fn an_outside_click_and_wheel_reach_nothing_under_the_menu(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let view = shell.read_with(cx, |shell, _| shell.view);
@@ -378,6 +383,7 @@ fn an_outside_click_and_wheel_reach_nothing_under_the_menu(cx: &mut TestAppConte
 
 #[gpui_kit::test]
 fn the_backdrop_keeps_the_window_beneath_the_menu(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let before = grid(cx, &shell);
@@ -410,6 +416,7 @@ fn the_backdrop_keeps_the_window_beneath_the_menu(cx: &mut TestAppContext) {
 #[cfg(target_os = "linux")]
 #[gpui_kit::test]
 fn the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let none = gpui_kit::Modifiers::default();
@@ -461,6 +468,7 @@ fn the_toolbar_gaps_carry_the_title_drag_and_its_controls_do_not(cx: &mut TestAp
 
 #[gpui_kit::test]
 fn a_right_or_middle_press_on_a_chrome_button_keeps_the_plot_focused(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     // A warned analysis makes the range item actionable, which is the only
@@ -561,6 +569,7 @@ fn a_right_or_middle_press_on_a_chrome_button_keeps_the_plot_focused(cx: &mut Te
 
 #[gpui_kit::test]
 fn enter_on_a_view_row_dispatches_its_action_once(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let before = grid(cx, &shell);
@@ -573,6 +582,7 @@ fn enter_on_a_view_row_dispatches_its_action_once(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn view_offers_the_theme_without_a_document(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let palette = shell.read_with(cx, |shell, _| shell.settings.colormap);
     let chosen = |cx: &mut gpui_kit::VisualTestContext| {
@@ -602,6 +612,7 @@ fn view_offers_the_theme_without_a_document(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_digit_answers_only_in_the_file_branch(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     recent(cx, &shell, "/captures/hfdl.iqw");
@@ -625,6 +636,7 @@ fn a_digit_answers_only_in_the_file_branch(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_recent_row_opens_its_capture(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     recent(cx, &shell, "/captures/beacon.iqw");
@@ -643,6 +655,7 @@ fn a_recent_row_opens_its_capture(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_settings_hint_opens_from_the_menu_itself(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     press(cx, "f10");
@@ -656,6 +669,7 @@ fn the_settings_hint_opens_from_the_menu_itself(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_click_on_a_recent_row_opens_that_capture(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     recent(cx, &shell, "/captures/beacon.iqw");
@@ -676,6 +690,7 @@ fn a_click_on_a_recent_row_opens_that_capture(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_digit_opens_the_row_that_was_drawn(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let paths = [
@@ -702,6 +717,7 @@ fn a_digit_opens_the_row_that_was_drawn(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn enter_and_right_each_enter_a_submenu_before_running_its_row(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     for key in ["enter", "right"] {
@@ -724,6 +740,7 @@ fn quit_row(cx: &mut gpui_kit::VisualTestContext) -> gpui_kit::Point<gpui_kit::P
 
 #[gpui_kit::test]
 fn the_keys_reach_the_menu_after_a_hover_drops_the_focused_branch(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     for key in ["f10", "tab", "escape"] {
@@ -769,6 +786,7 @@ const FILE_SEPARATOR: u64 = 1;
 
 #[gpui_kit::test]
 fn an_action_row_draws_the_shared_keycap_when_its_binding_resolves(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let before = grid(cx, &shell);
@@ -799,6 +817,7 @@ fn an_action_row_draws_the_shared_keycap_when_its_binding_resolves(cx: &mut Test
 
 #[gpui_kit::test]
 fn a_long_recent_name_keeps_the_file_branch_within_its_width(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let long = format!(
@@ -867,6 +886,7 @@ fn can_save(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> (boo
 
 #[gpui_kit::test]
 fn saving_needs_a_described_capture_and_saving_a_selection_needs_one(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     assert_eq!(can_save(cx, &shell), (false, false));
     open_capture(cx, &shell);
@@ -885,6 +905,7 @@ fn saving_needs_a_described_capture_and_saving_a_selection_needs_one(cx: &mut Te
 
 #[gpui_kit::test]
 fn a_failed_save_stays_in_the_status_bar_until_closed(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     shell.update_in(cx, |shell, _, cx| {
@@ -900,6 +921,7 @@ fn a_failed_save_stays_in_the_status_bar_until_closed(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_saved_notice_goes_with_the_next_press_or_move_and_a_failure_stays(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let notice = |cx: &mut gpui_kit::VisualTestContext| {
@@ -980,6 +1002,7 @@ fn file_menu_groups_history_before_save_and_finishes_with_information() {
 fn permanent_menu_commands_stay_drawn_and_analysis_follows_document_availability(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     for loaded in [false, true] {
         if loaded {
@@ -1016,6 +1039,7 @@ fn permanent_menu_commands_stay_drawn_and_analysis_follows_document_availability
 fn ten_recent_rows_and_final_file_information_are_reachable_at_minimum_height(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     open_capture(cx, &shell);
     let _fixture = describe(cx, &shell);
@@ -1043,6 +1067,7 @@ fn ten_recent_rows_and_final_file_information_are_reachable_at_minimum_height(
 fn empty_view_commands_are_inert_while_edit_shortcuts_keep_registered_plot_bindings(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let before = shell.read_with(cx, |shell, _| shell.session.clone());
     press(cx, "f10");
@@ -1089,6 +1114,7 @@ fn empty_view_commands_are_inert_while_edit_shortcuts_keep_registered_plot_bindi
 
 #[gpui_kit::test]
 fn edit_menu_and_shortcut_dispatch_after_information_panel_focus(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     // Native focus restoration requires an active window, as in production.
     cx.update(|window, _| window.activate_window());

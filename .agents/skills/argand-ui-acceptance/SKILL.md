@@ -7,9 +7,10 @@ description: Plan and verify Argand UI changes in the running production applica
 
 This repository-local workflow implements the canonical
 [UI acceptance policy](../../../CONTRIBUTING.md#ui-acceptance); it does not replace
-that policy or authorize additional actions. The primary agent plans and runs this
-workflow without requiring the owner to name it; the independent reviewer assesses
-the resulting evidence when review is required.
+that policy or authorize additional actions. The executor plans and runs this
+workflow without requiring the owner to name it. The coordinator coordinates runs
+between executors and assesses the exact results and their limits; the independent
+reviewer assesses the resulting evidence when review is required.
 
 ## Establish the scenario
 

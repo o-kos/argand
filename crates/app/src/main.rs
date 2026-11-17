@@ -51,6 +51,8 @@ mod session;
 mod settings;
 mod shell;
 mod spectrogram;
+#[cfg(test)]
+mod test_context;
 mod theme;
 mod waveform;
 

@@ -56,6 +56,7 @@ mod context_menu_tests {
 
     #[gpui_kit::test]
     fn ruler_menu_isolates_keys_and_escape_restores_plot_commands(cx: &mut TestAppContext) {
+        let _cleanup = crate::test_context::cleanup(cx);
         let handle = open(cx);
         let menu = open_menu(cx, handle, Target::TimeRuler);
         navigation(cx, handle);
@@ -114,11 +115,13 @@ mod context_menu_tests {
 
     #[gpui_kit::test]
     fn open_ruler_menu_is_released_when_its_window_closes(cx: &mut TestAppContext) {
+        let _cleanup = crate::test_context::cleanup(cx);
         closing_with_open_menu_releases_popup(cx, Target::TimeRuler);
     }
 
     #[gpui_kit::test]
     fn open_spectrum_menu_is_released_when_its_window_closes(cx: &mut TestAppContext) {
+        let _cleanup = crate::test_context::cleanup(cx);
         closing_with_open_menu_releases_popup(cx, Target::Spectrum);
     }
 }
