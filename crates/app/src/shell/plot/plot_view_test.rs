@@ -501,7 +501,7 @@ fn pan_reverses_immediately_after_overshooting_either_boundary(cx: &mut TestAppC
                                 .iter()
                                 .rev()
                                 .find_map(|intent| match intent {
-                                    PlotIntent::Drag { time, frequency } => {
+                                    PlotIntent::Drag { time, frequency, .. } => {
                                         Some((*time, *frequency))
                                     }
                                     _ => None,

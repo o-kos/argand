@@ -8,6 +8,22 @@ use gpui_kit::component::{Disableable, Icon, IconName};
 use gpui_kit::{AvailableSpace, Div};
 
 impl Shell {
+    /// A new gesture must start from accepted navigation, even if the next
+    /// Shell render has not yet copied it into the plot's presentation snapshot.
+    pub(in crate::shell) fn refresh_plot_navigation(&self, cx: &mut gpui_kit::App) {
+        let (Some(extents), Some(plot)) = (self.extents(), self.plot_entity()) else {
+            return;
+        };
+        plot.update(cx, |plot, _| {
+            super::pan_trace::state(plot, "before_mouse_down_refresh", 0);
+            if let Some(snapshot) = &mut plot.snapshot {
+                snapshot.extents = extents;
+                snapshot.frequency = self.frequency;
+            }
+            super::pan_trace::state(plot, "after_mouse_down_refresh", 0);
+        });
+    }
+
     /// The held picture view and the once-only first-paint marker, both
     /// taken from the open file when there is one.
     fn first_paint_state(
@@ -213,6 +229,14 @@ impl PlotView {
                 let Some((frame, labels, height, placed, overlays)) = prepainted else {
                     return;
                 };
+                // CPU canvas paint submission, not a GPU completion timestamp.
+                tracing::trace!(
+                    target: "argand::pan_trace",
+                    time = ?extents.time.view, frequency = ?snapshot.frequency,
+                    seconds = ?extents.seconds, hertz = ?extents.hertz,
+                    held = ?snapshot.held, orientation = ?orientation,
+                    "canvas paint"
+                );
                 let (dx, dy) = orientation.axes(px(0.), px(height));
                 let spectrum_origin = bounds.origin + point(dx, dy);
                 if let Some(backdrop) = &snapshot.backdrop {
@@ -487,6 +511,9 @@ impl PlotView {
         cx: &mut Context<Self>,
     ) {
         let old = self.geometry;
+        if let Some(old) = old {
+            self.remeasure_pan(old, geometry);
+        }
         self.gutter_floor = self.gutter_floor.max(gutter);
         self.panel_bounds = Some(bounds);
         self.geometry = Some(geometry);

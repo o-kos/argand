@@ -39,6 +39,25 @@ bounded axis to its actual view and current pointer, preserving other-axis movem
 fitted axes, ruler ownership and minimap mapping. Verify immediate reversal for
 middle and Space+left in both orientations, including pointer travel off canvas.
 
+Further owner acceptance failed. A production reproduction established a separate
+failure away from capture bounds: crossing a tick-label digit threshold widens the
+right ruler, and Shell's layout feedback cancelled the held pan unconditionally.
+The previous PlotView-only regression did not include this Shell feedback path.
+Preserve gestures on geometry-only measurement when actual bounded views remain
+unchanged. Rebase changed pan scales from the last requested view and input position,
+without relying on a possibly older rendered snapshot. Preserve cancellation for
+actual bounds corrections and capture/settings changes. No analysis scheduling,
+generation, retention or texture-lifetime contract changes are planned.
+
+The owner's precise two-gesture report prompted a further production diagnosis:
+vertical time zoom, drag down to zero and beyond, release, then a new drag up.
+Rapid input reproduced a discontinuous jump because the new press read a previous
+frame's time view after Shell had already accepted the zero clamp. Paced input
+did not reproduce the jump, and sustained jitter or reversed movement remains
+unconfirmed. Refresh only current accepted navigation and coherent extents in the
+existing Shell capture-phase mouse-down observer before PlotView handles the press.
+Do not rebuild presentation resources or introduce a second navigation owner.
+
 ## Acceptance criteria and evidence
 
 | Criterion | Verification / scenario | Result | Limits |
@@ -62,12 +81,17 @@ middle and Space+left in both orientations, including pointer travel off canvas.
 - [x] ➕ Preserve modified minimap navigation and Alt edge resizing after the independent review finding, then refresh affected validation.
 - [x] ➕ Add the owner-approved Ctrl band-selection alias, matching cursor/help, focused regressions and current production evidence.
 - [x] ➕ Correct and validate immediate pan reversal after overshooting either axis boundary.
+- [x] ➕ Correct tick-label growth cancelling held gestures and validate real Shell layout feedback, resize continuity and genuine bounds cancellation with focused tests.
+- [ ] ➕ Correct a new gesture using a previous frame's navigation anchor and refresh the exact two-gesture production reproduction.
+- [ ] ⚠️ Refresh affected production acceptance after the remaining code gate. The earlier owner acceptance failed, and the new source has not been built as a production binary.
+- [ ] ⚠️ Reconsider review coverage after this failed acceptance. Three review rounds have already completed, so another independent round requires an explicit owner waiver of the limit.
 - [ ] Complete independent review and coordinator assessment.
 - [ ] Move this plan to completed before final review, once acceptance is complete.
 
 ## Validation
 
-The checked results below include the Ctrl alias and pan-boundary feedback.
+The checked results below are historical evidence for the Ctrl alias and first
+pan-boundary correction, not validation of the subsequent layout correction.
 
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
@@ -97,6 +121,63 @@ A new regression failed before the correction and passed afterwards. The complet
 local gate passed again, and the rebuilt production binary passed the affected
 minimap scenarios in both orientations plus selection/Alt smoke checks. The
 unaffected broad interaction record is retained separately from this refresh.
+
+The layout-correction iteration is currently limited to focused application
+regressions and Clippy. Three Shell regressions pass, covering label growth in
+both orientations with middle/Space+left, both-axis resize continuity and actual
+rebound cancellation. A filtered navigation/UI run passed 51 tests, including
+the earlier boundary-reversal regression. Full workspace tests, the pre-push hook and a new release
+build remain deferred while the test-memory diagnostic task is paused and the
+coordinator determines the next validation sequence. Keep the PR Draft. Production
+acceptance must cover tick-label growth while holding middle and Space+left,
+continued movement and reversal without repressing, both orientations and ruler
+ownership, spectrum diagonal movement, actual capture bounds and a dimension change.
+Record settled frames separately from transient rendering delay. Do not infer that
+the identified cancellation explains every symptom reported by the owner.
+
+For a manual acceptance iteration, the owner explicitly requested a release
+rebuild without further checks. That build completed for the layout correction.
+The later stale-anchor correction was also rebuilt without tests, formatting,
+Clippy or review for owner manual testing. The owner reported improvement, followed
+by a remaining same-held outward reversal. Focused isolated X11 reproduction with
+monotonic downward input and stationary holds did not reproduce that reversal.
+Explicit one-pixel reverse input moved off the bound, but this does not establish
+the owner's cause. Keep the remaining defect unresolved.
+
+Add opt-in production diagnostics under `argand::pan_trace=trace` using the existing
+per-launch `RUST_LOG` subscriber. Record raw pan input, a sequence identifier carried
+into its computed/accepted Drag intent, anchors, layout and cancellation reasons,
+and the CPU canvas paint model. Paint timestamps do not establish GPU completion.
+The trace remains off by default, streams to stderr without an in-app event buffer,
+and records no capture paths or environment. It changes no gesture behavior.
+The owner's trace established six active pans cancelled by the wheel handler while
+subsequent mouse-move events still reported Middle held, explaining the late loss
+of dragging. Preserve the latched pan's navigation priority by consuming incoming
+wheel events before they can cancel state or issue navigation. Apply this to both
+middle and Space+left pan, without changing ordinary wheel or minimap selection
+behavior. Keep tracing enabled only by opt-in so the next manual run can verify
+the discarded events. The source of overlapping wheel events is not established.
+Earlier recorded departures from zero accompany upward pointer coordinates and
+matching accepted/painted views. This does not establish all reported reversal
+symptoms as resolved.
+The next diagnostic release is built alone for manual reproduction, with tests,
+formatting, Clippy, review and production checks intentionally skipped at the owner's
+request. Review rounds remain at three, with no additional round started.
+
+## Owner handoff
+
+The owner manually accepted the current work and requested a commit and remote
+push without checks to continue on another computer. The latest source was built
+successfully in release mode. The subsequent trace showed stable unclamped pan
+gain across eleven gestures and no wheel cancellation of held pans. This does not
+replace automated validation or establish native presentation latency.
+
+The final layout, new-gesture anchor, pan tracing and held-pan wheel-priority
+changes have not completed the full local gate or independent review. The three
+earlier review rounds apply to their recorded snapshots. Skip the pre-push hook
+for this owner-authorized handoff only; do not claim it passed. Keep the Pull
+Request Draft, without merging or publishing a release. Resume the outstanding
+validation and review decision on the other computer before final integration.
 
 ## Post-completion
 

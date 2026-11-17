@@ -17,6 +17,21 @@ When a spectrum/ruler drag reaches a capture bound, that axis rebases its pointe
 anchor to the bounded view. Further overshoot is discarded, so reversing direction
 immediately moves away from the bound. Each axis rebases independently; a fitted
 axis stays fixed, and minimap drag mapping retains its full-capture behavior.
+An active middle-button or Space+left pan owns navigation until release. Incoming
+wheel events are consumed without cancelling or redirecting that held gesture.
+Ordinary wheel routing is unchanged when no pan is active.
+Label remeasurement can widen a ruler while a gesture is held. Geometry-only
+layout feedback preserves the gesture when the bounded time and frequency views
+are unchanged. A changed axis length rebases its pan scale at the last input
+position and requested view, independently of asynchronous snapshot rendering.
+An actual bounds correction still cancels held gestures, as do capture and
+analysis-settings changes.
+Before a mouse-down reaches PlotView, Shell's capture-phase input observer copies
+its current accepted extents and frequency view into the existing plot snapshot.
+A new gesture therefore starts from authoritative navigation even when multiple
+gestures arrive before the next Shell render. This refresh copies navigation
+values only. Geometry and the snapshot's GPU resources remain unchanged, and the
+normal Shell render still supplies the complete presentation snapshot.
 `shell/plot/plot_ui.rs` immediately maps held spectral pictures into
 the requested time interval and clips the spectrogram to its plot. Cursor levels
 come from the displayed grid's own extents; uncovered time has no reported level.

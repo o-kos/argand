@@ -15,6 +15,7 @@ use gpui_kit::EventEmitter;
 /// clears this before it lets go of one.
 #[derive(Clone)]
 pub(in crate::shell) struct PlotSnapshot {
+    /// Shell also refreshes navigation in the capture phase of a new press.
     pub extents: axes::Extents,
     pub texture: Option<Arc<RenderImage>>,
     pub deep: Option<Arc<crate::shell::plot::plot_ui::DeepPreview>>,
@@ -71,6 +72,8 @@ pub(in crate::shell) enum PlotIntent {
     Drag {
         time: Option<crate::navigation::View>,
         frequency: Option<crate::navigation::frequency::View>,
+        /// Zero unless opt-in input tracing is enabled.
+        input_id: u64,
     },
 }
 
@@ -96,8 +99,7 @@ pub(in crate::shell) struct PlotView {
     pub(in crate::shell) snapshot: Option<PlotSnapshot>,
     pub(in crate::shell) pointer: Option<gpui_kit::Point<Pixels>>,
     pub(in crate::shell) pan: Option<Pan>,
-    pub(in crate::shell) frequency_pan:
-        Option<(gpui_kit::Point<Pixels>, crate::navigation::frequency::View)>,
+    pub(in crate::shell) frequency_pan: Option<PanAnchor<crate::navigation::frequency::View>>,
     /// The button that drives the pan in progress.
     pub(in crate::shell) pan_button: MouseButton,
     pub(in crate::shell) selecting: Option<Selecting>,
@@ -174,7 +176,8 @@ impl PlotView {
         self.pointer.zip(self.geometry)
     }
 
-    pub(in crate::shell) fn cancel_drags(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::shell) fn cancel_drags(&mut self, reason: &'static str, cx: &mut Context<Self>) {
+        super::pan_trace::state(self, reason, 0);
         self.pan = None;
         self.frequency_pan = None;
         self.selecting = None;
@@ -196,6 +199,7 @@ impl PlotView {
 
     /// End the drags, which only the pointer that began them may finish.
     pub(in crate::shell) fn end_gestures(&mut self, cx: &mut Context<Self>) {
+        super::pan_trace::state(self, "end_gestures", 0);
         if self.dragging() || self.space {
             self.pan = None;
             self.frequency_pan = None;
@@ -243,6 +247,7 @@ impl PlotView {
 
     /// Forget the gestures the other orientation cannot reuse.
     pub(in crate::shell) fn reorient(&mut self, cx: &mut Context<Self>) {
+        super::pan_trace::state(self, "reorient", 0);
         self.gutter_floor = 0.;
         self.pan = None;
         self.frequency_pan = None;

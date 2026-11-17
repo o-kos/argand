@@ -1,6 +1,7 @@
 //! Plot rendering, viewport interaction and selection views owned by Shell.
 
 pub(super) mod navigation_ui;
+mod pan_trace;
 pub(super) mod plot_ui;
 pub(super) mod plot_view;
 pub(super) mod selection_gestures;
