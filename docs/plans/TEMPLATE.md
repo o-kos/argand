@@ -9,7 +9,8 @@ Describe the problem, desired outcome, and boundaries of the change.
 ## Roles and risk
 
 - Class: A / B / C, with a brief risk rationale (see `AGENTS.md`).
-- Primary: `gpt-6.1-sol` medium.
+- Coordinator (primary): `gpt-6.1-sol` medium, owner communication and final assessment.
+- Executor: `gpt-6.1-sol` medium, assigned investigation, plan, implementation, validation and Pull Request operations.
 - Consultant: `gpt-6-astra` medium only for a justified, targeted question; otherwise none.
 - Reviewer: `gpt-6.1-sol` high in a separate agent and context.
 

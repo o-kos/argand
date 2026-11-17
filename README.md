@@ -462,12 +462,26 @@ arrow panning follows screen directions. In vertical mode Up/Down pan time and
 Left/Right pan frequency, with Ctrl taking five divisions. Zoom shortcuts keep
 their time/frequency meanings in both modes.
 
-Scroll over the spectrogram to pan in time, or hold Ctrl to zoom about the pointer.
-Left-drag on the spectrogram pans both time and frequency; each ruler constrains
-dragging to its own axis. The time ruler uses the same gestures: wheel pans in time,
-Ctrl+wheel zooms. Shift+wheel pans frequency and Ctrl+Shift+wheel zooms frequency
-about the pointer. On the frequency ruler, drag or wheel to pan, and Ctrl+wheel to
-zoom. Its hand cursor appears only when the frequency range is narrowed.
+The spectrogram and rulers use these navigation and selection gestures:
+
+| Operation | Spectrogram | Time and frequency rulers |
+| --- | --- | --- |
+| Zoom | Ctrl+wheel for time, Ctrl+Shift+wheel for frequency | Ctrl+wheel on the ruler's own axis |
+| Pan | Wheel for time, Shift+wheel for frequency | Wheel on the ruler's own axis |
+| Pan by dragging | Space+left drag or middle drag on both axes | Space+left drag or middle drag on the ruler's own axis |
+| Select | Left drag for time, Shift+left or Ctrl+left drag for a band, Ctrl+Shift+left drag for a rectangle | Left drag on the ruler's own axis |
+| Adjust nearest boundary | Alt+left click on each selected axis | Alt+left click on the ruler's own selected axis |
+
+Hold Alt to show coordinate guides while placing a boundary. Alt adjustment needs
+an existing selection. Drag a selection edge to resize it, or drag its interior on
+the spectrogram to move it. Shift, Ctrl and Ctrl+Shift on the spectrogram start the
+requested selection type even inside an existing selection. Space panning takes
+priority. A gesture keeps the meaning chosen at mouse-down when modifiers change.
+A click without a drag clears the selection, as does Escape while the plot owns
+focus. Selection toolbar hints show the corresponding creation gestures, and the
+Edit menu retains the selection panel for precise values. These actions change
+viewports and selection only, preserving capture samples.
+
 Ctrl+G, the grid toolbar button or View → Show grid hides or shows the spectrogram grid and remembers the choice
 between sessions; ruler baselines, ticks and labels remain visible. Valid time
 marks remain at the plot edges even when their labels cannot fit.

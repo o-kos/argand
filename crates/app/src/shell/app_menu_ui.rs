@@ -761,8 +761,9 @@ impl Shell {
                         segment = segment.relative().child(line.bg(frame_colour(cx)));
                     }
                     let hint = match label {
-                        "Both" => "Select time and band".to_owned(),
-                        label => format!("Select {}", label.to_lowercase()),
+                        "Time" => "Select time. Left drag on the spectrogram or time ruler".to_owned(),
+                        "Band" => "Select band. Shift+left or Ctrl+left drag on the spectrogram, or left drag on the frequency ruler".to_owned(),
+                        _ => "Select time and band. Ctrl+Shift+left drag on the spectrogram".to_owned(),
                     };
                     if self.external_tooltips_allowed(cx) {
                         segment.interactivity().tooltip(move |_, cx| {

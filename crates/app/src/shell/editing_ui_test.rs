@@ -58,6 +58,205 @@ fn select(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>, a: u64, b
     });
 }
 
+fn open_pan_window(
+    cx: &mut TestAppContext,
+    orientation: crate::navigation::orientation::Mode,
+) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
+    use crate::navigation::{View, frequency, time_ruler};
+    let (shell, cx) = open_window(cx);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open(Origin::new("/captures/layout-pan.iqw".into()), window, cx);
+        shell
+            .file
+            .as_mut()
+            .unwrap()
+            .state
+            .document
+            .apply(Update::Opened(
+                SignalMeta {
+                    sample_rate: 1_000_000.,
+                    center_freq: 0.,
+                    sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
+                    len_samples: 1_000_000_000,
+                    container: "raw",
+                    divisor: 32_768.,
+                    source: "/captures/layout-pan.iqw".into(),
+                },
+                FileInfo::default(),
+            ));
+        shell.session.orientation = orientation;
+        shell.session.time_ruler = time_ruler::Mode::Seconds;
+        shell.view = Some(View {
+            start: 98_000_000,
+            len: 1_900_000,
+        });
+        shell.frequency = frequency::View {
+            start: 0.598,
+            span: 0.0019,
+        };
+        shell.attach_plot(window, cx);
+        cx.notify();
+    });
+    (shell, cx)
+}
+
+fn pan_frame(cx: &mut gpui_kit::VisualTestContext) {
+    use gpui_kit::test::TestWindowExt;
+    cx.run_until_parked();
+    cx.update(|window, cx| window.render_frame(cx));
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn layout_pan_survives_tick_label_growth_through_shell(cx: &mut TestAppContext) {
+    use crate::navigation::orientation::Mode;
+    use gpui_kit::MouseButton::{Left, Middle};
+    for (orientation, button) in [
+        (Mode::Horizontal, Middle),
+        (Mode::Vertical, Middle),
+        (Mode::Horizontal, Left),
+        (Mode::Vertical, Left),
+    ] {
+        let (shell, cx) = open_pan_window(cx, orientation);
+        for _ in 0..3 {
+            pan_frame(cx);
+        }
+        let plot = shell.read_with(cx, |shell, _| shell.plot_entity().unwrap());
+        let old = plot.read_with(cx, |plot, _| plot.geometry.unwrap());
+        let from = if orientation.vertical() {
+            old.time_ruler.center()
+        } else {
+            old.frequency_ruler.center()
+        };
+        let initial = shell.read_with(cx, |shell, _| (shell.view.unwrap(), shell.frequency));
+        let none = gpui_kit::Modifiers::default();
+        cx.simulate_mouse_move(from, None, none);
+        if button == Left {
+            cx.update(|window, cx| {
+                let focus = plot.read(cx).focus.clone();
+                window.focus(&focus, cx);
+            });
+            cx.simulate_event(gpui_kit::KeyDownEvent {
+                keystroke: gpui_kit::Keystroke::parse("space").unwrap(),
+                is_held: false,
+                prefer_character_input: false,
+            });
+        }
+        cx.simulate_mouse_down(from, button, none);
+        let delta = gpui_kit::point(
+            px(0.),
+            px(if orientation.vertical() {
+                -old.time_length() * 0.7
+            } else {
+                old.frequency_length() * 0.7
+            }),
+        );
+        // The right ruler changes from two to three integral digits. Its extra
+        // width feeds back through PlotIntent::Layout into Shell::resize.
+        cx.simulate_mouse_move(from + delta, button, none);
+        for _ in 0..3 {
+            pan_frame(cx);
+        }
+        let geometry = plot.read_with(cx, |plot, _| plot.geometry.unwrap());
+        assert!(
+            geometry.spectrum.size.width < old.spectrum.size.width,
+            "{orientation:?}: labels must widen"
+        );
+        assert!(
+            plot.read_with(cx, |plot, _| plot.panning()),
+            "{orientation:?}: layout cancelled the held pan"
+        );
+        let crossed = shell.read_with(cx, |shell, _| (shell.view.unwrap(), shell.frequency));
+        cx.simulate_mouse_move(
+            from + delta + gpui_kit::point(px(0.), px(20.)),
+            button,
+            none,
+        );
+        pan_frame(cx);
+        let continued = shell.read_with(cx, |shell, _| (shell.view.unwrap(), shell.frequency));
+        assert_ne!(
+            crossed, continued,
+            "{orientation:?}: held pan must continue"
+        );
+        if orientation.vertical() {
+            assert_eq!(initial.1, continued.1);
+        } else {
+            assert_eq!(initial.0, continued.0);
+        }
+        // Settings/capture rebounding still interrupts an otherwise valid pan.
+        shell.update_in(cx, |shell, _, cx| shell.bound_view(cx));
+        assert!(!plot.read_with(cx, |plot, _| plot.panning()));
+        cx.simulate_mouse_up(from + delta, button, none);
+        cx.simulate_event(gpui_kit::KeyUpEvent {
+            keystroke: gpui_kit::Keystroke::parse("space").unwrap(),
+        });
+    }
+}
+
+#[gpui_kit::test]
+fn layout_pan_rescales_both_axes_without_replaying_previous_motion(cx: &mut TestAppContext) {
+    use crate::navigation::orientation::Mode;
+    for orientation in [Mode::Horizontal, Mode::Vertical] {
+        let (shell, cx) = open_pan_window(cx, orientation);
+        for _ in 0..3 {
+            pan_frame(cx);
+        }
+        let plot = shell.read_with(cx, |shell, _| shell.plot_entity().unwrap());
+        let from = plot.read_with(cx, |plot, _| plot.geometry.unwrap().spectrum.center());
+        let position = from + gpui_kit::point(px(20.), px(20.));
+        let button = gpui_kit::MouseButton::Middle;
+        let none = gpui_kit::Modifiers::default();
+        cx.simulate_mouse_down(from, button, none);
+        cx.simulate_mouse_move(position, button, none);
+        let before = shell.read_with(cx, |shell, _| (shell.view.unwrap(), shell.frequency));
+        // Layout must use the last requested views, even before the frame that
+        // copies them into PlotSnapshot. Both physical scales change here.
+        cx.simulate_resize(gpui_kit::size(px(950.), px(720.)));
+        for _ in 0..3 {
+            pan_frame(cx);
+        }
+        cx.simulate_mouse_move(position, button, none);
+        assert_eq!(
+            before,
+            shell.read_with(cx, |shell, _| (shell.view.unwrap(), shell.frequency))
+        );
+        let geometry = plot.read_with(cx, |plot, _| plot.geometry.unwrap());
+        let to = position + gpui_kit::point(px(20.), px(20.));
+        cx.simulate_mouse_move(to, button, none);
+        let after = shell.read_with(cx, |shell, _| (shell.view.unwrap(), shell.frequency));
+        let expected_time = before
+            .0
+            .pan(f64::from(-20. / geometry.time_length()), 1_000_000_000);
+        let expected_frequency = before
+            .1
+            .pan(geometry.fractions(to).1 - geometry.fractions(position).1);
+        assert_eq!(after.0, expected_time);
+        assert!((after.1.start - expected_frequency.start).abs() < 1e-12);
+        cx.simulate_mouse_up(to, button, none);
+    }
+}
+
+#[gpui_kit::test]
+fn layout_pan_is_cancelled_when_the_view_actually_rebounds(cx: &mut TestAppContext) {
+    let (shell, cx) = open_pan_window(cx, crate::navigation::orientation::Mode::Horizontal);
+    for _ in 0..3 {
+        pan_frame(cx);
+    }
+    let plot = shell.read_with(cx, |shell, _| shell.plot_entity().unwrap());
+    let from = plot.read_with(cx, |plot, _| plot.geometry.unwrap().time_ruler.center());
+    cx.simulate_mouse_down(from, gpui_kit::MouseButton::Middle, Default::default());
+    assert!(plot.read_with(cx, |plot, _| plot.panning()));
+    shell.update_in(cx, |shell, _, cx| {
+        // A changed capture/FFT constraint can make the requested span invalid.
+        shell.view.as_mut().unwrap().len = 1;
+        let mut size = shell.plot.unwrap();
+        size.width += 1;
+        shell.resize(size, cx);
+        assert!(shell.view.unwrap().len > 1);
+    });
+    assert!(!plot.read_with(cx, |plot, _| plot.panning()));
+}
+
 #[gpui_kit::test]
 fn delete_undo_and_redo_follow_the_length_selection_and_title(cx: &mut TestAppContext) {
     let (shell, cx) = open_window(cx);

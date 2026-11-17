@@ -53,15 +53,28 @@ each Issue. A different role assignment requires the owner's agreement.
 
 | Role | Model and reasoning effort | Responsibility |
 | --- | --- | --- |
-| Primary | `gpt-6.1-sol` medium | Discuss the task directly with the owner; handle analysis, investigation, edits, Git/GitHub operations, checks, plans and final assessment. |
+| Coordinator (primary) | `gpt-6.1-sol` medium | Discuss decisions and scope with the owner, delegate execution, relay owner input, track progress, and assess exact results, critical invariants and validation limits. Does not write product code. |
+| Executor | `gpt-6.1-sol` medium | Own the assigned task end to end: investigation, plan, implementation, tests, and Pull Request preparation and operations within the authorized scope. |
 | Reviewer | `gpt-6.1-sol` high | Review read-only in a fresh, separate context when review is required. |
 | Consultant | `gpt-6-astra` medium | Give targeted advice on difficult architecture, DSP, data safety or unresolved technical disagreements. |
 
-One primary agent owns an ordinary task end to end. Delegate only justified,
-independent work; do not create a mandatory coordinator/executor relay. The primary
-maintains the plan and artifacts, evaluates review findings and checks critical
-invariants. The primary decides whether consultation is needed after focused
-investigation leaves a concrete uncertainty or technical disagreement unresolved.
+The owner-facing coordinator delegates implementation to an executor rather than
+writing code. In repository instructions, "primary agent" means the coordinator.
+The executor maintains the task's plan and artifacts, makes ordinary technical
+choices autonomously, reports progress, and escalates blockers or decisions reserved
+for the owner. The coordinator evaluates the submitted results, review findings,
+critical invariants and evidence for the exact current revision.
+
+Conversation with the coordinator does not pause background execution. Relay
+relevant owner corrections and decisions to the executor promptly; pause affected
+work when the owner requests it or a blocking decision requires it. Distinct,
+independent tasks may have separate executors only in owner-authorized directories
+or worktrees. Coordinate use of running applications and UI acceptance between
+executors so one task cannot disturb another's session, processes or evidence.
+Parallel execution does not authorize creating worktrees or sharing build artifacts.
+
+The coordinator decides whether consultation is needed after focused investigation
+leaves a concrete uncertainty or technical disagreement unresolved.
 Before calling the consultant, briefly tell the owner what remains unclear and
 the specific question to be asked. No extra approval is needed under these defaults
 unless the owner requests it. Class A alone does not trigger consultation, which
@@ -70,7 +83,7 @@ The independent handoff, dispositions, three-round limit, owner decisions and
 current-revision evidence are governed by [External review](CONTRIBUTING.md#external-review).
 
 These instructions define role defaults, not the client's selected model. Select
-the primary model and effort in the client when starting a task; do not claim that
+the applicable model and effort when starting each role; do not claim that
 editing these rules switches a running session or global settings.
 
 Record the class and role assignments in a required plan before execution begins.

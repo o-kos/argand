@@ -1,4 +1,4 @@
-//! Reshaping and moving a selection on the plot: its edges, its inside and Shift+click.
+//! Reshaping and moving a selection on the plot: its edges, its inside and Alt+click.
 
 use super::navigation_ui::{PlotGeometry, Selecting, hertz};
 use super::plot_view::{PlotSnapshot, PlotView};
@@ -68,6 +68,7 @@ impl Extent {
 enum Place {
     Spectrum,
     FrequencyRuler,
+    TimeRuler,
     Minimap,
 }
 
@@ -120,6 +121,8 @@ fn grab(snapshot: &PlotSnapshot, geometry: PlotGeometry, position: Point<Pixels>
         return None;
     } else if geometry.selects_at(position) {
         Place::Spectrum
+    } else if geometry.time_ruler.contains(&position) {
+        Place::TimeRuler
     } else if geometry.frequency_ruler.contains(&position) {
         Place::FrequencyRuler
     } else if geometry.minimap.contains(&position) {
@@ -133,14 +136,17 @@ fn grab(snapshot: &PlotSnapshot, geometry: PlotGeometry, position: Point<Pixels>
         _ => geometry.fractions(position),
     };
     // An edge is grabbed along the other axis's extent, or anywhere where that axis is not selected or not shown.
-    let along_frequency =
-        place == Place::Minimap || frequency.is_none_or(|extent| extent.spans(at_frequency));
+    let along_frequency = matches!(place, Place::Minimap | Place::TimeRuler)
+        || frequency.is_none_or(|extent| extent.spans(at_frequency));
     let along_time = time.is_none_or(|extent| extent.spans(at_time));
     let time_edge = time
         .filter(|_| place != Place::FrequencyRuler && along_frequency)
         .and_then(|extent| extent.edge_at(at_time));
     let frequency_edge = frequency
-        .filter(|_| place != Place::Minimap && (place == Place::FrequencyRuler || along_time))
+        .filter(|_| {
+            !matches!(place, Place::Minimap | Place::TimeRuler)
+                && (place == Place::FrequencyRuler || along_time)
+        })
         .and_then(|extent| extent.edge_at(at_frequency));
     // Frequency runs down the screen, so its low fraction is the band's high edge.
     let frequency_edge = frequency_edge.map(|edge| match edge {
@@ -223,18 +229,23 @@ impl PlotView {
         grab(snapshot, geometry, position).map(|grab| grab_cursor(grab, geometry.orientation))
     }
 
-    /// The gesture a left press starts on the selection, if it lands on one or Shift extends it.
+    /// The gesture a left press starts on the selection, if it lands on one or Alt adjusts it.
     pub(in crate::shell) fn grab_selection(
         &self,
         event: &gpui_kit::MouseDownEvent,
         geometry: PlotGeometry,
     ) -> Option<Selecting> {
         let snapshot = self.snapshot.as_ref()?;
-        if event.modifiers.shift {
+        let on_minimap = geometry.minimap.contains(&event.position);
+        if on_minimap && (event.modifiers.control || event.modifiers.shift) {
+            return None;
+        }
+        if event.modifiers.alt && !on_minimap {
             return self.extend_from_nearer_edges(event, geometry, snapshot);
         }
-        // Ctrl draws a new rectangle wherever it is pressed.
-        if event.modifiers.control {
+        // Explicit selection modifiers start a fresh band or rectangle before grabs.
+        if (event.modifiers.shift || event.modifiers.control) && geometry.selects_at(event.position)
+        {
             return None;
         }
         let grabbed = grab(snapshot, geometry, event.position)?;
@@ -269,7 +280,7 @@ impl PlotView {
         Some(selecting)
     }
 
-    /// Shift+press moves the nearer edge of each selected axis to the pointer and holds it there.
+    /// Alt+press moves the nearer edge of each selected axis to the pointer and holds it there.
     fn extend_from_nearer_edges(
         &self,
         event: &gpui_kit::MouseDownEvent,
@@ -277,28 +288,35 @@ impl PlotView {
         snapshot: &PlotSnapshot,
     ) -> Option<Selecting> {
         let on_spectrum = geometry.selects_at(event.position);
-        let on_ruler = geometry.frequency_ruler.contains(&event.position);
-        if !on_spectrum && !on_ruler {
+        let on_frequency = geometry.frequency_ruler.contains(&event.position);
+        let on_time = geometry.time_ruler.contains(&event.position);
+        if !on_spectrum && !on_frequency && !on_time {
             return None;
         }
         let selected = snapshot.selected;
         let (time, frequency) = geometry.fractions(event.position);
         let sample = snapshot.extents.time.view.boundary(time);
         let hertz = hertz(snapshot.extents.hertz, frequency);
-        let anchor = selected.time.filter(|_| on_spectrum).map(|span| {
-            let nearer = match sample.abs_diff(span.start()) <= sample.abs_diff(span.end()) {
-                true => Edge::Low,
-                false => Edge::High,
-            };
-            other_time(span, nearer)
-        });
-        let anchor_hz = selected.band.map(|band| {
-            let nearer = match (hertz - band.low()).abs() <= (hertz - band.high()).abs() {
-                true => Edge::Low,
-                false => Edge::High,
-            };
-            other_frequency(band, nearer)
-        });
+        let anchor = selected
+            .time
+            .filter(|_| on_spectrum || on_time)
+            .map(|span| {
+                let nearer = match sample.abs_diff(span.start()) <= sample.abs_diff(span.end()) {
+                    true => Edge::Low,
+                    false => Edge::High,
+                };
+                other_time(span, nearer)
+            });
+        let anchor_hz = selected
+            .band
+            .filter(|_| on_spectrum || on_frequency)
+            .map(|band| {
+                let nearer = match (hertz - band.low()).abs() <= (hertz - band.high()).abs() {
+                    true => Edge::Low,
+                    false => Edge::High,
+                };
+                other_frequency(band, nearer)
+            });
         if anchor.is_none() && anchor_hz.is_none() {
             return None;
         }

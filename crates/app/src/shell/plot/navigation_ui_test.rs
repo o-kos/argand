@@ -161,10 +161,13 @@ fn wheel_bindings_are_identical_on_spectrum_and_ruler() {
             shift: true,
             ..Default::default()
         };
-        assert!(matches!(
-            geometry.scroll(position, delta, shift),
-            Scroll::FrequencyPan(_)
-        ));
+        assert_eq!(
+            matches!(
+                geometry.scroll(position, delta, shift),
+                Scroll::FrequencyPan(_)
+            ),
+            geometry.spectrum.contains(&position)
+        );
     }
 }
 #[test]
@@ -173,7 +176,7 @@ fn frequency_ruler_and_shift_gestures_use_the_frequency_axis() {
     let ruler = point(px(120.), px(75.));
     assert_eq!(
         geometry.cursor(Some(ruler), false, None, true),
-        gpui_kit::CursorStyle::OpenHand
+        gpui_kit::CursorStyle::Crosshair
     );
     let delta = point(px(0.), px(40.));
     assert!(
@@ -325,10 +328,52 @@ fn vertical_rulers_and_minimap_use_time_down_and_frequency_right() {
     );
     assert_eq!(
         geometry.cursor(Some(point(px(175.), px(60.))), false, viewport, true),
-        gpui_kit::CursorStyle::OpenHand
+        gpui_kit::CursorStyle::Crosshair
     );
     assert_eq!(
         geometry.cursor(Some(point(px(75.), px(220.))), false, viewport, true),
-        gpui_kit::CursorStyle::OpenHand
+        gpui_kit::CursorStyle::Crosshair
     );
+}
+
+#[test]
+fn wheel_modifiers_never_redirect_a_ruler_from_its_physical_axis() {
+    for orientation in [
+        crate::navigation::orientation::Mode::Horizontal,
+        crate::navigation::orientation::Mode::Vertical,
+    ] {
+        let geometry = PlotGeometry {
+            orientation,
+            ..geometry()
+        };
+        for (position, frequency) in [
+            (geometry.time_ruler.center(), false),
+            (geometry.frequency_ruler.center(), true),
+        ] {
+            for bits in 0..8 {
+                let control = bits & 1 != 0;
+                let result = geometry.scroll(
+                    position,
+                    point(px(0.), px(-40.)),
+                    gpui_kit::Modifiers {
+                        control,
+                        shift: bits & 2 != 0,
+                        alt: bits & 4 != 0,
+                        ..Default::default()
+                    },
+                );
+                assert_eq!(
+                    matches!(
+                        result,
+                        Scroll::FrequencyPan(_) | Scroll::FrequencyZoom { .. }
+                    ),
+                    frequency
+                );
+                assert_eq!(
+                    matches!(result, Scroll::Zoom { .. } | Scroll::FrequencyZoom { .. }),
+                    control
+                );
+            }
+        }
+    }
 }

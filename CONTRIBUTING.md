@@ -8,11 +8,21 @@ changes. Repository content and all GitHub communication must be in English.
 [Agent roles and model selection](AGENTS.md#agent-roles-and-model-selection) is the
 source of truth for role assignments and risk classes. The approved defaults need
 no repeated per-Issue approval.
-The primary agent discusses the task directly with the owner and owns investigation,
-implementation, validation and final assessment. Use optional delegation and targeted
-consultation under those role defaults. The reviewer reads the assigned material
-without changing it. Changes to product behaviour, UX or acceptance criteria require
-the owner's decision.
+The primary agent is the owner-facing coordinator. It discusses decisions and scope,
+delegates implementation, relays owner input, tracks progress and assesses exact
+results and validation limits without writing product code. The executor owns the
+assigned task end to end: investigation, plan, implementation, tests, and Pull Request
+preparation and operations within the authorized scope. It makes ordinary technical
+choices autonomously, reports progress and escalates blockers or owner decisions.
+Conversation with the coordinator does not pause background execution; relay relevant
+corrections promptly. Follow the role defaults for optional targeted consultation.
+The reviewer reads the assigned material without changing it. Changes to product
+behaviour, UX or acceptance criteria require the owner's decision.
+
+Separate executors may work on distinct independent tasks only in owner-authorized
+directories or worktrees. Coordinate running applications and UI acceptance so
+tasks do not interfere. This arrangement grants no additional worktree, toolchain,
+SDK, dependency, artifact-sharing, merge, release or owner-acceptance authority.
 
 For work without code changes, the primary agent decides whether an Issue, Pull
 Request, new branch, formal plan, external review, tests or the full local gate is
@@ -234,9 +244,12 @@ assuming that a local field's success establishes the shared contract.
 
 ### UI acceptance
 
-For UI work, the primary agent includes acceptance in the plan and follows the
+For UI work, the executor includes acceptance in the plan and follows the
 repository-local [UI acceptance skill](.agents/skills/argand-ui-acceptance/SKILL.md)
-without waiting for the owner to invoke it by name. The reviewer assesses the evidence. This section remains the canonical acceptance policy.
+without waiting for the owner to invoke it by name. The coordinator coordinates
+acceptance runs between executors and assesses the exact results and their limits.
+The reviewer independently assesses the evidence. This section remains the
+canonical acceptance policy.
 
 UI acceptance requires running the current production application binary and
 exercising the actual affected scenario, checking appearance and interactions.
