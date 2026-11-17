@@ -26,27 +26,35 @@ The owner requested Issues #259 and #242 together in one separate linked worktre
 
 | Criterion | Verification | Result | Limits |
 | --- | --- | --- | --- |
-| Issue acceptance criteria | Targeted policy/integration tests and exact-revision review | Pending | Native desktop and real remote publication evidence are separate from fixtures |
-| Existing application behavior | Full local gate | Pending | Local SDK mode is not portable source packaging |
+| Sole version input and metadata consistency | release-metadata.py plus exact-revision fixture and malformed lock/date/duplicate/pending tests | Passed locally, wired into CI | Remote CI pending |
+| Exact merged SHA with explicit administrator initiation | Full SHA validation, immutable git-show inputs, admin/protection/ruleset rejection tests | Passed fixtures | Approval policy requires the actual merged SHA |
+| Same-SHA canonical successful required CI | Run path/event/branch/suite/app/SHA rejection tests and live read-only main CI query | Passed | Live production creation not attempted |
+| Stale/failed/missing/running CI cannot release | Negative API fixtures, no fallback to another SHA or older successful attempt | Passed | Main may advance without substituting approved merged SHA |
+| Immutable tag and safe retries | Real disposable bare-remote annotated tag push/conflict test, explicit matching-tag retry tests | Passed locally | No production tags created |
+| Existing Release including drafts never replaced | Initiator, verify and write-scoped publication checks | Passed fixtures | Existing-release recovery deliberately manual |
+| Administrator authority retained on dispatch/rerun | Original and triggering actor guard, repeated immediately before publish | Tested rejection | Workflow API authority still requires remote operational demonstration |
+| Supported initial push/retry handoff | Ordinary administrator git push and tag-ref workflow_dispatch | Locally established, remote pending | No isolated non-production remote authorized |
+| Approved SHA/tag/version/artifact source agreement | Metadata/tag fixture, existing BUILD-INFO and binary smoke checks | Partial | Successful remote non-production publication handoff pending |
+| Existing application behavior | fmt, Clippy, workspace tests | Passed | SDK mode gate, portable release separate |
 
 ## Implementation steps
 
-- [ ] Validate manifest, workspace lockfile versions and dated changelog in PR CI.
-- [ ] Implement administrator initiation with full SHA, canonical successful CI, immutable tag creation and explicit safe retry.
-- [ ] Retain tag equality checks and provide supported tag-push/manual retry workflow handoff.
-- [ ] Test success and rejection scenarios without publishing a production release and update release documentation.
+- [x] Validate manifest, workspace lockfile versions and dated changelog in PR CI.
+- [x] Implement administrator initiation with full SHA, canonical successful CI, immutable tag creation and explicit safe retry.
+- [x] Retain tag equality checks and provide supported tag-push/manual retry workflow handoff.
+- [x] Test success and rejection scenarios without publishing a production release and update release documentation.
 
 - [ ] Complete independent review and relevant validation.
 - [ ] Move this plan to completed before final review when all acceptance evidence exists.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, last
 - [ ] Change-specific policy and integration checks.
 
 ## Post-completion
 
-Only the owner authorizes merge and production release. After merge, verify the installed workflow's handoff under administrator authority. Native desktop evidence unavailable during implementation must remain an explicit acceptance limit.
+Only the owner authorizes merge and production release. Remote non-production handoff is an unfinished acceptance criterion until independently demonstrated, not a post-completion checkbox.
