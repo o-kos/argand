@@ -65,6 +65,7 @@ fn shown(cx: &mut TestAppContext, h: &Harness) -> bool {
 
 #[gpui_kit::test]
 fn toolbar_and_main_menu_open_one_panel_and_escape_restores_focus(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let h = open(cx);
     click(cx, &h, "about-button");
     assert!(shown(cx, &h));
@@ -96,6 +97,7 @@ fn toolbar_and_main_menu_open_one_panel_and_escape_restores_focus(cx: &mut TestA
 
 #[gpui_kit::test]
 fn panel_clicks_and_repository_activation_stay_inside_the_panel(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let h = open(cx);
     click(cx, &h, "about-button");
     click(cx, &h, "about-panel");
@@ -110,6 +112,7 @@ fn panel_clicks_and_repository_activation_stay_inside_the_panel(cx: &mut TestApp
 fn focus_within_the_link_is_retained_and_keyboard_activation_opens_the_url(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let h = open(cx);
     for key in ["enter", "space"] {
         click(cx, &h, "about-button");
@@ -124,6 +127,7 @@ fn focus_within_the_link_is_retained_and_keyboard_activation_opens_the_url(
 
 #[gpui_kit::test]
 fn focus_elsewhere_retains_the_panel_but_deactivation_dismisses(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let h = open(cx);
     click(cx, &h, "about-button");
     cx.update_window(h.window.into(), |_, window, cx| {
@@ -158,6 +162,7 @@ impl Render for Empty {
 
 #[gpui_kit::test]
 fn themes_and_menu_transitions_keep_the_same_standard_panel(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let h = open(cx);
     for mode in [ThemeMode::Light, ThemeMode::Dark] {
         cx.update(|cx| gpui_kit::component::Theme::change(mode, None, cx));
@@ -205,6 +210,7 @@ fn themes_and_menu_transitions_keep_the_same_standard_panel(cx: &mut TestAppCont
 
 #[gpui_kit::test]
 fn an_outside_press_only_closes_the_panel(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let h = open(cx);
     click(cx, &h, "about-button");
     cx.update_window(h.window.into(), |_, window, cx| {

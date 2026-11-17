@@ -35,6 +35,7 @@ fn request() -> Request {
 fn domain_switches_derive_carrier_and_rate_from_source_and_encoding_preserves_drafts(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(gpui_kit::init);
     let mut editor = None;
     let window = cx.add_window(|window, cx| {
@@ -134,6 +135,7 @@ fn domain_switches_derive_carrier_and_rate_from_source_and_encoding_preserves_dr
 
 #[gpui_kit::test]
 fn only_valid_changed_targets_enable_conversion(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(gpui_kit::init);
     let mut form = None;
     let window = cx.add_window(|window, cx| {
@@ -160,6 +162,7 @@ fn only_valid_changed_targets_enable_conversion(cx: &mut TestAppContext) {
 fn numeric_commit_groups_drafts_and_container_validation_never_changes_type(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(gpui_kit::init);
     let mut form = None;
     let window = cx.add_window(|window, cx| {
@@ -226,6 +229,7 @@ fn numeric_commit_groups_drafts_and_container_validation_never_changes_type(
 
 #[gpui_kit::test]
 fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{open_window, wait_until, write_wave};
     use crate::editing::Editing;
     let (shell, cx) = open_window(cx);
@@ -444,6 +448,7 @@ fn saved_ordinary_document(shell: &Shell) -> bool {
 
 #[gpui_kit::test]
 fn conversion_failure_and_cancel_preserve_current_unsaved_edits(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{open_window, wait_until, write_wave};
     use crate::editing::Editing;
     let (shell, cx) = open_window(cx);
@@ -499,6 +504,7 @@ fn conversion_failure_and_cancel_preserve_current_unsaved_edits(cx: &mut TestApp
 
 #[gpui_kit::test]
 fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     use crate::editing::Editing;
     let (shell, cx) = panel_window(cx);
@@ -722,6 +728,7 @@ fn converted_fixture<'a>(
 
 #[gpui_kit::test]
 fn converted_document_open_discard_and_save_each_answer_only_once(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx, dir) = converted_fixture(cx, "open");
     let second = dir.join("second.wav");
@@ -777,6 +784,7 @@ fn converted_document_open_discard_and_save_each_answer_only_once(cx: &mut TestA
 
 #[gpui_kit::test]
 fn published_result_reader_failure_preserves_dirty_capture(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::wait_until;
     let (shell, cx, dir) = converted_fixture(cx, "reader-failure");
     let before = shell.update_in(cx, |shell, window, cx| {
@@ -847,6 +855,7 @@ fn stage_reader(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>)
 fn cancelled_and_stale_prepared_readers_cannot_replace_or_stop_current_reader(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::wait_until;
     let (shell, cx, dir) = converted_fixture(cx, "reader-routing");
     let document = shell.read_with(cx, |shell, _| shell.file.as_ref().unwrap().id);
@@ -889,6 +898,7 @@ fn cancelled_and_stale_prepared_readers_cannot_replace_or_stop_current_reader(
 
 #[gpui_kit::test]
 fn unsaved_selection_exports_never_suggest_private_scratch_directories(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx, dir) = converted_fixture(cx, "export");
     for (time, band) in [(true, false), (false, true), (true, true)] {
         shell.update_in(cx, |shell, window, cx| {
@@ -927,6 +937,7 @@ fn hover_about(cx: &mut gpui_kit::VisualTestContext) {
 
 #[gpui_kit::test]
 fn property_panels_are_mutually_exclusive_for_explicit_commands(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!("argand-panel-switch-{}.wav", std::process::id()));
@@ -1020,6 +1031,7 @@ fn property_panels_are_mutually_exclusive_for_explicit_commands(cx: &mut TestApp
 
 #[gpui_kit::test]
 fn status_triggers_show_help_without_opening_then_click_opens(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!("argand-panel-hover-{}.wav", std::process::id()));
@@ -1068,6 +1080,7 @@ fn status_triggers_show_help_without_opening_then_click_opens(cx: &mut TestAppCo
 
 #[gpui_kit::test]
 fn shared_frequency_editor_steps_drafts_and_tab_visits_each_value_once(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let path =
@@ -1191,6 +1204,7 @@ fn assert_property_panels(
 fn an_edit_during_save_directory_preparation_does_not_open_a_stale_chooser(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx, dir) = converted_fixture(cx, "stale-chooser");
     shell.update_in(cx, |shell, window, cx| {
         shell.save_as(false, window, cx);
@@ -1215,6 +1229,7 @@ fn an_edit_during_save_directory_preparation_does_not_open_a_stale_chooser(
 fn opening_a_real_source_discards_old_carrier_drafts_and_derives_reverse_defaults(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let dir = argand_io::testutil::TempDir::new("carrier-new-source");
@@ -1296,6 +1311,7 @@ fn panel_editor(shell: &Entity<Shell>, cx: &gpui_kit::VisualTestContext) -> Enti
 
 #[gpui_kit::test]
 fn exact_carrier_defaults_do_not_warn_from_rounded_physical_references(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(gpui_kit::init);
     for (rate, reference) in [(24000., 1e20), (8000.15, 1e10)] {
         let mut source = request();
@@ -1331,6 +1347,7 @@ fn exact_carrier_defaults_do_not_warn_from_rounded_physical_references(cx: &mut 
 #[cfg(target_os = "linux")]
 #[gpui_kit::test]
 fn caption_close_with_open_sample_list_reaches_unsaved_workflow(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     use gpui_kit::component::WindowExt;
     let (shell, cx) = panel_window(cx);
@@ -1422,6 +1439,7 @@ fn caption_close_with_open_sample_list_reaches_unsaved_workflow(cx: &mut TestApp
 
 #[gpui_kit::test]
 fn cancellation_rejects_success_already_queued_by_the_worker(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx, dir) = converted_fixture(cx, "cancel-queued-success");
     shell.update_in(cx, |shell, window, cx| {
         let file = shell.file.as_ref().unwrap();
@@ -1472,6 +1490,7 @@ fn cancellation_rejects_success_already_queued_by_the_worker(cx: &mut TestAppCon
 fn conversion_blocks_document_actions_and_close_waits_before_unsaved_prompt(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx, dir) = converted_fixture(cx, "busy-actions");
     shell.update_in(cx, |shell, window, cx| {
         shell.save_as(false, window, cx);
@@ -1583,6 +1602,7 @@ fn choose_container(editor: &Entity<Editor>, cx: &mut gpui_kit::VisualTestContex
 
 #[gpui_kit::test]
 fn sample_choices_fit_and_flac_filters_without_resetting_drafts(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(|cx| {
         gpui_kit::init(cx);
         settings_ui::init(cx);
@@ -1682,6 +1702,7 @@ fn sample_choices_fit_and_flac_filters_without_resetting_drafts(cx: &mut TestApp
 
 #[gpui_kit::test]
 fn format_tooltip_disappears_for_open_select_and_returns_after_close(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(gpui_kit::init);
     let mut editor = None;
     let (_, cx) = cx.add_window_view(|window, cx| {
@@ -1749,6 +1770,7 @@ fn format_tooltip_disappears_for_open_select_and_returns_after_close(cx: &mut Te
 
 #[gpui_kit::test]
 fn flac_fallback_preserves_domain_and_frequency_draft(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(gpui_kit::init);
     for token in argand_core::SAMPLE_TYPE_TOKENS {
         let mut form = None;
@@ -1879,6 +1901,7 @@ fn exercise_reopened_advice(
 
 #[gpui_kit::test]
 fn format_advice_reuses_range_close_hover_and_list_suppression(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(gpui_kit::init);
     for width in [1000., 600.] {
         let mut form = None;
@@ -1980,6 +2003,7 @@ fn format_advice_reuses_range_close_hover_and_list_suppression(cx: &mut TestAppC
 
 #[gpui_kit::test]
 fn external_tooltips_are_cancelled_on_panel_open_and_do_not_resurrect(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = panel_window(cx);
     cx.update(|window, _| window.activate_window());
     frame(cx);
@@ -2036,6 +2060,7 @@ fn external_tooltips_are_cancelled_on_panel_open_and_do_not_resurrect(cx: &mut T
 
 #[gpui_kit::test]
 fn deactivation_closes_both_property_panels_without_reopening(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!(
@@ -2077,6 +2102,7 @@ fn deactivation_closes_both_property_panels_without_reopening(cx: &mut TestAppCo
 fn rapid_reactivation_cancels_pending_and_visible_help_before_fresh_motion(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = panel_window(cx);
     cx.update(|window, _| window.activate_window());
     frame(cx);
@@ -2125,6 +2151,7 @@ fn rapid_reactivation_cancels_pending_and_visible_help_before_fresh_motion(
 
 #[gpui_kit::test]
 fn an_old_teardown_acknowledgement_cannot_clear_a_new_suppression(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = panel_window(cx);
     frame(cx);
     cx.update(|window, cx| {
@@ -2199,6 +2226,7 @@ fn information_click(cx: &mut gpui_kit::VisualTestContext, id: &str) {
 
 #[gpui_kit::test]
 fn information_buttons_share_toggle_internal_click_and_all_switch_routes(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!(
@@ -2265,6 +2293,7 @@ fn information_buttons_share_toggle_internal_click_and_all_switch_routes(cx: &mu
 
 #[gpui_kit::test]
 fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let dir = argand_io::testutil::TempDir::new("reference-panel-rebind");
@@ -2348,6 +2377,7 @@ fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppC
 
 #[gpui_kit::test]
 fn reference_only_convert_opens_after_edit_and_preserves_samples(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let dir = argand_io::testutil::TempDir::new("reference-only-convert");
@@ -2400,6 +2430,7 @@ fn reference_only_convert_opens_after_edit_and_preserves_samples(cx: &mut TestAp
 fn all_information_panels_suppress_external_tooltips_and_restore_on_fresh_hover(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
     let dir = argand_io::testutil::TempDir::new("information-tooltip-policy");

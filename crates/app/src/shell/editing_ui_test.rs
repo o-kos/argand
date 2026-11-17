@@ -60,6 +60,7 @@ fn select(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>, a: u64, b
 
 #[gpui_kit::test]
 fn delete_undo_and_redo_follow_the_length_selection_and_title(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     described(cx, &shell, "/captures/a.iqw");
     select(cx, &shell, 1000, 3000);
@@ -78,6 +79,7 @@ fn delete_undo_and_redo_follow_the_length_selection_and_title(cx: &mut TestAppCo
 
 #[gpui_kit::test]
 fn copy_and_replace_selection_paste_and_select_the_pasted_samples(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     described(cx, &shell, "/captures/a.iqw");
     select(cx, &shell, 0, 100);
@@ -100,6 +102,7 @@ fn copy_and_replace_selection_paste_and_select_the_pasted_samples(cx: &mut TestA
 
 #[gpui_kit::test]
 fn opening_another_file_asks_about_unsaved_edits_first(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     described(cx, &shell, "/captures/a.iqw");
     select(cx, &shell, 0, 100);
@@ -130,6 +133,7 @@ fn opening_another_file_asks_about_unsaved_edits_first(cx: &mut TestAppContext) 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[gpui_kit::test]
 fn without_a_system_dialog_the_toolkit_dialog_asks(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     open_window(cx);
     let mut shell = None;
     let handle = cx.add_window(|window, cx| {
@@ -166,6 +170,7 @@ fn without_a_system_dialog_the_toolkit_dialog_asks(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_band_is_clamped_to_the_capture_and_leaves_nothing_to_edit(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     described(cx, &shell, "/captures/a.iqw");
     shell.update_in(cx, |shell, _, cx| {
@@ -209,6 +214,7 @@ fn a_band_is_clamped_to_the_capture_and_leaves_nothing_to_edit(cx: &mut TestAppC
 
 #[gpui_kit::test]
 fn the_close_button_asks_about_unsaved_edits(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     described(cx, &shell, "/captures/a.iqw");
     select(cx, &shell, 0, 100);
@@ -223,6 +229,7 @@ fn the_close_button_asks_about_unsaved_edits(cx: &mut TestAppContext) {
 fn a_save_finished_after_more_edits_keeps_the_document_and_its_unsaved_state(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     described(cx, &shell, "/captures/a.iqw");
     select(cx, &shell, 0, 100);
@@ -261,6 +268,7 @@ fn a_save_finished_after_more_edits_keeps_the_document_and_its_unsaved_state(
 
 #[gpui_kit::test]
 fn undo_reaches_a_capture_edited_down_to_nothing(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     described(cx, &shell, "/captures/a.iqw");
     select(cx, &shell, 0, 48_000);
@@ -368,6 +376,7 @@ fn assert_close_overlay(
 fn first_caption_close_and_quit_preserve_dirty_documents_under_supported_overlays(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use gpui_kit::test::TestWindowExt;
     let (shell, cx) = open_window(cx);
     let (_dir, recent) = dirty_close_fixture(cx, &shell);
@@ -473,6 +482,7 @@ fn first_caption_close_and_quit_preserve_dirty_documents_under_supported_overlay
 #[cfg(target_os = "linux")]
 #[gpui_kit::test]
 fn clean_caption_shortcut_and_menu_quit_remove_the_window(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use gpui_kit::test::TestWindowExt;
     for route in ["caption", "shortcut", "menu"] {
         let (shell, cx) = open_window(cx);
@@ -510,6 +520,7 @@ fn clean_caption_shortcut_and_menu_quit_remove_the_window(cx: &mut TestAppContex
 
 #[gpui_kit::test]
 fn overlay_quit_fallback_only_closes_its_active_owning_window(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use gpui_kit::test::TestWindowExt;
     let (first, first_cx) = open_window(cx);
     let owner = first_cx.update(|window, cx| {

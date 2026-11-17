@@ -4,6 +4,7 @@ use gpui_kit::TestAppContext;
 
 #[gpui_kit::test]
 fn unavailable_file_shortcuts_are_inert_and_follow_document_lifetime(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     cx.update(|window, cx| Shell::bind_choose_file(shell.downgrade(), window.window_handle(), cx));
     for keys in ["ctrl-s", "ctrl-shift-s", "ctrl-alt-s", "ctrl-,", "f11"] {

@@ -56,6 +56,7 @@ impl gpui_kit::Render for Observed {
 fn frame_press_bubbles_but_a_popup_above_the_edge_keeps_its_input(
     cx: &mut gpui_kit::TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use gpui_kit::test::TestWindowExt;
     let presses = std::rc::Rc::new(std::cell::Cell::new(0));
     let counted = presses.clone();
@@ -143,6 +144,7 @@ impl gpui_kit::Render for MenuCaption {
 fn menu_backdrop_keeps_windows_caption_hitboxes_live_and_other_input_blocked(
     cx: &mut gpui_kit::TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use gpui_kit::test::TestWindowExt;
     let pressed = std::rc::Rc::new(std::cell::Cell::new(0));
     let underlying = std::rc::Rc::new(std::cell::Cell::new(0));

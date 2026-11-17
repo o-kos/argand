@@ -5,6 +5,7 @@ use gpui_kit::test::TestWindowExt;
 fn frame_dismissal_updates_shell_through_root_without_reborrowing_it(
     cx: &mut gpui_kit::TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(|cx| {
         gpui_kit::init(cx);
         Root::register_plugin(cx, |_, _| FrameObserver);

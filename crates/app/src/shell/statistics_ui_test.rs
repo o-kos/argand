@@ -4,6 +4,7 @@ use gpui_kit::TestAppContext;
 fn failed_source_remains_unavailable_after_capture_and_description_changes(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::conversion_ui::tests::panel_window;
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
@@ -40,6 +41,7 @@ fn failed_source_remains_unavailable_after_capture_and_description_changes(
 fn stale_capture_metrics_are_rejected_and_view_changes_keep_the_same_query(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::conversion_ui::tests::panel_window;
     use super::super::replace_ui::tests::{wait_until, write_wave};
     let (shell, cx) = panel_window(cx);
@@ -116,6 +118,7 @@ fn stale_capture_metrics_are_rejected_and_view_changes_keep_the_same_query(
 }
 #[gpui_kit::test]
 fn same_scale_save_rebuilds_statistics_behind_a_reused_complete_envelope(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     use super::super::conversion_ui::tests::panel_window;
     use super::super::replace_ui::tests::{wait_for_save_chooser, wait_until, write_wave};
     let (shell, cx) = panel_window(cx);

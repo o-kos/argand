@@ -112,6 +112,7 @@ fn span(a: u64, b: u64) -> Option<SampleSpan> {
 
 #[gpui_kit::test]
 fn a_typed_value_moves_the_selection_live_and_enter_keeps_it(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);
@@ -133,6 +134,7 @@ fn a_typed_value_moves_the_selection_live_and_enter_keeps_it(cx: &mut TestAppCon
 
 #[gpui_kit::test]
 fn tab_goes_round_the_panel_s_own_fields(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);
@@ -158,6 +160,7 @@ fn tab_goes_round_the_panel_s_own_fields(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_field_read_late_leaves_the_next_one_being_typed_in(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);
@@ -174,6 +177,7 @@ fn a_field_read_late_leaves_the_next_one_being_typed_in(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn the_panel_s_own_keys_close_it_keeping_the_selection(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);
@@ -189,6 +193,7 @@ fn the_panel_s_own_keys_close_it_keeping_the_selection(cx: &mut TestAppContext) 
 
 #[gpui_kit::test]
 fn the_panel_and_the_analysis_hint_never_stand_together(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     let analysis = |cx: &mut gpui_kit::VisualTestContext| {
@@ -205,6 +210,7 @@ fn the_panel_and_the_analysis_hint_never_stand_together(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn escape_restores_the_selection_the_panel_opened_on(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);
@@ -217,6 +223,7 @@ fn escape_restores_the_selection_the_panel_opened_on(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_bad_value_keeps_the_panel_open_and_changes_nothing(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);
@@ -230,6 +237,7 @@ fn a_bad_value_keeps_the_panel_open_and_changes_nothing(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn up_and_down_step_the_focused_field_by_its_last_digit(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);
@@ -261,6 +269,7 @@ fn up_and_down_step_the_focused_field_by_its_last_digit(cx: &mut TestAppContext)
 fn a_bare_width_draft_steps_in_its_opened_unit_across_the_kilohertz_boundary(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     toggle(cx, &shell);
     keys(cx, "shift-tab 0 . 5 up");
@@ -270,6 +279,7 @@ fn a_bare_width_draft_steps_in_its_opened_unit_across_the_kilohertz_boundary(
 
 #[gpui_kit::test]
 fn a_segment_selects_its_kind_from_the_visible_range_and_opens_the_panel(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, window, cx| {
         shell.choose_selection_kind([false, true], window, cx)
@@ -298,6 +308,7 @@ fn a_segment_selects_its_kind_from_the_visible_range_and_opens_the_panel(cx: &mu
 
 #[gpui_kit::test]
 fn the_panel_follows_a_selection_made_on_the_plot(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);
@@ -311,6 +322,7 @@ fn the_panel_follows_a_selection_made_on_the_plot(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn from_the_menu_the_panel_keeps_the_keyboard(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, window, cx| {
         window.focus(&shell.focus_target(cx), cx)
@@ -329,6 +341,7 @@ fn from_the_menu_the_panel_keeps_the_keyboard(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn with_nothing_selected_the_panel_opens_on_time_and_band(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     toggle(cx, &shell);
     let opened = selected(cx, &shell);
@@ -345,6 +358,7 @@ fn with_nothing_selected_the_panel_opens_on_time_and_band(cx: &mut TestAppContex
 
 #[gpui_kit::test]
 fn a_value_typed_for_an_axis_not_selected_selects_it(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, window, cx| {
         shell.choose_selection_kind([false, true], window, cx)
@@ -369,6 +383,7 @@ fn a_value_typed_for_an_axis_not_selected_selects_it(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn choosing_a_file_closes_the_panel_keeping_what_it_applied(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);
@@ -381,6 +396,7 @@ fn choosing_a_file_closes_the_panel_keeping_what_it_applied(cx: &mut TestAppCont
 
 #[gpui_kit::test]
 fn another_document_opened_under_the_panel_closes_it(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     shell.update_in(cx, |shell, _, _| shell.selection = span(100, 200));
     toggle(cx, &shell);

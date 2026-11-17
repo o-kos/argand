@@ -54,6 +54,7 @@ fn available_recent(
 
 #[gpui_kit::test]
 fn start_page_centers_the_visible_group_and_keeps_its_columns(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let directory = std::env::temp_dir().join(format!(
         "argand-start-page-{}-{}",

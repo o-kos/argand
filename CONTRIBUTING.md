@@ -401,6 +401,16 @@ and shipped application/CLI binaries stay in the workspace-local `target/`. The
 maintained probes are
 `argand`'s `fft_scheduling` and `argand-dsp`'s `snapshot_cost` and `conversion_cost`.
 
+Every application GPUI test creates `crate::test_context::cleanup(cx)` as its
+first local scope guard, before retained entities and window references. This
+calls the genuine `TestAppContext::quit` API after those owners drop, including
+when the test unwinds, and drains cancelled delivery tasks. The locked toolkit's
+macro calls `App::quit` on a no-op test platform, which does not perform this
+context cleanup. Keep the application guard even for context-only tests so
+window and reader lifetimes do not depend on which helper a test uses. Ordinary
+success must propagate cleanup failures, and cleanup during a test panic must
+preserve that original failure. Installed SDK/registry sources remain immutable.
+
 Tests obtain checkout-dependent executable and fixture paths from Cargo's runtime
 `CARGO_BIN_EXE_*` and `CARGO_MANIFEST_DIR` variables using native OS strings.
 Do not embed these paths with `env!`: Cargo can reuse a test executable across

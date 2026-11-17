@@ -31,7 +31,7 @@ The owner requested Issues #259 and #242 together in one separate linked worktre
 | Vulkan ICD instance/device/desktop extensions work under launcher environment | probe-linux-backend.py on extracted archive | Pending | Probe does not create a rendering surface |
 | Baseline Ubuntu 24.04 production GUI opens capture | Existing Ubuntu24 image identified with Wayland1.22/Mesa24 | Pending | Desktop runtime not exercised yet |
 | Newer Wayland/Mesa production GUI opens capture | Ubuntu26.04 host with ICDs and isolated Xvfb available | Pending | Startup/real frame evidence not exercised yet |
-| Existing application behavior | fmt, Clippy, workspace tests | Passed | Local SDK gate, portable build separate |
+| Existing application behavior | fmt, Clippy, workspace tests and release build | Pre-cleanup gate passed, refreshed gate pending | Local SDK gate, portable build separate |
 
 ## Implementation steps
 
@@ -58,16 +58,25 @@ API after those locals drop. It also runs during unwinding, preserves the origin
 panic, and propagates cleanup failures on otherwise successful tests. No registry,
 immutable SDK, dependency graph, production worker policy or test assertions change.
 
-- [ ] Add shared test-context cleanup and first-local guards to all app GPUI tests.
-- [ ] Prove real Shell/capture ownership and reader release across repeated normal and panic scopes.
-- [ ] Observe a bounded serial subset returning analyzer/pool threads to baseline before any full gate.
+- [x] Add shared test-context cleanup and first-local guards to all app GPUI tests.
+- [x] Prove real Shell/capture ownership and reader release across repeated normal and panic scopes.
+- [x] Observe a bounded serial subset returning analyzer/pool threads to baseline before any full gate.
 - [ ] Repeat full gate and independent review only after focused lifecycle evidence passes.
+
+The pre-fix single-case regression failed with "test window retained its Shell".
+After cleanup, both focused tests passed: three normal document scopes and one
+intentional unwind, with the exact original panic checked. Each scope releases its
+real Shell weak handle and every existing reader lease within a bounded deadline.
+A serial temporary process observation sampled 385 points: at most one analyzer
+and eight FFT workers, with three observed returns to zero between scopes and a
+successful final process exit. This is task evidence, not a permanent monitor or
+a fixed global-thread-count assertion in the parallel test suite.
 
 ## Validation
 
-- [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --all-targets --locked`
-- [x] `cargo test --locked`
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --all-targets --locked`
+- [ ] `cargo test --locked`
 - [ ] `cargo build --release --locked`, last
 - [ ] Change-specific policy and integration checks.
 

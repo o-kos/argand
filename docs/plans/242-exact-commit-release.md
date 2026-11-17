@@ -35,7 +35,7 @@ The owner requested Issues #259 and #242 together in one separate linked worktre
 | Administrator authority retained on dispatch/rerun | Original and triggering actor guard, repeated immediately before publish | Tested rejection | Workflow API authority still requires remote operational demonstration |
 | Supported initial push/retry handoff | Ordinary administrator git push and tag-ref workflow_dispatch | Locally established, remote pending | No isolated non-production remote authorized |
 | Approved SHA/tag/version/artifact source agreement | Metadata/tag fixture, existing BUILD-INFO and binary smoke checks | Partial | Successful remote non-production publication handoff pending |
-| Existing application behavior | fmt, Clippy, workspace tests | Passed | SDK mode gate, portable release separate |
+| Existing application behavior | fmt, Clippy, workspace tests and release build | Pre-cleanup gate passed, refreshed gate pending | Owner-approved test cleanup is tracked in the #259 plan |
 
 ## Implementation steps
 
@@ -49,9 +49,9 @@ The owner requested Issues #259 and #242 together in one separate linked worktre
 
 ## Validation
 
-- [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --all-targets --locked`
-- [x] `cargo test --locked`
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --all-targets --locked`
+- [ ] `cargo test --locked`
 - [ ] `cargo build --release --locked`, last
 - [ ] Change-specific policy and integration checks.
 
