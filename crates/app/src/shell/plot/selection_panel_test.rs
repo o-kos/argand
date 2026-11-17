@@ -29,7 +29,7 @@ fn open(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestCon
     cx.update(|window, _| window.activate_window());
     shell.update_in(cx, |shell, window, cx| {
         let path = PathBuf::from("/captures/a.iqw");
-        shell.open(Origin::new(path.clone()), window, cx);
+        shell.open_test_document(Origin::new(path.clone()), window, cx);
         let Some(file) = shell.file.as_mut() else {
             panic!("the capture never opened");
         };

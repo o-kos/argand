@@ -543,24 +543,19 @@ Dry-run the checks the release workflow makes before pushing anything:
 
 It fails if the tag does not match `workspace.package.version` or the changelog has no section for it, and otherwise prints the section that becomes the GitHub Release description.
 
-PR CI runs `.github/scripts/release-metadata.py` to check the manifest version,
-workspace package versions in Cargo.lock and the latest nonempty dated changelog
-section without invoking Cargo. Release initiation additionally requires an empty
-Unreleased section.
-
-After the release Pull Request is squash-merged, the administrator explicitly
-approves its full merged main commit SHA. Version selection stays in that PR:
+After the release Pull Request is squash-merged, the owner explicitly authorizes
+its release and tags the chosen commit in main's history:
 
 ```sh
-python3 .github/scripts/initiate-release.py --commit <approved-full-sha>
-python3 .github/scripts/initiate-release.py --commit <approved-full-sha> --execute
+git tag -a vX.Y.Z <approved-commit-sha> -m "Release vX.Y.Z"
+git push origin vX.Y.Z
 ```
 
-The first command prints a preflight result. The second repeats validation and
-pushes an annotated version tag at that exact SHA using existing administrator git
-authentication. It never moves local or remote tags. Follow the authority,
-exact-CI and safe retry requirements in [release initiation](docs/development/releasing.md).
-Ordinary merges do not release. No second manual version input is accepted.
+GitHub permissions and rulesets control tag creation and publication. The workflow
+accepts only canonical numeric `vMAJOR.MINOR.PATCH` tags without leading zeroes or
+suffixes, verifies that the tag commit is reachable from main, and builds from that
+exact verified SHA. The commit need not be main's current tip. Ordinary merges do
+not release, and the workflow adds no user-role checks or local release command.
 
 The tag starts `.github/workflows/release.yml`, which verifies the tag against the
 workspace version and changelog, runs source-toolkit tests and builds both `argand`
@@ -570,13 +565,11 @@ with `-C target-feature=+crt-static` and an explicit target. No installed GPUI K
 SDK is used by these portable builds.
 
 `.github/scripts/package-release.py` is shared with full CI, so packaging and
-headless runtime checks pass on the Ready release PR before an administrator tags
+headless runtime checks pass on the Ready release PR before an explicitly authorized tag is created for
 it. It verifies both packaged binaries' versions and renders the synthetic stereo
-PCM16 2 kHz FLAC fixture with packaged aspec. On Linux it bundles the native library
-closure plus explicitly loaded fontconfig, excluding host Wayland, Vulkan,
-X11/XCB, xkbcommon, GL/EGL, GBM and DRM libraries, and copies
-their package copyright notices and creates an application-scoped launcher. glibc,
-the ELF loader, desktop/font configuration and Vulkan drivers remain OS requirements;
+PCM16 2 kHz FLAC fixture with packaged aspec. On Linux it copies the executable directly without bundling system shared
+libraries or overriding the library path. Compatible runtime libraries, desktop
+and font configuration, and graphics drivers come from the operating system;
 see the baseline in [README.md](README.md#install). On Windows it rejects non-OS
 DLL imports, including dynamic Visual C++ runtimes. The Windows baseline is version
 10 1703 or newer, which supplies the `icuuc.dll` and `icuin.dll` ICU components;
@@ -605,10 +598,9 @@ Each platform publishes separate `argand-vX.Y.Z-<target>` and
 `aspec-vX.Y.Z-<target>` archives (tar.gz on Linux, ZIP on Windows), preserving
 existing CLI artifact names. Both include the README, MIT licence, changelog and
 `BUILD-INFO.json` recording the source commit, target, source-toolkit mode, binary
-SHA-256 and native dependencies. `SHA256SUMS` covers all four archives; the release
+SHA-256 and validated Windows native imports. `SHA256SUMS` covers all four archives; the release
 body is the version's changelog section. Verification failures happen before
 building and publishing.
 
-Published or draft Releases and their tags are never overwritten by automated
-retry. Recovery requires a separate explicit administrator decision, as documented
-in [release initiation](docs/development/releasing.md).
+Published Releases and tags are not automatically overwritten. Recovery requires
+a separate explicit owner decision.

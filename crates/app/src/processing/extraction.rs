@@ -88,12 +88,44 @@ pub fn run(
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<Saved, WriteError> {
+    let mut source = open(&request.capture, &request.sources, &request.meta)?;
+    let meta = request.output_meta()?;
+    let mut file = FloatWave::create(FloatWaveRequest {
+        samples: meta.len_samples,
+        meta,
+        target: request.target.clone(),
+        sources: request.sources.iter().flatten().cloned().collect(),
+        protected: request.protected.clone(),
+    })?;
+    compute(
+        request,
+        &mut source,
+        &mut |samples| file.write(samples),
+        progress,
+        cancel,
+    )?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err(WriteError::Cancelled);
+    }
+    unchanged(&request.sources)?;
+    file.finish(cancel)
+}
+
+type SampleSink<'a> = dyn FnMut(&[[f32; 2]]) -> Result<(), WriteError> + 'a;
+
+/// The production extraction, resampling and domain mapping, independent of its sink.
+fn compute(
+    request: &ExtractRequest,
+    source: &mut dyn SampleSource,
+    sink: &mut SampleSink<'_>,
+    progress: &mut dyn FnMut(u64, u64),
+    cancel: &AtomicBool,
+) -> Result<(), WriteError> {
     let len = request.capture.len();
     if request.span.end() > len {
         return Err(WriteError::OutOfRange);
     }
     let plan = request.plan()?;
-    let mut source = open(&request.capture, &request.sources, &request.meta)?;
     let resampling = output_plan(request, &plan)?;
     let padding = resampling.margin().saturating_mul(plan.decimation());
     let leading = padding.saturating_sub(request.span.start());
@@ -111,8 +143,11 @@ pub fn run(
         .checked_add(leading)
         .and_then(|count| count.checked_add(trailing))
         .ok_or(WriteError::OutOfRange)?;
-    let mut output = Output::new(request, &plan, resampling, span, leading)?;
-    let mut extractor = Extractor::new(plan, extended).map_err(|error| request.refused(&error))?;
+    let mut output = Output::new(request, &plan, resampling, span, leading, sink)?;
+    let zero_prefix = margin + leading - (span.start() - from);
+    let support = zero_prefix..zero_prefix + to - from;
+    let mut extractor = Extractor::with_input_support(plan, extended, support)
+        .map_err(|error| request.refused(&error))?;
     let mut out = Vec::new();
     extractor.push_zeros(margin + leading - (span.start() - from), &mut out);
     let channels = request.meta.channels();
@@ -149,7 +184,6 @@ pub fn run(
     if cancel.load(Ordering::Relaxed) {
         return Err(WriteError::Cancelled);
     }
-    unchanged(&request.sources)?;
     output.finish(cancel)
 }
 
@@ -168,8 +202,8 @@ fn output_plan(
         .map_err(|error| request.refused(&error))
 }
 
-struct Output {
-    file: FloatWave,
+struct Output<'a> {
+    sink: &'a mut SampleSink<'a>,
     stream: argand_dsp::resample::Stream,
     converted: Vec<[f32; 2]>,
     phase: f64,
@@ -177,13 +211,14 @@ struct Output {
     real: bool,
 }
 
-impl Output {
+impl<'a> Output<'a> {
     fn new(
         request: &ExtractRequest,
         plan: &ExtractPlan,
         resampling: argand_dsp::resample::Plan,
         span: SampleSpan,
         leading: u64,
+        sink: &'a mut SampleSink<'a>,
     ) -> Result<Self, WriteError> {
         let meta = request.output_meta()?;
         let rate = meta.sample_rate;
@@ -197,13 +232,6 @@ impl Output {
             },
         )
         .map_err(|error| request.refused(&error))?;
-        let file = FloatWave::create(FloatWaveRequest {
-            meta,
-            samples,
-            target: request.target.clone(),
-            sources: request.sources.iter().flatten().cloned().collect(),
-            protected: request.protected.clone(),
-        })?;
         let (low, high) = request.edges();
         let real = !request.meta.is_iq();
         let step = if real {
@@ -213,7 +241,7 @@ impl Output {
         };
         let phase = (plan.centre() / request.meta.sample_rate * offset as f64).rem_euclid(1.0);
         Ok(Self {
-            file,
+            sink,
             stream,
             converted: Vec::new(),
             phase,
@@ -246,12 +274,12 @@ impl Output {
                 (i * sin + q * cos) as f32
             };
         }
-        self.file.write(&self.converted)?;
+        (self.sink)(&self.converted)?;
         self.converted.clear();
         Ok(())
     }
 
-    fn finish(mut self, cancel: &AtomicBool) -> Result<Saved, WriteError> {
+    fn finish(mut self, cancel: &AtomicBool) -> Result<(), WriteError> {
         while !self.stream.is_done() {
             if cancel.load(Ordering::Relaxed) {
                 return Err(WriteError::Cancelled);
@@ -259,7 +287,7 @@ impl Output {
             self.stream.finish(&mut self.converted);
             self.flush()?;
         }
-        self.file.finish(cancel)
+        Ok(())
     }
 }
 

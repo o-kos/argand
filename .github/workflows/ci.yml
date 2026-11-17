@@ -55,12 +55,6 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - name: Validate release metadata
-        run: python3 .github/scripts/release-metadata.py
-
-      - name: Test release initiation policy
-        run: python3 .github/scripts/test-initiate-release.py
-
       - name: Test release packaging policy
         run: python3 .github/scripts/test-package-release.py
 

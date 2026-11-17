@@ -1,60 +1,49 @@
-# Issue #242: Exact Commit Release
+# Issue #242: Tagged releases from main
 
-Resolves #242 (https://github.com/o-kos/argand/issues/242).
+Tracks #242 (https://github.com/o-kos/argand/issues/242).
 
-## Overview
+## Transfer handoff — stopped at the owner's request
 
-Make the release Pull Request the single version input and provide explicit administrator initiation for an exact validated merged main SHA, preserving tag rulesets and publishing authority.
+The minimal tag-driven workflow and documentation correction are implemented.
+Added release Python scripts/tests and their CI/local-CLI integration are removed.
+The inline shell validates canonical numeric tags, exact checkout/tag/event commit
+and main ancestry; build/publish checkout the verified SHA. No actor-role APIs,
+manual dispatch or custom retry orchestration remain. Existing release notes,
+packaging and publication steps are retained. Cheap YAML/shell/local-Git fixtures
+passed; no real tag, release or dispatch was created.
 
-The owner requested Issues #259 and #242 together in one separate linked worktree, based on the main checkout's local branch. No merge or release is authorized by this implementation task.
+The owner explicitly authorizes this transfer commit/push without further tests.
+The joint DSP/test/packaging snapshot is unfinished: its latest default app suite
+was OOM-killed at 1 GiB after 554/564 tests with 135 sampled threads. No accepted
+full gate, final release build, current CI or final aggregate acceptance exists.
+See the current handoff in the #259 plan before resuming on another computer.
+Keep this plan active; do not publish a release or mark the PR Ready from this
+transfer snapshot. No further work runs on this machine after the push.
 
-## Roles and risk
+## Current owner-directed scope
 
-- Class: A, release authority and cross-host runtime safety.
-- Coordinator: `gpt-6.1-sol` medium, owner communication and final assessment.
-- Executor: `gpt-6.1-sol` medium, investigation, implementation, validation and PR operations.
-- Reviewer: `gpt-6.1-sol` high, fresh read-only context.
-- Consultant: `gpt-6-astra` medium only if a concrete uncertainty requires it.
+Class A: release source identity and publication safety. Coordinator and Executor
+use `gpt-6.1-sol` medium; independent Reviewer uses `gpt-6.1-sol` high.
+The owner withdrew the separate release-script architecture and local release CLI.
+Restore the existing tag-driven workflow, adding only strict canonical numeric tag
+validation and binding downstream checkout to the verified commit. GitHub permissions
+and rulesets authorize actors; do not inspect roles or change remote settings.
+Preserve all unrelated DSP, resource-test and packaging-withdrawal changes.
 
-## Context and decisions
+## Tasks and acceptance
 
-- Preserve the approved Rust/toolkit graph and immutable installed SDK. All Cargo artifacts stay in this worktree's target directory.
-- Preserve main branch protection and Release tags ruleset. No secrets, new bypass actors, force tag updates or production release during development.
-- Existing authenticated administrator git push triggers the tag workflow. A GITHUB_TOKEN-generated push is not a supported handoff.
+- Remove the added release Python scripts/tests, CI integration and local CLI docs.
+- Keep only tag pushes, not manual dispatch or custom retry orchestration.
+- Accept only ASCII `v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)` tags.
+- Verify the exact tag commit is reachable from fetched main, including ancestors.
+- Build and publish from that verified immutable SHA. Preserve existing release
+  notes, tests, packaging and publication behavior without adding API orchestration.
+- Validate workflow YAML, inline shell and local disposable Git cases only.
+- Obtain exact-snapshot independent review before any later submission.
 
-## Acceptance criteria and evidence
+## Validation limits
 
-| Criterion | Verification | Result | Limits |
-| --- | --- | --- | --- |
-| Sole version input and metadata consistency | release-metadata.py plus exact-revision fixture and malformed lock/date/duplicate/pending tests | Passed locally, wired into CI | Remote CI pending |
-| Exact merged SHA with explicit administrator initiation | Full SHA validation, immutable git-show inputs, admin/protection/ruleset rejection tests | Passed fixtures | Approval policy requires the actual merged SHA |
-| Same-SHA canonical successful required CI | Run path/event/branch/suite/app/SHA rejection tests and live read-only main CI query | Passed | Live production creation not attempted |
-| Stale/failed/missing/running CI cannot release | Negative API fixtures, no fallback to another SHA or older successful attempt | Passed | Main may advance without substituting approved merged SHA |
-| Immutable tag and safe retries | Real disposable bare-remote annotated tag push/conflict test, explicit matching-tag retry tests | Passed locally | No production tags created |
-| Existing Release including drafts never replaced | Initiator, verify and write-scoped publication checks | Passed fixtures | Existing-release recovery deliberately manual |
-| Administrator authority retained on dispatch/rerun | Original and triggering actor guard, repeated immediately before publish | Tested rejection | Workflow API authority still requires remote operational demonstration |
-| Supported initial push/retry handoff | Ordinary administrator git push and tag-ref workflow_dispatch | Locally established, remote pending | No isolated non-production remote authorized |
-| Approved SHA/tag/version/artifact source agreement | Metadata/tag fixture, existing BUILD-INFO and binary smoke checks | Partial | Successful remote non-production publication handoff pending |
-| Existing application behavior | fmt, Clippy, workspace tests and release build | Pre-cleanup gate passed, refreshed gate pending | Owner-approved test cleanup is tracked in the #259 plan |
-
-## Implementation steps
-
-- [x] Validate manifest, workspace lockfile versions and dated changelog in PR CI.
-- [x] Implement administrator initiation with full SHA, canonical successful CI, immutable tag creation and explicit safe retry.
-- [x] Retain tag equality checks and provide supported tag-push/manual retry workflow handoff.
-- [x] Test success and rejection scenarios without publishing a production release and update release documentation.
-
-- [ ] Complete independent review and relevant validation.
-- [ ] Move this plan to completed before final review when all acceptance evidence exists.
-
-## Validation
-
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, last
-- [ ] Change-specific policy and integration checks.
-
-## Post-completion
-
-Only the owner authorizes merge and production release. Remote non-production handoff is an unfinished acceptance criterion until independently demonstrated, not a post-completion checkbox.
+No publication, tag creation on GitHub or dispatch is authorized. The transfer
+commit/push exception above is explicit owner authorization without further tests. Existing Rust evidence keeps its original
+revision limits. The old administrator-only and nonproduction-handoff requirements
+are withdrawn. Full current local gate/CI and owner acceptance remain pending.

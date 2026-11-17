@@ -231,34 +231,12 @@ fn a_real_rectangle_stays_real_and_moves_its_lower_edge_to_zero() {
 }
 
 #[test]
-fn a_non_kilohertz_source_rate_changes_samples_as_well_as_the_header() {
-    let dir = TempDir::new("extract-11999");
+fn a_non_kilohertz_source_rate_changes_samples_as_well_as_output_metadata() {
     let rate = 11_999.0;
     let values = iq_tone(11_999, rate, 2_700.0, 0.5);
-    let path = write_wav(
-        &dir.join("iq.wav"),
-        SampleType::new(Domain::Iq, SampleFormat::F32),
-        rate as u32,
-        &values,
-        1.0,
-    );
-    let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
-    let source = SourceFile {
-        meta: source.meta().clone(),
-        hints: OpenHints::default(),
-        stamp,
-        encoding: None,
-    };
-    let target = dir.join("band.wav");
     let span = SampleSpan::between(0, 11_999).unwrap();
     let band = FrequencyBand::between(10_002_000.0, 10_003_000.0).unwrap();
-    run(
-        &request(source, span, band, target.clone()),
-        &mut |_, _| {},
-        &AtomicBool::new(false),
-    )
-    .unwrap();
-    let (meta, values) = read_all(&target);
+    let (meta, values) = memory_export(values, rate, false, span, band);
     assert_eq!(meta.sample_rate, 2_000.0);
     assert_eq!(meta.len_samples, 2_000);
     for (n, iq) in values
@@ -275,39 +253,18 @@ fn a_non_kilohertz_source_rate_changes_samples_as_well_as_the_header() {
     }
 }
 
-fn real_capture(dir: &TempDir, frequency: f64) -> SourceFile {
-    let values: Vec<f32> = (0..48_000)
-        .map(|n| (std::f64::consts::TAU * frequency * n as f64 / RATE).cos() as f32 * 0.5)
-        .collect();
-    let path = write_wav(
-        &dir.join("real.wav"),
-        SampleType::new(Domain::Real, SampleFormat::F32),
-        RATE as u32,
-        &values,
-        1.0,
-    );
-    let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
-    SourceFile {
-        meta: source.meta().clone(),
-        hints: OpenHints::default(),
-        stamp,
-        encoding: None,
-    }
-}
-
 #[test]
 fn a_real_band_touching_dc_or_nyquist_keeps_its_amplitude() {
     for (frequency, low, high, shifted) in [
         (0.0, 0.0, 2_000.0, 0.0),
         (24_000.0, 22_000.0, 24_000.0, 2_000.0),
     ] {
-        let dir = TempDir::new("extract-real-edge");
-        let target = dir.join("band.wav");
         let span = SampleSpan::between(12_000, 36_000).unwrap();
         let band = FrequencyBand::between(10_000_000.0 + low, 10_000_000.0 + high).unwrap();
-        let request = request(real_capture(&dir, frequency), span, band, target.clone());
-        run(&request, &mut |_, _| {}, &AtomicBool::new(false)).unwrap();
-        let (meta, values) = read_all(&target);
+        let input = (0..48_000)
+            .map(|n| (std::f64::consts::TAU * frequency * n as f64 / RATE).cos() as f32 * 0.5)
+            .collect();
+        let (meta, values) = memory_export(input, RATE, true, span, band);
         assert!(!meta.is_iq());
         assert_eq!(meta.sample_rate, 5_000.0);
         let (mut cosine, mut sine) = (0.0, 0.0);
@@ -333,7 +290,6 @@ fn a_real_band_touching_dc_or_nyquist_keeps_its_amplitude() {
 
 #[test]
 fn a_full_band_rectangle_preserves_a_tone_next_to_native_nyquist() {
-    let dir = TempDir::new("extract-full-band");
     let rate = 11_999.0;
     let frequency = rate * (0.5 - 1.0 / 131_072.0);
     let mut values = iq_tone(2_400_000, rate, frequency, 0.25);
@@ -343,31 +299,10 @@ fn a_full_band_rectangle_preserves_a_tone_next_to_native_nyquist() {
     {
         *value += middle;
     }
-    let path = write_wav(
-        &dir.join("iq.wav"),
-        SampleType::new(Domain::Iq, SampleFormat::F32),
-        rate as u32,
-        &values,
-        1.0,
-    );
-    let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
-    let source = SourceFile {
-        meta: source.meta().clone(),
-        hints: OpenHints::default(),
-        stamp,
-        encoding: None,
-    };
-    let target = dir.join("full.wav");
     let span = SampleSpan::between(1_200_000, 1_248_000).unwrap();
     let band =
         FrequencyBand::between(10_000_000.0 - rate / 2.0, 10_000_000.0 + rate / 2.0).unwrap();
-    run(
-        &request(source, span, band, target.clone()),
-        &mut |_, _| {},
-        &AtomicBool::new(false),
-    )
-    .unwrap();
-    let (meta, values) = read_all(&target);
+    let (meta, values) = memory_export(values, rate, false, span, band);
     assert_eq!(meta.sample_rate, 15_000.0);
     assert_eq!(meta.center_freq, 0.0);
     assert_eq!(meta.len_samples, 60_006);
@@ -390,31 +325,9 @@ fn a_full_band_rectangle_preserves_a_tone_next_to_native_nyquist() {
 
 #[test]
 fn resampling_keeps_filter_tails_beyond_short_capture_edges() {
-    let dir = TempDir::new("extract-single-sample");
-    let path = write_wav(
-        &dir.join("iq.wav"),
-        SampleType::new(Domain::Iq, SampleFormat::F32),
-        1_000,
-        &[0.5, 0.0],
-        1.0,
-    );
-    let (source, stamp) = argand_io::open_stamped(&path, &OpenHints::default()).unwrap();
-    let source = SourceFile {
-        meta: source.meta().clone(),
-        hints: OpenHints::default(),
-        stamp,
-        encoding: None,
-    };
-    let target = dir.join("full.wav");
     let span = SampleSpan::between(0, 1).unwrap();
     let band = FrequencyBand::between(10_000_000.0 - 500.0, 10_000_000.0 + 500.0).unwrap();
-    run(
-        &request(source, span, band, target.clone()),
-        &mut |_, _| {},
-        &AtomicBool::new(false),
-    )
-    .unwrap();
-    let (meta, values) = read_all(&target);
+    let (meta, values) = memory_export(vec![0.5, 0.0], 1_000.0, false, span, band);
     assert_eq!(meta.sample_rate, 2_000.0);
     assert_eq!(meta.len_samples, 2);
     assert!((values[0] - 0.5).abs() < 0.001, "{values:?}");
@@ -423,4 +336,150 @@ fn resampling_keeps_filter_tails_beyond_short_capture_edges() {
         "{values:?}"
     );
     assert!(values[1].abs() < 0.001 && values[3].abs() < 0.001);
+}
+
+struct MemorySource {
+    meta: SignalMeta,
+    values: Vec<f32>,
+    at: usize,
+}
+
+impl SampleSource for MemorySource {
+    fn meta(&self) -> &SignalMeta {
+        &self.meta
+    }
+    fn seek(&mut self, sample: u64) -> Result<(), argand_core::SourceError> {
+        if sample > self.meta.len_samples {
+            return Err(argand_core::SourceError::SeekOutOfRange {
+                requested: sample,
+                total: self.meta.len_samples,
+            });
+        }
+        self.at = sample as usize * self.meta.channels();
+        Ok(())
+    }
+    fn read(&mut self, buffer: &mut [f32]) -> Result<usize, argand_core::SourceError> {
+        let count = buffer.len().min(self.values.len() - self.at);
+        buffer[..count].copy_from_slice(&self.values[self.at..self.at + count]);
+        self.at += count;
+        Ok(count)
+    }
+}
+
+fn memory_export(
+    values: Vec<f32>,
+    rate: f64,
+    real: bool,
+    span: SampleSpan,
+    band: FrequencyBand,
+) -> (SignalMeta, Vec<f32>) {
+    let sample_type = SampleType::new(
+        if real { Domain::Real } else { Domain::Iq },
+        SampleFormat::F32,
+    );
+    let meta = SignalMeta {
+        sample_rate: rate,
+        center_freq: 0.0,
+        sample_type,
+        len_samples: (values.len() / sample_type.channels()) as u64,
+        container: "memory",
+        divisor: 1.0,
+        source: PathBuf::from("memory"),
+    };
+    let request = request(
+        SourceFile {
+            meta: meta.clone(),
+            hints: OpenHints::default(),
+            stamp: None,
+            encoding: None,
+        },
+        span,
+        band,
+        PathBuf::from("unused.wav"),
+    );
+    let output_meta = request.output_meta().unwrap();
+    let mut source = MemorySource {
+        meta,
+        values,
+        at: 0,
+    };
+    let mut values = Vec::new();
+    compute(
+        &request,
+        &mut source,
+        &mut |samples| {
+            for sample in samples {
+                values.extend_from_slice(&sample[..output_meta.channels()]);
+            }
+            Ok(())
+        },
+        &mut |_, _| {},
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    assert_eq!(
+        values.len(),
+        output_meta.len_samples as usize * output_meta.channels()
+    );
+    (output_meta, values)
+}
+
+#[test]
+fn a_source_changed_after_reading_is_not_published() {
+    let dir = TempDir::new("extract-changed-after-read");
+    let source = capture(&dir, 6500.0);
+    let path = source.meta.source.clone();
+    let target = dir.join("band.wav");
+    let request = request(
+        source,
+        SampleSpan::between(0, 48_000).unwrap(),
+        FrequencyBand::between(10_005_000.0, 10_007_000.0).unwrap(),
+        target.clone(),
+    );
+    let result = run(
+        &request,
+        &mut |done, total| {
+            if done == total && done != 0 {
+                use std::io::Write;
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&path)
+                    .unwrap()
+                    .write_all(b"changed source")
+                    .unwrap();
+            }
+        },
+        &AtomicBool::new(false),
+    );
+    assert!(
+        matches!(result, Err(WriteError::SourceChanged { .. })),
+        "{result:?}"
+    );
+    assert!(!target.exists());
+}
+
+#[test]
+fn cancellation_after_reading_preserves_the_existing_target() {
+    let dir = TempDir::new("extract-cancel-after-read");
+    let source = capture(&dir, 6500.0);
+    let target = dir.join("band.wav");
+    std::fs::write(&target, b"original target").unwrap();
+    let request = request(
+        source,
+        SampleSpan::between(0, 48_000).unwrap(),
+        FrequencyBand::between(10_005_000.0, 10_007_000.0).unwrap(),
+        target.clone(),
+    );
+    let cancel = AtomicBool::new(false);
+    let result = run(
+        &request,
+        &mut |done, _| {
+            if done != 0 {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        },
+        &cancel,
+    );
+    assert!(matches!(result, Err(WriteError::Cancelled)), "{result:?}");
+    assert_eq!(std::fs::read(&target).unwrap(), b"original target");
 }

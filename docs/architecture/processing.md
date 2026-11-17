@@ -30,28 +30,52 @@ refused. A real band starting at 0 Hz or ending at Fs/2 meets its own mirror the
 sits on that edge, where the doubled half gain keeps DC or the Nyquist component whole. The window only checks the band (`ExtractPlan::check`), and the save thread builds
 the filter.
 
-`Extractor` mixes the band centre to 0 Hz with an `f64` oscillator. It filters by
-overlap-save FFT convolution, with an FFT of 4× the filter length rounded up to a power of
-two, clamped to 1024..2^22, so the cost per input sample grows with the logarithm of the
-filter length. It keeps every D-th output and compensates the filter delay, so output n is
-input n·D of the span and there are ⌈len/D⌉ outputs. Real input has the analytic signal's
-gain. The capture's own samples beyond the span feed the filter, zeros
-elsewhere. For export, `ExtractPlan::for_export` produces an intermediate rate 2·Fs/D. Non-identity
-filters double the inverse FFT size before integer decimation; the base FFT is at most
-2^22 and the inverse can reach 2^23. Whole complex bands instead use a native-rate
-half-sample-delay Kaiser convolution for odd outputs and copy native samples exactly for
-even outputs, then mix at 2·Fs. Their FFT stays at most 2^22. The 80 dB interpolation
-transition at native ±Fs/2 is Fs/131072 wide: the passband ends Fs/262144 before each
-native edge. Inside that guard, a tone shares its amplitude with an image beyond the
-opposite native edge; an exact native-Nyquist component splits equally between ±Fs/2.
+`Extractor` mixes the band centre to 0 Hz with an `f64` oscillator. The capture's
+own samples beyond the span feed the filter, with zeros only outside the capture.
+Ordinary extraction keeps every D-th native-rate filtered sample; conversion
+retains its existing overlap-save/spectral-interpolation implementation.
+
+For export, `ExtractPlan::for_export` produces an intermediate rate 2·Fs/D with a
+finite two-phase FIR. The integer phase keeps the original low-pass coefficients.
+For an odd D, the half phase samples the same continuous Kaiser-windowed low-pass
+at `j-m+0.5`, using window radius m and the same DC gain; it has 2m coefficients
+beside the integer phase's 2m+1. Output n selects q=n·D, phase q mod 2 and the
+filtered coordinate floor(q/2). The same input margin m compensates both phases.
+Even D uses only the integer phase. Real input retains analytic gain and the
+cutoff half gain that preserves native DC/Nyquist endpoint amplitude. This finite
+reconstruction replaces the earlier FFT-size-dependent periodic interpolant;
+it preserves the physical passband/image/phase contracts, not that intermediate's
+bit pattern.
+
+Whole complex bands copy native samples exactly for even outputs and use their
+existing half-sample-delay Kaiser FIR for odd outputs, then mix at 2·Fs. Its 80 dB
+transition at native ±Fs/2 is Fs/131072 wide: the passband ends Fs/262144 before
+each native edge. Inside that guard, a tone shares amplitude with an image beyond
+the opposite native edge; an exact native-Nyquist component splits equally between
+±Fs/2.
+
+Export uses direct limited-output convolution when the number of FIR outputs
+(one per native sample for whole-band odd interpolation, every output otherwise)
+times min(proven input-support length, FIR length) is at most 2^20 complex
+multiply-adds. The generic constructor conservatively assumes every fed input can
+be nonzero; the file computation supplies only proven capture-boundary zero margins.
+Longer work shares input FFT history among phase filter banks. Partition length is
+the next power of two of the largest phase length, clamped to 256..32768; the FFT
+has twice that length. Each filter and the shared input history retain complete
+partition slots. Only requested output blocks and their preceding overlap blocks
+are accumulated/inverted. At the largest two-phase export this is about31.5 MiB
+of principal spectra plus5 MiB of coefficients, before buffers/plans/allocator
+costs. Export no longer allocates monolithic4M/8M FFTs; conversion is unchanged.
 Whole bands are not refused. `argand_dsp::resample` reconstructs the intermediate stream
 with a bounded Kaiser sinc phase bank at `ceil(1.25·B/1000)·1000` Hz for I/Q or
 `ceil(2.5·B/1000)·1000` Hz for real, including upsampling. It emits at most 4096 samples
 per call for cancellation and retains only the filter neighbourhood. Both filter margins
 are read from the capture. The output preserves the source domain: I/Q stays centred at
 0 Hz, while real output mixes the analytic band up by B/2 and takes its real component,
-placing the selected lower edge at 0 Hz. Reference metadata is zero. `write::FloatWave`
-writes real or I/Q `f32` WAVE on the unit scale (RF64 past 4 GB), under the target rules
+placing the selected lower edge at 0 Hz. Reference metadata is zero. The production computation accepts a sample sink;
+its numerical tests use memory sources and sinks through the same extraction,
+resampling and domain mapping. The file entry point retains stamped source reopening,
+final source checks, cancellation and the sole `write::FloatWave` writer, which writes real or I/Q `f32` WAVE on the unit scale (RF64 past 4 GB), under the target rules
 of `save`, and a cancel during its final sync leaves the target alone. The name is `<stem>[_<start>-<end>s]_<low>-<high><unit>.wav`, in the largest unit that keeps the edges apart in six decimals.
 
 ## Band suppression (#212)

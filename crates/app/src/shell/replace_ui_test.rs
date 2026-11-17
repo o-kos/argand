@@ -19,6 +19,8 @@ pub(in crate::shell) fn open_window(
     let (shell, cx) = cx.add_window_view(|window, cx| {
         Shell::new(Config::default(), None, Session::default(), window, cx)
     });
+    // Ordinary file workflows keep logical layout; dedicated tests cover HiDPI.
+    cx.simulate_scale_factor_change(1.);
     cx.simulate_resize(gpui_kit::size(px(800.), px(600.)));
     (shell, cx)
 }

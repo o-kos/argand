@@ -3,18 +3,10 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Explicit safe retry at an existing immutable tag, using administrator gh auth.
-  workflow_dispatch:
 
 # Raised to write on the publishing job alone.
 permissions:
   contents: read
-  actions: read
-  checks: read
-
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,29 +20,31 @@ jobs:
     name: verify
     # The image CI tests on, so the GPUI libraries come from the same sources.
     runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.release-source.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # merge-base needs both histories, so the tag's shallow fetch is not enough.
           fetch-depth: 0
 
-      # A tag can be pushed at any commit, and branch protection does not reach
-      # it. Without this, anyone able to create a tag could publish an official
-      # Release built from code that never passed review.
-      - name: Refuse a tag that is not on main
+      - name: Verify the release tag is on main
+        id: release-source
         run: |
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "error: $GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main" >&2
+          export LC_ALL=C
+          if [[ ! $GITHUB_REF =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "error: release requires a canonical vMAJOR.MINOR.PATCH tag" >&2
             exit 1
           fi
-          echo "$GITHUB_REF_NAME is on main"
-
-      - name: Verify the immutable tag and canonical CI for its exact SHA
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-        run: python3 .github/scripts/verify-release.py
+          sha=$(git rev-parse "$GITHUB_REF^{commit}")
+          test "$sha" = "$(git rev-parse "$GITHUB_SHA^{commit}")"
+          test "$sha" = "$(git rev-parse HEAD)"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "error: $GITHUB_REF_NAME points at $sha, which is not on main" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Test Ubuntu source isolation
         run: python3 .github/scripts/test-ubuntu-packages.py
@@ -103,6 +97,8 @@ jobs:
             target: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
 
       - name: Install the toolchain pinned by rust-toolchain.toml
         run: |
@@ -159,20 +155,14 @@ jobs:
 
   publish:
     name: publish
-    needs: build
+    needs: [verify, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-
-      - name: Revalidate exact source CI and administrator authority before publication
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-        run: python3 .github/scripts/verify-release.py
+          ref: ${{ needs.verify.outputs.sha }}
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -195,14 +185,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The write-scoped token sees drafts too. Never turn a retry into replacement.
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json
-          python3 - <<'PYTHON'
-          import json, os
-          with open('releases.json') as source:
-              if any(r['tag_name'] == os.environ['GITHUB_REF_NAME'] for page in json.load(source) for r in page):
-                  raise SystemExit('error: release already exists, refusing replacement')
-          PYTHON
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \

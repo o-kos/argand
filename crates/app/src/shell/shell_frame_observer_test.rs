@@ -20,7 +20,7 @@ fn frame_dismissal_updates_shell_through_root_without_reborrowing_it(
     });
     let shell = cx.update(|_, cx| root.read(cx).view().clone().downcast::<Shell>().unwrap());
     shell.update_in(cx, |shell, window, cx| {
-        shell.open(Origin::new("/captures/frame-test.iqw".into()), window, cx);
+        shell.open_test_document(Origin::new("/captures/frame-test.iqw".into()), window, cx);
     });
     cx.run_until_parked();
     shell.update_in(cx, |shell, window, cx| {

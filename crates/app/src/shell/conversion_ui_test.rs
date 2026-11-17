@@ -505,14 +505,11 @@ fn conversion_failure_and_cancel_preserve_current_unsaved_edits(cx: &mut TestApp
 #[gpui_kit::test]
 fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut TestAppContext) {
     let _cleanup = crate::test_context::cleanup(cx);
-    use super::super::replace_ui::tests::{wait_until, write_wave};
+    use super::super::replace_ui::tests::wait_until;
     use crate::editing::Editing;
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!("argand-panel-{}.wav", std::process::id()));
-    write_wave(&path, 2400);
-    shell.update_in(cx, |shell, window, cx| {
-        shell.open(Origin::new(path.clone()), window, cx)
-    });
+    describe_panel_document(&shell, cx, path.clone());
     wait_until(cx, &shell, "source", |shell| {
         shell.editing().is_some_and(Editing::is_described)
     });
@@ -606,6 +603,44 @@ fn file_panel_reuses_standard_controls_and_escape_discards_the_draft(cx: &mut Te
     std::fs::remove_file(path).unwrap();
 }
 
+/// Panel interactions need described document state, not native analysis workers.
+fn describe_panel_document(
+    shell: &Entity<Shell>,
+    cx: &mut gpui_kit::VisualTestContext,
+    path: std::path::PathBuf,
+) {
+    super::super::replace_ui::tests::write_wave(&path, 2400);
+    let opened = argand_io::open_described(&path, &Default::default()).unwrap();
+    let meta = opened.source.meta().clone();
+    let info = crate::analysis::FileInfo {
+        declared_reference_freq: opened.declared_reference_freq,
+        bytes: Some(std::fs::metadata(&path).unwrap().len()),
+        sample_units: opened.source.original_sample_units(),
+        stamp: opened.stamp,
+    };
+    shell.update_in(cx, |shell, window, cx| {
+        shell.open_test_document(Origin::new(path), window, cx);
+        shell
+            .file
+            .as_mut()
+            .unwrap()
+            .state
+            .document
+            .apply(crate::analysis::Update::Opened(meta, info));
+        shell.start_editing(cx);
+        shell.start_minimap(false, window, cx);
+        shell.view = Some(crate::navigation::View::full(2400));
+        cx.notify();
+    });
+    super::super::replace_ui::tests::wait_until(cx, shell, "panel source format", |shell| {
+        shell
+            .editing()
+            .is_some_and(crate::editing::Editing::is_described)
+    });
+    wait_for_metrics(shell, cx);
+    cx.run_until_parked();
+}
+
 fn wait_for_metrics(shell: &Entity<Shell>, cx: &mut gpui_kit::VisualTestContext) {
     super::super::replace_ui::tests::wait_until(
         cx,
@@ -679,6 +714,8 @@ pub(in crate::shell) fn panel_window(
         Root::new(view, window, cx)
     });
     let shell = shell.unwrap();
+    // Keep logical layout coverage without an incidental fourfold pixel workload.
+    cx.simulate_scale_factor_change(1.);
     cx.simulate_resize(size(px(1000.), px(900.)));
     (shell, cx)
 }
@@ -938,13 +975,10 @@ fn hover_about(cx: &mut gpui_kit::VisualTestContext) {
 #[gpui_kit::test]
 fn property_panels_are_mutually_exclusive_for_explicit_commands(cx: &mut TestAppContext) {
     let _cleanup = crate::test_context::cleanup(cx);
-    use super::super::replace_ui::tests::{wait_until, write_wave};
+    use super::super::replace_ui::tests::wait_until;
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!("argand-panel-switch-{}.wav", std::process::id()));
-    write_wave(&path, 2400);
-    shell.update_in(cx, |shell, window, cx| {
-        shell.open(Origin::new(path.clone()), window, cx)
-    });
+    describe_panel_document(&shell, cx, path.clone());
     wait_until(cx, &shell, "switching source", |shell| {
         shell
             .editing()
@@ -1032,13 +1066,10 @@ fn property_panels_are_mutually_exclusive_for_explicit_commands(cx: &mut TestApp
 #[gpui_kit::test]
 fn status_triggers_show_help_without_opening_then_click_opens(cx: &mut TestAppContext) {
     let _cleanup = crate::test_context::cleanup(cx);
-    use super::super::replace_ui::tests::{wait_until, write_wave};
+    use super::super::replace_ui::tests::wait_until;
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!("argand-panel-hover-{}.wav", std::process::id()));
-    write_wave(&path, 2400);
-    shell.update_in(cx, |shell, window, cx| {
-        shell.open(Origin::new(path.clone()), window, cx)
-    });
+    describe_panel_document(&shell, cx, path.clone());
     wait_until(cx, &shell, "hover source", |shell| {
         shell
             .editing()
@@ -1081,14 +1112,11 @@ fn status_triggers_show_help_without_opening_then_click_opens(cx: &mut TestAppCo
 #[gpui_kit::test]
 fn shared_frequency_editor_steps_drafts_and_tab_visits_each_value_once(cx: &mut TestAppContext) {
     let _cleanup = crate::test_context::cleanup(cx);
-    use super::super::replace_ui::tests::{wait_until, write_wave};
+    use super::super::replace_ui::tests::wait_until;
     let (shell, cx) = panel_window(cx);
     let path =
         std::env::temp_dir().join(format!("argand-numeric-draft-{}.wav", std::process::id()));
-    write_wave(&path, 2400);
-    shell.update_in(cx, |shell, window, cx| {
-        shell.open(Origin::new(path.clone()), window, cx)
-    });
+    describe_panel_document(&shell, cx, path.clone());
     wait_until(cx, &shell, "numeric source", |shell| {
         shell
             .editing()

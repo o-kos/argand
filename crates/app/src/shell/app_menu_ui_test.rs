@@ -120,11 +120,11 @@ fn draw(cx: &mut gpui_kit::VisualTestContext) {
 
 /// A document, which is what binds the window's own keys to a focus path.
 ///
-/// The capture is nowhere near a real file and nothing analyses it, because
+/// This document has no reader or FFT worker, because
 /// only the document's existence matters to a key context.
 fn open_capture(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) {
     shell.update_in(cx, |shell, window, cx| {
-        shell.open(
+        shell.open_test_document(
             Origin::new(PathBuf::from("/captures/session.iqw")),
             window,
             cx,

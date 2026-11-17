@@ -6,10 +6,12 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::{Duration, Instant};
 
 fn document_scope(path: &std::path::Path, unwind: bool) {
+    let mut app_cell = None;
     let mut root = None;
     let mut released = None;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut app = TestAppContext::single();
+        app_cell = Some(std::rc::Rc::downgrade(&app.app));
         let _cleanup = crate::test_context::cleanup(&app);
         let (shell, cx) = open_window(&mut app);
         root = Some(shell.downgrade());
@@ -35,6 +37,10 @@ fn document_scope(path: &std::path::Path, unwind: bool) {
         ),
         Err(error) => std::panic::resume_unwind(error),
     }
+    assert!(
+        app_cell.unwrap().upgrade().is_none(),
+        "test scope retained its AppCell"
+    );
     assert!(
         root.unwrap().upgrade().is_none(),
         "test window retained its Shell"

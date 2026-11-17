@@ -198,7 +198,7 @@ class PackagingTests(unittest.TestCase):
             self.assertEqual(marker.read_text(), 'unchanged')
 
     @unittest.skipUnless(os.name == 'posix' and Path('/bin/true').exists(), 'Linux ELF fixture')
-    def test_linux_archive_launcher_and_bundled_closure(self):
+    def test_linux_archive_uses_system_libraries(self):
         with tempfile.TemporaryDirectory(prefix='argand package with spaces ') as temp:
             root = Path(temp)
             binaries = root / 'binaries'
@@ -220,33 +220,11 @@ class PackagingTests(unittest.TestCase):
             with tarfile.open(archives[1]) as archive:
                 font_path = archives[1].name.removesuffix('.tar.gz') + '/licenses/DejaVuSans.LICENSE'
                 self.assertIn(b'Bitstream', archive.extractfile(font_path).read())
-            for name in packaging.DLOPEN_LIBS:
-                self.assertTrue((app / 'lib' / name).is_file(), name)
-            for library in (app / 'lib').iterdir():
-                self.assertFalse(library.is_symlink())
-                self.assertFalse(packaging.BASE_LIBS.match(library.name))
-                self.assertFalse(packaging.HOST_DISPLAY_LIBS.match(library.name))
-            environment = dict(os.environ, LD_LIBRARY_PATH=str(app / 'lib'))
-            for binary in [app / 'argand-bin', *(app / 'lib').iterdir()]:
-                linked = subprocess.check_output(['ldd', str(binary)], env=environment, text=True)
-                self.assertNotIn('not found', linked)
-                for line in linked.splitlines():
-                    match = packaging.re.match(r'\s*(\S+) => (/\S+) \(', line)
-                    if match and not packaging.BASE_LIBS.match(match[1]) and not packaging.HOST_DISPLAY_LIBS.match(match[1]):
-                        self.assertEqual(Path(match[2]).parent, app / 'lib')
-
-    def test_transitive_display_libraries_are_host_owned(self):
-        libraries = ('libwayland-client.so.0', 'libwayland-cursor.so.0',
-                     'libwayland-egl.so.1', 'libvulkan.so.1', 'libxkbcommon.so.0',
-                     'libxkbcommon-x11.so.0', 'libX11.so.6', 'libX11-xcb.so.1',
-                     'libxcb.so.1', 'libxcb-randr.so.0', 'libEGL.so.1',
-                     'libGLX.so.0', 'libGLdispatch.so.0', 'libgbm.so.1',
-                     'libdrm.so.2', 'libdrm_amdgpu.so.1')
-        output = '\n'.join(f'    {name} => /usr/lib/{name} (0x123)' for name in libraries)
-        output += '\n    libfontconfig.so.1 => /usr/lib/libfontconfig.so.1 (0x123)'
-        with patch.object(packaging, 'run', return_value=output):
-            self.assertEqual(packaging.linux_dependencies(Path('/fixture')),
-                             {'libfontconfig.so.1': Path('/usr/lib/libfontconfig.so.1')})
+            self.assertEqual((app / 'argand').read_bytes(), (binaries / 'argand').read_bytes())
+            self.assertFalse((app / 'argand-bin').exists())
+            self.assertFalse((app / 'lib').exists())
+            self.assertFalse(any(path.name.endswith('.so') or '.so.' in path.name
+                                 for path in app.rglob('*')))
 
     def test_release_notes_and_version_rejections_without_cargo(self):
         notes = SCRIPT.with_name('release-notes.sh')

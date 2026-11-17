@@ -2292,3 +2292,6 @@ mod start_page_tests;
 #[cfg(test)]
 #[path = "test_context_test.rs"]
 mod test_context_tests;
+
+#[cfg(test)]
+include!("document_support_test.rs");

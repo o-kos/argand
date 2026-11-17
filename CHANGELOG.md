@@ -11,10 +11,6 @@ promise applies to.
 
 ## [Unreleased]
 
-### Fixed
-
-- Linux GUI archives use the host display stack so newer Mesa drivers can initialize without conflicting bundled Wayland libraries.
-
 ### Added
 
 - Edit reference frequency in whole Hz from its status-bar value between the file
@@ -26,6 +22,8 @@ promise applies to.
 
 ### Changed
 
+- Linux archives use system shared libraries instead of bundled runtime libraries
+  and a library-path launcher, avoiding Wayland/Mesa version conflicts (#259).
 - WAVE/IQW saves whole-Hz reference metadata using only `auxi`, without the
   Argand-specific `argd` chunk. FLAC uses an integer `AUXI` comment. WAVE export
   uses whole-Hz sample rates, preserving exact internal DSP parameters separately.

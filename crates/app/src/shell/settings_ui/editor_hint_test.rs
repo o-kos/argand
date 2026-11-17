@@ -34,7 +34,7 @@ fn open(cx: &mut TestAppContext) -> Window_ {
     let opened = window.shell.clone();
     cx.update_window(window.handle.into(), |_, win, cx| {
         opened.update(cx, |shell, cx| {
-            shell.open(Origin::new(PathBuf::from("/captures/session.iqw")), win, cx);
+            shell.open_test_document(Origin::new(PathBuf::from("/captures/session.iqw")), win, cx);
         });
     })
     .expect("the window is open");

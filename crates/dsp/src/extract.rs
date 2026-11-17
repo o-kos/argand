@@ -45,6 +45,8 @@ pub enum ExtractError {
     TooNarrow { width: f64, narrowest: f64 },
     #[error("a span of {0} samples is too long to extract")]
     TooLong(u64),
+    #[error("input support is outside the extraction input")]
+    BadInputSupport,
 }
 
 /// How a band is extracted, with the shift, the filter and the decimation.
@@ -55,6 +57,8 @@ pub struct ExtractPlan {
     decimation: u64,
     interpolation: usize,
     whole_export: bool,
+    export: bool,
+    half_taps: Vec<f32>,
     /// Low-pass taps, or the even-length odd interpolation phase for whole-band export.
     taps: Vec<f32>,
     real: bool,
@@ -94,6 +98,8 @@ impl ExtractPlan {
             decimation,
             interpolation: 1,
             whole_export: false,
+            export: false,
+            half_taps: Vec::new(),
             taps,
             real,
         })
@@ -103,10 +109,28 @@ impl ExtractPlan {
     pub fn for_export(rate: f64, low: f64, high: f64, real: bool) -> Result<Self, ExtractError> {
         let mut plan = Self::new(rate, low, high, real)?;
         plan.interpolation = 2;
+        plan.export = true;
         if plan.taps.len() == 1 {
             plan.whole_export = true;
             plan.decimation = 1;
             plan.taps = half_sample_delay(NARROWEST_TRANSITION);
+        } else if !plan.decimation.is_multiple_of(2) {
+            let width = high - low;
+            if let Some(transition) = transition(rate, low, high, plan.decimation, real) {
+                let touching =
+                    real && low.min(rate / 2.0 - high) * 2.0 < rate * NARROWEST_TRANSITION;
+                let (pass, stop) = if touching {
+                    ((width - transition) / 2.0, (width + transition) / 2.0)
+                } else {
+                    (width / 2.0, width / 2.0 + transition)
+                };
+                plan.half_taps = half_low_pass(
+                    rate,
+                    (pass + stop) / 2.0,
+                    if real { 2.0 } else { 1.0 },
+                    plan.taps.len() / 2,
+                );
+            }
         }
         Ok(plan)
     }
@@ -139,6 +163,8 @@ impl ExtractPlan {
             decimation: ((rate / (TRANSITION * width)).floor() as u64).max(1),
             interpolation: 2,
             whole_export: false,
+            export: false,
+            half_taps: Vec::new(),
             taps: low_pass(
                 rate,
                 cutoff - transition / 2.0,
@@ -278,6 +304,25 @@ pub(crate) fn low_pass(rate: f64, pass: f64, stop: f64, gain: f64) -> Vec<f32> {
     raw.iter().map(|tap| (tap * gain / sum) as f32).collect()
 }
 
+/// The same finite low-pass prototype sampled halfway between its integer taps.
+fn half_low_pass(rate: f64, cutoff: f64, gain: f64, half: usize) -> Vec<f32> {
+    let fraction = 2.0 * cutoff / rate;
+    let beta = 0.1102 * (STOPBAND_DB - 8.7);
+    let norm = bessel_i0(beta);
+    let raw: Vec<f64> = (0..2 * half)
+        .map(|k| {
+            let offset = k as f64 - half as f64 + 0.5;
+            let ratio = offset / half.max(1) as f64;
+            let window = bessel_i0(beta * (1.0 - ratio * ratio).max(0.0).sqrt()) / norm;
+            fraction * sinc(fraction * offset) * window
+        })
+        .collect();
+    let sum: f64 = raw.iter().sum();
+    raw.into_iter()
+        .map(|tap| (tap * gain / sum) as f32)
+        .collect()
+}
+
 /// Odd phase of a 2x half-band interpolator; the even phase copies native samples.
 fn half_sample_delay(transition: f64) -> Vec<f32> {
     let estimate =
@@ -320,11 +365,96 @@ pub(crate) fn bessel_i0(x: f64) -> f64 {
     sum
 }
 
+#[path = "extract_fir.rs"]
+mod fir;
+#[path = "extract_polyphase.rs"]
+mod polyphase;
+#[path = "extract_whole.rs"]
+mod whole;
+
+/// The extraction of one span, fed its input in order.
+///
+/// Input starts `margin` samples before the span and ends `margin` samples
+/// after it. The caller feeds zeros where the capture has no samples there.
+pub struct Extractor(Engine);
+
+enum Engine {
+    Spectral(FftExtractor),
+    Whole(whole::WholeExtractor),
+    Export(polyphase::ExportExtractor),
+}
+
+impl Extractor {
+    pub fn new(plan: ExtractPlan, len: u64) -> Result<Self, ExtractError> {
+        Self::construct(plan, len, None)
+    }
+
+    /// Start with a proven input support in coordinates of the fed stream,
+    /// including its leading margin. Samples outside it must be zero.
+    /// This only selects the export convolution algorithm; it does not
+    /// truncate the FIR or change the span's output coordinates.
+    pub fn with_input_support(
+        plan: ExtractPlan,
+        len: u64,
+        support: std::ops::Range<u64>,
+    ) -> Result<Self, ExtractError> {
+        Self::construct(plan, len, Some(support))
+    }
+
+    fn construct(
+        plan: ExtractPlan,
+        len: u64,
+        support: Option<std::ops::Range<u64>>,
+    ) -> Result<Self, ExtractError> {
+        if plan.whole_export {
+            return whole::WholeExtractor::new(plan, len, support)
+                .map(|engine| Self(Engine::Whole(engine)));
+        }
+        if plan.export {
+            return polyphase::ExportExtractor::new(plan, len, support)
+                .map(|engine| Self(Engine::Export(engine)));
+        }
+        FftExtractor::new(plan, len).map(|engine| Self(Engine::Spectral(engine)))
+    }
+
+    pub const fn is_done(&self) -> bool {
+        match &self.0 {
+            Engine::Spectral(engine) => engine.is_done(),
+            Engine::Whole(engine) => engine.is_done(),
+            Engine::Export(engine) => engine.is_done(),
+        }
+    }
+
+    pub fn wanted(&self) -> u64 {
+        match &self.0 {
+            Engine::Spectral(engine) => engine.wanted(),
+            Engine::Whole(engine) => engine.wanted(),
+            Engine::Export(engine) => engine.wanted(),
+        }
+    }
+
+    pub fn push(&mut self, input: &[f32], channels: usize, out: &mut Vec<[f32; 2]>) {
+        match &mut self.0 {
+            Engine::Spectral(engine) => engine.push(input, channels, out),
+            Engine::Whole(engine) => engine.push(input, channels, out),
+            Engine::Export(engine) => engine.push(input, channels, out),
+        }
+    }
+
+    pub fn push_zeros(&mut self, count: u64, out: &mut Vec<[f32; 2]>) {
+        match &mut self.0 {
+            Engine::Spectral(engine) => engine.push_zeros(count, out),
+            Engine::Whole(engine) => engine.push_zeros(count, out),
+            Engine::Export(engine) => engine.push_zeros(count, out),
+        }
+    }
+}
+
 /// The extraction of one span, fed its input in order.
 ///
 /// Input starts `margin` samples before the span and ends `margin` samples
 /// after it, and the caller feeds zeros where the capture has no samples there.
-pub struct Extractor {
+struct FftExtractor {
     plan: ExtractPlan,
     /// Phase of the oscillator in cycles, at the next input sample.
     phase: f64,
@@ -351,7 +481,7 @@ pub struct Extractor {
     total: u64,
 }
 
-impl Extractor {
+impl FftExtractor {
     /// Start extracting a span of `len` input samples, refused when its input cannot be counted.
     pub fn new(plan: ExtractPlan, len: u64) -> Result<Self, ExtractError> {
         let step = -plan.centre / plan.rate;
