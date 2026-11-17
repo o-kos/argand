@@ -15,6 +15,8 @@ impl Drop for Cleanup {
     fn drop(&mut self) {
         let unwinding = std::thread::panicking();
         let result = catch_unwind(AssertUnwindSafe(|| {
+            // Native reader shutdown may wake delivery listeners during cancellation.
+            self.0.executor().allow_parking();
             // The toolkit macro calls App::quit, whose test platform is a no-op.
             self.0.quit();
             self.0.run_until_parked();

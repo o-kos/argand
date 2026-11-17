@@ -72,6 +72,17 @@ and eight FFT workers, with three observed returns to zero between scopes and a
 successful final process exit. This is task evidence, not a permanent monitor or
 a fixed global-thread-count assertion in the parallel test suite.
 
+The first refreshed parallel gate reached 559 passing app tests and three scheduler
+failures from native reader channel-close wakeups during context shutdown. It did
+not run the release build. Its measured peak was 2,994,984 KiB RSS and 142 threads;
+this still reflects substantial concurrent test work and is not claimed as a
+complete memory-cost fix. The correction permits native I/O wakes only inside the
+cleanup scope immediately before real shutdown, then drains cancelled listeners.
+It does not clear recorded test-body determinism errors. All three affected cases
+and both lifecycle regressions passed together in the focused follow-up. Pending
+receiver-listener removal and native notification share event-listener's mutex,
+so draining cancellation also synchronizes with an in-flight native wake.
+
 ## Validation
 
 - [ ] `cargo fmt --all -- --check`

@@ -404,7 +404,9 @@ maintained probes are
 Every application GPUI test creates `crate::test_context::cleanup(cx)` as its
 first local scope guard, before retained entities and window references. This
 calls the genuine `TestAppContext::quit` API after those owners drop, including
-when the test unwinds, and drains cancelled delivery tasks. The locked toolkit's
+when the test unwinds, and drains cancelled delivery tasks. The cleanup scope permits
+native I/O wakeups only during teardown through the toolkit's parking API. It does
+not clear a previously recorded test-body determinism failure. The locked toolkit's
 macro calls `App::quit` on a no-op test platform, which does not perform this
 context cleanup. Keep the application guard even for context-only tests so
 window and reader lifetimes do not depend on which helper a test uses. Ordinary
