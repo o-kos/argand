@@ -11,6 +11,10 @@ promise applies to.
 
 ## [Unreleased]
 
+### Fixed
+
+- Linux GUI archives use the host display stack so newer Mesa drivers can initialize without conflicting bundled Wayland libraries.
+
 ### Added
 
 - Edit reference frequency in whole Hz from its status-bar value between the file

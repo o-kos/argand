@@ -67,7 +67,17 @@ libraries and their copyright notices; it is not fully static. The baseline is
 Ubuntu 24.04 x86-64 (glibc 2.39), or a compatible newer desktop. The operating
 system must supply glibc and its ELF loader, a running X11 or Wayland desktop,
 fonts/font configuration and a working Vulkan graphics driver with its ICD.
-GPU drivers are not bundled. The package is not a promise of support for every
+Wayland, Vulkan, X11/XCB, xkbcommon and GL/EGL/GBM/DRM libraries come from the
+host so they stay compatible with the host drivers. On Ubuntu 24.04 or newer:
+
+```sh
+sudo apt install libwayland-client0 libwayland-cursor0 libvulkan1 \
+  libxcb1 libxkbcommon0 libxkbcommon-x11-0 mesa-vulkan-drivers
+```
+
+Use the distribution's supported Vulkan ICD instead of `mesa-vulkan-drivers` with
+a proprietary GPU driver. Other native libraries, including fontconfig and its
+dependencies, retain their bundled copyright notices. GPU drivers are not bundled. The package is not a promise of support for every
 Linux distribution; older glibc systems cannot run these binaries.
 
 The `aspec` archives retain their existing names and contain a standalone CLI
@@ -75,7 +85,12 @@ executable. Linux aspec uses the same Ubuntu 24.04 glibc baseline. To open a
 stereo I/Q FLAC capture in the GUI, pass its path to `argand` or use File → Open.
 Release packaging checks exercise both binaries' `--version` and render a small
 stereo PCM16 FLAC capture through the packaged CLI; they do not exercise GUI
-rendering on a GPU.
+rendering on a GPU. From a source checkout, run
+`python3 .github/scripts/probe-linux-backend.py /path/to/extracted-argand` to check
+actual Vulkan ICD initialization with the launcher's library environment. It
+requires an instance, at least one physical device (software ICDs also count) and
+desktop surface extensions. Opening a capture in the production GUI on both the
+baseline and a newer Wayland/Mesa desktop remains a separate acceptance check.
 
 ## Build
 

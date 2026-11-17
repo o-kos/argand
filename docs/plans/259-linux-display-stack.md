@@ -26,14 +26,18 @@ The owner requested Issues #259 and #242 together in one separate linked worktre
 
 | Criterion | Verification | Result | Limits |
 | --- | --- | --- | --- |
-| Issue acceptance criteria | Targeted policy/integration tests and exact-revision review | Pending | Native desktop and real remote publication evidence are separate from fixtures |
-| Existing application behavior | Full local gate | Pending | Local SDK mode is not portable source packaging |
+| Host display libraries excluded throughout closure | Ten packaging tests, including synthetic transitive SONAME closure and real packaged ELF | Passed | Host GPU runtime is separate |
+| Native notices and other bundled libraries retained | Real archive closure/notices regression | Passed | CI baseline packaging still pending |
+| Vulkan ICD instance/device/desktop extensions work under launcher environment | probe-linux-backend.py on extracted archive | Pending | Probe does not create a rendering surface |
+| Baseline Ubuntu 24.04 production GUI opens capture | Existing Ubuntu24 image identified with Wayland1.22/Mesa24 | Pending | Desktop runtime not exercised yet |
+| Newer Wayland/Mesa production GUI opens capture | Ubuntu26.04 host with ICDs and isolated Xvfb available | Pending | Startup/real frame evidence not exercised yet |
+| Existing application behavior | fmt, Clippy, workspace tests | Passed | Local SDK gate, portable build separate |
 
 ## Implementation steps
 
-- [ ] Inspect native dependencies and define the host display-stack boundary with explicit baseline requirements.
-- [ ] Exclude host display-stack libraries from every transitive bundle closure and retain native notices for bundled libraries.
-- [ ] Add regression checks and a real Vulkan loader/device probe using the packaged library environment.
+- [x] Inspect native dependencies and define the host display-stack boundary with explicit baseline requirements.
+- [x] Exclude host display-stack libraries from every transitive bundle closure and retain native notices for bundled libraries.
+- [x] Add regression checks and a real Vulkan loader/device probe using the packaged library environment.
 - [ ] Document and record baseline/newer-host backend evidence and limitations.
 
 - [ ] Complete independent review and relevant validation.
@@ -41,12 +45,12 @@ The owner requested Issues #259 and #242 together in one separate linked worktre
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, last
 - [ ] Change-specific policy and integration checks.
 
 ## Post-completion
 
-Only the owner authorizes merge and production release. After merge, verify the installed workflow's handoff under administrator authority. Native desktop evidence unavailable during implementation must remain an explicit acceptance limit.
+Only the owner authorizes merge and production release. Baseline and newer-host runtime evidence are unfinished implementation acceptance work, not post-merge substitutions.

@@ -18,8 +18,16 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGETS = ('x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc')
 # These belong to the supported OS baseline, including the ELF interpreter.
 BASE_LIBS = re.compile(r'^(linux-vdso|ld-linux|lib(c|m|dl|pthread|rt|resolv|util)\.so)')
-DLOPEN_LIBS = ('libfontconfig.so.1', 'libwayland-client.so.0',
-               'libwayland-cursor.so.0', 'libvulkan.so.1')
+# Drivers and their loader/window-system ABI must come from one coherent host stack.
+# Apply this to every transitive dependency, not just the explicit dlopen roots.
+HOST_DISPLAY_LIBS = re.compile(
+    r'^(lib(wayland-|vulkan\.|xkbcommon|X[A-Za-z0-9_-]*\.|xcb[-.]|'
+    r'EGL\.|GL[A-Za-z0-9_-]*\.|OpenGL\.|glapi\.|gbm\.|drm[-_.]|'
+    r'va[-.]|vdpau\.|LLVM[-.]|nvidia-|cuda\.))')
+DLOPEN_LIBS = ('libfontconfig.so.1',)
+HOST_RUNTIME_LIBS = ('libwayland-client.so.0', 'libwayland-cursor.so.0',
+                     'libvulkan.so.1', 'libxkbcommon.so.0', 'libxkbcommon-x11.so.0',
+                     'libxcb.so.1')
 WINDOWS_LIBS = set('''advapi32 bcrypt bcryptprimitives cfgmgr32 comctl32 comdlg32
     combase crypt32 cryptbase cryptnet cryptui d2d1 d3d11 d3d12 d3dcompiler_47 dbghelp dcomp
     dwmapi dwrite dxgi gdi32 gdiplus icuin icuuc imm32 iphlpapi kernel32 kernelbase mpr msimg32
@@ -89,7 +97,7 @@ def linux_dependencies(binary):
     result = {}
     for line in output.splitlines():
         match = re.match(r'\s*(\S+) => (/\S+) \(', line)
-        if match and not BASE_LIBS.match(match[1]):
+        if match and not BASE_LIBS.match(match[1]) and not HOST_DISPLAY_LIBS.match(match[1]):
             result[match[1]] = Path(match[2])
     return result
 
@@ -253,7 +261,8 @@ def package(binary_dir, output, target, version, commit, smoke=True):
                                 stage / 'licenses' / 'DejaVuSans.LICENSE')
             identity = {'version': version, 'commit': commit, 'target': target,
                         'toolkit': 'source-toolkit', 'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
-                        'native_dependencies': dependencies}
+                        'native_dependencies': dependencies,
+                        'host_runtime_libraries': list(HOST_RUNTIME_LIBS) if not windows and product == 'argand' else []}
             (stage / 'BUILD-INFO.json').write_text(json.dumps(identity, indent=2) + '\n')
             if smoke:
                 reported = run(str(stage / (product + suffix)), '--version')
