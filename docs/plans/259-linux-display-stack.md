@@ -43,6 +43,26 @@ The owner requested Issues #259 and #242 together in one separate linked worktre
 - [ ] Complete independent review and relevant validation.
 - [ ] Move this plan to completed before final review when all acceptance evidence exists.
 
+## Owner-approved validation cleanup
+
+The owner expanded this same PR to fix the analyzer/thread accumulation observed
+in the existing GUI test harness, without a new Issue. Installed GPUI Kit's test
+macro delegates teardown to App::quit on a no-op test platform. Its genuine
+TestAppContext::quit cleanup is not called, leaving raw VisualTestContext owners
+and document readers retained. This is a verified static retention path consistent
+with the observed analyzer/pool multiplicities, not per-instance heap attribution.
+
+The repository correction is test-only: one shared RAII cleanup scope, created
+before each GPUI test's other locals, calls the existing genuine test-context quit
+API after those locals drop. It also runs during unwinding, preserves the original
+panic, and propagates cleanup failures on otherwise successful tests. No registry,
+immutable SDK, dependency graph, production worker policy or test assertions change.
+
+- [ ] Add shared test-context cleanup and first-local guards to all app GPUI tests.
+- [ ] Prove real Shell/capture ownership and reader release across repeated normal and panic scopes.
+- [ ] Observe a bounded serial subset returning analyzer/pool threads to baseline before any full gate.
+- [ ] Repeat full gate and independent review only after focused lifecycle evidence passes.
+
 ## Validation
 
 - [x] `cargo fmt --all -- --check`
