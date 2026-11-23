@@ -179,6 +179,33 @@ for this owner-authorized handoff only; do not claim it passed. Keep the Pull
 Request Draft, without merging or publishing a release. Resume the outstanding
 validation and review decision on the other computer before final integration.
 
+## Remote integration and validation refresh (2026-11-23)
+
+The owner requested updating this existing feature branch from the remote,
+integrating upstream changes, running all necessary tests and pushing normally.
+This request supersedes the earlier one-time no-check handoff. Preserve the
+published feature history with a merge of `origin/main`, without rebasing or
+force-pushing. Do not merge into `main`, publish a release or change PR readiness.
+
+Risk remains class A. The coordinator and executor remain `gpt-6.1-sol` medium.
+The reviewer assignment remains `gpt-6.1-sol` high, with three historical rounds
+already used. Any further required independent review needs the owner's decision
+about that limit. The current consultant default is `gpt-6.2-astra` high through
+the installed read-only CLI, only for a concrete unresolved technical question.
+
+- [ ] Integrate upstream while preserving feature gestures and upstream GPUI test cleanup.
+- [ ] Run formatting, all-target Clippy and all workspace tests with the locked graph.
+- [ ] Run applicable packaging, CI-policy and checkout-identity checks.
+- [ ] Build release after all preceding checks pass, binding the artifact to the submitted source.
+- [ ] Push the feature branch through its normal pre-push hook and verify the remote tip.
+
+The selected immutable SDK and existing installed Rust must match the repository
+pin. Keep all application artifacts in this workspace's `target/`. This refresh
+adds no intended UI behavior, toolkit graph or production ownership changes.
+Historical production/owner acceptance above stays scoped to its recorded source;
+this task does not claim new native-platform or GPU/desktop acceptance. Keep the
+PR Draft and its remaining completion/review decisions visible.
+
 ## Post-completion
 
 Merge and branch cleanup require the coordinator/owner completion decision and
