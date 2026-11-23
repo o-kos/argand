@@ -61,3 +61,18 @@ pub(super) fn accepted(
 ) {
     tracing::trace!(target: "argand::pan_trace", input_id, ?requested, ?before, ?after, "pan accepted");
 }
+
+/// CPU canvas paint submission, not a GPU completion timestamp.
+pub(super) fn paint(
+    extents: crate::axes::Extents,
+    frequency: frequency::View,
+    held: Option<crate::navigation::PictureView>,
+) {
+    tracing::trace!(
+        target: "argand::pan_trace",
+        time = ?extents.time.view, ?frequency,
+        seconds = ?extents.seconds, hertz = ?extents.hertz,
+        ?held, orientation = ?extents.orientation,
+        "canvas paint"
+    );
+}

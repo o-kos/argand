@@ -208,6 +208,11 @@ cleanup guards, including feature-only GPUI tests, and use the upstream fake
 document seam for the Shell pan fixture. No production conflict resolution was
 needed. The first formatting check found only formatting debt in the final
 pre-handoff gesture/trace changes. Applied `cargo fmt --all` without semantic edits.
+The first Clippy run found excessive nesting in the final capture mouse-down
+observer and an overlong spectrogram function after inline trace emission. Flatten
+the phase guard and move that same trace emission into the diagnostics module,
+without changing event behavior, trace fields or paint ordering. No lint
+suppression or threshold change is used.
 The saved owner policy edit is identical to the merged upstream file.
 Historical production/owner acceptance above stays scoped to its recorded source;
 this task does not claim new native-platform or GPU/desktop acceptance. Keep the

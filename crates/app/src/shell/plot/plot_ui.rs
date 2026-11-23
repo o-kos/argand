@@ -229,14 +229,7 @@ impl PlotView {
                 let Some((frame, labels, height, placed, overlays)) = prepainted else {
                     return;
                 };
-                // CPU canvas paint submission, not a GPU completion timestamp.
-                tracing::trace!(
-                    target: "argand::pan_trace",
-                    time = ?extents.time.view, frequency = ?snapshot.frequency,
-                    seconds = ?extents.seconds, hertz = ?extents.hertz,
-                    held = ?snapshot.held, orientation = ?orientation,
-                    "canvas paint"
-                );
+                super::pan_trace::paint(extents, snapshot.frequency, snapshot.held);
                 let (dx, dy) = orientation.axes(px(0.), px(height));
                 let spectrum_origin = bounds.origin + point(dx, dy);
                 if let Some(backdrop) = &snapshot.backdrop {

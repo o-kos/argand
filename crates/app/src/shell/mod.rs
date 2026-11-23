@@ -798,12 +798,13 @@ impl Shell {
             move |_, _, window, _| {
                 let on_press = shell.clone();
                 window.on_mouse_event(move |_: &gpui_kit::MouseDownEvent, phase, _window, cx| {
-                    if phase == gpui_kit::DispatchPhase::Capture {
-                        let _ = on_press.update(cx, |shell, cx| {
-                            shell.refresh_plot_navigation(cx);
-                            shell.dismiss_ready_status(cx);
-                        });
+                    if phase != gpui_kit::DispatchPhase::Capture {
+                        return;
                     }
+                    let _ = on_press.update(cx, |shell, cx| {
+                        shell.refresh_plot_navigation(cx);
+                        shell.dismiss_ready_status(cx);
+                    });
                 });
                 let on_scroll = shell.clone();
                 window.on_mouse_event(move |_: &gpui_kit::ScrollEvent, phase, _window, cx| {
