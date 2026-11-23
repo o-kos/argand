@@ -1,5 +1,6 @@
 //! Time navigation gestures, actions and physical cursor readout.
 
+use super::pan_trace;
 use crate::navigation::{self, View};
 use crate::shell::*;
 
@@ -116,7 +117,7 @@ impl PlotGeometry {
         pointer: Option<gpui_kit::Point<Pixels>>,
         dragging: bool,
         viewport: Option<(View, u64)>,
-        frequency_zoomed: bool,
+        _frequency_zoomed: bool,
     ) -> gpui_kit::CursorStyle {
         if dragging {
             return gpui_kit::CursorStyle::ClosedHand;
@@ -130,7 +131,9 @@ impl PlotGeometry {
         if self.spectrum.contains(&position) {
             return gpui_kit::CursorStyle::Crosshair;
         }
-        let time_ruler = self.time_ruler.contains(&position);
+        if self.time_ruler.contains(&position) || self.frequency_ruler.contains(&position) {
+            return gpui_kit::CursorStyle::Crosshair;
+        }
         let selected = self.minimap.contains(&position)
             && viewport.is_some_and(|(view, total)| {
                 let fraction = self.minimap_fraction(position);
@@ -138,9 +141,7 @@ impl PlotGeometry {
                 (left..=right).contains(&fraction)
             });
         let can_pan = viewport.is_some_and(|(view, total)| view.len < total);
-        if (can_pan && (time_ruler || selected))
-            || (frequency_zoomed && self.frequency_ruler.contains(&position))
-        {
+        if can_pan && selected {
             gpui_kit::CursorStyle::OpenHand
         } else {
             gpui_kit::CursorStyle::Arrow
@@ -162,8 +163,12 @@ impl PlotGeometry {
             return Some(cursor);
         }
         let position = pointer?;
-        (space && self.spectrum.contains(&position) && !self.controls_at(position))
-            .then_some(gpui_kit::CursorStyle::OpenHand)
+        (space
+            && (self.spectrum.contains(&position)
+                || self.time_ruler.contains(&position)
+                || self.frequency_ruler.contains(&position))
+            && !self.controls_at(position))
+        .then_some(gpui_kit::CursorStyle::OpenHand)
     }
 
     /// Whether a left press here starts a time selection rather than a pan.
@@ -248,7 +253,7 @@ impl PlotGeometry {
         let distance = f64::from(f32::from(distance));
         let width = self.time_length() as f64;
         let frequency_ruler = self.frequency_ruler.contains(&position);
-        if modifiers.shift || frequency_ruler {
+        if frequency_ruler || (modifiers.shift && !self.time_ruler.contains(&position)) {
             let height = self.frequency_length() as f64;
             return if modifiers.control {
                 Scroll::FrequencyZoom {
@@ -330,12 +335,32 @@ pub(in crate::shell) fn hertz(hertz: (f64, f64), fraction: f64) -> f64 {
 /// How far a press may wander, in logical pixels, and still be a click.
 const CLICK_SLOP: f32 = 3.;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub(in crate::shell) struct Pan {
-    position: gpui_kit::Point<Pixels>,
-    view: View,
+    anchor: PanAnchor<View>,
     width: f32,
     minimap: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(in crate::shell) struct PanAnchor<V> {
+    position: gpui_kit::Point<Pixels>,
+    view: V,
+    latest: (gpui_kit::Point<Pixels>, V),
+}
+
+impl<V: Copy> PanAnchor<V> {
+    fn new(position: gpui_kit::Point<Pixels>, view: V) -> Self {
+        Self {
+            position,
+            view,
+            latest: (position, view),
+        }
+    }
+
+    fn rebase(&mut self) {
+        (self.position, self.view) = self.latest;
+    }
 }
 
 impl Shell {
@@ -356,8 +381,24 @@ impl Shell {
 
     pub(in crate::shell) fn bound_view(&mut self, cx: &mut gpui_kit::App) {
         if let Some(plot) = self.plot_entity() {
-            plot.update(cx, |plot, cx| plot.cancel_drags(cx));
+            plot.update(cx, |plot, cx| plot.cancel_drags("explicit_bounds", cx));
         }
+        self.rebound_view();
+    }
+
+    /// Remeasuring labels may change geometry without changing either view.
+    pub(in crate::shell) fn bound_view_for_layout(&mut self, cx: &mut gpui_kit::App) {
+        if self.rebound_view()
+            && let Some(plot) = self.plot_entity()
+        {
+            plot.update(cx, |plot, cx| {
+                plot.cancel_drags("layout_bounds_changed", cx)
+            });
+        }
+    }
+
+    fn rebound_view(&mut self) -> bool {
+        let old = (self.view, self.frequency);
         let bounded = self.frequency.zoom(1., 0.5, self.frequency_cells());
         if bounded != self.frequency {
             self.frequency = bounded;
@@ -373,6 +414,7 @@ impl Shell {
             }
             self.view = Some(bounded);
         }
+        old != (self.view, self.frequency)
     }
 
     fn view_columns(&self) -> usize {
@@ -540,7 +582,12 @@ impl Shell {
             PlotIntent::Frequency(FrequencyIntent::Fit) => {
                 self.navigate_frequency(crate::navigation::frequency::View::default(), cx)
             }
-            PlotIntent::Drag { time, frequency } => {
+            PlotIntent::Drag {
+                time,
+                frequency,
+                input_id,
+            } => {
+                let before = (self.view, self.frequency);
                 let mut changed = false;
                 if let Some(view) = frequency {
                     changed |= self.set_frequency_view(view);
@@ -551,6 +598,12 @@ impl Shell {
                 if changed {
                     self.ask_for_a_picture();
                 }
+                pan_trace::accepted(
+                    input_id,
+                    (time, frequency),
+                    before,
+                    (self.view, self.frequency),
+                );
                 cx.notify();
             }
         }
@@ -874,6 +927,30 @@ impl Shell {
 }
 
 impl crate::shell::plot::plot_view::PlotView {
+    /// Continue from the last requested view, rather than a possibly older
+    /// rendered snapshot, when label measurement changes an axis's scale.
+    pub(in crate::shell) fn remeasure_pan(&mut self, old: PlotGeometry, new: PlotGeometry) {
+        tracing::trace!(
+            target: "argand::pan_trace",
+            old_lengths = ?(old.time_length(), old.frequency_length()),
+            new_lengths = ?(new.time_length(), new.frequency_length()),
+            "pan remeasure"
+        );
+        pan_trace::state(self, "before_remeasure", 0);
+        if old.time_length() != new.time_length()
+            && let Some(pan) = &mut self.pan
+        {
+            pan.anchor.rebase();
+            pan.width = new.time_length();
+        }
+        if old.frequency_length() != new.frequency_length()
+            && let Some(pan) = &mut self.frequency_pan
+        {
+            pan.rebase();
+        }
+        pan_trace::state(self, "after_remeasure", 0);
+    }
+
     pub(in crate::shell) fn wheel(
         &mut self,
         event: &gpui_kit::ScrollEvent,
@@ -881,6 +958,12 @@ impl crate::shell::plot::plot_view::PlotView {
         cx: &mut Context<Self>,
     ) {
         use crate::shell::plot::plot_view::{FrequencyIntent, PlotIntent, TimeIntent};
+        // The held pan owns navigation until its driving button is released.
+        if self.panning() {
+            pan_trace::state(self, "wheel_ignored_held_pan", 0);
+            cx.stop_propagation();
+            return;
+        }
         let Some(geometry) = self.geometry else {
             return;
         };
@@ -893,6 +976,7 @@ impl crate::shell::plot::plot_view::PlotView {
         if geometry.minimap.contains(&event.position) {
             return;
         }
+        pan_trace::state(self, "wheel_cancel", 0);
         self.pan = None;
         self.frequency_pan = None;
         let delta = event.delta.pixel_delta(px(40.));
@@ -916,15 +1000,15 @@ impl crate::shell::plot::plot_view::PlotView {
 
     /// Start the gesture a press asks for, which is decided here once.
     ///
-    /// Unless Space is held, a left press selects time on the spectrum, a
-    /// rectangle with Ctrl there, and a band on the frequency ruler. Every
-    /// other press that lands on the plot pans.
+    /// Space and the middle button pan. Left presses select or reshape on the
+    /// spectrum and rulers, with the chosen axes retained until release.
     pub(in crate::shell) fn press(
         &mut self,
         event: &gpui_kit::MouseDownEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let input_id = pan_trace::input(self, "down", event.position, Some(event.button));
         let Some(geometry) = self.geometry else {
             return;
         };
@@ -953,7 +1037,8 @@ impl crate::shell::plot::plot_view::PlotView {
             return;
         }
         let on_spectrum = geometry.selects_at(event.position);
-        let on_ruler = geometry.frequency_ruler.contains(&event.position);
+        let on_frequency = geometry.frequency_ruler.contains(&event.position);
+        let on_time = geometry.time_ruler.contains(&event.position);
         let grabbed = (event.button == MouseButton::Left && !self.space)
             .then(|| self.grab_selection(event, geometry))
             .flatten();
@@ -965,13 +1050,26 @@ impl crate::shell::plot::plot_view::PlotView {
             cx.notify();
             return;
         }
-        if event.button == MouseButton::Left && !self.space && (on_spectrum || on_ruler) {
+        if event.button == MouseButton::Left
+            && !self.space
+            && event.modifiers.alt
+            && (on_spectrum || on_frequency || on_time)
+        {
+            cx.notify();
+            return;
+        }
+        if event.button == MouseButton::Left
+            && !self.space
+            && (on_spectrum || on_frequency || on_time)
+        {
             let (time, frequency) = geometry.fractions(event.position);
             let view = snapshot.extents.time.view;
             self.selecting = Some(Selecting::fresh(
                 event.position,
-                on_spectrum.then(|| view.boundary(time)),
-                (on_ruler || event.modifiers.control)
+                (on_time || (on_spectrum && event.modifiers.shift == event.modifiers.control))
+                    .then(|| view.boundary(time)),
+                (on_frequency
+                    || (on_spectrum && (event.modifiers.shift || event.modifiers.control)))
                     .then(|| hertz(snapshot.extents.hertz, frequency)),
             ));
             cx.notify();
@@ -985,7 +1083,7 @@ impl crate::shell::plot::plot_view::PlotView {
         let frequency = frequency && frequency_view.span < 1.;
         let time = time && view.len < total;
         if frequency {
-            self.frequency_pan = Some((event.position, frequency_view));
+            self.frequency_pan = Some(PanAnchor::new(event.position, frequency_view));
         }
         if time || frequency {
             cx.emit(crate::shell::plot::plot_view::PlotIntent::GestureStarted { time, frequency });
@@ -994,13 +1092,13 @@ impl crate::shell::plot::plot_view::PlotView {
             let minimap = geometry.minimap.contains(&event.position);
             if !minimap || self.minimap_press(event, geometry, view, total, cx) {
                 self.pan = Some(Pan {
-                    position: event.position,
-                    view,
+                    anchor: PanAnchor::new(event.position, view),
                     width: geometry.time_length(),
                     minimap,
                 });
             }
         }
+        pan_trace::state(self, "after_down", input_id);
         cx.notify();
     }
 
@@ -1069,6 +1167,14 @@ impl crate::shell::plot::plot_view::PlotView {
         event: &gpui_kit::MouseMoveEvent,
         cx: &mut Context<Self>,
     ) {
+        let input_id = if self.panning()
+            || event.pressed_button == Some(MouseButton::Middle)
+            || (self.space && event.pressed_button == Some(MouseButton::Left))
+        {
+            pan_trace::input(self, "move", event.position, event.pressed_button)
+        } else {
+            0
+        };
         let pointer = self.plot_pointer(event.position);
         if !self.dragging() && self.pointer == pointer {
             return;
@@ -1077,38 +1183,61 @@ impl crate::shell::plot::plot_view::PlotView {
         self.extend_selection(event, cx);
         let held = event.pressed_button == Some(self.pan_button);
         let mut frequency = None;
-        if let Some((origin, view)) = self.frequency_pan {
-            if held {
-                if let Some(geometry) = self.geometry {
-                    let fraction =
-                        geometry.fractions(event.position).1 - geometry.fractions(origin).1;
-                    frequency = Some(view.pan(fraction));
+        if let Some(mut pan) = self.frequency_pan {
+            if held && let Some(geometry) = self.geometry {
+                let fraction =
+                    geometry.fractions(event.position).1 - geometry.fractions(pan.position).1;
+                let next = pan.view.pan(fraction);
+                pan.latest = (event.position, next);
+                // Discard overshoot at a capture bound so reversing responds immediately.
+                if next.start == 0. || next.start == 1. - next.span {
+                    pan.rebase();
                 }
-            } else {
+                self.frequency_pan = Some(pan);
+                frequency = Some(next);
+            } else if !held {
                 self.frequency_pan = None;
             }
         }
         let mut time = None;
-        if let Some(pan) = self.pan
+        if let Some(mut pan) = self.pan
             && let Some(snapshot) = &self.snapshot
         {
             if held {
                 let total = snapshot.extents.time.total;
-                let delta = pan.position - event.position;
+                let delta = pan.anchor.position - event.position;
                 let fraction =
                     f32::from(snapshot.extents.orientation.axes(delta.x, delta.y).0) / pan.width;
                 let fraction = if pan.minimap {
-                    -f64::from(fraction) * total as f64 / pan.view.len.max(1) as f64
+                    -f64::from(fraction) * total as f64 / pan.anchor.view.len.max(1) as f64
                 } else {
                     f64::from(fraction)
                 };
-                time = Some(pan.view.pan(fraction, total));
+                let next = pan.anchor.view.pan(fraction, total);
+                pan.anchor.latest = (event.position, next);
+                // Rounded boundary views can still contain accumulated inward motion.
+                let shift = fraction * pan.anchor.view.len as f64;
+                let clamped = shift < -(pan.anchor.view.start as f64)
+                    || shift > (total - pan.anchor.view.len - pan.anchor.view.start) as f64;
+                if !pan.minimap && clamped {
+                    pan.anchor.rebase();
+                }
+                self.pan = Some(pan);
+                time = Some(next);
             } else {
                 self.pan = None;
             }
         }
         if time.is_some() || frequency.is_some() {
-            cx.emit(crate::shell::plot::plot_view::PlotIntent::Drag { time, frequency });
+            pan_trace::computed(input_id, time, frequency);
+            cx.emit(crate::shell::plot::plot_view::PlotIntent::Drag {
+                time,
+                frequency,
+                input_id,
+            });
+        }
+        if input_id != 0 {
+            pan_trace::state(self, "after_move", input_id);
         }
         cx.notify();
     }
@@ -1181,6 +1310,7 @@ impl crate::shell::plot::plot_view::PlotView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let input_id = pan_trace::input(self, "up", event.position, Some(event.button));
         if event.button == MouseButton::Left && self.selecting.is_some() {
             // The release can lie beyond the last move, so it settles the far end
             self.select_to(event.position, cx);
@@ -1198,6 +1328,7 @@ impl crate::shell::plot::plot_view::PlotView {
             self.frequency_pan = None;
             cx.notify();
         }
+        pan_trace::state(self, "after_up", input_id);
     }
 
     fn track_time_menu(

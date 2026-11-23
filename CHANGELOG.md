@@ -22,6 +22,8 @@ promise applies to.
 
 ### Changed
 
+- Unify spectrogram and ruler navigation and selection gestures, including Shift-drag or Ctrl-drag band selection, Ctrl+Shift-drag rectangles and Alt-click boundary adjustment.
+
 - Linux archives use system shared libraries instead of bundled runtime libraries
   and a library-path launcher, avoiding Wayland/Mesa version conflicts (#259).
 - WAVE/IQW saves whole-Hz reference metadata using only `auxi`, without the
@@ -33,6 +35,12 @@ promise applies to.
 
 ### Fixed
 
+- Keep held plot and ruler drags active when longer tick labels resize the plot.
+- Start new plot drags from the latest requested view when input arrives between frames.
+- Preserve an active middle-button or Space+left pan when wheel events arrive during the drag.
+
+- Spectrum and ruler drag panning responds immediately when reversing after
+  reaching either capture boundary (#261).
 - Menu commands and shortcuts share availability, including context menus.
   Unavailable Save is inert rather than showing an error (#185).
 - Reference frequency shares the information-panel lifecycle and suppresses

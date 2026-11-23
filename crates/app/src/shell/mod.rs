@@ -792,15 +792,19 @@ impl Shell {
         cx.notify();
     }
 
-    fn ready_input_observer(shell: WeakEntity<Self>) -> impl IntoElement {
+    fn plot_input_observer(shell: WeakEntity<Self>) -> impl IntoElement {
         canvas(
             |_, _, _| (),
             move |_, _, window, _| {
                 let on_press = shell.clone();
                 window.on_mouse_event(move |_: &gpui_kit::MouseDownEvent, phase, _window, cx| {
-                    if phase == gpui_kit::DispatchPhase::Capture {
-                        let _ = on_press.update(cx, Self::dismiss_ready_status);
+                    if phase != gpui_kit::DispatchPhase::Capture {
+                        return;
                     }
+                    let _ = on_press.update(cx, |shell, cx| {
+                        shell.refresh_plot_navigation(cx);
+                        shell.dismiss_ready_status(cx);
+                    });
                 });
                 let on_scroll = shell.clone();
                 window.on_mouse_event(move |_: &gpui_kit::ScrollEvent, phase, _window, cx| {
@@ -1249,7 +1253,7 @@ impl Shell {
         if width_changed {
             self.time_scheme = None;
             self.tick_pan = None;
-            self.bound_view(cx);
+            self.bound_view_for_layout(cx);
         }
         self.ask_for_a_picture();
         cx.notify();
@@ -2047,7 +2051,7 @@ impl Render for Shell {
                 cx,
             ))
             .children(hints::backdrop(&self.selection_hint, hint_area, cx))
-            .child(Self::ready_input_observer(cx.entity().downgrade()))
+            .child(Self::plot_input_observer(cx.entity().downgrade()))
             .child(Self::pointer_presence(cx.entity().downgrade()))
     }
 }
