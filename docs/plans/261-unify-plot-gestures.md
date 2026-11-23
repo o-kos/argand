@@ -196,7 +196,7 @@ the installed read-only CLI, only for a concrete unresolved technical question.
 - [x] Integrate upstream while preserving feature gestures and upstream GPUI test cleanup.
 - [x] Run formatting, all-target Clippy and all workspace tests with the locked graph.
 - [x] Run applicable packaging, CI-policy and checkout-identity checks.
-- [ ] Build release after all preceding checks pass, binding the artifact to the submitted source.
+- [x] Build release after all preceding checks pass, binding the artifact to the submitted source.
 - [ ] Push the feature branch through its normal pre-push hook and verify the remote tip.
 
 The selected immutable SDK and existing installed Rust must match the repository
@@ -244,7 +244,7 @@ snapshot before this correction; it does not establish review of later changes.
 
 - [x] Reproduce incremental inward panning at both bounds in both orientations and on spectrum/ruler entry paths.
 - [x] Rebase only genuine boundary displacement, preserving sub-sample accumulation and immediate overshoot reversal.
-- [ ] Refresh the full local gate, release build and affected isolated production acceptance.
+- [x] Refresh the full local gate, release build and affected isolated production acceptance.
 - [ ] Coordinator assessment and review-policy decision for the corrected snapshot.
 
 The expected interaction stays unchanged: inward movement accumulates until a
@@ -257,6 +257,22 @@ spectrum/time-ruler entry paths pass. The existing overshoot/reversal and layout
 regressions remain part of the required full suite. Production acceptance will
 repeat deeply zoomed incremental drags and overshoot/reversal on an isolated Xvfb
 display with disposable settings and capture data.
+The corrected-source full gate passed: formatting, all-target locked Clippy and
+all 954 workspace tests, including the new regression, existing overshoot reversal
+and all three Shell layout regressions. The ordinary suite retained its existing
+parallelism: elapsed 1:34.14 including compilation, maximum RSS 1,756,448 KiB,
+no swaps, exit status 0. The release build followed and passed.
+
+Affected production acceptance then passed on a new task-owned Xvfb/X11 display
+with isolated config/session/cache and a disposable 1 MHz complex capture, using
+FFT size and view length 64. Eight incremental scenarios cover both bounds,
+orientations and spectrum Middle/time-ruler Space+left. Sixteen one-pixel inward
+moves accumulate to one sample at either bound. Eight further outward-overshoot/
+reversal scenarios also move inward without repressing. Actual spectrum, axes,
+minimap, status and controls were inspected in both orientations. These checks
+do not establish native Wayland, Windows/macOS behavior, presentation latency or
+renewed owner acceptance. Keep the PR Draft. The correction and evidence still
+need coordinator assessment and the next review-policy decision.
 No additional control, dependency or toolkit change is needed.
 
 ## Post-completion
