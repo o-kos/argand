@@ -582,15 +582,12 @@ struct HertzUnit {
 impl HertzUnit {
     /// One precision for every fractional tick, with no fraction on integers.
     fn format(self, hz: f64, step: f64) -> String {
-        let scaled_step = step / self.scale;
-        let step_text = format!("{:.*}", self.decimals, scaled_step);
-        let decimals = if scaled_step < 10_f64.powi(-(self.decimals as i32)) {
-            self.decimals
-        } else {
-            step_text
-                .split_once('.')
-                .map_or(0, |(_, fraction)| fraction.trim_end_matches('0').len())
-        };
+        let decimals = (0..=self.decimals)
+            .find(|&decimals| {
+                let scaled = step / self.scale * 10_f64.powi(decimals as i32);
+                (scaled - scaled.round()).abs() <= scaled.abs() * 8. * f64::EPSILON
+            })
+            .unwrap_or(self.decimals);
         let text = format!("{:.*}", decimals, hz / self.scale);
         let integer = text.split_once('.').and_then(|(whole, fraction)| {
             fraction.chars().all(|digit| digit == '0').then_some(whole)

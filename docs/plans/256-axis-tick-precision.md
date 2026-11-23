@@ -77,3 +77,12 @@ integers, negative values/zero and retained schemes; GUI number tests cover
 English and decimal-comma Russian localization. Existing clock/seconds/sample
 ruler and standalone readout tests passed unchanged. The selected immutable SDK
 and workspace-local `target/` were used without toolkit/toolchain changes.
+
+### Independent review dispositions
+
+Round 1 accepted one P2 finding: rounding a non-ladder retained step of 0.9996 Hz
+before choosing precision shortened the labels to whole Hz. Precision now selects
+the smallest decimal count that represents the original scaled step within
+floating-point error, falling back to the existing unit resolution cap. The
+regression expects `99.960` and `100.960` for that retained scheme. No findings
+were rejected. The corrected snapshot and refreshed validation require round 2.
