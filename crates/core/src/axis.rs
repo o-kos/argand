@@ -293,8 +293,8 @@ pub fn widest_labels(kind: AxisKind, min: f64, max: f64) -> Vec<String> {
             )]
         }
         AxisKind::Decibels => vec![
-            format_label(kind, min, min, max),
-            format_label(kind, max, min, max),
+            format_label(kind, min, min, max, 1.),
+            format_label(kind, max, min, max, 1.),
         ],
     }
 }
@@ -358,7 +358,7 @@ fn place(
                 format!("{value:.precision$} s", precision = decimal_precision(step))
             }
             AxisKind::Samples => format!("#{}", k as i128 * step as i128),
-            _ => format_label(kind, value, axis.min, axis.max),
+            _ => format_label(kind, value, axis.min, axis.max, step),
         };
         let label = labels.measure.localize(&label, kind);
         let extent = labels.extent(&label);
@@ -509,10 +509,10 @@ fn clock_of(min: f64, max: f64) -> Clock {
     }
 }
 
-fn format_label(kind: AxisKind, value: f64, min: f64, max: f64) -> String {
+fn format_label(kind: AxisKind, value: f64, min: f64, max: f64, step: f64) -> String {
     match kind {
         AxisKind::Time | AxisKind::PreciseTime => format_clock(value, clock_of(min, max)),
-        AxisKind::Frequency => hertz_unit(min, max).format(value),
+        AxisKind::Frequency => hertz_unit(min, max).format(value, step),
         AxisKind::Seconds => format!("{value} s"),
         AxisKind::Samples => format!("#{value:.0}"),
         AxisKind::Decibels => format!("{value:.0}"),
@@ -580,17 +580,26 @@ struct HertzUnit {
 }
 
 impl HertzUnit {
-    /// The value in this unit, with trailing zeros trimmed.
-    fn format(self, hz: f64) -> String {
-        let text = format!("{:.*}", self.decimals, hz / self.scale);
-        let trimmed = text.trim_end_matches('0').trim_end_matches('.');
-        // A value too small for this unit to resolve is zero, and zero has no
-        // sign: without this an axis just below zero labels a tick `-0`.
-        let bare = trimmed.trim_start_matches('-');
-        if bare.is_empty() || bare.chars().all(|c| c == '0') {
-            "0".to_string()
+    /// One precision for every fractional tick, with no fraction on integers.
+    fn format(self, hz: f64, step: f64) -> String {
+        let scaled_step = step / self.scale;
+        let step_text = format!("{:.*}", self.decimals, scaled_step);
+        let decimals = if scaled_step < 10_f64.powi(-(self.decimals as i32)) {
+            self.decimals
         } else {
-            trimmed.to_string()
+            step_text
+                .split_once('.')
+                .map_or(0, |(_, fraction)| fraction.trim_end_matches('0').len())
+        };
+        let text = format!("{:.*}", decimals, hz / self.scale);
+        let integer = text.split_once('.').and_then(|(whole, fraction)| {
+            fraction.chars().all(|digit| digit == '0').then_some(whole)
+        });
+        let label = integer.unwrap_or(&text);
+        if label == "-0" {
+            "0".to_owned()
+        } else {
+            label.to_owned()
         }
     }
 }

@@ -24,7 +24,7 @@ clock/seconds/sample rulers and standalone frequency readouts.
 `HertzUnit::format` currently trims all fractional zeros. Tick placement knows the
 selected or retained scheme before localization and measurement. Add private
 step-aware tick formatting there without changing public signatures or the
-standalone `format_label` contract. Keep the existing unit resolution limit.
+standalone frequency readout contract. Keep the existing unit resolution limit.
 GUI localization must preserve the padded fraction before final text measurement.
 Reuse the existing axis canvas and number formatter; introduce no controls.
 
@@ -48,8 +48,8 @@ acceptance incomplete and the PR Draft. A screenshot alone is not acceptance.
 ## Implementation steps
 
 - [x] Confirm root cause and record scope, roles, plan and concrete expectations.
-- [ ] Add regression tests and private shared frequency tick formatting.
-- [ ] Update changelog and current axis architecture contract.
+- [x] Add regression tests and private shared frequency tick formatting.
+- [x] Update changelog and current axis architecture contract.
 - [ ] Complete full local gate and build current production release.
 - [ ] Exercise production frequency rulers, zoom, pan and both orientations in Xvfb.
 - [ ] Complete independent review and dispositions.
@@ -57,13 +57,23 @@ acceptance incomplete and the PR Draft. A screenshot alone is not acceptance.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the checks pass
-- [ ] Focused core and locale regressions
+- [x] Focused core and locale regressions
 - [ ] Current-production UI scenario with recorded build identity and limits
 
 ## Post-completion
 
 Merge and safe worktree/branch cleanup follow owner acceptance and current full CI.
+
+### Automated results
+
+The focused regression reproduced `12.59` versus required `12.590` before the fix.
+The locked workspace gate passed formatting, all-target Clippy, 957 tests and doc
+tests. Core regressions cover step-derived precision in Hz/kHz/MHz/GHz, bare
+integers, negative values/zero and retained schemes; GUI number tests cover
+English and decimal-comma Russian localization. Existing clock/seconds/sample
+ruler and standalone readout tests passed unchanged. The selected immutable SDK
+and workspace-local `target/` were used without toolkit/toolchain changes.

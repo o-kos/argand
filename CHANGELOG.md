@@ -35,6 +35,9 @@ promise applies to.
 
 ### Fixed
 
+- Use consistent fractional precision for frequency-axis ticks while keeping
+  integer labels free of decimal zeros (#256).
+
 - Keep held plot and ruler drags active when longer tick labels resize the plot.
 - Start new plot drags from the latest requested view when input arrives between frames.
 - Preserve an active middle-button or Space+left pan when wheel events arrive during the drag.

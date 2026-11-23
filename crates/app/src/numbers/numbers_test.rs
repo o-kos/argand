@@ -97,3 +97,22 @@ fn deleting_digits_preserves_numbers_with_space_grouping() {
         }
     }
 }
+
+#[test]
+fn frequency_axis_localization_preserves_common_precision() {
+    for (locale, expected) in [
+        ("en-US", ["12.589", "12.590", "12.900", "13"]),
+        ("ru-RU", ["12,589", "12,590", "12,900", "13"]),
+    ] {
+        let numbers = Numbers::new(locale);
+        for (label, expected) in ["12.589", "12.590", "12.900", "13"]
+            .into_iter()
+            .zip(expected)
+        {
+            assert_eq!(
+                numbers.axis_label(label, argand_core::axis::AxisKind::Frequency),
+                expected
+            );
+        }
+    }
+}

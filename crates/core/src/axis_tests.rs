@@ -392,3 +392,40 @@ fn keeping_edge_marks_preserves_spacing_and_all_readable_labels_on_resize() {
         }
     }
 }
+
+#[test]
+fn frequency_ticks_share_step_precision_and_keep_integers_bare() {
+    let text = DejaVuSans;
+    for (min, max, step, expected) in [
+        (12_589_000., 12_591_000., 1_000., vec!["12.589", "12.590", "12.591"]),
+        (12_899_000., 12_901_000., 1_000., vec!["12.899", "12.900", "12.901"]),
+        (12_999_000., 13_001_000., 1_000., vec!["12.999", "13", "13.001"]),
+        (12_900_000., 13_100_000., 100_000., vec!["12.9", "13", "13.1"]),
+        (-1.25, 1.25, 0.25, vec!["-1.25", "-1", "-0.75", "-0.50", "-0.25", "0", "0.25", "0.50", "0.75", "1", "1.25"]),
+        (1_249., 1_251., 1., vec!["1.249", "1.250", "1.251"]),
+        (1_249_000_000., 1_251_000_000., 1_000_000., vec!["1.249", "1.250", "1.251"]),
+    ] {
+        let layout = tick_layout(AxisKind::Frequency, axis(2000, min, max), &across(&text), Some(TickScheme { step, span: max - min }));
+        let actual: Vec<_> = layout.ticks.iter().map(|tick| tick.label.as_str()).collect();
+        assert_eq!(actual, expected, "{min}..{max}, step {step}");
+        assert_no_overlap(&layout.ticks, &across(&text), "frequency precision");
+    }
+}
+
+#[test]
+fn automatic_frequency_precision_follows_zoom_and_survives_pan() {
+    let text = DejaVuSans;
+    for (min, max) in [(12_589_000., 12_591_000.), (12_000_000., 13_000_000.)] {
+        let layout = tick_layout(AxisKind::Frequency, axis(1200, min, max), &across(&text), None);
+        let scheme = layout.scheme.unwrap();
+        let shifted = tick_layout(AxisKind::Frequency, axis(1200, min + scheme.step, max + scheme.step), &across(&text), Some(scheme));
+        let decimals = if scheme.step < 1_000. { 4 } else { 2 };
+        for tick in layout.ticks.iter().chain(&shifted.ticks) {
+            if let Some((_, fraction)) = tick.label.split_once('.') {
+                assert_eq!(fraction.len(), decimals, "{tick:?}, {scheme:?}");
+            }
+        }
+        assert_eq!(shifted.scheme, Some(scheme));
+        assert_no_overlap(&layout.ticks, &across(&text), "automatic frequency precision");
+    }
+}

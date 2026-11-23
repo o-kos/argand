@@ -84,6 +84,11 @@ and window-activation events repaint the shell, with current window modifier sta
 read during painting. Guides are absent outside the spectrum, during panning, with
 an open menu or while the window is inactive. Frequency navigation is described in [Frequency navigation](navigation-selection.md#frequency-navigation-80).
 
+Frequency ticks share fractional precision derived from the selected step in the
+displayed unit, bounded by that unit's resolution. Fractional labels retain trailing
+zeros, while integer labels have no decimal part. Localization precedes measurement
+and collision checks for both fresh and retained schemes.
+
 `axis::TickScheme` retains the selected division spacing and clock-format span while
 panning. Zoom, file opening and width changes release that scheme for fresh layout.
 If wider labels collide after a pan, the grid remains stable and colliding label text
