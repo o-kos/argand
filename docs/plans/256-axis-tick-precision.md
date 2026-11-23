@@ -150,8 +150,8 @@ evidence/plan update changes documentation only.
    Keep fields private and expose unit/divisor/decimals readers, canonical numeric
    formatting, formatting with a unit and unit-suffix recognition. Constructors
    distinguish step/resolution contexts from fixed-value contexts. Fixed values
-   select units from their actual displayed significant digits at the existing
-   agreed resolution, not from the maximum precision cap or binary noise.
+   format in the shared selected unit using their existing agreed resolution,
+   not binary noise, and do not independently select GUI units.
 2. Axis candidate formatting obtains its frequency format before localization and
    measurement. Store the accepted format with the retained tick scheme so panning
    cannot switch units at a magnitude threshold. Adapt the evolving public
@@ -175,25 +175,41 @@ evidence/plan update changes documentation only.
 6. Reuse existing axis canvases and shared standard numeric controls. No new widget,
    toolkit graph, feature, toolchain, worktree or shared build artifacts are needed.
 
-### Product decision pending
+### Approved common-unit decision and ownership
 
-At 24 kHz over 600 pixels, a 1 kHz tick step needs three MHz fractional digits,
-but a pixel-resolution cursor needs approximately five. The owner is choosing
-between one viewport-family unit based on the finest required resolution, or
-consumer-specific units chosen through the same policy. A common viewport format
-must be independent of whether the cursor is currently visible. No dependent
-unit-flow implementation begins before this choice is recorded.
+The owner selected one common unit for all human-visible frequencies. Shell owns
+one immutable per-document presentation context and passes its selected unit to
+plot snapshots/extents, Frame, cursor/status/Alt readouts, selection edges/widths,
+file/reference/rate/carrier displays, hints and property fields. CLI report/image
+uses one equivalent context. No mutable application global is introduced.
 
-At the Hz floor, preserve the consumer's existing precision when no smaller
-supported SI unit exists rather than discard physical information. Fixed metadata
-has no viewport dependency. Editable values require canonical dirty tracking to
-avoid accidental loss from a rounded untouched display.
+The selector is driven by the coordinate family's finest displayed resolution,
+independent of cursor or tooltip visibility. If that precision needs more than
+three fractional digits, move to a smaller unit. Ancillary metrics (Hz/px, ENBW)
+and exact fixed metadata use the selected common unit while preserving their own
+precision, including extra fractional digits when necessary. They do not select
+the coordinate unit. This reconciles the scale-based threshold and common-unit
+requirement without silently degrading independent physical measurements.
+
+Shell uses accepted device geometry and canonical extents to derive the context,
+with a conservative shared provisional context before the first layout. Every
+consumer receives the same selected unit before text measurement. Retained schemes
+store the unit while panning; existing zoom/size/orientation release boundaries
+permit reselection. Format changes repaint but do not independently submit FFT
+work. Real layout-size changes retain the existing analysis/layout contract.
+
+Focused numeric/selection drafts retain the unit under which their text was
+created until commit. Explicit suffixes always win. Unit changes must not reparse
+unchanged rounded display text as a new physical value. Canonical dirty tracking
+preserves original Hz, and unfocused committed displays adopt the shared context.
+The Hz floor preserves existing fine precision without adding a new SI family.
+
 
 ## Expanded scope: acceptance and implementation
 
 - [x] Inventory every human frequency consumer and machine-contract exclusion.
 - [x] Record the owner-approved three-digit unit examples and role/risk assignment.
-- [ ] Record the owner's viewport-family unit decision.
+- [x] Record the owner's common-unit decision for all human-facing frequencies.
 - [ ] Implement the shared immutable frequency presentation policy and value cases.
 - [ ] Integrate accepted/retained axis formats and GUI/CLI captions/measurements.
 - [ ] Integrate cursor/status/Alt and all selection display/input consumers.
