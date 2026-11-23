@@ -12,8 +12,8 @@ analysis requests. Keep the presentation preferences between application launche
 Work takes place in the main checkout on the Issue branch. No linked worktree,
 toolkit change, SDK rebuild, toolchain installation or build-directory change is
 authorized. Existing ignored mock artifacts and build outputs are preserved.
-This initial plan records agreed behavior and explicitly pending owner decisions;
-product implementation waits for the coordinator to relay their resolution.
+The owner has approved storage, presentation controls, timeline semantics and UTC
+interpretation of bare auxi. Product implementation is authorized.
 
 ## Roles and risk
 
@@ -99,21 +99,21 @@ UI-acceptance skills before changing their respective paths.
 - Cosmetic layout details may be refined during implementation and running-app
   acceptance. No new nonstandard widget is approved by this layout decision.
 
-### Pending owner decisions before product implementation
+### Approved timeline and import semantics
 
-1. **Timeline validity.** Recommended policy: prefix trim, time selection export and
-   extraction advance start by input start sample / original rate; tail trim keeps
-   it; full conversion and same-length DSP keep it. Interior length-changing
-   deletion/insertion and unrelated paste clear start, with Undo restoring it.
-   Alternative: keep start as the origin of an explicitly edited synthetic timeline.
-   Do not implement either interpretation without the owner's decision. Specify
-   millisecond rounding for non-integral-millisecond offsets in the agreed policy.
-2. **Bare auxi import timezone.** The fields contain no UTC offset. Real writers
-   disagree: rfsoapyfile writes UTC, while SDRangel writes local calendar fields.
-   Options are an explicit documented UTC interpretation, or retaining unknown-zone
-   calendar values until the owner supplies an interpretation. Do not infer the
-   host zone or invent an additional timezone UI. Agree the chosen behavior and
-   its visible explanation before implementing import.
+- Full conversion, normalization, inversion, band suppression and same-length DSP
+  retain recording start. Prefix deletion, time-selection export and extraction
+  advance start to the first remaining input sample. Tail deletion retains start.
+- Interior deletion, insertion and replacement that change duration clear start.
+  Undo/Redo restore start together with content. Keep precise internal offsets to
+  avoid cumulative rounding drift; serialization rounds to nearest millisecond,
+  with maximum error 0.5 ms. Sample endpoints remain sample-accurate and are not
+  quantized to metadata precision.
+- Read and write bare auxi calendar fields as UTC, never the host timezone. The
+  owner explicitly selected this interpretation after the source comparison.
+  Document that external local-time writers (including the inspected SDRangel
+  writer) cannot be distinguished by auxi alone; the user can edit actual start.
+- Clearing the recording-start field clears metadata without a separate button.
 
 ### Implementation invariants
 
@@ -147,18 +147,18 @@ UI-acceptance skills before changing their respective paths.
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
 | Set, edit, clear and reopen start with reference | WAVE/native and decoder-backed layouts, RF64 where supported, FLAC DATE round trips; compare samples, count, rate and domain | Pending | No implementation or Rust checks yet |
-| Safe invalid and absent metadata | Zero/short/malformed SYSTEMTIME, invalid dates, incomplete DATE, unsupported precision/zone and conflicting tags | Pending | Import policy awaits owner |
-| Correct UTC labels and entries | Start before midnight, fractional seconds, selection endpoints/duration, zoom and both orientations; absolute entry maps to original sample span | Pending | Millisecond offset rounding awaits timeline decision |
+| Safe invalid and absent metadata | Zero/short/malformed SYSTEMTIME, invalid dates, incomplete DATE, unsupported precision/zone and conflicting tags | Pending | UTC import interpretation approved |
+| Correct UTC labels and entries | Start before midnight, fractional seconds, selection endpoints/duration, zoom and both orientations; absolute entry maps to original sample span | Pending | Nearest-millisecond storage rounding approved |
 | Presentation leaves data and analysis intact | Toggle each command entry point, inspect selection/view/reference and analysis request count/generation | Pending | Automated and production evidence required |
 | Persistent and consistent modes | Isolated session normal restart, unavailable Absolute, files with zero/missing reference, checked menu and radio state, corner frequency/time label | Pending | Existing hms/seconds/samples retained |
 | Metadata history and file safety | No-op/Undo/Redo/Discard, whole and selection saves, RAW Save As, stale save completion, source protection and cancellation regression cases | Pending | Existing publication guards must remain unchanged |
-| Processing and timeline semantics | Agreed prefix/tail/interior/paste/extraction/conversion scenarios and undo/save/reopen | Pending | Owner decision required |
+| Processing and timeline semantics | Agreed prefix/tail/interior/paste/extraction/conversion scenarios and undo/save/reopen | Pending | Approved timeline table above |
 | Production UI behavior and appearance | Current release binary in isolated Xvfb, both corner placements, pointer and keyboard, radios, grouped frequency input, timestamp edit/empty clear, Enter/blur/Escape, menus/shortcuts, busy and unavailable states | Pending | Owner desktop untouched; Xvfb does not prove native Wayland/other OS behavior |
 | Current revision independently reviewed | Neutral exact handoff, fresh read-only reviewer, dispositions and clean final round or explicit remaining findings | Pending | Review does not replace owner UI acceptance |
 
 ## Implementation steps
 
-- [ ] Resolve and record pending owner decisions before product edits.
+- [x] Resolve and record pending owner decisions before product edits.
 - [ ] Verify installed toolchain selection without triggering a proxy download,
   existing toolkit/SDK selection and workspace-local target setup before Rust work.
 - [ ] Add validated recording-start value and metadata propagation at core/I/O seams.
