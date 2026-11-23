@@ -81,8 +81,16 @@ and workspace-local `target/` were used without toolkit/toolchain changes.
 ### Independent review dispositions
 
 Round 1 accepted one P2 finding: rounding a non-ladder retained step of 0.9996 Hz
-before choosing precision shortened the labels to whole Hz. Precision now selects
-the smallest decimal count that represents the original scaled step within
-floating-point error, falling back to the existing unit resolution cap. The
+before choosing precision shortened the labels to whole Hz. The first correction selected
+the smallest decimal count representing the scaled step within floating-point
+error, falling back to the existing unit resolution cap. The
 regression expects `99.960` and `100.960` for that retained scheme. No findings
 were rejected. The corrected snapshot and refreshed validation require round 2.
+
+Round 2 accepted one P2 finding: a relative floating-point tolerance could treat a
+large genuinely fractional GHz step as an integer. Removing tolerance alone is
+insufficient because multiplication can also discard the fraction. Precision now
+requires an exactly integral scaled candidate and textual equality between the
+candidate padded to the unit cap and the original full-cap step text. Otherwise
+it retains the cap. Regressions cover both reported large-step cases alongside
+the 0.9996 Hz case. No findings were rejected. Round 3 is the final allowed round.

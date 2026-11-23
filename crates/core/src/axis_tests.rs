@@ -430,3 +430,17 @@ fn automatic_frequency_precision_follows_zoom_and_survives_pan() {
         assert_no_overlap(&layout.ticks, &across(&text), "automatic frequency precision");
     }
 }
+
+#[test]
+fn large_retained_frequency_steps_preserve_the_unit_resolution() {
+    let text = DejaVuSans;
+    for (step, expected) in [
+        ((2_f64.powi(30) + 0.000001) * 1e9, "1073741824.000000954"),
+        ((2_f64.powi(49) + 0.25) * 1e9, "562949953421312.25"),
+    ] {
+        let layout = tick_layout(AxisKind::Frequency, axis(2000, 0.9 * step, 1.1 * step), &across(&text), Some(TickScheme { step, span: 0.2 * step }));
+        assert_eq!(layout.ticks.len(), 1);
+        assert_eq!(layout.ticks[0].value, step);
+        assert_eq!(layout.ticks[0].label, expected);
+    }
+}

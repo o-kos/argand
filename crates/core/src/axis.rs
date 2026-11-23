@@ -582,10 +582,21 @@ struct HertzUnit {
 impl HertzUnit {
     /// One precision for every fractional tick, with no fraction on integers.
     fn format(self, hz: f64, step: f64) -> String {
-        let decimals = (0..=self.decimals)
+        let scaled_step = step / self.scale;
+        let full_step = format!("{scaled_step:.precision$}", precision = self.decimals);
+        let decimals = (0..self.decimals)
             .find(|&decimals| {
-                let scaled = step / self.scale * 10_f64.powi(decimals as i32);
-                (scaled - scaled.round()).abs() <= scaled.abs() * 8. * f64::EPSILON
+                let scaled = scaled_step * 10_f64.powi(decimals as i32);
+                if scaled != scaled.round() {
+                    return false;
+                }
+                // Multiplication can hide a fraction at large magnitudes.
+                let mut candidate = format!("{scaled_step:.decimals$}");
+                if decimals == 0 {
+                    candidate.push('.');
+                }
+                candidate.push_str(&"0".repeat(self.decimals - decimals));
+                candidate == full_step
             })
             .unwrap_or(self.decimals);
         let text = format!("{:.*}", decimals, hz / self.scale);
