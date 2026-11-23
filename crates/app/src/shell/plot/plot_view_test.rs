@@ -541,6 +541,91 @@ fn pan_reverses_immediately_after_overshooting_either_boundary(cx: &mut TestAppC
 }
 
 #[gpui_kit::test]
+fn sub_sample_pan_steps_accumulate_inward_from_both_time_bounds(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    use crate::navigation::orientation::Mode;
+    for orientation in [Mode::Horizontal, Mode::Vertical] {
+        for upper in [false, true] {
+            for ruler in [false, true] {
+                let handle = open(cx);
+                let view = crate::navigation::View {
+                    start: if upper { 1_000_000 - 64 } else { 0 },
+                    len: 64,
+                };
+                handle
+                    .update(cx, |harness, _, cx| {
+                        harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                            let snapshot = plot.snapshot.as_mut().unwrap();
+                            snapshot.extents.orientation = orientation;
+                            snapshot.extents.time.view = view;
+                            snapshot.extents.seconds = (
+                                view.start as f64 / 1_000_000.,
+                                (view.start + view.len) as f64 / 1_000_000.,
+                            );
+                            plot.reorient(cx);
+                        });
+                    })
+                    .unwrap();
+                cx.simulate_window_resize(handle.into(), size(px(1100.), px(1100.)));
+                frame(cx, handle);
+                frame(cx, handle);
+                let geometry = handle
+                    .read_with(cx, |harness, cx| {
+                        harness.plot.as_ref().unwrap().read(cx).geometry.unwrap()
+                    })
+                    .unwrap();
+                assert!(geometry.time_length() > 1000.);
+                let from = if ruler {
+                    geometry.time_ruler.center()
+                } else {
+                    geometry.spectrum.center()
+                };
+                let direction = if upper { -1. } else { 1. };
+                let position = |pixels: f32| {
+                    let (x, y) = orientation.axes(-direction * pixels, 0.);
+                    from + point(px(x), px(y))
+                };
+                let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+                let none = gpui_kit::Modifiers::default();
+                input.simulate_mouse_down(from, MouseButton::Middle, none);
+                for pixels in 1..=16 {
+                    input.simulate_mouse_move(position(pixels as f32), MouseButton::Middle, none);
+                }
+                input.simulate_mouse_up(position(16.), MouseButton::Middle, none);
+                cx.run_until_parked();
+                let views = handle
+                    .read_with(cx, |harness, _| {
+                        harness
+                            .intents
+                            .iter()
+                            .filter_map(|intent| match intent {
+                                PlotIntent::Drag { time, .. } => *time,
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap();
+                assert_eq!(
+                    views.first(),
+                    Some(&view),
+                    "one pixel is less than half a sample"
+                );
+                let expected = view.pan(
+                    f64::from(direction * 16. / geometry.time_length()),
+                    1_000_000,
+                );
+                assert_ne!(expected, view);
+                assert_eq!(
+                    views.last(),
+                    Some(&expected),
+                    "{orientation:?} upper={upper} ruler={ruler}"
+                );
+            }
+        }
+    }
+}
+
+#[gpui_kit::test]
 fn a_drag_keeps_tracking_beyond_the_plot(cx: &mut TestAppContext) {
     let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);

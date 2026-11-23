@@ -232,6 +232,25 @@ Historical production/owner acceptance above stays scoped to its recorded source
 this task does not claim new native-platform or GPU/desktop acceptance. Keep the
 PR Draft and its remaining completion/review decisions visible.
 
+## Additional review finding (2026-11-23)
+
+The owner explicitly authorized one additional independent `gpt-6.1-sol` high
+review after the earlier three rounds. It found one P2: at the time bounds,
+sub-sample inward pointer steps round back to the bound, and unconditional
+boundary rebasing discards their cumulative displacement. FFT/view length 64
+and a roughly 1000-pixel time axis make this reachable. The finding is accepted.
+No other actionable findings were reported. That review covered the integrated
+snapshot before this correction; it does not establish review of later changes.
+
+- [ ] Reproduce incremental inward panning at both bounds in both orientations and on spectrum/ruler entry paths.
+- [ ] Rebase only genuine boundary displacement, preserving sub-sample accumulation and immediate overshoot reversal.
+- [ ] Refresh the full local gate, release build and affected isolated production acceptance.
+- [ ] Coordinator assessment and review-policy decision for the corrected snapshot.
+
+The expected interaction stays unchanged: inward movement accumulates until a
+sample is reached, while outward overshoot is discarded so reversal responds
+immediately. No additional control, dependency or toolkit change is needed.
+
 ## Post-completion
 
 Merge and branch cleanup require the coordinator/owner completion decision and
