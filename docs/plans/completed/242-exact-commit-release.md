@@ -1,5 +1,43 @@
 # Issue #242: Tagged releases from main
 
+Resolves #242 (https://github.com/o-kos/argand/issues/242), together with
+[the Linux/export plan](259-linux-display-stack.md) in PR #267.
+
+## Accepted scope — 2026-11-23
+
+The owner accepted PR #267 and its reported limits, authorizing Ready, full CI and
+protected squash merge. Class A; Coordinator/Executor remain `gpt-6.1-sol` medium
+and independent Reviewer `gpt-6.1-sol` high under the current
+[role policy](../../../AGENTS.md).
+
+- [x] Keep tag pushes as the release trigger, without a separate release CLI,
+  actor-role API checks, manual dispatch or custom retry orchestration.
+- [x] Accept only canonical numeric `vMAJOR.MINOR.PATCH` tags, rejecting leading
+  zeroes and suffixes. Verify exact tag/event/checkout identity and main ancestry.
+- [x] Bind downstream build and publication checkout to the verified immutable
+  source. Retain release notes, packaging and publication steps.
+- [x] Complete local YAML/shell/disposable-Git policy checks and independent
+  source review. The joint final local gate and normal pre-push hook passed.
+- [x] Record owner acceptance and move this plan to completed. Current full CI
+  remains a protected merge condition, not a claim about live release behavior.
+
+## Evidence limits and post-completion
+
+No production tag or release was created to validate publication. Live release
+publication is separate owner-authorized work, governed by GitHub permissions,
+existing rulesets and the release workflow. Remote protections were not changed.
+The earlier administrator-only/nonproduction-handoff architecture was withdrawn;
+it is not an uncompleted acceptance requirement. Broad distribution work is #86.
+
+## Historical stages
+
+The record below preserves the earlier transfer state and its then-pending
+checks. Owner acceptance and the completed scope above supersede transfer stops;
+unperformed live release checks are not represented as passed.
+
+<details>
+<summary>Historical implementation and transfer record</summary>
+
 Tracks #242 (https://github.com/o-kos/argand/issues/242).
 
 ## Transfer handoff — stopped at the owner's request
@@ -47,3 +85,5 @@ No publication, tag creation on GitHub or dispatch is authorized. The transfer
 commit/push exception above is explicit owner authorization without further tests. Existing Rust evidence keeps its original
 revision limits. The old administrator-only and nonproduction-handoff requirements
 are withdrawn. Full current local gate/CI and owner acceptance remain pending.
+
+</details>

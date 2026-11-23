@@ -1,4 +1,64 @@
-# Issue #259: Linux Display Stack
+# Issue #259: Linux display stack and bounded export
+
+Resolves #259 (https://github.com/o-kos/argand/issues/259), together with
+[the tagged-release plan](242-exact-commit-release.md) in PR #267.
+
+## Accepted scope — 2026-11-23
+
+The owner accepted PR #267 and the reported validation limits, authorizing Ready,
+full CI and squash merge through the protected Pull Request. This supersedes the
+historical transfer stops and earlier publication restrictions retained below.
+Class A; Coordinator/Executor remain `gpt-6.1-sol` medium, independent Reviewer
+`gpt-6.1-sol` high, following the current [role policy](../../../AGENTS.md).
+
+- [x] Ship the Linux executable directly, without bundled system shared libraries
+  or a launcher library-path override. Keep archive names, notices and Windows
+  packaging, with compatible runtime libraries supplied by the host distribution.
+- [x] Complete finite two-phase and bounded direct/partitioned export for whole,
+  partial I/Q and real captures. Preserve physical coordinates, FIR quality,
+  endpoint behavior, source identity, cancellation and publication protection.
+- [x] Correct genuine test-context shutdown and retained reader/worker ownership.
+  Remove only the approved unnecessary test setup, preserving numerical oracles,
+  real workflow coverage and explicitly documented constructor coverage limits.
+- [x] Complete fresh independent source/evidence reviews and the local gate.
+  The final ordinary suite passed all 942 tests in 58.93 s under 1 GiB/no swap,
+  256 tasks and default native parallelism. The release build ran last and passed
+  in 97.91 s. Its binary identity is preserved in the external evidence manifest.
+- [x] Commit and push the reviewed source with ordinary hooks. The pre-push hook
+  passed formatting, all-target Clippy and all 942 tests again.
+- [x] Record owner acceptance and move both accepted plans to completed. The
+  protected merge still requires successful current `ci/full` on all platforms.
+
+## Accepted evidence limits
+
+The owner accepted the implementation as reported. Native Wayland, baseline-host,
+portable-archive GUI startup and interactive GUI acceptance were not newly tested.
+Earlier isolated Xvfb evidence applies to an older binary. No claim of current
+GUI acceptance follows from the code gate or owner acceptance. Mixed isolated
+setup timings and variable full-suite peaks establish no general speed/RSS gain.
+The exact 1 MHz to 1000.1 Hz conversion point now checks geometry only; its former
+full constructor coverage was withdrawn and this limit remains explicit.
+
+Exact source, review, runtime and release identities are retained outside the
+worktree under `/tmp/argand-259-242-evidence/`, including the final setup and
+publication handoffs. No release was published by this task.
+
+## Post-completion
+
+Broader distribution formats remain in #86. Full current cross-platform CI and
+resolved conversations are mandatory merge conditions. Production release and
+any additional host/runtime validation remain separate authorized work. Branch
+and worktree cleanup follows the accepted-head checks in CONTRIBUTING.
+
+## Historical stages
+
+The following is an unchanged chronological record apart from relative-link
+relocation. Earlier unchecked boxes, pending statements and withdrawn scopes
+record their stage at that time; the accepted scope and limits above govern the
+completed plan. Unperformed historical runtime checks are not marked passed.
+
+<details>
+<summary>Historical implementation, diagnostics and transfer records</summary>
 
 Tracks #259 (https://github.com/o-kos/argand/issues/259).
 
@@ -161,30 +221,30 @@ constructors must not be conflated with spectrum visualization. Native endpoint,
 
 Priorities with exact source locations:
 
-1. [Narrow fractional constructor and long-phase test](../../crates/dsp/src/convert/tests.rs:266):
+1. [Narrow fractional constructor and long-phase test](../../../crates/dsp/src/convert/tests.rs:266):
    separate the actual 1000:1 constructor acceptance boundary from phase checks.
    The former constructs 501795 taps, a 2097152-point forward and 4194304-point
    inverse plan without feeding samples; the fixed complex vectors alone are
    80 MiB. Do not delete this boundary as if it were only a phase assertion.
-2. [Fractional native-edge matrix](../../crates/dsp/src/convert/tests.rs:164):
+2. [Fractional native-edge matrix](../../../crates/dsp/src/convert/tests.rs:164):
    twelve outer cases expand to 64 real stream constructors. Keep all cheap
    metadata checks; discuss representative actual constructors for distinct
    boundary/rounding shapes, rather than synthesizing every Cartesian duplicate.
-3. [Explicit carrier phase](../../crates/dsp/src/convert/tests.rs:293): four stream
+3. [Explicit carrier phase](../../../crates/dsp/src/convert/tests.rs:293): four stream
    constructions accompany metadata and one-sample long-index phase checks.
    Preserve the real translate result and extreme references; filter work is
    incidental, but do not replace it with duplicated oscillator logic.
-4. [Whole RF guard](../../crates/dsp/src/extract_tests.rs:220) and
-   [inside-guard image](../../crates/dsp/src/extract_tests.rs:272): each uses four
+4. [Whole RF guard](../../../crates/dsp/src/extract_tests.rs:220) and
+   [inside-guard image](../../../crates/dsp/src/extract_tests.rs:272): each uses four
    million complex inputs and eight million outputs, not a four-million-point
    FFT. Current export uses 65536-point partitions and the production FIR.
    Any reduction must preserve both FIR margins, transients, multiple partitions
    and enough integration time to resolve the 20 Hz near-edge image relationship.
-5. [Native/chunk exactness](../../crates/dsp/src/extract_tests.rs:197) and
-   [mixing order](../../crates/dsp/src/extract_tests.rs:298): representative 5140-tap
+5. [Native/chunk exactness](../../../crates/dsp/src/extract_tests.rs:197) and
+   [mixing order](../../../crates/dsp/src/extract_tests.rs:298): representative 5140-tap
    filters process 100000 samples repeatedly. Derive a smaller length from margins
    plus multiple 8192-sample partitions, keeping all chunk and analytic assertions.
-6. [Narrow-band noise measurement](../../crates/dsp/src/suppress_tests.rs:435):
+6. [Narrow-band noise measurement](../../../crates/dsp/src/suppress_tests.rs:435):
    the measurement-only property constructs full suppression/crossfade filters
    (including a 262144-point setup FFT). Genuine noise-floor/tone rejection matters;
    avoiding unused filter synthesis needs an explicit boundary/API decision, not
@@ -193,7 +253,7 @@ Priorities with exact source locations:
 Exceptions: max FIR wanted/image response and real DC/Nyquist/export-tail tests
 protect meaningful numerical boundaries. Overview compression must retain more
 than 4096 frames; the large FFT values in pure scheduling-budget tests perform no
-FFT. The [high-overlap cancellation case](../../crates/dsp/src/progressive_tests.rs:199)
+FFT. The [high-overlap cancellation case](../../../crates/dsp/src/progressive_tests.rs:199)
 uses FFT262144/hop1, valid at the DSP boundary but unreachable through application
 settings capped at 95% overlap. Consider separating adversarial budget arithmetic
 from smaller real cancellation work without silently removing public API coverage.
@@ -812,3 +872,5 @@ so draining cancellation also synchronizes with an in-flight native wake.
 Only the owner authorizes merge and production release. Broader distribution
 formats remain in #86. The known published bundle defect remains until the
 system-library packaging change is validated and released.
+
+</details>
