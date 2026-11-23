@@ -194,8 +194,8 @@ about that limit. The current consultant default is `gpt-6.2-astra` high through
 the installed read-only CLI, only for a concrete unresolved technical question.
 
 - [x] Integrate upstream while preserving feature gestures and upstream GPUI test cleanup.
-- [ ] Run formatting, all-target Clippy and all workspace tests with the locked graph.
-- [ ] Run applicable packaging, CI-policy and checkout-identity checks.
+- [x] Run formatting, all-target Clippy and all workspace tests with the locked graph.
+- [x] Run applicable packaging, CI-policy and checkout-identity checks.
 - [ ] Build release after all preceding checks pass, binding the artifact to the submitted source.
 - [ ] Push the feature branch through its normal pre-push hook and verify the remote tip.
 
@@ -214,6 +214,20 @@ the phase guard and move that same trace emission into the diagnostics module,
 without changing event behavior, trace fields or paint ordering. No lint
 suppression or threshold change is used.
 The saved owner policy edit is identical to the merged upstream file.
+Current local results after the integration and lint refactor:
+
+- Formatting and all-target locked Clippy passed.
+- `cargo test --locked` passed all 953 tests with zero failures or ignored tests.
+  This includes all three Shell layout regressions and bounded-pan reversal.
+  The ordinary suite used its existing parallelism and SDK setup: elapsed 2:32.02
+  including compilation, maximum RSS 2,084,160 KiB, no swaps, exit status 0.
+- Packaging policy: 9 passed. CI aggregate policy: 3 passed. Ubuntu source
+  isolation: 9 passed, with signed local repositories and no host installation.
+- Checkout identity regression passed, including its stale compile-time negative
+  control. Release-notes shell syntax passed.
+
+These are native SDK-mode local checks, not the portable source-toolkit matrix or
+native desktop/GPU acceptance. The earlier no-check waiver is no longer used.
 Historical production/owner acceptance above stays scoped to its recorded source;
 this task does not claim new native-platform or GPU/desktop acceptance. Keep the
 PR Draft and its remaining completion/review decisions visible.
