@@ -216,10 +216,11 @@ The Hz floor preserves existing fine precision without adding a new SI family.
 - [x] Integrate accepted/retained axis formats and GUI/CLI captions/measurements.
 - [x] Integrate cursor/status/Alt and all selection display/input consumers.
 - [x] Integrate fixed metadata, shared frequency editors, hints, warnings and human CLI.
-- [ ] Synchronize current architecture, changelog, Issue and PR scope/evidence.
-- [ ] Refresh fmt, all-target Clippy, locked tests and then production release build.
-- [ ] Complete the new expanded-scope independent review under the same role defaults.
-- [ ] Exercise production scenarios in isolated Xvfb and record remaining limits.
+- [x] Synchronize current architecture, changelog, Issue and PR scope/evidence.
+- [x] Refresh fmt, all-target Clippy, locked tests and then production release build.
+- [x] Complete the new expanded-scope independent review under the same role defaults.
+- [x] Capture and inspect five static production scenarios in isolated Xvfb.
+- [ ] Complete interactive production acceptance and owner acceptance.
 
 Tests must independently establish the approved examples, unit transitions,
 negative/zero/integer values, retained-unit stability across magnitude thresholds,
@@ -277,3 +278,26 @@ mixed-unit numeric fields. Two P2 corrections bound Alt badge measurement with
 fractional text even when endpoints are integers, and migrate the public axis
 caption API to consume the accepted scheme rather than independently selecting a
 magnitude unit. Regressions and current gates/release/review remain required.
+
+
+### Expanded final source and evidence
+
+The corrected implementation is frozen at the exact source identified in the
+current production evidence and review packet.
+Formatting, all-target Clippy, all 970 tests/doc tests and the subsequent workspace
+release build passed. Expanded-scope round 2 concluded clean for that exact source:
+all three accepted findings from round 1 were fixed, none rejected. This is a new
+owner-approved functional scope after the initial clean cycle, not a fourth attempt
+to resolve outstanding initial-scope findings.
+
+[Current production evidence](../ui/256-axis-tick-precision/expanded.md) binds five
+static Xvfb views to the exact source and binary SHA. Both orientations use common
+kHz, the coarse view uses MHz with bare `13`, and the fine view uses Hz with long
+grouped labels and matching metadata/status units. The representative fine kHz
+view displays `12 582,55` beside padded `12 582,50`, with matching reference
+`12 582,55 kHz` and `1 kHz` sample rate. No clipping or mixed generated
+frequency units was observed. Interactive zoom/pan, live orientation switching,
+cursor/Alt and field editing remain unperformed in production. No permitted input
+route is available in this session. The PR stays Draft and this plan remains active
+until that acceptance and owner review are complete. Final evidence-only updates
+do not change the reviewed product code or require another release build.

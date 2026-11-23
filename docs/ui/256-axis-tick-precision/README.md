@@ -1,4 +1,7 @@
-# Issue #256: frequency tick presentation evidence
+# Issue #256: initial tick-only presentation evidence
+
+This file is historical and covers only the initial scope. See the
+[current expanded-scope evidence](expanded.md) for the shared-unit implementation.
 
 Overall UI acceptance remains **incomplete**. These are direct production rendering
 observations, not an exercised zoom/pan or orientation-switching scenario.
