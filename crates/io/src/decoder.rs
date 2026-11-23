@@ -56,6 +56,10 @@ pub struct DecodeLevels {
 }
 
 impl DecodedSource {
+    pub(crate) fn set_recording_start(&mut self, start: Option<argand_core::RecordingTime>) {
+        self.meta.recording_start = start;
+    }
+
     pub(crate) fn declared_reference_freq(&self) -> Option<f64> {
         self.declared_reference_freq
     }
@@ -129,6 +133,7 @@ impl DecodedSource {
             Some(meta.sample_rate),
             Some(meta.len_samples),
         )?;
+        source.meta.recording_start = meta.recording_start;
         source.meta.sample_type = meta.sample_type;
         source.meta.divisor = meta.divisor;
         source.divisor = meta.divisor;
@@ -173,6 +178,7 @@ impl DecodedSource {
             Some(self.meta.sample_rate),
             Some(self.meta.len_samples),
         )?;
+        fresh.meta.recording_start = self.meta.recording_start;
         fresh.meta.sample_type = self.meta.sample_type;
         fresh.meta.divisor = self.divisor;
         fresh.divisor = self.divisor;
@@ -209,6 +215,7 @@ impl DecodedSource {
         let tagged_freq = tagged(&mut *reader, REFERENCE_TAG)
             .filter(|freq| freq.fract() == 0.0 && (0.0..=f64::from(u32::MAX)).contains(freq));
         let tagged_rate = tagged(&mut *reader, RATE_TAG);
+        let recording_start = recording_tag(&mut *reader);
         let center_freq = center_freq.or(tagged_freq);
 
         let (track, params) = audio_track(reader.tracks())?;
@@ -263,6 +270,7 @@ impl DecodedSource {
                         .unwrap_or(sample_rate)
                 }),
                 center_freq: center_freq.unwrap_or(0.0),
+                recording_start,
                 sample_type: SampleType::new(domain, format),
                 len_samples: frames.filter(|&count| count > 0).or(known_len).unwrap_or(0),
                 container,
@@ -470,6 +478,18 @@ fn audio_track(tracks: &[Track]) -> Result<(&Track, &AudioCodecParameters), Sour
             (params.codec != CODEC_ID_NULL_AUDIO).then_some((track, params))
         })
         .ok_or_else(|| SourceError::Decode("no decodable audio track".into()))
+}
+
+fn recording_tag(reader: &mut dyn FormatReader) -> Option<argand_core::RecordingTime> {
+    let metadata = reader.metadata();
+    let tags = &metadata.current()?.media.tags;
+    let mut dates = tags
+        .iter()
+        .filter(|tag| tag.raw.key.eq_ignore_ascii_case("DATE"));
+    let first = argand_core::RecordingTime::parse(&dates.next()?.raw.value.to_string())?;
+    dates
+        .all(|tag| argand_core::RecordingTime::parse(&tag.raw.value.to_string()) == Some(first))
+        .then_some(first)
 }
 
 /// A number a stream's own media tags carry under `key`.

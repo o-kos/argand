@@ -31,7 +31,7 @@ impl Unsavable {
             Self::Busy => "another save is running",
             Self::Empty => "the capture is empty",
             Self::Unchecked => "the file is still being checked",
-            Self::RawReference => "RAW cannot store the reference frequency, use Save as",
+            Self::RawReference => "RAW cannot store recording metadata, use Save as",
             Self::FlacRate => "the FLAC encoder cannot write this sample rate, use Save as",
         }
     }
@@ -109,7 +109,8 @@ impl Shell {
     fn raw_reference_changed(&self) -> bool {
         self.editing().is_some_and(|editing| {
             editing.file().hints.raw.is_some()
-                && editing.reference() != editing.file().meta.center_freq
+                && (editing.reference() != editing.file().meta.center_freq
+                    || editing.recording_start() != editing.file().meta.recording_start)
         })
     }
 

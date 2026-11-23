@@ -481,12 +481,14 @@ fn a_right_or_middle_press_on_a_chrome_button_keeps_the_plot_focused(cx: &mut Te
             SignalMeta {
                 sample_rate: 24_000.0,
                 center_freq: 0.0,
+                recording_start: None,
                 sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
                 len_samples: 48_000,
                 container: "raw",
                 divisor: 32_768.0,
                 source: PathBuf::from("/captures/session.iqw"),
-            },
+            }
+            .into(),
             FileInfo::default(),
         ));
         file.state.document.apply(Update::Ready {
@@ -862,12 +864,14 @@ fn describe(
             SignalMeta {
                 sample_rate: 24_000.0,
                 center_freq: 0.0,
+                recording_start: None,
                 sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
                 len_samples: 48_000,
                 container: "wav",
                 divisor: 32_768.0,
                 source: fixture.clone(),
-            },
+            }
+            .into(),
             FileInfo {
                 stamp: argand_io::write::SourceStamp::of(&fixture).ok(),
                 ..FileInfo::default()

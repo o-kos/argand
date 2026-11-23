@@ -30,6 +30,7 @@ pub(in crate::shell) struct PlotSnapshot {
     pub show_grid: bool,
     pub tooltips_allowed: bool,
     pub show_scale_ui: bool,
+    pub frequency_mode: crate::navigation::time_ruler::FrequencyMode,
     /// The mouse position counts only while this holds, since it goes stale once the pointer leaves.
     pub pointer_in_window: bool,
     /// The selection as fractions of the visible picture, where any of it shows.
@@ -427,6 +428,7 @@ impl Render for PlotView {
             .child(self.surface(&snapshot, cx))
             .children(self.spectrum_context_menu(&snapshot, cx))
             .children(self.time_context_menu(&snapshot, cx))
+            .children(self.frequency_context_menu(&snapshot, cx))
             .children(
                 self.panel_bounds
                     .and_then(|bounds| self.unit_hint(1, bounds.origin, cx)),

@@ -87,7 +87,7 @@ fn the_fixture_font_measures_what_the_real_one_does() {
     // The captions are held as whole strings rather than added to the alphabet
     // above: their letters kern against digits and separators they never stand
     // beside, and a pair that cannot occur is not worth a table entry.
-    for caption in ["Hz", "kHz", "MHz", "GHz", "dB", "12.345 s", "#12345", "hms", "1,234.50"] {
+    for caption in ["Hz", "kHz", "MHz", "GHz", "dB", "12.345 s", "#12345", "hms", "1,234.50", "UTC", "23:59:59.123Z", "11-24 00:00:00Z"] {
         same(caption);
     }
     assert_eq!(real.digit_height(SIZE), fixture.digit_height(SIZE));

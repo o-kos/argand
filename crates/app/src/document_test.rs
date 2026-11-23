@@ -7,6 +7,7 @@ fn meta() -> SignalMeta {
     SignalMeta {
         sample_rate: 24_000.0,
         center_freq: 12_579_000.0,
+        recording_start: None,
         sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
         len_samples: 48_000,
         container: "wav",
@@ -56,7 +57,7 @@ fn opening() -> Document {
 #[test]
 fn a_new_transform_leaves_the_previous_picture_up_while_it_runs() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()));
+    document.apply(Update::Opened(meta().into(), FileInfo::default()));
     document.apply(Update::Ready {
         analysis: analysis(64),
         elapsed: Duration::from_millis(1250),
@@ -84,7 +85,7 @@ fn a_new_transform_leaves_the_previous_picture_up_while_it_runs() {
 #[test]
 fn a_failed_reanalysis_keeps_the_previous_range_presentation_until_replacement() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()));
+    document.apply(Update::Opened(meta().into(), FileInfo::default()));
 
     let mut warned = analysis(64);
     warned.db.values.fill(-60.0);
@@ -167,7 +168,8 @@ fn metadata_duration_counts_iq_pairs_and_real_samples_once() {
                 sample_type: SampleType::new(domain, SampleFormat::I16),
                 len_samples: 5_312_160,
                 ..meta()
-            },
+            }
+            .into(),
             FileInfo::default(),
         ));
         let fields = document.summary().unwrap();
@@ -203,7 +205,7 @@ fn compact_duration_trims_zero_units_and_fractional_zeros_after_rounding() {
 fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
     let mut document = opening();
     document.apply(Update::Opened(
-        meta(),
+        meta().into(),
         FileInfo {
             declared_reference_freq: Some(meta().center_freq),
             ..FileInfo::default()
@@ -232,7 +234,7 @@ fn metadata_hints_include_current_values_and_preserve_sample_semantics() {
 fn analysis_timing_hint_only_describes_a_completed_current_analysis() {
     let mut document = opening();
     assert!(document.status().hint().is_none());
-    document.apply(Update::Opened(meta(), FileInfo::default()));
+    document.apply(Update::Opened(meta().into(), FileInfo::default()));
     assert!(document.status().hint().is_none());
     document.apply(Update::Ready {
         analysis: analysis(64),
@@ -294,7 +296,7 @@ fn only_ready_updates_leave_the_document_ready() {
     assert!(!matches!(document.status(), Status::Ready { .. }));
 
     for update in [
-        Update::Opened(meta(), FileInfo::default()),
+        Update::Opened(meta().into(), FileInfo::default()),
         Update::Progress { done: 1, total: 4 },
         Update::Snapshot {
             analysis: analysis(64),
@@ -322,7 +324,7 @@ fn only_ready_updates_leave_the_document_ready() {
 fn current_metrics_survive_spectral_navigation_and_replace_pending_values() {
     let mut document = opening();
     document.apply(Update::Opened(
-        meta(),
+        meta().into(),
         FileInfo {
             bytes: Some(192044),
             ..FileInfo::default()
@@ -359,7 +361,7 @@ fn current_metrics_survive_spectral_navigation_and_replace_pending_values() {
 #[test]
 fn minimap_failure_is_reported_separately_from_amplitude_statistics() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()));
+    document.apply(Update::Opened(meta().into(), FileInfo::default()));
     document.minimap_failed("test read failure".into());
     let hint = document.file_summary().unwrap().hint.value;
     assert!(
@@ -377,7 +379,7 @@ impl Document {
     }
 
     pub(crate) fn show_a_range(&mut self, range: DynamicRange) {
-        self.apply(Update::Opened(meta(), FileInfo::default()));
+        self.apply(Update::Opened(meta().into(), FileInfo::default()));
         let mut warned = analysis(64);
         warned.db.values.fill(-60.0);
         warned.dynamic_range.requested = range;
@@ -394,7 +396,7 @@ impl Document {
 #[test]
 fn an_edit_moves_the_picture_columns_with_their_samples() {
     let mut document = opening();
-    document.apply(Update::Opened(meta(), FileInfo::default()));
+    document.apply(Update::Opened(meta().into(), FileInfo::default()));
     let mut picture = analysis(4);
     picture.spectrogram.t1 = 1.0;
     for column in 0..4 {
@@ -427,7 +429,7 @@ fn file_summary_distinguishes_absent_reference_from_declared_zero() {
     for declared in [None, Some(0.), Some(12345.)] {
         let mut document = opening();
         document.apply(Update::Opened(
-            meta(),
+            meta().into(),
             FileInfo {
                 declared_reference_freq: declared,
                 ..Default::default()

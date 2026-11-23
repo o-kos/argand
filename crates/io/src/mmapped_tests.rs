@@ -23,6 +23,7 @@ fn open_wav_with(
     let meta = SignalMeta {
         sample_rate: layout.sample_rate,
         center_freq: 0.0,
+        recording_start: None,
         sample_type: st,
         len_samples: 0,
         container: "wav",

@@ -146,28 +146,29 @@ UI-acceptance skills before changing their respective paths.
 
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
-| Set, edit, clear and reopen start with reference | WAVE/native and decoder-backed layouts, RF64 where supported, FLAC DATE round trips; compare samples, count, rate and domain | Pending | No implementation or Rust checks yet |
-| Safe invalid and absent metadata | Zero/short/malformed SYSTEMTIME, invalid dates, incomplete DATE, unsupported precision/zone and conflicting tags | Pending | UTC import interpretation approved |
-| Correct UTC labels and entries | Start before midnight, fractional seconds, selection endpoints/duration, zoom and both orientations; absolute entry maps to original sample span | Pending | Nearest-millisecond storage rounding approved |
-| Presentation leaves data and analysis intact | Toggle each command entry point, inspect selection/view/reference and analysis request count/generation | Pending | Automated and production evidence required |
-| Persistent and consistent modes | Isolated session normal restart, unavailable Absolute, files with zero/missing reference, checked menu and radio state, corner frequency/time label | Pending | Existing hms/seconds/samples retained |
-| Metadata history and file safety | No-op/Undo/Redo/Discard, whole and selection saves, RAW Save As, stale save completion, source protection and cancellation regression cases | Pending | Existing publication guards must remain unchanged |
-| Processing and timeline semantics | Agreed prefix/tail/interior/paste/extraction/conversion scenarios and undo/save/reopen | Pending | Approved timeline table above |
-| Production UI behavior and appearance | Current release binary in isolated Xvfb, both corner placements, pointer and keyboard, radios, grouped frequency input, timestamp edit/empty clear, Enter/blur/Escape, menus/shortcuts, busy and unavailable states | Pending | Owner desktop untouched; Xvfb does not prove native Wayland/other OS behavior |
-| Current revision independently reviewed | Neutral exact handoff, fresh read-only reviewer, dispositions and clean final round or explicit remaining findings | Pending | Review does not replace owner UI acceptance |
+| Set, edit, clear and reopen start with reference | WAVE/native and decoder-backed layouts, RF64 where supported, FLAC DATE round trips; compare samples, count, rate and domain | Pass | Native Enter/blur clear/save/reopen verified |
+| Safe invalid and absent metadata | Zero/short/malformed SYSTEMTIME, invalid dates, incomplete DATE, unsupported precision/zone and conflicting tags | Automated pass | UTC import convention documented |
+| Correct UTC labels and entries | Start before midnight, fractional seconds, selection endpoints/duration, zoom and both orientations; absolute entry maps to original sample span | Pass | Both orientations and640px production scenarios verified |
+| Presentation leaves data and analysis intact | Toggle each command entry point, inspect selection/view/reference and analysis request count/generation | Pass | Native analysis invariant also checked by GPUI tests |
+| Persistent and consistent modes | Isolated session normal restart, unavailable Absolute, files with zero/missing reference, checked menu and radio state, corner frequency/time label | Pass | Normal restart verified Absolute/Baseband and retained Seconds |
+| Metadata history and file safety | No-op/Undo/Redo/Discard, whole and selection saves, RAW Save As, stale save completion, source protection and cancellation regression cases | Automated pass | Existing publication regressions pass |
+| Processing and timeline semantics | Agreed prefix/tail/interior/paste/extraction/conversion scenarios and undo/save/reopen | Automated pass | Precise private-conversion origin regression passes |
+| Production UI behavior and appearance | Current release binary in isolated Xvfb, both corner placements, pointer and keyboard, radios, grouped frequency input, timestamp edit/empty clear, Enter/blur/Escape, menus/shortcuts, busy and unavailable states | Local scenarios pass | Owner manual acceptance pending, Xvfb does not prove native Wayland/other OS behavior |
+| Current revision independently reviewed | Neutral exact handoff, fresh read-only reviewer, dispositions and clean final round or explicit remaining findings | Two rounds complete, final code clean | Review does not replace owner UI acceptance |
 
 ## Implementation steps
 
 - [x] Resolve and record pending owner decisions before product edits.
-- [ ] Verify installed toolchain selection without triggering a proxy download,
+- [x] Verify installed toolchain selection without triggering a proxy download,
   existing toolkit/SDK selection and workspace-local target setup before Rust work.
-- [ ] Add validated recording-start value and metadata propagation at core/I/O seams.
-- [ ] Implement auxi/DATE reading and writing, invalid-input handling and round trips.
-- [ ] Version metadata and apply agreed save, processing and timeline semantics.
-- [ ] Add shared relative/absolute presentation, endpoint entry and session persistence.
-- [ ] Implement approved corner button/common panel and synchronized menu/shortcut paths.
-- [ ] Update metadata, navigation, UI and session architecture documentation and changelog.
-- [ ] Complete targeted tests, full local gate, production acceptance and independent review.
+- [x] Add validated recording-start value and metadata propagation at core/I/O seams.
+- [x] Implement auxi/DATE reading and writing, invalid-input handling and round trips.
+- [x] Version metadata and apply agreed save, processing and timeline semantics.
+- [x] Add shared relative/absolute presentation, endpoint entry and session persistence.
+- [x] Implement approved corner button/common panel and synchronized menu/shortcut paths.
+- [x] Update metadata, navigation, UI and session architecture documentation and changelog.
+- [x] Complete targeted tests, full local gate, local production scenarios and independent review.
+- [ ] Obtain owner manual UI acceptance while the PR remains Draft.
 - [ ] Move plan to `docs/plans/completed/`, rebuild current release and request Ready/full CI
   only after all agreed implementation and acceptance work is complete.
 
@@ -177,16 +178,35 @@ For the initial plan-only commit, review the diff and local links. No product co
 Rust build or test is claimed. The complete code-change gate applies before code
 pushes; initial plan publication follows the coordinator's scoped workflow decision.
 
-- [ ] Targeted timestamp, I/O, history, presentation, inverse-entry and session tests.
-- [ ] Relevant production-control GPUI interaction regressions with normal cleanup.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the checks above pass.
-- [ ] Isolated production Xvfb acceptance report with exact revision/local-diff identity,
+- [x] Targeted timestamp, I/O, history, presentation, inverse-entry and session tests.
+- [x] Relevant production-control GPUI interaction regressions with normal cleanup.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks above pass.
+- [x] Isolated production Xvfb acceptance report with exact revision/local-diff identity,
   binary/build command, scenarios, observations and remaining limitations.
-- [ ] Independent review and coordinator assessment of exact current revision.
+- [x] Independent review of the corrected exact code snapshot. Coordinator assessment remains part of final handoff.
 - [ ] Current Ready PR full CI succeeds explicitly on Linux, Windows and macOS.
+
+## Review progress
+
+The first independent review identified three accepted corrections: preserve the
+precise retained origin when an unchanged millisecond editor draft closes, step
+relative durations in their own units while endpoints use UTC, and retain exact
+origin through private conversion backing files. Focused regressions cover panel
+blur/Escape without history or analysis changes, all relative duration modes and
+sample fallback, and repeated conversions followed by millisecond user-file save.
+The second independent review found all three root causes corrected and no further
+findings. The test-only helper extraction was separately checked as behavior
+preserving. Current formatting, Clippy and the complete test suite passed: 968
+tests across the application, CLI, core, DSP, editing and I/O suites, plus doc tests.
+The release build passed after that gate. Bounded production pointer/keyboard
+scenarios passed in isolated Xvfb, including both orientations, menus/shortcuts,
+metadata Enter/blur/Escape/clear/save/reopen, normal session restart,640px and light
+theme. See [the acceptance report](../ui/265-recording-scales/acceptance.md) for exact
+build identity, steps, captures and limits. Owner manual acceptance remains pending,
+so this plan remains active and the PR remains Draft.
 
 ## Post-completion
 

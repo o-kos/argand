@@ -100,3 +100,13 @@ feature; tests additionally enable `toolkit-test-support`. See [SDK setup](../de
 The CLI image renderer always uses its own source dependency through an explicit
 crate alias. It shares no image types with GPUI and does not require the SDK. This
 keeps CLI release Thin LTO independent of the SDK development artifact format.
+
+### Scale presentation session state (#265)
+
+Session version 13 adds `time_origin` (relative/absolute) and `frequency_mode`
+(baseband/physical), alongside the existing `time_ruler` relative format. The fields
+participate in the existing advisory read/merge/atomic-write policy. Versions 1–12
+remain readable; absent fields retain relative time and physical frequency defaults.
+The previously removed version-12 `baseband_frequencies` field remains ignored.
+Recording-start metadata belongs to the versioned document and its saved recording,
+not Recent overrides or presentation session state.

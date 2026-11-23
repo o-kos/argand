@@ -90,6 +90,7 @@ impl Source {
             meta: argand_core::SignalMeta {
                 sample_rate: 48000.,
                 center_freq: 0.,
+                recording_start: None,
                 sample_type,
                 len_samples: samples as u64,
                 container: "test",

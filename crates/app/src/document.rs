@@ -407,7 +407,7 @@ impl Document {
             Update::Opened(meta, info) => {
                 self.file_info = info;
                 self.requested_range = Some(argand_core::SampleRange::new(0, meta.len_samples));
-                self.meta = Some(meta);
+                self.meta = Some(*meta);
                 // Nothing has been asked for yet; the window builds the first
                 // request from the length this update just brought.
                 self.status = Status::Analyzing { done: 0, total: 0 };
@@ -477,6 +477,9 @@ impl Document {
                 (label.to_owned(), field.hint.value)
             })
             .collect::<Vec<_>>();
+        if let Some(start) = meta.recording_start {
+            rows.push(("Recording start UTC".into(), start.format(3)));
+        }
         rows.push((
             "Total samples".into(),
             group_integer(&meta.len_samples.to_string()),

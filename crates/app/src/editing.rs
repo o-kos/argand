@@ -262,6 +262,7 @@ impl std::error::Error for PasteError {}
 struct VersionState {
     selection: Selection,
     reference: f64,
+    recording_start: Option<argand_core::RecordingTime>,
 }
 
 /// One document's sources, edit history and source envelopes.
@@ -294,6 +295,7 @@ impl Editing {
     pub fn new(meta: SignalMeta, hints: OpenHints) -> Self {
         let capture = Capture::whole(SourceId(0), meta.len_samples);
         let reference = meta.center_freq;
+        let recording_start = meta.recording_start;
         Self {
             sources: vec![Source::new(meta, hints)],
             history: History::new(
@@ -301,6 +303,7 @@ impl Editing {
                 VersionState {
                     selection: Selection::default(),
                     reference,
+                    recording_start,
                 },
             ),
             envelopes: vec![None],
@@ -393,9 +396,43 @@ impl Editing {
         self.history.state().reference
     }
 
+    pub fn recording_start(&self) -> Option<argand_core::RecordingTime> {
+        self.history.state().recording_start
+    }
+
+    pub fn set_recording_start(
+        &mut self,
+        start: Option<argand_core::RecordingTime>,
+        selection: Selection,
+    ) -> bool {
+        if start == self.recording_start() {
+            return false;
+        }
+        self.remember_selection(selection);
+        self.apply_with_start(self.capture().clone(), selection, start);
+        true
+    }
+
+    fn apply_with_start(
+        &mut self,
+        capture: Capture,
+        selection: Selection,
+        recording_start: Option<argand_core::RecordingTime>,
+    ) {
+        self.history.apply(
+            capture,
+            VersionState {
+                selection,
+                reference: self.reference(),
+                recording_start,
+            },
+        );
+    }
+
     pub fn output_meta(&self) -> SignalMeta {
         let mut meta = self.file().meta.clone();
         meta.center_freq = self.reference();
+        meta.recording_start = self.recording_start();
         meta.len_samples = self.len();
         meta
     }
@@ -404,6 +441,7 @@ impl Editing {
         self.history.set_state(VersionState {
             selection,
             reference: self.reference(),
+            recording_start: self.recording_start(),
         });
     }
 
@@ -413,6 +451,7 @@ impl Editing {
             VersionState {
                 selection,
                 reference: self.reference(),
+                recording_start: self.recording_start(),
             },
         );
     }
@@ -433,6 +472,7 @@ impl Editing {
             VersionState {
                 selection,
                 reference,
+                recording_start: self.recording_start(),
             },
         );
         true
@@ -441,7 +481,15 @@ impl Editing {
     /// Remove `span`, leaving nothing selected.
     pub fn delete(&mut self, span: SampleSpan) {
         let capture = self.capture().delete(span);
-        self.apply_version(capture, Selection::default());
+        let start = if span.start() == 0 {
+            self.recording_start()
+                .and_then(|start| start.shifted_samples(span.count(), self.file().meta.sample_rate))
+        } else if span.end() >= self.len() {
+            self.recording_start()
+        } else {
+            None
+        };
+        self.apply_with_start(capture, Selection::default(), start);
     }
 
     /// Put the computed samples of `computed` from its sample `offset` in place of `span`, keeping the length and `selection` selected.
@@ -565,7 +613,10 @@ impl Editing {
         self.failed_statistics
             .resize(self.sources.len() + added.len(), false);
         self.sources.extend(added);
-        self.apply_version(capture, Selection::time(pasted));
+        let start = (capture.len() == self.len())
+            .then(|| self.recording_start())
+            .flatten();
+        self.apply_with_start(capture, Selection::time(pasted), start);
         Ok(pasted)
     }
 
@@ -845,8 +896,14 @@ impl Editing {
                 })
             })
             .collect::<Option<Vec<_>>>()?;
+        let mut meta = self.output_meta();
+        if let Some(span) = span {
+            meta.recording_start = meta
+                .recording_start
+                .and_then(|start| start.shifted_samples(span.start(), meta.sample_rate));
+        }
         Some(SaveRequest {
-            meta: self.output_meta(),
+            meta,
             format: Some(self.format.clone()?),
             sources: used
                 .iter()

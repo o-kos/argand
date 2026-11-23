@@ -19,6 +19,7 @@ fn shared_readout_honours_all_ruler_modes_and_frequency_units() {
                 frequency_offset: 0.,
                 orientation: crate::navigation::orientation::Mode::Horizontal,
                 time: crate::navigation::time_ruler::Ruler {
+                    start: None,
                     mode,
                     view: crate::navigation::View {
                         start: 24_000_000,
@@ -149,6 +150,7 @@ fn sample_width_keeps_exact_large_capture_indices() {
         frequency_offset: 0.,
         orientation: crate::navigation::orientation::Mode::Horizontal,
         time: crate::navigation::time_ruler::Ruler {
+            start: None,
             mode: crate::navigation::time_ruler::Mode::Samples,
             view: crate::navigation::View {
                 start: u64::MAX - 4096,

@@ -1269,6 +1269,7 @@ impl Shell {
         Some(axes::Extents {
             orientation: self.session.orientation,
             time: crate::navigation::time_ruler::Ruler {
+                start: self.absolute_start(),
                 mode: self.session.time_ruler,
                 view: self.view?,
                 total: meta.len_samples,
@@ -1704,7 +1705,15 @@ impl Shell {
 
         match self.showing() {
             Showing::Plot(_) => match self.plot_view() {
-                Some(plot) => plot.clone().into_any_element(),
+                Some(plot) => div()
+                    .flex()
+                    .flex_col()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .child(plot.clone())
+                    .children(self.reference_control(cx))
+                    .into_any_element(),
                 None => div().flex_1().min_h_0().into_any_element(),
             },
             // Physical labels need the metadata; their boundaries can appear immediately.

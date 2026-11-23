@@ -39,12 +39,14 @@ fn describe_document(shell: &mut Shell, path: &str, cx: &mut Context<Shell>) {
         SignalMeta {
             sample_rate: 24_000.0,
             center_freq: 0.0,
+            recording_start: None,
             sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
             len_samples: 48_000,
             container: "raw",
             divisor: 32_768.0,
             source: PathBuf::from(path),
-        },
+        }
+        .into(),
         FileInfo::default(),
     ));
     shell.start_editing(cx);
@@ -102,12 +104,14 @@ fn open_pan_window(
                 SignalMeta {
                     sample_rate: 1_000_000.,
                     center_freq: 0.,
+                    recording_start: None,
                     sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
                     len_samples: 1_000_000_000,
                     container: "raw",
                     divisor: 32_768.,
                     source: "/captures/layout-pan.iqw".into(),
-                },
+                }
+                .into(),
                 FileInfo::default(),
             ));
         shell.session.orientation = orientation;
@@ -550,12 +554,14 @@ fn dirty_close_fixture(
                 SignalMeta {
                     sample_rate: 24_000.0,
                     center_freq: 0.0,
+                    recording_start: None,
                     sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
                     len_samples: 48_000,
                     container: "wav",
                     divisor: 32_768.0,
                     source: path.clone(),
-                },
+                }
+                .into(),
                 FileInfo {
                     stamp: argand_io::write::SourceStamp::of(&path).ok(),
                     ..FileInfo::default()

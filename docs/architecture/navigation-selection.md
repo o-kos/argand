@@ -410,3 +410,30 @@ Ctrl+Shift+Up/Down are not zoom bindings; arrow pan bindings stay unchanged.
 The waveform is 3 rem (48 logical pixels with the default font) by default, with a 1-logical-pixel theme-border separator spanning only the waveform plot. The time and frequency ruler baselines use the same colour as their ticks; the spectrum starts directly below the waveform separator without a top inset. The minimap is not resizable (#132): `[panels].minimap_size` in `argand.toml` fixes its height, or its width in vertical orientation, as `"<number> rem"` (1 to 20, following the interface font) or `"<number> px"` (16 to 320 logical pixels), default `"3 rem"`. The value must be a quoted string in TOML. An unusable value is logged and replaced by the default alone. A `waveform_fraction` left in an older session is ignored and dropped on the next save. `panels.rs` parses the size and computes it on device pixels, while `waveform.rs` draws one merged real or I/Q envelope without grid lines, a zero-axis line or labels, using the exact horizontal geometry measured for the spectrogram. `WaveformEnvelope::pixel_spans` shares channel merging, pixel rounding and continuity with `aspec`; The minimap amplitude scale comes from its full-capture peak, independently of spectral dynamic range. Its envelope survives spectrum replacement. The old `[panels].waveform_fraction` configuration remains readable for compatibility but does not size the panel. Progressive waveform integration is implemented by #29; synchronized time navigation is implemented by #30.
 
 The window measures its axis labels through `argand_core::axis::LabelMeasure`, implemented over GPUI's text system. That is the second implementation of the trait, `aspec`'s ab_glyph one being the first, and it is why the trait exists. The GUI sizes the right ruler's gutter from the labels it actually places plus every unit caption (#148). `PlotView` holds the widest gutter measured (`axes::Held::gutter`), so zooming in, panning and zooming the other axis never narrow it. `PlotView::view_intent` releases the hold when the axis shown on the right zooms out or is fitted, so the ruler refits its new labels (it can still widen when a format or unit grows). A new file, an orientation change and a time-format change with time on the right also release it. The GUI starts time labels after their ticks; shared axis layout accounts for that anchor while retaining centered labels by default for CLI rendering. Numeric label centering uses the shaped line's baseline metrics. The axis layout keeps a 4-logical-pixel outer margin at the sides and bottom and meets the minimap separator at the top. The frequency unit occupies the right gutter beside the minimap, with the bottom of its text aligned to the top of the frequency ruler; only time labels reserve a full text row outside the plot height.
+
+## Recording-relative and absolute presentation (#265)
+
+View / Time scale format and the time-ruler context menu share Relative and Absolute
+UTC commands and the retained hms/seconds/samples choices. Ctrl+Shift+T toggles origin.
+View / Frequency scale and the frequency-ruler context menu share Baseband and
+Physical RF commands; Ctrl+Shift+F toggles presentation. Existing Cmd mapping applies
+on macOS. These commands also share the radio controls in Recording metadata and
+scales, in either orientation. Application-wide preferences are kept in session
+version 13, independent of per-document metadata and history. An absent start leaves
+effective Relative presentation and explains why Absolute UTC is unavailable, while
+retaining the absolute preference for a later capture with a known origin.
+
+Internal navigation, sample selections and analysis frequencies do not move when a
+presentation mode changes. Baseband subtracts the effective reference only at the
+presentation seam; its inverse is applied to entered frequency edges. Physical RF
+retains real one-sided and complex two-sided frequency spans. At zero reference both
+modes coincide numerically. Display changes invalidate tick measurement and repaint;
+changed plot dimensions may rebin the retained analysis without restarting FFT work.
+
+Absolute time adds a physical sample offset to an integer UTC origin. Ruler ticks
+use concise time-of-day text, a date context beside the UTC caption, and month/day
+on ticks across a date transition. Cursor and selection endpoints use full UTC
+calendar timestamps with offset precision independent of millisecond metadata
+storage. Selection durations remain relative. Timestamp entry subtracts integer
+origins before converting relative seconds to sample indices. Where seconds cannot
+address adjacent samples safely, existing exact sample-number fallback remains.

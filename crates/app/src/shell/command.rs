@@ -30,6 +30,9 @@ commands! {
     ToggleGrid => |s| s.document,
     ToggleScaleUi => |s| s.document, ToggleOrientation => |s| s.document,
     FitCapture => |s| s.document, FitFrequency => |s| s.document,
+    RelativeTime => |s| s.document, AbsoluteTime => |s| s.timestamp,
+    BasebandFrequency => |s| s.document, PhysicalFrequency => |s| s.document,
+    ToggleTimeOrigin => |s| s.timestamp, ToggleFrequencyMode => |s| s.document,
     ClockRuler => |s| true, SecondsRuler => |s| true, SamplesRuler => |s| true,
     SystemTheme => |s| true, LightTheme => |s| true, DarkTheme => |s| true,
     about_ui::ShowAbout => |s| true,
@@ -46,6 +49,7 @@ impl Command for chrome::CloseWindow {
 pub(super) struct Availability {
     pub idle: bool,
     pub document: bool,
+    timestamp: bool,
     file: bool,
     reference: bool,
     save: bool,
@@ -81,6 +85,10 @@ impl Shell {
         Availability {
             idle: !self.conversion_active(),
             document: self.view.is_some(),
+            timestamp: self
+                .editing()
+                .and_then(|editing| editing.recording_start())
+                .is_some(),
             file: self.file.is_some(),
             reference: self.is_reference_editable(),
             save: self.can_save_edits(),

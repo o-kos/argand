@@ -380,6 +380,7 @@ fn memory_export(
     let meta = SignalMeta {
         sample_rate: rate,
         center_freq: 0.0,
+        recording_start: None,
         sample_type,
         len_samples: (values.len() / sample_type.channels()) as u64,
         container: "memory",

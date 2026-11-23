@@ -72,6 +72,8 @@ pub enum AxisKind {
     Time,
     /// Clock labels with decimal subsecond steps for interactive time zoom.
     PreciseTime,
+    /// UTC calendar labels with tick values kept in seconds from this origin.
+    UtcTime(crate::RecordingTime),
     /// Elapsed seconds on a decimal ladder, with fractional tick precision.
     Seconds,
     /// Nonnegative integer sample indices on a decimal ladder.
@@ -80,6 +82,19 @@ pub enum AxisKind {
     Frequency,
     /// Whole decibels.
     Decibels,
+}
+
+fn utc_tick(start: crate::RecordingTime, value: f64, first: f64, precision: usize) -> String {
+    let Some(time) = start.shifted_seconds(value) else {
+        return "Out of range".into();
+    };
+    let stamp = time.format(precision);
+    let first = start.shifted_seconds(first).map(|time| time.format(9));
+    if first.is_some_and(|first| first[..10] != stamp[..10]) {
+        format!("{} {}", &stamp[5..10], &stamp[11..])
+    } else {
+        stamp[11..].to_owned()
+    }
 }
 
 /// How labels sit on the axis, which decides what has to clear what.
@@ -255,7 +270,11 @@ pub fn tick_layout(
 /// `None` where the labels carry their own meaning: a clock reads as a clock.
 pub fn caption(kind: AxisKind, min: f64, max: f64) -> Option<&'static str> {
     match kind {
-        AxisKind::Time | AxisKind::PreciseTime | AxisKind::Seconds | AxisKind::Samples => None,
+        AxisKind::Time
+        | AxisKind::PreciseTime
+        | AxisKind::UtcTime(_)
+        | AxisKind::Seconds
+        | AxisKind::Samples => None,
         AxisKind::Frequency => Some(hertz_unit(min, max).name),
         AxisKind::Decibels => Some("dB"),
     }
@@ -281,6 +300,7 @@ pub fn widest_labels(kind: AxisKind, min: f64, max: f64) -> Vec<String> {
         },
         AxisKind::Seconds => vec![format!("{sign}{peak:.9} s")],
         AxisKind::Samples => vec![format!("#{peak:.0}")],
+        AxisKind::UtcTime(_) => vec!["00:00:00.000000000".into()],
         AxisKind::PreciseTime => vec![format!("{sign}{}:00.000000000", (peak / 60.0) as u64)],
         // One unit for the whole axis, so the widest label is simply the
         // largest magnitude with every decimal that unit resolves to in use.
@@ -354,6 +374,9 @@ fn place(
         let value = k as f64 * step;
         let label = match kind {
             AxisKind::PreciseTime => format_time(value, scheme.span, step),
+            AxisKind::UtcTime(start) => {
+                utc_tick(start, value, axis.min, decimal_precision(step).min(9))
+            }
             AxisKind::Seconds => {
                 format!("{value:.precision$} s", precision = decimal_precision(step))
             }
@@ -435,7 +458,7 @@ fn readable(placed: &[Placed], gap: f64) -> bool {
 fn ladder(kind: AxisKind, from: f64) -> Vec<f64> {
     match kind {
         AxisKind::Time => clock_ladder(from),
-        AxisKind::PreciseTime => decimal_ladder(from.max(1e-9))
+        AxisKind::PreciseTime | AxisKind::UtcTime(_) => decimal_ladder(from.max(1e-9))
             .into_iter()
             .take_while(|step| *step < 1.0)
             .chain(clock_ladder(from.max(1.0)))
@@ -511,6 +534,9 @@ fn clock_of(min: f64, max: f64) -> Clock {
 
 fn format_label(kind: AxisKind, value: f64, min: f64, max: f64) -> String {
     match kind {
+        AxisKind::UtcTime(start) => start
+            .shifted_seconds(value)
+            .map_or_else(|| "Out of range".into(), |time| time.format(3)),
         AxisKind::Time | AxisKind::PreciseTime => format_clock(value, clock_of(min, max)),
         AxisKind::Frequency => hertz_unit(min, max).format(value),
         AxisKind::Seconds => format!("{value} s"),

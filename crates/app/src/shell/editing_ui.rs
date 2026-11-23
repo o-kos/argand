@@ -307,8 +307,28 @@ impl Shell {
         changed
     }
 
+    pub(super) fn set_recording_start(
+        &mut self,
+        start: Option<argand_core::RecordingTime>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let selection = argand_core::Selection {
+            time: self.selection,
+            band: self.band,
+        };
+        let changed = self
+            .editing_mut()
+            .is_some_and(|editing| editing.set_recording_start(start, selection));
+        if changed {
+            self.reference_changed(window, cx);
+        }
+        changed
+    }
+
     fn reference_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.frequency_scheme = None;
+        self.time_scheme = None;
         self.refresh_titles(window);
         cx.notify();
     }

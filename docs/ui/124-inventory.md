@@ -329,10 +329,16 @@ item, the FFT summary, the start-page chooser and the recent rows were already s
 `Button`s and stay. The custom variant paints no border, so `toolbar_style` supplies the
 surfaces (`shell/app_menu_ui.rs:773`).
 
-The Reference frequency status item (#185) reuses the same standard status Button,
-Tooltip and pinned-panel composition. Its editor reuses NumericEditor. The status trigger and Edit menu command share
-the common information-panel lifecycle and external-tooltip policy. Saving uses
-the existing Save command. It introduces no widget or ruler overlay.
+The Reference frequency status item (#185) is replaced in #265 by a standard
+corner Button at the overview/frequency-ruler junction. It retains the existing
+pinned-panel composition and common information-panel lifecycle. Its R/A label
+names frequency then time. The shared Recording metadata and scales panel reuses
+NumericEditor for locale-grouped reference values, adds standard Input for UTC start,
+and uses standard Radio controls for presentation. There are no panel action buttons.
+Enter/blur commit, empty start clears, and Escape discards uncommitted drafts.
+The corner trigger is deferred above the common backdrop so switching and repeated
+toggle retain the same working contract as other information-panel entry points.
+This is existing GPUI composition, not a new input or button implementation.
 
 **No locked-toolkit limitation is claimed for the status items.** They are standard
 `Button`s with a custom variant, and the audit found no custom press, hover or focus

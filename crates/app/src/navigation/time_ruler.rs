@@ -6,6 +6,22 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum Origin {
+    #[default]
+    Relative,
+    Absolute,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FrequencyMode {
+    Baseband,
+    #[default]
+    Physical,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Mode {
     #[default]
     Clock,
@@ -119,7 +135,7 @@ const CLOCK_DECIMALS: usize = 9;
 /// A boundary is exact in `f64` only up to 2^53, and the seconds it prints need
 /// their integer digits plus one decimal per tenfold of the sample rate, which
 /// together must stay within the 15 significant digits a double carries.
-fn exact_time_precision(span: argand_core::SampleSpan, rate: f64) -> Option<usize> {
+pub(super) fn exact_time_precision(span: argand_core::SampleSpan, rate: f64) -> Option<usize> {
     if !(rate.is_finite() && rate > 0.) || span.end() > 1 << 53 {
         return None;
     }
@@ -131,12 +147,21 @@ fn exact_time_precision(span: argand_core::SampleSpan, rate: f64) -> Option<usiz
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ruler {
     pub mode: Mode,
+    pub start: Option<argand_core::RecordingTime>,
     pub view: View,
     pub total: u64,
 }
 
 impl Ruler {
+    pub fn kind(self) -> AxisKind {
+        self.start
+            .map_or_else(|| self.mode.kind(), AxisKind::UtcTime)
+    }
+
     pub fn bounds(self, seconds: (f64, f64)) -> (f64, f64) {
+        if self.start.is_some() {
+            return seconds;
+        }
         match self.mode {
             Mode::Samples => (
                 self.view.start as f64,
@@ -148,6 +173,22 @@ impl Ruler {
 
     pub fn readout(self, time: f64, span: f64, pixels: f64, fraction: f64) -> String {
         let precision = crate::navigation::time_precision(span / pixels);
+        if let Some(start) = self.start {
+            let rate = self.view.len as f64 / span;
+            let exact = argand_core::SampleSpan::between(0, self.total.max(1))
+                .and_then(|whole| exact_time_precision(whole, rate));
+            if exact.is_none_or(|precision| precision > 9) {
+                return Self {
+                    start: None,
+                    mode: Mode::Samples,
+                    ..self
+                }
+                .readout(time, span, pixels, fraction);
+            }
+            return start
+                .shifted_seconds(time)
+                .map_or_else(|| "Out of range".into(), |time| time.format(precision));
+        }
         match self.mode {
             Mode::Clock => crate::numbers::current().axis_label(
                 &axis::format_time(time, span, 10_f64.powi(-(precision as i32))),

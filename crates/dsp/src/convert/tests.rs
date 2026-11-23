@@ -5,6 +5,7 @@ fn meta(iq: bool, rate: f64, reference: f64) -> SignalMeta {
     SignalMeta {
         sample_rate: rate,
         center_freq: reference,
+        recording_start: None,
         sample_type: SampleType::new(
             if iq { Domain::Iq } else { Domain::Real },
             SampleFormat::F32,

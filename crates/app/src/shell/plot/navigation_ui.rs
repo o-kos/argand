@@ -13,6 +13,12 @@ actions!(
         ClockRuler,
         SecondsRuler,
         SamplesRuler,
+        RelativeTime,
+        AbsoluteTime,
+        BasebandFrequency,
+        PhysicalFrequency,
+        ToggleTimeOrigin,
+        ToggleFrequencyMode,
         SystemTheme,
         LightTheme,
         DarkTheme,
@@ -41,6 +47,8 @@ pub(in crate::shell) fn init(cx: &mut gpui_kit::App) {
         command::binding("ctrl-g", ToggleGrid, Some("Plot")),
         command::binding("ctrl-u", ToggleScaleUi, Some("Plot")),
         command::binding("ctrl-t", ToggleOrientation, Some("Plot")),
+        command::binding("ctrl-shift-t", ToggleTimeOrigin, Some("Plot")),
+        command::binding("ctrl-shift-f", ToggleFrequencyMode, Some("Plot")),
         KeyBinding::new("ctrl-+", ZoomIn, Some("Plot")),
         KeyBinding::new("ctrl--", ZoomOut, Some("Plot")),
         command::binding("ctrl-0", FitCapture, Some("Plot")),
@@ -492,7 +500,12 @@ impl Shell {
         let Some(scheme) = self.time_scheme else {
             return;
         };
-        let step = self.session.time_ruler.sample_step(scheme.step, rate);
+        let mode = if self.absolute_start().is_some() {
+            crate::navigation::time_ruler::Mode::Clock
+        } else {
+            self.session.time_ruler
+        };
+        let step = mode.sample_step(scheme.step, rate);
         let mut pan = self
             .tick_pan
             .take()
@@ -623,6 +636,7 @@ impl Shell {
         let rows = plot.map_or(1, |plot| plot.height.max(1));
         Some(crate::navigation::selection_entry::Scale {
             mode: self.session.time_ruler,
+            start: self.absolute_start(),
             rate: meta.sample_rate,
             total: meta.len_samples,
             seconds_per_pixel: view.len as f64 / meta.sample_rate / columns as f64,
@@ -793,6 +807,54 @@ impl Shell {
                 shell.save();
                 cx.notify();
             }))
+            .on_action(command::listener(cx, |shell, _: &RelativeTime, _, cx| {
+                shell.set_time_origin(crate::navigation::time_ruler::Origin::Relative, cx)
+            }))
+            .on_action(command::listener(cx, |shell, _: &AbsoluteTime, _, cx| {
+                shell.set_time_origin(crate::navigation::time_ruler::Origin::Absolute, cx)
+            }))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &BasebandFrequency, _, cx| {
+                    shell.set_frequency_mode(
+                        crate::navigation::time_ruler::FrequencyMode::Baseband,
+                        cx,
+                    )
+                },
+            ))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &PhysicalFrequency, _, cx| {
+                    shell.set_frequency_mode(
+                        crate::navigation::time_ruler::FrequencyMode::Physical,
+                        cx,
+                    )
+                },
+            ))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &ToggleTimeOrigin, _, cx| {
+                    let next = if shell.absolute_start().is_some() {
+                        crate::navigation::time_ruler::Origin::Relative
+                    } else {
+                        crate::navigation::time_ruler::Origin::Absolute
+                    };
+                    shell.set_time_origin(next, cx);
+                },
+            ))
+            .on_action(command::listener(
+                cx,
+                |shell, _: &ToggleFrequencyMode, _, cx| {
+                    let next = if shell.session.frequency_mode
+                        == crate::navigation::time_ruler::FrequencyMode::Physical
+                    {
+                        crate::navigation::time_ruler::FrequencyMode::Baseband
+                    } else {
+                        crate::navigation::time_ruler::FrequencyMode::Physical
+                    };
+                    shell.set_frequency_mode(next, cx);
+                },
+            ))
             .on_action(command::listener(cx, |shell, _: &ClockRuler, _, cx| {
                 shell.set_time_ruler(crate::navigation::time_ruler::Mode::Clock, cx)
             }))
@@ -831,7 +893,50 @@ impl Shell {
         cx.notify();
     }
 
-    fn set_time_ruler(
+    pub(in crate::shell) fn set_time_origin(
+        &mut self,
+        origin: crate::navigation::time_ruler::Origin,
+        cx: &mut Context<Self>,
+    ) {
+        if origin == crate::navigation::time_ruler::Origin::Absolute
+            && self
+                .editing()
+                .and_then(|editing| editing.recording_start())
+                .is_none()
+        {
+            return;
+        }
+        if self.session.time_origin == origin {
+            return;
+        }
+        self.session.time_origin = origin;
+        self.presentation_changed(cx);
+    }
+
+    pub(in crate::shell) fn set_frequency_mode(
+        &mut self,
+        mode: crate::navigation::time_ruler::FrequencyMode,
+        cx: &mut Context<Self>,
+    ) {
+        if self.session.frequency_mode == mode {
+            return;
+        }
+        self.session.frequency_mode = mode;
+        self.presentation_changed(cx);
+    }
+
+    fn presentation_changed(&mut self, cx: &mut Context<Self>) {
+        self.time_scheme = None;
+        self.frequency_scheme = None;
+        self.tick_pan = None;
+        if let Some(plot) = self.plot_entity() {
+            plot.update(cx, |plot, cx| plot.reset_gutter(cx));
+        }
+        self.save();
+        cx.notify();
+    }
+
+    pub(in crate::shell) fn set_time_ruler(
         &mut self,
         mode: crate::navigation::time_ruler::Mode,
         cx: &mut Context<Self>,
@@ -901,11 +1006,21 @@ impl Shell {
         }
     }
 
+    pub(in crate::shell) fn absolute_start(&self) -> Option<argand_core::RecordingTime> {
+        (self.session.time_origin == crate::navigation::time_ruler::Origin::Absolute)
+            .then(|| self.editing()?.recording_start())
+            .flatten()
+    }
+
     pub(in crate::shell) fn frequency_offset(&self) -> f64 {
         let Some(editing) = self.editing() else {
             return 0.;
         };
-        editing.reference() - editing.file().meta.center_freq
+        let reference = match self.session.frequency_mode {
+            crate::navigation::time_ruler::FrequencyMode::Baseband => 0.,
+            crate::navigation::time_ruler::FrequencyMode::Physical => editing.reference(),
+        };
+        reference - editing.file().meta.center_freq
     }
 
     /// The capture's band in physical hertz, around its reference when complex and above it when real.
@@ -1410,6 +1525,38 @@ impl crate::shell::plot::plot_view::PlotView {
         cx.notify();
     }
 
+    pub(in crate::shell) fn frequency_context_menu(
+        &self,
+        snapshot: &crate::shell::plot::plot_view::PlotSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
+        use gpui_kit::component::menu::ContextMenuExt;
+        let geometry = self.geometry?;
+        let panel = self.panel_bounds?;
+        let ruler = geometry.frequency_ruler;
+        let owner = cx.entity().downgrade();
+        let focus = self.focus.clone();
+        let commands = snapshot.commands;
+        let physical =
+            snapshot.frequency_mode == crate::navigation::time_ruler::FrequencyMode::Physical;
+        Some(
+            div()
+                .id("frequency-scale-context")
+                .absolute()
+                .left(ruler.left() - panel.left())
+                .top(ruler.top() - panel.top())
+                .w(ruler.size.width)
+                .h(ruler.size.height)
+                .children(self.unit_hint(1, ruler.origin, cx))
+                .context_menu(move |menu, window, cx| {
+                    let popup = cx.entity();
+                    let _ = owner.update(cx, |plot, cx| plot.track_time_menu(&popup, window, cx));
+                    frequency_scale_items(menu.action_context(focus.clone()), physical, commands)
+                })
+                .into_any_element(),
+        )
+    }
+
     pub(in crate::shell) fn time_context_menu(
         &self,
         snapshot: &crate::shell::plot::plot_view::PlotSnapshot,
@@ -1421,6 +1568,7 @@ impl crate::shell::plot::plot_view::PlotView {
         let focus = self.focus.clone();
         let owner = cx.entity().downgrade();
         let mode = snapshot.extents.time.mode;
+        let absolute = snapshot.extents.time.start.is_some();
         let commands = snapshot.commands;
         Some(
             div()
@@ -1438,7 +1586,11 @@ impl crate::shell::plot::plot_view::PlotView {
                 .context_menu(move |menu, window, cx| {
                     let popup = cx.entity();
                     let _ = owner.update(cx, |plot, cx| plot.track_time_menu(&popup, window, cx));
-                    time_scale_items(menu.action_context(focus.clone()), mode, commands)
+                    time_scale_items(
+                        time_origin_items(menu.action_context(focus.clone()), absolute, commands),
+                        mode,
+                        commands,
+                    )
                 })
                 .into_any_element(),
         )
@@ -1468,6 +1620,44 @@ fn edit_items(
         .item(commands.item(DeleteSelection, PopupMenuItem::new("Delete")))
         .item(PopupMenuItem::separator())
         .item(commands.item(SuppressBand, PopupMenuItem::new("Suppress band")))
+}
+
+pub(in crate::shell) fn time_origin_items(
+    menu: gpui_kit::component::menu::PopupMenu,
+    absolute: bool,
+    commands: command::Availability,
+) -> gpui_kit::component::menu::PopupMenu {
+    menu.item(commands.item(
+        RelativeTime,
+        PopupMenuItem::new("Relative").checked(!absolute),
+    ))
+    .item(
+        commands.item(
+            AbsoluteTime,
+            PopupMenuItem::new(if commands.is_enabled::<AbsoluteTime>() {
+                "Absolute UTC"
+            } else {
+                "Absolute UTC (recording start is not set)"
+            })
+            .checked(absolute),
+        ),
+    )
+    .item(PopupMenuItem::separator())
+}
+
+pub(in crate::shell) fn frequency_scale_items(
+    menu: gpui_kit::component::menu::PopupMenu,
+    physical: bool,
+    commands: command::Availability,
+) -> gpui_kit::component::menu::PopupMenu {
+    menu.item(commands.item(
+        BasebandFrequency,
+        PopupMenuItem::new("Baseband").checked(!physical),
+    ))
+    .item(commands.item(
+        PhysicalFrequency,
+        PopupMenuItem::new("Physical RF").checked(physical),
+    ))
 }
 
 fn time_scale_items(

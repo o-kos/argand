@@ -62,6 +62,9 @@ impl ExtractRequest {
 
     pub fn output_meta(&self) -> Result<SignalMeta, WriteError> {
         let mut meta = self.meta.clone();
+        meta.recording_start = meta
+            .recording_start
+            .and_then(|start| start.shifted_samples(self.span.start(), self.meta.sample_rate));
         meta.sample_rate = output_rate(self);
         meta.center_freq = 0.0;
         let samples = (self.span.count() as f64 * meta.sample_rate / self.meta.sample_rate).ceil();

@@ -72,6 +72,7 @@ fn snapshot() -> PlotSnapshot {
             frequency_offset: 0.,
             orientation: crate::navigation::orientation::Mode::Horizontal,
             time: crate::navigation::time_ruler::Ruler {
+                start: None,
                 mode: crate::navigation::time_ruler::Mode::Seconds,
                 view,
                 total: 1_000_000,
@@ -103,6 +104,7 @@ fn snapshot() -> PlotSnapshot {
         show_grid: true,
         tooltips_allowed: true,
         show_scale_ui: false,
+        frequency_mode: Default::default(),
         pointer_in_window: true,
         selection: None,
         selected: argand_core::Selection::default(),
@@ -1687,6 +1689,7 @@ fn show_badges(cx: &mut TestAppContext, handle: WindowHandle<Harness>, start: u6
     let scale = crate::navigation::selection_entry::Scale {
         frequency_offset: 0.,
         mode: crate::navigation::time_ruler::Mode::Seconds,
+        start: None,
         rate: 1e6,
         total: 1_000_000,
         seconds_per_pixel: 1e-3,

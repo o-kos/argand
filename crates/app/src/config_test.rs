@@ -156,6 +156,7 @@ window = \"blackman-harris\"
     let meta = argand_core::SignalMeta {
         sample_rate: 24_000.0,
         center_freq: 0.0,
+        recording_start: None,
         sample_type: argand_core::SampleType::new(
             argand_core::Domain::Iq,
             argand_core::SampleFormat::I16,
@@ -194,6 +195,7 @@ fn a_transform_size_of_two_still_leaves_a_hop_of_at_least_one() {
     let meta = argand_core::SignalMeta {
         sample_rate: 8_000.0,
         center_freq: 0.0,
+        recording_start: None,
         sample_type: argand_core::SampleType::new(
             argand_core::Domain::Real,
             argand_core::SampleFormat::F32,
@@ -218,6 +220,7 @@ fn aggregation_defaults_and_switches_without_changing_the_transform_or_waveform(
     let meta = argand_core::SignalMeta {
         sample_rate: 24_000.0,
         center_freq: 0.0,
+        recording_start: None,
         sample_type: argand_core::SampleType::new(
             argand_core::Domain::Real,
             argand_core::SampleFormat::F32,

@@ -4,6 +4,7 @@ const RATE: f64 = 1_000.;
 
 fn scale(mode: Mode) -> Scale {
     Scale {
+        start: None,
         frequency_offset: 0.,
         mode,
         rate: RATE,
@@ -152,6 +153,7 @@ fn a_locale_with_a_comma_reads_its_own_numbers() {
 #[test]
 fn indexes_stand_in_where_seconds_cannot_tell_samples_apart() {
     let scale = Scale {
+        start: None,
         rate: 1e15,
         total: 1 << 54,
         ..scale(Mode::Clock)
@@ -204,6 +206,7 @@ fn band_texts_read_back_as_the_same_band() {
 fn indexes_beyond_f64_stay_exact_and_inside_the_capture() {
     let total = (1_u64 << 53) + 3;
     let scale = Scale {
+        start: None,
         total,
         ..scale(Mode::Samples)
     };
@@ -284,6 +287,7 @@ fn frequency_display_offset_roundtrips_edges_without_shifting_width_or_bins() {
 #[test]
 fn megahertz_edges_have_a_kilohertz_width_with_matching_input_and_steps() {
     let scale = Scale {
+        start: None,
         unit: "MHz",
         divisor: 1e6,
         decimals: 5,
@@ -328,6 +332,7 @@ fn megahertz_edges_have_a_kilohertz_width_with_matching_input_and_steps() {
 #[test]
 fn width_units_follow_bandwidth_instead_of_carrier_and_preserve_resolution() {
     let scale = Scale {
+        start: None,
         unit: "MHz",
         divisor: 1e6,
         decimals: 9,
@@ -355,6 +360,7 @@ fn width_units_follow_bandwidth_instead_of_carrier_and_preserve_resolution() {
 #[test]
 fn a_width_draft_keeps_its_unit_when_reading_it_crosses_a_unit_boundary() {
     let scale = Scale {
+        start: None,
         band: (-10e6, 10e6),
         ..scale(Mode::Seconds)
     };
@@ -372,5 +378,53 @@ fn a_width_draft_keeps_its_unit_when_reading_it_crosses_a_unit_boundary() {
             scale.band_step_in(&en(), read, Field::BandWidth, &step_text, 1),
             Some(band(0., expected_width))
         );
+    }
+}
+
+#[test]
+fn absolute_endpoints_keep_mhz_samples_and_duration_relative() {
+    let mut scale = scale(Mode::Clock);
+    scale.rate = 1_000_000.;
+    scale.total = 10_000_000;
+    scale.start = argand_core::RecordingTime::parse("2026-11-23T23:59:59.999Z");
+    let selected = span(1001, 1003);
+    let texts = scale.time_texts(selected);
+    assert_eq!(texts[0], "2026-11-24T00:00:00.000001Z");
+    assert_eq!(texts[1], "2026-11-24T00:00:00.000003Z");
+    assert!(!texts[2].contains('T'));
+    assert_eq!(
+        scale.time(selected, Field::TimeStart, &texts[0]),
+        Some(selected)
+    );
+    assert_eq!(
+        scale.time(selected, Field::TimeEnd, &texts[1]),
+        Some(selected)
+    );
+}
+
+#[test]
+fn absolute_steps_keep_endpoint_precision_and_relative_duration_units() {
+    for mode in [Mode::Clock, Mode::Seconds, Mode::Samples] {
+        for rate in [1_000_000., 1e12] {
+            let scale = Scale {
+                start: argand_core::RecordingTime::parse("2026-11-23T23:59:59.999Z"),
+                rate,
+                total: 10_000_000,
+                ..scale(mode)
+            };
+            let selected = span(1001, 1003);
+            let texts = scale.time_texts(selected);
+            for (field, text) in Field::TIME.into_iter().zip(texts) {
+                let expected = match field {
+                    Field::TimeStart => span(1002, 1003),
+                    _ => span(1001, 1004),
+                };
+                assert_eq!(
+                    scale.time_step_in(&en(), selected, field, &text, 1),
+                    Some(expected),
+                    "{mode:?} {rate} {field:?} {text}"
+                );
+            }
+        }
     }
 }

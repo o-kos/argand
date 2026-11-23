@@ -32,7 +32,7 @@ pub struct FileInfo {
 }
 
 pub enum Update {
-    Opened(SignalMeta, FileInfo),
+    Opened(Box<SignalMeta>, FileInfo),
     Progress {
         done: u64,
         total: u64,
@@ -296,7 +296,7 @@ fn serve(
             generation: None,
             view_revision: None,
             update: Update::Opened(
-                source.meta().clone(),
+                Box::new(source.meta().clone()),
                 FileInfo {
                     declared_reference_freq: opened.declared_reference_freq,
                     bytes: std::fs::metadata(path).ok().map(|meta| meta.len()),

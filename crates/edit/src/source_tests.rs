@@ -17,6 +17,7 @@ impl Ramp {
             meta: SignalMeta {
                 sample_rate: 1000.0,
                 center_freq: 0.0,
+                recording_start: None,
                 sample_type: SampleType::new(domain, SampleFormat::F32),
                 len_samples: len,
                 container: "raw",

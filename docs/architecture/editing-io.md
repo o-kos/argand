@@ -78,7 +78,7 @@ FLAC gets the Vorbis comment `AUXI` with a whole-Hz reference frequency and
 including decoder-backed layouts, and `AUXI` for FLAC.
 `OpenHints::center_freq` is `Option<f64>`: an explicit `--center` wins at opening.
 Recent retains the pre-existing CLI hints, where stored zero means no override.
-Session remains at version 11 and has no baseband presentation preference.
+Session version 13 stores independent application-wide time-origin and frequency-presentation preferences, together with the existing relative time format.
 
 `argand_io::open_described` also returns the optional reference declared by the
 file before opening overrides, alongside the reader and its existing checked
@@ -89,8 +89,27 @@ the document for read-only File information. History changes do not alter it;
 successful Save/rebind supplies the newly published file's declaration. No session
 field or extra reference probe is introduced.
 
-Reference frequency is versioned document metadata (#185), alongside the
-selection in the existing capture history. Metadata edits advance the same serial
+Recording start (#265) is optional UTC metadata. WAVE/IQW uses the existing auxi
+start SYSTEMTIME at offset 0, with millisecond precision. Fields are read and written
+as UTC without consulting the host timezone. Other writers are not uniform: the
+inspected SDRangel writer uses local calendar fields, whereas rfsoapyfile uses UTC.
+An auxi file cannot reveal this distinction, so an incorrectly interpreted external
+start must be corrected explicitly in the metadata editor. Zero, invalid or incomplete
+calendar fields mean no start. Stop fields remain unspecified (zero), rather than
+copying stale source end times into an edited recording.
+
+FLAC stores `DATE=YYYY-MM-DDTHH:MM:SS.sssZ` in its existing VORBIS_COMMENT block.
+A complete timestamp with an explicit UTC offset is read and normalized to UTC;
+case-insensitive duplicate DATE values must name the same instant. Incomplete,
+malformed, conflicting or unsupported dates mean no known recording start and do
+not block otherwise valid sample opening. No filesystem timestamp is substituted.
+Storage rounds to nearest millisecond, with ties toward the later instant. Internal
+integer UTC origins and retained integer sample offsets avoid repeated trim rounding.
+Calendar values are restricted to years 1 through 9999; values whose millisecond
+rounding would cross the upper bound are rejected.
+
+Recording start and reference frequency are versioned document metadata (#185,
+#265), alongside selection in the existing capture history. Metadata edits advance the same serial
 used by dirty state and asynchronous save guards, without modifying the immutable
 source description or requesting an FFT. Undo/Redo over unchanged captures updates
 metadata and presentation only. Save requests use the effective reference;
@@ -166,9 +185,9 @@ File → Save (Ctrl+S, Cmd+S) writes the edited capture over its own file (`shel
 `Staged` that `commit` moves into place or, dropped, removes; `SaveRequest::replacing` lets
 the target be the replaced file, whose stamp `commit` checks just before the rename, and a
 headerless capture with unchanged reference is written headerless after its preamble
-(`Output::Headerless`). When its effective reference differs from the opened source
+(`Output::Headerless`). When its effective reference or recording start differs from the opened source
 baseline, ordinary Save instead opens the existing Save As chooser proposing WAVE,
-because RAW cannot store reference metadata. The unsaved prompt follows the same
+because RAW cannot store recording metadata. The unsaved prompt follows the same
 route; Cancel retains the dirty document and the original RAW. Undo restoring the
 baseline reference restores ordinary headerless Save-over. Every
 thread reading the open file (the analysis worker, the minimap and the envelopes of pasted
@@ -291,3 +310,20 @@ sample-type overrides follow native byte reinterpretation, as for other mapped
 formats. Recent/session history preserves original opening hints and does not turn
 inferred decoder metadata into an override; automatic PCM24 detection is repeated
 on reopening. Deferred partial-valid layouts retain their decoder override semantics.
+
+## Recording-origin timeline semantics (#265)
+
+Setting, changing or clearing start uses the same immutable history, dirty serial,
+metadata-only Undo/Redo and asynchronous save guards as reference editing. Source
+metadata, hints and stamps stay unchanged. Whole saves write effective metadata;
+time-selection saves and extraction advance start by the selected input offset at
+the original physical sample rate. Prefix deletion advances start to the first
+remaining input sample, tail deletion keeps it, and interior deletion clears it.
+Duration-changing insertion/replacement clears start. Equal-length replacement,
+conversion, normalization, spectrum inversion and band suppression retain it.
+The internal origin retains precise cumulative sample offsets. Opening and closing
+an unchanged millisecond editor draft does not reapply a rounded value. Conversion
+adoption carries that exact origin through the guarded job instead of taking the
+rounded timestamp from its private backing WAVE. User-file serialization rounds to
+the nearest millisecond. Undo/Redo restore recording start with the corresponding
+content version. A cleared start makes Absolute UTC unavailable without resetting the saved display preference.
