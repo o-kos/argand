@@ -242,14 +242,22 @@ and a roughly 1000-pixel time axis make this reachable. The finding is accepted.
 No other actionable findings were reported. That review covered the integrated
 snapshot before this correction; it does not establish review of later changes.
 
-- [ ] Reproduce incremental inward panning at both bounds in both orientations and on spectrum/ruler entry paths.
-- [ ] Rebase only genuine boundary displacement, preserving sub-sample accumulation and immediate overshoot reversal.
+- [x] Reproduce incremental inward panning at both bounds in both orientations and on spectrum/ruler entry paths.
+- [x] Rebase only genuine boundary displacement, preserving sub-sample accumulation and immediate overshoot reversal.
 - [ ] Refresh the full local gate, release build and affected isolated production acceptance.
 - [ ] Coordinator assessment and review-policy decision for the corrected snapshot.
 
 The expected interaction stays unchanged: inward movement accumulates until a
 sample is reached, while outward overshoot is discarded so reversal responds
-immediately. No additional control, dependency or toolkit change is needed.
+immediately. The new event-level regression failed before the correction: sixteen one-pixel
+inward moves left the lower-bound time view at sample zero rather than sample one.
+It passes after comparing unrounded displacement with the available samples from
+the gesture anchor. All eight combinations of bounds, orientations and
+spectrum/time-ruler entry paths pass. The existing overshoot/reversal and layout
+regressions remain part of the required full suite. Production acceptance will
+repeat deeply zoomed incremental drags and overshoot/reversal on an isolated Xvfb
+display with disposable settings and capture data.
+No additional control, dependency or toolkit change is needed.
 
 ## Post-completion
 

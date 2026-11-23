@@ -1215,7 +1215,11 @@ impl crate::shell::plot::plot_view::PlotView {
                 };
                 let next = pan.anchor.view.pan(fraction, total);
                 pan.anchor.latest = (event.position, next);
-                if !pan.minimap && (next.start == 0 || next.start == total - next.len) {
+                // Rounded boundary views can still contain accumulated inward motion.
+                let shift = fraction * pan.anchor.view.len as f64;
+                let clamped = shift < -(pan.anchor.view.start as f64)
+                    || shift > (total - pan.anchor.view.len - pan.anchor.view.start) as f64;
+                if !pan.minimap && clamped {
                     pan.anchor.rebase();
                 }
                 self.pan = Some(pan);
