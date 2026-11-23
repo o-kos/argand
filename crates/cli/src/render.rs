@@ -433,7 +433,11 @@ impl Gutters {
             axis::widest_labels(kind, min, max)
                 .iter()
                 .map(String::as_str)
-                .chain(axis::caption(kind, min, max))
+                .chain(if kind == AxisKind::Frequency {
+                    vec!["Hz", "kHz", "MHz", "GHz"]
+                } else {
+                    axis::caption(kind, None).into_iter().collect()
+                })
                 .map(|label| text.width(label, FONT_SIZE).ceil() as i64)
                 .max()
                 .unwrap_or(0)

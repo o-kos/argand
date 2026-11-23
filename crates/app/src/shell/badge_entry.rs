@@ -135,6 +135,14 @@ impl PlotView {
             input.focus(window, cx);
             input.select_all(window, cx);
         });
+        self.close_entry(None, cx);
+        if !field.is_time() {
+            let unit = argand_core::frequency::FrequencyUnit::split_suffix(scale.unit).1;
+            cx.emit(PlotIntent::FrequencyEditing {
+                input: input.entity_id(),
+                unit,
+            });
+        }
         self.typing = Some(BadgeEntry {
             field,
             input,
@@ -159,8 +167,8 @@ impl PlotView {
         let typed = typed(&entry.scale, entry.selection, entry.field, &text);
         match typed {
             Some(selection) => {
-                self.close_entry(Some(window), cx);
                 cx.emit(PlotIntent::Select(Some(selection)));
+                self.close_entry(Some(window), cx);
             }
             None => {
                 if let Some(entry) = self.typing.as_mut() {
@@ -222,8 +230,14 @@ impl PlotView {
 
     /// Close the input unchanged, handing the keyboard back to the plot where a window is given.
     pub(super) fn close_entry(&mut self, window: Option<&mut Window>, cx: &mut Context<Self>) {
-        if self.typing.take().is_none() {
+        let Some(entry) = self.typing.take() else {
             return;
+        };
+        if !entry.field.is_time() {
+            cx.emit(PlotIntent::FrequencyEditing {
+                input: entry.input.entity_id(),
+                unit: None,
+            });
         }
         if let Some(window) = window {
             window.focus(&self.focus, cx);
@@ -256,7 +270,7 @@ impl PlotView {
             // Its badge went with the selection it stood for, so the plot takes the keyboard back.
             let focus = self.focus.clone();
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
-            self.typing = None;
+            self.close_entry(None, cx);
             return None;
         };
         let spectrum = geometry.spectrum;

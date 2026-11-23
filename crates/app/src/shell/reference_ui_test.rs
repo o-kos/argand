@@ -261,3 +261,85 @@ fn first_frequency_geometry_replaces_the_provisional_common_unit(cx: &mut TestAp
         );
     });
 }
+
+#[gpui_kit::test]
+fn frequency_edit_hold_keeps_all_units_and_releases_after_commit_revert_or_new_document(
+    cx: &mut TestAppContext,
+) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, dir, cx) = opened(cx);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.set_reference(10_300., window, cx);
+        let span = shell.plot.unwrap().height as f64 / 24_000.;
+        shell.frequency = crate::navigation::frequency::View {
+            start: (1. - span) / 2.,
+            span,
+        };
+        shell.frequency_scheme = None;
+        shell.open_reference(window, cx);
+    });
+    frame(cx);
+    let panel = editor(&shell, cx);
+    panel.update_in(cx, |panel, window, cx| {
+        panel
+            .input
+            .update(cx, |input, cx| input.set_value("10.2", window, cx));
+    });
+    cx.simulate_resize(gpui_kit::size(px(800.), px(601.)));
+    frame(cx);
+    shell.read_with(cx, |shell, cx| {
+        assert_eq!(shell.frequency_unit().symbol(), "kHz");
+        assert_eq!(
+            shell.plot_snapshot(cx).unwrap().extents.frequency_unit,
+            shell.frequency_unit()
+        );
+    });
+    panel.read_with(cx, |panel, cx| {
+        assert_eq!(panel.number.read(cx).displayed_unit(), "kHz");
+        assert_eq!(panel.number.read(cx).value_hz(cx), Some(10_200.));
+    });
+    shell.update_in(cx, |shell, _, cx| {
+        shell
+            .reference
+            .hint
+            .update(cx, |hint, cx| hint.close(false, cx))
+    });
+    frame(cx);
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.editing().unwrap().reference(), 10_200.);
+        assert!(shell.frequency_hold.is_none());
+    });
+    shell.update_in(cx, |shell, window, cx| shell.open_reference(window, cx));
+    frame(cx);
+    editor(&shell, cx).update_in(cx, |panel, window, cx| {
+        panel
+            .input
+            .update(cx, |input, cx| input.set_value("1 MHz", window, cx))
+    });
+    shell.update_in(cx, |shell, _, cx| {
+        shell
+            .reference
+            .hint
+            .update(cx, |hint, cx| hint.close(true, cx))
+    });
+    frame(cx);
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.editing().unwrap().reference(), 10_200.);
+        assert!(shell.frequency_hold.is_none());
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.hold_frequency_unit(FrequencyEdit::Information(hints::Panel::Reference), None);
+        let old = shell.frequency_hold.unwrap();
+        shell.hold_frequency_unit(FrequencyEdit::Information(hints::Panel::Reference), None);
+        let current = shell.frequency_hold.unwrap();
+        shell.release_frequency_unit(old, cx);
+        assert_eq!(
+            shell.frequency_hold,
+            Some(current),
+            "old same-document close cannot release a reopened surface"
+        );
+        shell.open_test_document(Origin::new(dir.join("other.wav")), window, cx);
+        assert!(shell.frequency_hold.is_none());
+    });
+    frame(cx);
+}

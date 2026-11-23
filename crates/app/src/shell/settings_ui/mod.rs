@@ -209,11 +209,19 @@ impl Shell {
                 self.information_panel_request += 1;
                 // Choose the new owner before closing the old editor and delivering Closed.
                 self.information_panel = Some(panel);
+                if matches!(panel, hints::Panel::File | hints::Panel::Reference) {
+                    self.hold_frequency_unit(FrequencyEdit::Information(panel), None);
+                }
                 self.close_other_information_panels(panel, cx);
                 self.close_selection_hint(cx);
                 self.interrupt_plot(cx);
             }
             hints::Pinned::Closed { .. } if !open => {
+                if panel != hints::Panel::Reference
+                    && let Some(hold) = self.frequency_hold_for(FrequencyEdit::Information(panel))
+                {
+                    self.release_frequency_unit(hold, cx);
+                }
                 if self.information_panel == Some(panel) {
                     self.information_panel = None;
                 }

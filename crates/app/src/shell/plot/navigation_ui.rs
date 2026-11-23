@@ -539,6 +539,15 @@ impl Shell {
                 }
                 cx.notify();
             }
+            PlotIntent::FrequencyEditing { input, unit } => {
+                let owner = FrequencyEdit::Badge(input);
+                if let Some(unit) = unit {
+                    self.hold_frequency_unit(owner, Some(unit));
+                } else if let Some(hold) = self.frequency_hold_for(owner) {
+                    self.release_frequency_unit(hold, cx);
+                }
+                cx.notify();
+            }
             PlotIntent::Select(selection) => self.select(selection.unwrap_or_default(), cx),
             PlotIntent::Pointer => {
                 if self.conversion_active() {

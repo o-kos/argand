@@ -28,7 +28,16 @@ impl State {
                         .and_then(|view| view.downcast::<Editor>().ok());
                 }
                 hints::Pinned::Closed { revert } => {
-                    finish_editor(shell.reference.editor.take(), *revert, window, cx);
+                    if hint.read(cx).is_open() {
+                        return;
+                    }
+                    let hold = shell
+                        .frequency_hold_for(FrequencyEdit::Information(hints::Panel::Reference));
+                    if !finish_editor(shell.reference.editor.take(), *revert, hold, window, cx)
+                        && let Some(hold) = hold
+                    {
+                        shell.release_frequency_unit(hold, cx);
+                    }
                 }
             }
             shell.information_panel_changed(hints::Panel::Reference, *event, cx);
@@ -44,18 +53,24 @@ impl State {
 fn finish_editor(
     editor: Option<Entity<Editor>>,
     revert: bool,
+    hold: Option<FrequencyHold>,
     window: &mut Window,
     cx: &mut Context<Shell>,
-) {
+) -> bool {
     let Some(editor) = editor.filter(|_| !revert) else {
-        return;
+        return false;
     };
     // Release Shell's event borrow before committing with the original document guard.
     window.defer(cx, move |window, cx| {
+        let owner = editor.read(cx).owner.clone();
         editor.update(cx, |editor, cx| {
             editor.commit(window, cx);
         });
+        if let Some(hold) = hold {
+            let _ = owner.update(cx, |shell, cx| shell.release_frequency_unit(hold, cx));
+        }
     });
+    true
 }
 
 struct Editor {

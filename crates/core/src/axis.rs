@@ -206,6 +206,7 @@ pub struct TickLayout {
 }
 
 /// The ticks this axis accepts: the densest round step whose labels still read.
+/// For a captioned frequency axis, use tick_layout and caption with its accepted scheme.
 pub fn ticks(kind: AxisKind, axis: Axis, labels: &LabelMetrics<'_>) -> Vec<Tick> {
     tick_layout(kind, axis, labels, None).ticks
 }
@@ -298,11 +299,14 @@ pub fn tick_layout_in(
 
 /// The unit this axis prints in, named once instead of on every tick.
 ///
-/// `None` where the labels carry their own meaning: a clock reads as a clock.
-pub fn caption(kind: AxisKind, min: f64, max: f64) -> Option<&'static str> {
+/// Frequency captions consume the accepted layout scheme, including retained units.
+/// `None` without an accepted frequency scheme, or where labels carry their own meaning.
+pub fn caption(kind: AxisKind, scheme: Option<TickScheme>) -> Option<&'static str> {
     match kind {
         AxisKind::Time | AxisKind::PreciseTime | AxisKind::Seconds | AxisKind::Samples => None,
-        AxisKind::Frequency => Some(FrequencyUnit::magnitude(min, max).symbol()),
+        AxisKind::Frequency => scheme
+            .and_then(|scheme| scheme.frequency_unit())
+            .map(FrequencyUnit::symbol),
         AxisKind::Decibels => Some("dB"),
     }
 }

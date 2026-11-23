@@ -96,10 +96,17 @@ values use this unit, including file/reference/sample-rate/carrier fields, width
 and auxiliary hints. Auxiliary measurements and exact metadata retain their own
 precision, which can exceed three digits in that common unit. Formatting does not
 change physical Hz, persistence, analysis, or source identity. CLI report and image
-share an equivalent context; JSON and arguments retain physical Hz.
+share an equivalent context; JSON and arguments retain physical Hz. The public
+axis caption consumes the accepted TickScheme, including its retained unit, rather
+than selecting a magnitude unit independently. Callers migrate from min/max
+caption arguments to the scheme returned by tick_layout.
 
 `axis::TickScheme` retains the selected frequency unit, division spacing and clock-format span while
-panning. Zoom, file opening and corresponding axis-size changes release that scheme for fresh layout.
+panning. Frequency editing surfaces hold the common document unit across resize
+until close/commit/cancel, so dirty text and every other displayed frequency keep
+the same unit. Acquisition tokens prevent an old deferred close from releasing a
+reopened editor. Closing the surface permits presentation-only reselection.
+Zoom, file opening and corresponding axis-size changes release that scheme for fresh layout.
 If wider labels collide after a pan, the grid remains stable and colliding label text
 is omitted. Left/Right pan by one measured division; Ctrl+Left/Right by five.
 `navigation::TickPan` accumulates divisions before sample rounding, preventing drift

@@ -840,8 +840,18 @@ impl Shell {
     ) {
         match *event {
             hints::Pinned::Opened => {
+                self.hold_frequency_unit(FrequencyEdit::Selection, None);
                 self.suppress_external_tooltips();
+                // A single edit surface owns the common-unit transaction.
                 self.close_about(cx);
+                for panel in [
+                    hints::Panel::File,
+                    hints::Panel::Reference,
+                    hints::Panel::Analysis,
+                ] {
+                    self.information_hint(panel)
+                        .update(cx, |hint, cx| hint.close(false, cx));
+                }
                 // The panel freezes the plot as the analysis hint does.
                 self.interrupt_plot(cx);
                 self.remember_opening();
@@ -850,6 +860,9 @@ impl Shell {
                 let opening = self.selection_opening.take();
                 if let (true, Some(opening)) = (revert, opening) {
                     self.select(opening, cx);
+                }
+                if let Some(hold) = self.frequency_hold_for(FrequencyEdit::Selection) {
+                    self.release_frequency_unit(hold, cx);
                 }
             }
         }

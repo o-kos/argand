@@ -201,6 +201,12 @@ impl NumericEditor {
         self.set_hz(hertz, window, cx);
     }
 
+    pub(super) fn displayed_unit(&self) -> &'static str {
+        self.frequency
+            .as_ref()
+            .map_or(self.config.unit, |draft| draft.unit.symbol())
+    }
+
     pub(super) fn set_disabled(&mut self, disabled: bool, cx: &mut Context<Self>) {
         if self.disabled == disabled {
             return;
@@ -332,10 +338,7 @@ impl NumericEditor {
 
 impl Render for NumericEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let unit = self
-            .frequency
-            .as_ref()
-            .map_or(self.config.unit, |draft| draft.unit.symbol());
+        let unit = self.displayed_unit();
         let presentation = &self.input;
         let focused = presentation.read(cx).focus_handle(cx).is_focused(window);
         let available = (settings_ui::editor::value_column_width(window)

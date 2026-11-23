@@ -198,10 +198,12 @@ store the unit while panning; existing zoom/size/orientation release boundaries
 permit reselection. Format changes repaint but do not independently submit FFT
 work. Real layout-size changes retain the existing analysis/layout contract.
 
-Focused numeric/selection drafts retain the unit under which their text was
-created until commit. Explicit suffixes always win. Unit changes must not reparse
-unchanged rounded display text as a new physical value. Canonical dirty tracking
-preserves original Hz, and unfocused committed displays adopt the shared context.
+Shell holds one common unit across every visible frequency for the entire
+frequency-edit surface lifetime, including resize. Close/commit/cancel releases
+the exact acquisition, protected against stale same-document deferred closes.
+Explicit suffixes always win. Unit changes must not reparse unchanged rounded
+display text as a new physical value. Canonical dirty tracking preserves original
+Hz, and closing the surface permits coherent context reselection.
 The Hz floor preserves existing fine precision without adding a new SI family.
 
 
@@ -261,3 +263,17 @@ near-threshold spans. Core passed 43 tests, CLI passed 51 unit tests and 24 inte
 tests. These are incremental checks, not the final full gate. Full fmt/Clippy/tests,
 release build, fresh independent review and production Xvfb evidence remain pending.
 The previous three-round clean review does not cover this expanded implementation.
+
+
+### Expanded review round 1 dispositions
+
+Three findings are accepted, none rejected. The earlier draft-unit exception is
+withdrawn: one Shell-owned document unit remains common while frequency editing
+surfaces are open, including resize. Exact acquisition tokens protect deferred
+close/commit from releasing a newer edit in the same document. Closing/reverting
+and new-document cleanup release the hold without scheduling analysis solely for
+formatting. This fixes the P1 selection draft unit reinterpretation and visible
+mixed-unit numeric fields. Two P2 corrections bound Alt badge measurement with
+fractional text even when endpoints are integers, and migrate the public axis
+caption API to consume the accepted scheme rather than independently selecting a
+magnitude unit. Regressions and current gates/release/review remain required.

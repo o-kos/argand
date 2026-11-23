@@ -412,3 +412,73 @@ fn another_document_opened_under_the_panel_closes_it(cx: &mut TestAppContext) {
         "nothing carried over"
     );
 }
+
+#[gpui_kit::test]
+fn frequency_draft_and_all_presentations_keep_one_unit_during_resize(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, cx) = open(cx);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.set_reference(10_300., window, cx);
+        shell.plot = Some(PlotSize {
+            width: 800,
+            height: 600,
+        });
+        let pixels = 600.;
+        shell.frequency = crate::navigation::frequency::View {
+            start: (1. - pixels / 1000.) / 2.,
+            span: pixels / 1000.,
+        };
+        shell.frequency_scheme = None;
+    });
+    settle(cx);
+    toggle(cx, &shell);
+    let panel = shell.read_with(cx, |shell, cx| {
+        shell
+            .selection_hint
+            .read(cx)
+            .view()
+            .unwrap()
+            .downcast::<SelectionPanel>()
+            .unwrap()
+    });
+    panel.update_in(cx, |panel, window, cx| {
+        assert_eq!(panel.scale.unit, "kHz");
+        panel.focus_field(3, window, cx);
+        panel.inputs[3].update(cx, |input, cx| input.set_value("10.2", window, cx));
+    });
+    shell.update_in(cx, |shell, _, cx| {
+        shell.resize(
+            PlotSize {
+                width: 800,
+                height: 601,
+            },
+            cx,
+        )
+    });
+    settle(cx);
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.frequency_unit().symbol(), "kHz");
+        assert_eq!(
+            shell.extents().unwrap().frequency_unit,
+            shell.frequency_unit()
+        );
+        assert_eq!(shell.entry_scale().unwrap().unit, "kHz");
+    });
+    panel.update_in(cx, |panel, window, cx| {
+        assert_eq!(panel.scale.unit, "kHz");
+        assert_eq!(panel.inputs[3].read(cx).value().as_ref(), "10.2");
+        assert!(panel.confirm(window, cx));
+    });
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(
+            shell.band.unwrap().low() + shell.frequency_offset(),
+            10_200.
+        )
+    });
+    shell.update_in(cx, |shell, _, cx| shell.close_selection_hint(cx));
+    settle(cx);
+    shell.read_with(cx, |shell, _| {
+        assert!(shell.frequency_hold.is_none());
+        assert_eq!(shell.frequency_unit().symbol(), "Hz");
+    });
+}

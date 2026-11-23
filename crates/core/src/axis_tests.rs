@@ -454,3 +454,18 @@ fn retained_frequency_unit_survives_pan_across_magnitude_boundary() {
     assert_eq!(moved.scheme.unwrap().frequency_unit(), scheme.frequency_unit());
     assert_eq!(scheme.frequency_unit(), Some(FrequencyUnit::KHz));
 }
+
+#[test]
+fn public_frequency_caption_uses_the_accepted_fresh_and_retained_unit() {
+    let text = DejaVuSans;
+    let extent = axis(1200, 12_589_000., 12_591_000.);
+    let fresh = tick_layout(AxisKind::Frequency, extent, &across(&text), None);
+    assert_eq!(caption(AxisKind::Frequency, fresh.scheme), Some("kHz"));
+    assert_eq!(ticks(AxisKind::Frequency, extent, &across(&text)), fresh.ticks);
+    for tick in &fresh.ticks {
+        assert!((tick.label.parse::<f64>().unwrap() * 1000. - tick.value).abs() < 1e-6);
+    }
+    let held = tick_layout(AxisKind::Frequency, axis(1200, 999_000., 1_001_000.), &across(&text), fresh.scheme);
+    assert_eq!(caption(AxisKind::Frequency, held.scheme), Some("kHz"));
+    assert_eq!(caption(AxisKind::Frequency, None), None);
+}

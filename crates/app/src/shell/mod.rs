@@ -358,6 +358,22 @@ struct PlotHandle {
     _intents: Subscription,
 }
 
+/// Frequency editing keeps one document unit until the surface finishes its transaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrequencyEdit {
+    Information(hints::Panel),
+    Selection,
+    Badge(gpui_kit::EntityId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FrequencyHold {
+    owner: FrequencyEdit,
+    document: u64,
+    token: u64,
+    unit: argand_core::frequency::FrequencyUnit,
+}
+
 /// The size of the plot in device pixels, which is the size the transform is
 /// asked to fill.
 ///
@@ -464,6 +480,8 @@ struct Shell {
     opened_documents: u64,
     frequency: crate::navigation::frequency::View,
     frequency_scheme: Option<argand_core::axis::TickScheme>,
+    frequency_hold: Option<FrequencyHold>,
+    frequency_edit_serial: u64,
     time_scheme: Option<argand_core::axis::TickScheme>,
     tick_pan: Option<crate::navigation::TickPan>,
     /// The picture currently on the GPU.
@@ -551,14 +569,13 @@ impl Shell {
             )
         });
         let selection_pinned = cx.subscribe(&selection_hint, Self::selection_hint_changed);
-        let about = about_ui::State::new(cx);
         let reference = reference_ui::State::new(window, cx);
         Self::observe_close(window, cx);
         Self {
             settings,
             analysis_hint,
             reference,
-            about,
+            about: about_ui::State::new(cx),
             information_panel: None,
             information_panel_request: 0,
             external_help_suppressed: false,
@@ -596,6 +613,8 @@ impl Shell {
             opened_documents: 0,
             frequency: crate::navigation::frequency::View::default(),
             frequency_scheme: None,
+            frequency_hold: None,
+            frequency_edit_serial: 0,
             time_scheme: None,
             tick_pan: None,
             texture: None,
@@ -862,6 +881,7 @@ impl Shell {
         // lands, and its plot size would send the first request at a width
         // this file's labels may not leave.
         self.release(window, cx);
+        self.frequency_hold = None;
         self.plot = None;
         self.view = None;
         self.selection = None;
@@ -1267,8 +1287,43 @@ impl Shell {
     /// `None` until the file has been opened. The extents come from the file
     /// rather than from a finished analysis so that the labels can be measured,
     /// and the plot sized, before the first transform runs.
+    fn hold_frequency_unit(
+        &mut self,
+        owner: FrequencyEdit,
+        unit: Option<argand_core::frequency::FrequencyUnit>,
+    ) {
+        let Some(document) = self.file.as_ref().map(|file| file.id) else {
+            return;
+        };
+        let unit = unit.unwrap_or_else(|| self.frequency_unit());
+        self.frequency_edit_serial += 1;
+        self.frequency_hold = Some(FrequencyHold {
+            owner,
+            document,
+            token: self.frequency_edit_serial,
+            unit,
+        });
+    }
+
+    fn release_frequency_unit(&mut self, expected: FrequencyHold, cx: &mut Context<Self>) {
+        if self.frequency_hold != Some(expected) {
+            return;
+        }
+        self.frequency_hold = None;
+        // Reselect for the geometry accepted while editing, rather than the old pan scheme.
+        self.frequency_scheme = None;
+        cx.notify();
+    }
+
+    fn frequency_hold_for(&self, owner: FrequencyEdit) -> Option<FrequencyHold> {
+        self.frequency_hold.filter(|hold| hold.owner == owner)
+    }
+
     pub(super) fn frequency_unit(&self) -> argand_core::frequency::FrequencyUnit {
         use argand_core::frequency::FrequencyUnit;
+        if let Some(hold) = self.frequency_hold {
+            return hold.unit;
+        }
         if let Some(unit) = self
             .frequency_scheme
             .and_then(|scheme| scheme.frequency_unit())

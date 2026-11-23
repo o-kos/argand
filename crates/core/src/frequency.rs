@@ -150,8 +150,13 @@ impl FrequencyFormat {
         Self { unit, decimals }
     }
 
+    /// Full fractional text for conservative measurement, including integer endpoints.
+    pub fn padded(self, hertz: f64) -> String {
+        format!("{:.*}", self.decimals, hertz / self.unit.divisor())
+    }
+
     pub fn format(self, hertz: f64) -> String {
-        let text = format!("{:.*}", self.decimals, hertz / self.unit.divisor());
+        let text = self.padded(hertz);
         let integer = text.split_once('.').and_then(|(whole, fraction)| {
             fraction.chars().all(|digit| digit == '0').then_some(whole)
         });

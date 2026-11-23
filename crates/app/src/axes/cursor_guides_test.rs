@@ -204,3 +204,26 @@ fn vertical_readouts_follow_time_down_and_frequency_right() {
     assert_ne!(center.time, bottom.time);
     assert_eq!(center.frequency, bottom.frequency);
 }
+
+#[test]
+fn integer_endpoints_bound_fractional_interior_frequency_badges() {
+    let plot = Rect {
+        x: 0.,
+        y: 0.,
+        width: 800.,
+        height: 1000.,
+    };
+    let extents = Extents {
+        frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
+        frequency_offset: 0.,
+        orientation: crate::navigation::orientation::Mode::Horizontal,
+        time: crate::navigation::time_ruler::Ruler::CLOCK,
+        seconds: (0., 1.),
+        hertz: (12_000_000., 13_000_000.),
+    };
+    let labels = argand_core::testutil::DejaVuSans;
+    let widths = measure_badges(plot, extents, 1., &labels);
+    let interior = Readout::from_fractions((0.5, 0.5), extents, (800., 1000.));
+    assert_eq!(interior.frequency, "12.500 MHz");
+    assert!(widths[1] >= labels.width(&interior.frequency, LABEL_SIZE).ceil() + 2. * BADGE_PAD);
+}
