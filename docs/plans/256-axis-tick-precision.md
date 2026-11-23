@@ -1,0 +1,69 @@
+# Issue #256: Consistent frequency tick precision
+
+Resolves #256.
+
+## Overview
+
+Frequency tick labels independently trim fractional zeros. Use one precision derived
+from the displayed unit and selected tick step for every fractional frequency tick,
+while retaining bare integer labels. Preserve numeric coordinates, units, locale,
+clock/seconds/sample rulers and standalone frequency readouts.
+
+## Roles and risk
+
+- Class: A, conservatively treating shared public core axis presentation as a core
+  API behavior change. No DSP, concurrency, storage or resource ownership changes.
+- Coordinator: `gpt-6.1-sol` medium, owner communication and exact-result assessment.
+- Executor: `gpt-6.1-sol` medium, investigation through validation and PR operations.
+- Reviewer: `gpt-6.1-sol` high in a fresh read-only context.
+- Consultant: none unless a concrete unresolved question requires one.
+
+## Context and decisions
+
+`crates/core/src/axis.rs` owns shared GUI/CLI tick selection and formatting.
+`HertzUnit::format` currently trims all fractional zeros. Tick placement knows the
+selected or retained scheme before localization and measurement. Add private
+step-aware tick formatting there without changing public signatures or the
+standalone `format_label` contract. Keep the existing unit resolution limit.
+GUI localization must preserve the padded fraction before final text measurement.
+Reuse the existing axis canvas and number formatter; introduce no controls.
+
+Rejected: padding labels after placement would invalidate measured widths and tick
+spacing. Changing clock/seconds/sample formatting expands the Issue's scope.
+
+## Acceptance criteria and evidence
+
+| Criterion | Verification | Result / limits |
+| --- | --- | --- |
+| Fractional ticks share step precision, integers stay bare | Shared axis tests for MHz `12.589`, `12.590`, `12.900`, `13`, other units, negative and zero | Pending |
+| Zoom and panning retain appropriate precision and collision safety | Automatic/held scheme tests and isolated production UI zoom/pan | Pending |
+| Locale, values and units remain correct | GUI localization tests and decimal-comma production rendering | Pending |
+| Other rulers/readouts retain behavior | Existing core/GUI suites and focused regression assertions | Pending |
+
+UI acceptance uses the repository skill, only on an isolated Xvfb display, with
+supported disposable configuration/session/cache isolation. Inspect available
+interaction capabilities before running. Missing display or authorized input leaves
+acceptance incomplete and the PR Draft. A screenshot alone is not acceptance.
+
+## Implementation steps
+
+- [x] Confirm root cause and record scope, roles, plan and concrete expectations.
+- [ ] Add regression tests and private shared frequency tick formatting.
+- [ ] Update changelog and current axis architecture contract.
+- [ ] Complete full local gate and build current production release.
+- [ ] Exercise production frequency rulers, zoom, pan and both orientations in Xvfb.
+- [ ] Complete independent review and dispositions.
+- [ ] Move plan to completed before final review when acceptance is complete.
+
+## Validation
+
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --all-targets --locked`
+- [ ] `cargo test --locked`
+- [ ] `cargo build --release --locked`, after the checks pass
+- [ ] Focused core and locale regressions
+- [ ] Current-production UI scenario with recorded build identity and limits
+
+## Post-completion
+
+Merge and safe worktree/branch cleanup follow owner acceptance and current full CI.
