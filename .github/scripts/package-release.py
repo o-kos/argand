@@ -16,10 +16,6 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 TARGETS = ('x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc')
-# These belong to the supported OS baseline, including the ELF interpreter.
-BASE_LIBS = re.compile(r'^(linux-vdso|ld-linux|lib(c|m|dl|pthread|rt|resolv|util)\.so)')
-DLOPEN_LIBS = ('libfontconfig.so.1', 'libwayland-client.so.0',
-               'libwayland-cursor.so.0', 'libvulkan.so.1')
 WINDOWS_LIBS = set('''advapi32 bcrypt bcryptprimitives cfgmgr32 comctl32 comdlg32
     combase crypt32 cryptbase cryptnet cryptui d2d1 d3d11 d3d12 d3dcompiler_47 dbghelp dcomp
     dwmapi dwrite dxgi gdi32 gdiplus icuin icuuc imm32 iphlpapi kernel32 kernelbase mpr msimg32
@@ -80,73 +76,6 @@ def check_windows(binary):
             raise ValueError(f'{binary.name} requires non-OS DLL {name}; use a static CRT build; '
                              f"all PE imports: {', '.join(sorted(imports))}")
     return sorted(imports)
-
-
-def linux_dependencies(binary):
-    output = run('ldd', str(binary))
-    if 'not found' in output:
-        raise ValueError(f'unresolved dependency of {binary}:\n{output}')
-    result = {}
-    for line in output.splitlines():
-        match = re.match(r'\s*(\S+) => (/\S+) \(', line)
-        if match and not BASE_LIBS.match(match[1]):
-            result[match[1]] = Path(match[2])
-    return result
-
-
-def native_copyright(library, destination):
-    real = library.resolve()
-    candidates = [str(real)]
-    if str(real).startswith('/usr/'):
-        candidates.append(str(real)[4:])
-    owner = None
-    for candidate in candidates:
-        found = subprocess.run(['dpkg-query', '-S', candidate], text=True, capture_output=True)
-        if found.returncode == 0:
-            owner = found.stdout.split(': ', 1)[0].split(':', 1)[0]
-            break
-    if not owner:
-        raise ValueError(f'cannot identify license owner for {library}')
-    copyright_file = Path('/usr/share/doc') / owner / 'copyright'
-    shutil.copyfile(copyright_file, destination / f'{owner}.copyright')
-    for name in re.findall(r'/usr/share/common-licenses/([A-Za-z0-9_.+-]+)',
-                           copyright_file.read_text()):
-        name = name.rstrip('.')
-        shutil.copyfile(Path('/usr/share/common-licenses') / name, destination / name)
-
-
-def bundle_linux(binary, stage):
-    # Explicit roots cover libraries the toolkit loads with dlopen instead of DT_NEEDED.
-    cache = run('ldconfig', '-p')
-    roots = [binary]
-    for name in DLOPEN_LIBS:
-        match = re.search(r'^\s*' + re.escape(name) + r' \(libc6,x86-64[^\n]* => (\S+)', cache, re.M)
-        if not match:
-            raise ValueError(f'missing runtime library {name}')
-        roots.append(Path(match[1]))
-    libraries = {}
-    for library in roots:
-        libraries.update(linux_dependencies(library))
-    for library in roots[1:]:
-        libraries[library.name] = library
-    lib = stage / 'lib'
-    licenses = stage / 'licenses'
-    lib.mkdir()
-    licenses.mkdir()
-    for name, path in sorted(libraries.items()):
-        shutil.copyfile(path, lib / name)
-        native_copyright(path, licenses)
-    # Keep configuration beside the real executable and scope the library path to this process.
-    shutil.copy2(binary, stage / 'argand-bin')
-    launcher = stage / 'argand'
-    launcher.write_text('''#!/bin/sh
-set -eu
-app_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-export LD_LIBRARY_PATH="$app_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$app_dir/argand-bin" "$@"
-''')
-    launcher.chmod(0o755)
-    return sorted(libraries)
 
 
 def supplemental_notices(package, source):
@@ -235,8 +164,6 @@ def package(binary_dir, output, target, version, commit, smoke=True):
             if windows:
                 dependencies = check_windows(binary)
                 shutil.copy2(binary, stage / binary.name)
-            elif product == 'argand':
-                dependencies = bundle_linux(binary, stage)
             else:
                 shutil.copy2(binary, stage / binary.name)
             for name in ('README.md', 'LICENSE', 'CHANGELOG.md'):

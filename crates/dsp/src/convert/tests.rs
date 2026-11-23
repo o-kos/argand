@@ -185,7 +185,15 @@ fn check_fractional_edges(rate: f64, reference: f64, input_iq: bool) {
             let output = meta(output_iq, output_rate, output_reference);
             let plan = ConversionPlan::new(&input, &output).unwrap();
             assert!(plan.width <= output_rate / if output_iq { 1.0 } else { 2.0 });
-            plan.stream(input.len_samples).unwrap();
+            // Keep every metadata check, but build filters for full/cropped domain representatives.
+            let smallest_rate = output_rates[..count]
+                .iter()
+                .copied()
+                .fold(f64::INFINITY, f64::min);
+            if reference == 1_000_000_000.0 && (output_rate == rate || output_rate == smallest_rate)
+            {
+                plan.stream(input.len_samples).unwrap();
+            }
         }
     }
     let outside = meta(false, rate, input.frequency_span().1 + 0.001);
@@ -263,13 +271,27 @@ fn conversion_extractor_rejects_cropped_bands_across_downsampling_ratios() {
 }
 
 #[test]
-fn local_reference_math_keeps_long_capture_phase_and_fractional_shift_width() {
+fn a_narrow_fractional_shift_has_the_requested_physical_band() {
     let input = meta(true, 1_000_000.0, 0.0);
     let output = meta(true, 1000.1, 100_000.0);
-    ConversionPlan::new(&input, &output)
-        .unwrap()
-        .stream(input.len_samples)
-        .unwrap();
+    let plan = ConversionPlan::new(&input, &output).unwrap();
+    assert_eq!(plan.input_band, (-500_000.0, 500_000.0));
+    for (actual, expected) in [
+        (plan.local_band.0, 99_499.95),
+        (plan.local_band.1, 100_500.05),
+        (plan.band.0, 99_499.95),
+        (plan.band.1, 100_500.05),
+    ] {
+        assert!((actual - expected).abs() < 1e-9);
+    }
+    assert_eq!(plan.width, 1000.1);
+    assert_eq!(plan.samples, 17);
+    assert!(!plan.is_identity());
+    assert!(!plan.retains_input_band());
+}
+
+#[test]
+fn local_reference_math_keeps_long_capture_phase() {
     let input = meta(false, 8000.15, 10_000_000_000.0);
     let output = meta(true, 10000.0, input.center_freq);
     let plan = ConversionPlan::new(&input, &output).unwrap();

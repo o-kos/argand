@@ -47,6 +47,7 @@ fn read(path: &std::path::Path) -> Vec<f32> {
 
 #[gpui_kit::test]
 fn a_rectangle_is_suppressed_as_one_edit_and_saved_in_the_captures_format(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened(cx, &shell, "suppress-ui");
     assert!(shell.read_with(cx, |shell, _| shell.edit_commands_available().suppress));
@@ -144,6 +145,7 @@ fn a_rectangle_is_suppressed_as_one_edit_and_saved_in_the_captures_format(cx: &m
 
 #[gpui_kit::test]
 fn opening_another_file_drops_a_suppression_in_progress(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened(cx, &shell, "suppress-ui-open");
     shell.update_in(cx, |shell, window, cx| {

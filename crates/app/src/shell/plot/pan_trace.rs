@@ -3,8 +3,8 @@
 use super::plot_view::PlotView;
 use crate::navigation::{View, frequency};
 use gpui_kit::{MouseButton, Pixels, Point};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 static NEXT_INPUT: AtomicU64 = AtomicU64::new(1);

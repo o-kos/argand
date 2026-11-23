@@ -44,6 +44,7 @@ fn adjustment(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> Ad
 
 #[gpui_kit::test]
 fn inverting_is_refused_with_a_selection_and_saved_conjugated_without_one(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened(cx, &shell, "invert-ui");
     let selections = [
@@ -136,6 +137,7 @@ fn inverting_is_refused_with_a_selection_and_saved_conjugated_without_one(cx: &m
 
 #[gpui_kit::test]
 fn normalizing_measures_the_peak_and_saves_it_just_below_full_scale(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened(cx, &shell, "normalize-ui");
     shell.update_in(cx, |shell, window, cx| {
@@ -212,6 +214,7 @@ fn normalizing_measures_the_peak_and_saves_it_just_below_full_scale(cx: &mut Tes
 
 #[gpui_kit::test]
 fn opening_another_file_drops_a_measurement_in_progress(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened(cx, &shell, "normalize-ui-open");
     shell.update_in(cx, |shell, window, cx| {

@@ -391,7 +391,9 @@ impl Shell {
         if self.rebound_view()
             && let Some(plot) = self.plot_entity()
         {
-            plot.update(cx, |plot, cx| plot.cancel_drags("layout_bounds_changed", cx));
+            plot.update(cx, |plot, cx| {
+                plot.cancel_drags("layout_bounds_changed", cx)
+            });
         }
     }
 
@@ -597,7 +599,10 @@ impl Shell {
                     self.ask_for_a_picture();
                 }
                 pan_trace::accepted(
-                    input_id, (time, frequency), before, (self.view, self.frequency),
+                    input_id,
+                    (time, frequency),
+                    before,
+                    (self.view, self.frequency),
                 );
                 cx.notify();
             }
@@ -1222,7 +1227,9 @@ impl crate::shell::plot::plot_view::PlotView {
         if time.is_some() || frequency.is_some() {
             pan_trace::computed(input_id, time, frequency);
             cx.emit(crate::shell::plot::plot_view::PlotIntent::Drag {
-                time, frequency, input_id,
+                time,
+                frequency,
+                input_id,
             });
         }
         if input_id != 0 {

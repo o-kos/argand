@@ -256,7 +256,10 @@ fn white(len: usize, channels: usize, seed: u64, amplitude: impl Fn(usize) -> f3
 /// Measure the noise beside `plan`'s band in `input`, as an application does before suppressing.
 fn measure(plan: &SuppressPlan, input: &[f32], channels: usize) -> Option<NoiseFill> {
     let len = (input.len() / channels) as u64;
-    let mut floor = NoiseFloor::new(plan, len);
+    measure_floor(NoiseFloor::new(plan, len), input, channels)
+}
+
+fn measure_floor(mut floor: NoiseFloor, input: &[f32], channels: usize) -> Option<NoiseFill> {
     let size = floor.segment_len();
     for start in floor.segments() {
         let from = start as usize * channels;
@@ -432,23 +435,23 @@ fn the_background_stays_level_through_the_fade_in_time() {
 }
 
 #[test]
-fn a_strong_tone_at_a_narrow_bands_edge_does_not_raise_the_fill() {
+fn a_strong_tone_inside_a_narrow_band_does_not_raise_the_fill() {
     let len = 262_144;
     let noise = white(len, 2, 7, |_| 0.001);
     let tone = span(len, 2, tone(6_001.0, 0.5));
     let input: Vec<f32> = noise.iter().zip(&tone).map(|(a, b)| a + b).collect();
-    let plan = SuppressPlan::new(RATE, 5_991.0, 6_011.0, false).unwrap();
-    let fill = measure(&plan, &input, 2).unwrap();
+    let band = BandGeometry::new(RATE, 5_991.0, 6_011.0, false).unwrap();
+    let fill = measure_floor(NoiseFloor::for_band(&band, len as u64), &input, 2).unwrap();
     for level in fill.levels {
         let error = db(f64::from(level * level) / 1e-6);
         assert!(error.abs() < 1.5, "{error} dB");
     }
-    let real = SuppressPlan::new(RATE, 5_991.0, 6_011.0, true).unwrap();
+    let real = BandGeometry::new(RATE, 5_991.0, 6_011.0, true).unwrap();
     let input: Vec<f32> = input
         .chunks(2)
         .map(|pair| pair[0] * std::f32::consts::SQRT_2)
         .collect();
-    let fill = measure(&real, &input, 1).unwrap();
+    let fill = measure_floor(NoiseFloor::for_band(&real, len as u64), &input, 1).unwrap();
     for level in fill.levels {
         let error = db(f64::from(level * level) / 1e-6);
         assert!(error.abs() < 1.5, "real {error} dB");

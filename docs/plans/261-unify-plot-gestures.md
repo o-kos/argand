@@ -13,7 +13,7 @@ capture data, history, keyboard/menu commands, coordinate guides and the minimap
 - Coordinator (primary): `gpt-6.1-sol` medium, owner communication and final assessment.
 - Executor: `gpt-6.1-sol` medium, implementation, validation and PR operations.
 - Reviewer: `gpt-6.1-sol` high, read-only in a fresh context.
-- Consultant: `gpt-6-astra` medium only if a concrete unresolved question warrants it.
+- Consultant: `gpt-6.2-astra` high through the installed read-only CLI, only if a concrete unresolved question warrants it.
 
 ## Context and decisions
 
@@ -193,7 +193,7 @@ already used. Any further required independent review needs the owner's decision
 about that limit. The current consultant default is `gpt-6.2-astra` high through
 the installed read-only CLI, only for a concrete unresolved technical question.
 
-- [ ] Integrate upstream while preserving feature gestures and upstream GPUI test cleanup.
+- [x] Integrate upstream while preserving feature gestures and upstream GPUI test cleanup.
 - [ ] Run formatting, all-target Clippy and all workspace tests with the locked graph.
 - [ ] Run applicable packaging, CI-policy and checkout-identity checks.
 - [ ] Build release after all preceding checks pass, binding the artifact to the submitted source.
@@ -202,6 +202,13 @@ the installed read-only CLI, only for a concrete unresolved technical question.
 The selected immutable SDK and existing installed Rust must match the repository
 pin. Keep all application artifacts in this workspace's `target/`. This refresh
 adds no intended UI behavior, toolkit graph or production ownership changes.
+Conflicts were confined to consultant policy, independent changelog bullets and
+renamed/expanded gesture tests. Retain feature behavior together with upstream
+cleanup guards, including feature-only GPUI tests, and use the upstream fake
+document seam for the Shell pan fixture. No production conflict resolution was
+needed. The first formatting check found only formatting debt in the final
+pre-handoff gesture/trace changes. Applied `cargo fmt --all` without semantic edits.
+The saved owner policy edit is identical to the merged upstream file.
 Historical production/owner acceptance above stays scoped to its recorded source;
 this task does not claim new native-platform or GPU/desktop acceptance. Keep the
 PR Draft and its remaining completion/review decisions visible.

@@ -23,7 +23,7 @@ fi
 tag=$1
 changelog=${2:-"$(cd "$(dirname "$0")/../.." && pwd)/CHANGELOG.md"}
 
-[[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+[[ $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
     fail "tag '$tag' is not a vX.Y.Z release tag"
 version=${tag#v}
 

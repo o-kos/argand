@@ -49,6 +49,7 @@ fn editor(shell: &Entity<Shell>, cx: &gpui_kit::VisualTestContext) -> Entity<Edi
 
 #[gpui_kit::test]
 fn status_reference_edits_and_saves_without_changing_samples(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, dir, cx) = opened(cx);
     let path = dir.join("capture.wav");
     let before = std::fs::read(&path).unwrap()[44..].to_vec();
@@ -101,6 +102,7 @@ fn status_reference_edits_and_saves_without_changing_samples(cx: &mut TestAppCon
 fn reference_draft_rejects_invalid_and_stale_values_and_isolates_plot_keys(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, _dir, cx) = opened(cx);
     cx.update(|window, cx| window.click("reference-frequency", cx));
     frame(cx);
@@ -142,6 +144,7 @@ fn reference_draft_rejects_invalid_and_stale_values_and_isolates_plot_keys(
 
 #[gpui_kit::test]
 fn closing_reference_commits_outside_draft_but_escape_discards_it(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, _dir, cx) = opened(cx);
     cx.update(|window, cx| window.click("reference-frequency", cx));
     frame(cx);
@@ -176,6 +179,7 @@ fn closing_reference_commits_outside_draft_but_escape_discards_it(cx: &mut TestA
 
 #[gpui_kit::test]
 fn edit_menu_opens_reference_and_uses_guarded_command_availability(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, _dir, cx) = opened(cx);
     // F10, Edit, then Selection panel followed by Reference frequency.
     cx.simulate_keystrokes("f10 down down right");

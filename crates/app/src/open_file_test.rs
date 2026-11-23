@@ -65,17 +65,11 @@ fn requested_b(settings: &Settings) -> Settings {
     requested
 }
 
-/// A real analyst over a file that will not open, which is the cheapest
-/// one to build and gates exactly like any other.
-fn state() -> OpenFileState {
-    let (analyst, _updates, _start) = crate::analysis::prepare(
-        PathBuf::from("missing.iqw"),
-        Default::default(),
-        crate::analysis::execution::Settings::default(),
-        crate::release::lease().0,
-    );
+/// Acceptance bookkeeping uses the real mailbox without an unused file reader.
+fn state() -> (OpenFileState, async_channel::Receiver<()>) {
+    let (analyst, requests) = crate::analysis::analyst_for_test();
     let document = Document::opening(crate::document::Origin::new(PathBuf::from("missing.iqw")));
-    OpenFileState::new(document, analyst)
+    (OpenFileState::new(document, analyst), requests)
 }
 
 fn ready(generation: u64, view_revision: u64) -> Delivery {
@@ -100,7 +94,7 @@ fn failed(generation: u64, view_revision: u64) -> Delivery {
 #[test]
 fn a_superseded_delivery_is_rejected_and_records_nothing() {
     let settings = Settings::from_config(&crate::config::Config::default());
-    let mut state = state();
+    let (mut state, _requests) = state();
 
     state.analyst.request_view(request_a(), None);
     assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
@@ -129,7 +123,7 @@ fn a_superseded_delivery_is_rejected_and_records_nothing() {
 #[test]
 fn a_failed_analysis_leaves_the_last_good_settings_in_place() {
     let settings = Settings::from_config(&crate::config::Config::default());
-    let mut state = state();
+    let (mut state, _requests) = state();
 
     state.analyst.request_view(request_a(), None);
     assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
@@ -162,7 +156,7 @@ fn a_failed_analysis_leaves_the_last_good_settings_in_place() {
 fn a_cancelled_preview_is_superseded_and_the_restored_settings_record_their_own_picture() {
     let settings = Settings::from_config(&crate::config::Config::default());
     let preview = requested_b(&settings);
-    let mut state = state();
+    let (mut state, _requests) = state();
 
     state.analyst.request_view(request_a(), None);
     assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
@@ -194,7 +188,7 @@ fn a_style_only_preview_is_rejected_by_its_view_revision_alone() {
     let settings = Settings::from_config(&crate::config::Config::default());
     let mut style = settings;
     style.dynamic_range = argand_dsp::DynamicRange::Fixed(42.0);
-    let mut state = state();
+    let (mut state, _requests) = state();
 
     state.analyst.request_view(request_a(), None);
     assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
@@ -221,7 +215,7 @@ fn a_style_only_preview_is_rejected_by_its_view_revision_alone() {
 fn a_second_file_starts_with_no_recorded_settings_while_the_first_keeps_its_own() {
     let settings = Settings::from_config(&crate::config::Config::default());
     let preview = requested_b(&settings);
-    let mut first = state();
+    let (mut first, _first_requests) = state();
 
     first.analyst.request_view(request_a(), None);
     assert_eq!(first.accept(ready(1, 1), &settings), Some(Effect::Analysis));
@@ -229,7 +223,7 @@ fn a_second_file_starts_with_no_recorded_settings_while_the_first_keeps_its_own(
     // The editor requests a preview whose analysis has not landed, and a
     // second file is opened in that moment.
     first.analyst.request_view(request_b(), None);
-    let second = state();
+    let (second, _second_requests) = state();
     assert_eq!(second.displayed_settings(), None);
 
     // The pending preview belongs to the first file alone: it lands
@@ -242,7 +236,7 @@ fn a_second_file_starts_with_no_recorded_settings_while_the_first_keeps_its_own(
 #[test]
 fn a_pass_running_when_the_file_changed_does_not_replace_the_picture() {
     let settings = Settings::from_config(&crate::config::Config::default());
-    let mut state = state();
+    let (mut state, _requests) = state();
     state.analyst.request_view(request_a(), None);
     assert_eq!(state.accept(ready(1, 1), &settings), Some(Effect::Analysis));
     state.analyst.request_view(request_b(), None);

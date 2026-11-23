@@ -40,6 +40,7 @@ fn document_id(cx: &mut gpui_kit::VisualTestContext, shell: &Entity<Shell>) -> O
 
 #[gpui_kit::test]
 fn a_file_changed_while_away_is_noticed_and_reopened(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened_and_edited(cx, &shell, "changed-away");
     shell.update_in(cx, |shell, window, cx| shell.check_disk(window, cx));
@@ -95,6 +96,7 @@ fn a_file_changed_while_away_is_noticed_and_reopened(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_stale_check_is_not_applied(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened_and_edited(cx, &shell, "changed-stale");
     let (document, watched) = shell.read_with(cx, |shell, _| {
@@ -122,6 +124,7 @@ fn a_stale_check_is_not_applied(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_reader_refused_by_a_changed_file_marks_the_capture(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened_and_edited(cx, &shell, "changed-reader");
     std::fs::remove_file(&path).unwrap();
@@ -153,6 +156,7 @@ fn a_reader_refused_by_a_changed_file_marks_the_capture(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn a_late_envelope_failure_counts_only_for_a_file_still_read(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     opened_and_edited(cx, &shell, "changed-envelope");
     let error = anyhow::Error::from(argand_core::SourceError::Changed);
@@ -171,6 +175,7 @@ fn a_late_envelope_failure_counts_only_for_a_file_still_read(cx: &mut TestAppCon
 
 #[gpui_kit::test]
 fn nothing_is_checked_while_a_saved_file_is_rebound(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened_and_edited(cx, &shell, "changed-rebound");
     let (document, watched) = shell.read_with(cx, |shell, _| {
@@ -208,6 +213,7 @@ fn nothing_is_checked_while_a_saved_file_is_rebound(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn save_as_of_a_changed_capture_goes_on_from_the_saved_file(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened_and_edited(cx, &shell, "changed-save-as");
     shell.update(cx, |shell, cx| {
@@ -247,6 +253,7 @@ fn save_as_of_a_changed_capture_goes_on_from_the_saved_file(cx: &mut TestAppCont
 
 #[gpui_kit::test]
 fn a_late_description_of_another_opening_keeps_the_stamp(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let path = opened_and_edited(cx, &shell, "changed-described");
     let (document, stamp) = shell.read_with(cx, |shell, _| {

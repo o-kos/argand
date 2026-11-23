@@ -226,7 +226,7 @@ fn high_overlap_refinement_can_cancel_after_a_bounded_batch() {
         }
     }
     let read = Arc::new(AtomicUsize::new(0));
-    let size = 262144;
+    let size = 2048;
     let mut source = Counted {
         inner: VecSource::new(Domain::Real, vec![0.1; size * 2], 0.0),
         sequential: false,
@@ -241,7 +241,7 @@ fn high_overlap_refinement_can_cancel_after_a_bounded_batch() {
     let result = analyze_progressive_with_options(
         &mut source,
         &request,
-        ProgressiveOptions::new(4096).unwrap(),
+        ProgressiveOptions::new(4).unwrap(),
         &|| {
             if read.load(Ordering::Relaxed) > 0 {
                 Flow::Stop

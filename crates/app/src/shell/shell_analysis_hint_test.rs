@@ -18,6 +18,7 @@ fn open(cx: &mut TestAppContext) -> WindowHandle<Shell> {
 
 #[gpui_kit::test]
 fn the_shell_follows_the_mouse_into_and_out_of_the_window(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let inside = |cx: &mut TestAppContext| {
         handle
@@ -39,6 +40,7 @@ fn the_shell_follows_the_mouse_into_and_out_of_the_window(cx: &mut TestAppContex
 
 #[gpui_kit::test]
 fn edit_analysis_opens_the_hint_and_closes_it_keeping_the_values(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let handle = open(cx);
     let toggled = |cx: &mut TestAppContext| {
         handle
@@ -54,7 +56,7 @@ fn edit_analysis_opens_the_hint_and_closes_it_keeping_the_values(cx: &mut TestAp
     assert!(!toggled(cx), "without a document there is nothing to edit");
     handle
         .update(cx, |shell, window, cx| {
-            shell.open(
+            shell.open_test_document(
                 Origin::new(std::path::PathBuf::from("/captures/a.iqw")),
                 window,
                 cx,

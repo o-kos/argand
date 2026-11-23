@@ -124,6 +124,16 @@ Goal: provide deep analysis of a selected region.
 
 **Done when:** a selection opens in a detailed spectrum window with independent settings, markers and peak search work, and the window updates when the selection changes.
 
+## Completed maintenance
+
+- [Linux runtime packaging and bounded export](completed/259-linux-display-stack.md)
+  (#259, PR #267): host-supplied Linux libraries, bounded whole/partial I/Q and real
+  export, and reviewed test-lifecycle/setup corrections. The owner accepted the
+  recorded runtime and coverage limits.
+- [Tagged releases from main](completed/242-exact-commit-release.md) (#242, PR #267):
+  canonical tag validation and exact verified source checkout. Production release
+  publication and broader distribution formats (#86) remain separate work.
+
 ## Cross-cutting work
 
 - **Rendering boundary:** prevent GPUI types from leaking into core crates; see `AGENTS.md`.

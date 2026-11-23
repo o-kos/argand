@@ -61,14 +61,13 @@ working graphics driver are required. Windows supplies the ICU `icuuc.dll` and
 together when redistributing.
 
 On Linux, extract the tarball and run `./argand` from the extracted directory.
-This launcher sets the library path only for its application process. Keep
-`argand-bin`, `lib/` and `licenses/` beside it. The package includes native runtime
-libraries and their copyright notices; it is not fully static. The baseline is
-Ubuntu 24.04 x86-64 (glibc 2.39), or a compatible newer desktop. The operating
-system must supply glibc and its ELF loader, a running X11 or Wayland desktop,
-fonts/font configuration and a working Vulkan graphics driver with its ICD.
-GPU drivers are not bundled. The package is not a promise of support for every
-Linux distribution; older glibc systems cannot run these binaries.
+The archive contains the executable and its documents/licenses, without bundled
+system shared libraries or a library-path override. It is not fully static.
+The baseline is Ubuntu 24.04 x86-64 (glibc 2.39), or a compatible newer desktop.
+The distribution must provide compatible runtime libraries, a running X11 or
+Wayland desktop, fonts/font configuration and a working Vulkan graphics driver
+with its ICD. The package is not a promise of support for every Linux distribution;
+older glibc systems cannot run these binaries.
 
 The `aspec` archives retain their existing names and contain a standalone CLI
 executable. Linux aspec uses the same Ubuntu 24.04 glibc baseline. To open a
