@@ -15,9 +15,16 @@ fn open_window(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::Visual
         window_keys(cx);
         crate::theme::install(ThemeMode::Dark, cx);
     });
-    let (shell, cx) = cx.add_window_view(|window, cx| {
-        Shell::new(Config::default(), None, Session::default(), window, cx)
-    });
+    // Integration cases exercise parallel DSP without a machine-sized pool per window.
+    let config = Config {
+        analysis: crate::analysis::execution::Settings {
+            workers: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let (shell, cx) =
+        cx.add_window_view(|window, cx| Shell::new(config, None, Session::default(), window, cx));
     cx.simulate_resize(gpui_kit::size(px(800.), px(600.)));
     cx.run_until_parked();
     (shell, cx)

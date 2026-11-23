@@ -56,18 +56,20 @@ fn render(
     let support = margin..margin + input.len() as u64;
     let mut engine =
         ExportExtractor::new(plan.clone(), input.len() as u64, Some(support.clone())).unwrap();
-    engine.engine = if partitioned {
-        let mut phases = vec![plan.taps.as_slice()];
-        if !plan.half_taps.is_empty() {
-            phases.push(&plan.half_taps);
-        }
-        Convolution::Partitioned(Box::new(Partitioned::polyphase(&phases)))
-    } else {
-        Convolution::Direct {
-            support,
-            input: vec![Complex32::default(); input.len()],
-        }
-    };
+    if partitioned != matches!(engine.engine, Convolution::Partitioned(_)) {
+        engine.engine = if partitioned {
+            let mut phases = vec![plan.taps.as_slice()];
+            if !plan.half_taps.is_empty() {
+                phases.push(&plan.half_taps);
+            }
+            Convolution::Partitioned(Box::new(Partitioned::polyphase(&phases)))
+        } else {
+            Convolution::Direct {
+                support,
+                input: vec![Complex32::default(); input.len()],
+            }
+        };
+    }
     let mut out = Vec::new();
     engine.push_zeros(margin, &mut out);
     for block in input.chunks(chunk) {

@@ -292,12 +292,12 @@ fn a_real_band_touching_dc_or_nyquist_keeps_its_amplitude() {
 fn a_full_band_rectangle_preserves_a_tone_next_to_native_nyquist() {
     let rate = 11_999.0;
     let frequency = rate * (0.5 - 1.0 / 131_072.0);
-    let mut values = iq_tone(2_400_000, rate, frequency, 0.25);
-    for (value, middle) in values
-        .iter_mut()
-        .zip(iq_tone(2_400_000, rate, -2_000.0, 0.25))
-    {
-        *value += middle;
+    let mut values = Vec::with_capacity(2_400_000 * 2);
+    for n in 0..2_400_000 {
+        let high = std::f64::consts::TAU * frequency * n as f64 / rate;
+        let middle = std::f64::consts::TAU * -2_000.0 * n as f64 / rate;
+        values.push(0.25 * high.cos() as f32 + 0.25 * middle.cos() as f32);
+        values.push(0.25 * high.sin() as f32 + 0.25 * middle.sin() as f32);
     }
     let span = SampleSpan::between(1_200_000, 1_248_000).unwrap();
     let band =

@@ -56,7 +56,12 @@ each Issue. A different role assignment requires the owner's agreement.
 | Coordinator (primary) | `gpt-6.1-sol` medium | Discuss decisions and scope with the owner, delegate execution, relay owner input, track progress, and assess exact results, critical invariants and validation limits. Does not write product code. |
 | Executor | `gpt-6.1-sol` medium | Own the assigned task end to end: investigation, plan, implementation, tests, and Pull Request preparation and operations within the authorized scope. |
 | Reviewer | `gpt-6.1-sol` high | Review read-only in a fresh, separate context when review is required. |
-| Consultant | `gpt-6-astra` medium | Give targeted advice on difficult architecture, DSP, data safety or unresolved technical disagreements. |
+| Consultant | `gpt-6.2-astra` high | Give targeted advice on difficult architecture, DSP, data safety or unresolved technical disagreements. |
+
+Run Astra consultations through the user-installed Codex CLI with `codex exec`,
+`--model gpt-6.2-astra` and `-c 'model_reasoning_effort="high"'`, using the
+read-only sandbox (`-s read-only`). Do not use built-in subagent delegation for
+Astra or silently substitute another model or reasoning effort if unavailable.
 
 The owner-facing coordinator delegates implementation to an executor rather than
 writing code. In repository instructions, "primary agent" means the coordinator.

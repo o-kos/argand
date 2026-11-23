@@ -2,7 +2,418 @@
 
 Tracks #259 (https://github.com/o-kos/argand/issues/259).
 
-## Transfer handoff — stopped at the owner's request
+## Resumed work — 2026-11-23
+
+The owner resumed the saved branch. Class A; Coordinator and Executor remain
+`gpt-6.1-sol` medium, independent Reviewer `gpt-6.1-sol` high. The transfer stop
+below is historical; focused validation and one bounded default full test are
+now authorized. The owner subsequently authorized committing and pushing the
+reviewed changes on this existing task branch, using the ordinary hooks.
+Ready transition, merge and release remain unauthorized. Current remote checks
+and final owner acceptance remain pending.
+
+The installed compiler, repository pin and selected immutable SDK compiler/target
+match. Artifact locations, dependency graph, profiles and compiler flags remain
+unchanged. Other workspace processes must not be disturbed.
+
+- [x] Set `Config.analysis.workers = 2` only in the shared replacement window,
+  conversion property-panel window and editing test window before `Shell::new`.
+  Preserve real parallel DSP, I/O, source identity, conversion/adoption, cancellation
+  and every assertion. Product automatic workers and analysis budget tests stay
+  unchanged, as do 1x workflow fixtures and dedicated 2x HiDPI tests.
+- [x] Compile ordinary workspace test binaries separately under the existing
+  compiler-appropriate 3 GiB bound, then run the existing seven disk-change cases
+  under 512 MiB/no swap with ordinary harness parallelism.
+- [x] Run one ordinary `cargo test --locked` under the unchanged 1 GiB/no-swap,
+  256-task/180-second bound without CPU quota, cpuset or test-thread overrides.
+  Capture exact source/binary identities and own-child process memory/thread data.
+  On failure, diagnose before any retry; never raise limits automatically.
+- [x] Obtain clean exact-snapshot review and complete the local gate, release
+  build last. Current remote CI and final owner acceptance remain pending.
+
+The first resumed default suite passed all 941 tests, including all 564 application
+tests, in 84.54 seconds. The cgroup charged peak was 916.7 MiB with every memory
+event counter zero and no swap; sampled application maximum was 71 threads.
+Sampled application Anonymous reached 839852 KiB and PSS 938271 KiB. These are
+different accounting views, not additive totals. The unchanged default harness
+parallelism and production worker-budget tests were retained. Exact-snapshot
+independent review of the three fixture changes was clean. The coordinator
+accepted this as a passing test gate, not complete allocation attribution:
+remaining live pixel buffers versus allocator-retained free chunks are unresolved.
+A threshold smaps summary cannot distinguish those owners. The final ordinary
+SDK release build passed in 1 minute 46 seconds under the separate compiler-only
+3 GiB bound. The new production executable opened a disposable 48 kHz I/Q WAV
+and rendered its 6 kHz tone on an isolated Xvfb display with isolated XDG state,
+without LD_LIBRARY_PATH or LD_PRELOAD. The application reported analysis completion
+and first picture painted; the captured frame shows the expected signal.
+
+This establishes local SDK production startup with system display libraries. It
+does not establish portable source-toolkit archive startup, a baseline Linux host,
+native Wayland, GPU hardware acceleration or interactive UI acceptance. Xvfb
+reported missing DRI3, but the application rendered successfully. No input was
+injected. Only task-owned application/display processes were stopped; the owner's
+existing application and display were preserved. Current remote CI, PR refresh,
+commit/push and final owner acceptance are pending.
+
+### Follow-up: two UI-only information-panel fixtures
+
+Class A and the existing role assignments remain unchanged. Replace incidental
+native analysis setup only in `information_buttons_share_toggle_internal_click_and_all_switch_routes`
+and `all_information_panels_suppress_external_tooltips_and_restore_on_fresh_hover`
+with the existing `describe_panel_document` helper. Keep genuine source metadata,
+statistics, prepared-reader mailbox ownership, rendering, actions, guards and every
+assertion. Real save/suppression/lifecycle integration cases remain unchanged.
+
+- [x] Apply the two fixture substitutions, format and compile.
+- [x] Run exactly these two existing cases once under 512 MiB/no swap with ordinary
+  harness parallelism: both passed in 3.09 seconds, cgroup peak 28.4 MiB, zero
+  memory events. Independent exact-snapshot review was clean.
+- [x] Obtain clean independent review of the two-case scope before the final gate.
+
+### Follow-up: scoped synchronous reference analysis
+
+The two information-panel fixture substitutions passed independent review.
+The existing aggregation replacement test computes a synchronous numerical
+reference outside the analyst's local pool. Give only that reference computation
+an existing scoped `Settings` pool with two workers. Preserve the real analyst,
+stale/latest generation checks, numerical comparison and production defaults.
+This removes an incidental global-pool initialization path; it does not attribute
+the remaining full-suite anonymous memory to that global pool.
+
+- [x] Apply the scoped reference pool, format and check Clippy.
+- [x] Run exactly the existing aggregation replacement test once: passed in
+  0.01 seconds under 512 MiB/no swap, with zero memory events. Narrow independent
+  review was clean before the final full gate and release build.
+
+### Final resumed gate
+
+After both narrow follow-ups received clean independent review, the final ordinary
+workspace suite passed all 941 tests, including all 564 application tests. The
+application tests took 31.42 seconds and the whole workspace 57.40 seconds.
+Default harness parallelism/native CPU availability remained unchanged. Under the
+same 1 GiB/no-swap/256-task/180-second bound, cgroup peak was 883.8 MiB and every
+memory event counter remained zero. Sampled application maxima were 981012 KiB
+RSS, 906519 KiB PSS, 808564 KiB Anonymous and 85 threads; these are distinct
+accounting views and sampling observations, not additive quantities. Timing and
+thread-count variation do not establish a universal speed or thread reduction.
+
+The remaining anonymous memory is not fully attributed to live buffers versus
+allocator-retained free pages. The last application sample still held 807356 KiB
+Anonymous with one analyst and twelve `processing::con`-named threads. Truncated
+thread names do not prove complete ownership; scoping the reference computation
+does not imply that no other caller initializes process-global Rayon. No further
+optimization or instrumentation was added.
+
+Formatting and all-target Clippy passed, then the final full test ran once.
+Release build ran last and passed in 61.48 seconds under the separate 3 GiB
+compiler bound. Its executable is byte-identical to the production executable
+already verified in isolated Xvfb, so the startup scenario was not repeated.
+The earlier runtime evidence and its SDK/X11/native-Wayland/portable-archive
+limitations still apply. Code remains frozen after clean review; subsequent plan
+changes only record evidence. Current remote CI, PR refresh, commit/push and final
+owner acceptance are pending. No Ready, merge or release action was performed.
+
+### Residual allocator attribution diagnostic
+
+Class A and existing role assignments remain unchanged. The owner requested
+attribution of the remaining anonymous memory. One approved app-only diagnostic
+runs the existing 564 cases with default parallelism and unchanged 1 GiB/no-swap,
+256-task/180-second limits. Temporary test-only instrumentation records glibc
+`malloc_info` and synchronized process counters at first cleanup and process exit,
+so accumulated free arena retention can be separated from approximate occupied
+arena/mmap storage. The initial boundary is not a zero-allocation baseline;
+parallel tests may already be running. No scheduling/assertion or allocator tuning
+changes are allowed. This is a diagnostic, not a new gate or new test.
+
+- [x] Preserve source bytes/identities, compile the temporary diagnostic separately
+  under the compiler-only 3 GiB limit, then perform exactly one app-only run.
+- [x] Restore the instrumented source byte-for-byte and compile ordinary workspace
+  test binaries without running them. Preserve the accepted release executable.
+- [x] Report arena system/free/mmap separately; approximate occupied includes
+  metadata/tcache and does not identify non-glibc allocation owners.
+
+The single app-only diagnostic passed all 564 existing tests. At process exit,
+glibc reported 785.199 MiB current arena storage, 784.614 MiB already free,
+0.585 MiB approximate occupied arena storage and no malloc mmap allocations.
+Anonymous was 777.414 MiB, with thirteen threads and no native analyst/FFT names.
+Thus the accumulated suite retains a large amount of already-freed glibc arena
+storage; it is not a comparably sized live glibc pixel/context heap. Exact resident
+free pages cannot be derived by subtracting XML free storage from Anonymous:
+nonresident arena pages, stacks, metadata/tcache and non-glibc mappings differ.
+This diagnostic reproduces the scale and establishes the retention mechanism,
+not exact ownership of every page in the earlier run. No allocator tuning or
+production fix was made. Temporary source was restored byte-for-byte and the
+ordinary no-run compile restored the exact accepted app test binary; release
+binary remained unchanged. This adds attribution evidence, not another gate.
+
+### Test usefulness and computational-cost audit
+
+The owner accepts the observed glibc retention as not presently a defect. Do not
+add allocator tuning, trimming or arena limits. A read-only audit prioritized six
+DSP/app test families, distinguishing real export/conversion boundaries from
+expensive fixtures and incidental constructor work. It found a metadata-only
+fractional conversion case constructing a 501795-tap filter with 2M/4M FFT plans,
+64 repeated fractional-edge stream constructors, and 100000-sample chunk tests
+that may retain their contract with a smaller derived fixture. Current export
+convolution uses at most 65536-point partition FFTs; giant legacy conversion
+constructors must not be conflated with spectrum visualization. Native endpoint,
+80 dB image, near-guard and real source-safety contracts remain meaningful.
+
+Priorities with exact source locations:
+
+1. [Narrow fractional constructor and long-phase test](../../crates/dsp/src/convert/tests.rs:266):
+   separate the actual 1000:1 constructor acceptance boundary from phase checks.
+   The former constructs 501795 taps, a 2097152-point forward and 4194304-point
+   inverse plan without feeding samples; the fixed complex vectors alone are
+   80 MiB. Do not delete this boundary as if it were only a phase assertion.
+2. [Fractional native-edge matrix](../../crates/dsp/src/convert/tests.rs:164):
+   twelve outer cases expand to 64 real stream constructors. Keep all cheap
+   metadata checks; discuss representative actual constructors for distinct
+   boundary/rounding shapes, rather than synthesizing every Cartesian duplicate.
+3. [Explicit carrier phase](../../crates/dsp/src/convert/tests.rs:293): four stream
+   constructions accompany metadata and one-sample long-index phase checks.
+   Preserve the real translate result and extreme references; filter work is
+   incidental, but do not replace it with duplicated oscillator logic.
+4. [Whole RF guard](../../crates/dsp/src/extract_tests.rs:220) and
+   [inside-guard image](../../crates/dsp/src/extract_tests.rs:272): each uses four
+   million complex inputs and eight million outputs, not a four-million-point
+   FFT. Current export uses 65536-point partitions and the production FIR.
+   Any reduction must preserve both FIR margins, transients, multiple partitions
+   and enough integration time to resolve the 20 Hz near-edge image relationship.
+5. [Native/chunk exactness](../../crates/dsp/src/extract_tests.rs:197) and
+   [mixing order](../../crates/dsp/src/extract_tests.rs:298): representative 5140-tap
+   filters process 100000 samples repeatedly. Derive a smaller length from margins
+   plus multiple 8192-sample partitions, keeping all chunk and analytic assertions.
+6. [Narrow-band noise measurement](../../crates/dsp/src/suppress_tests.rs:435):
+   the measurement-only property constructs full suppression/crossfade filters
+   (including a 262144-point setup FFT). Genuine noise-floor/tone rejection matters;
+   avoiding unused filter synthesis needs an explicit boundary/API decision, not
+   a fixture that fakes a measured result.
+
+Exceptions: max FIR wanted/image response and real DC/Nyquist/export-tail tests
+protect meaningful numerical boundaries. Overview compression must retain more
+than 4096 frames; the large FFT values in pure scheduling-budget tests perform no
+FFT. The [high-overlap cancellation case](../../crates/dsp/src/progressive_tests.rs:199)
+uses FFT262144/hop1, valid at the DSP boundary but unreachable through application
+settings capped at 95% overlap. Consider separating adversarial budget arithmetic
+from smaller real cancellation work without silently removing public API coverage.
+No individual runtime ranking was inferred from overlapping completion timestamps.
+
+The proposed first change is a derived smaller representative chunking fixture,
+not deletion of numerical boundaries. Any reduction of Cartesian constructor
+coverage needs an explicit mapping from retained cases to distinct rounding/domain
+properties. The narrow 1000:1 constructor itself checks real acceptance and must
+not be removed as if it only tested oscillator phase. No tests, benchmarks,
+builds, code edits or new issues were performed for the audit. Implementation
+requires discussion of these concrete findings; the accepted gate source stays
+unchanged.
+
+### Approved test-fixture optimization
+
+Class A and existing role assignments remain unchanged. The owner approved four
+narrow test families: retain every fractional metadata/validation assertion but
+select representative real constructors; separate long-phase intent from the
+exact narrow 1000:1 parameter boundary; reduce representative chunk fixtures;
+and reduce whole-RF steady-tone fixtures using explicit support/coverage guards.
+No production DSP/API, tolerance, source safety, allocator or dependency changes.
+
+The fractional matrix retains all 64 cheap plan checks and twelve outside-band
+rejections. Actual stream construction covers all three native rates and four
+domain directions at the larger reference, with full and smallest candidate
+output rates (24 constructors). The larger ULP is representative, not proof that
+it dominates every rounding sign at other reference origins. After the owner questioned the scenario, the test now checks parameter geometry
+without constructing filters. That exact full-constructor coverage is withdrawn.
+Its exact parameters remain covered by cheap physical-band/width/sample-count
+validation. Actual narrow filter construction is no longer covered by this case;
+existing numerical conversion and integration cases remain unchanged.
+
+Fixture lengths derive from four FIR margins plus multiple partition lengths and
+a partial tail; the checked middle half stays strictly clear of zero-padded edges.
+The inside-guard test also retains conservative coverage of 20 Hz near-edge
+modulation. This is not a claimed wanted/image beat period: those components
+are separated by Fs and alternate by parity at the 2Fs output rate.
+
+- [x] Change only the selected tests, preserving numerical tolerances, analytic
+  references, native-sample bit exactness and all chunk variants.
+- [x] Format before one separate DSP no-run compile under 3 GiB. Run the changed
+  cheap/constructor cases and two RF cases once in separate 512 MiB/no-swap,
+  256-task bounded processes with default harness concurrency and no thread flags.
+- [x] Run all-target Clippy and prepare the exact narrow delta for independent
+  review. Do not repeat full tests or release build before evidence assessment.
+
+Focused results: the initial five-case group passed in 0.98 seconds; the two RF
+cases passed in 3.69 seconds. After the owner questioned the scenario, the narrow case was changed to check
+parameter geometry without constructing filters; that changed
+case passed once on final source, and final all-target Clippy passed. The other
+four initial cases and both RF tests were not repeated because their code did not
+change. All three runtime groups had zero memory events under 512 MiB/no swap.
+Chunk fixtures now use 34873 samples; whole RF fixtures use 1381105. All existing
+analytic tolerances and chunk variants remain. DSP test count changes from 105
+to 106 by splitting two existing properties, not by adding replacement coverage
+for the withdrawn full narrow constructor. Independent review was clean; the final gate results below supersede this
+focused-only stage. No push was performed.
+
+### Final gate after test-fixture optimization
+
+The exact test-only delta passed independent review. Formatting and all-target
+Clippy passed. After a separate ordinary workspace no-run compile under the
+3 GiB compiler bound, one ordinary full test run passed all 942 tests: application
+564 tests in 29.98 seconds, DSP 106 tests in 12.54 seconds and the whole workspace
+in 46.77 seconds. The one additional DSP case separates two existing properties;
+it does not replace coverage of the intentionally withdrawn full narrow constructor.
+Default parallelism/native CPU availability remained unchanged. Runtime limits
+were 1 GiB/no swap, 256 tasks and 180 seconds, with no quota/cpuset/thread overrides.
+Cgroup peak was 906.5 MiB, every memory event counter was zero. Sampled app maxima
+were 1001368 KiB RSS, 926884 KiB PSS, 828984 KiB Anonymous and 73 threads. These
+accounting views and samples are not additive or universal performance claims.
+Earlier timings are separate revisions, not a paired baseline for this change.
+
+Release build ran last and passed in 60.21 seconds under the existing 3 GiB
+compiler bound. Its executable is byte-identical to the already verified Xvfb
+production executable; no duplicate runtime launch was performed. Existing
+SDK/X11/native-Wayland/portable-archive limitations remain. Earlier allocator
+attribution established predominantly free glibc arena storage, and the owner does
+not currently consider retention a defect. No allocator tuning was made.
+
+The parameter-only narrow test is an implementation decision following discussion
+of the scenario, not a separate owner policy or waiver. Source is frozen after
+clean review. This final update changes only plan evidence. Current remote CI,
+PR refresh, commit/push and final owner assessment remain pending. No publication,
+Ready transition, merge or release occurred.
+
+### Approved remaining DSP test cost optimization
+
+Class A. Coordinator and executor remain `gpt-6.1-sol` medium, with a fresh
+read-only `gpt-6.1-sol` high reviewer arranged by the coordinator. The owner
+approved the remaining suppression noise-floor, progressive hop-one cancellation
+and two extraction fixtures in this PR. Preserve prior dirty work. No commit or
+push is authorized. Consultations now require the user-installed Codex CLI with
+`gpt-6.2-astra` high in a read-only sandbox. The preceding targeted consultation
+was `gpt-6-astra` high, not `gpt-6.2-astra`.
+
+- [x] Share private suppression band geometry between FIR synthesis and actual
+  noise-floor measurement, retaining the original noise/tone input and assertions.
+- [x] Retain actual hop-one progressive cancellation with FFT 2048 and batch 4,
+  checking the exact bounded read count. Keep large allocation arithmetic coverage.
+- [x] Retain true long-FIR independent frequency-response oracles. Exercise real
+  mirror rejection and complex near-whole rejection through smaller, genuinely
+  steady-state streams sized from actual margins and partition boundaries.
+- [x] Measure focused before/after cases, then run the full required local gate
+  once on final source. Preserve exact dirty-source identity and narrow delta for
+  independent review. Do not disrupt the running application or Xvfb.
+
+Focused evidence is in `/tmp/argand-259-242-evidence/remaining-fft/`.
+The shared private geometry removes six unused 262144-point transforms from the
+noise-floor case while preserving its 262144-sample complex/real noise and tone
+inputs and genuine measurements. The tone at 6001 Hz is inside 5991..6011 Hz, so
+the test name now says inside. All public constructor/fill integration tests remain.
+The hop-one cancellation case now reads exactly 2051 samples at FFT2048/batch4.
+Large allocation arithmetic coverage is unchanged.
+
+The original real 1..2001 Hz filter retains its independent wanted/image response
+bound at -999/-1003 Hz, and the original complex -23990..23990 Hz filter retains
+its independent 23997 Hz rejection bound. Actual representative streaming still
+checks mirror/rejection behavior with unchanged tolerances. Its 31457/14233-sample
+fixtures derive from actual margins, two partitions and a partial final partition.
+
+Separate one-test processes measured before/after wall times of 1.08/0.28 seconds
+(noise), 0.30/<0.01 (cancellation), 0.79/0.12 (real) and 0.30/0.07 (complex).
+Process max RSS was 29220/14572, 36648/8384, 34552/9344 and 22780/8564 KiB,
+respectively. These single observations include harness cost, not incremental FIR
+storage or universal speedup. The corrected baseline used the original binary;
+its source-patch metadata was captured after edits. The first baseline's zero-test
+cancellation filter was discarded. After timings precede only the mechanical
+Clippy direct-return correction of the same iterator expression. The final full
+suite covers the corrected exact source.
+
+Final formatting and all-target Clippy passed without suppression. A separate
+workspace no-run compile passed. Exactly one ordinary full test run passed all
+942 tests in 64.20 seconds, app564/46.07s and DSP106/12.68s. Same hard 1 GiB,
+no swap, 256 tasks, 180 seconds, native CPU availability and default concurrency.
+Cgroup peak was 915.1 MiB with all memory events zero. App sampled maxima were
+994060 KiB RSS, 919983 KiB PSS, 821484 KiB Anonymous and 67 threads. These
+accounting views are not additive. The preceding snapshot was 46.77 seconds,
+app29.98s, DSP12.54s and906.5MiB: no whole-suite gain or regression attribution
+is claimed, and no repeat was run to seek better timing.
+
+Release ran last under 3 GiB/no swap/256 tasks. First attempt timed out at the
+procedural 180-second deadline with no diagnostics, leaving the old application
+binary. One unchanged-limits retry passed in 177.36 seconds. Both attempts are
+preserved. Final application SHA256 is
+`27a66ff728dc008953995880c251635a40d552cce8b1dadf641d5de61b3f076d`.
+It differs from the prior runtime binary, so that exact-binary runtime evidence
+is not reused. No new UI runtime claim or application/Xvfb disruption occurred.
+The exact validated revision is recorded in the external evidence manifest,
+with tracked patch SHA256
+`29cce1ce31fd3b41849b4a5a46198b953e32855d97d5ab33c488bcd400df80c0`.
+All nine Rust file hashes match the corrected independent-review snapshot.
+The prior GUI startup binary hash does not validate this current executable
+because production suppression code changed. No new UI acceptance is claimed.
+The current consultant policy was synchronized to the owner-approved 6.2/CLI rule
+in AGENTS and the current role assignment; historical consultation attribution
+remains 6-astra high. These post-gate changes are documentation only. Fresh review
+assessment is coordinated separately. Final packet changes after validation are
+documentation only, including owner-approved consultant instructions. No commit, push, Ready transition, merge or release publication.
+
+### Final approved test setup cleanup
+
+Class A. Coordinator/executor remain `gpt-6.1-sol` medium and the fresh read-only
+reviewer is `gpt-6.1-sol` high. The owner approved exactly the three remaining
+setup wastes identified by the actual user-installed CLI consultation using
+`gpt-6.2-astra` high. This is separate from the earlier `gpt-6-astra` high advice.
+After these changes, stop optimization. No new Issue/worktree or commit/push.
+
+- [x] Reuse the selected polyphase backend when it matches the forced test kind.
+  Retain actual direct/partitioned comparison, decimations, chunks and sparse FIR.
+- [x] Avoid unused Kaiser synthesis in three test plans whose taps are replaced.
+  Preserve native centre, every export field, actual taps and numerical oracles.
+- [x] Build the existing 2.4M-sample two-tone application fixture in one pass,
+  preserving each independent f32 conversion/multiply and f32 sum, exact phase,
+  span and all 60006 output comparisons. Check full input bit equality temporarily.
+- [x] Record isolated before/after costs, obtain fresh exact-snapshot review, and
+  run final formatting, all-target Clippy, ordinary workspace tests and release
+  last. Keep all setup/dependencies/SDK/local target unchanged and preserve the
+  owner's app/Xvfb session. No further optimization search.
+
+The exact baseline and final source/release identities are retained outside the
+worktree in `/tmp/argand-259-242-evidence/setup-waste-final/`. The polyphase
+change removes 24 unused forward FFT65536 operations by source count. Three test
+plans avoid a total 1973328 unused Kaiser coefficients while preserving their
+actual centre, decimation/export/interpolation fields and replacement taps.
+Genuine whole-export constructor integration cases remain unchanged. The input
+fixture removes a 19200000-byte temporary (18.3 MiB), without reducing its size.
+A temporary comparison verified all 4800000 f32 values bit-identical, including
+independent casts/multiplies and the final f32 addition. No permanent test added.
+
+All six original and modified isolated cases passed. Before/after wall seconds
+and process max RSS KiB were: odd/even0.38/0.41 and8868/8548;
+sparsepolyphase2.90/2.02 and26944/19508; wholeboth0.63/0.37 and13488/8900;
+wholesparse1.05/1.76 and18752/17012; mixing0.25/0.11 and13216/9292;
+app2.20/2.84 and166228/164528 (162.3/160.7MiB). These single observations are
+mixed, include harness/runtime cost and do not establish a generic gain. Removed
+operations/storage are source-level facts, not claimed measured RSS savings.
+No repeats were made to seek prettier numbers.
+
+Final fmt, all-target Clippy and separate workspace no-run compile passed.
+Exactly one ordinary full test run passed942tests in58.93s, app564/41.05s,
+DSP106/12.49s. Same1GiB/noSwap/Tasks256/180s/nativeCPU/defaultparallelism.
+Cgrouppeak898.9MiB, allmemoryevents0; app sampledRSS981092KiB/PSS907174/
+Anonymous809144/59threads. These accounting views are not additive. Previous
+64.20s/915.1MiB and earlier46.77s/906.5MiB runs show variability, not causal
+whole-suite improvement from this change.
+
+Release ran last and passed97.91s under3GiB/noSwap/Tasks256/CPUWeight10 with
+an adequate600s procedural deadline. Its application SHA256
+`27a66ff728dc008953995880c251635a40d552cce8b1dadf641d5de61b3f076d`
+is byte-identical to the preceding product build. No new GUI acceptance is claimed.
+Fresh source/evidence review by `gpt-6.1-sol` high was clean in its first round,
+with exact source hashes, all942pass and full input-bit equality checked.
+The final handoff binds these results to unchanged reviewed source hashes.
+After validation, only documentation/evidence changed. Optimization stops here.
+All earlier whole-PR GUI/currentCI/owner-acceptance limits remain; no commit,
+push, Ready transition, merge or release publication occurred.
+
+## Historical transfer handoff — stopped at the owner's request
 
 The owner explicitly requested a commit and push without more tests so work can
 continue on another computer. Preserve this unfinished joint branch. Do not move
@@ -317,7 +728,9 @@ The owner requested Issues #259 and #242 together in one separate linked worktre
 - Coordinator: `gpt-6.1-sol` medium, owner communication and final assessment.
 - Executor: `gpt-6.1-sol` medium, investigation, implementation, validation and PR operations.
 - Reviewer: `gpt-6.1-sol` high, fresh read-only context.
-- Consultant: `gpt-6-astra` medium only if a concrete uncertainty requires it.
+- Consultant: `gpt-6.2-astra` high through the user-installed Codex CLI with
+  `codex exec --model gpt-6.2-astra -c 'model_reasoning_effort="high"' -s read-only`,
+  only if a concrete uncertainty requires it.
 
 ## Context and decisions
 

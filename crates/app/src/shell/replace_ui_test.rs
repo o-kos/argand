@@ -16,9 +16,16 @@ pub(in crate::shell) fn open_window(
         window_keys(cx);
         crate::theme::install(ThemeMode::Dark, cx);
     });
-    let (shell, cx) = cx.add_window_view(|window, cx| {
-        Shell::new(Config::default(), None, Session::default(), window, cx)
-    });
+    // Integration cases exercise parallel DSP without a machine-sized pool per window.
+    let config = Config {
+        analysis: crate::analysis::execution::Settings {
+            workers: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let (shell, cx) =
+        cx.add_window_view(|window, cx| Shell::new(config, None, Session::default(), window, cx));
     // Ordinary file workflows keep logical layout; dedicated tests cover HiDPI.
     cx.simulate_scale_factor_change(1.);
     cx.simulate_resize(gpui_kit::size(px(800.), px(600.)));

@@ -165,7 +165,10 @@ mod tests {
 
     #[test]
     fn both_engines_match_direct_fir_across_partitions_and_partial_blocks() {
-        let mut plan = ExtractPlan::for_export(48_000.0, -24_000.0, 23_999.5, false).unwrap();
+        let mut plan = ExtractPlan::new(48_000.0, -24_000.0, 23_999.5, false).unwrap();
+        plan.interpolation = 2;
+        plan.whole_export = true;
+        plan.export = true;
         plan.taps = (0..38)
             .map(|n| ((n * 17 % 23) as f32 - 11.0) / 97.0)
             .collect();
@@ -251,7 +254,10 @@ mod tests {
 
     #[test]
     fn multiple_filter_partitions_match_an_independent_sparse_fir() {
-        let mut plan = ExtractPlan::for_export(48_000.0, -24_000.0, 24_000.0, false).unwrap();
+        let mut plan = ExtractPlan::new(48_000.0, -24_000.0, 24_000.0, false).unwrap();
+        plan.interpolation = 2;
+        plan.whole_export = true;
+        plan.export = true;
         let taps = [
             (0, -0.13),
             (PARTITION - 1, 0.25),

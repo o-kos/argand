@@ -706,9 +706,17 @@ pub(in crate::shell) fn panel_window(
         window_keys(cx);
         crate::theme::install(ThemeMode::Dark, cx);
     });
+    // Integration cases exercise parallel DSP without a machine-sized pool per window.
+    let config = Config {
+        analysis: crate::analysis::execution::Settings {
+            workers: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
     let mut shell = None;
     let (_, cx) = cx.add_window_view(|window, cx| {
-        let view = cx.new(|cx| Shell::new(Config::default(), None, Session::default(), window, cx));
+        let view = cx.new(|cx| Shell::new(config, None, Session::default(), window, cx));
         Shell::bind_choose_file(view.downgrade(), window.window_handle(), cx);
         shell = Some(view.clone());
         Root::new(view, window, cx)
@@ -2255,16 +2263,13 @@ fn information_click(cx: &mut gpui_kit::VisualTestContext, id: &str) {
 #[gpui_kit::test]
 fn information_buttons_share_toggle_internal_click_and_all_switch_routes(cx: &mut TestAppContext) {
     let _cleanup = crate::test_context::cleanup(cx);
-    use super::super::replace_ui::tests::{wait_until, write_wave};
+    use super::super::replace_ui::tests::wait_until;
     let (shell, cx) = panel_window(cx);
     let path = std::env::temp_dir().join(format!(
         "argand-information-matrix-{}.wav",
         std::process::id()
     ));
-    write_wave(&path, 2400);
-    shell.update_in(cx, |shell, window, cx| {
-        shell.open(Origin::new(path.clone()), window, cx)
-    });
+    describe_panel_document(&shell, cx, path.clone());
     wait_until(cx, &shell, "information matrix", |shell| {
         shell
             .editing()
@@ -2459,14 +2464,11 @@ fn all_information_panels_suppress_external_tooltips_and_restore_on_fresh_hover(
     cx: &mut TestAppContext,
 ) {
     let _cleanup = crate::test_context::cleanup(cx);
-    use super::super::replace_ui::tests::{wait_until, write_wave};
+    use super::super::replace_ui::tests::wait_until;
     let (shell, cx) = panel_window(cx);
     let dir = argand_io::testutil::TempDir::new("information-tooltip-policy");
     let path = dir.join("capture.wav");
-    write_wave(&path, 2400);
-    shell.update_in(cx, |shell, window, cx| {
-        shell.open(Origin::new(path), window, cx)
-    });
+    describe_panel_document(&shell, cx, path);
     wait_until(cx, &shell, "tooltip fixture", |shell| {
         shell.is_reference_editable()
     });
