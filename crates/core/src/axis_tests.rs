@@ -360,7 +360,7 @@ fn sample_ticks_are_exact_integer_multiples_even_above_f64_unit_precision() {
             assert_eq!(index as f64, mark.value);
         }
     }
-    let held = TickScheme { step: 0.25, span: 1. };
+    let held = TickScheme::new(0.25, 1.);
     let result = tick_layout(AxisKind::Samples, axis(800, 0., 1.), &across(&text), Some(held));
     assert!(result.scheme.unwrap().step >= 1.);
 }
@@ -406,7 +406,7 @@ fn frequency_ticks_share_step_precision_and_keep_integers_bare() {
         (1_249., 1_251., 1., vec!["1.249", "1.250", "1.251"]),
         (1_249_000_000., 1_251_000_000., 1_000_000., vec!["1.249", "1.250", "1.251"]),
     ] {
-        let layout = tick_layout(AxisKind::Frequency, axis(2000, min, max), &across(&text), Some(TickScheme { step, span: max - min }));
+        let layout = tick_layout(AxisKind::Frequency, axis(2000, min, max), &across(&text), Some(TickScheme::new(step, max - min).with_frequency_unit(FrequencyUnit::magnitude(min, max))));
         let actual: Vec<_> = layout.ticks.iter().map(|tick| tick.label.as_str()).collect();
         assert_eq!(actual, expected, "{min}..{max}, step {step}");
         assert_no_overlap(&layout.ticks, &across(&text), "frequency precision");
@@ -420,7 +420,7 @@ fn automatic_frequency_precision_follows_zoom_and_survives_pan() {
         let layout = tick_layout(AxisKind::Frequency, axis(1200, min, max), &across(&text), None);
         let scheme = layout.scheme.unwrap();
         let shifted = tick_layout(AxisKind::Frequency, axis(1200, min + scheme.step, max + scheme.step), &across(&text), Some(scheme));
-        let decimals = if scheme.step < 1_000. { 4 } else { 2 };
+        let decimals = FrequencyFormat::step(scheme.frequency_unit().unwrap(), scheme.step).decimals();
         for tick in layout.ticks.iter().chain(&shifted.ticks) {
             if let Some((_, fraction)) = tick.label.split_once('.') {
                 assert_eq!(fraction.len(), decimals, "{tick:?}, {scheme:?}");
@@ -438,9 +438,19 @@ fn large_retained_frequency_steps_preserve_the_unit_resolution() {
         ((2_f64.powi(30) + 0.000001) * 1e9, "1073741824.000000954"),
         ((2_f64.powi(49) + 0.25) * 1e9, "562949953421312.25"),
     ] {
-        let layout = tick_layout(AxisKind::Frequency, axis(2000, 0.9 * step, 1.1 * step), &across(&text), Some(TickScheme { step, span: 0.2 * step }));
+        let layout = tick_layout(AxisKind::Frequency, axis(2000, 0.9 * step, 1.1 * step), &across(&text), Some(TickScheme::new(step, 0.2 * step)));
         assert_eq!(layout.ticks.len(), 1);
         assert_eq!(layout.ticks[0].value, step);
         assert_eq!(layout.ticks[0].label, expected);
     }
+}
+
+#[test]
+fn retained_frequency_unit_survives_pan_across_magnitude_boundary() {
+    let text = DejaVuSans;
+    let first = tick_layout(AxisKind::Frequency, axis(1200, 998_000., 1_000_000.), &across(&text), None);
+    let scheme = first.scheme.unwrap();
+    let moved = tick_layout(AxisKind::Frequency, axis(1200, 1_001_000., 1_003_000.), &across(&text), Some(scheme));
+    assert_eq!(moved.scheme.unwrap().frequency_unit(), scheme.frequency_unit());
+    assert_eq!(scheme.frequency_unit(), Some(FrequencyUnit::KHz));
 }

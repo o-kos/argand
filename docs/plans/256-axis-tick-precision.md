@@ -134,7 +134,7 @@ evidence/plan update changes documentation only.
 | CLI spectrogram and PSD ticks/captions/gutters | CLI `render`, core `axis` | Same core policy and final measured text, canonical ASCII numbers |
 | Cursor status and Alt frequency badge | app `axes/cursor_guides` | Device-pixel precision, shared readout and width-cache key |
 | Selection edge/width badges, inline inputs, panel | app `navigation/selection_entry`, `shell/badge_entry`, `shell/plot` | Edges retain physical offset translation, width independent of absolute origin, explicit suffix overrides displayed default unit |
-| File/status sample rate, declared reference and hints | app `document` | Fixed-value context and existing measurement resolution, independent of viewport |
+| File/status sample rate, declared reference and hints | app `document` | Shared document unit with exact canonical metadata precision, independent physical values |
 | Effective-reference status and property editor | app `shell/reference_ui` | Whole-Hz commit range and 1 Hz steps, unchanged draft preserves original Hz |
 | Conversion sample-rate and carrier editors | app `shell/conversion_ui`, shared `NumericEditor` | Physical Hz bounds/step, existing draft transaction and carrier meaning, unchanged text cannot round-trip through a rounded display |
 | Conversion retained-band warning | app `shell/conversion_ui` | One common unit for range endpoints, source-local frequency semantics |
@@ -210,10 +210,10 @@ The Hz floor preserves existing fine precision without adding a new SI family.
 - [x] Inventory every human frequency consumer and machine-contract exclusion.
 - [x] Record the owner-approved three-digit unit examples and role/risk assignment.
 - [x] Record the owner's common-unit decision for all human-facing frequencies.
-- [ ] Implement the shared immutable frequency presentation policy and value cases.
-- [ ] Integrate accepted/retained axis formats and GUI/CLI captions/measurements.
-- [ ] Integrate cursor/status/Alt and all selection display/input consumers.
-- [ ] Integrate fixed metadata, shared frequency editors, hints, warnings and human CLI.
+- [x] Implement the shared immutable frequency presentation policy and value cases.
+- [x] Integrate accepted/retained axis formats and GUI/CLI captions/measurements.
+- [x] Integrate cursor/status/Alt and all selection display/input consumers.
+- [x] Integrate fixed metadata, shared frequency editors, hints, warnings and human CLI.
 - [ ] Synchronize current architecture, changelog, Issue and PR scope/evidence.
 - [ ] Refresh fmt, all-target Clippy, locked tests and then production release build.
 - [ ] Complete the new expanded-scope independent review under the same role defaults.
@@ -241,3 +241,23 @@ The owner subsequently approved new functionality. A new review cycle covers the
 new plan and exact expanded snapshot with the same reviewer assignment and a
 maximum of three rounds, retaining previous findings and dispositions as context.
 This is not an additional attempt to bypass unresolved earlier findings.
+
+
+### Expanded implementation checkpoint
+
+The shared core policy and all inventoried human frequency consumers are integrated.
+Shell derives the common unit from canonical coordinate extents and accepted device
+geometry. Frequency-size changes clear the retained scheme, including the first
+layout; panning retains the accepted unit. Auxiliary resolution hints use the same
+unit with their own precision. Fixed metadata and editable fields retain canonical
+Hz precision, and NumericEditor preserves untouched physical values independently
+of its localized draft text. CLI human report and image share one context, while
+changing presentation leaves serialized JSON unchanged. Pre-layout CLI gutter
+bounds conservatively cover all permitted units before the final geometry exists.
+
+Incremental evidence: the app suite passed 579 tests before the final bounded-layout
+test was added; that new test passed separately across both orientations and seven
+near-threshold spans. Core passed 43 tests, CLI passed 51 unit tests and 24 integration
+tests. These are incremental checks, not the final full gate. Full fmt/Clippy/tests,
+release build, fresh independent review and production Xvfb evidence remain pending.
+The previous three-round clean review does not cover this expanded implementation.

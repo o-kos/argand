@@ -69,30 +69,23 @@ struct Editor {
     _subscriptions: Vec<Subscription>,
 }
 
-fn value(input: &InputState) -> Option<f64> {
-    let compact: String = input
-        .value()
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .collect();
-    crate::numbers::parse::<f64>(&compact)
-        .ok()
-        .filter(|v| v.is_finite() && (0. ..=f64::from(u32::MAX)).contains(v))
-        .map(f64::round)
-}
-
 fn panel(owner: WeakEntity<Shell>, window: &mut Window, cx: &mut gpui_kit::App) -> AnyView {
-    let (document, opened) = owner
+    let (document, opened, unit) = owner
         .upgrade()
         .and_then(|owner| {
             let shell = owner.read(cx);
-            Some((shell.file.as_ref()?.id, shell.editing()?.reference()))
+            Some((
+                shell.file.as_ref()?.id,
+                shell.editing()?.reference(),
+                shell.frequency_unit(),
+            ))
         })
-        .unwrap_or((0, 0.));
+        .unwrap_or((0, 0., argand_core::frequency::FrequencyUnit::Hz));
     cx.new(|cx| {
         let number = cx.new(|cx| {
-            NumericEditor::new(
-                crate::numbers::number(opened.round()),
+            NumericEditor::frequency(
+                opened,
+                unit,
                 numeric_editor::Config {
                     unit: "Hz",
                     integer: true,
@@ -149,7 +142,7 @@ impl Editor {
     }
 
     fn commit(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let Some(value) = value(self.input.read(cx)) else {
+        let Some(value) = self.number.read(cx).value_hz(cx) else {
             self.refused = true;
             cx.notify();
             return false;
@@ -167,11 +160,8 @@ impl Editor {
         self.refused = !accepted;
         if accepted {
             self.opened = value;
-            let shown = crate::numbers::number(value);
-            if self.input.read(cx).value().as_ref() != shown {
-                self.input
-                    .update(cx, |input, cx| input.set_value(shown, window, cx));
-            }
+            self.number
+                .update(cx, |number, cx| number.set_hz(value, window, cx));
         }
         cx.notify();
         accepted
@@ -184,7 +174,13 @@ impl Render for Editor {
             .owner
             .upgrade()
             .is_some_and(|owner| self.is_current(owner.read(cx)));
-        let valid = value(self.input.read(cx));
+        if let Some(owner) = self.owner.upgrade() {
+            let unit = owner.read(cx).frequency_unit();
+            self.number.update(cx, |number, cx| {
+                number.sync_frequency_unit(unit, window, cx)
+            });
+        }
+        let valid = self.number.read(cx).value_hz(cx);
         self.number
             .update(cx, |number, cx| number.set_disabled(!editable, cx));
         if !self.placed {
@@ -226,9 +222,22 @@ impl Render for Editor {
             .child(presentation::row("Frequency", self.number.clone(), cx))
             .when(valid.is_none() || self.refused, |panel| {
                 panel.child(div().text_color(cx.theme().danger).child(if !editable {
-                    "Reference editing is unavailable"
+                    "Reference editing is unavailable".to_owned()
                 } else {
-                    "Enter a frequency from 0 to 4 294 967 295 Hz"
+                    format!(
+                        "Enter a frequency from 0 to {}",
+                        crate::numbers::text(
+                            &argand_core::frequency::FrequencyFormat::exact(
+                                self.owner
+                                    .upgrade()
+                                    .map_or(argand_core::frequency::FrequencyUnit::Hz, |owner| {
+                                        owner.read(cx).frequency_unit()
+                                    }),
+                                f64::from(u32::MAX)
+                            )
+                            .with_unit(f64::from(u32::MAX))
+                        )
+                    )
                 }))
             })
     }
@@ -256,11 +265,19 @@ impl Shell {
         let reference = self.editing()?.reference();
         Some(
             settings_ui::separated_status_item("reference-summary", cx)
-                .child(self.status_panel_control(
-                    StatusPanel::Reference,
-                    crate::numbers::text(&argand_core::format_hz(reference)),
-                    cx,
-                ))
+                .child(
+                    self.status_panel_control(
+                        StatusPanel::Reference,
+                        crate::numbers::text(
+                            &argand_core::frequency::FrequencyFormat::exact(
+                                self.frequency_unit(),
+                                reference,
+                            )
+                            .with_unit(reference),
+                        ),
+                        cx,
+                    ),
+                )
                 .into_any_element(),
         )
     }

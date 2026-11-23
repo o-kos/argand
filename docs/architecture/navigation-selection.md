@@ -89,8 +89,17 @@ displayed unit, bounded by that unit's resolution. Fractional labels retain trai
 zeros, while integer labels have no decimal part. Localization precedes measurement
 and collision checks for both fresh and retained schemes.
 
-`axis::TickScheme` retains the selected division spacing and clock-format span while
-panning. Zoom, file opening and width changes release that scheme for fresh layout.
+Shell selects one common frequency unit from the requested physical band and the
+finest coordinate resolution per accepted device pixel. More than three fractional
+digits selects the next smaller unit, with Hz as the floor. All visible frequency
+values use this unit, including file/reference/sample-rate/carrier fields, widths
+and auxiliary hints. Auxiliary measurements and exact metadata retain their own
+precision, which can exceed three digits in that common unit. Formatting does not
+change physical Hz, persistence, analysis, or source identity. CLI report and image
+share an equivalent context; JSON and arguments retain physical Hz.
+
+`axis::TickScheme` retains the selected frequency unit, division spacing and clock-format span while
+panning. Zoom, file opening and corresponding axis-size changes release that scheme for fresh layout.
 If wider labels collide after a pan, the grid remains stable and colliding label text
 is omitted. Left/Right pan by one measured division; Ctrl+Left/Right by five.
 `navigation::TickPan` accumulates divisions before sample rounding, preventing drift
@@ -245,10 +254,10 @@ the other axis therefore has its badges at the plot's edges. `time_ruler::Mode::
 in the ruler's mode with the decimals one pixel of the visible time tells apart, as the Alt
 badges do, never more than one sample needs, the clock with the fields the capture's own
 length needs; `Scale::band_texts` gives the band's as numbers in the frequency ruler's unit, which
-only the ruler names for its edges. The width independently chooses Hz/kHz/MHz and
-includes the unit, also in its badge input and selection-panel field. Its bare
-input and last-digit step use that displayed unit; an explicit frequency suffix
-selects its own unit. Width precision retains the ruler's hertz resolution.
+only the ruler names for its edges. The width uses the same document unit and
+includes it in its badge input and selection-panel field. Bare input and last-digit
+steps use the displayed unit; an explicit frequency suffix selects its own unit.
+Width precision retains the coordinate family's hertz resolution.
 The extent badge sits on a dimension line (`selection_badges::Dimension`),
 a paper stroke around an ink core like the Alt guides, running from edge to edge of the
 visible selection with an arrowhead at each edge in view. Where the badge and its arrowheads do

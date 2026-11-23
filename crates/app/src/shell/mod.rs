@@ -1249,6 +1249,9 @@ impl Shell {
             "the plot was laid out"
         );
         let width_changed = self.plot.is_none_or(|old| old.width != plot.width);
+        if self.plot.is_none_or(|old| old.height != plot.height) {
+            self.frequency_scheme = None;
+        }
         self.plot = Some(plot);
         if width_changed {
             self.time_scheme = None;
@@ -1264,9 +1267,31 @@ impl Shell {
     /// `None` until the file has been opened. The extents come from the file
     /// rather than from a finished analysis so that the labels can be measured,
     /// and the plot sized, before the first transform runs.
+    pub(super) fn frequency_unit(&self) -> argand_core::frequency::FrequencyUnit {
+        use argand_core::frequency::FrequencyUnit;
+        if let Some(unit) = self
+            .frequency_scheme
+            .and_then(|scheme| scheme.frequency_unit())
+        {
+            return unit;
+        }
+        let Some(meta) = self
+            .file
+            .as_ref()
+            .and_then(|file| file.state.document.meta())
+        else {
+            return FrequencyUnit::Hz;
+        };
+        let (low, high) = self.frequency.hertz(meta.frequency_span());
+        let offset = self.frequency_offset();
+        let pixels = self.plot.map_or(1, |plot| plot.height.max(1));
+        FrequencyUnit::coordinates(low + offset, high + offset, (high - low) / pixels as f64)
+    }
+
     fn extents(&self) -> Option<axes::Extents> {
         let meta = self.file.as_ref()?.state.document.meta()?;
         Some(axes::Extents {
+            frequency_unit: self.frequency_unit(),
             orientation: self.session.orientation,
             time: crate::navigation::time_ruler::Ruler {
                 mode: self.session.time_ruler,
@@ -1958,6 +1983,10 @@ impl gpui_kit::base::RootPlugin for FrameObserver {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let frequency_unit = self.frequency_unit();
+        if let Some(file) = &mut self.file {
+            file.state.document.set_frequency_unit(frequency_unit);
+        }
         self.prepare_statistics(window, cx);
         if self.upload_pending {
             self.upload_pending = false;

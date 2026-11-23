@@ -196,8 +196,14 @@ impl Shell {
             && argand_io::write::writes_as_wave(output, &argand_io::OpenHints::default()))
         .then(|| {
             format!(
-                "as WAV, the FLAC encoder cannot write {} Hz",
-                crate::numbers::number(output.sample_rate)
+                "as WAV, the FLAC encoder cannot write {}",
+                crate::numbers::text(
+                    &argand_core::frequency::FrequencyFormat::exact(
+                        self.frequency_unit(),
+                        output.sample_rate
+                    )
+                    .with_unit(output.sample_rate)
+                )
             )
         });
         let (job, updates) = saving::start(request, of.over);
@@ -233,7 +239,12 @@ impl Shell {
         let named_band =
             argand_core::FrequencyBand::between(band.low() + offset, band.high() + offset)
                 .unwrap_or(band);
-        let mut name = saving::suggested_band_name(&display, self.selection, named_band);
+        let mut name = saving::suggested_band_name(
+            &display,
+            self.selection,
+            named_band,
+            self.frequency_unit(),
+        );
         if container == Some(argand_io::write::Container::Flac) {
             name = std::path::Path::new(&name)
                 .with_extension("flac")

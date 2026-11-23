@@ -8,6 +8,7 @@ pub mod adjustment;
 pub mod axis;
 pub mod colormap;
 pub mod fmt;
+pub mod frequency;
 pub mod sample;
 pub mod selection;
 pub mod signal;

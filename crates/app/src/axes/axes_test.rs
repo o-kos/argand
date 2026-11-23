@@ -10,6 +10,7 @@ fn panel(width: f32, height: f32) -> Size<Pixels> {
 /// The two-sided span of a 24 kHz I/Q capture tuned to 12.579 MHz, half an
 /// hour long -- the repository's own fixture.
 const HFDL: Extents = Extents {
+    frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
     frequency_offset: 0.,
     orientation: crate::navigation::orientation::Mode::Horizontal,
     time: crate::navigation::time_ruler::Ruler::CLOCK,
@@ -61,6 +62,7 @@ fn a_real_capture_is_labelled_from_zero_up_and_a_complex_one_either_side() {
     let real = measure(
         panel(1200.0, 800.0),
         Extents {
+            frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
             frequency_offset: 0.,
             orientation: crate::navigation::orientation::Mode::Horizontal,
             time: crate::navigation::time_ruler::Ruler::CLOCK,
@@ -147,6 +149,7 @@ impl LabelMeasure for WideDigits {
 #[test]
 fn fractional_dpi_keeps_complete_frequency_labels_inside_the_panel() {
     let extents = Extents {
+        frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
         frequency_offset: 0.,
         orientation: crate::navigation::orientation::Mode::Horizontal,
         time: crate::navigation::time_ruler::Ruler::CLOCK,
@@ -175,6 +178,7 @@ fn unit_resolution_uses_device_pixels_current_view_and_caption_units() {
     let mut extents = HFDL;
     extents.seconds = (10., 12.);
     extents.hertz = (-12_000., 12_000.);
+    extents.frequency_unit = argand_core::frequency::FrequencyUnit::KHz;
     extents.time.view = crate::navigation::View {
         start: 10_000,
         len: 48_000,
@@ -220,6 +224,7 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
     ] {
         for scale in [1., 1.25, 2.] {
             let extents = Extents {
+                frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
                 orientation: Mode::Vertical,
                 time: crate::navigation::time_ruler::Ruler {
                     mode,
@@ -272,27 +277,24 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
 }
 
 #[test]
-fn frequency_resolution_selects_units_independently_of_the_ruler() {
+fn frequency_resolution_keeps_the_common_unit_and_auxiliary_precision() {
     let hint = measure(panel(800., 600.), HFDL).unit_hints(&DejaVuSans)[1].unwrap();
-    for (scale, units) in [(1., "Hz"), (1e3, "kHz"), (1e6, "MHz"), (1e9, "GHz")] {
-        for (hertz, expected) in [
-            (0.496, "0.496 Hz"),
-            (1e-12, "1e-12 Hz"),
-            (1.234e-12, "1.234e-12 Hz"),
-            (0., "0 Hz"),
-            (999., "999 Hz"),
-            (1000., "1 kHz"),
-            (4960., "4.96 kHz"),
-            (1e6, "1 MHz"),
-            (1e9, "1 GHz"),
-        ] {
-            let hint = UnitHint {
-                per_pixel: hertz / scale,
+    for (units, value, expected) in [
+        ("Hz", 1000., "1,000 Hz"),
+        ("kHz", 0.000496, "0.000496 kHz"),
+        ("MHz", 0.000000496, "0.000000496 MHz"),
+        ("GHz", 0.000000000496, "4.96e-10 GHz"),
+        ("Hz", 0., "0 Hz"),
+    ] {
+        assert_eq!(
+            UnitHint {
+                per_pixel: value,
                 units,
                 ..hint
-            };
-            assert_eq!(hint.resolution(), format!("Resolution: {expected}/px"));
-        }
+            }
+            .resolution(),
+            format!("Resolution: {expected}/px")
+        );
     }
     let localized = crate::numbers::Numbers::new("ru-RU").text(
         &UnitHint {
@@ -302,7 +304,7 @@ fn frequency_resolution_selects_units_independently_of_the_ruler() {
         }
         .resolution(),
     );
-    assert_eq!(localized, "Resolution: 0,496 Hz/px");
+    assert_eq!(localized, "Resolution: 0,000496 kHz/px");
 }
 
 fn assert_vertical_time_clearance(frame: &Frame) {
@@ -316,5 +318,42 @@ fn assert_vertical_time_clearance(frame: &Frame) {
         assert!(center + half_ink <= bottom - OUTER_PAD);
         assert!(center - half_ink - previous_end >= DejaVuSans.width("00", LABEL_SIZE));
         previous_end = center + half_ink;
+    }
+}
+
+#[test]
+fn common_frequency_unit_stabilizes_after_first_layout_near_precision_thresholds() {
+    use crate::navigation::orientation::Mode;
+    use argand_core::frequency::FrequencyUnit;
+    for orientation in [Mode::Horizontal, Mode::Vertical] {
+        for span in [499_999., 500_000., 500_001., 599., 600., 601., 24_000.] {
+            let mut extents = Extents {
+                orientation,
+                hertz: (-span / 2., span / 2.),
+                frequency_offset: 12_590_000.,
+                frequency_unit: FrequencyUnit::MHz,
+                ..HFDL
+            };
+            let mut previous = None;
+            for pass in 0..4 {
+                let frame =
+                    Frame::measure(panel(800., 600.), 1., extents, &DejaVuSans, None).unwrap();
+                let pixels = if orientation.vertical() {
+                    frame.plot.width
+                } else {
+                    frame.plot.height
+                };
+                let unit = FrequencyUnit::coordinates(
+                    12_590_000. - span / 2.,
+                    12_590_000. + span / 2.,
+                    span / f64::from(pixels.round()),
+                );
+                if pass >= 2 {
+                    assert_eq!(Some(unit), previous, "{orientation:?}, span {span}");
+                }
+                previous = Some(unit);
+                extents.frequency_unit = unit;
+            }
+        }
     }
 }

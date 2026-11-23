@@ -274,7 +274,7 @@ fn a_bare_width_draft_steps_in_its_opened_unit_across_the_kilohertz_boundary(
     toggle(cx, &shell);
     keys(cx, "shift-tab 0 . 5 up");
     let band = selected(cx, &shell).band.unwrap();
-    assert_eq!((band.low(), band.high()), (-500., 100.));
+    assert_eq!((band.low(), band.high()), (-500., -499.4));
 }
 
 #[gpui_kit::test]

@@ -617,7 +617,8 @@ impl Shell {
         let view = self.view?;
         let extents = self.extents()?;
         let (low, high) = extents.displayed_hertz();
-        let (unit, divisor) = axes::frequency_unit((low, high));
+        let frequency_unit = self.frequency_unit();
+        let (unit, divisor) = (frequency_unit.symbol(), frequency_unit.divisor());
         let plot = self.plot;
         let columns = plot.map_or(1, |plot| plot.width.max(1));
         let rows = plot.map_or(1, |plot| plot.height.max(1));
@@ -628,7 +629,11 @@ impl Shell {
             seconds_per_pixel: view.len as f64 / meta.sample_rate / columns as f64,
             unit,
             divisor,
-            decimals: crate::navigation::time_precision((high - low) / rows as f64 / divisor),
+            decimals: argand_core::frequency::FrequencyFormat::resolution(
+                frequency_unit,
+                (high - low) / rows as f64,
+            )
+            .decimals(),
             band: self.capture_band()?,
             frequency_offset: self.frequency_offset(),
         })

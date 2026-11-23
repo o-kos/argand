@@ -332,7 +332,10 @@ summaries (#185), including 0 Hz. Its standard Button has a Reference frequency
 tooltip and opens the shared pinned property panel on click. The panel composes
 the existing NumericEditor (standard Input/steppers). Edit → Reference frequency…
 opens the same panel. Enter/blur/steps commit whole-Hz metadata changes from 0 through u32::MAX,
-without recomputing analysis; typing preserves draft text/cursor and localized
+without recomputing analysis; frequency inputs show the common document unit while
+bounds and steps remain in physical Hz. Focused or dirty drafts retain their unit
+until commit, explicit suffixes override it, and unchanged text preserves the original
+canonical Hz instead of reparsing rounded display text. Typing preserves draft text/cursor and localized
 whitespace grouping. Escape dismisses the panel. Invalid or stale input cannot
 change a different document or overwrite an external reference change. Editing
 availability includes changed-source, replacement and busy guards. The normal Save

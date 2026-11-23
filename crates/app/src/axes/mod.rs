@@ -14,13 +14,14 @@
 //! running one. [`Labels`] and [`paint`] need both.
 
 use argand_core::axis::{self, Axis, AxisKind, LabelMeasure, LabelMetrics, LabelRun, Tick};
+use argand_core::frequency::{FrequencyFormat, FrequencyUnit};
 use gpui_kit::{
     App, Bounds, Font, FontId, Hsla, Pixels, Point, Size, Window, fill, point, px, size,
 };
 
 mod cursor_guides;
 pub(crate) use cursor_guides::Readout;
-pub use cursor_guides::{BadgeMetrics, CursorGuides, frequency_unit};
+pub use cursor_guides::{BadgeMetrics, CursorGuides};
 
 mod selection_badges;
 pub use selection_badges::{AxisBadges, PlacedBadges, SelectionBadges};
@@ -55,6 +56,7 @@ pub(crate) const LABEL_SIZE: f32 = 11.0;
 /// it is that room which decides how many columns the transform is asked for.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Extents {
+    pub frequency_unit: FrequencyUnit,
     pub orientation: crate::navigation::orientation::Mode,
     pub time: crate::navigation::time_ruler::Ruler,
     pub seconds: (f64, f64),
@@ -128,18 +130,14 @@ impl UnitHint {
             "GHz" => Some(1e9),
             _ => None,
         };
-        let (value, units) = frequency_scale.map_or((self.per_pixel, self.units), |scale| {
-            let hertz = self.per_pixel * scale;
-            let (divisor, units) = [(1e9, "GHz"), (1e6, "MHz"), (1e3, "kHz")]
-                .into_iter()
-                .find(|(divisor, _)| hertz >= *divisor)
-                .unwrap_or((1., "Hz"));
-            (hertz / divisor, units)
-        });
+        let (value, units) = (self.per_pixel, self.units);
         let mut number = if value > 0. && !(1e-9..1e9).contains(&value) {
             format!("{value:.3e}")
         } else {
-            let decimals = (3. - value.log10().floor()).clamp(0., 12.) as usize;
+            let hertz = frequency_scale.map_or(value, |scale| value * scale);
+            let physical_decimals = (3. - hertz.log10().floor()).clamp(0., 12.) as usize;
+            let exponent = frequency_scale.map_or(0, |scale| scale.log10() as usize);
+            let decimals = physical_decimals + exponent;
             format!("{value:.decimals$}")
         };
         if frequency_scale.is_some() && number.contains('.') {
@@ -252,7 +250,7 @@ impl Frame {
         let vertical = orientation.vertical();
         let (t0, t1) = extents.time.bounds(extents.seconds);
         let (f0, f1) = extents.displayed_hertz();
-        let caption = axis::caption(AxisKind::Frequency, f0, f1);
+        let caption = Some(extents.frequency_unit.symbol());
         let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
         let foot = bottom_band(measure);
         let scale = if scale > 0. { scale } else { 1. };
@@ -272,7 +270,7 @@ impl Frame {
         };
         let bottom_center = bottom_row_center(panel, height);
         let (lead, trail) = right_label_room(vertical, height, bottom_center, row_height, measure);
-        let right_ticks = axis::tick_layout(
+        let right_ticks = axis::tick_layout_in(
             right_kind,
             Axis {
                 length: height as i64,
@@ -283,6 +281,7 @@ impl Frame {
             },
             &right_labels,
             right_held,
+            Some(extents.frequency_unit),
         );
         let gutter = ruler_gutter(&right_ticks.ticks, caption, measure).max(held.gutter);
         let left = if vertical { 0. } else { ceil(OUTER_PAD) };
@@ -304,7 +303,7 @@ impl Frame {
         let across = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across)
             .keep_edge_marks()
             .after_tick(BOTTOM_LABEL_START);
-        let bottom_ticks = axis::tick_layout(
+        let bottom_ticks = axis::tick_layout_in(
             bottom_kind,
             Axis {
                 length: plot.width as i64,
@@ -315,6 +314,7 @@ impl Frame {
             },
             &across,
             bottom_held,
+            Some(extents.frequency_unit),
         );
         let (time, frequency) = if vertical {
             (right_ticks, bottom_ticks)

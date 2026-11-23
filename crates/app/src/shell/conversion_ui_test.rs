@@ -1326,7 +1326,7 @@ fn opening_a_real_source_discards_old_carrier_drafts_and_derives_reverse_default
         assert_eq!(request.output.center_freq, 0.);
         assert_eq!(
             editor.reference.read(cx).value().as_ref(),
-            crate::numbers::number(12000.)
+            crate::numbers::number(12.)
         );
         assert!(editor.summary(cx).unwrap().is_empty());
     });

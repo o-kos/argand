@@ -205,8 +205,9 @@ struct Editor {
     source_stamp: Option<argand_io::write::SourceStamp>,
     rate: Entity<InputState>,
     rate_editor: Entity<NumericEditor>,
-    reference: Entity<InputState>,
     reference_editor: Entity<NumericEditor>,
+    #[cfg(test)]
+    reference: Entity<InputState>,
     reference_iq: bool,
     container: Entity<SelectState<Vec<Name>>>,
     container_widths: Vec<Pixels>,
@@ -233,8 +234,9 @@ fn frequency_editor(
     cx: &mut gpui_kit::App,
 ) -> Entity<NumericEditor> {
     cx.new(|cx| {
-        NumericEditor::new(
-            crate::numbers::number(value),
+        NumericEditor::frequency(
+            value,
+            argand_core::frequency::FrequencyUnit::Hz,
             numeric_editor::Config {
                 integer: false,
                 unit: "Hz",
@@ -312,6 +314,7 @@ impl Editor {
             editor.set_disabled(request.output.is_iq() == request.input.is_iq(), cx)
         });
         let rate = rate_editor.read(cx).input.clone();
+        #[cfg(test)]
         let reference = reference_editor.read(cx).input.clone();
         let (kind, unavailable_kind, kind_widths) = sample_kind_picker(&request, window, cx);
         let (container, container_widths) = container_picker(&request, window, cx);
@@ -365,8 +368,9 @@ impl Editor {
             container_widths,
             rate,
             rate_editor,
-            reference,
             reference_editor,
+            #[cfg(test)]
+            reference,
             kind,
             kind_widths,
             unavailable_kind,
@@ -433,9 +437,8 @@ impl Editor {
             }
             if reference_changed && self.reference_iq == self.request.input.is_iq() {
                 self.request.output.center_freq = reference;
-                self.reference.update(cx, |input, cx| {
-                    input.set_value(crate::numbers::number(reference), window, cx)
-                });
+                self.reference_editor
+                    .update(cx, |editor, cx| editor.set_hz(reference, window, cx));
             }
         }
         if let Some(owner) = &self.owner
@@ -514,20 +517,21 @@ impl Editor {
         } else {
             (source.sample_rate / 2.0, source.sample_rate / 4.0)
         };
-        self.rate.update(cx, |input, cx| {
-            input.set_value(crate::numbers::number(rate), window, cx)
-        });
-        self.reference.update(cx, |input, cx| {
-            input.set_value(crate::numbers::number(reference), window, cx)
-        });
+        self.rate_editor
+            .update(cx, |editor, cx| editor.set_hz(rate, window, cx));
+        self.reference_editor
+            .update(cx, |editor, cx| editor.set_hz(reference, window, cx));
         self.reference_editor
             .update(cx, |editor, cx| editor.set_disabled(locked, cx));
     }
 
     fn request(&self, cx: &gpui_kit::App) -> Result<Request, String> {
         let mut request = self.request.clone();
-        request.output.sample_rate = crate::numbers::parse(self.rate.read(cx).value().as_ref())
-            .map_err(|_| "Enter a positive finite sample rate in Hz".to_string())?;
+        request.output.sample_rate = self
+            .rate_editor
+            .read(cx)
+            .value_hz(cx)
+            .ok_or_else(|| "Enter a positive finite sample rate".to_string())?;
         let selected = self.kind_value(cx).ok_or("Choose a sample type")?;
         request.output.sample_type =
             sample_type_for_label(selected).ok_or("Choose a supported sample type")?;
@@ -535,8 +539,11 @@ impl Editor {
             request.carrier = None;
             request.input.center_freq
         } else {
-            let carrier = crate::numbers::parse(self.reference.read(cx).value().as_ref())
-                .map_err(|_| "Enter a finite reference carrier in Hz".to_string())?;
+            let carrier = self
+                .reference_editor
+                .read(cx)
+                .value_hz(cx)
+                .ok_or_else(|| "Enter a finite reference carrier".to_string())?;
             request.carrier = Some(carrier);
             crate::processing::conversion::validate_carrier(
                 &request.input,
@@ -700,14 +707,35 @@ impl Editor {
             ))
     }
 
+    fn frequency_unit(&self, cx: &gpui_kit::App) -> argand_core::frequency::FrequencyUnit {
+        self.owner
+            .as_ref()
+            .and_then(|owner| owner.upgrade())
+            .map_or(argand_core::frequency::FrequencyUnit::Hz, |owner| {
+                owner.read(cx).frequency_unit()
+            })
+    }
+
     fn summary(&self, cx: &gpui_kit::App) -> Result<String, String> {
         let request = self.request(cx)?;
         let plan = request.plan().map_err(|error| error.to_string())?;
         if !plan.retains_input_band() {
             return Ok(format!(
-                "Input frequencies outside {} … {} Hz will be discarded",
-                crate::numbers::number(plan.local_input_band().0),
-                crate::numbers::number(plan.local_input_band().1)
+                "Input frequencies outside {} … {} will be discarded",
+                crate::numbers::text(
+                    &argand_core::frequency::FrequencyFormat::exact(
+                        self.frequency_unit(cx),
+                        plan.local_input_band().0
+                    )
+                    .format(plan.local_input_band().0)
+                ),
+                crate::numbers::text(
+                    &argand_core::frequency::FrequencyFormat::exact(
+                        self.frequency_unit(cx),
+                        plan.local_input_band().1
+                    )
+                    .with_unit(plan.local_input_band().1)
+                )
             ));
         }
         Ok(String::new())
@@ -717,6 +745,13 @@ impl Editor {
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.prepare(window, cx);
+        let unit = self.frequency_unit(cx);
+        self.rate_editor.update(cx, |editor, cx| {
+            editor.sync_frequency_unit(unit, window, cx)
+        });
+        self.reference_editor.update(cx, |editor, cx| {
+            editor.sync_frequency_unit(unit, window, cx)
+        });
         let tips = !presentation::select_open(&self.container, &self.closed_selects[0], cx)
             && !presentation::select_open(&self.kind, &self.closed_selects[1], cx);
         let summary = self.summary(cx);

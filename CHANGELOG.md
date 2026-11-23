@@ -35,8 +35,9 @@ promise applies to.
 
 ### Fixed
 
-- Use consistent fractional precision for frequency-axis ticks while keeping
-  integer labels free of decimal zeros (#256).
+- Share one precision-aware frequency unit across rulers, readouts, selections,
+  metadata fields and reports. Use smaller units for fine coordinate precision,
+  keep fractional tick precision consistent and leave integers bare (#256).
 
 - Keep held plot and ruler drags active when longer tick labels resize the plot.
 - Start new plot drags from the latest requested view when input arrives between frames.
