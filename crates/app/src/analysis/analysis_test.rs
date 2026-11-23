@@ -342,7 +342,15 @@ fn aggregation_replacement_rejects_stale_work_and_matches_the_requested_result()
     analyst.request(latest);
     assert!(!analyst.accepts(&stale));
     let mut source = argand_io::open(&path, &OpenHints::default()).unwrap();
-    let expected = argand_dsp::analyze(&mut *source, &latest, &mut |_, _| {}).unwrap();
+    let pool = execution::Settings {
+        workers: 2,
+        ..Default::default()
+    }
+    .pool()
+    .unwrap();
+    let expected = pool
+        .install(|| argand_dsp::analyze(&mut *source, &latest, &mut |_, _| {}))
+        .unwrap();
     loop {
         let delivery = updates.recv_blocking().unwrap();
         if !analyst.accepts(&delivery) {

@@ -49,10 +49,7 @@ const MEASURED_BINS: f64 = 32.0;
 pub struct SuppressPlan {
     /// The filter whose output the input loses, an odd number of taps centred on the middle one.
     taps: Vec<Complex32>,
-    rate: f64,
-    real: bool,
-    /// The band and the transition beside it, none when the band is the whole capture.
-    edges: Option<(f64, f64, f64)>,
+    band: BandGeometry,
     /// The filter the fill's noise takes, which with the band's residue keeps the background's power.
     noise_taps: Vec<Complex32>,
 }
@@ -68,42 +65,19 @@ impl SuppressPlan {
 
     /// Plan the suppression of `low..high` hertz in a capture at `rate`, as [`Self::check`] allows.
     pub fn new(rate: f64, low: f64, high: f64, real: bool) -> Result<Self, ExtractError> {
-        Self::check(rate, low, high, real)?;
-        let (taps, transition) = if real {
-            real_band_pass(rate, low, high)
+        let band = BandGeometry::new(rate, low, high, real)?;
+        let transition = band.edges.map(|(_, _, transition)| transition);
+        let taps = if real {
+            real_band_pass(rate, low, high, transition)
         } else {
-            complex_band_pass(rate, low, high)
+            complex_band_pass(rate, low, high, transition)
         };
         let (taps, noise_taps) = crossfade(&taps, real);
         Ok(Self {
             taps,
-            rate,
-            real,
-            edges: transition.map(|transition| (low, high, transition)),
+            band,
             noise_taps,
         })
-    }
-
-    /// The frequencies beside the band whose noise fills it, for a transform of `bins` bins.
-    ///
-    /// They start a few bins past the band's transitions, so a tone at the band's
-    /// edge does not leak into them, and stay inside the capture.
-    fn neighbours(&self, bins: usize) -> Vec<(f64, f64)> {
-        let Some((low, high, transition)) = self.edges else {
-            return Vec::new();
-        };
-        let resolution = self.rate / bins as f64;
-        let guard = transition + GUARD_BINS * resolution;
-        let extent = (high - low).max(MEASURED_BINS * resolution);
-        let floor = if self.real { 0.0 } else { -self.rate / 2.0 };
-        [
-            (low - guard - extent, low - guard),
-            (high + guard, high + guard + extent),
-        ]
-        .into_iter()
-        .map(|(from, to)| (from.max(floor), to.min(self.rate / 2.0)))
-        .filter(|(from, to)| from < to)
-        .collect()
     }
 
     /// Input samples the filter reads on each side of what it suppresses.
@@ -121,6 +95,54 @@ impl SuppressPlan {
     }
 }
 
+/// Shared band geometry, independent of FIR synthesis.
+#[derive(Debug, Clone)]
+struct BandGeometry {
+    rate: f64,
+    real: bool,
+    /// None when the band is the whole capture.
+    edges: Option<(f64, f64, f64)>,
+}
+
+impl BandGeometry {
+    fn new(rate: f64, low: f64, high: f64, real: bool) -> Result<Self, ExtractError> {
+        check_band(rate, low, high, real)?;
+        let narrowest = rate * NARROWEST_TRANSITION;
+        let nyquist = rate / 2.0;
+        let room = if real {
+            match (low < narrowest, nyquist - high < narrowest) {
+                (true, true) => 0.0,
+                (true, false) => nyquist - high,
+                (false, true) => low,
+                (false, false) => low.min(nyquist - high),
+            }
+        } else {
+            (rate - (high - low)) / 2.0
+        };
+        let edges = (room >= narrowest).then(|| (low, high, transition(rate, high - low, room)));
+        Ok(Self { rate, real, edges })
+    }
+
+    /// Neighbours past the transitions and Hann leakage guard, inside the capture.
+    fn neighbours(&self, bins: usize) -> Vec<(f64, f64)> {
+        let Some((low, high, transition)) = self.edges else {
+            return Vec::new();
+        };
+        let resolution = self.rate / bins as f64;
+        let guard = transition + GUARD_BINS * resolution;
+        let extent = (high - low).max(MEASURED_BINS * resolution);
+        let floor = if self.real { 0.0 } else { -self.rate / 2.0 };
+        [
+            (low - guard - extent, low - guard),
+            (high + guard, high + guard + extent),
+        ]
+        .into_iter()
+        .map(|(from, to)| (from.max(floor), to.min(self.rate / 2.0)))
+        .filter(|(from, to)| from < to)
+        .collect()
+    }
+}
+
 /// The transition beside a band of `width` hertz, a quarter of it within `floor..room`.
 fn transition(rate: f64, width: f64, room: f64) -> f64 {
     let narrowest = rate * NARROWEST_TRANSITION;
@@ -128,20 +150,16 @@ fn transition(rate: f64, width: f64, room: f64) -> f64 {
 }
 
 /// A complex band-pass, the low-pass of half the band modulated to its centre, with its transition.
-fn complex_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<f64>) {
+fn complex_band_pass(rate: f64, low: f64, high: f64, transition: Option<f64>) -> Vec<Complex32> {
+    let Some(transition) = transition else {
+        return vec![Complex32::new(1.0, 0.0)];
+    };
     let width = high - low;
-    // The transitions on both sides of the band share what lies outside it.
-    let room = (rate - width) / 2.0;
-    if room < rate * NARROWEST_TRANSITION {
-        return (vec![Complex32::new(1.0, 0.0)], None);
-    }
-    let transition = transition(rate, width, room);
     let pass = width / 2.0 + EDGE_ROOM * transition;
     let lp = low_pass(rate, pass, width / 2.0 + transition, 1.0);
     let centre = (low + high) / 2.0;
     let half = (lp.len() / 2) as f64;
-    let taps = lp
-        .iter()
+    lp.iter()
         .enumerate()
         .map(|(k, &tap)| {
             let turn = std::f64::consts::TAU * centre * (k as f64 - half) / rate;
@@ -149,26 +167,20 @@ fn complex_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<
             let tap = f64::from(tap);
             Complex32::new((tap * cos) as f32, (tap * sin) as f32)
         })
-        .collect();
-    (taps, Some(transition))
+        .collect()
 }
 
 /// A real band-pass, the low-pass to `high` less the low-pass to `low`, both with their transitions outside the band.
 ///
 /// A band from 0 Hz needs no second term, and a band to Fs/2 makes the first a
 /// unit impulse, so no transition runs past the capture's edge.
-fn real_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<f64>) {
-    let narrowest = rate * NARROWEST_TRANSITION;
-    let nyquist = rate / 2.0;
-    let from_zero = low < narrowest;
-    let to_nyquist = nyquist - high < narrowest;
-    let room = match (from_zero, to_nyquist) {
-        (true, true) => return (vec![Complex32::new(1.0, 0.0)], None),
-        (true, false) => nyquist - high,
-        (false, true) => low,
-        (false, false) => low.min(nyquist - high),
+fn real_band_pass(rate: f64, low: f64, high: f64, transition: Option<f64>) -> Vec<Complex32> {
+    let Some(transition) = transition else {
+        return vec![Complex32::new(1.0, 0.0)];
     };
-    let transition = transition(rate, high - low, room);
+    let narrowest = rate * NARROWEST_TRANSITION;
+    let from_zero = low < narrowest;
+    let to_nyquist = rate / 2.0 - high < narrowest;
     let upper = if to_nyquist {
         vec![1.0]
     } else {
@@ -187,7 +199,7 @@ fn real_band_pass(rate: f64, low: f64, high: f64) -> (Vec<Complex32>, Option<f64
             tap.re += sign * value;
         }
     }
-    (taps, Some(transition))
+    taps
 }
 
 /// The filters a band's residue and its fill take, from the band-pass `taps`.
@@ -276,16 +288,20 @@ pub struct NoiseFloor {
 impl NoiseFloor {
     /// Prepare to measure the neighbours of `plan`'s band over a region of `len` samples.
     pub fn new(plan: &SuppressPlan, len: u64) -> Self {
+        Self::for_band(&plan.band, len)
+    }
+
+    fn for_band(band: &BandGeometry, len: u64) -> Self {
         let longest = usize::try_from(len).unwrap_or(usize::MAX).min(NOISE_FFT);
         let size = if longest >= SHORTEST_NOISE_FFT {
             1 << longest.ilog2()
         } else {
             0
         };
-        let neighbours = plan.neighbours(size.max(1));
+        let neighbours = band.neighbours(size.max(1));
         let bins: Vec<usize> = (0..size)
             .filter(|&k| {
-                let frequency = bin_frequency(k, size, plan.rate, plan.real);
+                let frequency = bin_frequency(k, size, band.rate, band.real);
                 frequency.is_some_and(|frequency| {
                     neighbours
                         .iter()
@@ -564,7 +580,7 @@ impl Suppressor {
             noise_work: Vec::new(),
             noise: Noise::new(0x5EED_A26A_7D00_0001),
             level: None,
-            real: plan.real,
+            real: plan.band.real,
             scratch,
             taps,
             margin,

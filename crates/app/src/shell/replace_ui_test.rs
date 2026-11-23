@@ -16,9 +16,18 @@ pub(in crate::shell) fn open_window(
         window_keys(cx);
         crate::theme::install(ThemeMode::Dark, cx);
     });
-    let (shell, cx) = cx.add_window_view(|window, cx| {
-        Shell::new(Config::default(), None, Session::default(), window, cx)
-    });
+    // Integration cases exercise parallel DSP without a machine-sized pool per window.
+    let config = Config {
+        analysis: crate::analysis::execution::Settings {
+            workers: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let (shell, cx) =
+        cx.add_window_view(|window, cx| Shell::new(config, None, Session::default(), window, cx));
+    // Ordinary file workflows keep logical layout; dedicated tests cover HiDPI.
+    cx.simulate_scale_factor_change(1.);
     cx.simulate_resize(gpui_kit::size(px(800.), px(600.)));
     (shell, cx)
 }
@@ -89,6 +98,7 @@ pub(in crate::shell) fn wait_until(
 
 #[gpui_kit::test]
 fn save_writes_the_edits_over_the_open_file_and_keeps_showing_it(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let dir = std::env::temp_dir().join(format!("argand-save-over-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -153,6 +163,7 @@ fn save_writes_the_edits_over_the_open_file_and_keeps_showing_it(cx: &mut TestAp
 
 #[gpui_kit::test]
 fn a_failed_replacement_keeps_the_edits_on_the_file(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let dir = std::env::temp_dir().join(format!("argand-restore-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -209,6 +220,7 @@ fn a_failed_replacement_keeps_the_edits_on_the_file(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_selected_band_saves_as_a_complex_capture_at_a_lower_rate(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let dir = std::env::temp_dir().join(format!("argand-save-band-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -250,6 +262,7 @@ fn a_selected_band_saves_as_a_complex_capture_at_a_lower_rate(cx: &mut TestAppCo
 
 #[gpui_kit::test]
 fn nothing_opens_or_closes_while_the_file_is_replaced(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     shell.update_in(cx, |shell, window, cx| {
         shell.replacement_active = true;
@@ -276,6 +289,7 @@ fn nothing_opens_or_closes_while_the_file_is_replaced(cx: &mut TestAppContext) {
 fn reference_edit_and_save_rebase_the_picture_and_band_without_changing_samples(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let dir = argand_io::testutil::TempDir::new("reference-save-rebind");
     let path = dir.join("capture.wav");
@@ -357,6 +371,7 @@ fn reference_edit_and_save_rebase_the_picture_and_band_without_changing_samples(
 fn reference_edits_do_not_change_recent_and_saved_zero_comes_from_the_file(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let dir = argand_io::testutil::TempDir::new("reference-recent");
     let path = dir.join("capture.wav");
@@ -430,6 +445,7 @@ fn reference_edits_do_not_change_recent_and_saved_zero_comes_from_the_file(
 fn saving_before_open_clears_the_published_files_recent_reference_override(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let dir = argand_io::testutil::TempDir::new("reference-pending-open");
     let path = dir.join("first.wav");
@@ -473,6 +489,7 @@ fn saving_before_open_clears_the_published_files_recent_reference_override(
 
 #[gpui_kit::test]
 fn metadata_undo_keeps_analysis_and_selected_bins(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let dir = argand_io::testutil::TempDir::new("reference-undo");
     let path = dir.join("capture.wav");
@@ -529,6 +546,7 @@ fn metadata_undo_keeps_analysis_and_selected_bins(cx: &mut TestAppContext) {
 fn failed_reference_publication_keeps_original_reader_basis_for_navigation_and_suppression(
     cx: &mut TestAppContext,
 ) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let dir = argand_io::testutil::TempDir::new("reference-failed-publication");
     let path = dir.join("capture.wav");
@@ -647,6 +665,7 @@ fn raw_fixture<'a>(
 
 #[gpui_kit::test]
 fn raw_reference_save_cancel_and_wave_rebind_preserve_source(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx, dir) = raw_fixture(cx, "raw-reference-wave");
     let raw = dir.join("capture.raw");
     let original = std::fs::read(&raw).unwrap();
@@ -715,6 +734,7 @@ fn raw_reference_save_cancel_and_wave_rebind_preserve_source(cx: &mut TestAppCon
 
 #[gpui_kit::test]
 fn raw_reference_undo_retains_headerless_sample_save_and_prompt_cancel(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx, dir) = raw_fixture(cx, "raw-reference-undo");
     let raw = dir.join("capture.raw");
     shell.update_in(cx, |shell, window, cx| {
@@ -762,6 +782,7 @@ fn raw_reference_undo_retains_headerless_sample_save_and_prompt_cancel(cx: &mut 
 
 #[gpui_kit::test]
 fn wave_save_rebind_uses_the_exported_whole_hertz_rate(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     let dir = argand_io::testutil::TempDir::new("whole-rate-rebind");
     let path = dir.join("capture.iqw");
@@ -823,6 +844,7 @@ fn wave_save_rebind_uses_the_exported_whole_hertz_rate(cx: &mut TestAppContext) 
 
 #[gpui_kit::test]
 fn headerless_save_preserves_an_unchanged_fractional_reference_hint(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx, dir) = raw_fixture(cx, "raw-fractional-reference");
     shell.update_in(cx, |shell, window, cx| {
         let mut origin = Origin::new(dir.join("capture.raw"));
@@ -868,6 +890,7 @@ fn headerless_save_preserves_an_unchanged_fractional_reference_hint(cx: &mut Tes
 
 #[gpui_kit::test]
 fn disabled_save_shortcut_is_inert_and_reenables_after_a_reference_edit(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open_window(cx);
     cx.update(|window, cx| Shell::bind_choose_file(shell.downgrade(), window.window_handle(), cx));
     let dir = argand_io::testutil::TempDir::new("save-shortcut-availability");

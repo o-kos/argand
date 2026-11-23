@@ -36,6 +36,17 @@ fn middle(out: &[[f32; 2]]) -> &[[f32; 2]] {
     &out[out.len() / 4..out.len() * 3 / 4]
 }
 
+/// Keep the checked middle half clear of FIR transients and cross several FFT partitions.
+fn steady_samples(plan: &ExtractPlan, partitions: usize) -> usize {
+    let margin = plan.margin() as usize;
+    let partition = plan.taps().len().next_power_of_two().clamp(256, fir::PARTITION);
+    let len = 4 * margin + partitions * partition + 17;
+    assert!(len / 4 > margin);
+    assert!(len > partitions * partition);
+    assert!(!len.is_multiple_of(partition), "keep a partial final partition");
+    len
+}
+
 fn magnitude([i, q]: [f32; 2]) -> f32 {
     i.hypot(q)
 }
@@ -139,8 +150,12 @@ fn a_span_whose_input_cannot_be_counted_is_refused() {
 #[test]
 fn a_real_band_just_above_0_hz_stops_the_mirror_of_its_lowest_tone() {
     let plan = ExtractPlan::new(RATE, 1.0, 2_001.0, true).unwrap();
-    // A 2 Hz tone's mirror lies 4 Hz below it, which the transition follows.
-    let input = span(96_000, 1, tone(2.0, 0.5));
+    // Real mixing halves both components. Bound the wanted error and mirror together.
+    let error = 0.25 * ((response(&plan, -999.0) - 2.0).abs() + response(&plan, -1003.0));
+    assert!(error < 0.005, "wanted and mirror amplitude error {error}");
+    // Scale the near-DC gap so streaming still tests actual mirror rejection.
+    let plan = ExtractPlan::new(RATE, 16.0, 2_016.0, true).unwrap();
+    let input = span(steady_samples(&plan, 2), 1, tone(32.0, 0.5));
     let out = extract(&plan, &input, 1, 4096);
     for &sample in middle(&out) {
         assert!((magnitude(sample) - 0.5).abs() < 0.005, "the mirror beats with the tone {sample:?}");
@@ -151,7 +166,12 @@ fn a_real_band_just_above_0_hz_stops_the_mirror_of_its_lowest_tone() {
 fn a_complex_band_a_few_hertz_short_of_the_whole_capture_is_filtered() {
     let plan = ExtractPlan::new(RATE, -23_990.0, 23_990.0, false).unwrap();
     assert!(plan.taps().len() > 1);
-    let input = span(96_000, 2, tone(23_997.0, 0.5));
+    let gain = response(&plan, 23_997.0);
+    assert!(gain < 1.8e-4, "near-whole filter gain {gain}");
+    // A wider native-edge gap keeps the streaming oracle clear of transients.
+    let plan = ExtractPlan::new(RATE, -23_840.0, 23_840.0, false).unwrap();
+    assert!(plan.taps().len() > 1);
+    let input = span(steady_samples(&plan, 2), 2, tone(23_952.0, 0.5));
     let out = extract(&plan, &input, 2, 4096);
     let peak = middle(&out).iter().map(|&s| magnitude(s)).fold(0.0, f32::max);
     assert!(peak < 0.5 * 1.8e-4, "leaks {peak}");
@@ -199,7 +219,7 @@ fn half_band_interpolation_keeps_native_samples_and_input_chunking_exact() {
     plan.interpolation = 2;
     plan.whole_export = true;
     plan.taps = half_sample_delay(1.0 / 1024.0);
-    let input = span(100_000, 2, tone(23_900.0, 0.5));
+    let input = span(steady_samples(&plan, 3), 2, tone(23_900.0, 0.5));
     let out = extract(&plan, &input, 2, 4096);
     for (n, sample) in input.as_chunks::<2>().0.iter().enumerate() {
         assert_eq!(out[2 * n].map(f32::to_bits), [sample[0].to_bits(), sample[1].to_bits()]);
@@ -221,7 +241,7 @@ fn a_whole_rf_band_keeps_both_native_edges_beyond_the_declared_guard() {
     let rate = 10_000_000.0;
     let frequency = rate * (0.5 - NARROWEST_TRANSITION);
     let plan = ExtractPlan::for_export(rate, -rate / 2.0, rate / 2.0, false).unwrap();
-    let input = span(4_000_000, 2, |n| {
+    let input = span(steady_samples(&plan, 2), 2, |n| {
         let phase = std::f64::consts::TAU * frequency * n as f64 / rate;
         [0.6 * phase.cos() as f32, 0.2 * phase.sin() as f32]
     });
@@ -273,7 +293,7 @@ fn a_tone_inside_the_native_guard_keeps_its_energy_in_tone_and_image() {
     let rate = 10_000_000.0;
     let frequency = rate / 2.0 - 20.0;
     let plan = ExtractPlan::for_export(rate, -rate / 2.0, rate / 2.0, false).unwrap();
-    let input = span(4_000_000, 2, |n| {
+    let input = span(steady_samples(&plan, 2), 2, |n| {
         let phase = std::f64::consts::TAU * frequency * n as f64 / rate;
         [0.5 * phase.cos() as f32, 0.5 * phase.sin() as f32]
     });
@@ -281,6 +301,8 @@ fn a_tone_inside_the_native_guard_keeps_its_energy_in_tone_and_image() {
     let mut wanted = rustfft::num_complex::Complex64::default();
     let mut image = rustfft::num_complex::Complex64::default();
     let count = out.len() / 2;
+    // Conservatively retain at least one 20 Hz near-edge modulation interval.
+    assert!(count as f64 / plan.output_rate() > 1.0 / 20.0);
     for (n, &[i, q]) in out.iter().enumerate().skip(out.len() / 4).take(count) {
         assert!(i.hypot(q) <= 0.501);
         let value = rustfft::num_complex::Complex64::new(f64::from(i), f64::from(q)) / count as f64;
@@ -296,9 +318,12 @@ fn a_tone_inside_the_native_guard_keeps_its_energy_in_tone_and_image() {
 
 #[test]
 fn whole_band_mixing_happens_after_interpolation() {
-    let mut plan = ExtractPlan::for_export(RATE, -RATE / 2.0, RATE / 2.0 - RATE / 65536.0, false).unwrap();
+    let mut plan = ExtractPlan::new(RATE, -RATE / 2.0, RATE / 2.0 - RATE / 65536.0, false).unwrap();
+    plan.interpolation = 2;
+    plan.whole_export = true;
+    plan.export = true;
     plan.taps = half_sample_delay(1.0 / 1024.0);
-    let input = span(100_000, 2, tone(23_000.0, 0.5));
+    let input = span(steady_samples(&plan, 3), 2, tone(23_000.0, 0.5));
     let out = extract(&plan, &input, 2, 4096);
     for (n, &[i, q]) in out.iter().enumerate().skip(out.len() / 4).take(out.len() / 2) {
         let phase = std::f64::consts::TAU * (23_000.0 - plan.centre()) * n as f64 / plan.output_rate();

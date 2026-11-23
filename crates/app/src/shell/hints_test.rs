@@ -144,6 +144,7 @@ fn nudge(cx: &mut VisualTestContext, harness: &Entity<Harness>) -> usize {
 
 #[gpui_kit::test]
 fn even_a_long_hover_never_opens_a_panel(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (harness, cx) = open_window(cx);
     cx.simulate_mouse_move(at(TRIGGER), None, Modifiers::default());
     cx.executor().advance_clock(Duration::from_secs(2));
@@ -158,6 +159,7 @@ fn even_a_long_hover_never_opens_a_panel(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn leaving_the_trigger_keeps_the_hint_open(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (harness, cx) = open_and_leave(cx);
     assert!(is_open(cx, &harness));
     assert_eq!(events(cx, &harness), [Pinned::Opened]);
@@ -165,6 +167,7 @@ fn leaving_the_trigger_keeps_the_hint_open(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn an_open_hint_keeps_the_plot_from_input(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (harness, cx) = open_and_leave(cx);
     assert_eq!(read(cx, &harness, |h, _| h.hovered), Some(false));
     cx.simulate_event(ScrollEvent {
@@ -178,6 +181,7 @@ fn an_open_hint_keeps_the_plot_from_input(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_click_outside_closes_the_hint_and_goes_no_further(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (harness, cx) = open_and_leave(cx);
     cx.simulate_mouse_down(at(OUTSIDE), MouseButton::Left, Modifiers::default());
     cx.simulate_mouse_up(at(OUTSIDE), MouseButton::Left, Modifiers::default());
@@ -193,6 +197,7 @@ fn a_click_outside_closes_the_hint_and_goes_no_further(cx: &mut TestAppContext) 
 
 #[gpui_kit::test]
 fn the_backdrop_leaves_the_edges_beyond_its_area_to_what_lies_there(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (harness, cx) = open_and_leave(cx);
     let edge = point(px(EDGE / 2.), px(150.));
     cx.simulate_mouse_down(edge, MouseButton::Left, Modifiers::default());
@@ -208,6 +213,7 @@ fn the_backdrop_leaves_the_edges_beyond_its_area_to_what_lies_there(cx: &mut Tes
 
 #[gpui_kit::test]
 fn enter_closes_the_hint_and_keeps_the_values(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (harness, cx) = open_and_leave(cx);
     cx.simulate_keystrokes("enter");
     frame(cx);
@@ -221,6 +227,7 @@ fn enter_closes_the_hint_and_keeps_the_values(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn space_leaves_the_hint_open(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (harness, cx) = open_and_leave(cx);
     cx.simulate_keystrokes("space");
     frame(cx);
@@ -230,6 +237,7 @@ fn space_leaves_the_hint_open(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn escape_closes_the_hint_and_reverts(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     let (harness, cx) = open_and_leave(cx);
     cx.simulate_keystrokes("escape");
     frame(cx);
@@ -271,6 +279,7 @@ fn observed_hint() -> Tooltip {
 
 #[gpui_kit::test]
 fn a_passive_hint_leaves_its_trigger_the_click(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
     cx.update(gpui_kit::init);
     let (trigger, cx) = cx.add_window_view(|_, _| Trigger::default());
     cx.simulate_resize(size(px(400.), px(300.)));
