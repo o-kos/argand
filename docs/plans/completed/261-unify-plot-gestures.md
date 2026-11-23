@@ -15,6 +15,22 @@ capture data, history, keyboard/menu commands, coordinate guides and the minimap
 - Reviewer: `gpt-6.1-sol` high, read-only in a fresh context.
 - Consultant: `gpt-6.2-astra` high through the installed read-only CLI, only if a concrete unresolved question warrants it.
 
+## Completion status (2026-11-23)
+
+The owner accepted the current Pull Request after remote integration, correction
+of the additional review finding, a clean owner-authorized control review and the
+coordinator's exact-source assessment. All in-scope implementation, local
+validation and scoped production acceptance tasks are complete. Earlier iteration
+records below retain their original timing and limitations; pending statements
+inside the historical records do not describe this completion state.
+
+The finalization is class C documentation-only work. The coordinator and executor
+retain the approved role assignments above. The coordinator scoped this final
+change to plan status and location, with diff/link checks, the normal pre-push
+hook, an ordinary release command and current full remote CI. No new independent
+round is needed for this documentation-only completion. Application sources,
+toolkit graph and installed toolchain/SDK are unchanged.
+
 ## Context and decisions
 
 Existing PlotView owns transient gestures and emits toolkit-neutral selection and
@@ -65,7 +81,7 @@ Do not rebuild presentation resources or introduce a second navigation owner.
 | Spectrogram wheel selects time or frequency correctly | Default/Shift pan and Ctrl/Ctrl+Shift zoom in both orientations | Passed automated tests and production Xvfb run | Native platforms separate |
 | Rulers operate on their own axis | Modifier combinations for wheel, selection, resize, Alt and pan | Passed automated modifier matrix and production Xvfb scenarios | Native platforms separate |
 | Selection creation and modification | Time, band, rectangle, no selection, edge/interior, Alt, modifier release | Passed automated tests and fitted/zoomed production Xvfb scenarios | Disposable capture matches regenerated original bytes |
-| Ctrl and Shift band aliases | Existing rectangle, modifier release, Ctrl+Shift precedence, rulers, cursor and help in both orientations | Passed refreshed automated and production Xvfb checks | Owner acceptance remains pending |
+| Ctrl and Shift band aliases | Existing rectangle, modifier release, Ctrl+Shift precedence, rulers, cursor and help in both orientations | Passed refreshed automated and production Xvfb checks | Owner accepted the current PR on 2026-11-23 |
 | Pan reversal at capture bounds | Both bounds, spectrum and each ruler, both orientations, middle/Space, fitted axes and off-canvas travel | Regression failed before correction and passed after it; refreshed production Xvfb scenarios passed | No native desktop or platform-wide claim |
 | Existing navigation/focus paths remain usable | Keyboard/menu zoom, fit, arrows, Escape and Alt guides | Passed automated tests and production Xvfb scenarios, including Edit menu selection panel | Window-manager interception remains untested |
 | Production UI matches the agreed scheme | Isolated Xvfb production release run with disposable fixtures and settings | Passed scoped scenarios on 2026-11-16 | Does not establish Wayland, Windows or macOS input behavior or owner acceptance |
@@ -82,13 +98,17 @@ Do not rebuild presentation resources or introduce a second navigation owner.
 - [x] ➕ Add the owner-approved Ctrl band-selection alias, matching cursor/help, focused regressions and current production evidence.
 - [x] ➕ Correct and validate immediate pan reversal after overshooting either axis boundary.
 - [x] ➕ Correct tick-label growth cancelling held gestures and validate real Shell layout feedback, resize continuity and genuine bounds cancellation with focused tests.
-- [ ] ➕ Correct a new gesture using a previous frame's navigation anchor and refresh the exact two-gesture production reproduction.
-- [ ] ⚠️ Refresh affected production acceptance after the remaining code gate. The earlier owner acceptance failed, and the new source has not been built as a production binary.
-- [ ] ⚠️ Reconsider review coverage after this failed acceptance. Three review rounds have already completed, so another independent round requires an explicit owner waiver of the limit.
-- [ ] Complete independent review and coordinator assessment.
-- [ ] Move this plan to completed before final review, once acceptance is complete.
+- [x] ➕ Correct the stale new-gesture anchor and complete the recorded production diagnosis and owner acceptance.
+- [x] Refresh the full code gate, release build and affected production evidence after the failed acceptance, retaining each earlier run's scope.
+- [x] Complete the owner-authorized additional review and control round after the original three-round limit.
+- [x] Complete independent review and coordinator assessment.
+- [x] Move this accepted plan to completed before requesting full remote validation.
 
-## Validation
+## Historical validation and iteration record
+
+This section records successive earlier snapshots. Later validation, control
+review, coordinator assessment and owner acceptance are recorded separately below.
+
 
 The checked results below are historical evidence for the Ctrl alias and first
 pan-boundary correction, not validation of the subsequent layout correction.
@@ -164,7 +184,7 @@ The next diagnostic release is built alone for manual reproduction, with tests,
 formatting, Clippy, review and production checks intentionally skipped at the owner's
 request. Review rounds remain at three, with no additional round started.
 
-## Owner handoff
+## Historical owner handoff
 
 The owner manually accepted the current work and requested a commit and remote
 push without checks to continue on another computer. The latest source was built
@@ -197,7 +217,7 @@ the installed read-only CLI, only for a concrete unresolved technical question.
 - [x] Run formatting, all-target Clippy and all workspace tests with the locked graph.
 - [x] Run applicable packaging, CI-policy and checkout-identity checks.
 - [x] Build release after all preceding checks pass, binding the artifact to the submitted source.
-- [ ] Push the feature branch through its normal pre-push hook and verify the remote tip.
+- [x] Push the feature branch through its normal pre-push hook and verify the remote tip.
 
 The selected immutable SDK and existing installed Rust must match the repository
 pin. Keep all application artifacts in this workspace's `target/`. This refresh
@@ -245,7 +265,7 @@ snapshot before this correction; it does not establish review of later changes.
 - [x] Reproduce incremental inward panning at both bounds in both orientations and on spectrum/ruler entry paths.
 - [x] Rebase only genuine boundary displacement, preserving sub-sample accumulation and immediate overshoot reversal.
 - [x] Refresh the full local gate, release build and affected isolated production acceptance.
-- [ ] Coordinator assessment and review-policy decision for the corrected snapshot.
+- [x] Complete the owner-authorized clean control review and coordinator assessment for the corrected snapshot.
 
 The expected interaction stays unchanged: inward movement accumulates until a
 sample is reached, while outward overshoot is discarded so reversal responds
@@ -271,11 +291,30 @@ moves accumulate to one sample at either bound. Eight further outward-overshoot/
 reversal scenarios also move inward without repressing. Actual spectrum, axes,
 minimap, status and controls were inspected in both orientations. These checks
 do not establish native Wayland, Windows/macOS behavior, presentation latency or
-renewed owner acceptance. Keep the PR Draft. The correction and evidence still
-need coordinator assessment and the next review-policy decision.
+cross-platform owner acceptance. The owner subsequently authorized a separate
+control round. It returned no substantive actionable findings and confirmed the
+accepted P2 disposition, minimap behavior, layout and Shell/Plot ownership. No
+findings were declined. The coordinator accepted the exact source and evidence
+within their recorded limits, and the owner accepted the current Pull Request.
 No additional control, dependency or toolkit change is needed.
+
+The normal pre-push hook subsequently repeated formatting, all-target Clippy and
+all 954 tests successfully, the remote tip matched the submitted branch and the
+working tree was clean. The current Draft revision also passed Linux and
+`ci/quick`; Windows and macOS were skipped at that tier. Ready requests a new full
+matrix for the final documentation-completion revision. No earlier quick result
+is treated as full merge validation.
+
+The accepted production binary was built after the complete local gate and
+exercised in Xvfb. Later commits changed only plan prose, leaving the application
+source, graph, pins and build support identical. The final ordinary release
+command succeeded and reused that artifact because build metadata tracks source
+inputs rather than Git refs or plan changes. Its embedded revision remains the
+actual built source revision, without a forced metadata rebuild.
 
 ## Post-completion
 
-Merge and branch cleanup require the coordinator/owner completion decision and
-current full CI. Release and tagging are outside this task.
+After current-revision Linux, Windows, macOS and `ci/full` explicitly pass,
+squash-merge the accepted Pull Request and clean up only its exact accepted branch
+refs, preserving unrelated work. The owner acceptance authorizes that completion
+workflow. Release and tagging are outside this task.
