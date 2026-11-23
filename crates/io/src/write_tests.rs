@@ -1738,3 +1738,57 @@ fn opening_description_keeps_file_reference_separate_from_overrides() {
     let hints = OpenHints { raw: Some("iq_i16@24k".parse().unwrap()), ..overridden };
     assert_eq!(crate::open_described(&raw, &hints).unwrap().declared_reference_freq, None);
 }
+
+#[test]
+fn recording_start_and_reference_round_trip_without_sample_changes() {
+    let dir = TempDir::new("recording-start-roundtrip");
+    let start = argand_core::RecordingTime::parse("2026-11-23T23:59:59.123Z").unwrap();
+    for container in ["wav", "flac"] {
+        let input = dir.join(&format!("input.{container}"));
+        if container == "flac" { write_flac_fixture(&input, 2, 16, 1000); }
+        else { write_wav(&input, "iq_i16".parse().unwrap(), 48_000, &signal("iq_i16".parse().unwrap(), 1000), 1.0); }
+        let target = dir.join(&format!("output.{container}"));
+        let mut request = request(&input, OpenHints::default(), None, target.clone());
+        request.meta.recording_start = Some(start);
+        request.meta.center_freq = 14_074_000.;
+        run(&request).unwrap();
+        let reopened = open(&target, &OpenHints::default()).unwrap();
+        assert_eq!(reopened.meta().recording_start, Some(start));
+        assert_eq!(reopened.meta().center_freq, request.meta.center_freq);
+        assert_eq!(reopened.meta().sample_rate, request.meta.sample_rate);
+        assert_eq!(reopened.meta().sample_type, request.meta.sample_type);
+        assert_eq!(read_all(&target, &OpenHints::default()), read_all(&input, &OpenHints::default()));
+        let mut cleared = self::request(&target, OpenHints::default(), None, dir.join(&format!("cleared.{container}")));
+        cleared.meta.recording_start = None;
+        run(&cleared).unwrap();
+        assert_eq!(open(&cleared.target, &OpenHints::default()).unwrap().meta().recording_start, None);
+    }
+}
+
+#[test]
+fn invalid_recording_start_does_not_hide_valid_samples_or_reference() {
+    let dir = TempDir::new("recording-start-malformed");
+    for container in ["wav", "flac"] {
+        let source = dir.join(&format!("input.{container}"));
+        if container == "flac" { write_flac_fixture(&source, 2, 16, 100); }
+        else { write_wav(&source, "iq_i16".parse().unwrap(), 48000, &signal("iq_i16".parse().unwrap(),100),1.); }
+        let path = dir.join(&format!("invalid.{container}"));
+        let mut request = request(&source, OpenHints::default(), None, path.clone());
+        request.meta.recording_start = argand_core::RecordingTime::parse("2026-11-23T12:34:56.123Z");
+        request.meta.center_freq = 14074000.;
+        run(&request).unwrap();
+        let mut bytes = fs::read(&path).unwrap();
+        if container == "wav" {
+            let start = bytes.windows(4).position(|id| id == b"auxi").unwrap()+8;
+            bytes[start+2..start+4].copy_from_slice(&13u16.to_le_bytes());
+        } else {
+            let start = bytes.windows(5).position(|id| id == b"DATE=").unwrap()+5;
+            bytes[start+5..start+7].copy_from_slice(b"13");
+        }
+        fs::write(&path, bytes).unwrap();
+        let reopened = open(&path, &OpenHints::default()).unwrap();
+        assert_eq!(reopened.meta().recording_start, None);
+        assert_eq!(reopened.meta().center_freq, 14074000.);
+        assert_eq!(read_all(&path, &OpenHints::default()), read_all(&source, &OpenHints::default()));
+    }
+}

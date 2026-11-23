@@ -54,6 +54,7 @@ pub struct WavLayout {
     pub container: &'static str,
     /// Physical frequency of baseband 0 Hz, from `auxi`.
     pub reference_freq: Option<f64>,
+    pub recording_start: Option<argand_core::RecordingTime>,
     /// End of the RIFF body as its header states it, where later `data` chunks are looked for.
     pub riff_end: Option<u64>,
 }
@@ -146,6 +147,7 @@ pub fn parse(bytes: &[u8]) -> Result<WavLayout, RiffError> {
         declared_len: chunks.declared_len,
         container: chunks.container,
         reference_freq: chunks.metadata.reference_freq(),
+        recording_start: chunks.metadata.recording_start,
         riff_end: chunks.riff_end,
     })
 }
@@ -245,6 +247,7 @@ impl Chunks<'_> {
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct Metadata {
     pub auxi: Option<u32>,
+    pub recording_start: Option<argand_core::RecordingTime>,
 }
 
 impl Metadata {
@@ -289,6 +292,7 @@ pub(crate) fn scan(bytes: &[u8]) -> Result<Chunks<'_>, RiffError> {
             b"auxi" => {
                 if let Ok(body_bytes) = slice(bytes, body, size, "auxi chunk") {
                     metadata.auxi = parse_auxi(body_bytes);
+                    metadata.recording_start = parse_start(body_bytes);
                 }
             }
             b"data" => {
@@ -338,6 +342,15 @@ pub(crate) const AUXI_LEN: usize = 164;
 pub(crate) const AUXI_CENTER: usize = 32;
 /// Offset of `ADFrequency`, the sample rate.
 pub(crate) const AUXI_RATE: usize = 36;
+
+fn parse_start(body: &[u8]) -> Option<argand_core::RecordingTime> {
+    let bytes = body.get(..16)?;
+    let mut fields = [0; 8];
+    for (field, bytes) in fields.iter_mut().zip(bytes.as_chunks::<2>().0.iter()) {
+        *field = u16::from_le_bytes([bytes[0], bytes[1]]);
+    }
+    argand_core::RecordingTime::from_system_time(fields)
+}
 
 fn parse_auxi(body: &[u8]) -> Option<u32> {
     let field = body.get(AUXI_CENTER..AUXI_CENTER + 4)?;

@@ -223,7 +223,7 @@ impl Shell {
                     commands,
                 ))
                 .item(action_row(
-                    "Reference frequency…",
+                    "Recording metadata and scales…",
                     EditReference,
                     false,
                     focus.clone(),
@@ -265,6 +265,16 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
         let scale = self.time_scale_menu(focus.clone(), window, cx);
+        let physical =
+            self.session.frequency_mode == crate::navigation::time_ruler::FrequencyMode::Physical;
+        let commands = self.command_availability();
+        let frequency = PopupMenu::build(window, cx, |menu, _, _| {
+            super::plot::navigation_ui::frequency_scale_items(
+                menu.action_context(focus.clone()),
+                physical,
+                commands,
+            )
+        });
         let theme = self.theme_menu(focus.clone(), window, cx);
         let commands = self.command_availability();
         let show_grid = self.session.show_grid;
@@ -315,6 +325,7 @@ impl Shell {
                 } else {
                     PopupMenuItem::new("Time scale format").disabled(true)
                 })
+                .item(PopupMenuItem::submenu("Frequency scale", frequency))
                 .item(PopupMenuItem::submenu("Theme", theme))
                 .item(PopupMenuItem::separator())
                 .item(action_row(
@@ -371,30 +382,35 @@ impl Shell {
     ) -> Entity<PopupMenu> {
         let commands = self.command_availability();
         let ruler = self.session.time_ruler;
+        let absolute = self.absolute_start().is_some();
         PopupMenu::build(window, cx, move |menu, _, _| {
             use crate::navigation::time_ruler::Mode;
-            menu.action_context(focus.clone())
-                .item(action_row(
-                    "Hours, minutes, seconds (hms)",
-                    ClockRuler,
-                    ruler == Mode::Clock,
-                    focus.clone(),
-                    commands,
-                ))
-                .item(action_row(
-                    "Seconds",
-                    SecondsRuler,
-                    ruler == Mode::Seconds,
-                    focus.clone(),
-                    commands,
-                ))
-                .item(action_row(
-                    "Sample numbers",
-                    SamplesRuler,
-                    ruler == Mode::Samples,
-                    focus.clone(),
-                    commands,
-                ))
+            super::plot::navigation_ui::time_origin_items(
+                menu.action_context(focus.clone()),
+                absolute,
+                commands,
+            )
+            .item(action_row(
+                "Hours, minutes, seconds (hms)",
+                ClockRuler,
+                ruler == Mode::Clock,
+                focus.clone(),
+                commands,
+            ))
+            .item(action_row(
+                "Seconds",
+                SecondsRuler,
+                ruler == Mode::Seconds,
+                focus.clone(),
+                commands,
+            ))
+            .item(action_row(
+                "Sample numbers",
+                SamplesRuler,
+                ruler == Mode::Samples,
+                focus.clone(),
+                commands,
+            ))
         })
     }
 

@@ -215,7 +215,7 @@ impl Shell {
         let Some(editing) = file.editing.as_ref() else {
             return;
         };
-        let mut meta = editing.file().meta.clone();
+        let mut meta = editing.output_meta();
         meta.len_samples = editing.len();
         let Some(span) = self
             .selection
@@ -245,7 +245,7 @@ impl Shell {
             sources: editing.source_files(),
             meta,
             span,
-            band,
+            band: named_band,
             target: std::path::PathBuf::new(),
             protected: editing.protected(),
         };

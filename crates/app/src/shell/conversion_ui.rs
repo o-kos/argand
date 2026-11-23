@@ -154,6 +154,7 @@ pub(super) struct Converting {
     directory: std::path::PathBuf,
     output_is_iq: bool,
     opening: argand_io::OpenHints,
+    recording_start: Option<argand_core::RecordingTime>,
     container: argand_io::write::Container,
     backing: Arc<crate::scratch::Scratch>,
 }
@@ -400,12 +401,13 @@ impl Editor {
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
         if let Some(owner) = &self.owner
-            && let Ok(Some((reference, baseline, version, same_capture, stamp, path))) = owner
-                .read_with(cx, |shell, _| {
+            && let Ok(Some((reference, start, baseline, version, same_capture, stamp, path))) =
+                owner.read_with(cx, |shell, _| {
                     let file = shell.file.as_ref()?;
                     let editing = file.editing.as_ref()?;
                     (Some(file.id) == self.document).then_some((
                         editing.reference(),
+                        editing.recording_start(),
                         editing.file().meta.center_freq,
                         editing.version(),
                         editing.capture() == &self.request.capture,
@@ -428,8 +430,11 @@ impl Editor {
                 self.version = version;
             }
             self.request.input.center_freq = reference;
+            self.request.input.recording_start = start;
+            self.request.output.recording_start = start;
             if let Some(copy) = &mut self.request.copy {
                 copy.meta.center_freq = reference;
+                copy.meta.recording_start = start;
             }
             if reference_changed && self.reference_iq == self.request.input.is_iq() {
                 self.request.output.center_freq = reference;
@@ -1024,6 +1029,7 @@ impl Shell {
         let version = editing.version();
         let container = request.container;
         let output_is_iq = request.output.is_iq();
+        let recording_start = request.output.recording_start;
         let opening = argand_io::OpenHints {
             normalize: Some(argand_io::Normalize::None),
             sample_rate: Some(request.output.sample_rate),
@@ -1073,6 +1079,7 @@ impl Shell {
             directory,
             output_is_iq,
             opening,
+            recording_start,
             container,
             backing,
         });
@@ -1166,7 +1173,7 @@ impl Shell {
     pub(super) fn receive_conversion_reader(
         &mut self,
         route: &ReaderRoute,
-        delivery: Delivery,
+        mut delivery: Delivery,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1206,6 +1213,11 @@ impl Shell {
             || self.editing().map(|editing| editing.version()) != Some(pending.job.version)
         {
             return;
+        }
+        // The private backing file has millisecond storage precision. Adoption
+        // retains the exact origin from the guarded conversion request instead.
+        if let crate::analysis::Update::Opened(meta, _) = &mut delivery.update {
+            meta.recording_start = pending.job.recording_start;
         }
         self.open_document(
             pending.origin,

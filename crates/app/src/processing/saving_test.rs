@@ -4,6 +4,7 @@ fn meta(source: &str, rate: f64) -> SignalMeta {
     SignalMeta {
         sample_rate: rate,
         center_freq: 0.0,
+        recording_start: None,
         sample_type: "iq_i16".parse().unwrap(),
         len_samples: 1_000_000,
         container: "wav",

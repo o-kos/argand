@@ -162,8 +162,12 @@ impl SaveRequest {
                 len: source.meta.len_samples,
             },
         };
+        let mut meta = source.meta.clone();
+        meta.recording_start = meta
+            .recording_start
+            .and_then(|start| start.shifted_samples(segment.start, meta.sample_rate));
         Self {
-            meta: source.meta.clone(),
+            meta,
             format: None,
             sources: vec![source],
             segments: vec![segment],
@@ -1326,6 +1330,16 @@ fn auxi_body(meta: &SignalMeta) -> Option<Vec<u8>> {
     }
     let rate = meta.sample_rate.round().clamp(0.0, f64::from(u32::MAX)) as u32;
     let mut body = vec![0u8; AUXI_LEN];
+    if let Some(start) = meta.recording_start {
+        for (bytes, field) in body[..16]
+            .as_chunks_mut::<2>()
+            .0
+            .iter_mut()
+            .zip(start.system_time())
+        {
+            bytes.copy_from_slice(&field.to_le_bytes());
+        }
+    }
     body[AUXI_CENTER..AUXI_CENTER + 4].copy_from_slice(&(freq as u32).to_le_bytes());
     body[AUXI_RATE..AUXI_RATE + 4].copy_from_slice(&rate.to_le_bytes());
     Some(body)
@@ -1907,7 +1921,7 @@ fn write_flac(
     header.extend_from_slice(&[0, 0, 0, 34]);
     let info_offset = header.len() as u64;
     header.extend_from_slice(&[0u8; 34]);
-    let comment = vorbis_comment(meta.center_freq, meta.sample_rate);
+    let comment = vorbis_comment(meta);
     header.push(0x80 | 4);
     header.extend_from_slice(&(comment.len() as u32).to_be_bytes()[1..]);
     header.extend_from_slice(&comment);
@@ -2005,12 +2019,17 @@ fn flac_states(rate: f64) -> bool {
 }
 
 /// A VORBIS_COMMENT body carrying the reference frequency and the exact sample rate.
-fn vorbis_comment(freq: f64, rate: f64) -> Vec<u8> {
+fn vorbis_comment(meta: &SignalMeta) -> Vec<u8> {
+    let freq = meta.center_freq;
+    let rate = meta.sample_rate;
     let vendor = b"argand";
-    let entries = [
+    let mut entries = vec![
         format!("{REFERENCE_TAG}={:.0}", freq.round()),
         format!("{RATE_TAG}={rate}"),
     ];
+    if let Some(start) = meta.recording_start {
+        entries.push(format!("DATE={}", start.format(3)));
+    }
     let mut body = Vec::new();
     body.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
     body.extend_from_slice(vendor);

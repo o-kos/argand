@@ -37,12 +37,14 @@ fn open(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestCon
             SignalMeta {
                 sample_rate: 1_000.0,
                 center_freq: 0.0,
+                recording_start: None,
                 sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
                 len_samples: 10_000,
                 container: "raw",
                 divisor: 32_768.0,
                 source: path,
-            },
+            }
+            .into(),
             FileInfo::default(),
         ));
         shell.start_editing(cx);

@@ -40,6 +40,7 @@ impl Field {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scale {
     pub mode: Mode,
+    pub start: Option<argand_core::RecordingTime>,
     pub rate: f64,
     /// The capture's length in samples.
     pub total: u64,
@@ -58,8 +59,28 @@ pub struct Scale {
 impl Scale {
     /// A span's start, end and length as the selection's badges show them.
     pub fn time_texts(&self, span: SampleSpan) -> [String; 3] {
-        self.mode
-            .counters(span, self.rate, self.total, self.seconds_per_pixel)
+        let mut values = self
+            .mode
+            .counters(span, self.rate, self.total, self.seconds_per_pixel);
+        if self.utc_samples() {
+            return Mode::Samples.counters(span, self.rate, self.total, self.seconds_per_pixel);
+        }
+        if let Some(start) = self.start {
+            let precision = ((self.rate.log10().ceil().max(3.)) as usize).min(9);
+            for (value, sample) in values[..2].iter_mut().zip([span.start(), span.end()]) {
+                *value = start
+                    .shifted_samples(sample, self.rate)
+                    .map_or_else(|| format!("#{sample}"), |time| time.format(precision));
+            }
+        }
+        values
+    }
+
+    fn utc_samples(&self) -> bool {
+        self.start.is_some()
+            && argand_core::SampleSpan::between(0, self.total.max(1))
+                .and_then(|whole| super::time_ruler::exact_time_precision(whole, self.rate))
+                .is_none_or(|precision| precision > 9)
     }
 
     /// A band's edges in the ruler's unit and its width with an independent unit.
@@ -138,11 +159,20 @@ impl Scale {
         steps: i64,
     ) -> Option<SampleSpan> {
         let text = text.trim();
-        let index = text.starts_with('#') || self.mode.writes_samples(self.rate, self.total);
+        let index = text.starts_with('#')
+            || ((self.start.is_none() || field == Field::TimeLength)
+                && (self.mode.writes_samples(self.rate, self.total) || self.utc_samples()));
         let delta = match index {
             true => i128::from(steps),
             false => {
-                let seconds = steps as f64 * 10_f64.powi(-(decimals(numbers, text) as i32));
+                let places = if self.start.is_some() && field != Field::TimeLength {
+                    text.split_once('.').map_or(0, |(_, tail)| {
+                        tail.bytes().take_while(u8::is_ascii_digit).count()
+                    })
+                } else {
+                    decimals(numbers, text)
+                };
+                let seconds = steps as f64 * 10_f64.powi(-(places as i32));
                 whole(seconds * self.rate)?.abs().max(1) * i128::from(steps.signum())
             }
         };
@@ -208,9 +238,19 @@ impl Scale {
     /// number is one too. A whole index is read as an integer, never through `f64`.
     fn samples(&self, numbers: &Numbers, field: Field, text: &str) -> Option<i128> {
         let text = text.trim();
+        if field != Field::TimeLength
+            && !text.starts_with('#')
+            && let Some(start) = self.start
+        {
+            let time = argand_core::RecordingTime::parse(text)?;
+            return whole(time.seconds_since(start) * self.rate);
+        }
         let (index, text) = match text.strip_prefix('#') {
             Some(rest) => (true, rest),
-            None => (self.mode.writes_samples(self.rate, self.total), text),
+            None => (
+                self.mode.writes_samples(self.rate, self.total) || self.utc_samples(),
+                text,
+            ),
         };
         if !index {
             return whole(self.seconds(numbers, text)? * self.rate);

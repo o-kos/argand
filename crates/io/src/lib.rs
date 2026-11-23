@@ -190,7 +190,15 @@ fn open_kind(
                 // A valid wav in a layout the flat reader will not touch --
                 // reduced-valid-bit PCM24, for example. The decoder may still manage it.
                 tracing::debug!("wav layout not natively supported, trying the decoder");
-                let mut opened = open_decoded(path, "wav", &wave_metadata(head, hints), known)?;
+                let mut opened = open_decoded(
+                    path,
+                    "wav",
+                    &wave_metadata(head, hints),
+                    known,
+                    riff::scan(head)
+                        .ok()
+                        .and_then(|chunks| chunks.metadata.recording_start),
+                )?;
                 opened.declared_reference_freq = riff::scan(head)
                     .ok()
                     .and_then(|chunks| chunks.metadata.reference_freq());
@@ -206,7 +214,7 @@ fn open_kind(
     }
 
     if riff::is_flac(head) {
-        return open_decoded(path, "flac", hints, known);
+        return open_decoded(path, "flac", hints, known, None);
     }
 
     Err(IoError::UnknownContainer {
@@ -266,6 +274,7 @@ fn open_wave(path: &Path, layout: WavLayout, hints: &OpenHints) -> Result<Opened
     let meta = SignalMeta {
         sample_rate: hints.sample_rate.unwrap_or(layout.sample_rate),
         center_freq: hints.center_freq.or(layout.reference_freq).unwrap_or(0.0),
+        recording_start: layout.recording_start,
         sample_type,
         len_samples: 0, // recomputed from the mapped length
         container: layout.container,
@@ -311,6 +320,7 @@ fn open_raw(path: &Path, spec: RawSpec, hints: &OpenHints) -> Result<Opened, IoE
     let meta = SignalMeta {
         sample_rate,
         center_freq: hints.center_freq.unwrap_or(0.0),
+        recording_start: None,
         sample_type,
         len_samples: 0,
         container: "raw",
@@ -349,6 +359,7 @@ fn open_decoded(
     container: &'static str,
     hints: &OpenHints,
     known: Option<&SignalMeta>,
+    recording_start: Option<argand_core::RecordingTime>,
 ) -> Result<Opened, IoError> {
     let wrap = |source| IoError::Source {
         path: path.to_owned(),
@@ -368,7 +379,7 @@ fn open_decoded(
             .map_err(wrap);
     }
 
-    let source = DecodedSource::open(
+    let mut source = DecodedSource::open(
         path,
         container,
         hints.center_freq,
@@ -378,6 +389,9 @@ fn open_decoded(
         0.0,
     )
     .map_err(wrap)?;
+    if container == "wav" {
+        source.set_recording_start(recording_start);
+    }
     let normalize = hints
         .normalize
         .unwrap_or_else(|| Normalize::default_for(source.meta().sample_type.format));

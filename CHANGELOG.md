@@ -13,8 +13,10 @@ promise applies to.
 
 ### Added
 
-- Edit reference frequency in whole Hz from its status-bar value between the file
-  and FFT summaries or Edit → Reference frequency…. Changes support Undo/Redo and
+- Editable recording-start UTC metadata in WAVE and FLAC, with persistent relative/absolute time and baseband/RF scales controlled from the rulers and a shared metadata panel.
+
+- Edit reference frequency in whole Hz from the shared recording metadata panel
+  or Edit → Recording metadata and scales…. Changes support Undo/Redo and
   enable Convert until saved or undone. The existing Save command writes metadata
   to the file. File information shows only the reference declared in the source.
   Reference edits do not update Recent before Save. Saving a changed RAW reference

@@ -222,6 +222,7 @@ fn vertical_rulers_fit_labels_and_report_resolution_on_the_corresponding_axis() 
             let extents = Extents {
                 orientation: Mode::Vertical,
                 time: crate::navigation::time_ruler::Ruler {
+                    start: None,
                     mode,
                     view: crate::navigation::View {
                         start: 0,
@@ -316,5 +317,35 @@ fn assert_vertical_time_clearance(frame: &Frame) {
         assert!(center + half_ink <= bottom - OUTER_PAD);
         assert!(center - half_ink - previous_end >= DejaVuSans.width("00", LABEL_SIZE));
         previous_end = center + half_ink;
+    }
+}
+
+#[test]
+fn utc_rulers_keep_concise_ticks_date_context_and_readable_gutters() {
+    let start = argand_core::RecordingTime::parse("2026-11-23T23:59:59.900Z").unwrap();
+    for orientation in [
+        crate::navigation::orientation::Mode::Horizontal,
+        crate::navigation::orientation::Mode::Vertical,
+    ] {
+        let extents = Extents {
+            orientation,
+            time: crate::navigation::time_ruler::Ruler {
+                start: Some(start),
+                view: crate::navigation::View {
+                    start: 0,
+                    len: 2000,
+                },
+                total: 2000,
+                mode: crate::navigation::time_ruler::Mode::Samples,
+            },
+            seconds: (0., 2.),
+            ..HFDL
+        };
+        let frame = measure(panel(800., 600.), extents);
+        assert_eq!(frame.time_date.as_deref(), Some("2026-11-23"));
+        assert_eq!(frame.time_caption, "UTC");
+        assert!(frame.gutter < 220.);
+        assert!(frame.time.iter().all(|tick| !tick.label.contains("2026-")));
+        assert!(frame.time.iter().any(|tick| tick.label.contains("11-24")));
     }
 }

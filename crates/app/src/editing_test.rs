@@ -7,6 +7,7 @@ fn meta(path: &str, len: u64, rate: f64) -> SignalMeta {
     SignalMeta {
         sample_rate: rate,
         center_freq: 0.0,
+        recording_start: None,
         sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
         len_samples: len,
         container: "wav",
@@ -734,4 +735,56 @@ fn computed_source_reopens_with_exact_rate_and_signed_reference_hints() {
     assert_eq!(reopened.meta().sample_rate, 48_000.0 / 19.0);
     assert_eq!(reopened.meta().center_freq, -123.25);
     assert_eq!(reopened.meta().len_samples, 20);
+}
+
+#[test]
+fn recording_origin_tracks_timeline_and_undo_without_rounding_each_trim() {
+    let mut document = editing("/a.wav", 10_000, 1_000_000.);
+    let start = argand_core::RecordingTime::parse("2026-11-23T23:59:59.999Z").unwrap();
+    assert!(document.set_recording_start(Some(start), Selection::default()));
+    let version = document.version();
+    assert!(!document.set_recording_start(Some(start), Selection::default()));
+    assert_eq!(document.version(), version);
+    document.mark_saved();
+    assert!(!document.is_dirty());
+    for _ in 0..1000 {
+        document.delete(span(0, 1));
+    }
+    assert_eq!(
+        document.recording_start(),
+        start.shifted_samples(1000, 1_000_000.)
+    );
+    let shifted = document.recording_start();
+    document.delete(span(document.len() - 1, document.len()));
+    assert_eq!(document.recording_start(), shifted);
+    document.delete(span(2, 3));
+    assert_eq!(document.recording_start(), None);
+    assert!(document.undo());
+    assert_eq!(document.recording_start(), shifted);
+    assert!(document.redo());
+    assert_eq!(document.recording_start(), None);
+}
+
+#[test]
+fn selection_export_shifts_origin_and_duration_changing_paste_clears_it() {
+    let mut document = editing("/a.wav", 1000, 1000.);
+    let start = argand_core::RecordingTime::parse("2026-11-23T23:59:59.900Z").unwrap();
+    document.set_recording_start(Some(start), Selection::default());
+    let request = document
+        .save_request(Some(span(200, 300)), "/b.wav".into())
+        .unwrap();
+    assert_eq!(
+        request.meta.recording_start.unwrap().format(3),
+        "2026-11-24T00:00:00.100Z"
+    );
+    assert_eq!(document.recording_start(), Some(start));
+    let clip = document.copy(span(0, 10));
+    document
+        .paste(&clip, Placement::Replace(span(20, 30)))
+        .unwrap();
+    assert_eq!(document.recording_start(), Some(start));
+    document.paste(&clip, Placement::At(20)).unwrap();
+    assert_eq!(document.recording_start(), None);
+    document.undo();
+    assert_eq!(document.recording_start(), Some(start));
 }

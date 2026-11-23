@@ -23,6 +23,7 @@ impl VecSource {
             meta: SignalMeta {
                 sample_rate: RATE,
                 center_freq,
+                recording_start: None,
                 sample_type,
                 len_samples,
                 container: "test",

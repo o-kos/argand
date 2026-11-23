@@ -72,7 +72,9 @@ impl Extents {
 
     fn per_pixel(self, plot: Rect, scale: f32) -> (f64, f64) {
         let (time_pixels, frequency_pixels) = self.orientation.axes(plot.width, plot.height);
-        let time_units = if self.time.mode == crate::navigation::time_ruler::Mode::Samples {
+        let time_units = if self.time.start.is_none()
+            && self.time.mode == crate::navigation::time_ruler::Mode::Samples
+        {
             self.time.view.len as f64
         } else {
             self.seconds.1 - self.seconds.0
@@ -183,6 +185,7 @@ pub struct Frame {
     time_row: f32,
     time_caption: &'static str,
     time_caption_row: f32,
+    time_date: Option<String>,
     /// Where the ink of the caption is centred, over the gutter.
     caption_row: f32,
     caption_x: f32,
@@ -259,32 +262,17 @@ impl Frame {
         let ceil = |value: f32| (value * scale).ceil() / scale;
         let floor = |value: f32| (value * scale).floor() / scale;
         let height = floor(f32::from(panel.height) - foot);
-        let (right_kind, right_min, right_max, right_held) = if vertical {
-            (extents.time.mode.kind(), t0, t1, held.time)
-        } else {
-            (AxisKind::Frequency, f0, f1, held.frequency)
-        };
-        let right_labels = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down);
-        let right_labels = if vertical {
-            right_labels.keep_edge_marks()
-        } else {
-            right_labels
-        };
         let bottom_center = bottom_row_center(panel, height);
-        let (lead, trail) = right_label_room(vertical, height, bottom_center, row_height, measure);
-        let right_ticks = axis::tick_layout(
-            right_kind,
-            Axis {
-                length: height as i64,
-                min: right_min,
-                max: right_max,
-                lead,
-                trail,
-            },
-            &right_labels,
-            right_held,
-        );
-        let gutter = ruler_gutter(&right_ticks.ticks, caption, measure).max(held.gutter);
+        let time_date = extents
+            .time
+            .start
+            .and_then(|start| start.shifted_seconds(extents.seconds.0))
+            .map(|time| time.format(9)[..10].to_owned());
+        let right_ticks = right_axis(extents, held, panel, height, measure);
+        let mut gutter = ruler_gutter(&right_ticks.ticks, caption, measure).max(held.gutter);
+        if vertical && let Some(date) = &time_date {
+            gutter = gutter.max(measure.width(date, LABEL_SIZE) + LABEL_PAD + OUTER_PAD);
+        }
         let left = if vertical { 0. } else { ceil(OUTER_PAD) };
         let right = floor(f32::from(panel.width) - OUTER_PAD - gutter);
         let plot = Rect {
@@ -299,12 +287,12 @@ impl Frame {
         let (bottom_kind, bottom_min, bottom_max, bottom_held) = if vertical {
             (AxisKind::Frequency, f0, f1, held.frequency)
         } else {
-            (extents.time.mode.kind(), t0, t1, held.time)
+            (extents.time.kind(), t0, t1, held.time)
         };
         let across = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across)
             .keep_edge_marks()
             .after_tick(BOTTOM_LABEL_START);
-        let bottom_ticks = axis::tick_layout(
+        let mut bottom_ticks = axis::tick_layout(
             bottom_kind,
             Axis {
                 length: plot.width as i64,
@@ -316,6 +304,12 @@ impl Frame {
             &across,
             bottom_held,
         );
+        if !vertical && let Some(date) = &time_date {
+            let reserved = measure.width(date, LABEL_SIZE) + LABEL_PAD;
+            bottom_ticks
+                .ticks
+                .retain(|tick| tick.offset as f32 >= reserved);
+        }
         let (time, frequency) = if vertical {
             (right_ticks, bottom_ticks)
         } else {
@@ -331,7 +325,12 @@ impl Frame {
             frequency_scheme: frequency.scheme,
             caption,
             gutter,
-            time_caption: extents.time.mode.caption(),
+            time_caption: if extents.time.start.is_some() {
+                "UTC"
+            } else {
+                extents.time.mode.caption()
+            },
+            time_date,
             time_row: bottom_row,
             time_caption_row: if vertical {
                 row_height / 2.
@@ -347,6 +346,61 @@ impl Frame {
             per_pixel: extents.per_pixel(plot, scale),
         })
     }
+}
+
+fn right_axis(
+    extents: Extents,
+    held: Held,
+    panel: Size<Pixels>,
+    height: f32,
+    measure: &dyn LabelMeasure,
+) -> axis::TickLayout {
+    let vertical = extents.orientation.vertical();
+    let ((min, max), kind, scheme) = if vertical {
+        (
+            extents.time.bounds(extents.seconds),
+            extents.time.kind(),
+            held.time,
+        )
+    } else {
+        (
+            extents.displayed_hertz(),
+            AxisKind::Frequency,
+            held.frequency,
+        )
+    };
+    let labels = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Down);
+    let labels = if vertical {
+        labels.keep_edge_marks()
+    } else {
+        labels
+    };
+    let row_height = LINE_HEIGHT.max(measure.digit_height(LABEL_SIZE)).ceil();
+    let (lead, trail) = right_label_room(
+        vertical,
+        height,
+        bottom_row_center(panel, height),
+        row_height,
+        measure,
+    );
+    let mut layout = axis::tick_layout(
+        kind,
+        Axis {
+            length: height as i64,
+            min,
+            max,
+            lead,
+            trail,
+        },
+        &labels,
+        scheme,
+    );
+    if vertical && extents.time.start.is_some() {
+        layout
+            .ticks
+            .retain(|tick| tick.offset as f32 >= row_height * 2.5);
+    }
+    layout
 }
 
 /// The height reserved below the plot for its bottom ruler, in either orientation.
@@ -660,6 +714,19 @@ pub fn paint(
         window,
         cx,
     );
+
+    if let Some(date) = &frame.time_date {
+        let shaped = labels.shape(date, colors.label);
+        let (x, y) = if frame.orientation.vertical() {
+            (
+                plot.right() + LABEL_PAD,
+                frame.time_caption_row + LINE_HEIGHT,
+            )
+        } else {
+            (plot.x, frame.time_caption_row)
+        };
+        paint_label(&shaped, at(x, labels.line_top(y, &shaped)), window, cx);
+    }
 
     // The unit, once, above the labels it belongs to. An axis that placed no
     // label has nothing for it to head.

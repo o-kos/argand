@@ -5,6 +5,7 @@ fn meta(domain: Domain, rate: f64, center: f64, len: u64) -> SignalMeta {
     SignalMeta {
         sample_rate: rate,
         center_freq: center,
+        recording_start: None,
         sample_type: SampleType::new(domain, SampleFormat::I16),
         len_samples: len,
         container: "wav",

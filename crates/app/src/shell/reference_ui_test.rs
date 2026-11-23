@@ -55,13 +55,17 @@ fn status_reference_edits_and_saves_without_changing_samples(cx: &mut TestAppCon
     let before = std::fs::read(&path).unwrap()[44..].to_vec();
     cx.update(|window, cx| {
         assert!(window.try_find("reference-frequency-control").is_none());
-        let file = window.find("file-information").bounds();
         let reference = window.find("reference-frequency").bounds();
-        let analysis = window.find("analysis-settings").bounds();
-        assert!(file.right() <= reference.left());
-        assert!(reference.right() <= analysis.left());
-        assert_eq!(file.top(), reference.top());
-        assert_eq!(reference.top(), analysis.top());
+        let plot = shell
+            .read(cx)
+            .plot_view()
+            .unwrap()
+            .read(cx)
+            .panel_bounds
+            .unwrap();
+        assert!(reference.left() >= plot.left());
+        assert!(reference.right() <= plot.right());
+        assert!(reference.top() < window.find("analysis-settings").bounds().top());
         window.click("reference-frequency", cx);
     });
     frame(cx);
@@ -151,12 +155,12 @@ fn closing_reference_commits_outside_draft_but_escape_discards_it(cx: &mut TestA
     let input = editor(&shell, cx).read_with(cx, |editor, _| editor.input.clone());
     input.update_in(cx, |input, window, cx| input.set_value("123", window, cx));
     cx.simulate_mouse_down(
-        gpui_kit::point(px(650.), px(250.)),
+        gpui_kit::point(px(40.), px(300.)),
         MouseButton::Left,
         Default::default(),
     );
     cx.simulate_mouse_up(
-        gpui_kit::point(px(650.), px(250.)),
+        gpui_kit::point(px(40.), px(300.)),
         MouseButton::Left,
         Default::default(),
     );
@@ -222,4 +226,117 @@ fn edit_menu_opens_reference_and_uses_guarded_command_availability(cx: &mut Test
         assert!(!shell.command_availability().is_enabled::<EditReference>());
         assert!(!shell.reference.hint.read(cx).is_open());
     });
+}
+
+#[gpui_kit::test]
+fn recording_panel_commits_start_and_modes_keep_history_and_analysis(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, _dir, cx) = opened(cx);
+    cx.update(|window, cx| window.click("reference-frequency", cx));
+    frame(cx);
+    let editor = editor(&shell, cx);
+    let input = editor.read_with(cx, |editor, _| editor.start_input.clone());
+    input.update_in(cx, |input, window, cx| {
+        input.set_value("2026-11-23T23:59:59.123Z", window, cx);
+        input.focus(window, cx);
+    });
+    cx.simulate_keystrokes("enter");
+    frame(cx);
+    let (version, generation) = shell.read_with(cx, |shell, _| {
+        assert_eq!(
+            shell
+                .editing()
+                .unwrap()
+                .recording_start()
+                .unwrap()
+                .format(3),
+            "2026-11-23T23:59:59.123Z"
+        );
+        (
+            shell.editing().unwrap().version(),
+            shell
+                .file
+                .as_ref()
+                .unwrap()
+                .state
+                .analyst
+                .generation_for_test(),
+        )
+    });
+    cx.update(|window, cx| window.click("time-absolute", cx));
+    frame(cx);
+    cx.update(|window, cx| window.click("frequency-relative", cx));
+    frame(cx);
+    shell.read_with(cx, |shell, _| {
+        assert!(shell.absolute_start().is_some());
+        assert_eq!(shell.session.frequency_mode, FrequencyMode::Baseband);
+        assert_eq!(shell.editing().unwrap().version(), version);
+        assert_eq!(
+            shell
+                .file
+                .as_ref()
+                .unwrap()
+                .state
+                .analyst
+                .generation_for_test(),
+            generation
+        );
+    });
+    input.update_in(cx, |input, window, cx| {
+        input.set_value("", window, cx);
+        input.focus(window, cx);
+    });
+    cx.simulate_keystrokes("enter");
+    frame(cx);
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.editing().unwrap().recording_start(), None);
+        assert_eq!(shell.session.time_origin, TimeOrigin::Absolute);
+        assert!(shell.absolute_start().is_none());
+    });
+}
+
+#[gpui_kit::test]
+fn untouched_start_draft_preserves_precise_trim_origin_on_blur_and_escape(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, _dir, cx) = opened(cx);
+    shell.update_in(cx, |shell, window, cx| {
+        let start = argand_core::RecordingTime::parse("2026-11-23T12:34:56.123Z");
+        shell.set_recording_start(start, window, cx);
+        let editing = shell.editing_mut().unwrap();
+        editing.delete(argand_core::SampleSpan::between(0, 1).unwrap());
+        editing.mark_saved();
+        shell.selection = argand_core::SampleSpan::between(10, 20);
+    });
+    let snapshot = |shell: &Shell| {
+        let editing = shell.editing().unwrap();
+        (
+            editing.recording_start(),
+            editing.version(),
+            editing.is_dirty(),
+            shell.selection,
+            shell
+                .file
+                .as_ref()
+                .unwrap()
+                .state
+                .analyst
+                .generation_for_test(),
+        )
+    };
+    let before = shell.read_with(cx, |shell, _| snapshot(shell));
+    assert_ne!(before.0.unwrap(), before.0.unwrap().rounded(3));
+    for escape in [false, true] {
+        cx.update(|window, cx| window.click("reference-frequency", cx));
+        frame(cx);
+        let input = editor(&shell, cx).read_with(cx, |editor, _| editor.start_input.clone());
+        input.update_in(cx, |input, window, cx| input.focus(window, cx));
+        frame(cx);
+        if escape {
+            cx.simulate_keystrokes("escape");
+        } else {
+            cx.simulate_click(gpui_kit::point(px(40.), px(300.)), Default::default());
+        }
+        frame(cx);
+        assert_eq!(shell.read_with(cx, |shell, _| snapshot(shell)), before);
+    }
 }

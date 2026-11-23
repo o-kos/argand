@@ -106,6 +106,7 @@ impl Numbers {
     pub fn axis_label(&self, text: &str, kind: argand_core::axis::AxisKind) -> String {
         use argand_core::axis::AxisKind;
         match kind {
+            AxisKind::UtcTime(_) => text.to_owned(),
             AxisKind::PreciseTime | AxisKind::Time => {
                 let clock = if text.contains(':') {
                     text.to_owned()

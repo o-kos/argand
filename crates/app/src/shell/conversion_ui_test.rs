@@ -10,6 +10,7 @@ fn request() -> Request {
     let meta = SignalMeta {
         sample_rate: 8000.0,
         center_freq: 100_000.0,
+        recording_start: None,
         sample_type: SampleType::new(Domain::Iq, SampleFormat::F32),
         len_samples: 1000,
         container: "wav",
@@ -248,10 +249,7 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
         shell.editing().is_some_and(Editing::is_described)
     });
     shell.update_in(cx, |shell, window, cx| {
-        shell
-            .editing_mut()
-            .unwrap()
-            .delete(argand_core::SampleSpan::between(0, 1200).unwrap());
+        trim_with_origin(shell, window, cx);
         assert!(shell.editing().unwrap().is_dirty());
         let mut request = shell.conversion_request().unwrap();
         request.output.sample_type = SampleType::new(Domain::Iq, SampleFormat::F32);
@@ -270,7 +268,9 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
     });
     let first_backing = shell.read_with(cx, |shell, _| {
         let editing = shell.editing().unwrap();
-        assert_eq!(editing.len(), 1200);
+        assert_eq!(editing.len(), 1199);
+        assert_eq!(editing.recording_start(), Some(converted_origin()));
+        assert_ne!(converted_origin(), converted_origin().rounded(3));
         assert!(editing.is_dirty());
         assert!(!editing.can_undo());
         assert!(shell.file_name().contains("recording-converted.wav"));
@@ -296,6 +296,10 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
             })
     });
     shell.update_in(cx, |shell, window, cx| {
+        assert_eq!(
+            shell.editing().unwrap().recording_start(),
+            Some(converted_origin())
+        );
         assert!(shell.file_name().contains("recording-converted.flac"));
         assert_save_parent(shell, &path);
         assert_eq!(
@@ -319,10 +323,37 @@ fn conversion_of_unsaved_edits_is_unsaved_until_first_save_and_can_repeat(cx: &m
     );
     assert_eq!(&std::fs::read(&target).unwrap()[..4], b"fLaC");
     assert_saved_flac_metadata(&shell, cx);
-    assert_saved_samples(&target, 1200);
+    assert_saved_samples(&target, 1199);
+    assert_saved_origin(&target);
     assert_saved_flac_band(&shell, cx, &dir);
     assert_eq!(std::fs::read(&path).unwrap(), original);
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn trim_with_origin(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) {
+    let start = argand_core::RecordingTime::parse("2026-11-23T12:34:56.123Z");
+    shell.set_recording_start(start, window, cx);
+    shell
+        .editing_mut()
+        .unwrap()
+        .delete(argand_core::SampleSpan::between(0, 1201).unwrap());
+}
+
+fn converted_origin() -> argand_core::RecordingTime {
+    argand_core::RecordingTime::parse("2026-11-23T12:34:56.123Z")
+        .unwrap()
+        .shifted_samples(1201, 24_000.)
+        .unwrap()
+}
+
+fn assert_saved_origin(target: &std::path::Path) {
+    assert_eq!(
+        argand_io::open(target, &Default::default())
+            .unwrap()
+            .meta()
+            .recording_start,
+        Some(converted_origin().rounded(3))
+    );
 }
 
 fn assert_saved_flac_metadata(shell: &Entity<Shell>, cx: &mut gpui_kit::VisualTestContext) {
@@ -626,10 +657,11 @@ fn describe_panel_document(
             .unwrap()
             .state
             .document
-            .apply(crate::analysis::Update::Opened(meta, info));
+            .apply(crate::analysis::Update::Opened(meta.into(), info));
         shell.start_editing(cx);
         shell.start_minimap(false, window, cx);
         shell.view = Some(crate::navigation::View::full(2400));
+        shell.attach_plot(window, cx);
         cx.notify();
     });
     super::super::replace_ui::tests::wait_until(cx, shell, "panel source format", |shell| {
@@ -890,6 +922,7 @@ fn stage_reader(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>)
             .1,
         output_is_iq: false,
         opening: argand_io::OpenHints::default(),
+        recording_start: None,
         container: argand_io::write::Container::Wave,
         backing: Arc::new(crate::scratch::Scratch::new(path.clone())),
     };
@@ -1496,6 +1529,7 @@ fn cancellation_rejects_success_already_queued_by_the_worker(cx: &mut TestAppCon
             directory: dir.clone(),
             output_is_iq: true,
             opening: argand_io::OpenHints::default(),
+            recording_start: None,
             container: argand_io::write::Container::Wave,
             backing,
         });
@@ -1543,6 +1577,7 @@ fn conversion_blocks_document_actions_and_close_waits_before_unsaved_prompt(
             directory: dir.clone(),
             output_is_iq: true,
             opening: argand_io::OpenHints::default(),
+            recording_start: None,
             container: argand_io::write::Container::Wave,
             backing: file.unsaved.as_ref().unwrap().backing.clone(),
         });

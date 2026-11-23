@@ -298,7 +298,7 @@ impl Shell {
         let mut button = status_control(id, group, text, lit, cx)
             .tab_stop(panel == StatusPanel::Reference)
             .when(panel == StatusPanel::Reference, |button| {
-                button.accessibility_label("Reference frequency")
+                button.accessibility_label("Recording metadata and scales, frequency then time")
             })
             .disabled(!self.status_panel_available(panel));
         if self.external_tooltips_allowed(cx) {
@@ -308,7 +308,17 @@ impl Shell {
         }
         super::app_menu_ui::keeps_focus(
             focus,
-            hints::pinned(popover, &hint, button, gpui_kit::Anchor::BottomLeft, cx),
+            hints::pinned(
+                popover,
+                &hint,
+                button,
+                if panel == StatusPanel::Reference && !self.session.orientation.vertical() {
+                    gpui_kit::Anchor::TopRight
+                } else {
+                    gpui_kit::Anchor::BottomLeft
+                },
+                cx,
+            ),
         )
         .into_any_element()
     }
@@ -511,7 +521,6 @@ impl Shell {
                         .when_some(file, |items, field| {
                             items.child(self.file_control(field.value, cx))
                         })
-                        .children(self.reference_control(cx))
                         .children(self.analysis_controls(cx)),
                 )
             })
@@ -696,8 +705,8 @@ fn status_panel_tooltip(panel: StatusPanel, cx: &mut gpui_kit::App) -> gpui_kit:
             Box::new(ConvertCapture),
         ),
         StatusPanel::Reference => (
-            "Reference frequency",
-            "Adjust the capture reference frequency",
+            "Recording metadata and scales",
+            "Frequency first, time second. R is relative and A is absolute",
             Box::new(EditReference),
         ),
         StatusPanel::Analysis => (

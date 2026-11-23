@@ -12,6 +12,7 @@ fn meta(format: SampleFormat, divisor: f32) -> SignalMeta {
     SignalMeta {
         sample_rate: 24_000.0,
         center_freq: 0.0,
+        recording_start: None,
         sample_type: SampleType::new(Domain::Iq, format),
         len_samples: 43_200_000,
         container: "wav",

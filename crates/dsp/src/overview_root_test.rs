@@ -6,6 +6,7 @@ fn incremental_overview_render_matches_a_fresh_render_with_empty_followers() {
         let meta = SignalMeta {
             sample_rate: 1000.0,
             center_freq: 0.0,
+            recording_start: None,
             sample_type: SampleType::new(Domain::Iq, SampleFormat::F32),
             len_samples: 1000,
             container: "test",

@@ -64,6 +64,7 @@ impl Shell {
             show_grid: self.session.show_grid,
             tooltips_allowed: self.external_tooltips_allowed(cx),
             show_scale_ui: self.session.show_scale_ui,
+            frequency_mode: self.session.frequency_mode,
             pointer_in_window: self.pointer_in_window,
             selection: self.selected(),
             selected: argand_core::Selection {

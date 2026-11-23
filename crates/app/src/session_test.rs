@@ -115,6 +115,8 @@ fn a_session_survives_the_round_trip() {
         analysis_settings: None,
         version: VERSION,
         time_ruler: crate::navigation::time_ruler::Mode::Samples,
+        time_origin: crate::navigation::time_ruler::Origin::Absolute,
+        frequency_mode: crate::navigation::time_ruler::FrequencyMode::Baseband,
         geometry: Some(Geometry::new(12.0, 34.0, 1280.0, 800.0)),
         window_state: WindowState::Maximized,
         recent: Vec::new(),
@@ -172,6 +174,8 @@ fn a_save_interrupted_partway_leaves_the_previous_session_readable() {
         analysis_settings: None,
         version: VERSION,
         time_ruler: crate::navigation::time_ruler::Mode::Clock,
+        time_origin: Default::default(),
+        frequency_mode: Default::default(),
         geometry: Some(Geometry::new(0.0, 0.0, 800.0, 600.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -234,6 +238,8 @@ fn a_drag_writes_a_few_times_rather_than_once_a_frame() {
         analysis_settings: None,
         version: VERSION,
         time_ruler: crate::navigation::time_ruler::Mode::Clock,
+        time_origin: Default::default(),
+        frequency_mode: Default::default(),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -296,6 +302,8 @@ fn a_position_that_has_not_changed_is_not_written_again() {
         analysis_settings: None,
         version: VERSION,
         time_ruler: crate::navigation::time_ruler::Mode::Clock,
+        time_origin: Default::default(),
+        frequency_mode: Default::default(),
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -330,6 +338,8 @@ fn the_last_position_survives_even_if_the_schedule_would_have_skipped_it() {
         analysis_settings: None,
         version: VERSION,
         time_ruler: crate::navigation::time_ruler::Mode::Clock,
+        time_origin: Default::default(),
+        frequency_mode: Default::default(),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -363,6 +373,8 @@ fn a_position_the_window_has_already_left_is_not_the_one_written() {
         analysis_settings: None,
         version: VERSION,
         time_ruler: crate::navigation::time_ruler::Mode::Clock,
+        time_origin: Default::default(),
+        frequency_mode: Default::default(),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -405,6 +417,8 @@ fn a_write_that_failed_is_tried_again_rather_than_forgotten() {
         analysis_settings: None,
         version: VERSION,
         time_ruler: crate::navigation::time_ruler::Mode::Clock,
+        time_origin: Default::default(),
+        frequency_mode: Default::default(),
         geometry: Some(Geometry::new(10.0, 20.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -463,6 +477,8 @@ fn a_failure_that_persists_does_not_retry_on_every_frame() {
         analysis_settings: None,
         version: VERSION,
         time_ruler: crate::navigation::time_ruler::Mode::Clock,
+        time_origin: Default::default(),
+        frequency_mode: Default::default(),
         geometry: Some(Geometry::new(x, 0.0, 1280.0, 800.0)),
         window_state: WindowState::Normal,
         recent: Vec::new(),
@@ -1301,7 +1317,7 @@ fn a_stored_zero_frequency_leaves_the_file_to_decide() {
 }
 
 #[test]
-fn version_eleven_omits_baseband_and_zero_retains_legacy_absent_meaning() {
+fn current_session_omits_retired_baseband_key_and_zero_retains_legacy_absent_meaning() {
     let dir = TempDir::new("reference-session");
     let path = dir.join(FILE_NAME);
     let mut session = Session {
@@ -1316,10 +1332,10 @@ fn version_eleven_omits_baseband_and_zero_retains_legacy_absent_meaning() {
     );
     let text = toml::to_string(&session).unwrap();
     let loaded = Session::parse_payload(&path, &text).unwrap();
-    assert_eq!(loaded.version, 11);
+    assert_eq!(loaded.version, VERSION);
     assert!(!text.contains("baseband"));
     assert_eq!(loaded.recent[0].hints.to_open_hints().center_freq, None);
-    let legacy = text.replace("version = 11", "version = 10");
+    let legacy = text.replace(&format!("version = {VERSION}"), "version = 10");
     let loaded = Session::parse_payload(&path, &legacy).unwrap();
     assert_eq!(loaded.recent[0].hints.to_open_hints().center_freq, None);
 }
@@ -1334,15 +1350,15 @@ fn removed_baseband_version_preserves_other_session_settings() {
     };
     let text = toml::to_string(&session)
         .unwrap()
-        .replace("version = 11", "version = 12");
+        .replace(&format!("version = {VERSION}"), "version = 12");
     std::fs::write(&path, format!("baseband_frequencies = true\n{text}")).unwrap();
     let restored = Session::load(&path);
     assert!(restored.writable);
     let loaded = restored.session;
-    assert_eq!(loaded.version, 11);
+    assert_eq!(loaded.version, VERSION);
     assert!(!loaded.show_grid);
     assert!(loaded.save(&path));
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("version = 11"));
+    assert!(text.contains(&format!("version = {VERSION}")));
     assert!(!text.contains("baseband"));
 }

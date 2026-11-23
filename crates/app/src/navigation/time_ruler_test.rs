@@ -7,6 +7,7 @@ fn modes_preserve_capture_origin_and_use_sample_units_once() {
         len: 2_000,
     };
     let mut ruler = Ruler {
+        start: None,
         mode: Mode::Samples,
         view,
         total: 8_000_000,
@@ -27,6 +28,7 @@ fn modes_preserve_capture_origin_and_use_sample_units_once() {
 #[test]
 fn sample_badges_clamp_to_actual_capture_indices_without_large_origin_rounding() {
     let ruler = Ruler {
+        start: None,
         mode: Mode::Samples,
         view: View {
             start: u64::MAX - 4096,

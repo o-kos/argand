@@ -62,12 +62,14 @@ fn failed_analysis_suspends_the_retained_range_action() {
         SignalMeta {
             sample_rate: 24_000.0,
             center_freq: 0.0,
+            recording_start: None,
             sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
             len_samples: 48_000,
             container: "raw",
             divisor: 32_768.0,
             source: PathBuf::from("test.iqw"),
-        },
+        }
+        .into(),
         FileInfo::default(),
     ));
     document.apply(Update::Ready {

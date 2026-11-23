@@ -56,6 +56,10 @@ impl DejaVuSans {
             'G' => 1587.0,
             'd' => 1300.0,
             'B' => 1405.0,
+            'Z' => 1403.0,
+            'U' => 1499.0,
+            'T' => 1251.0,
+            'C' => 1430.0,
             other => panic!("no advance recorded for {other:?}"),
         }
     }
@@ -69,13 +73,22 @@ impl LabelMeasure for DejaVuSans {
         // fixture that has to be held against the real renderer is worth
         // nothing if it only nearly matches.
         //
-        // Nothing is added between glyphs. Digits, separators and the minus
-        // sign kern against nothing in this face, and neither does any pair
-        // inside one of the captions above. Pairs that occur in neither --
-        // `-G` and `BG` among them -- do kern, which is why the cross-check
-        // holds the captions as whole strings rather than glyph by glyph.
+        // Digits, separators and the minus sign kern against nothing in this
+        // face. Captions are checked as whole strings because their letters
+        // may kern, including the explicit UTC pair below.
         let factor = size / HEIGHT;
-        text.chars().map(|c| Self::advance(c) * factor).sum()
+        let mut previous = None;
+        let mut width = 0.;
+        for c in text.chars() {
+            // The UTC caption introduces this font's only kerning pair used
+            // by axis labels. Keep the same addition order as the renderer.
+            if previous == Some('T') && c == 'C' {
+                width += -120. * factor;
+            }
+            width += Self::advance(c) * factor;
+            previous = Some(c);
+        }
+        width
     }
 
     fn digit_height(&self, size: f32) -> f32 {

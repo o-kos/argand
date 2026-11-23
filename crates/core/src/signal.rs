@@ -11,6 +11,8 @@ pub struct SignalMeta {
     pub sample_rate: f64,
     /// Centre of the frequency axis in Hz. 0 means baseband.
     pub center_freq: f64,
+    /// UTC recording origin, independent of source identity and display preferences.
+    pub recording_start: Option<crate::RecordingTime>,
     pub sample_type: SampleType,
     /// Number of samples, not of scalar values: an I/Q sample counts once.
     pub len_samples: u64,
