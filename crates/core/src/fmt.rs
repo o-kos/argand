@@ -72,24 +72,9 @@ pub fn format_duration(seconds: f64) -> String {
     format!("{h}h{m:02}m{s:02}{frac}")
 }
 
-/// Frequencies as `24 kHz`, `12.579887 MHz`, `17.578 Hz`, ...
-///
-/// Decimals are chosen so every unit resolves to one hertz -- three for kHz,
-/// six for MHz -- and trailing zeros are trimmed. Printing a fixed number of
-/// decimals instead gives either useless precision (`10.886719 kHz`, a
-/// millionth of a hertz) or not enough (`12.58 MHz`, ten kilohertz of slop).
+/// Human frequency text without a document/report context.
 pub fn format_hz(hz: f64) -> String {
-    let abs = hz.abs();
-    let (value, unit, decimals) = if abs >= 1e9 {
-        (hz / 1e9, "GHz", 9)
-    } else if abs >= 1e6 {
-        (hz / 1e6, "MHz", 6)
-    } else if abs >= 1e3 {
-        (hz / 1e3, "kHz", 3)
-    } else {
-        (hz, "Hz", 3)
-    };
-    format!("{} {unit}", trim_decimals(value, decimals))
+    crate::frequency::standalone(hz)
 }
 
 /// Byte counts as `248 KiB`, `1.4 MiB`, ...
@@ -117,16 +102,6 @@ fn trim1(value: f64) -> String {
         format!("{}", value as i64)
     } else {
         format!("{value:.1}")
-    }
-}
-
-fn trim_decimals(value: f64, decimals: usize) -> String {
-    let s = format!("{value:.decimals$}");
-    let s = s.trim_end_matches('0').trim_end_matches('.');
-    if s.is_empty() || s == "-" {
-        "0".to_string()
-    } else {
-        s.to_string()
     }
 }
 

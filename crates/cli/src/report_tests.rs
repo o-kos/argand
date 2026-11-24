@@ -165,12 +165,12 @@ fn a_full_scale_is_named_only_when_the_divisor_is_a_count() {
 fn the_offset_frequency_carries_its_sign() {
     let m = meta(SampleFormat::I16, 32768.0);
     let a = analysis(-11.4, -87.2, 0.5, 0.0);
-    assert!(human(&report(&m, &a)).contains("+2.404 kHz"));
+    assert!(human(&report(&m, &a)).contains("+2404 Hz"));
 
     let mut negative = analysis(-11.4, -87.2, 0.5, 0.0);
     negative.psd.db = vec![-11.4, -87.2, -87.2];
     assert_eq!(negative.psd.freqs_hz[0], -2404.0);
-    assert!(human(&report(&m, &negative)).contains("-2.404 kHz"));
+    assert!(human(&report(&m, &negative)).contains("-2404 Hz"));
 }
 
 #[test]
@@ -184,8 +184,8 @@ fn an_absolute_frequency_appears_only_when_a_centre_was_given() {
     tuned.center_freq = 12_579_000.0;
     let tuned_analysis = analysis_at(12_579_000.0, -11.4, -87.2, 0.5, 0.0);
     let text = human(&report(&tuned, &tuned_analysis));
-    assert!(text.contains("+2.404 kHz"), "offset stays relative: {text}");
-    assert!(text.contains("12.581404 MHz"), "{text}");
+    assert!(text.contains("+2404 Hz"), "offset stays relative: {text}");
+    assert!(text.contains("12581404 Hz"), "{text}");
 }
 
 #[test]
@@ -236,7 +236,7 @@ fn the_plot_title_and_footer_describe_the_run() {
 
     let title = r.plot_title();
     assert!(title.starts_with("12.579000_capture.iqw"), "{title}");
-    assert!(title.contains("iq_i16") && title.contains("24 kHz") && title.contains("30m"));
+    assert!(title.contains("iq_i16") && title.contains("24000 Hz") && title.contains("30m"));
 
     let footer = r.plot_footer();
     assert!(footer.contains("fft 2048") && footer.contains("hann"));
@@ -336,4 +336,17 @@ fn an_empty_spectrum_leaves_the_optional_fields_out() {
     assert!(human(&r).contains("\n  peak -6.0 dBFS\n"), "{}", human(&r));
     assert_eq!(human(&r).lines().count(), 3, "{}", human(&r));
     assert!(compact(&r, 1, 2).contains("peak -6.0 dBFS"));
+}
+
+#[test]
+fn report_frequency_context_applies_to_metadata_peaks_and_auxiliary_values_only_in_human_text() {
+    let m = meta(SampleFormat::I16, 32768.0);
+    let a = analysis(-11.4, -87.2, 0.5, 0.0);
+    let mut r = report(&m, &a);
+    let before = serde_json::to_string(&r).unwrap();
+    r.frequency_unit = argand_core::frequency::FrequencyUnit::KHz;
+    assert_eq!(serde_json::to_string(&r).unwrap(), before);
+    assert!(r.plot_title().contains("24 kHz"));
+    assert!(human(&r).contains("+2.404 kHz"));
+    assert!(r.plot_footer().ends_with("ENBW 0.017578 kHz"));
 }

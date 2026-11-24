@@ -337,12 +337,13 @@ pub fn suggested_band_name(
     meta: &SignalMeta,
     span: Option<SampleSpan>,
     band: argand_core::FrequencyBand,
+    unit: argand_core::frequency::FrequencyUnit,
 ) -> String {
     let stem = meta
         .source
         .file_stem()
         .map_or_else(|| "capture".into(), |stem| stem.to_string_lossy());
-    let frequencies = band_label(band);
+    let frequencies = band_label(band, unit);
     match span {
         Some(span) => {
             let seconds = |sample: u64| sample as f64 / meta.sample_rate;
@@ -356,27 +357,15 @@ pub fn suggested_band_name(
     }
 }
 
-/// A band's edges in the largest unit that keeps them apart in six decimals, three at least.
-fn band_label(band: argand_core::FrequencyBand) -> String {
-    let magnitude = band.high().abs().max(band.low().abs());
-    let width = band.high() - band.low();
-    let (unit, divisor, decimals) = [("GHz", 1e9), ("MHz", 1e6), ("kHz", 1e3), ("Hz", 1.)]
-        .into_iter()
-        .filter(|&(unit, divisor)| unit == "Hz" || magnitude >= divisor)
-        .map(|(unit, divisor)| {
-            (
-                unit,
-                divisor,
-                (-(width / divisor).log10()).ceil().max(3.0) as usize,
-            )
-        })
-        .find(|&(unit, _, decimals)| unit == "Hz" || decimals <= 6)
-        .unwrap_or(("Hz", 1., 3));
-    format!(
-        "{:.decimals$}-{:.decimals$}{unit}",
-        band.low() / divisor,
-        band.high() / divisor
-    )
+/// Numeric filename components remain locale independent.
+fn band_label(
+    band: argand_core::FrequencyBand,
+    unit: argand_core::frequency::FrequencyUnit,
+) -> String {
+    let low = argand_core::frequency::FrequencyFormat::exact(unit, band.low()).format(band.low());
+    let high =
+        argand_core::frequency::FrequencyFormat::exact(unit, band.high()).with_unit(band.high());
+    format!("{low}-{high}").replace(' ', "")
 }
 
 #[cfg(test)]

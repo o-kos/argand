@@ -152,16 +152,24 @@ impl CursorGuides {
     }
 }
 
-/// Endpoint labels bound the number of digits, grouping separators and signs.
+/// Full fractional endpoint labels bound digits, grouping separators and signs.
 /// The label measure uses the widest digit, independently of the pointer value.
 fn measure_badges(plot: Rect, extents: Extents, scale: f32, labels: &dyn LabelMeasure) -> [f32; 2] {
     let mut widths = [0_f32; 2];
-    for pointer in [
-        point(px(plot.x), px(plot.y)),
-        point(px(plot.right()), px(plot.bottom())),
+    let format =
+        FrequencyFormat::resolution(extents.frequency_unit, extents.per_pixel(plot, scale).1);
+    let (low, high) = extents.displayed_hertz();
+    for (pointer, hertz) in [
+        (point(px(plot.x), px(plot.y)), low),
+        (point(px(plot.right()), px(plot.bottom())), high),
     ] {
         if let Some(readout) = Readout::at(plot, pointer, extents, scale) {
-            for (width, text) in widths.iter_mut().zip([readout.time, readout.frequency]) {
+            let frequency = crate::numbers::text(&format!(
+                "{} {}",
+                format.padded(hertz),
+                extents.frequency_unit.symbol()
+            ));
+            for (width, text) in widths.iter_mut().zip([readout.time, frequency]) {
                 *width = width.max(labels.width(&text, LABEL_SIZE).ceil() + 2. * BADGE_PAD);
             }
         }
@@ -295,30 +303,13 @@ impl Readout {
         let time_label = extents
             .time
             .readout(time, time_span, time_pixels, time_fraction);
-        let (unit, divisor) = frequency_unit(extents.displayed_hertz());
-        let precision =
-            crate::navigation::time_precision(frequency_span / frequency_pixels / divisor);
+        let format =
+            FrequencyFormat::resolution(extents.frequency_unit, frequency_span / frequency_pixels);
         Self {
             time: time_label,
-            frequency: crate::numbers::text(&format!(
-                "{:.*} {unit}",
-                precision,
-                frequency / divisor
-            )),
+            frequency: crate::numbers::text(&format.with_unit(frequency)),
         }
     }
-}
-
-/// The frequency ruler's unit for the visible band, with the hertz in one of it.
-pub fn frequency_unit((low, high): (f64, f64)) -> (&'static str, f64) {
-    let unit = axis::caption(AxisKind::Frequency, low, high).unwrap_or("Hz");
-    let divisor = match unit {
-        "GHz" => 1e9,
-        "MHz" => 1e6,
-        "kHz" => 1e3,
-        _ => 1.,
-    };
-    (unit, divisor)
 }
 
 #[cfg(test)]

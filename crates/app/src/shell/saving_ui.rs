@@ -196,12 +196,27 @@ impl Shell {
             && argand_io::write::writes_as_wave(output, &argand_io::OpenHints::default()))
         .then(|| {
             format!(
-                "as WAV, the FLAC encoder cannot write {} Hz",
-                crate::numbers::number(output.sample_rate)
+                "as WAV, the FLAC encoder cannot write {}",
+                crate::numbers::text(
+                    &argand_core::frequency::FrequencyFormat::exact(
+                        self.frequency_unit(),
+                        output.sample_rate
+                    )
+                    .with_unit(output.sample_rate)
+                )
             )
         });
         let (job, updates) = saving::start(request, of.over);
         self.watch_save(job, updates, (name, target, as_wave), of, window, cx);
+    }
+
+    fn suggested_band_name(
+        &self,
+        meta: &argand_core::SignalMeta,
+        span: Option<argand_core::SampleSpan>,
+        band: argand_core::FrequencyBand,
+    ) -> String {
+        saving::suggested_band_name(meta, span, band, self.frequency_unit())
     }
 
     /// Ask where to save the selected band, over the selected span or the whole capture, then compute it there.
@@ -233,7 +248,7 @@ impl Shell {
         let named_band =
             argand_core::FrequencyBand::between(band.low() + offset, band.high() + offset)
                 .unwrap_or(band);
-        let mut name = saving::suggested_band_name(&display, self.selection, named_band);
+        let mut name = self.suggested_band_name(&display, self.selection, named_band);
         if container == Some(argand_io::write::Container::Flac) {
             name = std::path::Path::new(&name)
                 .with_extension("flac")

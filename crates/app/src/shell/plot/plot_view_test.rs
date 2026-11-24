@@ -69,6 +69,7 @@ fn snapshot() -> PlotSnapshot {
     let ink = gpui_kit::rgb(0x808080);
     PlotSnapshot {
         extents: axes::Extents {
+            frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
             frequency_offset: 0.,
             orientation: crate::navigation::orientation::Mode::Horizontal,
             time: crate::navigation::time_ruler::Ruler {
@@ -1936,7 +1937,7 @@ fn a_bare_width_draft_steps_in_its_opened_unit_before_reformatting(cx: &mut Test
         })
         .unwrap();
     assert_eq!((band.low(), band.high()), (0., 600.));
-    assert_eq!(typing(cx, handle), Some(("600 Hz".into(), false)));
+    assert_eq!(typing(cx, handle), Some(("0.600 kHz".into(), false)));
 }
 
 #[gpui_kit::test]

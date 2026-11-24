@@ -8,6 +8,7 @@
 
 use crate::image::{Rgb, RgbImage};
 use argand_core::axis::{self, Axis, AxisKind, LabelMeasure, LabelMetrics, LabelRun, Tick};
+use argand_core::frequency::FrequencyUnit;
 use argand_core::{Colormap, Psd, SpectrogramImage, WaveformEnvelope};
 use argand_dsp::{Analysis, DynamicRange};
 
@@ -432,7 +433,11 @@ impl Gutters {
             axis::widest_labels(kind, min, max)
                 .iter()
                 .map(String::as_str)
-                .chain(axis::caption(kind, min, max))
+                .chain(if kind == AxisKind::Frequency {
+                    vec!["Hz", "kHz", "MHz", "GHz"]
+                } else {
+                    axis::caption(kind, None).into_iter().collect()
+                })
                 .map(|label| text.width(label, FONT_SIZE).ceil() as i64)
                 .max()
                 .unwrap_or(0)
@@ -686,6 +691,7 @@ impl Layout {
 }
 
 pub struct PlotInput<'a> {
+    pub frequency_unit: FrequencyUnit,
     pub analysis: &'a Analysis,
     pub title: &'a str,
     pub footer: &'a str,
@@ -748,7 +754,7 @@ impl<'a> Scene<'a> {
             rise,
             drop: ink.ceil() as i64 + LABEL_PAD,
             time: time_ticks(layout, img, text, rise),
-            frequency: frequency_ticks(layout, img, text, rise),
+            frequency: frequency_ticks_in(layout, img, text, rise, input.frequency_unit),
         }
     }
 
@@ -929,18 +935,40 @@ fn time_ticks(
 }
 
 /// The frequency ticks the spectrogram and the spectrum panel both draw.
+#[cfg(test)]
 fn frequency_ticks(
     layout: &Layout,
     img: &SpectrogramImage,
     text: &TextRenderer,
     rise: i64,
 ) -> Vec<Tick> {
+    frequency_ticks_in(layout, img, text, rise, frequency_unit(layout, img))
+}
+
+pub fn frequency_unit(layout: &Layout, img: &SpectrogramImage) -> FrequencyUnit {
+    let pixels = layout
+        .spectrogram
+        .map_or(1, |rect| match layout.orientation {
+            Orientation::Horizontal => rect.h,
+            Orientation::Vertical => rect.w,
+        })
+        .max(1) as f64;
+    FrequencyUnit::coordinates(img.f0, img.f1, (img.f1 - img.f0) / pixels)
+}
+
+fn frequency_ticks_in(
+    layout: &Layout,
+    img: &SpectrogramImage,
+    text: &TextRenderer,
+    rise: i64,
+    unit: FrequencyUnit,
+) -> Vec<Tick> {
     let Some(rect) = layout.spectrogram else {
         return Vec::new();
     };
     // The unit is named once at the far end of the axis, so the labels are kept
     // clear of the room it takes rather than drawn over it.
-    let caption = axis::caption(AxisKind::Frequency, img.f0, img.f1).unwrap_or_default();
+    let caption = unit.symbol();
     let (scale, run) = match layout.orientation {
         // Upwards beside the plot: offset 0 is the lowest frequency, at the
         // bottom, and the caption heads the column at the top.
@@ -966,11 +994,14 @@ fn frequency_ticks(
             LabelRun::Across,
         ),
     };
-    axis::ticks(
+    axis::tick_layout_in(
         AxisKind::Frequency,
         scale,
         &LabelMetrics::new(text, FONT_SIZE, run),
+        None,
+        Some(unit),
     )
+    .ticks
 }
 
 pub fn render(layout: &Layout, input: &PlotInput<'_>) -> RgbImage {
@@ -1061,8 +1092,7 @@ fn draw_spectrogram(canvas: &mut RgbImage, scene: &Scene<'_>, rect: Rect) {
     blit(canvas, rect, &scene.input.analysis.spectrogram, orientation);
     frame(canvas, rect);
 
-    let img = &scene.input.analysis.spectrogram;
-    let caption = axis::caption(AxisKind::Frequency, img.f0, img.f1).unwrap_or_default();
+    let caption = scene.input.frequency_unit.symbol();
     match orientation {
         Orientation::Horizontal => {
             scene.across(canvas, rect, &scene.time, Labelled::Yes);

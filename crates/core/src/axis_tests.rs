@@ -360,7 +360,7 @@ fn sample_ticks_are_exact_integer_multiples_even_above_f64_unit_precision() {
             assert_eq!(index as f64, mark.value);
         }
     }
-    let held = TickScheme { step: 0.25, span: 1. };
+    let held = TickScheme::new(0.25, 1.);
     let result = tick_layout(AxisKind::Samples, axis(800, 0., 1.), &across(&text), Some(held));
     assert!(result.scheme.unwrap().step >= 1.);
 }
@@ -391,4 +391,81 @@ fn keeping_edge_marks_preserves_spacing_and_all_readable_labels_on_resize() {
             assert!(marks.ticks.iter().all(|tick| (0..length).contains(&tick.offset)));
         }
     }
+}
+
+#[test]
+fn frequency_ticks_share_step_precision_and_keep_integers_bare() {
+    let text = DejaVuSans;
+    for (min, max, step, expected) in [
+        (12_589_000., 12_591_000., 1_000., vec!["12.589", "12.590", "12.591"]),
+        (12_899_000., 12_901_000., 1_000., vec!["12.899", "12.900", "12.901"]),
+        (12_999_000., 13_001_000., 1_000., vec!["12.999", "13", "13.001"]),
+        (12_900_000., 13_100_000., 100_000., vec!["12.9", "13", "13.1"]),
+        (-1.25, 1.25, 0.25, vec!["-1.25", "-1", "-0.75", "-0.50", "-0.25", "0", "0.25", "0.50", "0.75", "1", "1.25"]),
+        (99., 101., 0.9996, vec!["99.960", "100.960"]),
+        (1_249., 1_251., 1., vec!["1.249", "1.250", "1.251"]),
+        (1_249_000_000., 1_251_000_000., 1_000_000., vec!["1.249", "1.250", "1.251"]),
+    ] {
+        let layout = tick_layout(AxisKind::Frequency, axis(2000, min, max), &across(&text), Some(TickScheme::new(step, max - min).with_frequency_unit(FrequencyUnit::magnitude(min, max))));
+        let actual: Vec<_> = layout.ticks.iter().map(|tick| tick.label.as_str()).collect();
+        assert_eq!(actual, expected, "{min}..{max}, step {step}");
+        assert_no_overlap(&layout.ticks, &across(&text), "frequency precision");
+    }
+}
+
+#[test]
+fn automatic_frequency_precision_follows_zoom_and_survives_pan() {
+    let text = DejaVuSans;
+    for (min, max) in [(12_589_000., 12_591_000.), (12_000_000., 13_000_000.)] {
+        let layout = tick_layout(AxisKind::Frequency, axis(1200, min, max), &across(&text), None);
+        let scheme = layout.scheme.unwrap();
+        let shifted = tick_layout(AxisKind::Frequency, axis(1200, min + scheme.step, max + scheme.step), &across(&text), Some(scheme));
+        let decimals = FrequencyFormat::step(scheme.frequency_unit().unwrap(), scheme.step).decimals();
+        for tick in layout.ticks.iter().chain(&shifted.ticks) {
+            if let Some((_, fraction)) = tick.label.split_once('.') {
+                assert_eq!(fraction.len(), decimals, "{tick:?}, {scheme:?}");
+            }
+        }
+        assert_eq!(shifted.scheme, Some(scheme));
+        assert_no_overlap(&layout.ticks, &across(&text), "automatic frequency precision");
+    }
+}
+
+#[test]
+fn large_retained_frequency_steps_preserve_the_unit_resolution() {
+    let text = DejaVuSans;
+    for (step, expected) in [
+        ((2_f64.powi(30) + 0.000001) * 1e9, "1073741824.000000954"),
+        ((2_f64.powi(49) + 0.25) * 1e9, "562949953421312.25"),
+    ] {
+        let layout = tick_layout(AxisKind::Frequency, axis(2000, 0.9 * step, 1.1 * step), &across(&text), Some(TickScheme::new(step, 0.2 * step)));
+        assert_eq!(layout.ticks.len(), 1);
+        assert_eq!(layout.ticks[0].value, step);
+        assert_eq!(layout.ticks[0].label, expected);
+    }
+}
+
+#[test]
+fn retained_frequency_unit_survives_pan_across_magnitude_boundary() {
+    let text = DejaVuSans;
+    let first = tick_layout(AxisKind::Frequency, axis(1200, 998_000., 1_000_000.), &across(&text), None);
+    let scheme = first.scheme.unwrap();
+    let moved = tick_layout(AxisKind::Frequency, axis(1200, 1_001_000., 1_003_000.), &across(&text), Some(scheme));
+    assert_eq!(moved.scheme.unwrap().frequency_unit(), scheme.frequency_unit());
+    assert_eq!(scheme.frequency_unit(), Some(FrequencyUnit::KHz));
+}
+
+#[test]
+fn public_frequency_caption_uses_the_accepted_fresh_and_retained_unit() {
+    let text = DejaVuSans;
+    let extent = axis(1200, 12_589_000., 12_591_000.);
+    let fresh = tick_layout(AxisKind::Frequency, extent, &across(&text), None);
+    assert_eq!(caption(AxisKind::Frequency, fresh.scheme), Some("kHz"));
+    assert_eq!(ticks(AxisKind::Frequency, extent, &across(&text)), fresh.ticks);
+    for tick in &fresh.ticks {
+        assert!((tick.label.parse::<f64>().unwrap() * 1000. - tick.value).abs() < 1e-6);
+    }
+    let held = tick_layout(AxisKind::Frequency, axis(1200, 999_000., 1_001_000.), &across(&text), fresh.scheme);
+    assert_eq!(caption(AxisKind::Frequency, held.scheme), Some("kHz"));
+    assert_eq!(caption(AxisKind::Frequency, None), None);
 }

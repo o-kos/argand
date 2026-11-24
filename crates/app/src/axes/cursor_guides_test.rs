@@ -11,11 +11,16 @@ fn shared_readout_honours_all_ruler_modes_and_frequency_units() {
     ] {
         for (hertz, frequency) in [
             ((-0.5, 0.5), "-0.250 Hz"),
-            ((-24000., 24000.), "-12.000 kHz"),
+            ((-24000., 24000.), "-12 kHz"),
             ((99e6, 101e6), "99.500 MHz"),
             ((1e9, 3e9), "1.500 GHz"),
         ] {
             let extents = Extents {
+                frequency_unit: argand_core::frequency::FrequencyUnit::coordinates(
+                    hertz.0,
+                    hertz.1,
+                    (hertz.1 - hertz.0) / 500.,
+                ),
                 frequency_offset: 0.,
                 orientation: crate::navigation::orientation::Mode::Horizontal,
                 time: crate::navigation::time_ruler::Ruler {
@@ -45,6 +50,7 @@ fn physical_values_follow_requested_extents_and_inverted_frequency_axis() {
         height: 500.,
     };
     let extents = Extents {
+        frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
         frequency_offset: 0.,
         orientation: crate::navigation::orientation::Mode::Horizontal,
         time: crate::navigation::time_ruler::Ruler::CLOCK,
@@ -53,9 +59,9 @@ fn physical_values_follow_requested_extents_and_inverted_frequency_axis() {
     };
     let center = Readout::at(plot, point(px(510.), px(270.)), extents, 1.).unwrap();
     assert_eq!(center.time, "0:12.0005000");
-    assert_eq!(center.frequency, "100.000 MHz");
+    assert_eq!(center.frequency, "100 MHz");
     let top = Readout::at(plot, point(px(10.), px(20.)), extents, 1.).unwrap();
-    assert_eq!(top.frequency, "101.000 MHz");
+    assert_eq!(top.frequency, "101 MHz");
     assert!(Readout::at(plot, point(px(510.), px(19.)), extents, 1.).is_none());
     assert!(Readout::at(plot, point(px(1011.), px(270.)), extents, 1.).is_none());
 }
@@ -69,6 +75,7 @@ fn hidpi_badges_resolve_adjacent_device_pixels() {
         height: 500.,
     };
     let extents = Extents {
+        frequency_unit: argand_core::frequency::FrequencyUnit::Hz,
         frequency_offset: 0.,
         orientation: crate::navigation::orientation::Mode::Horizontal,
         time: crate::navigation::time_ruler::Ruler::CLOCK,
@@ -105,6 +112,7 @@ fn badge_measurements_are_reused_until_ruler_or_font_changes() {
             height: 500.,
         },
         extents: Extents {
+            frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
             frequency_offset: 0.,
             orientation: crate::navigation::orientation::Mode::Horizontal,
             time: crate::navigation::time_ruler::Ruler::CLOCK,
@@ -146,6 +154,7 @@ fn sample_width_keeps_exact_large_capture_indices() {
         height: 500.,
     };
     let extents = Extents {
+        frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
         frequency_offset: 0.,
         orientation: crate::navigation::orientation::Mode::Horizontal,
         time: crate::navigation::time_ruler::Ruler {
@@ -173,6 +182,7 @@ fn sample_width_keeps_exact_large_capture_indices() {
 #[test]
 fn vertical_readouts_follow_time_down_and_frequency_right() {
     let extents = Extents {
+        frequency_unit: argand_core::frequency::FrequencyUnit::KHz,
         frequency_offset: 0.,
         orientation: crate::navigation::orientation::Mode::Vertical,
         time: crate::navigation::time_ruler::Ruler::CLOCK,
@@ -189,8 +199,31 @@ fn vertical_readouts_follow_time_down_and_frequency_right() {
     let left = Readout::at(plot, point(px(10.), px(120.)), extents, 1.).unwrap();
     let bottom = Readout::at(plot, point(px(210.), px(220.)), extents, 1.).unwrap();
     assert_eq!(center.time, left.time);
-    assert_eq!(center.frequency, "0.000 kHz");
-    assert_eq!(left.frequency, "-12.000 kHz");
+    assert_eq!(center.frequency, "0 kHz");
+    assert_eq!(left.frequency, "-12 kHz");
     assert_ne!(center.time, bottom.time);
     assert_eq!(center.frequency, bottom.frequency);
+}
+
+#[test]
+fn integer_endpoints_bound_fractional_interior_frequency_badges() {
+    let plot = Rect {
+        x: 0.,
+        y: 0.,
+        width: 800.,
+        height: 1000.,
+    };
+    let extents = Extents {
+        frequency_unit: argand_core::frequency::FrequencyUnit::MHz,
+        frequency_offset: 0.,
+        orientation: crate::navigation::orientation::Mode::Horizontal,
+        time: crate::navigation::time_ruler::Ruler::CLOCK,
+        seconds: (0., 1.),
+        hertz: (12_000_000., 13_000_000.),
+    };
+    let labels = argand_core::testutil::DejaVuSans;
+    let widths = measure_badges(plot, extents, 1., &labels);
+    let interior = Readout::from_fractions((0.5, 0.5), extents, (800., 1000.));
+    assert_eq!(interior.frequency, "12.500 MHz");
+    assert!(widths[1] >= labels.width(&interior.frequency, LABEL_SIZE).ceil() + 2. * BADGE_PAD);
 }

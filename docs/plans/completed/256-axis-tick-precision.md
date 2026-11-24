@@ -1,0 +1,327 @@
+# Issue #256: Consistent precision-aware frequency presentation
+
+Resolves #256.
+
+## Completion and owner decision
+
+On 2026-11-24 the owner explicitly accepted PR #268 with the previously reported
+validation limits. This is the final owner acceptance decision, not a claim that
+the executor performed the unavailable production interaction checks. The plan is
+complete. Historical Draft checkpoints below retain the evidence and limitations
+known at each stage. Required current full CI and squash merge are post-completion
+operations. The separately requested analysis-status relocation is Issue #270 and
+is outside this change.
+
+## Current scope
+
+The owner expanded this Issue after the initial tick-padding implementation.
+Apply one precision-aware frequency unit policy to every human-facing frequency
+consumer. A unit requiring more than three fractional digits moves to the next
+smaller unit: `12.582 MHz` stays, `12.5825 MHz` becomes `12 582.5 kHz`, and
+`12.58255 MHz` becomes `12 582.55 kHz`. GUI grouping and decimal marks follow
+the numeric locale. Physical Hz values and machine-readable contracts stay intact.
+
+The consumer inventory and API below are the pre-implementation plan for this
+expanded scope. The prior implementation, evidence and review record below cover
+only the initial scope. They do not establish validation of the expanded scope.
+
+## Initial scope
+
+Frequency tick labels independently trim fractional zeros. Use one precision derived
+from the displayed unit and selected tick step for every fractional frequency tick,
+while retaining bare integer labels. Preserve numeric coordinates, units, locale,
+clock/seconds/sample rulers and standalone frequency readouts.
+
+## Roles and risk
+
+- Class: A, conservatively treating shared public core axis presentation as a core
+  API behavior change. No DSP, concurrency, storage or resource ownership changes.
+- Coordinator: `gpt-6.1-sol` medium, owner communication and exact-result assessment.
+- Executor: `gpt-6.1-sol` medium, investigation through validation and PR operations.
+- Reviewer: `gpt-6.1-sol` high in a fresh read-only context.
+- Consultant: none unless a concrete unresolved question requires one.
+
+## Context and decisions
+
+`crates/core/src/axis.rs` owns shared GUI/CLI tick selection and formatting.
+`HertzUnit::format` currently trims all fractional zeros. Tick placement knows the
+selected or retained scheme before localization and measurement. Add private
+step-aware tick formatting there without changing public signatures or the
+standalone frequency readout contract. Keep the existing unit resolution limit.
+GUI localization must preserve the padded fraction before final text measurement.
+Reuse the existing axis canvas and number formatter; introduce no controls.
+
+Rejected: padding labels after placement would invalidate measured widths and tick
+spacing. Changing clock/seconds/sample formatting expands the Issue's scope.
+
+## Acceptance criteria and evidence
+
+| Criterion | Verification | Result / limits |
+| --- | --- | --- |
+| Fractional ticks share step precision, integers stay bare | Shared axis tests for MHz `12.589`, `12.590`, `12.900`, `13`, other units, negative and zero | Automated pass, production rendering observed |
+| Zoom and panning retain appropriate precision and collision safety | Automatic/held scheme tests and isolated production UI zoom/pan | Automated pass, interactive zoom/pan incomplete |
+| Locale, values and units remain correct | GUI localization tests and decimal-comma production rendering | Automated and production rendering pass |
+| Other rulers/readouts retain behavior | Existing core/GUI suites and focused regression assertions | Existing suites passed |
+
+UI acceptance uses the repository skill, only on an isolated Xvfb display, with
+supported disposable configuration/session/cache isolation. Inspect available
+interaction capabilities before running. Missing display or authorized input leaves
+acceptance incomplete and the PR Draft. A screenshot alone is not acceptance.
+
+## Implementation steps
+
+- [x] Confirm root cause and record scope, roles, plan and concrete expectations.
+- [x] Add regression tests and private shared frequency tick formatting.
+- [x] Update changelog and current axis architecture contract.
+- [x] Complete full local gate and build current production release.
+- [x] Record the unavailable production interaction checks and final owner acceptance.
+  Static current-production rendering passed in both orientations and across an
+  integer frequency. Authorized interactive input was unavailable.
+- [x] Complete independent review and dispositions.
+- [x] Move the accepted plan to completed before Ready/full remote validation.
+
+## Validation
+
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the checks pass
+- [x] Focused core and locale regressions
+- [x] Record current-production rendering identity, interaction limits and owner acceptance
+
+## Post-completion
+
+Merge and safe worktree/branch cleanup follow owner acceptance and current full CI.
+
+### Automated results
+
+The focused regression reproduced `12.59` versus required `12.590` before the fix.
+The locked workspace gate passed formatting, all-target Clippy, 958 tests and doc
+tests. Core regressions cover step-derived precision in Hz/kHz/MHz/GHz, bare
+integers, negative values/zero and retained schemes; GUI number tests cover
+English and decimal-comma Russian localization. Existing clock/seconds/sample
+ruler and standalone readout tests passed unchanged. The selected immutable SDK
+and workspace-local `target/` were used without toolkit/toolchain changes.
+
+### Independent review dispositions
+
+Round 1 accepted one P2 finding: rounding a non-ladder retained step of 0.9996 Hz
+before choosing precision shortened the labels to whole Hz. The first correction selected
+the smallest decimal count representing the scaled step within floating-point
+error, falling back to the existing unit resolution cap. The
+regression expects `99.960` and `100.960` for that retained scheme. No findings
+were rejected. The subsequent round is recorded below.
+
+Round 2 accepted one P2 finding: a relative floating-point tolerance could treat a
+large genuinely fractional GHz step as an integer. Removing tolerance alone is
+insufficient because multiplication can also discard the fraction. Precision now
+requires an exactly integral scaled candidate and textual equality between the
+candidate padded to the unit cap and the original full-cap step text. Otherwise
+it retains the cap. Regressions cover both reported large-step cases alongside
+the 0.9996 Hz case. No findings were rejected. Round 3 is the final allowed round.
+
+### Final evidence and remaining acceptance
+
+The final source passed the refreshed full gate, 958 tests and doc tests, then
+production release build. Direct Xvfb rendering confirmed decimal-comma fractional
+padding in horizontal/dark and vertical/light layouts, and bare `13` MHz beside
+fractional ticks. [Production evidence and limits](../../ui/256-axis-tick-precision/README.md)
+record exact source/binary identity, startup isolation, screenshots and cleanup.
+Interactive zoom, pan and live orientation switching were not exercised because
+available native input was disabled and no installed input utility was available.
+This was incomplete executor-run interaction evidence, not a successful
+interactive scenario. At this checkpoint the PR remained Draft; the final owner
+acceptance decision is recorded above.
+
+Round 3 returned no substantive findings. Both accepted P2 findings were fixed,
+none were rejected, and the final source was frozen during review. The final
+evidence/plan update changes documentation only.
+
+## Expanded scope: consumer inventory
+
+| Consumer | Current owner | Precision and state contract |
+| --- | --- | --- |
+| GUI frequency ticks/caption, both orientations | core `axis`, app `axes` | Selected step and accepted measured text, retained unit while panning |
+| CLI spectrogram and PSD ticks/captions/gutters | CLI `render`, core `axis` | Same core policy and final measured text, canonical ASCII numbers |
+| Cursor status and Alt frequency badge | app `axes/cursor_guides` | Device-pixel precision, shared readout and width-cache key |
+| Selection edge/width badges, inline inputs, panel | app `navigation/selection_entry`, `shell/badge_entry`, `shell/plot` | Edges retain physical offset translation, width independent of absolute origin, explicit suffix overrides displayed default unit |
+| File/status sample rate, declared reference and hints | app `document` | Shared document unit with exact canonical metadata precision, independent physical values |
+| Effective-reference status and property editor | app `shell/reference_ui` | Whole-Hz commit range and 1 Hz steps, unchanged draft preserves original Hz |
+| Conversion sample-rate and carrier editors | app `shell/conversion_ui`, shared `NumericEditor` | Physical Hz bounds/step, existing draft transaction and carrier meaning, unchanged text cannot round-trip through a rounded display |
+| Conversion retained-band warning | app `shell/conversion_ui` | One common unit for range endpoints, source-local frequency semantics |
+| Saving rate warning | app `shell/saving_ui` | Human frequency policy, no save semantics change |
+| Ruler resolution hint | app `axes::UnitHint` | Frequency-per-device-pixel quantity with its own resolution context |
+| Human CLI source/title/footer/ENBW/peak offset and absolute peak | core `format_hz`, CLI `report` | Existing report resolution, shared policy, no GUI locale dependency |
+| Suggested extraction filename frequency portion | app `processing/saving::band_label` | Shared unit/precision rule, portable ASCII and no locale grouping |
+| Source filenames, CLI argument syntax, JSON, session and file metadata | Existing I/O/CLI/session owners | Physical Hz/identity contracts, do not rewrite machine values or source names |
+
+## Expanded scope: architecture and invariants
+
+1. Add toolkit-neutral `argand_core::frequency::{FrequencyUnit, FrequencyFormat}`.
+   Keep fields private and expose unit/divisor/decimals readers, canonical numeric
+   formatting, formatting with a unit and unit-suffix recognition. Constructors
+   distinguish step/resolution contexts from fixed-value contexts. Fixed values
+   format in the shared selected unit using their existing agreed resolution,
+   not binary noise, and do not independently select GUI units.
+2. Axis candidate formatting obtains its frequency format before localization and
+   measurement. Store the accepted format with the retained tick scheme so panning
+   cannot switch units at a magnitude threshold. Adapt the evolving public
+   `TickScheme` with `#[non_exhaustive]`, a constructor and a format reader.
+   GUI and CLI captions derive from the accepted scheme. Conservative pre-layout
+   bounds must account for every unit the policy can select.
+3. Keep reference/sample-rate/carrier values, bounds and steps in physical Hz.
+   Extend the existing standard Input/Button NumericEditor composition with
+   frequency presentation. Callers use Hz value/set-value methods rather than
+   reinterpreting InputState text. Bind a focused draft to its displayed unit.
+   Update unit and committed display together. Preserve original canonical Hz
+   when unchanged displayed text is committed, and retain the established
+   preview/keep/revert, stale-document, disabled, focus and stepping contracts.
+4. Keep explicit suffixes authoritative. Locale-aware number parsing remains in
+   the app; SI unit conversion/presentation policy remains in core. Preserve
+   reference-offset translation for edges and avoid applying offsets to widths.
+5. Formatting never schedules signal analysis, changes samples, source identity,
+   saved physical metadata, capture/view coordinates or persistence schema.
+   Zoom/size/orientation can select fresh presentation; panning retains its unit.
+   Numeric locale remains immutable and final strings enter measurement/cache keys.
+6. Reuse existing axis canvases and shared standard numeric controls. No new widget,
+   toolkit graph, feature, toolchain, worktree or shared build artifacts are needed.
+
+### Approved common-unit decision and ownership
+
+The owner selected one common unit for all human-visible frequencies. Shell owns
+one immutable per-document presentation context and passes its selected unit to
+plot snapshots/extents, Frame, cursor/status/Alt readouts, selection edges/widths,
+file/reference/rate/carrier displays, hints and property fields. CLI report/image
+uses one equivalent context. No mutable application global is introduced.
+
+The selector is driven by the coordinate family's finest displayed resolution,
+independent of cursor or tooltip visibility. If that precision needs more than
+three fractional digits, move to a smaller unit. Ancillary metrics (Hz/px, ENBW)
+and exact fixed metadata use the selected common unit while preserving their own
+precision, including extra fractional digits when necessary. They do not select
+the coordinate unit. This reconciles the scale-based threshold and common-unit
+requirement without silently degrading independent physical measurements.
+
+Shell uses accepted device geometry and canonical extents to derive the context,
+with a conservative shared provisional context before the first layout. Every
+consumer receives the same selected unit before text measurement. Retained schemes
+store the unit while panning; existing zoom/size/orientation release boundaries
+permit reselection. Format changes repaint but do not independently submit FFT
+work. Real layout-size changes retain the existing analysis/layout contract.
+
+Shell holds one common unit across every visible frequency for the entire
+frequency-edit surface lifetime, including resize. Close/commit/cancel releases
+the exact acquisition, protected against stale same-document deferred closes.
+Explicit suffixes always win. Unit changes must not reparse unchanged rounded
+display text as a new physical value. Canonical dirty tracking preserves original
+Hz, and closing the surface permits coherent context reselection.
+The Hz floor preserves existing fine precision without adding a new SI family.
+
+
+## Expanded scope: acceptance and implementation
+
+- [x] Inventory every human frequency consumer and machine-contract exclusion.
+- [x] Record the owner-approved three-digit unit examples and role/risk assignment.
+- [x] Record the owner's common-unit decision for all human-facing frequencies.
+- [x] Implement the shared immutable frequency presentation policy and value cases.
+- [x] Integrate accepted/retained axis formats and GUI/CLI captions/measurements.
+- [x] Integrate cursor/status/Alt and all selection display/input consumers.
+- [x] Integrate fixed metadata, shared frequency editors, hints, warnings and human CLI.
+- [x] Synchronize current architecture, changelog, Issue and PR scope/evidence.
+- [x] Refresh fmt, all-target Clippy, locked tests and then production release build.
+- [x] Complete the new expanded-scope independent review under the same role defaults.
+- [x] Capture and inspect five static production scenarios in isolated Xvfb.
+- [x] Record explicit owner acceptance with the reported unperformed interaction checks.
+
+Tests must independently establish the approved examples, unit transitions,
+negative/zero/integer values, retained-unit stability across magnitude thresholds,
+locale grouping, cursor/selection consistency under the chosen family rule,
+explicit suffix interpretation, selection width/reference-offset separation,
+1 Hz stepping and unchanged canonical values in both property panels. Preserve
+coverage of the earlier non-ladder and huge-step review regressions. Human CLI
+text/image changes need focused output and measurement tests; JSON stays unchanged.
+
+Current-production acceptance must cover zoom/pan and both orientations, pointer
+readouts and Alt badges, edge/width input commit/step, property-panel commit/step
+and dismiss transactions, and narrow light/dark layouts where longer grouped
+labels matter. Use only isolated Xvfb and permitted input. Unavailable interaction
+was incomplete during implementation and kept the PR Draft until the final owner
+decision. Earlier screenshots do not validate
+this expanded scope.
+
+### Expanded-scope review boundary
+
+The earlier three-round review finished clean for its exact initial snapshot.
+The owner subsequently approved new functionality. A new review cycle covers the
+new plan and exact expanded snapshot with the same reviewer assignment and a
+maximum of three rounds, retaining previous findings and dispositions as context.
+This is not an additional attempt to bypass unresolved earlier findings.
+
+
+### Expanded implementation checkpoint
+
+The shared core policy and all inventoried human frequency consumers are integrated.
+Shell derives the common unit from canonical coordinate extents and accepted device
+geometry. Frequency-size changes clear the retained scheme, including the first
+layout; panning retains the accepted unit. Auxiliary resolution hints use the same
+unit with their own precision. Fixed metadata and editable fields retain canonical
+Hz precision, and NumericEditor preserves untouched physical values independently
+of its localized draft text. CLI human report and image share one context, while
+changing presentation leaves serialized JSON unchanged. Pre-layout CLI gutter
+bounds conservatively cover all permitted units before the final geometry exists.
+
+Incremental evidence: the app suite passed 579 tests before the final bounded-layout
+test was added; that new test passed separately across both orientations and seven
+near-threshold spans. Core passed 43 tests, CLI passed 51 unit tests and 24 integration
+tests. These are incremental checks, not the final full gate. Full fmt/Clippy/tests,
+release build, fresh independent review and production Xvfb evidence remain pending.
+The previous three-round clean review does not cover this expanded implementation.
+
+
+### Expanded review round 1 dispositions
+
+Three findings are accepted, none rejected. The earlier draft-unit exception is
+withdrawn: one Shell-owned document unit remains common while frequency editing
+surfaces are open, including resize. Exact acquisition tokens protect deferred
+close/commit from releasing a newer edit in the same document. Closing/reverting
+and new-document cleanup release the hold without scheduling analysis solely for
+formatting. This fixes the P1 selection draft unit reinterpretation and visible
+mixed-unit numeric fields. Two P2 corrections bound Alt badge measurement with
+fractional text even when endpoints are integers, and migrate the public axis
+caption API to consume the accepted scheme rather than independently selecting a
+magnitude unit. Regressions and current gates/release/review remain required.
+
+
+### Expanded final source and evidence
+
+The corrected implementation is frozen at the exact source identified in the
+current production evidence and review packet.
+Formatting, all-target Clippy, all 970 tests/doc tests and the subsequent workspace
+release build passed. Expanded-scope round 2 concluded clean for that exact source:
+all three accepted findings from round 1 were fixed, none rejected. This is a new
+owner-approved functional scope after the initial clean cycle, not a fourth attempt
+to resolve outstanding initial-scope findings.
+
+[Current production evidence](../../ui/256-axis-tick-precision/expanded.md) binds five
+static Xvfb views to the exact source and binary SHA. Both orientations use common
+kHz, the coarse view uses MHz with bare `13`, and the fine view uses Hz with long
+grouped labels and matching metadata/status units. The representative fine kHz
+view displays `12 582,55` beside padded `12 582,50`, with matching reference
+`12 582,55 kHz` and `1 kHz` sample rate. No clipping or mixed generated
+frequency units was observed. Interactive zoom/pan, live orientation switching,
+cursor/Alt and field editing remain unperformed in production. No permitted input
+route was available in that session. The owner subsequently accepted the PR with
+these reported limits; no new executor-run interaction claim is made. Final evidence-only updates
+do not change the reviewed product code or require another release build.
+
+
+### Completion validation scope
+
+The final acceptance update changes documentation and moves this plan only. Product
+code, dependencies and current architecture are identical to the reviewed source
+and the locally validated 970-test gate. Diff/link checks and a warm production
+release build bind the accepted state without repeating the unchanged local code
+gate. The installed pre-push hook remains enabled for the final push. The Ready PR
+must still pass current full CI on Linux, Windows and macOS before merge.
+Owner acceptance does not turn the historical unperformed interaction checks into
+executed checks.

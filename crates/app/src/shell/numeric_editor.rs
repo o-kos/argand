@@ -1,6 +1,7 @@
 //! One numeric editing contract for the two status property panels.
 
 use super::*;
+use argand_core::frequency::{FrequencyFormat, FrequencyUnit};
 use gpui_kit::component::input::{InputEvent, InputState, StepAction};
 use gpui_kit::component::{Disableable, Icon, IconName};
 use gpui_kit::{EventEmitter, Focusable};
@@ -75,9 +76,18 @@ pub(super) struct Changed {
 pub(super) struct NumericEditor {
     pub input: Entity<InputState>,
     config: Config,
+    frequency: Option<FrequencyDraft>,
     repeat: Option<Task<()>>,
     disabled: bool,
     _subscription: Subscription,
+}
+
+/// Untouched text always keeps its original physical value, including sub-Hz metadata.
+struct FrequencyDraft {
+    hertz: f64,
+    text: String,
+    unit: FrequencyUnit,
+    pending: Option<FrequencyUnit>,
 }
 
 impl EventEmitter<Changed> for NumericEditor {}
@@ -108,10 +118,93 @@ impl NumericEditor {
         Self {
             input,
             config,
+            frequency: None,
             repeat: None,
             disabled: false,
             _subscription: subscription,
         }
+    }
+
+    pub(super) fn frequency(
+        hertz: f64,
+        unit: FrequencyUnit,
+        config: Config,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let text = crate::numbers::text(&FrequencyFormat::exact(unit, hertz).format(hertz));
+        let mut editor = Self::new(text.clone(), config, window, cx);
+        editor.frequency = Some(FrequencyDraft {
+            hertz,
+            text,
+            unit,
+            pending: None,
+        });
+        editor
+    }
+
+    pub(super) fn value_hz(&self, cx: &gpui_kit::App) -> Option<f64> {
+        let text = self.input.read(cx).value();
+        let value = if let Some(draft) = &self.frequency {
+            if text.as_ref() == draft.text {
+                return Some(draft.hertz);
+            }
+            let (number, suffix) = FrequencyUnit::split_suffix(text.trim());
+            let compact: String = number.chars().filter(|c| !c.is_whitespace()).collect();
+            crate::numbers::parse::<f64>(&compact).ok()? * suffix.unwrap_or(draft.unit).divisor()
+        } else {
+            crate::numbers::parse::<f64>(&text).ok()?
+        };
+        self.config
+            .accepts(value)
+            .then_some(if self.config.integer {
+                value.round()
+            } else {
+                value
+            })
+    }
+
+    pub(super) fn set_hz(&mut self, hertz: f64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(draft) = &mut self.frequency else {
+            return;
+        };
+        draft.hertz = hertz;
+        draft.unit = draft.pending.take().unwrap_or(draft.unit);
+        draft.text = crate::numbers::text(&FrequencyFormat::exact(draft.unit, hertz).format(hertz));
+        let text = draft.text.clone();
+        if self.input.read(cx).value().as_ref() != text {
+            self.input
+                .update(cx, |input, cx| input.set_value(text, window, cx));
+        }
+    }
+
+    pub(super) fn sync_frequency_unit(
+        &mut self,
+        unit: FrequencyUnit,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(draft) = &mut self.frequency else {
+            return;
+        };
+        if draft.unit == unit {
+            draft.pending = None;
+            return;
+        }
+        draft.pending = Some(unit);
+        if self.input.read(cx).focus_handle(cx).is_focused(window)
+            || self.input.read(cx).value().as_ref() != draft.text
+        {
+            return;
+        }
+        let hertz = draft.hertz;
+        self.set_hz(hertz, window, cx);
+    }
+
+    pub(super) fn displayed_unit(&self) -> &'static str {
+        self.frequency
+            .as_ref()
+            .map_or(self.config.unit, |draft| draft.unit.symbol())
     }
 
     pub(super) fn set_disabled(&mut self, disabled: bool, cx: &mut Context<Self>) {
@@ -125,7 +218,13 @@ impl NumericEditor {
         cx.notify();
     }
 
-    fn format(&self, window: &mut Window, cx: &mut Context<Self>) {
+    fn format(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.frequency.is_some() {
+            if let Some(value) = self.value_hz(cx) {
+                self.set_hz(value, window, cx);
+            }
+            return;
+        }
         let Ok(value) = crate::numbers::parse::<f64>(self.input.read(cx).value().as_ref()) else {
             return;
         };
@@ -148,7 +247,7 @@ impl NumericEditor {
         if self.disabled {
             return false;
         }
-        let Ok(value) = crate::numbers::parse::<f64>(self.input.read(cx).value().as_ref()) else {
+        let Some(value) = self.value_hz(cx) else {
             return false;
         };
         let delta = if step == StepAction::Increment {
@@ -164,9 +263,13 @@ impl NumericEditor {
         if !self.config.accepts(value) {
             return false;
         }
-        self.input.update(cx, |input, cx| {
-            input.set_value(crate::numbers::number(value), window, cx);
-        });
+        if self.frequency.is_some() {
+            self.set_hz(value, window, cx);
+        } else {
+            self.input.update(cx, |input, cx| {
+                input.set_value(crate::numbers::number(value), window, cx)
+            });
+        }
         cx.emit(Changed { committed: true });
         cx.notify();
         true
@@ -235,10 +338,11 @@ impl NumericEditor {
 
 impl Render for NumericEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let unit = self.displayed_unit();
         let presentation = &self.input;
         let focused = presentation.read(cx).focus_handle(cx).is_focused(window);
         let available = (settings_ui::editor::value_column_width(window)
-            - settings_ui::editor::number_width(self.config.unit, window, cx)
+            - settings_ui::editor::number_width(unit, window, cx)
             - px(52.))
         .max(px(0.));
         let width =
@@ -259,7 +363,7 @@ impl Render for NumericEditor {
             .child(settings_ui::editor::number_control(
                 &self.input,
                 width,
-                self.config.unit,
+                unit,
                 focused,
                 self.disabled,
                 cx,
@@ -267,3 +371,7 @@ impl Render for NumericEditor {
             .child(self.button(self.config.up, IconName::Plus, StepAction::Increment, cx))
     }
 }
+
+#[cfg(test)]
+#[path = "numeric_editor_test.rs"]
+mod tests;

@@ -111,6 +111,7 @@ fn plot(layout: &Layout, analysis: &Analysis) -> RgbImage {
     render(
         layout,
         &PlotInput {
+            frequency_unit: argand_core::frequency::FrequencyUnit::Hz,
             analysis,
             title: "title",
             footer: "footer",
@@ -133,6 +134,7 @@ fn the_yellow_suggestion_is_drawn_in_the_footer_without_depending_on_a_panel() {
         let canvas = render(
             &layout,
             &PlotInput {
+            frequency_unit: argand_core::frequency::FrequencyUnit::Hz,
                 analysis: &a,
                 title: "title",
                 footer: "60 dB below full scale (sugg -d 40) · dBFS",
@@ -174,6 +176,7 @@ fn a_narrow_footer_keeps_the_complete_warning_and_scale_metadata() {
     assert!(text.width(compact, FONT_SIZE) <= available);
 
     let input = PlotInput {
+            frequency_unit: argand_core::frequency::FrequencyUnit::Hz,
         analysis: &a,
         title: "title",
         footer: full,
@@ -616,7 +619,7 @@ fn no_two_labels_overlap_at_any_supported_size() {
 }
 
 #[test]
-fn a_megahertz_frequency_label_gets_a_gutter_that_holds_it() {
+fn a_precision_selected_frequency_label_gets_a_gutter_that_holds_it() {
     let ruler = Ruler::new();
     let (time, tuned) = ((0.0, 1800.0), (12_567_000.0, 12_591_000.0));
     let gutters = Gutters::measure(time, tuned, DECIBELS);
@@ -625,14 +628,12 @@ fn a_megahertz_frequency_label_gets_a_gutter_that_holds_it() {
 
     let hertz = frequency_ticks(&layout, &extents(time, tuned), &ruler.text, ruler.rise);
     // One unit for the axis, named once beside it, and bare digits on the ticks.
-    assert_eq!(axis::caption(AxisKind::Frequency, tuned.0, tuned.1), Some("MHz"));
+    assert_eq!(frequency_unit(&layout, &extents(time, tuned)), FrequencyUnit::KHz);
     assert!(hertz.iter().all(|t| !t.label.contains("Hz")), "{hertz:?}");
-    assert!(hertz.iter().any(|t| t.label.starts_with("12.5")), "{hertz:?}");
+    assert!(hertz.iter().any(|t| t.label.starts_with("125")), "{hertz:?}");
     ruler.check_stacked(&hertz, spec.x, "tuned to HF");
 
-    // The 78-pixel gutter this replaced could not hold `12.579887 MHz` at all.
-    // Naming the unit once means the same axis now fits in less than that.
-    assert!(gutters.frequency + LABEL_PAD < 78, "{gutters:?}");
+    // Pre-layout bounds cover every permitted common unit and fractional precision.
     let widest = axis::widest_labels(AxisKind::Frequency, tuned.0, tuned.1);
     for label in &widest {
         assert!(
@@ -712,6 +713,7 @@ fn assert_shared_grid(orientation: Orientation) {
     let values = real_tone(5 * RATE as usize, RATE, TONE_HZ, 0.3);
     let a = analysis_of(&dir, "shared.wav", &values, false, &layout);
     let input = PlotInput {
+            frequency_unit: argand_core::frequency::FrequencyUnit::Hz,
         analysis: &a,
         title: "title",
         footer: "footer",
@@ -841,6 +843,7 @@ fn an_axis_with_no_labels_gets_no_caption_either() {
     let a = analysis(true, &layout);
     let text = TextRenderer::new();
     let input = PlotInput {
+            frequency_unit: argand_core::frequency::FrequencyUnit::Hz,
         analysis: &a,
         title: "title",
         footer: "footer",

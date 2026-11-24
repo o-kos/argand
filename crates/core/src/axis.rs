@@ -11,6 +11,8 @@
 //! clear each other and the edge of the canvas. Only the accepted values come
 //! back, so a caller cannot draw a grid line that no label agreed to.
 
+use crate::frequency::{FrequencyFormat, FrequencyUnit};
+
 /// What a label costs on the canvas, asked of whatever will draw it.
 ///
 /// The layout below has to measure a candidate label before it can know
@@ -172,9 +174,30 @@ const CLOCK_STEPS: [f64; 18] = [
 
 /// Tick spacing and clock format retained while panning a view.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct TickScheme {
     pub step: f64,
     pub span: f64,
+    frequency_unit: Option<FrequencyUnit>,
+}
+
+impl TickScheme {
+    pub fn new(step: f64, span: f64) -> Self {
+        Self {
+            step,
+            span,
+            frequency_unit: None,
+        }
+    }
+
+    pub fn with_frequency_unit(mut self, unit: FrequencyUnit) -> Self {
+        self.frequency_unit = Some(unit);
+        self
+    }
+
+    pub fn frequency_unit(self) -> Option<FrequencyUnit> {
+        self.frequency_unit
+    }
 }
 
 pub struct TickLayout {
@@ -183,6 +206,7 @@ pub struct TickLayout {
 }
 
 /// The ticks this axis accepts: the densest round step whose labels still read.
+/// For a captioned frequency axis, use tick_layout and caption with its accepted scheme.
 pub fn ticks(kind: AxisKind, axis: Axis, labels: &LabelMetrics<'_>) -> Vec<Tick> {
     tick_layout(kind, axis, labels, None).ticks
 }
@@ -195,6 +219,25 @@ pub fn tick_layout(
     labels: &LabelMetrics<'_>,
     held: Option<TickScheme>,
 ) -> TickLayout {
+    let unit = (kind == AxisKind::Frequency).then(|| {
+        FrequencyUnit::coordinates(
+            axis.min,
+            axis.max,
+            (axis.max - axis.min) / axis.length.max(1) as f64,
+        )
+    });
+    tick_layout_in(kind, axis, labels, held, unit)
+}
+
+/// Lay out ticks in the document/report's already selected common frequency unit.
+pub fn tick_layout_in(
+    kind: AxisKind,
+    axis: Axis,
+    labels: &LabelMetrics<'_>,
+    held: Option<TickScheme>,
+    unit: Option<FrequencyUnit>,
+) -> TickLayout {
+    let unit = (kind == AxisKind::Frequency).then_some(unit).flatten();
     let empty = || TickLayout {
         ticks: Vec::new(),
         scheme: None,
@@ -206,13 +249,16 @@ pub fn tick_layout(
     if axis.length < 2 || !axis.min.is_finite() || !span.is_finite() || span <= 0.0 {
         return empty();
     }
-    if let Some(scheme) = held.filter(|s| {
+    if let Some(mut scheme) = held.filter(|s| {
         s.step.is_finite()
             && s.step > 0.
             && s.span.is_finite()
             && s.span > 0.
             && (kind != AxisKind::Samples || (s.step >= 1. && s.step.fract() == 0.))
     }) {
+        if scheme.frequency_unit.is_none() {
+            scheme.frequency_unit = unit;
+        }
         let mut placed = place(kind, axis, scheme, labels, true);
         let mut end = f64::NEG_INFINITY;
         for item in &mut placed {
@@ -233,7 +279,8 @@ pub fn tick_layout(
     let length = axis.length as f64;
     let most = (length / labels.gap()).clamp(1.0, length);
     for step in ladder(kind, span / most) {
-        let scheme = TickScheme { step, span };
+        let mut scheme = TickScheme::new(step, span);
+        scheme.frequency_unit = unit;
         let placed = place(kind, axis, scheme, labels, false);
         if !placed.is_empty() && readable(&placed, labels.gap()) {
             let placed = if labels.keep_edge_marks {
@@ -252,11 +299,14 @@ pub fn tick_layout(
 
 /// The unit this axis prints in, named once instead of on every tick.
 ///
-/// `None` where the labels carry their own meaning: a clock reads as a clock.
-pub fn caption(kind: AxisKind, min: f64, max: f64) -> Option<&'static str> {
+/// Frequency captions consume the accepted layout scheme, including retained units.
+/// `None` without an accepted frequency scheme, or where labels carry their own meaning.
+pub fn caption(kind: AxisKind, scheme: Option<TickScheme>) -> Option<&'static str> {
     match kind {
         AxisKind::Time | AxisKind::PreciseTime | AxisKind::Seconds | AxisKind::Samples => None,
-        AxisKind::Frequency => Some(hertz_unit(min, max).name),
+        AxisKind::Frequency => scheme
+            .and_then(|scheme| scheme.frequency_unit())
+            .map(FrequencyUnit::symbol),
         AxisKind::Decibels => Some("dB"),
     }
 }
@@ -284,17 +334,18 @@ pub fn widest_labels(kind: AxisKind, min: f64, max: f64) -> Vec<String> {
         AxisKind::PreciseTime => vec![format!("{sign}{}:00.000000000", (peak / 60.0) as u64)],
         // One unit for the whole axis, so the widest label is simply the
         // largest magnitude with every decimal that unit resolves to in use.
-        AxisKind::Frequency => {
-            let unit = hertz_unit(min, max);
-            vec![format!(
-                "{sign}{}.{}",
-                (peak / unit.scale) as u64,
-                "0".repeat(unit.decimals)
-            )]
-        }
+        AxisKind::Frequency => [
+            FrequencyUnit::Hz,
+            FrequencyUnit::KHz,
+            FrequencyUnit::MHz,
+            FrequencyUnit::GHz,
+        ]
+        .into_iter()
+        .map(|unit| format!("{sign}{:.9}", peak / unit.divisor()))
+        .collect(),
         AxisKind::Decibels => vec![
-            format_label(kind, min, min, max),
-            format_label(kind, max, min, max),
+            format_label(kind, min, min, max, 1.),
+            format_label(kind, max, min, max, 1.),
         ],
     }
 }
@@ -358,7 +409,14 @@ fn place(
                 format!("{value:.precision$} s", precision = decimal_precision(step))
             }
             AxisKind::Samples => format!("#{}", k as i128 * step as i128),
-            _ => format_label(kind, value, axis.min, axis.max),
+            AxisKind::Frequency => FrequencyFormat::step(
+                scheme
+                    .frequency_unit
+                    .unwrap_or_else(|| FrequencyUnit::magnitude(axis.min, axis.max)),
+                step,
+            )
+            .format(value),
+            _ => format_label(kind, value, axis.min, axis.max, step),
         };
         let label = labels.measure.localize(&label, kind);
         let extent = labels.extent(&label);
@@ -509,10 +567,12 @@ fn clock_of(min: f64, max: f64) -> Clock {
     }
 }
 
-fn format_label(kind: AxisKind, value: f64, min: f64, max: f64) -> String {
+fn format_label(kind: AxisKind, value: f64, min: f64, max: f64, step: f64) -> String {
     match kind {
         AxisKind::Time | AxisKind::PreciseTime => format_clock(value, clock_of(min, max)),
-        AxisKind::Frequency => hertz_unit(min, max).format(value),
+        AxisKind::Frequency => {
+            FrequencyFormat::step(FrequencyUnit::magnitude(min, max), step).format(value)
+        }
         AxisKind::Seconds => format!("{value} s"),
         AxisKind::Samples => format!("#{value:.0}"),
         AxisKind::Decibels => format!("{value:.0}"),
@@ -561,61 +621,6 @@ fn format_precise_clock(seconds: f64, clock: Clock, step: f64) -> String {
         "{sign}{prefix}:{remainder:0width$.decimals$}",
         width = decimals + 3
     )
-}
-
-/// The unit a frequency axis prints in.
-///
-/// One unit is chosen for the whole axis and named once beside it, rather than
-/// repeated on every tick. Repeating it costs a third of each label -- ` MHz`
-/// measures 27 pixels against the 60 the digits need -- to say the same thing
-/// a dozen times, and picking the unit per value the way `format_hz` does would
-/// put `999.999 Hz` and `1.000 kHz` on one axis, two spellings of neighbouring
-/// values.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct HertzUnit {
-    name: &'static str,
-    scale: f64,
-    /// Decimals that resolve to one hertz in this unit.
-    decimals: usize,
-}
-
-impl HertzUnit {
-    /// The value in this unit, with trailing zeros trimmed.
-    fn format(self, hz: f64) -> String {
-        let text = format!("{:.*}", self.decimals, hz / self.scale);
-        let trimmed = text.trim_end_matches('0').trim_end_matches('.');
-        // A value too small for this unit to resolve is zero, and zero has no
-        // sign: without this an axis just below zero labels a tick `-0`.
-        let bare = trimmed.trim_start_matches('-');
-        if bare.is_empty() || bare.chars().all(|c| c == '0') {
-            "0".to_string()
-        } else {
-            trimmed.to_string()
-        }
-    }
-}
-
-/// The unit that suits the whole of `min..max`.
-///
-/// It follows the largest magnitude on the axis, which is the one whose digits
-/// have to fit: a span of a few kilohertz around 12.5 MHz is a megahertz axis,
-/// not a kilohertz one.
-fn hertz_unit(min: f64, max: f64) -> HertzUnit {
-    let peak = min.abs().max(max.abs());
-    let (name, scale, decimals) = if peak >= 1e9 {
-        ("GHz", 1e9, 9)
-    } else if peak >= 1e6 {
-        ("MHz", 1e6, 6)
-    } else if peak >= 1e3 {
-        ("kHz", 1e3, 3)
-    } else {
-        ("Hz", 1.0, 3)
-    };
-    HertzUnit {
-        name,
-        scale,
-        decimals,
-    }
 }
 
 #[cfg(test)]

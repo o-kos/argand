@@ -59,6 +59,11 @@ pub(in crate::shell) enum PlotIntent {
     },
     /// The pointer, and with it the readout, changed.
     Pointer,
+    /// A frequency badge input acquired or released its displayed unit.
+    FrequencyEditing {
+        input: gpui_kit::EntityId,
+        unit: Option<argand_core::frequency::FrequencyUnit>,
+    },
     /// The selection a drag or a click left, if any.
     Select(Option<argand_core::Selection>),
     /// A drag began on these axes, whose tick schemes are held from here.

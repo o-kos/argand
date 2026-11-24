@@ -216,6 +216,7 @@ fn amplitude(value: f64) -> String {
 
 /// One open file.
 pub struct Document {
+    frequency_unit: Option<argand_core::frequency::FrequencyUnit>,
     origin: Origin,
     /// What the file says about itself, once it has been opened.
     meta: Option<SignalMeta>,
@@ -232,10 +233,24 @@ pub struct Document {
 }
 
 impl Document {
+    pub fn set_frequency_unit(&mut self, unit: argand_core::frequency::FrequencyUnit) {
+        self.frequency_unit = Some(unit);
+    }
+
+    fn frequency_text(&self, value: f64) -> String {
+        match self.frequency_unit {
+            Some(unit) => numbers::text(
+                &argand_core::frequency::FrequencyFormat::exact(unit, value).with_unit(value),
+            ),
+            None => format_hz(value),
+        }
+    }
+
     /// A document for a file whose thread has been started but has not
     /// reported yet.
     pub fn opening(origin: Origin) -> Self {
         Self {
+            frequency_unit: None,
             origin,
             meta: None,
             analysis: None,
@@ -460,7 +475,7 @@ impl Document {
             container.unwrap_or(meta.container),
             if meta.is_iq() { "iq" } else { "real" },
             meta.sample_type.format.as_str(),
-            format_hz(meta.sample_rate),
+            self.frequency_text(meta.sample_rate),
             compact_capture_duration(meta.duration_seconds())
         );
         let mut rows = self
@@ -536,10 +551,10 @@ impl Document {
                 MetadataHint::samples(meta.sample_type),
             ),
             MetadataField::new(
-                format_hz(meta.sample_rate),
+                self.frequency_text(meta.sample_rate),
                 MetadataHint::new(
                     "Signal sample rate",
-                    format_hz(meta.sample_rate),
+                    self.frequency_text(meta.sample_rate),
                     if meta.is_iq() {
                         "The rate counts I/Q pairs per second"
                     } else {
@@ -558,10 +573,10 @@ impl Document {
         ];
         if let Some(reference) = self.file_info.declared_reference_freq {
             fields.push(MetadataField::new(
-                format_hz(reference),
+                self.frequency_text(reference),
                 MetadataHint::new(
                     "Signal reference frequency",
-                    format_hz(reference),
+                    self.frequency_text(reference),
                     "This is the frequency represented by zero in the baseband signal",
                 ),
             ));

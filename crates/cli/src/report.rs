@@ -12,7 +12,8 @@
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-use argand_core::{SignalMeta, format_bytes, format_duration, format_hz, format_samples};
+use argand_core::frequency::{FrequencyFormat, FrequencyUnit};
+use argand_core::{SignalMeta, format_bytes, format_duration, format_samples};
 use argand_dsp::{Analysis, AnalysisRequest};
 use argand_io::Normalize;
 use serde::Serialize;
@@ -94,6 +95,8 @@ pub struct OutputReport {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
+    #[serde(skip)]
+    pub frequency_unit: FrequencyUnit,
     pub file: String,
     pub container: String,
     pub sample_type: String,
@@ -129,6 +132,10 @@ pub struct Scaling {
 }
 
 impl Report {
+    fn format_hz(&self, hertz: f64) -> String {
+        FrequencyFormat::value(self.frequency_unit, hertz).with_unit(hertz)
+    }
+
     /// Describe a finished analysis.
     ///
     /// The settings come from the `request` that produced `analysis` rather
@@ -154,6 +161,11 @@ impl Report {
         });
 
         Self {
+            frequency_unit: FrequencyUnit::coordinates(
+                image.f0,
+                image.f1,
+                (image.f1 - image.f0) / image.height.max(1) as f64,
+            ),
             file: meta.source.display().to_string(),
             container: meta.container.to_string(),
             sample_type: meta.sample_type.to_string(),
@@ -248,7 +260,7 @@ impl Report {
             self.stft.dynamic_range_db,
             reference,
             suggestion,
-            format_hz(self.stft.enbw_hz),
+            self.format_hz(self.stft.enbw_hz),
         )
     }
 
@@ -264,7 +276,7 @@ impl Report {
             "{name} · {} · {} · {} · {}",
             self.container,
             self.sample_type,
-            format_hz(self.sample_rate),
+            self.format_hz(self.sample_rate),
             format_duration(self.analysed_seconds)
         )
     }
@@ -354,7 +366,7 @@ impl Report {
             "{} {}, {}, {}",
             self.container,
             self.sample_type,
-            format_hz(self.sample_rate),
+            self.format_hz(self.sample_rate),
             format_duration(self.duration_seconds)
         );
         if (self.analysed_seconds - self.duration_seconds).abs() > 1e-6 {
@@ -396,11 +408,11 @@ impl Report {
         if detail == Detail::Compact {
             return String::new();
         }
-        let offset = signed_hz(peak.offset_hz);
+        let offset = signed_hz(peak.offset_hz, self.frequency_unit);
         if self.center_freq == 0.0 {
             return format!(" @ {offset}");
         }
-        format!(" @ {offset} ({})", format_hz(peak.freq_hz))
+        format!(" @ {offset} ({})", self.format_hz(peak.freq_hz))
     }
 
     /// A level as the report gives it: decibels, with the file's own units
@@ -557,11 +569,11 @@ fn file_name_of(path: &str) -> String {
         .unwrap_or_else(|| path.to_string())
 }
 
-fn signed_hz(hz: f64) -> String {
+fn signed_hz(hz: f64, unit: FrequencyUnit) -> String {
     if hz >= 0.0 {
-        format!("+{}", format_hz(hz))
+        format!("+{}", FrequencyFormat::value(unit, hz).with_unit(hz))
     } else {
-        format_hz(hz)
+        FrequencyFormat::value(unit, hz).with_unit(hz)
     }
 }
 

@@ -161,10 +161,12 @@ fn process(args: &Args, input: &Path, index: usize, total: usize) -> Result<Repo
         gain_db: args.gain,
     };
     let mut report = Report::new(&meta, &analysis, &request, scaling);
+    report.frequency_unit = render::frequency_unit(&layout, &analysis.spectrogram);
 
     let canvas = render::render(
         &layout,
         &PlotInput {
+            frequency_unit: report.frequency_unit,
             analysis: &analysis,
             title: &report.plot_title(),
             footer: &report.plot_footer(),

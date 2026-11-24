@@ -62,28 +62,15 @@ impl Scale {
             .counters(span, self.rate, self.total, self.seconds_per_pixel)
     }
 
-    /// A band's edges in the ruler's unit and its width with an independent unit.
+    /// A band's edges and width in the document's common frequency unit.
     pub fn band_texts(&self, band: FrequencyBand) -> [String; 3] {
-        let edge = |hertz| {
-            crate::numbers::text(&format!(
-                "{:.*}",
-                self.decimals,
-                (hertz + self.frequency_offset) / self.divisor
-            ))
-        };
-        let (unit, divisor) = width_unit(band);
-        let decimals = (self.decimals as i32 + (divisor / self.divisor).log10().round() as i32)
-            .max(0) as usize;
-        let width = crate::numbers::text(&format!(
-            "{:.*}",
-            decimals,
-            (band.high() - band.low()) / divisor
-        ));
-        [
-            edge(band.low()),
-            edge(band.high()),
-            format!("{width} {unit}"),
-        ]
+        let unit = argand_core::frequency::FrequencyUnit::split_suffix(self.unit)
+            .1
+            .unwrap_or(argand_core::frequency::FrequencyUnit::Hz);
+        let format = argand_core::frequency::FrequencyFormat::new(unit, self.decimals);
+        let edge = |hertz| crate::numbers::text(&format.format(hertz + self.frequency_offset));
+        let width = crate::numbers::text(&format.with_unit(band.high() - band.low()));
+        [edge(band.low()), edge(band.high()), width]
     }
 
     /// `span` with the time `field` typed as `text`, none where the text gives no span.
@@ -123,7 +110,7 @@ impl Scale {
         let trimmed = text.trim();
         let (number, _) = frequency_text(trimmed, self.band_divisor(band, field));
         if field == Field::BandWidth && number == trimmed {
-            format!("{trimmed} {}", width_unit(band).0)
+            format!("{trimmed} {}", self.unit)
         } else {
             text.to_owned()
         }
@@ -275,36 +262,14 @@ impl Scale {
         }
     }
 
-    fn band_divisor(&self, band: FrequencyBand, field: Field) -> f64 {
-        if field == Field::BandWidth {
-            width_unit(band).1
-        } else {
-            self.divisor
-        }
-    }
-}
-
-fn width_unit(band: FrequencyBand) -> (&'static str, f64) {
-    let width = band.high() - band.low();
-    if width >= 1e6 {
-        ("MHz", 1e6)
-    } else if width >= 1e3 {
-        ("kHz", 1e3)
-    } else {
-        ("Hz", 1.)
+    fn band_divisor(&self, _band: FrequencyBand, _field: Field) -> f64 {
+        self.divisor
     }
 }
 
 fn frequency_text(text: &str, default_divisor: f64) -> (&str, f64) {
-    for (unit, divisor) in [("GHz", 1e9), ("MHz", 1e6), ("kHz", 1e3), ("Hz", 1.)] {
-        if let Some(at) = text.len().checked_sub(unit.len())
-            && text.is_char_boundary(at)
-            && text[at..].eq_ignore_ascii_case(unit)
-        {
-            return (text[..at].trim_end(), divisor);
-        }
-    }
-    (text, default_divisor)
+    let (text, unit) = argand_core::frequency::FrequencyUnit::split_suffix(text);
+    (text, unit.map_or(default_divisor, |unit| unit.divisor()))
 }
 
 /// How many digits `text` shows after its decimal mark, none without one.
