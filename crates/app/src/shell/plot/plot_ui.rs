@@ -1473,6 +1473,7 @@ pub(in crate::shell) fn analysis_notice(
     cx: &gpui_kit::App,
 ) -> impl IntoElement {
     notice("analysis-status", text.into(), cx)
+        .text_color(cx.theme().muted_foreground)
         .when_some(hint.filter(|_| tooltips_allowed), |status, hint| {
             status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
         })

@@ -10,7 +10,7 @@ Move the existing analysis text and timing hint from the status bar to the botto
 
 ## Roles and risk
 
-- Class A: the combined branch touches more than five code files. Existing state ownership and processing, scheduling, generation, source-safety and data contracts remain unchanged.
+- Class A: the combined branch touches more than five code files, and the owner-feedback revision adds a cancellable presentation timer. Shell retains state ownership. Analysis processing, scheduling, generation, source-safety and data contracts remain unchanged.
 - Coordinator: `gpt-6.1-sol` medium, owner communication and final assessment.
 - Executor: `gpt-6.1-sol` medium, investigation, implementation, validation and Draft PR.
 - Reviewer: `gpt-6.1-sol` high in a fresh read-only context.
@@ -53,10 +53,10 @@ A notification system or new custom widget would change dismissal/focus behavior
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after preceding checks pass
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after preceding checks pass
 - [ ] Production Xvfb acceptance: partial evidence below. Retain active plan until remaining acceptance is resolved.
 - [ ] Independent read-only review of owner-feedback revision. The preceding source review was clean after its evidence-coverage correction.
 - [x] Publish Draft PR with accurate evidence and remaining acceptance limits.
@@ -81,8 +81,8 @@ The owner requested gray text matching the status bar and automatic disappearanc
 
 ### Feedback implementation and acceptance
 
-- [ ] Implement analysis-only muted text and Shell-owned bounded Ready lifetime.
-- [ ] Verify genuine toolkit-clock expiry, non-expiring progress, input cancellation, newer completion/document safety and Saved notice independence.
+- [x] Implement analysis-only muted text and Shell-owned bounded Ready lifetime.
+- [x] Verify genuine toolkit-clock expiry, non-expiring progress, input cancellation, newer completion/document safety and Saved notice independence. Rejected delivery does not postpone the current deadline.
 - [ ] Reproduce shortcut zoom with a stationary pointer in the current production Xvfb binary, observe completion then disappearance after five seconds without more input.
 - [ ] Verify readable muted text in both themes and orientations, retaining existing placement and pass-through behavior.
 - [ ] Refresh full local gate, production binary identity, independent review and Draft PR description for this feedback revision.

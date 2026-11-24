@@ -422,6 +422,8 @@ struct Shell {
     /// The press on the title bar under way closed the selection panel.
     press_closed_selection: bool,
     ready_status_dismissed: bool,
+    ready_status_epoch: u64,
+    ready_status_timeout: Option<Task<()>>,
     /// Whether the mouse has moved in the window since it last left it.
     pointer_in_window: bool,
     settings_error: Option<String>,
@@ -551,13 +553,7 @@ impl Shell {
             Self::dismiss_window_ready_status(window, cx);
         });
         let settings = Settings::restored(saved.analysis_settings, &config);
-        let owner = cx.entity().downgrade();
-        let analysis_hint = cx.new(|cx| {
-            hints::PinnedHint::new(
-                move |window, cx| settings_ui::analysis_editor(owner.clone(), window, cx),
-                cx,
-            )
-        });
+        let analysis_hint = Self::new_analysis_hint(cx);
         let pinned = cx.subscribe(&analysis_hint, |shell, _, event, cx| {
             shell.information_panel_changed(hints::Panel::Analysis, *event, cx);
         });
@@ -586,6 +582,8 @@ impl Shell {
             selection_opening: None,
             press_closed_selection: false,
             ready_status_dismissed: false,
+            ready_status_epoch: 0,
+            ready_status_timeout: None,
             pointer_in_window: false,
             settings_error: None,
 
@@ -639,6 +637,16 @@ impl Shell {
             _pinned: pinned,
             _selection_pinned: selection_pinned,
         }
+    }
+
+    fn new_analysis_hint(cx: &mut Context<Self>) -> Entity<hints::PinnedHint> {
+        let owner = cx.entity().downgrade();
+        cx.new(|cx| {
+            hints::PinnedHint::new(
+                move |window, cx| settings_ui::analysis_editor(owner.clone(), window, cx),
+                cx,
+            )
+        })
     }
 
     fn external_tooltips_allowed(&self, cx: &gpui_kit::App) -> bool {
@@ -719,6 +727,7 @@ impl Shell {
     }
 
     fn dismiss_ready_status(&mut self, cx: &mut Context<Self>) {
+        self.cancel_ready_status_timeout();
         self.dismiss_saved_notice(cx);
         if self.ready_status_dismissed
             || !self
@@ -730,6 +739,41 @@ impl Shell {
         }
         self.ready_status_dismissed = true;
         cx.notify();
+    }
+
+    fn cancel_ready_status_timeout(&mut self) {
+        self.ready_status_epoch = self.ready_status_epoch.wrapping_add(1);
+        self.ready_status_timeout = None;
+    }
+
+    fn refresh_ready_status_timeout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.cancel_ready_status_timeout();
+        let Some(file) = self
+            .file
+            .as_ref()
+            .filter(|file| matches!(file.state.document.status(), Status::Ready { .. }))
+        else {
+            return;
+        };
+        let document = file.id;
+        let epoch = self.ready_status_epoch;
+        self.ready_status_dismissed = false;
+        self.ready_status_timeout = Some(cx.spawn_in(window, async move |shell, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_secs(5))
+                .await;
+            let _ = shell.update_in(cx, |shell, _, cx| {
+                let current = shell.ready_status_epoch == epoch
+                    && shell.file.as_ref().is_some_and(|file| {
+                        file.id == document
+                            && matches!(file.state.document.status(), Status::Ready { .. })
+                    });
+                if current {
+                    shell.ready_status_dismissed = true;
+                    cx.notify();
+                }
+            });
+        }));
     }
 
     /// Dismiss the ready status in the window an event arrived for.
@@ -868,6 +912,7 @@ impl Shell {
     ) {
         self.dismiss_application_menu(window, cx);
         self.close_hints(cx);
+        self.cancel_ready_status_timeout();
         // The old plot goes with its document, so focus must not stay on it.
         window.focus(&self.focus, cx);
         self.settings.dynamic_range = self.config.dynamic_range;
@@ -1010,9 +1055,7 @@ impl Shell {
         let Some(effect) = file.state.accept(delivery, &self.settings) else {
             return;
         };
-        if matches!(file.state.document.status(), Status::Ready { .. }) {
-            self.ready_status_dismissed = false;
-        }
+        self.refresh_ready_status_timeout(window, cx);
 
         match effect {
             Effect::Opened
@@ -2413,3 +2456,7 @@ mod test_context_tests;
 
 #[cfg(test)]
 include!("document_support_test.rs");
+
+#[cfg(test)]
+#[path = "shell_ready_status_test.rs"]
+mod ready_status_tests;
