@@ -116,12 +116,25 @@ impl RecentFiles {
 /// A long file name or folder keeps its start and end around `…`, both as
 /// short as still tells it from the other names, or folders at its depth.
 pub fn labels(recent: &[Recent]) -> Vec<String> {
+    display_labels(recent, true)
+}
+
+/// Complete names and distinguishing folders for rows whose layout owns truncation.
+pub fn full_labels(recent: &[Recent]) -> Vec<String> {
+    display_labels(recent, false)
+}
+
+fn display_labels(recent: &[Recent], compact: bool) -> Vec<String> {
     let names: Vec<String> = recent.iter().map(|entry| file_name(&entry.path)).collect();
     let folders: Vec<Vec<String>> = recent.iter().map(|entry| folders(&entry.path)).collect();
     let name_side = side(names.iter());
     (0..recent.len())
         .map(|index| {
-            let name = shortened(&names[index], name_side);
+            let name = if compact {
+                shortened(&names[index], name_side)
+            } else {
+                names[index].clone()
+            };
             let group: Vec<usize> = (0..recent.len())
                 .filter(|&other| names[other] == names[index])
                 .collect();
@@ -134,8 +147,12 @@ pub fn labels(recent: &[Recent]) -> Vec<String> {
                 .map(|&other| folders[other].as_slice())
                 .collect();
             let folder = |at: usize, folder: &str| {
-                let side = side(group.iter().filter_map(|&member| folders[member].get(at)));
-                shortened(folder, side)
+                if compact {
+                    let side = side(group.iter().filter_map(|&member| folders[member].get(at)));
+                    shortened(folder, side)
+                } else {
+                    folder.to_owned()
+                }
             };
             told_apart(&recent[index].path, &name, &folders[index], &others, folder)
         })

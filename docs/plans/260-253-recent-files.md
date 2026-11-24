@@ -25,8 +25,11 @@ The File menu also consumes these labels, with its own bounded middle truncation
 Start-page rows are standard Buttons with native Interactivity tooltip builders.
 The locked native tooltip implementation retains source bounds captured when shown;
 its wheel handler clears a tooltip only when the tooltip hitbox is not hovered.
-A production-view regression must establish the actual failing transition before
-selecting a correction. Installed toolkit/SDK sources remain immutable.
+Production-view and isolated production Xvfb checks establish that visible hints
+are dismissed by wheel input, but pending show timers survive it and later render
+the old filename and shortcut over the newly hovered row. The native wheel helper
+explicitly leaves WaitingForShow untouched. The correction reuses the existing
+shared external-tooltip registration teardown through an intervening frame. Installed toolkit/SDK sources remain immutable.
 
 ## Decisions
 
@@ -49,31 +52,43 @@ selecting a correction. Installed toolkit/SDK sources remain immutable.
 
 | Criterion | Verification / scenario | Result | Limits or unperformed checks |
 | --- | --- | --- | --- |
-| Full filename when it fits | Long names at narrow and wide widths, including window resize | Pending | Production Xvfb and rendered geometry required |
-| Useful differentiation and bounded rows | Same basenames in distinct directories, Unicode and long names | Pending | Keep filename/extension and full-path recovery |
-| Correct tooltip after scrolling | Ten entries at 640×400, show hint, wheel while pointer stays fixed, repeat both directions | Pending | Old tooltip must disappear or update, normal hover delay remains |
-| Normal activation remains | Pointer click, Alt+digit and chooser; File menu recent consumer | Pending | Preserve standard Button behavior and opening hints |
-| Themes and empty state | Light/dark and 0/1/10 rows, short windows | Pending | Native Wayland/Windows/macOS not established by Xvfb |
+| Full filename when it fits | Long names at 1200×600 and 420×400, including resize | Passed in production Xvfb and rendered geometry tests | Native Wayland/Windows/macOS unperformed |
+| Useful differentiation and bounded rows | Same basenames in northern/southern receiver directories and long names | Passed in production Xvfb in light/dark themes; Unicode label unit test passed | Arbitrarily similar names can still need full-path help at narrow widths |
+| Correct tooltip after scrolling | Ten entries at 640×400, visible and pending hint, wheel beneath a fixed pointer in both directions | Passed in production Xvfb; fresh hover restores correct filename/directory/shortcut after the normal delay | X11 only |
+| Normal activation remains | Pointer click, Alt+0 and File > Recent files | Click selected capture 4 and Alt+0 selected capture 10, checked against isolated saved paths; compact recent menu inspected in both themes | Native chooser not invoked because portal routing could leave the isolated display; existing automated action coverage retained |
+| Themes and empty state | Light/dark and 0/1/10 rows, short windows | Passed in production Xvfb; existing geometry regression passed | Owner manual acceptance and native Wayland/Windows/macOS remain separate |
 
 ## Implementation steps
 
-- [ ] Reproduce defects in focused production-view regressions and inspect locked toolkit cause.
-- [ ] Separate start-page full labels from deliberately retained compact menu labels.
-- [ ] Let the recent group consume available width while retaining bounded content sizing.
-- [ ] Correct obsolete tooltip ownership using supported mechanisms.
-- [ ] Update architecture and changelog.
-- [ ] Complete local gate and production Xvfb acceptance, recording evidence and limits.
+- [x] Reproduce defects in focused production-view regressions and inspect locked toolkit cause.
+- [x] Separate start-page full labels from deliberately retained compact menu labels.
+- [x] Let the recent group consume available width while retaining bounded content sizing.
+- [x] Correct obsolete tooltip ownership using supported mechanisms.
+- [x] Update architecture and changelog.
+- [x] Complete local gate and production Xvfb acceptance, recording evidence and limits.
 - [ ] Prepare exact independent review handoff and address findings.
 - [ ] Move this plan to `docs/plans/completed/` before final review after acceptance is complete.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked` after the checks above
-- [ ] Focused recent-label and production-view layout/tooltip regressions
-- [ ] Current production binary Xvfb interaction scenarios
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked` after the checks above
+- [x] Focused recent-label and production-view layout/tooltip regressions
+- [x] Current production binary Xvfb interaction scenarios
+
+### Recorded results
+
+All 973 workspace tests plus doctests passed, including the production-view
+regressions for narrow/wide layout, pending/visible wheel teardown and fresh-hover
+recovery. Formatting and strict all-target Clippy passed. The release build ran
+last and passed. The current release binary was exercised using task-owned Xvfb,
+real X11 pointer/wheel/keyboard events, disposable WAVE captures, and isolated
+supported XDG configuration/state/cache directories. Source/binary identity,
+raw logs, scenario script and screenshots are retained in the independent review
+packet outside the worktree. The main checkout and owner's application were not
+modified. Independent review is pending; the Pull Request remains Draft.
 
 ## Post-completion
 

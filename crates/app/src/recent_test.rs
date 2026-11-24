@@ -419,3 +419,29 @@ fn folders_alike_at_both_ends_grow_until_they_differ() {
         ]
     );
 }
+
+#[test]
+fn full_labels_keep_long_names_and_distinguishing_folders_before_layout() {
+    let filename = "a-long-capture-filename-with-a-shared-extension.wav";
+    let entries = vec![
+        entry(sep(&format!(
+            "/captures/receiver-at-the-northern-location/{filename}"
+        ))),
+        entry(sep(&format!(
+            "/captures/receiver-at-the-southern-location/{filename}"
+        ))),
+        entry(sep(
+            "/captures/запись-с-длинным-названием-и-частотой-123456.wav",
+        )),
+    ];
+    let complete = full_labels(&entries);
+    assert_eq!(
+        complete,
+        [
+            sep(&format!("…/receiver-at-the-northern-location/{filename}")),
+            sep(&format!("…/receiver-at-the-southern-location/{filename}")),
+            "запись-с-длинным-названием-и-частотой-123456.wav".to_owned(),
+        ]
+    );
+    assert_ne!(labels(&entries), complete, "menu keeps compact labels");
+}
