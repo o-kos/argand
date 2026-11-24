@@ -346,6 +346,7 @@ fn utc_rulers_keep_concise_ticks_date_context_and_readable_gutters() {
         assert_eq!(frame.time_caption, "UTC");
         assert!(frame.gutter < 220.);
         assert!(frame.time.iter().all(|tick| !tick.label.contains("2026-")));
+        assert!(frame.time.iter().all(|tick| !tick.label.contains('Z')));
         assert!(frame.time.iter().any(|tick| tick.label.contains("11-24")));
     }
 }

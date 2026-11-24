@@ -264,6 +264,22 @@ Both orientations, locale grouping and 640px light layout were checked. See
 [the follow-up report](../ui/265-recording-scales/followup-acceptance.md). Owner
 manual acceptance remains pending.
 
+## Follow-up: concise absolute ruler marks
+
+Owner request: omit `Z` only from absolute time tick labels. UTC/date captions,
+cursor and selection readouts, DatePicker and RFC3339 millisecond storage retain
+their existing semantics. The private shared `utc_tick` formatter serves both
+ruler orientations and every tick precision, including date-rollover prefixes.
+This bounded presentation-only follow-up is class B: one private formatter and
+one existing GUI axis regression, with no public API, DSP or source-safety change.
+Role assignments remain unchanged. A new scoped review covers this owner request
+separately from the completed previous review cycle.
+
+- [x] Remove the suffix only in `utc_tick`, preserving date context and decimals.
+- [x] Extend the existing ruler regression to reject `Z`, run the required local
+  gate and current release, and inspect the affected ruler in isolated Xvfb.
+- [x] Submit the exact narrow snapshot and evidence for coordinator assessment.
+
 ## Post-completion
 
 After accepted merge, verify accepted branch-head identity, unique/unpushed/untracked

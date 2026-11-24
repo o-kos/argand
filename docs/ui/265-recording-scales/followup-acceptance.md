@@ -76,3 +76,35 @@ therefore keeps the existing Save As requirement.
 Native Wayland, Windows and macOS execution and the owner's exact manual scenario
 remain unverified. Screenshots and local automated checks do not replace owner
 acceptance. No Ready, merge or release action is authorized.
+
+## Narrow follow-up: absolute ruler suffix
+
+The owner requested removal of `Z` only from absolute ruler tick labels. The
+private shared tick formatter now omits that suffix, including date-rollover and
+fractional zoom labels. UTC/date captions, cursor/selection timestamps, DatePicker,
+and RFC3339 millisecond serialization are unchanged. The existing axis regression
+covers both orientations, UTC caption and midnight prefix, with one additional
+no-`Z` assertion. No public signatures, tick generation or storage code changed.
+
+This separate scoped review is clean in round 1, with no declined findings.
+Base is `2da1b2c21db5e7d23b47321780ec47c335f3d007`; reviewed patch SHA256 is
+`b3894dc6f81b36b6a46a909f8fd356f19352714d3c17b2bac0dca776cd0d8b45`.
+Formatting, all-target Clippy and all 976 tests plus doc tests pass, including the
+existing WAVE/FLAC `.123Z` recording-start round-trip test. Current release build
+passes in 2m10s. Logs are `target/issue265-no-z-{fmt,clippy,tests,release}.log`.
+The tested binary is 7,048,552 bytes, SHA256
+`ab2636d8218e6808fccf357a0250e006efde158e3426e1eacfd3d3df058ef23d`.
+Source/file and binary identities are retained in
+`target/issue265-no-z-ui/identity.json`.
+
+The production binary ran in a fresh verified task-owned Xvfb using the same
+supported isolated XDG directories and X11 selection described above. A disposable
+23:59:59.900Z fixture crosses midnight: ruler marks show time without `Z`, retain
+`11-24` rollover prefixes, and keep the `UTC` caption and date context. Real
+Ctrl+Plus zoom changes labels to hundredths without restoring `Z`. The cursor
+readout still includes its UTC timestamp suffix as intended. See the
+[midnight ruler](evidence/followup-absolute-ruler-no-z.png) and
+[zoomed ruler](evidence/followup-zoomed-ruler-no-z.png).
+This bounded production check used horizontal orientation; the existing regression
+checks both orientations through their shared tick formatter. App and verified
+Xvfb were stopped. Owner manual/native-platform acceptance limits remain unchanged.

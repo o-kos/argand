@@ -432,7 +432,8 @@ changed plot dimensions may rebin the retained analysis without restarting FFT w
 
 Absolute time adds a physical sample offset to an integer UTC origin. Ruler ticks
 use concise time-of-day text, a date context beside the UTC caption, and month/day
-on ticks across a date transition. Cursor and selection endpoints use full UTC
+on ticks across a date transition. Tick text omits the redundant `Z` suffix because
+the ruler caption identifies UTC. Cursor and selection endpoints use full UTC
 calendar timestamps with offset precision independent of millisecond metadata
 storage. Selection durations remain relative. Timestamp entry subtracts integer
 origins before converting relative seconds to sample indices. Where seconds cannot

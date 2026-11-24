@@ -89,11 +89,12 @@ fn utc_tick(start: crate::RecordingTime, value: f64, first: f64, precision: usiz
         return "Out of range".into();
     };
     let stamp = time.format(precision);
+    let clock = stamp[11..].trim_end_matches('Z');
     let first = start.shifted_seconds(first).map(|time| time.format(9));
     if first.is_some_and(|first| first[..10] != stamp[..10]) {
-        format!("{} {}", &stamp[5..10], &stamp[11..])
+        format!("{} {clock}", &stamp[5..10])
     } else {
-        stamp[11..].to_owned()
+        clock.to_owned()
     }
 }
 
