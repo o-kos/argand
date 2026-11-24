@@ -27,8 +27,8 @@ Refresh File size after successful save/rebind while the File information panel 
 
 - [x] Extend only live readout synchronization, preserving draft controls.
 - [x] Extend production save/rebind regression to compare the new byte count and retained drafts.
-- [ ] Cover unsaved-to-saved visibility and related save entry paths through the shared invariant.
-- [ ] Update changelog and current architecture documentation if needed.
+- [x] Inspect related save entry paths. Save As intentionally closes information panels before its native chooser, so it has no retained panel to refresh. Ordinary Save retains the panel and uses the shared successful rebind path. Unsaved captures continue to omit source-only size/reference rows.
+- [x] Update changelog and current architecture documentation.
 
 ## Acceptance criteria and evidence
 
@@ -44,9 +44,9 @@ Reopening the panel would discard retained drafts. Reading filesystem metadata d
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after preceding checks pass
 - [ ] Production Xvfb acceptance with disposable inputs and isolated settings/session/cache.
 - [ ] Independent read-only review of exact submitted revision.

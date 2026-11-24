@@ -2352,15 +2352,7 @@ fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppC
             .downcast::<Editor>()
             .unwrap()
     });
-    let old_size = editor.read_with(cx, |editor, _| {
-        editor
-            .details
-            .iter()
-            .find(|(label, _)| label == "File size")
-            .unwrap()
-            .1
-            .clone()
-    });
+    let old_size = retained_file_size(&editor, cx);
     let original_bytes = std::fs::metadata(&path).unwrap().len();
     shell.update_in(cx, |shell, window, cx| {
         shell.set_reference(1_000_000., window, cx);
@@ -2398,22 +2390,7 @@ fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppC
             "a completed metadata save removes its status control"
         )
     });
-    let expected_size = shell.read_with(cx, |shell, _| {
-        shell
-            .file
-            .as_ref()
-            .unwrap()
-            .state
-            .document
-            .file_summary()
-            .unwrap()
-            .hint
-            .rows
-            .into_iter()
-            .find(|(label, _)| label == "File size")
-            .unwrap()
-            .1
-    });
+    let expected_size = accepted_file_size(&shell, cx);
     assert!(std::fs::metadata(&path).unwrap().len() > original_bytes);
     assert_ne!(expected_size, old_size);
     editor.read_with(cx, |editor, cx| {
@@ -2443,6 +2420,45 @@ fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppC
             editor.source_stamp
         );
     });
+    assert_draft_survives_another_save(&shell, &editor, cx);
+}
+
+fn retained_file_size(editor: &Entity<Editor>, cx: &gpui_kit::VisualTestContext) -> String {
+    editor.read_with(cx, |editor, _| {
+        editor
+            .details
+            .iter()
+            .find(|(label, _)| label == "File size")
+            .unwrap()
+            .1
+            .clone()
+    })
+}
+
+fn accepted_file_size(shell: &Entity<Shell>, cx: &gpui_kit::VisualTestContext) -> String {
+    shell.read_with(cx, |shell, _| {
+        shell
+            .file
+            .as_ref()
+            .unwrap()
+            .state
+            .document
+            .file_summary()
+            .unwrap()
+            .hint
+            .rows
+            .into_iter()
+            .find(|(label, _)| label == "File size")
+            .unwrap()
+            .1
+    })
+}
+
+fn assert_draft_survives_another_save(
+    shell: &Entity<Shell>,
+    editor: &Entity<Editor>,
+    cx: &mut gpui_kit::VisualTestContext,
+) {
     let (rate, kind, container) = editor.read_with(cx, |editor, _| {
         (
             editor.rate.clone(),
@@ -2461,7 +2477,7 @@ fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppC
     } else {
         "ctrl-s"
     });
-    wait_until(cx, &shell, "second retained-panel save", |shell| {
+    super::super::replace_ui::tests::wait_until(cx, shell, "second retained-panel save", |shell| {
         shell.saving.is_none()
             && shell.editing().is_some_and(|editing| {
                 !editing.is_dirty() && editing.reference() == 2_000_000. && editing.is_described()
