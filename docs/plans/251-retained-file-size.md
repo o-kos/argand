@@ -2,6 +2,8 @@
 
 Resolves #251.
 
+[Draft Pull Request #272](https://github.com/o-kos/argand/pull/272).
+
 ## Overview
 
 Refresh File size after successful save/rebind while the File information panel remains open. Preserve its retained controls and conversion drafts. File size is presentation only and must continue to come from the accepted document summary, without new filesystem reads or save-path changes.
@@ -49,8 +51,8 @@ Reopening the panel would discard retained drafts. Reading filesystem metadata d
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after preceding checks pass
 - [ ] Production Xvfb acceptance: partial evidence below. Retain active plan until remaining acceptance is resolved.
-- [ ] Independent read-only review of exact submitted revision.
-- [ ] Publish Draft PR with accurate evidence and remaining acceptance limits.
+- [x] Independent read-only review of submitted product source. Evidence-coverage wording was corrected and the final source review returned no substantive findings.
+- [x] Publish Draft PR with accurate evidence and remaining acceptance limits.
 - [ ] Move this plan to completed only after every in-scope acceptance item passes.
 
 ## Post-completion

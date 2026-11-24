@@ -2,6 +2,8 @@
 
 Resolves #270.
 
+[Draft Pull Request #272](https://github.com/o-kos/argand/pull/272).
+
 ## Overview
 
 Move the existing analysis text and timing hint from the status bar to the bottom-right corner inside the actual spectrogram. Preserve text, progress, visibility, completion and dismissal. Keep status-bar metadata/controls and all analysis contracts unchanged.
@@ -56,8 +58,8 @@ A notification system or new custom widget would change dismissal/focus behavior
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after preceding checks pass
 - [ ] Production Xvfb acceptance: partial evidence below. Retain active plan until remaining acceptance is resolved.
-- [ ] Independent read-only review of exact submitted revision.
-- [ ] Publish Draft PR with accurate evidence and remaining acceptance limits.
+- [x] Independent read-only review of submitted product source. Evidence-coverage wording was corrected and the final source review returned no substantive findings.
+- [x] Publish Draft PR with accurate evidence and remaining acceptance limits.
 - [ ] Move this plan to completed only after every in-scope acceptance item passes.
 
 ## Post-completion
