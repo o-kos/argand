@@ -6,7 +6,7 @@ Resolves #270.
 
 ## Overview
 
-Move the existing analysis text and timing hint from the status bar to the bottom-right corner inside the actual spectrogram. Preserve text, progress, visibility, completion and dismissal. Keep status-bar metadata/controls and all analysis contracts unchanged.
+Move the existing analysis text and timing hint from the status bar to the bottom-right corner inside the actual spectrogram. Preserve text, progress, completion and input dismissal. Add the owner-requested bounded lifetime for completed feedback, as recorded below. Keep status-bar metadata/controls and all analysis contracts unchanged.
 
 ## Roles and risk
 
@@ -53,12 +53,12 @@ A notification system or new custom widget would change dismissal/focus behavior
 
 ## Validation
 
-- [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --all-targets --locked`
-- [x] `cargo test --locked`
-- [x] `cargo build --release --locked`, after preceding checks pass
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --all-targets --locked`
+- [ ] `cargo test --locked`
+- [ ] `cargo build --release --locked`, after preceding checks pass
 - [ ] Production Xvfb acceptance: partial evidence below. Retain active plan until remaining acceptance is resolved.
-- [x] Independent read-only review of submitted product source. Evidence-coverage wording was corrected and the final source review returned no substantive findings.
+- [ ] Independent read-only review of owner-feedback revision. The preceding source review was clean after its evidence-coverage correction.
 - [x] Publish Draft PR with accurate evidence and remaining acceptance limits.
 - [ ] Move this plan to completed only after every in-scope acceptance item passes.
 
@@ -69,3 +69,22 @@ Merge and release require the corresponding owner authority and are outside this
 ## Current validation and acceptance boundary
 
 The full local gate passed: formatting, all-target Clippy, 974 tests with zero failures/ignores, then a successful release build. The exact production release was exercised on a task-owned Xvfb X11 display with disposable data and isolated supported XDG config/state/cache roots. Raw commands, binary identity, logs, screenshots and explicit unperformed checks are retained in the independent review handoff. Native Wayland, other OS behavior and owner acceptance remain unestablished. Keep this plan active and the Pull Request Draft while acceptance remains incomplete.
+
+## Owner feedback: muted status text and bounded completion lifetime
+
+The owner requested gray text matching the status bar and automatic disappearance when a shortcut changes the scale and no later pointer input arrives. The coordinator relayed the working interpretation that this refers to the corner analysis status notice, rather than its separate hover timing Tooltip, and the concrete five-second delay. Continue under that stated interpretation unless the owner corrects it.
+
+- Use the same `muted_foreground` theme token as the status bar, only for analysis status. The shared Saved notice keeps its established styling.
+- Every accepted Ready presentation gets a five-second lifetime. Ongoing Opening/Analyzing progress and failure details do not expire through this timer. Existing input dismissal remains immediate.
+- Shell continues to own presentation state. Retain one ordinary cancellable toolkit task, tied to document identity and presentation epoch, so an older timeout cannot hide newer completion or another document. Cancel pending expiry on input, document replacement and accepted non-Ready status. Timeout changes only Ready visibility and never clears a Saved notice.
+- Keep analysis generations, scheduling, cancellation, source data and toolkit graph unchanged. No polling or new widget is introduced.
+
+### Feedback implementation and acceptance
+
+- [ ] Implement analysis-only muted text and Shell-owned bounded Ready lifetime.
+- [ ] Verify genuine toolkit-clock expiry, non-expiring progress, input cancellation, newer completion/document safety and Saved notice independence.
+- [ ] Reproduce shortcut zoom with a stationary pointer in the current production Xvfb binary, observe completion then disappearance after five seconds without more input.
+- [ ] Verify readable muted text in both themes and orientations, retaining existing placement and pass-through behavior.
+- [ ] Refresh full local gate, production binary identity, independent review and Draft PR description for this feedback revision.
+
+Earlier gate and production observations above describe the preceding submitted behavior. They do not establish these new feedback criteria. Keep the plan active and PR Draft until current evidence and remaining acceptance are resolved.
