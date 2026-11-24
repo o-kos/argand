@@ -123,3 +123,111 @@ fn start_page_centers_the_visible_group_and_keeps_its_columns(cx: &mut TestAppCo
     });
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[gpui_kit::test]
+fn wheel_scrolling_retires_the_recent_hint_at_a_stationary_pointer(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, cx) = open_window(cx);
+    let directory = argand_io::testutil::TempDir::new("recent-tooltip-scroll");
+    let paths: Vec<_> = (0..10)
+        .map(|ix| {
+            let path = directory.join(&format!("capture-{ix}.wav"));
+            std::fs::write(&path, []).unwrap();
+            path.to_string_lossy().into_owned()
+        })
+        .collect();
+    available_recent(cx, &shell, &paths, true);
+    cx.simulate_resize(size(px(640.), px(400.)));
+    draw(cx);
+    cx.update(|window, _| window.activate_window());
+    draw(cx);
+    cx.simulate_mouse_move(point(px(5.), px(5.)), None, Default::default());
+    draw(cx);
+    let at = cx.update(|window, _| window.find(("start-recent", 3usize)).bounds().center());
+    for wait in [1000, 200] {
+        cx.simulate_mouse_move(point(px(5.), px(5.)), None, Default::default());
+        draw(cx);
+        cx.simulate_mouse_move(at, None, Default::default());
+        draw(cx);
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(wait));
+        draw(cx);
+        cx.update(|window, _| {
+            assert_eq!(window.try_find("recent-tooltip").is_some(), wait == 1000)
+        });
+        cx.simulate_event(gpui_kit::ScrollEvent {
+            position: at,
+            delta: gpui_kit::ScrollDelta::Pixels(point(
+                px(0.),
+                px(if wait == 1000 { -112. } else { 112. }),
+            )),
+            ..Default::default()
+        });
+        draw(cx);
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        draw(cx);
+        cx.update(|window, _| {
+            assert!(
+                window.try_find("recent-tooltip").is_none(),
+                "old row hint survives wheel with {wait} ms hover"
+            )
+        });
+    }
+    cx.simulate_mouse_move(point(px(5.), px(5.)), None, Default::default());
+    draw(cx);
+    cx.simulate_mouse_move(at, None, Default::default());
+    draw(cx);
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(200));
+    draw(cx);
+    cx.update(|window, _| {
+        assert!(
+            window.try_find("recent-tooltip").is_none(),
+            "normal hover delay remains"
+        )
+    });
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    draw(cx);
+    cx.update(|window, _| {
+        assert!(
+            window.try_find("recent-tooltip").is_some(),
+            "fresh hover restores hints"
+        )
+    });
+}
+
+#[gpui_kit::test]
+fn recent_rows_use_available_width_before_truncating(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, cx) = open_window(cx);
+    let directory = argand_io::testutil::TempDir::new("recent-width");
+    let name = "a-long-recording-with-frequency-123456789-and-timestamp-20261124T123456-and-receiver-location.wav";
+    let path = directory.join(name);
+    std::fs::write(&path, []).unwrap();
+    available_recent(cx, &shell, &[path.to_string_lossy().into_owned()], true);
+    for width in [1200., 420., 1200.] {
+        cx.simulate_resize(size(px(width), px(600.)));
+        draw(cx);
+        cx.update(|window, _| {
+            let page = window.find("start-page").bounds();
+            let block = window.find("start-block").bounds();
+            let row = window.find(("start-recent", 0usize)).bounds();
+            assert!((block.center().x - page.center().x).abs() <= px(1.));
+            assert!(row.size.width <= px(width - 96.));
+            if width == 1200. {
+                assert!(
+                    row.size.width > px(560.),
+                    "wide rows recover text beyond the old cap"
+                );
+                assert!(
+                    row.size.width < px(width - 96.),
+                    "rows still size to their contents"
+                );
+            } else {
+                assert!(row.size.width <= px(324.));
+            }
+        });
+    }
+}

@@ -1888,8 +1888,8 @@ impl Shell {
 
     fn start_page(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let recent = self.recent_files.visible();
-        let labels = crate::recent::labels(&recent);
-        let width = (window.viewport_size().width - px(96.)).min(px(560.));
+        let labels = crate::recent::full_labels(&recent);
+        let width = window.viewport_size().width - px(96.);
         let empty = recent.is_empty();
         let list_height = cx.theme().font_size * (recent.len() as f32 * 1.75 - 0.25).max(0.);
         let mut chooser = Button::new("start-open")
@@ -1947,6 +1947,12 @@ impl Shell {
                                 .h(list_height)
                                 .min_h_0()
                                 .overflow_y_scroll()
+                                .on_scroll(cx.listener(|shell, _, _, cx| {
+                                    // Native wheel dismissal leaves pending hover timers alive.
+                                    // Retire their builders through the shared frame teardown.
+                                    shell.suppress_external_tooltips();
+                                    cx.notify();
+                                }))
                                 .flex()
                                 .flex_col()
                                 .items_start()
@@ -2215,6 +2221,8 @@ fn recent_hint(
                 .as_deref()
                 .and_then(|action| Kbd::binding_for_action(action, Some(context), window));
             div()
+                .id("recent-tooltip")
+                .map(gpui_kit::TestSupportExt::test_support)
                 .max_w(width.min(window.viewport_size().width - px(48.)))
                 .flex()
                 .items_center()

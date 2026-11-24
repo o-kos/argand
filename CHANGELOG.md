@@ -35,6 +35,8 @@ promise applies to.
 
 ### Fixed
 
+- Recent filenames use available start-page width before truncating, and scrolling cancels stale recent-file tooltips.
+
 - Share one precision-aware frequency unit across rulers, readouts, selections,
   metadata fields and reports. Use smaller units for fine coordinate precision,
   keep fractional tick precision consistent and leave integers bare (#256).
