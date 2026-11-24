@@ -89,7 +89,7 @@ fn status_reference_edits_and_saves_without_changing_samples(cx: &mut TestAppCon
         "ctrl-s"
     });
     wait_until(cx, &shell, "reference save", |shell| {
-        shell.saving.is_none() && !shell.editing().unwrap().is_dirty()
+        shell.saving.is_none() && shell.editing().is_some_and(|editing| !editing.is_dirty())
     });
     let source = argand_io::open(&path, &Default::default()).unwrap();
     assert_eq!(source.meta().center_freq, 1_010_001.);
