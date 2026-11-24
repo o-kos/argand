@@ -130,15 +130,44 @@ Formatting, all-target Clippy and all 980 tests plus doctests pass, including
 correction in round 1, then returned no substantive findings in round 2. There
 were no declined findings. Final logs are `target/issue265-ms-{fmt,clippy,tests}-final.log`.
 
-Current production UI execution is incomplete. A fresh task-owned Xvfb was
-verified ready with isolated supported XDG config/state/cache/data and TMPDIR,
-and ru-RU configuration. Both the first production launch request and its single
-permitted retry were rejected before process creation because automatic permission
-approval review did not finish before its deadline. No current production
-application was launched, screenshot taken or interaction exercised. Previous
-captures in this report are historical and do not validate this follow-up.
-The task-owned Xvfb cleanup result is recorded with the local run artifacts.
+The first two production launch requests timed out in automatic permission review
+before process creation. After explicit owner authorization, the bounded rerun
+launched successfully. The current code revision is
+`1bc701e120d277481c5c8d0292927deea203616c`, with a clean tree before launch.
+The existing validated production binary is 7,049,968 bytes, SHA256
+`8408021da445ff4c52c77e61fce5f2b580eff2c5a54b57f0878f4252dcba0d6c`.
+No product code changed, so the existing gate and build were retained.
+
+The rerun used verified task-owned Xvfb `:3`, 1280x800x24, X11, unset
+WAYLAND_DISPLAY and supported isolated XDG config/state/cache/data and TMPDIR.
+The isolated configuration selected ru-RU and dark theme. The disposable 1MHz
+I/Q WAVE starts at `2026-11-23T23:59:59.900Z` and lasts two seconds. XTest supplied
+real pointer/keyboard events. Captures below show settled frames; intermediate
+captures taken before the next render are not used as outcome evidence.
+
+| Criterion and actual interaction | Result | Evidence |
+| --- | --- | --- |
+| Inspect UTC ruler date rollover, selection badges and pointer/status readout | Pass: numeric fractions use comma, endpoints use a date/time space and at most three fraction digits. UTC caption/date context remain visible. | [UTC status](evidence/millisecond-utc-status.png), [UTC endpoint badges](evidence/millisecond-utc-badges.png) |
+| Enter exact `#1001` start and `#8002` inclusive end in the panel, reopen, Tab twice and Enter without changing the rounded UTC drafts, then switch Relative/Samples and reopen | Pass: fields show `#1 001`, `#8 002`, count `7 002`. Actual Enter/blur preserves the exact 1MHz selection. | [Exact samples after unchanged drafts](evidence/millisecond-exact-samples-after-noop.png) |
+| In UTC mode replace the end draft with canonical dot `2026-11-24 00:00:00.001Z`, press Up then Enter | Pass: settled duration is `0:00,101`, with start offset 0.001001s and end offset 0.102s. The following relative view shows end `0:00,102`, establishing a 1ms step. | [Canonical UTC step](evidence/millisecond-canonical-utc-step.png), [relative result](evidence/millisecond-relative-vertical.png) |
+| Toggle Relative and turn orientation, inspect labels, selection and status | Pass: relative hms values use comma with at most three digits. Frequency readout retains four digits where needed (`1,0000 MHz`). | [Relative vertical](evidence/millisecond-relative-vertical.png) |
+| Read complete UTC endpoints in resting selection-panel fields | **Failed**: the fixed 104px endpoint fields show only date/hour, hiding minutes, seconds and milliseconds. The complete timestamps remain visible in plot badges, but that does not make panel editing readable. | [UTC panel clipping](evidence/millisecond-utc-panel-clipping.png) |
+
+The panel-readability defect remains in active Issue #265. `FIELD=(104,24)` and
+`AREA=(220,104)` in the existing selection-panel drawing are shared by all six
+fields; the input and painted frame both use that fixed width. A correction needs
+coordinated endpoint/frame/drawing sizing in the existing standard Input
+composition, preserving orientation and the 640px minimum. No layout change was
+implemented in this verification run. Width estimates alone do not establish a
+fitting accepted layout.
+
+The application quit normally with Ctrl+Q and the verified task-owned Xvfb was
+stopped. Local launch/display/cleanup identities are in `target/issue265-ms-ui/`.
+This bounded run did not repeat the earlier 640px/light/menu/DatePicker matrix,
+exercise actual localized comma typing separately, or establish native Wayland or
+other-platform behavior. Automated localized-input regressions remain separate.
 
 Owner manual acceptance and native Wayland/Windows/macOS verification remain
-pending. The PR remains Draft. Current automated/build identities and exact
-review disposition are recorded in the follow-up handoff packet.
+pending. The PR remains Draft, with the related panel-readability criterion failed.
+Current automated/build identities and exact review disposition are recorded in
+the follow-up handoff packet.

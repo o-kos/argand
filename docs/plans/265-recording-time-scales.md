@@ -296,9 +296,14 @@ reviewer assignments above apply. No new widget or toolkit change is required.
 - [x] Complete the current gate/release and independent review evidence: formatting,
   all-target Clippy and 980 tests plus doctests pass. Round 1 accepted one UTC stepping
   correction, and round 2 is clean with no declined findings.
-- [ ] Production Xvfb execution is incomplete: automatic approval review timed out
-  before process creation for both the initial launch and its permitted retry.
-  Owner manual acceptance remains pending.
+- [x] After explicit owner authorization following the two launch-review timeouts,
+  execute bounded production Xvfb checks for localized UTC/relative presentation,
+  unchanged high-rate drafts, canonical UTC stepping and the other orientation.
+- [ ] Correct selection-panel UTC endpoint clipping in the current Issue: fixed
+  104px fields hide minutes/seconds/milliseconds. Assess the existing Input/frame
+  composition and preserve both orientations and the 640px minimum before coding.
+- [ ] Obtain owner manual acceptance. Passing presentation and no-op checks do not
+  waive the failed panel-readability criterion or native-platform limits.
 
 ## Post-completion
 
