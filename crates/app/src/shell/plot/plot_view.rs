@@ -44,6 +44,8 @@ pub(in crate::shell) struct PlotSnapshot {
     pub entry: Option<crate::navigation::selection_entry::Scale>,
     /// A finished save, said over the picture until the next input.
     pub notice: Option<gpui_kit::SharedString>,
+    /// Shell owns status and dismissal, while the plot only presents them.
+    pub analysis_status: Option<(String, Option<MetadataHint>)>,
     /// Which edit commands the spectrum's context menu can offer.
     pub commands: command::Availability,
 }
@@ -436,7 +438,6 @@ impl Render for PlotView {
                 self.panel_bounds
                     .and_then(|bounds| self.unit_hint(1, bounds.origin, cx)),
             )
-            .children(self.saved_notice(&snapshot, cx))
             .children(entry)
             .when(self.dragging(), |plot| {
                 plot.child(drag_tracker(cx.entity().downgrade()))

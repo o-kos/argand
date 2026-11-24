@@ -86,7 +86,7 @@ stamp. Native/fallback WAVE reuse the probed header; FLAC retains the tag alread
 read by its decoder. RAW has no declared reference. Existing `open`, `open_stamped`
 and `reopen` remain compatible. `analysis::FileInfo` carries this provenance into
 the document for read-only File information. History changes do not alter it;
-successful Save/rebind supplies the newly published file's declaration. No session
+successful Save/rebind supplies the newly published file's declaration. The retained File information panel refreshes its File size from that accepted summary alongside Peak/RMS/reference rows, while retaining conversion draft controls. Unsaved captures hide source-only size/reference rows until successful publication and rebind. No session
 field or extra reference probe is introduced.
 
 Reference frequency is versioned document metadata (#185), alongside the
@@ -110,7 +110,7 @@ The dialog is `App::prompt_for_new_path` in the source folder with
 a headerless source. The status bar shows the save last, at its right end, so it keeps its place: progress with a
 cancelling ×, or an error that stays until its × is pressed or another save starts. A
 finished save is said over the picture instead, `Saved <name>` in the spectrum's
-bottom-right corner (`PlotView::saved_notice`, framed like the zoom pairs and free of
+bottom-right corner (`PlotView::notices`, sharing the passive feedback surface with analysis status and free of
 them in both orientations, taking no input), saying when a FLAC source was saved as WAV,
 until the next mouse press, key, wheel or mouse move. A cancellation shows nothing. Each save
 start is logged at info with its source, target and span. A save

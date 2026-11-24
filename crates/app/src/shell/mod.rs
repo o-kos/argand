@@ -1791,6 +1791,16 @@ impl Shell {
             Showing::Opening => div()
                 .flex_1()
                 .min_h_0()
+                .relative()
+                .when_some(self.analysis_status(), |area, status| {
+                    area.child(div().absolute().bottom_2().right_2().max_w_full().child(
+                        plot::plot_ui::analysis_notice(
+                            status,
+                            self.external_tooltips_allowed(cx),
+                            cx,
+                        ),
+                    ))
+                })
                 .p_1()
                 .pr(px(52.0))
                 .pb(px(24.0))
@@ -1986,6 +1996,18 @@ impl Shell {
                             .child(chooser),
                     ),
             )
+    }
+
+    fn analysis_status(&self) -> Option<(String, Option<MetadataHint>)> {
+        if self.capture_changed() {
+            return None;
+        }
+        self.file
+            .as_ref()?
+            .state
+            .document
+            .status()
+            .presentation(self.ready_status_dismissed)
     }
 
     /// Which of the four the window is in.

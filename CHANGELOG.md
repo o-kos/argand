@@ -22,6 +22,8 @@ promise applies to.
 
 ### Changed
 
+- Show analysis progress and completion in the spectrogram’s bottom-right corner.
+
 - Unify spectrogram and ruler navigation and selection gestures, including Shift-drag or Ctrl-drag band selection, Ctrl+Shift-drag rectangles and Alt-click boundary adjustment.
 
 - Linux archives use system shared libraries instead of bundled runtime libraries

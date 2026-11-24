@@ -25,12 +25,12 @@ Move the existing analysis text and timing hint from the status bar to the botto
 
 Shell/Document continue to derive status and own dismissal. Add the existing presentation to PlotSnapshot and render it using the already existing bottom-right saved-notice composition and stock Tooltip. Stack save and analysis notices if simultaneous. Position against PlotGeometry.spectrum so axes/minimap/corner zoom controls remain clear in both orientations. Use theme surface/foreground/border tokens and rem scale. Preserve pre-header Opening status in the content placeholder using the same passive composition; central failure details remain unchanged without an extra duplicate failure label. No occlusion, focus target or input handler is introduced; plot input retains its existing bubbling contract.
 
-- [ ] Move only the status presentation to PlotSnapshot and existing plot notice composition.
-- [ ] Preserve stock timing Tooltip and tooltips eligibility.
-- [ ] Remove old status-bar analysis fragment without changing metadata or controls.
-- [ ] Verify rendered overlay input pass-through and progress/completion/dismissal regressions.
+- [x] Move only the status presentation to PlotSnapshot and existing plot notice composition.
+- [x] Preserve stock timing Tooltip and tooltips eligibility.
+- [x] Remove old status-bar analysis fragment without changing metadata or controls.
+- [x] Verify rendered overlay input pass-through and progress/completion/dismissal regressions.
 - [ ] Verify orientations, themes, narrow windows and coexistence with selection/cursor readouts, saved notice and corner controls.
-- [ ] Update changelog and UI architecture with the new presentation location.
+- [x] Update changelog and UI architecture with the new presentation location.
 
 ## Acceptance criteria and evidence
 
@@ -41,15 +41,19 @@ Shell/Document continue to derive status and own dismissal. Add the existing pre
 | Navigation/selection pass through notice | Rendered actual plot pointer/wheel/drag regression and Xvfb interaction | Pending | No occlusion or handlers |
 | Readable and clear of essential UI | Narrow/normal windows, light/dark, existing ruler controls and badges | Pending | Owner acceptance remains distinct |
 
+## Layout limits
+
+Production geometry is measured in the current canvas frame. Feedback tries full, half and quarter available widths and the nearest free positions above/left of existing selection badges and corner controls. Both supported 640×400 minimum and larger windows pass the rendered collision/input regression in both orientations/themes. Transient smaller surfaces retain feedback at the corner after bounded attempts, with essential badges/guides painted above it. This does not claim collision-free placement in arbitrary undersized geometry. Selection badge positions remain unchanged.
+
 ## Rejected alternatives
 
 A notification system or new custom widget would change dismissal/focus behavior. Moving status state into PlotView would unnecessarily change ownership. Anchoring to the outer plot panel would overlap rulers or minimap in one orientation.
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after preceding checks pass
 - [ ] Production Xvfb acceptance with disposable inputs and isolated settings/session/cache.
 - [ ] Independent read-only review of exact submitted revision.

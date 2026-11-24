@@ -77,6 +77,7 @@ impl Shell {
                 Some(saving_ui::Notice::Saved(name)) => Some(format!("Saved {name}").into()),
                 _ => None,
             },
+            analysis_status: self.analysis_status(),
             commands: self.command_availability(),
         })
     }
@@ -164,7 +165,7 @@ impl PlotView {
     /// not a moment at which the entity being painted can be borrowed again.
     pub(in crate::shell) fn spectrogram(
         &self,
-        snapshot: PlotSnapshot,
+        mut snapshot: PlotSnapshot,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let extents = snapshot.extents;
@@ -174,7 +175,7 @@ impl PlotView {
         let known_bounds = self.panel_bounds;
         let known = self.measured;
         let known_geometry = self.geometry;
-        let badges = self.badge_layout(snapshot.badges, cx);
+        let badges = self.badge_layout(snapshot.badges.take(), cx);
         let held = axes::Held {
             time: snapshot.time_scheme,
             frequency: snapshot.frequency_scheme,
@@ -216,10 +217,12 @@ impl PlotView {
                 let entry = badge_entry::entry_size(f32::from(window.rem_size()));
                 let placed =
                     badges.place(&frame, &labels, entry, bounds.origin + point(dx, dy), cx);
+                let obstacles = overlay_obstacles(&placed, geometry, bounds.origin + point(dx, dy));
                 let overlays = overlays.prepaint(
                     bounds,
                     plot_bounds(&frame, bounds.origin + point(dx, dy)),
                     geometry.zoom_zones[0].is_some(),
+                    &obstacles,
                     window,
                     cx,
                 );
@@ -247,22 +250,15 @@ impl PlotView {
                     .paint(&frame, bounds.origin, height, window);
                 // The picture first, then the marks over it: a grid line is
                 // there to be read against the spectrogram, not under it.
-                if let Some(texture) = snapshot.texture
-                    && let Some(held) = snapshot.held
-                {
-                    let plot = plot_bounds(&frame, spectrum_origin);
-                    if let Some(deep) = snapshot.deep {
-                        deep.paint(plot, extents.picture(), orientation, window);
-                    } else {
-                        paint_held(texture, plot, held, extents.picture(), orientation, window);
-                    }
-                    mark_first_paint(&snapshot.first_picture);
-                }
+                paint_picture(&snapshot, plot_bounds(&frame, spectrum_origin), window);
                 let panel = Bounds::new(
                     spectrum_origin,
                     size(bounds.size.width - dx, bounds.size.height - dy),
                 );
-                marks.paint(&frame, panel, &labels, &placed, window, cx);
+                let mut overlays = overlays;
+                marks.paint_base(&frame, panel, &labels, window, cx);
+                overlays.paint_notices(window, cx);
+                marks.paint_readouts(&frame, panel, &labels, &placed, window, cx);
                 overlays.paint(window, cx);
             },
         )
@@ -362,43 +358,27 @@ impl PlotView {
         )
     }
 
-    /// A finished save in the spectrum's bottom-right corner, which no zoom pair takes in either orientation.
-    pub(in crate::shell) fn saved_notice(
-        &self,
-        snapshot: &PlotSnapshot,
-        cx: &mut Context<Self>,
-    ) -> Option<gpui_kit::AnyElement> {
-        let text = snapshot.notice.clone()?;
-        let spectrum = self.geometry?.spectrum;
-        let origin = self.panel_bounds?.origin;
+    /// Passive feedback shares the unused bottom-right spectrum corner.
+    fn notices(&self, snapshot: &PlotSnapshot, cx: &Context<Self>) -> Option<gpui_kit::AnyElement> {
+        if snapshot.notice.is_none() && snapshot.analysis_status.is_none() {
+            return None;
+        }
         Some(
             div()
-                .absolute()
-                .left(spectrum.left() - origin.x)
-                .top(spectrum.top() - origin.y)
-                .w(spectrum.size.width)
-                .h(spectrum.size.height)
-                .p(px(SCALE_INSET))
                 .flex()
+                .flex_col()
+                .gap_1()
                 .items_end()
-                .justify_end()
-                .child(
-                    div()
-                        .id("saved-notice")
-                        .min_w_0()
-                        .px_2()
-                        .py_0p5()
-                        .border_1()
-                        .border_color(cx.theme().border.opacity(0.75))
-                        .bg(cx.theme().background.opacity(0.85))
-                        .rounded(px(SCALE_ROUNDING))
-                        .text_xs()
-                        .text_color(cx.theme().foreground)
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .whitespace_nowrap()
-                        .child(text),
-                )
+                .max_w_64()
+                .when_some(snapshot.notice.clone(), |area, text| {
+                    area.child(
+                        notice("saved-notice", text, cx)
+                            .map(gpui_kit::TestSupportExt::test_support),
+                    )
+                })
+                .when_some(snapshot.analysis_status.clone(), |area, status| {
+                    area.child(analysis_notice(status, snapshot.tooltips_allowed, cx))
+                })
                 .into_any_element(),
         )
     }
@@ -439,6 +419,7 @@ impl PlotView {
 
     fn overlays(&self, snapshot: &PlotSnapshot, cx: &mut Context<Self>) -> PlotOverlays {
         PlotOverlays {
+            notices: self.notices(snapshot, cx),
             marker: self.paste_marker(snapshot, cx).map(|marker| {
                 div()
                     .relative()
@@ -524,6 +505,30 @@ impl PlotView {
         });
         cx.notify();
     }
+}
+
+fn paint_picture(snapshot: &PlotSnapshot, plot: Bounds<Pixels>, window: &mut Window) {
+    let (Some(texture), Some(held)) = (&snapshot.texture, snapshot.held) else {
+        return;
+    };
+    if let Some(deep) = &snapshot.deep {
+        deep.paint(
+            plot,
+            snapshot.extents.picture(),
+            snapshot.extents.orientation,
+            window,
+        );
+    } else {
+        paint_held(
+            texture.clone(),
+            plot,
+            held,
+            snapshot.extents.picture(),
+            snapshot.extents.orientation,
+            window,
+        );
+    }
+    mark_first_paint(&snapshot.first_picture);
 }
 
 /// The picture's own rectangle inside the spectrum panel.
@@ -641,6 +646,7 @@ impl Shell {
 }
 
 struct PlotOverlays {
+    notices: Option<gpui_kit::AnyElement>,
     marker: Option<gpui_kit::AnyElement>,
     controls: Option<gpui_kit::AnyElement>,
 }
@@ -651,9 +657,13 @@ impl PlotOverlays {
         panel: Bounds<Pixels>,
         plot: Bounds<Pixels>,
         controls_visible: bool,
+        obstacles: &[Bounds<Pixels>],
         window: &mut Window,
         cx: &mut gpui_kit::App,
     ) -> Self {
+        if let Some(notices) = &mut self.notices {
+            prepaint_notices(notices, plot, obstacles, window, cx);
+        }
         if let Some(marker) = &mut self.marker {
             marker.prepaint_as_root(
                 panel.origin,
@@ -674,11 +684,117 @@ impl PlotOverlays {
         self
     }
 
+    fn paint_notices(&mut self, window: &mut Window, cx: &mut gpui_kit::App) {
+        if let Some(notices) = &mut self.notices {
+            notices.paint(window, cx);
+        }
+    }
+
     fn paint(mut self, window: &mut Window, cx: &mut gpui_kit::App) {
         for element in [&mut self.marker, &mut self.controls].into_iter().flatten() {
             element.paint(window, cx);
         }
     }
+}
+
+fn overlay_obstacles(
+    badges: &axes::PlacedBadges,
+    geometry: PlotGeometry,
+    origin: gpui_kit::Point<Pixels>,
+) -> Vec<Bounds<Pixels>> {
+    badges
+        .badges
+        .iter()
+        .map(|(_, _, rect)| {
+            Bounds::new(
+                origin + point(px(rect.x), px(rect.y)),
+                size(px(rect.width), px(rect.height)),
+            )
+        })
+        .chain(geometry.zoom_zones.into_iter().flatten().map(|rect| {
+            Bounds::new(
+                point(px(rect.x), px(rect.y)),
+                size(px(rect.width), px(rect.height)),
+            )
+        }))
+        .collect()
+}
+
+fn prepaint_notices(
+    notices: &mut gpui_kit::AnyElement,
+    plot: Bounds<Pixels>,
+    obstacles: &[Bounds<Pixels>],
+    window: &mut Window,
+    cx: &mut gpui_kit::App,
+) {
+    let inset = window.rem_size() * 0.5;
+    let area = Bounds::new(
+        plot.origin + point(inset, inset),
+        size(
+            (plot.size.width - inset * 2.).max(px(0.)),
+            (plot.size.height - inset * 2.).max(px(0.)),
+        ),
+    );
+    let mut measured = size(px(0.), px(0.));
+    for fraction in [1., 0.5, 0.25] {
+        measured = notices.layout_as_root(
+            size(
+                AvailableSpace::Definite(area.size.width * fraction),
+                AvailableSpace::MinContent,
+            ),
+            window,
+            cx,
+        );
+        if let Some(bounds) = notice_bounds(area, measured, obstacles, inset) {
+            notices.prepaint_at(bounds.origin, window, cx);
+            return;
+        }
+    }
+    // A transient undersized surface still shows feedback. Readouts paint above it.
+    notices.prepaint_at(
+        point(
+            (area.right() - measured.width).max(area.left()),
+            (area.bottom() - measured.height).max(area.top()),
+        ),
+        window,
+        cx,
+    );
+}
+
+/// Keep passive feedback nearest the bottom-right free space, without moving readouts.
+fn notice_bounds(
+    area: Bounds<Pixels>,
+    measured: gpui_kit::Size<Pixels>,
+    obstacles: &[Bounds<Pixels>],
+    gap: Pixels,
+) -> Option<Bounds<Pixels>> {
+    let right = area.right() - measured.width;
+    let bottom = area.bottom() - measured.height;
+    let xs = std::iter::once(right).chain(
+        obstacles
+            .iter()
+            .map(|obstacle| obstacle.left() - gap - measured.width),
+    );
+    let ys: Vec<_> = std::iter::once(bottom)
+        .chain(
+            obstacles
+                .iter()
+                .map(|obstacle| obstacle.top() - gap - measured.height),
+        )
+        .collect();
+    xs.flat_map(|x| ys.iter().map(move |y| Bounds::new(point(x, *y), measured)))
+        .filter(|bounds| {
+            bounds.left() >= area.left()
+                && bounds.top() >= area.top()
+                && bounds.right() <= area.right()
+                && bounds.bottom() <= area.bottom()
+        })
+        .filter(|bounds| {
+            obstacles
+                .iter()
+                .all(|obstacle| !bounds.intersects(obstacle))
+        })
+        .min_by_key(|bounds| (right - bounds.left()) + (bottom - bounds.top()))
 }
 
 /// What is painted over the picture, in order from the selection's tint to the Alt guides.
@@ -690,7 +806,19 @@ struct Marks {
 }
 
 impl Marks {
-    fn paint(
+    fn paint_base(
+        &self,
+        frame: &axes::Frame,
+        panel: Bounds<Pixels>,
+        labels: &axes::Labels,
+        window: &mut Window,
+        cx: &mut gpui_kit::App,
+    ) {
+        paint_selection(frame, panel.origin, self.selection, window, cx);
+        axes::paint(frame, panel.origin, labels, self.colors, window, cx);
+    }
+
+    fn paint_readouts(
         &self,
         frame: &axes::Frame,
         panel: Bounds<Pixels>,
@@ -699,8 +827,6 @@ impl Marks {
         window: &mut Window,
         cx: &mut gpui_kit::App,
     ) {
-        paint_selection(frame, panel.origin, self.selection, window, cx);
-        axes::paint(frame, panel.origin, labels, self.colors, window, cx);
         badges.paint(frame, panel.origin, labels, self.badge_colors, window, cx);
         if let Some(guides) = &self.guides {
             guides.paint(frame, panel, labels, window, cx);
@@ -1314,4 +1440,41 @@ fn mark_first_paint(first: &Option<(Instant, Arc<AtomicBool>)>) {
     {
         tracing::debug!(elapsed = ?opened_at.elapsed(), "first picture painted");
     }
+}
+
+/// Reuse the existing passive saved-notice surface without owning input or focus.
+fn notice(
+    id: &'static str,
+    text: gpui_kit::SharedString,
+    cx: &gpui_kit::App,
+) -> gpui_kit::Stateful<Div> {
+    div()
+        .id(id)
+        .min_w_0()
+        .max_w_full()
+        .flex_shrink_0()
+        .px_2()
+        .py_0p5()
+        .border_1()
+        .border_color(cx.theme().border.opacity(0.75))
+        .bg(cx.theme().background.opacity(0.85))
+        .rounded_md()
+        .text_xs()
+        .text_color(cx.theme().foreground)
+        .overflow_hidden()
+        .text_ellipsis()
+        .whitespace_nowrap()
+        .child(text)
+}
+
+pub(in crate::shell) fn analysis_notice(
+    (text, hint): (String, Option<MetadataHint>),
+    tooltips_allowed: bool,
+    cx: &gpui_kit::App,
+) -> impl IntoElement {
+    notice("analysis-status", text.into(), cx)
+        .when_some(hint.filter(|_| tooltips_allowed), |status, hint| {
+            status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
+        })
+        .map(gpui_kit::TestSupportExt::test_support)
 }
