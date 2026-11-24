@@ -83,8 +83,10 @@ The owner requested gray text matching the status bar and automatic disappearanc
 
 - [x] Implement analysis-only muted text and Shell-owned bounded Ready lifetime.
 - [x] Verify genuine toolkit-clock expiry, non-expiring progress, input cancellation, newer completion/document safety and Saved notice independence. Rejected delivery does not postpone the current deadline.
-- [ ] Reproduce shortcut zoom with a stationary pointer in the current production Xvfb binary, observe completion then disappearance after five seconds without more input.
-- [ ] Verify readable muted text in both themes and orientations, retaining existing placement and pass-through behavior.
+- [x] Reproduce shortcut zoom with a stationary pointer in the current production Xvfb binary, observe completion then disappearance after five seconds without more input.
+- [x] Verify readable muted text in both themes and orientations, retaining existing placement and pass-through behavior.
 - [ ] Refresh full local gate, production binary identity, independent review and Draft PR description for this feedback revision.
 
 Earlier gate and production observations above describe the preceding submitted behavior. They do not establish these new feedback criteria. Keep the plan active and PR Draft until current evidence and remaining acceptance are resolved.
+
+Current feedback validation passed formatting, all-target Clippy,978tests with zero failures/ignores, then release build. The exact release showed muted Ready text in both themes/orientations on isolated native X11. With the pointer parked outside the spectrum, a frequency-zoom shortcut produced visible Ready at roughly0.7–0.8seconds and it disappeared by6.3–6.4seconds without intervening input. Toolkit-clock tests separately verify the exact five-second boundary, non-expiring progress and stale/input/document safety. This pass did not repeat native minimum-size/save scenarios or the original unperformed checks above. Remaining owner and other-platform acceptance still keeps this plan active and PR Draft.
