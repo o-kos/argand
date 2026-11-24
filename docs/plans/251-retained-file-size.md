@@ -8,7 +8,7 @@ Refresh File size after successful save/rebind while the File information panel 
 
 ## Roles and risk
 
-- Class B: local GUI presentation changes with existing state ownership and no processing, scheduling, generation, source-safety or data contracts changed.
+- Class A: the combined branch touches more than five code files. Existing state ownership and processing, scheduling, generation, source-safety and data contracts remain unchanged.
 - Coordinator: `gpt-6.1-sol` medium, owner communication and final assessment.
 - Executor: `gpt-6.1-sol` medium, investigation, implementation, validation and Draft PR.
 - Reviewer: `gpt-6.1-sol` high in a fresh read-only context.

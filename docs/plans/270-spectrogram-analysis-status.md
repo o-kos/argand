@@ -8,7 +8,7 @@ Move the existing analysis text and timing hint from the status bar to the botto
 
 ## Roles and risk
 
-- Class B: local GUI presentation changes with existing state ownership and no processing, scheduling, generation, source-safety or data contracts changed.
+- Class A: the combined branch touches more than five code files. Existing state ownership and processing, scheduling, generation, source-safety and data contracts remain unchanged.
 - Coordinator: `gpt-6.1-sol` medium, owner communication and final assessment.
 - Executor: `gpt-6.1-sol` medium, investigation, implementation, validation and Draft PR.
 - Reviewer: `gpt-6.1-sol` high in a fresh read-only context.
@@ -23,7 +23,7 @@ Move the existing analysis text and timing hint from the status bar to the botto
 
 ## Context and implementation
 
-Shell/Document continue to derive status and own dismissal. Add the existing presentation to PlotSnapshot and render it using the already existing bottom-right saved-notice composition and stock Tooltip. Stack save and analysis notices if simultaneous. Position against PlotGeometry.spectrum so axes/minimap/corner zoom controls remain clear in both orientations. Use theme surface/foreground/border tokens and rem scale. No occlusion, focus target or input handler is introduced; plot input retains its existing bubbling contract.
+Shell/Document continue to derive status and own dismissal. Add the existing presentation to PlotSnapshot and render it using the already existing bottom-right saved-notice composition and stock Tooltip. Stack save and analysis notices if simultaneous. Position against PlotGeometry.spectrum so axes/minimap/corner zoom controls remain clear in both orientations. Use theme surface/foreground/border tokens and rem scale. Preserve pre-header Opening status in the content placeholder using the same passive composition; central failure details remain unchanged without an extra duplicate failure label. No occlusion, focus target or input handler is introduced; plot input retains its existing bubbling contract.
 
 - [ ] Move only the status presentation to PlotSnapshot and existing plot notice composition.
 - [ ] Preserve stock timing Tooltip and tooltips eligibility.
