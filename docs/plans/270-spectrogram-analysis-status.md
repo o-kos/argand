@@ -39,7 +39,7 @@ Shell/Document continue to derive status and own dismissal. Add the existing pre
 | One analysis status at spectrum bottom-right | Rendered production UI in both orientations and themes | Passed in production light/dark and both orientations, including actual 640×400 windows | Xvfb establishes X11 only |
 | Progress, completion, hint and dismissal unchanged | Existing lifecycle tests plus production initial/re-analysis and input scenarios | Production progress, completion and settled Ready dismissal observed, automated presentation tests passed | Timing Tooltip, pre-header Opening and failure appearance not exercised natively; no scheduling changes |
 | Navigation/selection pass through notice | Rendered actual plot pointer/wheel/drag regression and Xvfb interaction | Rendered production-composition pointer/wheel/drag regression passed; actual plot zoom and selection exercised | Native direct input through still-visible progress was not separately isolated; no occlusion or handlers |
-| Readable and clear of essential UI | Narrow/normal windows, light/dark, existing ruler controls and badges | Production actual minimum with selection readouts passed in dark/light vertical layouts; normal horizontal layouts observed | Simultaneous save/analysis native appearance unperformed; owner acceptance remains distinct |
+| Readable and clear of essential UI | Narrow/normal windows, light/dark, existing ruler controls and badges | Production minimum passed in dark/light vertical layouts, with selection readouts additionally exercised in light; normal horizontal layouts observed | Simultaneous save/analysis native appearance unperformed; owner acceptance remains distinct |
 
 ## Layout limits
 
