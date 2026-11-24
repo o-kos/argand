@@ -25,8 +25,8 @@ Refresh File size after successful save/rebind while the File information panel 
 
 `conversion_ui::Editor::prepare` already refreshes live Peak/RMS/reference rows from the same document. Include File size in that synchronization, excluding source-only rows while the capture is unsaved. Reuse the existing information panel, retained NumericEditor/Input/Select entities and save/rebind lifecycle.
 
-- [ ] Extend only live readout synchronization, preserving draft controls.
-- [ ] Extend production save/rebind regression to compare the new byte count and retained drafts.
+- [x] Extend only live readout synchronization, preserving draft controls.
+- [x] Extend production save/rebind regression to compare the new byte count and retained drafts.
 - [ ] Cover unsaved-to-saved visibility and related save entry paths through the shared invariant.
 - [ ] Update changelog and current architecture documentation if needed.
 

@@ -2333,7 +2333,7 @@ fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppC
     let path = dir.join("capture.iqw");
     write_wave(&path, 48_000);
     shell.update_in(cx, |shell, window, cx| {
-        shell.open(Origin::new(path), window, cx)
+        shell.open(Origin::new(path.clone()), window, cx)
     });
     wait_until(cx, &shell, "reference panel fixture", |shell| {
         shell
@@ -2352,6 +2352,16 @@ fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppC
             .downcast::<Editor>()
             .unwrap()
     });
+    let old_size = editor.read_with(cx, |editor, _| {
+        editor
+            .details
+            .iter()
+            .find(|(label, _)| label == "File size")
+            .unwrap()
+            .1
+            .clone()
+    });
+    let original_bytes = std::fs::metadata(&path).unwrap().len();
     shell.update_in(cx, |shell, window, cx| {
         shell.set_reference(1_000_000., window, cx);
     });
@@ -2388,7 +2398,34 @@ fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppC
             "a completed metadata save removes its status control"
         )
     });
+    let expected_size = shell.read_with(cx, |shell, _| {
+        shell
+            .file
+            .as_ref()
+            .unwrap()
+            .state
+            .document
+            .file_summary()
+            .unwrap()
+            .hint
+            .rows
+            .into_iter()
+            .find(|(label, _)| label == "File size")
+            .unwrap()
+            .1
+    });
+    assert!(std::fs::metadata(&path).unwrap().len() > original_bytes);
+    assert_ne!(expected_size, old_size);
     editor.read_with(cx, |editor, cx| {
+        assert_eq!(
+            editor
+                .details
+                .iter()
+                .find(|(label, _)| label == "File size")
+                .unwrap()
+                .1,
+            expected_size
+        );
         assert_ne!(editor.source_stamp, old_stamp);
         let request = editor.request(cx).unwrap();
         assert_eq!(request.input.center_freq, 1_000_000.);
@@ -2405,6 +2442,37 @@ fn conversion_snapshot_refreshes_after_reference_edit_and_save(cx: &mut TestAppC
             request.copy.as_ref().unwrap().sources[0].stamp,
             editor.source_stamp
         );
+    });
+    let (rate, kind, container) = editor.read_with(cx, |editor, _| {
+        (
+            editor.rate.clone(),
+            editor.kind.clone(),
+            editor.container.clone(),
+        )
+    });
+    rate.update_in(cx, |input, window, cx| {
+        input.set_value("unfinished draft", window, cx)
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        shell.set_reference(2_000_000., window, cx);
+    });
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-s"
+    } else {
+        "ctrl-s"
+    });
+    wait_until(cx, &shell, "second retained-panel save", |shell| {
+        shell.saving.is_none()
+            && shell.editing().is_some_and(|editing| {
+                !editing.is_dirty() && editing.reference() == 2_000_000. && editing.is_described()
+            })
+    });
+    frame(cx);
+    editor.read_with(cx, |editor, cx| {
+        assert_eq!(editor.rate, rate);
+        assert_eq!(editor.kind, kind);
+        assert_eq!(editor.container, container);
+        assert_eq!(editor.rate.read(cx).value().as_ref(), "unfinished draft");
     });
 }
 

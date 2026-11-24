@@ -35,6 +35,8 @@ promise applies to.
 
 ### Fixed
 
+- Refresh File information size after saving while preserving open conversion drafts.
+
 - Recent filenames use available start-page width before truncating, and scrolling cancels stale recent-file tooltips.
 
 - Share one precision-aware frequency unit across rulers, readouts, selections,
