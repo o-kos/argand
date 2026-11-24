@@ -24,6 +24,8 @@ promise applies to.
 
 ### Changed
 
+- Recording scales use aligned outlined controls, labelled scale groups and a standard UTC date/time picker. Missing embedded start defaults to supported filesystem creation time. Main and ruler menus share consistent mode names and shortcut labels (#265).
+
 - Unify spectrogram and ruler navigation and selection gestures, including Shift-drag or Ctrl-drag band selection, Ctrl+Shift-drag rectangles and Alt-click boundary adjustment.
 
 - Linux archives use system shared libraries instead of bundled runtime libraries

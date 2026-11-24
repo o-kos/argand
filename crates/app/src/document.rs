@@ -295,6 +295,11 @@ impl Document {
         self.file_info.stamp
     }
 
+    /// Creation timestamp captured from the stable opened source.
+    pub fn created(&self) -> Option<argand_core::RecordingTime> {
+        self.file_info.created
+    }
+
     /// How the file's reader maps read values back to stored ones, as `value * factor + offset`.
     pub fn sample_units(&self) -> Option<(f64, f64)> {
         self.file_info.sample_units

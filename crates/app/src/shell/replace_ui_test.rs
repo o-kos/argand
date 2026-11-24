@@ -738,6 +738,10 @@ fn raw_reference_undo_retains_headerless_sample_save_and_prompt_cancel(cx: &mut 
     let (shell, cx, dir) = raw_fixture(cx, "raw-reference-undo");
     let raw = dir.join("capture.raw");
     shell.update_in(cx, |shell, window, cx| {
+        // This scenario exercises metadata-free RAW saving. Birthtime is now
+        // an effective initial origin, so explicitly clear it before the edit.
+        shell.set_recording_start(None, window, cx);
+        shell.editing_mut().unwrap().mark_saved();
         shell.selection = argand_core::SampleSpan::between(0, 2400);
         window.dispatch_action(Box::new(editing_ui::DeleteSelection), cx);
     });
@@ -856,6 +860,10 @@ fn headerless_save_preserves_an_unchanged_fractional_reference_hint(cx: &mut Tes
         shell.editing().is_some_and(Editing::is_described)
     });
     shell.update_in(cx, |shell, window, cx| {
+        // This scenario exercises metadata-free RAW saving. Birthtime is now
+        // an effective initial origin, so explicitly clear it before the edit.
+        shell.set_recording_start(None, window, cx);
+        shell.editing_mut().unwrap().mark_saved();
         shell.selection = argand_core::SampleSpan::between(0, 2400);
         window.dispatch_action(Box::new(editing_ui::DeleteSelection), cx);
     });
@@ -934,5 +942,48 @@ fn disabled_save_shortcut_is_inert_and_reenables_after_a_reference_edit(cx: &mut
             .meta()
             .center_freq,
         12345.
+    );
+}
+
+#[gpui_kit::test]
+fn raw_creation_origin_prefix_trim_requires_wave_save_as(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, cx, dir) = raw_fixture(cx, "raw-created-origin");
+    let raw = dir.join("capture.raw");
+    let original = std::fs::read(&raw).unwrap();
+    let Some(start) = shell.read_with(cx, |shell, _| shell.editing().unwrap().recording_start())
+    else {
+        // Filesystems without birthtime correctly have no initial origin.
+        return;
+    };
+    let expected = start.shifted_samples(2400, 24000.).unwrap();
+    shell.update_in(cx, |shell, window, cx| {
+        assert!(!shell.editing().unwrap().is_dirty());
+        shell.selection = argand_core::SampleSpan::between(0, 2400);
+        window.dispatch_action(Box::new(editing_ui::DeleteSelection), cx);
+    });
+    cx.run_until_parked();
+    shell.update_in(cx, |shell, window, cx| {
+        assert_eq!(shell.editing().unwrap().recording_start(), Some(expected));
+        assert_eq!(shell.can_save_over(), Err(Unsavable::RawReference));
+        assert!(shell.save_needs_new_path());
+        shell.save_over(window, cx);
+    });
+    wait_for_save_chooser(cx);
+    let wave = dir.join("trimmed.wav");
+    cx.simulate_new_path_selection(|_| Some(wave.clone()));
+    wait_until(cx, &shell, "RAW creation origin to WAVE", |shell| {
+        shell.saving.is_none()
+            && shell
+                .editing()
+                .is_some_and(|editing| editing.file().meta.source == wave && !editing.is_dirty())
+    });
+    assert_eq!(std::fs::read(raw).unwrap(), original);
+    assert_eq!(
+        argand_io::open(&wave, &Default::default())
+            .unwrap()
+            .meta()
+            .recording_start,
+        Some(expected.rounded(3))
     );
 }

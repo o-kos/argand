@@ -293,9 +293,18 @@ impl Editing {
 
     /// The file as it was opened, with nothing edited.
     pub fn new(meta: SignalMeta, hints: OpenHints) -> Self {
+        Self::with_default_start(meta, hints, None)
+    }
+
+    /// Initialize a clean document with an effective origin, preserving embedded source metadata.
+    pub fn with_default_start(
+        meta: SignalMeta,
+        hints: OpenHints,
+        default: Option<argand_core::RecordingTime>,
+    ) -> Self {
         let capture = Capture::whole(SourceId(0), meta.len_samples);
         let reference = meta.center_freq;
-        let recording_start = meta.recording_start;
+        let recording_start = meta.recording_start.or(default);
         Self {
             sources: vec![Source::new(meta, hints)],
             history: History::new(

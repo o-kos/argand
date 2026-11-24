@@ -6,6 +6,7 @@ use crate::settings::{DisplayedRange, RangeState};
 use argand_dsp::DynamicRange;
 use gpui_kit::AnyElement;
 use gpui_kit::component::Disableable;
+use gpui_kit::component::Selectable;
 pub(super) mod editor;
 
 fn low_signal_level_hint(db: f32) -> String {
@@ -295,12 +296,16 @@ impl Shell {
         };
         let hint = self.information_hint(panel.into());
         let lit = self.information_panel == Some(panel.into()) && hint.read(cx).is_open();
-        let mut button = status_control(id, group, text, lit, cx)
-            .tab_stop(panel == StatusPanel::Reference)
-            .when(panel == StatusPanel::Reference, |button| {
-                button.accessibility_label("Recording metadata and scales, frequency then time")
-            })
-            .disabled(!self.status_panel_available(panel));
+        let mut button = if panel == StatusPanel::Reference {
+            Button::new(id).outline().xsmall().label(text).open(lit)
+        } else {
+            status_control(id, group, text, lit, cx)
+        }
+        .tab_stop(panel == StatusPanel::Reference)
+        .when(panel == StatusPanel::Reference, |button| {
+            button.accessibility_label("Recording metadata and scales, frequency then time")
+        })
+        .disabled(!self.status_panel_available(panel));
         if self.external_tooltips_allowed(cx) {
             button
                 .interactivity()

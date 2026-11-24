@@ -24,6 +24,7 @@ const LEVEL_SCAN_BYTES: usize = 64 << 20;
 
 #[derive(Default)]
 pub struct FileInfo {
+    pub created: Option<argand_core::RecordingTime>,
     pub declared_reference_freq: Option<f64>,
     pub bytes: Option<u64>,
     pub sample_units: Option<(f64, f64)>,
@@ -298,6 +299,9 @@ fn serve(
             update: Update::Opened(
                 Box::new(source.meta().clone()),
                 FileInfo {
+                    created: opened
+                        .created
+                        .and_then(argand_core::RecordingTime::from_timestamp),
                     declared_reference_freq: opened.declared_reference_freq,
                     bytes: std::fs::metadata(path).ok().map(|meta| meta.len()),
                     sample_units: source.original_sample_units(),

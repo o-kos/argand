@@ -1,5 +1,7 @@
 use super::*;
+use crate::shell::plot::navigation_ui::ToggleOrientation;
 use crate::shell::replace_ui::tests::{open_window, wait_until, write_wave};
+use gpui_kit::Focusable;
 use gpui_kit::{TestAppContext, test::TestWindowExt};
 
 fn frame(cx: &mut gpui_kit::VisualTestContext) {
@@ -237,8 +239,9 @@ fn recording_panel_commits_start_and_modes_keep_history_and_analysis(cx: &mut Te
     let editor = editor(&shell, cx);
     let input = editor.read_with(cx, |editor, _| editor.start_input.clone());
     input.update_in(cx, |input, window, cx| {
-        input.set_value("2026-11-23T23:59:59.123Z", window, cx);
-        input.focus(window, cx);
+        let value = DateTime::Single("2026-11-23T23:59:59".parse().ok());
+        input.set_date_time(value, window, cx);
+        cx.emit(DatePickerEvent::Change(input.date_time()));
     });
     cx.simulate_keystrokes("enter");
     frame(cx);
@@ -250,7 +253,7 @@ fn recording_panel_commits_start_and_modes_keep_history_and_analysis(cx: &mut Te
                 .recording_start()
                 .unwrap()
                 .format(3),
-            "2026-11-23T23:59:59.123Z"
+            "2026-11-23T23:59:59.000Z"
         );
         (
             shell.editing().unwrap().version(),
@@ -283,8 +286,8 @@ fn recording_panel_commits_start_and_modes_keep_history_and_analysis(cx: &mut Te
         );
     });
     input.update_in(cx, |input, window, cx| {
-        input.set_value("", window, cx);
-        input.focus(window, cx);
+        input.set_date_time(DateTime::Single(None), window, cx);
+        cx.emit(DatePickerEvent::Change(input.date_time()));
     });
     cx.simulate_keystrokes("enter");
     frame(cx);
@@ -329,7 +332,9 @@ fn untouched_start_draft_preserves_precise_trim_origin_on_blur_and_escape(cx: &m
         cx.update(|window, cx| window.click("reference-frequency", cx));
         frame(cx);
         let input = editor(&shell, cx).read_with(cx, |editor, _| editor.start_input.clone());
-        input.update_in(cx, |input, window, cx| input.focus(window, cx));
+        input.update_in(cx, |input, window, cx| {
+            window.focus(&input.focus_handle(cx), cx)
+        });
         frame(cx);
         if escape {
             cx.simulate_keystrokes("escape");
@@ -339,4 +344,174 @@ fn untouched_start_draft_preserves_precise_trim_origin_on_blur_and_escape(cx: &m
         frame(cx);
         assert_eq!(shell.read_with(cx, |shell, _| snapshot(shell)), before);
     }
+}
+
+#[gpui_kit::test]
+fn corner_button_is_centered_in_the_real_ruler_minimap_cell(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, _dir, cx) = opened(cx);
+    for width in [800., 640.] {
+        cx.simulate_resize(gpui_kit::size(px(width), px(600.)));
+        for _ in 0..2 {
+            frame(cx);
+            cx.update(|window, cx| {
+                let plot = shell.read(cx).plot_view().unwrap().read(cx);
+                let corner = plot.geometry.unwrap().reference_corner();
+                let button = window.find("reference-frequency").bounds();
+                let delta = button.center() - corner.center();
+                assert!(f32::from(delta.x).abs() <= 1.);
+                assert!(f32::from(delta.y).abs() <= 1.);
+                assert!(button.left() >= corner.left() && button.right() <= corner.right());
+                assert!(button.top() >= corner.top() && button.bottom() <= corner.bottom());
+                window.dispatch_action(Box::new(ToggleOrientation), cx);
+            });
+        }
+    }
+}
+
+fn scale_menu_row(
+    cx: &mut gpui_kit::VisualTestContext,
+    index: u64,
+    depth: usize,
+) -> gpui_kit::Point<Pixels> {
+    cx.update(|window, _| {
+        window
+            .find_all(gpui_kit::ElementId::Integer(index))
+            .into_iter()
+            .find(|row| {
+                row.path()
+                    .iter()
+                    .filter(|id| **id == gpui_kit::ElementId::Name("submenu".into()))
+                    .count()
+                    == depth
+            })
+            .unwrap()
+            .bounds()
+            .center()
+    })
+}
+
+#[gpui_kit::test]
+fn scale_menu_keycaps_keep_explicit_choices_idempotent(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, _dir, cx) = opened(cx);
+    shell.update_in(cx, |shell, window, cx| {
+        shell.set_recording_start(
+            argand_core::RecordingTime::parse("2026-11-24T00:00:00.123Z"),
+            window,
+            cx,
+        );
+    });
+    let version = shell.read_with(cx, |shell, _| shell.editing().unwrap().version());
+    for (branch, choice) in [(7, 1), (7, 1), (8, 0), (8, 0)] {
+        cx.simulate_keystrokes("f10 down down down right");
+        frame(cx);
+        let at = scale_menu_row(cx, branch, 1);
+        cx.simulate_click(at, Default::default());
+        frame(cx);
+        cx.update(|window, _| {
+            let keycaps = window
+                .find_all("command-shortcut")
+                .into_iter()
+                .filter(|row| {
+                    row.path()
+                        .iter()
+                        .filter(|id| **id == gpui_kit::ElementId::Name("submenu".into()))
+                        .count()
+                        == 2
+                })
+                .count();
+            assert_eq!(
+                keycaps, 2,
+                "both explicit choices expose the canonical toggle key"
+            );
+        });
+        let at = scale_menu_row(cx, choice, 2);
+        cx.simulate_click(at, Default::default());
+        frame(cx);
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.editing().unwrap().version(), version);
+            if branch == 7 {
+                assert_eq!(shell.session.time_origin, TimeOrigin::Absolute);
+            } else {
+                assert_eq!(shell.session.frequency_mode, FrequencyMode::Baseband);
+            }
+        });
+    }
+}
+
+#[gpui_kit::test]
+fn metadata_field_frames_align_and_reference_steps_keep_the_existing_contract(
+    cx: &mut TestAppContext,
+) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, _dir, cx) = opened(cx);
+    cx.update(|window, cx| window.click("reference-frequency", cx));
+    frame(cx);
+    let number = editor(&shell, cx).read_with(cx, |editor, _| editor.number.clone());
+    cx.update(|window, cx| {
+        let frequency = window.find(("numeric-field", number.entity_id())).bounds();
+        let start = window.find("recording-start-input").bounds();
+        assert_eq!(frequency.left(), start.left());
+        assert_eq!(frequency.right(), start.right());
+        assert_eq!(frequency.size.height, start.size.height);
+        window.click("reference-up", cx);
+    });
+    frame(cx);
+    assert_eq!(
+        shell.read_with(cx, |shell, _| shell.editing().unwrap().reference()),
+        1.
+    );
+    cx.simulate_keystrokes("up");
+    frame(cx);
+    assert_eq!(
+        shell.read_with(cx, |shell, _| shell.editing().unwrap().reference()),
+        2.
+    );
+}
+
+#[gpui_kit::test]
+fn creation_default_is_clean_and_saved_clear_does_not_resurrect(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, dir, cx) = opened(cx);
+    let path = dir.join("capture.wav");
+    let expected = std::fs::metadata(&path)
+        .unwrap()
+        .created()
+        .ok()
+        .and_then(argand_core::RecordingTime::from_timestamp);
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.editing().unwrap().recording_start(), expected);
+        assert!(!shell.editing().unwrap().is_dirty());
+        assert_eq!(shell.editing().unwrap().file().meta.recording_start, None);
+    });
+    shell.update_in(cx, |shell, window, cx| {
+        // Also exercise clear deterministically on filesystems without birthtime.
+        if shell.editing().unwrap().recording_start().is_none() {
+            shell.set_recording_start(
+                argand_core::RecordingTime::parse("2026-11-23T12:00:00Z"),
+                window,
+                cx,
+            );
+        }
+        shell.set_recording_start(None, window, cx);
+    });
+    cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+        "cmd-s"
+    } else {
+        "ctrl-s"
+    });
+    wait_until(cx, &shell, "clear save", |shell| {
+        shell.saving.is_none() && !shell.editing().unwrap().is_dirty()
+    });
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.editing().unwrap().recording_start(), None)
+    });
+    assert_eq!(
+        argand_io::open(&path, &argand_io::OpenHints::default())
+            .unwrap()
+            .meta()
+            .recording_start,
+        None
+    );
 }

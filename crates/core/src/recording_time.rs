@@ -14,6 +14,20 @@ pub struct RecordingTime {
 }
 
 impl RecordingTime {
+    /// Convert a filesystem creation timestamp to UTC without host-zone inference.
+    pub fn from_timestamp(time: std::time::SystemTime) -> Option<Self> {
+        let nanos = match time.duration_since(std::time::UNIX_EPOCH) {
+            Ok(duration) => i128::try_from(duration.as_nanos()).ok()?,
+            Err(error) => -i128::try_from(error.duration().as_nanos()).ok()?,
+        };
+        let result = Self {
+            nanos,
+            sample_offset: 0,
+            rate_bits: 0,
+        };
+        result.is_valid().then_some(result)
+    }
+
     /// Parse a complete RFC3339 timestamp with an explicit UTC offset.
     pub fn parse(text: &str) -> Option<Self> {
         let text = text.trim();

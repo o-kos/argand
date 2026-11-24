@@ -660,3 +660,21 @@ fn sparse_pcm24_rf64_and_bw64_read_beyond_four_gib_without_a_full_scan() {
         std::fs::remove_file(path).unwrap();
     }
 }
+
+#[test]
+fn described_creation_time_belongs_to_the_opened_handle() {
+    let dir = TempDir::new("creation-stamp");
+    let path = dir.join("capture.wav");
+    write_wav(&path, argand_core::SampleType::new(Domain::Real, SampleFormat::I16), 1000, &[0.0; 8], 1.0);
+    let opened = open_described(&path, &OpenHints::default()).unwrap();
+    let file = File::open(&path).unwrap();
+    assert_eq!(opened.stamp, write::SourceStamp::of_file(&file).ok());
+    assert_eq!(opened.created, file.metadata().unwrap().created().ok());
+    assert_eq!(opened.source.meta().recording_start, None);
+    // The result owns its source identity, rather than querying the pathname later.
+    let created = opened.created;
+    std::fs::rename(&path, dir.join("original.wav")).unwrap();
+    write_wav(&path, argand_core::SampleType::new(Domain::Real, SampleFormat::I16), 2000, &[0.0; 8], 1.0);
+    assert_eq!(opened.created, created);
+    assert_ne!(opened.stamp, write::SourceStamp::of(&path).ok());
+}

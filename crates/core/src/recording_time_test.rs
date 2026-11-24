@@ -92,3 +92,24 @@ fn repeated_nonintegral_sample_periods_do_not_accumulate_rounding() {
     assert_eq!(edited, start.shifted_samples(44100, 44100.).unwrap());
     assert_eq!(edited.format(9), "2026-11-23T00:00:01.000000000Z");
 }
+
+#[test]
+fn filesystem_timestamp_conversion_preserves_subseconds_and_pre_epoch() {
+    use std::time::{Duration, UNIX_EPOCH};
+    assert_eq!(
+        RecordingTime::from_timestamp(UNIX_EPOCH).unwrap().format(9),
+        "1970-01-01T00:00:00.000000000Z"
+    );
+    assert_eq!(
+        RecordingTime::from_timestamp(UNIX_EPOCH - Duration::from_nanos(1))
+            .unwrap()
+            .format(9),
+        "1969-12-31T23:59:59.999999999Z"
+    );
+    assert_eq!(
+        RecordingTime::from_timestamp(UNIX_EPOCH + Duration::from_nanos(123456789))
+            .unwrap()
+            .format(9),
+        "1970-01-01T00:00:00.123456789Z"
+    );
+}

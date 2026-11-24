@@ -4,9 +4,12 @@ use super::numeric_editor::{self, NumericEditor};
 use super::settings_ui::{StatusPanel, editor as presentation};
 use super::*;
 use crate::navigation::time_ruler::{FrequencyMode, Mode, Origin as TimeOrigin};
+use gpui_kit::base::Disableable;
 use gpui_kit::base::actions::Confirm;
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::date_picker::{DatePicker, DatePickerEvent, DatePickerState, DateTime};
+use gpui_kit::component::input::InputState;
 use gpui_kit::component::radio::Radio;
+use gpui_kit::component::time_field::{HourCycle, TimePrecision};
 use gpui_kit::{AnyElement, AnyView};
 
 pub(super) struct State {
@@ -56,7 +59,6 @@ fn finish_editor(
     window.defer(cx, move |window, cx| {
         editor.update(cx, |editor, cx| {
             editor.commit(window, cx);
-            editor.commit_start(window, cx);
         });
     });
 }
@@ -66,7 +68,7 @@ struct Editor {
     document: u64,
     opened: f64,
     opened_start: Option<argand_core::RecordingTime>,
-    start_input: Entity<InputState>,
+    start_input: Entity<DatePickerState>,
     start_refused: bool,
     number: Entity<NumericEditor>,
     input: Entity<InputState>,
@@ -116,6 +118,7 @@ fn panel(owner: WeakEntity<Shell>, window: &mut Window, cx: &mut gpui_kit::App) 
                 window,
                 cx,
             )
+            .outlined()
         });
         let input = number.read(cx).input.clone();
         let changed = cx.subscribe_in(
@@ -129,18 +132,37 @@ fn panel(owner: WeakEntity<Shell>, window: &mut Window, cx: &mut gpui_kit::App) 
             },
         );
         let start_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("YYYY-MM-DDTHH:MM:SS.sssZ")
-                .default_value(opened_start.map_or_else(String::new, |start| start.format(3)))
+            let mut state = DatePickerState::new(window, cx)
+                .time_precision(TimePrecision::Second)
+                .hour_cycle(HourCycle::H23)
+                .date_format("%Y-%m-%d %H:%M:%S");
+            // The standard picker presents seconds, while the document keeps its
+            // exact origin until an actual user Change event occurs.
+            let value = DateTime::Single(
+                opened_start.and_then(|start| start.format(9).trim_end_matches('Z').parse().ok()),
+            );
+            state.set_date_time(value, window, cx);
+            state
         });
         let start_changed = cx.subscribe_in(
             &start_input,
             window,
-            |editor: &mut Editor, _, event: &InputEvent, window, cx| {
-                if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
-                    editor.commit_start(window, cx);
-                }
-                cx.notify();
+            |editor: &mut Editor, _, event: &DatePickerEvent, window, cx| {
+                let DatePickerEvent::Change(value) = event;
+                let start = match value.start() {
+                    Some(value) => {
+                        let Some(start) = argand_core::RecordingTime::parse(
+                            &value.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                        ) else {
+                            editor.start_refused = true;
+                            cx.notify();
+                            return;
+                        };
+                        Some(start)
+                    }
+                    None => None,
+                };
+                editor.commit_start(start, window, cx);
             },
         );
         let mut subscriptions = vec![changed, start_changed];
@@ -176,28 +198,12 @@ impl Editor {
                 .is_some_and(|editing| editing.reference() == self.opened)
     }
 
-    fn commit_start(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let text = self.start_input.read(cx).value();
-        // The displayed millisecond value is only a draft. An unchanged draft
-        // must preserve the precise origin/sample offset retained by editing.
-        if text.as_ref()
-            == self
-                .opened_start
-                .map_or_else(String::new, |start| start.format(3))
-        {
-            self.start_refused = false;
-            return true;
-        }
-        let start = if text.trim().is_empty() {
-            None
-        } else {
-            let Some(start) = argand_core::RecordingTime::parse(text.as_ref()) else {
-                self.start_refused = true;
-                cx.notify();
-                return false;
-            };
-            Some(start.rounded(3))
-        };
+    fn commit_start(
+        &mut self,
+        start: Option<argand_core::RecordingTime>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let accepted = self
             .owner
             .update(cx, |shell, cx| {
@@ -216,42 +222,30 @@ impl Editor {
         self.start_refused = !accepted;
         if accepted {
             self.opened_start = start;
-            let shown = start.map_or_else(String::new, |start| start.format(3));
-            if self.start_input.read(cx).value().as_ref() != shown {
-                self.start_input
-                    .update(cx, |input, cx| input.set_value(shown, window, cx));
-            }
         }
         cx.notify();
         accepted
     }
 
     fn frequency_controls(&self, physical: bool, cx: &Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .child(
-                div()
-                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                    .child("Frequency"),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(self.radio(
-                        ("frequency-relative", "Relative", !physical, false),
-                        Choice::Frequency(FrequencyMode::Baseband),
-                        cx,
-                    ))
-                    .child(self.radio(
-                        ("frequency-absolute", "Absolute RF", physical, false),
-                        Choice::Frequency(FrequencyMode::Physical),
-                        cx,
-                    )),
-            )
+        row(
+            "Scale",
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(self.radio(
+                    ("frequency-relative", "Relative", !physical, false),
+                    Choice::Frequency(FrequencyMode::Baseband),
+                    cx,
+                ))
+                .child(self.radio(
+                    ("frequency-absolute", "Absolute RF", physical, false),
+                    Choice::Frequency(FrequencyMode::Physical),
+                    cx,
+                )),
+            cx,
+        )
     }
 
     fn time_controls(&self, state: (bool, Mode, bool), cx: &Context<Self>) -> impl IntoElement {
@@ -259,14 +253,9 @@ impl Editor {
         div()
             .flex()
             .flex_col()
-            .gap_1()
-            .child(
-                div()
-                    .mt_2()
-                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                    .child("Time"),
-            )
-            .child(
+            .gap_2()
+            .child(row(
+                "Scale",
                 div()
                     .flex()
                     .items_center()
@@ -281,8 +270,10 @@ impl Editor {
                         Choice::Time(TimeOrigin::Absolute),
                         cx,
                     )),
-            )
-            .child(
+                cx,
+            ))
+            .child(row(
+                "Format",
                 div()
                     .flex()
                     .items_center()
@@ -302,7 +293,8 @@ impl Editor {
                         Choice::Format(Mode::Samples),
                         cx,
                     )),
-            )
+                cx,
+            ))
     }
 
     fn radio(
@@ -357,6 +349,27 @@ impl Editor {
     }
 }
 
+fn section_title(text: &'static str) -> impl IntoElement {
+    div().font_weight(gpui_kit::FontWeight::MEDIUM).child(text)
+}
+
+fn row(label: &'static str, value: impl IntoElement, cx: &gpui_kit::App) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .w_full()
+        .min_h_7()
+        .child(
+            div()
+                .w_20()
+                .flex_shrink_0()
+                .text_color(cx.theme().muted_foreground)
+                .child(label),
+        )
+        .child(div().flex_1().min_w_0().child(value))
+}
+
 #[derive(Clone, Copy)]
 enum Choice {
     Time(TimeOrigin),
@@ -405,7 +418,6 @@ impl Render for Editor {
             .key_context("ReferenceEditor")
             .on_action(cx.listener(|editor, _: &Confirm, window, cx| {
                 editor.commit(window, cx);
-                editor.commit_start(window, cx);
                 cx.stop_propagation();
             }))
             .w(presentation::property_width(window))
@@ -421,18 +433,25 @@ impl Render for Editor {
             .text_sm()
             .flex()
             .flex_col()
-            .gap_1()
-            .child(
-                div()
-                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                    .child("Recording metadata and scales"),
-            )
+            .gap_2()
+            .child(section_title("Frequency"))
             .child(self.frequency_controls(physical, cx))
-            .child(presentation::row("Reference", self.number.clone(), cx))
+            .child(row("Reference", self.number.clone(), cx))
+            .child(div().mt_2().child(section_title("Time")))
             .child(self.time_controls((absolute, format, has_start), cx))
-            .child(presentation::row(
+            .child(row(
                 "Start UTC",
-                Input::new(&self.start_input).small().disabled(!editable),
+                div()
+                    .id("recording-start-input")
+                    .map(gpui_kit::TestSupportExt::test_support)
+                    .w_full()
+                    .child(
+                        DatePicker::new(&self.start_input)
+                            .cleanable(true)
+                            .small()
+                            .w_full()
+                            .disabled(!editable),
+                    ),
                 cx,
             ))
             .when(!has_start, |panel| {
@@ -448,7 +467,7 @@ impl Render for Editor {
                     div()
                         .text_xs()
                         .text_color(cx.theme().danger)
-                        .child("Enter a valid UTC date and time, or leave empty"),
+                        .child("Recording start could not be changed"),
                 )
             })
             .when(valid.is_none() || self.refused, |panel| {
@@ -491,18 +510,26 @@ impl Shell {
         } else {
             "R"
         };
+        let plot = self.plot_view()?.read(cx);
+        let geometry = plot.geometry?;
+        if geometry.orientation != self.session.orientation {
+            return None;
+        }
+        let panel = plot.panel_bounds?;
+        let corner = geometry.reference_corner();
         let control =
             self.status_panel_control(StatusPanel::Reference, format!("{frequency}/{time}"), cx);
         Some(
             gpui_kit::deferred(
                 div()
                     .absolute()
-                    .when(self.session.orientation.vertical(), |button| {
-                        button.left_0().bottom_0()
-                    })
-                    .when(!self.session.orientation.vertical(), |button| {
-                        button.right_0().top_0()
-                    })
+                    .left(corner.left() - panel.left())
+                    .top(corner.top() - panel.top())
+                    .w(corner.size.width)
+                    .h(corner.size.height)
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .child(control),
             )
             .with_priority(2)

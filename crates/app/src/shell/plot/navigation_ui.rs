@@ -120,6 +120,20 @@ enum Scroll {
 }
 
 impl PlotGeometry {
+    pub(in crate::shell) fn reference_corner(self) -> Bounds<Pixels> {
+        if self.orientation.vertical() {
+            Bounds::new(
+                point(self.minimap.left(), self.frequency_ruler.top()),
+                size(self.minimap.size.width, self.frequency_ruler.size.height),
+            )
+        } else {
+            Bounds::new(
+                point(self.frequency_ruler.left(), self.minimap.top()),
+                size(self.frequency_ruler.size.width, self.minimap.size.height),
+            )
+        }
+    }
+
     pub fn cursor(
         self,
         pointer: Option<gpui_kit::Point<Pixels>>,
@@ -1504,7 +1518,7 @@ impl crate::shell::plot::plot_view::PlotView {
                     let _ = owner.update(cx, |plot, cx| {
                         plot.track_spectrum_menu(&popup, at, view, window, cx);
                     });
-                    edit_items(menu.action_context(focus.clone()), commands)
+                    edit_items(menu.action_context(focus.clone()), focus.clone(), commands)
                 })
                 .into_any_element(),
         )
@@ -1551,7 +1565,12 @@ impl crate::shell::plot::plot_view::PlotView {
                 .context_menu(move |menu, window, cx| {
                     let popup = cx.entity();
                     let _ = owner.update(cx, |plot, cx| plot.track_time_menu(&popup, window, cx));
-                    frequency_scale_items(menu.action_context(focus.clone()), physical, commands)
+                    frequency_scale_items(
+                        menu.action_context(focus.clone()),
+                        focus.clone(),
+                        physical,
+                        commands,
+                    )
                 })
                 .into_any_element(),
         )
@@ -1587,7 +1606,13 @@ impl crate::shell::plot::plot_view::PlotView {
                     let popup = cx.entity();
                     let _ = owner.update(cx, |plot, cx| plot.track_time_menu(&popup, window, cx));
                     time_scale_items(
-                        time_origin_items(menu.action_context(focus.clone()), absolute, commands),
+                        time_origin_items(
+                            menu.action_context(focus.clone()),
+                            focus.clone(),
+                            absolute,
+                            commands,
+                        ),
+                        focus.clone(),
                         mode,
                         commands,
                     )
@@ -1607,76 +1632,148 @@ fn rect_contains(rect: axes::Rect, position: gpui_kit::Point<Pixels>) -> bool {
 
 fn edit_items(
     menu: gpui_kit::component::menu::PopupMenu,
+    focus: FocusHandle,
     commands: command::Availability,
 ) -> gpui_kit::component::menu::PopupMenu {
+    use super::super::app_menu_ui::command_row;
     use crate::shell::editing_ui::{
         CopySelection, CutSelection, DeleteSelection, PasteClipboard, PasteHere, SuppressBand,
     };
-    menu.item(commands.item(CutSelection, PopupMenuItem::new("Cut")))
-        .item(commands.item(CopySelection, PopupMenuItem::new("Copy")))
-        .item(commands.item(PasteHere, PopupMenuItem::new("Paste here")))
-        .item(commands.item(PasteClipboard, PopupMenuItem::new("Replace selection")))
-        .item(PopupMenuItem::separator())
-        .item(commands.item(DeleteSelection, PopupMenuItem::new("Delete")))
-        .item(PopupMenuItem::separator())
-        .item(commands.item(SuppressBand, PopupMenuItem::new("Suppress band")))
+    menu.item(command_row(
+        "Cut",
+        CutSelection,
+        false,
+        focus.clone(),
+        Some("Plot"),
+        commands,
+    ))
+    .item(command_row(
+        "Copy",
+        CopySelection,
+        false,
+        focus.clone(),
+        Some("Plot"),
+        commands,
+    ))
+    .item(command_row(
+        "Paste here",
+        PasteHere,
+        false,
+        focus.clone(),
+        Some("Plot"),
+        commands,
+    ))
+    .item(command_row(
+        "Replace selection",
+        PasteClipboard,
+        false,
+        focus.clone(),
+        Some("Plot"),
+        commands,
+    ))
+    .item(PopupMenuItem::separator())
+    .item(command_row(
+        "Delete",
+        DeleteSelection,
+        false,
+        focus.clone(),
+        Some("Plot"),
+        commands,
+    ))
+    .item(PopupMenuItem::separator())
+    .item(command_row(
+        "Suppress band",
+        SuppressBand,
+        false,
+        focus,
+        Some("Plot"),
+        commands,
+    ))
 }
 
 pub(in crate::shell) fn time_origin_items(
     menu: gpui_kit::component::menu::PopupMenu,
+    focus: FocusHandle,
     absolute: bool,
     commands: command::Availability,
 ) -> gpui_kit::component::menu::PopupMenu {
-    menu.item(commands.item(
+    menu.item(super::super::app_menu_ui::command_row(
+        "Relative",
         RelativeTime,
-        PopupMenuItem::new("Relative").checked(!absolute),
+        !absolute,
+        focus.clone(),
+        Some("Plot"),
+        commands,
     ))
-    .item(
-        commands.item(
-            AbsoluteTime,
-            PopupMenuItem::new(if commands.is_enabled::<AbsoluteTime>() {
-                "Absolute UTC"
-            } else {
-                "Absolute UTC (recording start is not set)"
-            })
-            .checked(absolute),
-        ),
-    )
+    .item(super::super::app_menu_ui::command_row(
+        if commands.is_enabled::<AbsoluteTime>() {
+            "Absolute UTC"
+        } else {
+            "Absolute UTC (recording start is not set)"
+        },
+        AbsoluteTime,
+        absolute,
+        focus,
+        Some("Plot"),
+        commands,
+    ))
     .item(PopupMenuItem::separator())
 }
 
 pub(in crate::shell) fn frequency_scale_items(
     menu: gpui_kit::component::menu::PopupMenu,
+    focus: FocusHandle,
     physical: bool,
     commands: command::Availability,
 ) -> gpui_kit::component::menu::PopupMenu {
-    menu.item(commands.item(
+    menu.item(super::super::app_menu_ui::command_row(
+        "Relative",
         BasebandFrequency,
-        PopupMenuItem::new("Baseband").checked(!physical),
+        !physical,
+        focus.clone(),
+        Some("Plot"),
+        commands,
     ))
-    .item(commands.item(
+    .item(super::super::app_menu_ui::command_row(
+        "Absolute RF",
         PhysicalFrequency,
-        PopupMenuItem::new("Physical RF").checked(physical),
+        physical,
+        focus,
+        Some("Plot"),
+        commands,
     ))
 }
 
 fn time_scale_items(
     menu: gpui_kit::component::menu::PopupMenu,
+    focus: FocusHandle,
     mode: crate::navigation::time_ruler::Mode,
     commands: command::Availability,
 ) -> gpui_kit::component::menu::PopupMenu {
     use crate::navigation::time_ruler::Mode;
-    menu.item(commands.item(
+    menu.item(super::super::app_menu_ui::command_row(
+        "Hours, minutes, seconds (hms)",
         ClockRuler,
-        PopupMenuItem::new("Hours, minutes, seconds (hms)").checked(mode == Mode::Clock),
+        mode == Mode::Clock,
+        focus.clone(),
+        Some("Plot"),
+        commands,
     ))
-    .item(commands.item(
+    .item(super::super::app_menu_ui::command_row(
+        "Seconds",
         SecondsRuler,
-        PopupMenuItem::new("Seconds").checked(mode == Mode::Seconds),
+        mode == Mode::Seconds,
+        focus.clone(),
+        Some("Plot"),
+        commands,
     ))
-    .item(commands.item(
+    .item(super::super::app_menu_ui::command_row(
+        "Sample numbers",
         SamplesRuler,
-        PopupMenuItem::new("Sample numbers").checked(mode == Mode::Samples),
+        mode == Mode::Samples,
+        focus,
+        Some("Plot"),
+        commands,
     ))
 }
 

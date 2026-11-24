@@ -126,6 +126,14 @@ impl Shell {
 
     /// Start keeping edits for the file that has just described itself.
     pub(super) fn start_editing(&mut self, cx: &mut Context<Self>) {
+        self.initialize_editing(true, cx);
+    }
+
+    pub(super) fn start_saved_editing(&mut self, cx: &mut Context<Self>) {
+        self.initialize_editing(false, cx);
+    }
+
+    fn initialize_editing(&mut self, use_creation: bool, cx: &mut Context<Self>) {
         let Some(file) = &mut self.file else { return };
         let Some(meta) = file.state.document.meta().cloned() else {
             return;
@@ -143,7 +151,13 @@ impl Shell {
         }
         let mut editing = match &file.unsaved {
             Some(unsaved) => Editing::unsaved(meta, hints, unsaved.backing.clone()),
-            None => Editing::new(meta, hints),
+            None => Editing::with_default_start(
+                meta,
+                hints,
+                use_creation
+                    .then(|| file.state.document.created())
+                    .flatten(),
+            ),
         };
         editing.describe_format(stamp, None);
         editing.describe_units(file.state.document.sample_units());

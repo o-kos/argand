@@ -458,7 +458,7 @@ impl Shell {
                     file.state.document.clear_changed();
                     file.unsaved = None;
                 }
-                self.start_editing(cx);
+                self.start_saved_editing(cx);
                 if let Some(origin) = self
                     .file
                     .as_ref()

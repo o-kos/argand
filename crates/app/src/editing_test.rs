@@ -788,3 +788,29 @@ fn selection_export_shifts_origin_and_duration_changing_paste_clears_it() {
     document.undo();
     assert_eq!(document.recording_start(), Some(start));
 }
+
+#[test]
+fn creation_default_is_clean_embedded_wins_and_clear_does_not_repopulate() {
+    let original = editing("/a.wav", 1000, 1000.);
+    let mut meta = original.output_meta();
+    let created = argand_core::RecordingTime::parse("2026-11-23T12:00:00.123456789Z").unwrap();
+    let mut defaulted =
+        Editing::with_default_start(meta.clone(), OpenHints::default(), Some(created));
+    assert_eq!(defaulted.recording_start(), Some(created));
+    assert!(!defaulted.is_dirty());
+    assert_eq!(defaulted.sources[0].meta.recording_start, None);
+    defaulted.set_recording_start(None, Selection::default());
+    assert_eq!(defaulted.recording_start(), None);
+    assert!(defaulted.is_dirty());
+    defaulted.mark_saved();
+    assert_eq!(defaulted.recording_start(), None);
+    let embedded = created.shifted_samples(123, 1000.).unwrap();
+    meta.recording_start = Some(embedded);
+    assert_eq!(
+        Editing::with_default_start(meta, OpenHints::default(), Some(created)).recording_start(),
+        Some(embedded)
+    );
+    let absent = Editing::with_default_start(original.output_meta(), OpenHints::default(), None);
+    assert_eq!(absent.recording_start(), None);
+    assert!(!absent.is_dirty());
+}

@@ -1,7 +1,10 @@
 //! One numeric editing contract for the two status property panels.
 
 use super::*;
-use gpui_kit::component::input::{InputEvent, InputState, StepAction};
+use gpui_kit::component::input::{
+    Input, InputEvent, InputGroup, InputGroupAddon, InputGroupAddonAlignment, InputState,
+    StepAction,
+};
 use gpui_kit::component::{Disableable, Icon, IconName};
 use gpui_kit::{EventEmitter, Focusable};
 use std::time::Duration;
@@ -77,6 +80,7 @@ pub(super) struct NumericEditor {
     config: Config,
     repeat: Option<Task<()>>,
     disabled: bool,
+    outlined: bool,
     _subscription: Subscription,
 }
 
@@ -110,8 +114,14 @@ impl NumericEditor {
             config,
             repeat: None,
             disabled: false,
+            outlined: false,
             _subscription: subscription,
         }
+    }
+
+    pub(super) fn outlined(mut self) -> Self {
+        self.outlined = true;
+        self
     }
 
     pub(super) fn set_disabled(&mut self, disabled: bool, cx: &mut Context<Self>) {
@@ -244,10 +254,53 @@ impl Render for NumericEditor {
         let width =
             settings_ui::editor::number_width(presentation.read(cx).value().as_ref(), window, cx)
                 .min(available);
+        let field = if self.outlined {
+            InputGroup::new(("numeric-field", cx.entity_id()))
+                .small()
+                .w_full()
+                .disabled(self.disabled)
+                .input(Input::new(&self.input).text_align(gpui_kit::TextAlign::Right))
+                .addon(
+                    InputGroupAddon::new(("numeric-start", cx.entity_id()))
+                        .align(InputGroupAddonAlignment::InlineStart)
+                        .child(self.button(
+                            self.config.down,
+                            IconName::Minus,
+                            StepAction::Decrement,
+                            cx,
+                        )),
+                )
+                .addon(
+                    InputGroupAddon::new(("numeric-end", cx.entity_id()))
+                        .align(InputGroupAddonAlignment::InlineEnd)
+                        .child(self.config.unit)
+                        .child(self.button(
+                            self.config.up,
+                            IconName::Plus,
+                            StepAction::Increment,
+                            cx,
+                        )),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(self.button(self.config.down, IconName::Minus, StepAction::Decrement, cx))
+                .child(settings_ui::editor::number_control(
+                    &self.input,
+                    width,
+                    self.config.unit,
+                    focused,
+                    self.disabled,
+                    cx,
+                ))
+                .child(self.button(self.config.up, IconName::Plus, StepAction::Increment, cx))
+                .into_any_element()
+        };
         div()
-            .flex()
-            .items_center()
-            .gap_1()
+            .when(self.outlined, |row| row.w_full())
             .key_context("NumericEditor")
             .on_action(cx.listener(|editor, _: &Increase, window, cx| {
                 editor.step(StepAction::Increment, window, cx);
@@ -255,15 +308,6 @@ impl Render for NumericEditor {
             .on_action(cx.listener(|editor, _: &Decrease, window, cx| {
                 editor.step(StepAction::Decrement, window, cx);
             }))
-            .child(self.button(self.config.down, IconName::Minus, StepAction::Decrement, cx))
-            .child(settings_ui::editor::number_control(
-                &self.input,
-                width,
-                self.config.unit,
-                focused,
-                self.disabled,
-                cx,
-            ))
-            .child(self.button(self.config.up, IconName::Plus, StepAction::Increment, cx))
+            .child(field)
     }
 }

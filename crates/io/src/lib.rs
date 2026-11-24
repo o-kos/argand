@@ -87,6 +87,8 @@ pub enum IoError {
 /// A source with the stamp of the file it reads, taken from the handle it reads through.
 #[non_exhaustive]
 pub struct Opened {
+    /// Birthtime of the same stable file whose header and samples were opened.
+    pub created: Option<std::time::SystemTime>,
     pub source: Box<dyn SampleSource>,
     pub stamp: Option<write::SourceStamp>,
     /// The file's own reference, before opening overrides. None for headerless input.
@@ -167,9 +169,14 @@ fn open_impl(
     hints: &OpenHints,
     known: Option<&SignalMeta>,
 ) -> Result<Opened, IoError> {
-    let (head, head_stamp) = probe_head(path)?;
+    let Probe {
+        head,
+        stamp: head_stamp,
+        created,
+    } = probe_head(path)?;
     let mut opened = open_kind(path, hints, known, &head)?;
     opened.stamp = opened.stamp.filter(|stamp| Some(*stamp) == head_stamp);
+    opened.created = opened.stamp.and(created);
     Ok(opened)
 }
 
@@ -235,8 +242,14 @@ fn wave_metadata(head: &[u8], hints: &OpenHints) -> OpenHints {
     }
 }
 
+struct Probe {
+    head: Vec<u8>,
+    stamp: Option<write::SourceStamp>,
+    created: Option<std::time::SystemTime>,
+}
+
 /// Read enough of the file to identify it and parse a header, with the stamp of what was read.
-fn probe_head(path: &Path) -> Result<(Vec<u8>, Option<write::SourceStamp>), IoError> {
+fn probe_head(path: &Path) -> Result<Probe, IoError> {
     use std::io::Read;
 
     let mut file = File::open(path).map_err(|source| IoError::Open {
@@ -244,6 +257,7 @@ fn probe_head(path: &Path) -> Result<(Vec<u8>, Option<write::SourceStamp>), IoEr
         source,
     })?;
     let stamp = write::SourceStamp::of_file(&file).ok();
+    let created = file.metadata().ok().and_then(|meta| meta.created().ok());
     // Generous enough for a RIFF chunk list with metadata in front of `data`.
     let mut head = vec![0u8; 64 << 10];
     let mut filled = 0;
@@ -266,7 +280,11 @@ fn probe_head(path: &Path) -> Result<(Vec<u8>, Option<write::SourceStamp>), IoEr
             path: path.to_owned(),
         });
     }
-    Ok((head, stamp))
+    Ok(Probe {
+        head,
+        stamp,
+        created,
+    })
 }
 
 fn open_wave(path: &Path, layout: WavLayout, hints: &OpenHints) -> Result<Opened, IoError> {
@@ -296,6 +314,7 @@ fn open_wave(path: &Path, layout: WavLayout, hints: &OpenHints) -> Result<Opened
     .map(|s| {
         let stamp = s.stamp();
         Opened {
+            created: None,
             source: Box::new(s),
             stamp,
             declared_reference_freq: layout.reference_freq,
@@ -343,6 +362,7 @@ fn open_raw(path: &Path, spec: RawSpec, hints: &OpenHints) -> Result<Opened, IoE
     .map(|s| {
         let stamp = s.stamp();
         Opened {
+            created: None,
             source: Box::new(s),
             stamp,
             declared_reference_freq: None,
@@ -371,6 +391,7 @@ fn open_decoded(
             .map(|source| {
                 let stamp = source.stamp();
                 Opened {
+                    created: None,
                     declared_reference_freq: source.declared_reference_freq(),
                     source: Box::new(source),
                     stamp,
@@ -404,6 +425,7 @@ fn open_decoded(
         .map(|source| {
             let stamp = source.stamp();
             Opened {
+                created: None,
                 declared_reference_freq: source.declared_reference_freq(),
                 source: Box::new(source),
                 stamp,

@@ -330,12 +330,16 @@ item, the FFT summary, the start-page chooser and the recent rows were already s
 surfaces (`shell/app_menu_ui.rs:773`).
 
 The Reference frequency status item (#185) is replaced in #265 by a standard
-corner Button at the overview/frequency-ruler junction. It retains the existing
+outlined corner Button centered in the actual PlotGeometry overview/frequency-ruler
+corner cell. It retains the existing
 pinned-panel composition and common information-panel lifecycle. Its R/A label
 names frequency then time. The shared Recording metadata and scales panel reuses
-NumericEditor for locale-grouped reference values, adds standard Input for UTC start,
-and uses standard Radio controls for presentation. There are no panel action buttons.
-Enter/blur commit, empty start clears, and Escape discards uncommitted drafts.
+NumericEditor for locale-grouped reference values, using the standard InputGroup
+frame around the retained Input, stepper Buttons and Hz unit. The standard UTC DatePicker has the same outlined frame and edits date/time
+at Second precision with built-in clear. Aligned Frequency and Time sections label their Scale and
+relative Format Radio groups explicitly. There are no panel action buttons.
+Numeric Enter/blur commit and Escape discards uncommitted numeric drafts. DatePicker
+user changes commit immediately, while unchanged dismissal preserves precise origins.
 The corner trigger is deferred above the common backdrop so switching and repeated
 toggle retain the same working contract as other information-panel entry points.
 This is existing GPUI composition, not a new input or button implementation.

@@ -271,6 +271,7 @@ impl Shell {
         let frequency = PopupMenu::build(window, cx, |menu, _, _| {
             super::plot::navigation_ui::frequency_scale_items(
                 menu.action_context(focus.clone()),
+                focus.clone(),
                 physical,
                 commands,
             )
@@ -321,9 +322,9 @@ impl Shell {
                 ))
                 .item(PopupMenuItem::separator())
                 .item(if document {
-                    PopupMenuItem::submenu("Time scale format", scale)
+                    PopupMenuItem::submenu("Time scale", scale)
                 } else {
-                    PopupMenuItem::new("Time scale format").disabled(true)
+                    PopupMenuItem::new("Time scale").disabled(true)
                 })
                 .item(PopupMenuItem::submenu("Frequency scale", frequency))
                 .item(PopupMenuItem::submenu("Theme", theme))
@@ -387,6 +388,7 @@ impl Shell {
             use crate::navigation::time_ruler::Mode;
             super::plot::navigation_ui::time_origin_items(
                 menu.action_context(focus.clone()),
+                focus.clone(),
                 absolute,
                 commands,
             )
@@ -1019,7 +1021,7 @@ fn edit_action_row<A: command::Command>(
     command_row(label, action, checked, focus, Some("Plot"), commands)
 }
 
-fn command_row<A: command::Command>(
+pub(in crate::shell) fn command_row<A: command::Command>(
     label: &str,
     action: A,
     checked: bool,
@@ -1028,7 +1030,7 @@ fn command_row<A: command::Command>(
     commands: command::Availability,
 ) -> PopupMenuItem {
     let label = label.to_owned();
-    let shortcut = action.boxed_clone();
+    let shortcut = command::shortcut_action(&action);
     commands.item(
         action,
         PopupMenuItem::element(move |window, cx| {
@@ -1050,7 +1052,14 @@ fn command_row<A: command::Command>(
                         .text_ellipsis_middle()
                         .child(label.clone()),
                 )
-                .when_some(key, |row, key| row.child(shortcuts::keycap(key, cx)))
+                .when_some(key, |row, key| {
+                    row.child(
+                        div()
+                            .id("command-shortcut")
+                            .map(gpui_kit::TestSupportExt::test_support)
+                            .child(shortcuts::keycap(key, cx)),
+                    )
+                })
         })
         .checked(checked),
     )

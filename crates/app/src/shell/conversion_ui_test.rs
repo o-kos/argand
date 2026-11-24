@@ -644,6 +644,7 @@ fn describe_panel_document(
     let opened = argand_io::open_described(&path, &Default::default()).unwrap();
     let meta = opened.source.meta().clone();
     let info = crate::analysis::FileInfo {
+        created: None,
         declared_reference_freq: opened.declared_reference_freq,
         bytes: Some(std::fs::metadata(&path).unwrap().len()),
         sample_units: opened.source.original_sample_units(),

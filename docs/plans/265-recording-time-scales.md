@@ -64,18 +64,20 @@ UI-acceptance skills before changing their respective paths.
   reserved-byte extension or unrelated metadata format is introduced.
 - FLAC uses the existing VORBIS_COMMENT block with `DATE` and a full RFC3339 UTC
   timestamp, for example `DATE=2026-11-23T12:34:56.123Z`.
-- Never infer recording start from filesystem timestamps. Missing, malformed or
-  unsupported metadata does not fabricate absolute time or prevent valid sample
-  data from opening. Samples, true rate and domain are preserved by metadata edits.
+- Approved follow-up supersedes the original no-filesystem-default decision: absent
+  embedded start uses supported creation time from the stable opened file as a clean
+  initial origin. Never substitute modification/change time or the current clock.
+  Missing or malformed metadata does not prevent valid sample data from opening.
+  Samples, true rate and domain are preserved by metadata edits.
 - Reference remains the physical frequency of baseband zero. Presentation changes
   retain the stored reference, including zero, with real one-sided and complex
   two-sided spectra unchanged.
 
 ### Approved controls and presentation preferences
 
-- View / Time scale format offers Relative and Absolute UTC. The existing relative
+- View / Time scale offers Relative and Absolute UTC. The existing relative
   formats hms, seconds and samples remain available and remembered independently.
-- View / Frequency scale offers Baseband and Physical RF.
+- View / Frequency scale offers Relative and Absolute RF.
 - The corresponding ruler context menus expose the same commands in either
   orientation. Do not repurpose the plot content's edit context menu.
 - Ctrl+Shift+T toggles relative/absolute time and Ctrl+Shift+F toggles frequency
@@ -92,10 +94,12 @@ UI-acceptance skills before changing their respective paths.
 - Use standard radio buttons for frequency Relative / Absolute RF, time Relative /
   Absolute UTC, and the relative time formats. Reuse the existing numeric reference
   editor and locale digit grouping for frequency values.
-- Include recording-start editing in that same panel. No Apply, Cancel, Clear or
-  close buttons are added. Clearing uses an empty recording-start field. Follow
-  the existing panel's Enter/blur commit and Escape uncommitted-draft cancellation
-  conventions, mutual exclusion, external-tooltip and focus policies.
+- Include the standard UTC DatePicker with seconds-precision time and built-in
+  inline clear. Real user Change events commit immediately. Unchanged dismissal
+  preserves exact origin. Escape closes popup before parent. No separate footer
+  Apply/Cancel/Clear/close buttons are added. Numeric editing retains existing
+  Enter/blur commit and Escape uncommitted-draft conventions, mutual exclusion,
+  external-tooltip and focus policies.
 - Cosmetic layout details may be refined during implementation and running-app
   acceptance. No new nonstandard widget is approved by this layout decision.
 
@@ -189,6 +193,48 @@ pushes; initial plan publication follows the coordinator's scoped workflow decis
 - [x] Independent review of the corrected exact code snapshot. Coordinator assessment remains part of final handoff.
 - [ ] Current Ready PR full CI succeeds explicitly on Linux, Windows and macOS.
 
+## Owner UI feedback follow-up
+
+The owner rejected the initial visual balance and corner affordance after manual
+inspection. Class A and the existing roles remain unchanged. Previous production
+captures are historical evidence for the first implementation, not acceptance of
+this correction.
+
+Approved independent corrections:
+
+- [x] Use a visibly outlined standard corner Button positioned from the actual
+  minimap/frequency-ruler corner geometry in both orientations.
+- [x] Give the reference NumericEditor and current timestamp Input matching
+  standard outlined field frames without changing other property panels.
+- [x] Align Frequency and Time sections on shared label/control columns. Label
+  each Scale radio group and the relative Time Format radio group explicitly.
+- [x] Use Relative / Absolute RF or Absolute UTC consistently in the panel and
+  both main/ruler menus.
+- [x] Route menu command rows through the shared command/keycap wrapper. Resolve
+  explicit scale commands to their canonical toggle shortcut for presentation,
+  preserving explicit selection behavior and avoiding duplicated key strings.
+- [x] Verify pointer/keyboard, alignment, frame consistency and shortcut labels
+  in automated tests and the current production application under isolated Xvfb.
+
+Approved follow-up policy:
+
+- Use the standard DatePicker with UTC date/time at Second precision and its built-in clear. Actual user changes commit immediately through the standard Change event. Opening or dismissing an unchanged picker preserves the exact internal origin and history. No separate millisecond field or footer buttons.
+- Embedded recording start wins. Otherwise use filesystem creation time as the initial effective clean origin, obtained from the same stable opened file. Unsupported birthtime remains unset, without modification/change-time or current-clock substitution.
+- Source metadata remains the embedded metadata for identity/reopen checks. Initial history carries the effective default. Save rebinding and private conversion do not reapply birthtime, so explicit clear remains cleared in the current document. Serialization remains nearest millisecond.
+
+Focused regressions pass for the real corner center/containment at 800/640 widths
+in both orientations, equal field frame edges/heights, preserved pointer/keyboard
+reference stepping, actual rendered shortcut keycaps and idempotent explicit mode
+selection. The existing 27 menu tests pass. Standard InputGroup supplies the
+reference field's shared frame and contains the retained Input/buttons/unit,
+without changing the other property editors.
+
+The independent correction passed formatting, Clippy, all 971 tests and the release
+build, followed by bounded production Xvfb checks in both orientations, at 640px
+and in dark/light themes. [Follow-up evidence](../ui/265-recording-scales/followup-acceptance.md)
+records exact identity, actual input/outcomes and remaining decisions. Do not commit
+or push this correction before coordinator assessment.
+
 ## Review progress
 
 The first independent review identified three accepted corrections: preserve the
@@ -207,6 +253,16 @@ metadata Enter/blur/Escape/clear/save/reopen, normal session restart,640px and l
 theme. See [the acceptance report](../ui/265-recording-scales/acceptance.md) for exact
 build identity, steps, captures and limits. Owner manual acceptance remains pending,
 so this plan remains active and the PR remains Draft.
+
+Follow-up verification: final formatting and all-target Clippy pass, 976 tests plus
+doc tests pass, and the current release passed bounded isolated Xvfb scenarios.
+The standard DatePicker opens by pointer/Enter, commits date/time immediately,
+keeps the parent open for calendar clicks outside its original bounds and closes
+its popup before the parent on Escape. Built-in clear survives current-document
+save rebinding. Unchanged dismissal retains `.321` and precise internal offsets.
+Both orientations, locale grouping and 640px light layout were checked. See
+[the follow-up report](../ui/265-recording-scales/followup-acceptance.md). Owner
+manual acceptance remains pending.
 
 ## Post-completion
 

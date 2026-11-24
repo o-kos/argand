@@ -152,6 +152,18 @@ pub(super) fn plot_listener<A: Command>(
     })
 }
 
+/// Explicit choices keep their own dispatch but advertise the shared toggle key.
+pub(super) fn shortcut_action(action: &dyn Action) -> Box<dyn Action> {
+    if action.as_any().is::<RelativeTime>() || action.as_any().is::<AbsoluteTime>() {
+        Box::new(ToggleTimeOrigin)
+    } else if action.as_any().is::<BasebandFrequency>() || action.as_any().is::<PhysicalFrequency>()
+    {
+        Box::new(ToggleFrequencyMode)
+    } else {
+        action.boxed_clone()
+    }
+}
+
 /// Register a shortcut only for a command with the shared execution policy.
 pub(super) fn binding<A: Command>(
     key: &'static str,

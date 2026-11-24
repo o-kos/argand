@@ -322,8 +322,19 @@ remaining input sample, tail deletion keeps it, and interior deletion clears it.
 Duration-changing insertion/replacement clears start. Equal-length replacement,
 conversion, normalization, spectrum inversion and band suppression retain it.
 The internal origin retains precise cumulative sample offsets. Opening and closing
-an unchanged millisecond editor draft does not reapply a rounded value. Conversion
+an unchanged standard seconds-precision DatePicker does not reapply a rounded value. Conversion
 adoption carries that exact origin through the guarded job instead of taking the
 rounded timestamp from its private backing WAVE. User-file serialization rounds to
 the nearest millisecond. Undo/Redo restore recording start with the corresponding
 content version. A cleared start makes Absolute UTC unavailable without resetting the saved display preference.
+
+When embedded recording start is absent, the initial user document uses filesystem
+creation time as a clean effective origin. The background probe takes birthtime
+from its opened handle and exposes it only when header and reader stamps agree.
+Unsupported creation time remains absent. Source metadata and identity checks keep
+the embedded value. Save rebinding and private conversion skip this initial default,
+so clearing start does not repopulate it in the current document. The standard UTC
+DatePicker commits actual user changes immediately at seconds precision, with its
+built-in clear. Merely opening or dismissing it preserves exact retained offsets.
+A fresh user open without embedded start applies the creation default again.
+Containers do not preserve a separate explicit-unset marker across new opens.

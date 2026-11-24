@@ -33,16 +33,21 @@ The analysis settings hint selects Peak (MAX) or Mean power, including subsequen
 
 The Recording metadata and scales panel (#265) reuses the Reference information
 panel owner and pinned Popover. Edit → Recording metadata and scales… and a small
-standard corner Button open it. The button sits at the overview/frequency-ruler
-junction: bottom-left with time running down, top-right with time running right.
+standard outlined corner Button open it. Its frame stays visible at rest and is
+centered in the actual PlotGeometry overview/frequency-ruler corner cell: bottom-left with time running down, top-right with time running right.
 Its R/A pair always names frequency first and time second (Relative/Absolute).
 It replaces the reference-frequency status button. Its tooltip expands this order.
 
 Standard radio buttons select Relative/Absolute RF frequency and Relative/Absolute
 UTC time. Relative hms/seconds/samples choice remains remembered while absolute time
-is shown. The existing NumericEditor edits reference in grouped locale digits with
-whole-Hz Enter, blur and stepping commits. A standard Input edits recording start as
-a complete UTC timestamp; an empty committed value clears it. Enter/blur commit,
+is shown. Frequency and Time sections share label/control columns with explicit
+Scale and relative Format radio-group labels. NumericEditor uses a standard
+InputGroup frame around its retained Input, stepper Buttons and Hz unit, matching
+the timestamp DatePicker's outer frame and size. Other property panels retain their
+existing frameless numeric presentation. Reference keeps grouped locale digits
+and whole-Hz Enter, blur and stepping commits. A standard DatePicker edits UTC recording start with date and seconds-precision time.
+Its Change event commits user choices immediately and its built-in clear removes start.
+Opening or dismissing an unchanged picker preserves precise internal offsets. Numeric Enter/blur commit,
 outside dismissal keeps a valid draft, and Escape drops uncommitted drafts. The
 panel has no Apply, Cancel, Clear or close buttons. It retains common panel mutual
 exclusion, deactivation closing, focus and external-tooltip policies. Save writes
@@ -435,10 +440,14 @@ summary. At the supported 640×400 minimum, File information and all ten Recent 
 must remain pointer- and keyboard-reachable without unnecessary scrollbars.
 
 Without a document, View's grid/scale/orientation/time-format commands remain
-visible but disabled; unavailable Time scale format is a plain disabled item
+visible but disabled; unavailable Time scale is a plain disabled item
 without an expandable child. Theme remains available. Edit keycap labels resolve the
 registered Plot bindings even for disabled empty-window commands, while native
-menu dispatch keeps the actual focus target and existing command guards.
+menu dispatch keeps the actual focus target and existing command guards. All typed command
+rows in main and ruler/spectrum context menus use the same command-row/keycap
+wrapper. Explicit Relative/Absolute choices advertise their canonical toggle
+binding through typed aliases while dispatching their own idempotent command.
+Key strings and binding registration are not duplicated for those rows.
 
 Caption Close targets the retained Shell action path without changing actual
 focus. The menu backdrop reserves Linux's existing caption controls and Windows'
